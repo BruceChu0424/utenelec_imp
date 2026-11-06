@@ -1,0 +1,16 @@
+{
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T21:12:42.1053750Z",
+  "completedAtUtc": "2026-11-05T21:17:43.1409501Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "a8ddb083780a6602f15ef5cb0292b299e23b26b8b09061fd3cb7b1a2994a78f5",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-3068-final",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "wrapperPid": 39040,
+  "log": "build\\loading-validation\\main-3068-final\\compile.log"
+}

@@ -47,6 +47,7 @@ class _Fixture {
   final statuses = {'root': '使用', 'child': '使用', 'system': '使用'};
   final properties = <String, Map<String, dynamic>>{};
   final writes = <RequestOptions>[];
+  final treeReads = <RequestOptions>[];
   Completer<void>? batch;
 
   Map<String, dynamic> row(String id) => {
@@ -122,6 +123,7 @@ class _Fixture {
                 'results': results,
               };
             } else if (request.path == '/master/payment-styles/tree') {
+              treeReads.add(request);
               data = request.queryParameters['category'] == 'EXPENSE'
                   ? [row('root'), row('system')]
                   : <Object>[];
@@ -231,37 +233,44 @@ void main() {
     expect(fixture.properties['root']?['receipt'], isFalse);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('157条资料真实每页50条，表头筛选覆盖完整范围且翻页不重复', (tester) async {
+  testWidgets('157条资料完整连续可达，表头覆盖全集且滚动不再读取目录', (tester) async {
     final fixture = _Fixture()..extraRows = 154;
     await _pump(tester, fixture);
     await tester.tap(find.text('编辑模式'));
     await tester.pumpAndSettle();
-    var table = tester.widget<MasterDataTableView<dynamic>>(
-      find.byKey(const ValueKey('payment-style-inline-table')),
-    );
-    expect(table.items, hasLength(50));
-    expect(table.unpagedItems, isEmpty);
-    expect(table.totalPages, 4);
-    expect(table.facets['name'], hasLength(157));
-    final firstIds = table.items.map((row) => _idOf(row as Object)).toSet();
-    table.onPageChange!(2);
-    await tester.pumpAndSettle();
-    table = tester.widget<MasterDataTableView<dynamic>>(
-      find.byKey(const ValueKey('payment-style-inline-table')),
-    );
-    expect(table.items, hasLength(50));
+    final finder = find.byKey(const ValueKey('payment-style-inline-table'));
+    var table = tester.widget<MasterDataTableView<dynamic>>(finder);
+    expect(table.items, hasLength(157));
     expect(
-      table.items.every((row) => !firstIds.contains(_idOf(row as Object))),
-      isTrue,
+      table.items.map((row) => _idOf(row as Object)).toSet(),
+      hasLength(157),
     );
+    expect(table.facets['name'], hasLength(157));
+    expect(table.onPageChange, isNull);
+    final before = fixture.treeReads.length;
+    final scrolls = tester
+        .stateList<ScrollableState>(
+          find.descendant(of: finder, matching: find.byType(Scrollable)),
+        )
+        .where(
+          (state) =>
+              state.position.axisDirection == AxisDirection.down &&
+              state.position.maxScrollExtent > 0,
+        );
+    if (scrolls.isNotEmpty) {
+      final position = scrolls.first.position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+    }
+    expect(fixture.treeReads, hasLength(before));
     table.onFilterChanged('search.name', '额外类别153');
     await tester.pumpAndSettle();
-    table = tester.widget<MasterDataTableView<dynamic>>(
-      find.byKey(const ValueKey('payment-style-inline-table')),
-    );
+    table = tester.widget<MasterDataTableView<dynamic>>(finder);
     expect(table.items, hasLength(1));
     expect(_idOf(table.items.single as Object), 'extra153');
-    expect(table.totalPages, 1);
+    expect(fixture.treeReads, hasLength(before));
     expect(fixture.writes, isEmpty);
     expect(tester.takeException(), isNull);
   });

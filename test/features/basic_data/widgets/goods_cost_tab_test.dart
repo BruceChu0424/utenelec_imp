@@ -157,8 +157,15 @@ class _Costs extends Fake implements GoodsCostRepository {
         },
     ];
     final total = versionTotal ?? items.length;
+    final complete = versionTotal == null
+        ? items
+        : [
+            for (var i = 0; i < total; i++)
+              {...items[i % items.length], if (i > 0) 'id': 'cost-history-$i'},
+          ];
+    final offset = ((page - 1) * size).clamp(0, complete.length);
     return PagedResult(
-      items: items,
+      items: complete.skip(offset).take(size).toList(),
       page: page,
       size: size,
       total: total,
@@ -1742,7 +1749,10 @@ void main() {
       );
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(finder);
-      expect(table().totalPages, 11);
+      expect(table().totalPages, 1);
+      expect(table().items, hasLength(501));
+      expect(table().onPageChange, isNull);
+      expect(repo.versionQueries.map((q) => q.page), [1, 2, 3, 4, 5, 6]);
       final versionColumn = table().columns.singleWhere(
         (column) => column.key == 'version',
       );
@@ -1794,8 +1804,6 @@ void main() {
         repo.versionQueries.last.query.searches,
         containsPair('search.knownTotal', '>=90071992547409.0001'),
       );
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
       expect(
         repo.versionQueries
             .lastWhere((query) => query.page == 2)

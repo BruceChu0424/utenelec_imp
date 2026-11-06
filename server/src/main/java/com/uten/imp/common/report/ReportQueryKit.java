@@ -38,6 +38,21 @@ public final class ReportQueryKit {
         row.putAll(exact);
     }
 
+    /** Projection of an immutable historical original for existing Exact-aware
+     * clients. Stored literal values/fingerprints and preexisting Exact facts
+     * remain untouched; no exactness is invented from binary Float/Double. */
+    public static void includeFrozenDecimalTexts(Map<String,Object> row) {
+        var frozen=new LinkedHashMap<String,Object>(row);
+        includeDecimalTexts(row);
+        frozen.forEach((key,value)->{
+            String exactKey=key+"Exact";
+            if(frozen.containsKey(exactKey))row.put(exactKey,frozen.get(exactKey));
+            else if(value instanceof java.math.BigInteger integer)row.put(exactKey,integer.toString());
+            else if(value instanceof Long integer&&(integer>9007199254740991L||integer< -9007199254740991L))
+                row.put(exactKey,integer.toString());
+        });
+    }
+
     /**
      * Add an explicitly supported numerical header query to the main predicate,
      * so rows, counts, candidate lists, totals and exports use the same result set.

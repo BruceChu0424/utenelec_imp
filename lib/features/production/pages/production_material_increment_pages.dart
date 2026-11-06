@@ -27,6 +27,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -57,6 +58,11 @@ class ProductionMaterialIncrementListPage extends ConsumerStatefulWidget {
 class _IncrementListState
     extends ConsumerState<ProductionMaterialIncrementListPage>
     with ScopedPagedReadViewMixin<ProductionMaterialIncrementListPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   PagedResult<ProductionMaterialIncrementRequest>? _data;
   final _tableRows =
       MasterDataTableRowsController<ProductionMaterialIncrementRequest>();
@@ -108,10 +114,12 @@ class _IncrementListState
         });
       }
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (mounted && request == _request) {
         setState(() => _error = error.message);
       }
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (mounted && request == _request) {
         setState(() => _error = '追加用料申请读取失败，请重试');
       }
@@ -122,9 +130,13 @@ class _IncrementListState
 
   @override
   Widget build(BuildContext context) {
+    Future<void> visibleReadReturn() => _load();
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(
       RouteName.productionMaterialIncrementRequests,
-      () => _load(),
+      visibleReadReturn,
       refreshKeys: [productionMaterialIncrementRefreshKey],
     );
     return Scaffold(

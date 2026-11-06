@@ -36,5 +36,6 @@ Future<UtenEmployeePickerPage> loadClientAccessEmployeePage(
     ],
     page: result.page,
     totalPages: result.totalPages,
+      total: result.total,
   );
 }

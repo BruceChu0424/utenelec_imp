@@ -54,8 +54,11 @@ void main() {
         'reviewerResponsibility: true',
       ],
       'lib/features/finance/pages/finance_doc_detail_page.dart': [
-        'reviewerResponsibility: true',
-        "reviewerActionLabel: '费用单总账确认'",
+        'showFinanceDocumentReviewCommand(',
+        'reviewedDetail: displayed',
+        'unapprove: unapprove',
+        'glConfirm: glConfirm',
+        'deleteDraft: deleteDraft',
       ],
       'lib/features/production/pages/production_daily_report_detail_page.dart':
           ['showUtenReviewerConfirmDialog('],
@@ -96,7 +99,40 @@ void main() {
 
     for (final entry in expectedMarkers.entries) {
       final source = _source(entry.key);
-      if (source.contains('with NativeReadViewScopeMixin<')) {
+      if (entry.key ==
+          'lib/features/finance/pages/finance_doc_detail_page.dart') {
+        expect(source, contains('../widgets/finance_document_review_command.dart'));
+        final command = _source(
+          'lib/features/finance/widgets/finance_document_review_command.dart',
+        );
+        expect(command, contains('uten_reviewer_responsibility_notice.dart'));
+        final notice = _between(
+          command,
+          'if (!widget.unapprove &&',
+          'if (_error != null)',
+        );
+        expect(notice, contains('!widget.deleteDraft'));
+        expect(notice, contains('_intent == null'));
+        expect(notice, contains('_retired == null'));
+        expect(notice, contains('UtenReviewerResponsibilityNotice('));
+        expect(notice, contains('actionLabel: _label'));
+        expect(
+          notice,
+          contains("reviewerLabel: widget.glConfirm ? '财务确认人' : '审核员'"),
+        );
+        final labels = _between(
+          command,
+          'String get _label =>',
+          'String get _expectedOperation =>',
+        ).replaceAll(RegExp(r'\s+'), ' ');
+        expect(labels, contains("widget.glConfirm ? '财务确认'"));
+        expect(labels, contains("widget.unapprove ? '反审' : '审核'"));
+        expect(
+          command,
+          contains('glConfirm && type != FinanceDocType.expense'),
+        );
+        expect(source, contains('_reviewDocument(detail, false, glConfirm: true)'));
+      } else if (source.contains('with NativeReadViewScopeMixin<')) {
         expect(source, contains('native_read_view_scope_mixin.dart'));
         expect(source, contains('showNativeReadReviewerConfirm('));
         final nativeGuard = _source(

@@ -91,16 +91,7 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      onPrepare: (keyword, scope, refreshTick, canPrepare) =>
-          prepareWorkshopMaterialPages(
-            ref,
-            context,
-            canReview: canReview,
-            canCycleCount: canCycleCount,
-            scope: scope,
-            keyword: keyword,
-            canPrepare: () => canPrepare,
-          ),
+
       bodyBuilder: (segment, keyword, refreshTick, header) => switch (segment) {
         'periodCount' => WmBinStatusSegment(
           refreshTick: refreshTick,
@@ -174,9 +165,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
         });
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => trackRefresh(_load(preferPrepared: true)),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => trackRefresh(_load()));
   }
 
   @override
@@ -185,7 +174,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
     if (oldWidget.refreshTick != widget.refreshTick) trackRefresh(_load());
   }
 
-  Future<void> _load({bool preferPrepared = false}) async {
+  Future<void> _load() async {
     final version = ++_loadVersion;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -205,7 +194,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment>
           ref,
           repo,
           WarehouseListScope.of(context),
-          force: !preferPrepared,
+          force: true,
         ))
           if (s.periodicEnabled && s.binWarehouseId != null) s,
       ];

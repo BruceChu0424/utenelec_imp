@@ -1,0 +1,235 @@
+{
+  "startedAtUtc": "2026-11-05T21:14:22.358951+00:00",
+  "completedAtUtc": "2026-11-05T21:14:35.115152+00:00",
+  "sourceAggregateSha256": "a8ddb083780a6602f15ef5cb0292b299e23b26b8b09061fd3cb7b1a2994a78f5",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "actualExitCode": 0,
+  "modules": [
+    "test_verify_rehearsal_counter_baseline",
+    "test_verify_rehearsal_result",
+    "test_compose_bootstrap"
+  ],
+  "tests": 54,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "caseLedger": [
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_accepts_original_overages_as_review_counts_without_approving_them",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_explicit_v908_cannot_silently_skip_v13_or_missing_mapping",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_inventory_derives_each_family_count_and_exact_identity_set",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_pre_v14_does_not_query_unavailable_counter_tables",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_return_inventory_binds_the_real_csv_names_and_every_original_id",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_target_count_source_id_set_or_each_snapshot_invariant_fails_closed",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v22_adds_both_exact_return_families_without_reinterpreting_old_counter_runs",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v908_mapping14_is_required_in_same_full_fact_snapshot",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v908_mapping14_missing_sealed_inventory_is_rejected_before_facts",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_wrong_run_extra_or_unregistered_proof_fails",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_bom_graph_quantity_or_parent_change_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_changed_cluster_is_rejected_even_when_the_run_identity_matches",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_consumed_file_and_structural_check_mismatch_are_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_database_rename_needs_explicit_matching_declaration",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_disabled_bom_material_nonpending_or_real_bom_identity_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_dynamic_counts_do_not_accept_a_fixed_previous_population",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_explicit_rename_never_waives_manifest_account_or_graph_proof",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_extra_login_user_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_manifest_commit_and_reconciliation_identity_are_required",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_missing_clean_media_and_wrong_schema_are_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_password_login_account_uuid_and_eligibility_changes_are_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_pre_rename_receipt_different_run_or_counts_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_real_query_adapter_has_readonly_repeatable_transaction_and_no_credentials_in_command",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_run_identity_is_rechecked_in_business_snapshot",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_running_run_stops_before_account_or_business_query",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_same_cluster_copy_with_a_different_database_oid_is_rejected_after_rename",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_server_error_does_not_emit_raw_sql_or_private_stderr",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.DatabaseTests.test_success_projects_only_counts_and_safe_proofs",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_admin_cannot_be_duplicated_in_hr_csv",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_any_csv_sha_drift_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_different_frozen_commit_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_dynamic_counts_include_only_separate_admin_once",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_hr_duplicated_code_is_rejected_even_when_resealed",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_manifest_drift_is_rejected_before_parsing",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_nonpending_material_csv_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_offline_cli_never_queries_target_or_emits_snapshot_values",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_resealed_nonconserved_graph_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_topology_parent_sha_must_match_final_csv",
+      "status": "passed"
+    },
+    {
+      "case": "test_verify_rehearsal_result.InputTests.test_topology_summary_drift_is_rejected",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_any_casing_indentation_or_interleaved_comments_cannot_end_the_transaction",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_carriage_return_comments_cannot_hide_transaction_control",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_cleanup_preserves_only_the_exact_shared_evidence_tables",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_cli_rejects_before_emitting_any_partial_module",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_crlf_unicode_strings_identifiers_and_nested_comments_are_byte_exact",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_direct_procedural_transaction_commands_are_rejected_without_rewriting",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_dollar_delimiters_are_case_sensitive_and_malformed_quotes_fail_closed",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_escape_strings_and_doubled_identifier_quotes_are_not_commands",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_every_current_loader_has_explicit_caller_owned_transactions",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_function_and_procedure_programs_use_the_same_control_guard",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_on_commit_drop_and_case_end_are_sql_syntax_not_transaction_commands",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_only_static_reviewed_csv_copy_and_key_include_are_allowed",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_owner_modules_initialize_helper_then_flush_before_cleanup",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_procedural_quoted_and_nested_dollar_values_remain_literal_data",
+      "status": "passed"
+    },
+    {
+      "case": "test_compose_bootstrap.BootstrapComposerTest.test_psql_connection_shell_execution_and_dynamic_file_commands_are_rejected",
+      "status": "passed"
+    }
+  ],
+  "scope": "Current1067 gate, original bootstrap-v22 proof/source/current schema/identity and original CLI before-partial-output protection. Original launcher explicitly restored; previous66+1 historical red is not rewritten."
+}

@@ -1,3 +1,6 @@
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
@@ -145,7 +148,14 @@ void main() {
       ),
       GoRoute(
         path: '/sales/orders/:id',
-        builder: (_, _) => const Scaffold(body: Text('订货单详情')),
+        builder: (_, state) => Scaffold(
+          body: Column(
+            children: [
+              const Text('订货单详情'),
+              Text('实际订货单 ${state.pathParameters['id']}'),
+            ],
+          ),
+        ),
       ),
       GoRoute(
         path: '/finance/quote-review/:id',
@@ -431,6 +441,83 @@ void main() {
       history.pending['a']!.complete(_page('新范围重新核对报价'));
       await tester.pumpAndSettle();
       expect(find.text('新范围重新核对报价'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'real quotation history return refreshes once and requires a fresh operation target',
+    (tester) async {
+      final history = _History(), router = routes();
+      addTearDown(router.dispose);
+      await pump(tester, history, router, {
+        Perm.goodsView,
+        Perm.salesQuoteFinanceView,
+        Perm.salesOrderView,
+      });
+      PagedResult<GoodsQuoteHistoryRow> page(
+        String name, {
+        String order = 'order-1',
+      }) => PagedResult(
+        items: [
+          GoodsQuoteHistoryRow({
+            ..._page(name, order: order).items.single.data,
+            'id': 'same-history-row',
+          }),
+        ],
+        page: 1,
+        size: 100,
+        total: 1,
+        totalPages: 1,
+      );
+      history.pending['a']!.complete(page('原客户'));
+      await tester.pumpAndSettle();
+      final finder = find.byType(MasterDataTableView<GoodsQuoteHistoryRow>);
+      var table = tester.widget<MasterDataTableView<GoodsQuoteHistoryRow>>(
+        finder,
+      );
+      await tester.tap(find.text('原客户').hitTestable().first);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, '查看单据'));
+      await tester.pumpAndSettle();
+      expect(find.text('订货单详情'), findsOneWidget);
+      final reads = history.requests.length;
+      history.pending['a'] = Completer<PagedResult<GoodsQuoteHistoryRow>>();
+      router.pop();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+      expect(history.requests.length, reads + 1);
+      history.pending['a']!.complete(page('更新客户', order: 'order-2'));
+      await tester.pumpAndSettle();
+      expect(history.requests.length, reads + 1);
+      table = tester.widget<MasterDataTableView<GoodsQuoteHistoryRow>>(finder);
+      expect(table.items.single.text('clientName'), '更新客户');
+      final open = tester.widget<UtenButton>(
+        find.widgetWithText(UtenButton, '查看单据'),
+      );
+      expect(open.onPressed, isNull);
+      expect(table.isLoading, isFalse);
+      final binding = readWindowBindingOf(table.items);
+      expect(binding?.isCurrent, isNot(false));
+      expect(binding?.pending, isNot(true));
+      expect(table.items.single.orderId, 'order-2');
+      await tester.tap(find.text('更新客户').hitTestable().first);
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 1));
+      final selected = tester.widget<UtenButton>(
+        find.widgetWithText(UtenButton, '查看单据'),
+      );
+      expect(
+        selected.onPressed,
+        isNotNull,
+        reason:
+            'The actual row gesture must select its operation target before clicking View.',
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '查看单据'));
+      await tester.pumpAndSettle();
+      // go_router does not reflect imperative pushes in browser URL by default.
+      // The displayed target proves that the fresh authoritative DTO was used.
+      expect(find.text('实际订货单 order-2'), findsOneWidget);
+      expect(find.text('实际订货单 order-1'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

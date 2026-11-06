@@ -1,0 +1,1075 @@
+package com.uten.imp.features.production.execution;
+
+import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService;
+import com.uten.imp.features.stock.allocation.ProductionMaterialTaskAccessPolicy;
+import com.uten.imp.features.stock.valuation.ProductionInventoryValueService;
+import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import java.time.LocalDate;
+import java.util.Optional;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/** Real Hibernate/PostgreSQL query execution against projection fixtures.
+ * Migration tests separately verify the full production view definitions. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+class ProductionExecutionWorkbenchQueryPostgresTest {
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+    private static final UUID EMPLOYEE = UUID.randomUUID();
+    private static final UUID WORKSHOP = UUID.randomUUID();
+    private static final UUID OTHER_WORKSHOP = UUID.randomUUID();
+    private static final UUID PLAN = UUID.randomUUID();
+    private static JdbcTemplate jdbc;
+    private static SessionFactory factory;
+    private EntityManager em;
+    private SecurityContextCurrentUser currentUser;
+    private ProductionDocumentAccessPolicy access;
+    private ProductionExecutionWorkbenchService service;
+
+    @BeforeAll
+    static void startPostgres() throws Exception {
+        POSTGRES.start();
+        jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "goods", "production_execution_segments", "production_fqc_recovery_authorizations",
+                "production_material_demands", "production_material_discovery_requests",
+                "production_overproduction_rate_requests", "production_over_limit_dispositions", "v_production_fqc_recovery_balance",
+                "v_production_analysis_workbench_item_progress");
+        jdbc.execute("ALTER TABLE production_execution_segments ALTER COLUMN start_route SET DEFAULT 'FULL_KIT', ALTER COLUMN continuous_supply SET DEFAULT FALSE");
+        jdbc.execute("ALTER TABLE v_production_fqc_recovery_balance ALTER COLUMN cancelled SET DEFAULT FALSE");
+        jdbc.execute("CREATE TABLE workbench_execution_policy_facts(segment_id uuid PRIMARY KEY, overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE)");
+        jdbc.execute("""
+                CREATE FUNCTION fn_material_discovery_pending(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT material_discovery_required FROM production_execution_segments WHERE id=$1),FALSE)';
+                CREATE FUNCTION fn_execution_overproduction_policy_applies(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT overproduction_policy_applies FROM workbench_execution_policy_facts WHERE segment_id=$1),TRUE)';
+                CREATE FUNCTION fn_actual_supplement_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT COALESCE((SELECT actual_supplement_material_ready FROM workbench_execution_policy_facts WHERE segment_id=$1),FALSE)';
+                CREATE FUNCTION fn_fqc_replenishment_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE TABLE production_execution_segment_splits(source_segment_id uuid);
+                CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_can_split_execution_batch(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_production_material_usage_source_segments(uuid) RETURNS TABLE(segment_id uuid) LANGUAGE sql AS 'SELECT NULL::uuid WHERE FALSE';
+                CREATE FUNCTION fn_execution_start_material_ready(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_execution_material_custody_valid(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE';
+                CREATE FUNCTION fn_can_change_execution_route(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_execution_segment_material_summary(uuid) RETURNS TABLE(kind_count integer, issued_count integer,
+                    partial_issued_count integer, awaiting_warehouse_count integer, drawable_count integer,
+                    line_side_pending_count integer, preparing_count integer, short_count integer, short_make_count integer,
+                    supported_output_qty numeric, prepared_output_qty numeric)
+                    LANGUAGE sql AS 'SELECT 2, 1, 0, 0, 1, 0, 0, 0, 0, 0::numeric, 10::numeric';
+                CREATE FUNCTION fn_demand_direct_supply_eligible(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE FUNCTION fn_segment_bin_material_state(uuid) RETURNS text LANGUAGE sql AS 'SELECT ''NO_BIN''::text';
+                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_line_side boolean DEFAULT FALSE);
+                CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
+                CREATE TABLE production_plans(id uuid PRIMARY KEY, actual_output_supplement_request_id uuid, bill_no text, status integer, maker_id uuid,
+                    material_analysis_id uuid, material_analysis_item_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
+                CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
+                CREATE TABLE production_material_analysis_items(id uuid, analysis_id uuid, goods_id uuid,
+                    parent_analysis_material_id uuid, source_type text DEFAULT 'SALES_ORDER_ITEM',
+                    sales_order_item_id uuid, is_deleted boolean, source_ref text);
+                -- V719: 工作台根工单列引用 root 分析的编号子查询(漂移守卫要求全列对齐真表)。
+                CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, warehouse_id uuid, status text,
+                    version bigint DEFAULT 0, fingerprint text NOT NULL, preview_fingerprint text,
+                    initial_idempotency_key text NOT NULL, analyzed_at timestamptz, maker_id uuid NOT NULL,
+                    created_at timestamptz, updated_at timestamptz, created_by uuid, updated_by uuid,
+                    cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
+                    is_deleted boolean DEFAULT FALSE, deleted_at timestamptz,
+                    participating_warehouse_ids uuid[], analysis_no text);
+                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid);
+                CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
+                CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255), is_hidden BOOLEAN NOT NULL DEFAULT FALSE, hidden_at TIMESTAMPTZ);
+                CREATE TABLE v_production_execution_workbench_segments(
+                    segment_id uuid PRIMARY KEY, plan_id uuid, root_type text DEFAULT 'PLAN', root_id uuid,
+                    plan_no text DEFAULT 'PLAN-001', segment_code text, segment_no integer,
+                    sales_order_nos text DEFAULT 'SO-001', workshop_department_id uuid,
+                    workshop_name text DEFAULT 'Assembly', responsible_employee_id uuid,
+                    responsible_employee_name text DEFAULT 'Worker', product_code text DEFAULT 'P001',
+                    product_name text DEFAULT 'Product', product_color_name text, product_unit_name text DEFAULT 'piece',
+                    planned_qty numeric DEFAULT 10, reported_qty numeric DEFAULT 0, remaining_qty numeric DEFAULT 10,
+                    fqc_pending_qty numeric DEFAULT 0, fqc_passed_qty numeric DEFAULT 0, fqc_failed_qty numeric DEFAULT 0,
+                    finished_inbound_pending_qty numeric DEFAULT 0, inbound_qty numeric DEFAULT 0,
+                    segment_status text, material_status text DEFAULT 'KIT_SHORT', preparation_status text,
+                    warehouse_ready boolean DEFAULT FALSE, issued boolean DEFAULT FALSE, reportable boolean DEFAULT FALSE,
+                    report_source_count integer DEFAULT 1, blocked_reason text DEFAULT 'Waiting for materials',
+                    plan_begin_date date DEFAULT '2026-09-05', plan_end_date date DEFAULT '2026-09-06', lock_version bigint DEFAULT 1, zero_material boolean DEFAULT FALSE,
+                    product_goods_id uuid, actual_surplus_reported_qty numeric DEFAULT 0,
+                    actual_surplus_inbound_qty numeric DEFAULT 0, planned_inbound_qty numeric DEFAULT 0);
+                CREATE TABLE v_production_execution_workbench_roots(
+                    root_type text DEFAULT 'PLAN', root_id uuid, owner_employee_id uuid,
+                    root_label text DEFAULT 'PLAN-001', status text DEFAULT 'WAITING',
+                    sales_order_preview text, sales_order_count integer DEFAULT 1, sales_order_has_more boolean DEFAULT FALSE,
+                    work_order_preview text, work_order_count integer DEFAULT 4, work_order_has_more boolean DEFAULT FALSE,
+                    workshop_preview text, workshop_count integer DEFAULT 1, workshop_has_more boolean DEFAULT FALSE,
+                    product_code_preview text, product_name_preview text, product_color_preview text,
+                    product_count integer DEFAULT 1, product_has_more boolean DEFAULT FALSE,
+                    quantity_summary text DEFAULT '40 piece', mixed_units boolean DEFAULT FALSE,
+                    execution_unit_count integer DEFAULT 4, execution_unit_has_more boolean DEFAULT FALSE,
+                    plan_count integer DEFAULT 1, segment_count integer DEFAULT 4,
+                    waiting_count integer DEFAULT 1, ready_count integer DEFAULT 1, dispatched_count integer DEFAULT 1,
+                    in_progress_count integer DEFAULT 1, completed_count integer DEFAULT 0,
+                    material_ready_count integer DEFAULT 2, warehouse_ready_count integer DEFAULT 2,
+                    issued_count integer DEFAULT 2, reportable_count integer DEFAULT 2,
+                    fqc_pending_count integer DEFAULT 0, finished_inbound_pending_count integer DEFAULT 0,
+                    earliest_begin_date date DEFAULT '2026-09-05', latest_end_date date DEFAULT '2026-09-06', owner_employee_name text, analyzed_at timestamp,
+                    root_planned_qty numeric DEFAULT 0, root_inbound_qty numeric DEFAULT 0, root_progress_ratio numeric DEFAULT 0,
+                    -- V969 全量产品/颜色载荷（多值格弹窗数据源；默认空即无弹窗数据）。
+                    product_entries jsonb, product_colors_all text);
+                """);
+        jdbc.execute("""
+                CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
+                    posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
+                CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
+                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text);
+                CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
+                CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint,
+                    execution_segment_id uuid, created_by uuid, created_at timestamp with time zone DEFAULT now());
+                CREATE TABLE production_material_return_requests(id uuid,execution_segment_id uuid, created_at timestamp with time zone DEFAULT now(), created_by uuid, idempotency_key character varying(128), plan_id uuid, reason text, request_hash character(64), source_department_id uuid, warehouse_id uuid);
+                CREATE TABLE v_workshop_direct_supply_lots(to_demand_id uuid,received_qty numeric, available_qty numeric, color_id uuid, created_at timestamp with time zone, goods_id uuid, id uuid, line_side_warehouse_id uuid, producing_segment_id uuid, to_execution_segment_id uuid);
+                CREATE FUNCTION fn_execution_material_return_allowed(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE';
+                CREATE TABLE production_material_return_request_items(issue_posting_id uuid,request_id uuid,qty_base numeric, direct_transfer_item_id uuid);
+                CREATE TABLE production_material_return_request_cancellations(request_id uuid);
+                CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);
+                CREATE TABLE production_material_settlement_postings(id uuid PRIMARY KEY, demand_id uuid,
+                    event_id uuid, settlement_type text, qty_base numeric);
+                -- 2026-10-06 待续报固定追加量：segmentSelect 引用真实判定(函数 + requests/proofs/
+                -- reversals/claims/daily_reports 表)，这里给出同形状的最小真表版。
+                                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY,
+                    legacy_id integer,
+                    bill_no text,
+                    bill_date date,
+                    warehouse_id uuid,
+                    department_id uuid,
+                    workshop_name text,
+                    worker_id uuid,
+                    supplier_id uuid,
+                    maker_id uuid,
+                    approver_id uuid,
+                    maker_legacy_id integer,
+                    approver_legacy_id integer,
+                    remark text,
+                    status integer DEFAULT 0,
+                    is_closed boolean,
+                    is_canceled boolean,
+                    source_doc_no text,
+                    created_at timestamptz,
+                    updated_at timestamptz,
+                    created_by uuid,
+                    updated_by uuid,
+                    is_deleted boolean DEFAULT FALSE,
+                    deleted_at timestamptz,
+                    row_version bigint,
+                    surplus_return_requested boolean);
+                CREATE TABLE production_actual_output_supplement_requests(id uuid PRIMARY KEY,
+                    source_execution_segment_id uuid,
+                    source_sales_allocation_id uuid,
+                    excluded_report_id uuid,
+                    report_context jsonb,
+                    input_line_index integer,
+                    supplement_plan_id uuid,
+                    supplement_plan_item_id uuid,
+                    batch_id uuid,
+                    actual_batch_qty numeric,
+                    original_report_qty numeric,
+                    original_sales_qty numeric,
+                    original_internal_qty numeric,
+                    supplement_qty numeric DEFAULT 0,
+                    prior_reported_qty numeric,
+                    source_planned_qty numeric,
+                    allowed_overproduction_rate numeric,
+                    preview_fingerprint text,
+                    request_hash text,
+                    idempotency_key text,
+                    status text,
+                    created_by uuid,
+                    created_at timestamptz DEFAULT now());
+                CREATE TABLE production_actual_output_supplement_proofs(id uuid PRIMARY KEY, command_id uuid, source_execution_segment_id uuid, supplement_plan_id uuid, supplement_plan_item_id uuid, supplement_execution_segment_id uuid, batch_id uuid, actual_batch_qty numeric, original_report_qty numeric, supplement_qty numeric, prior_reported_qty numeric, source_planned_qty numeric, allowed_overproduction_rate numeric, created_by uuid, created_at timestamptz);
+                CREATE TABLE production_actual_output_supplement_reversals(id uuid, proof_id uuid, reason text, created_by uuid, created_at timestamptz);
+                CREATE TABLE production_actual_output_supplement_claims(id uuid PRIMARY KEY, proof_id uuid, report_id uuid, event_type text, source_claim_id uuid, created_by uuid, created_at timestamptz);
+                CREATE FUNCTION fn_actual_supplement_pending_qty(p_segment uuid, p_exclude_report uuid)
+                    RETURNS numeric LANGUAGE sql STABLE AS $$
+                    SELECT COALESCE(SUM(request.supplement_qty),0)
+                    FROM production_actual_output_supplement_requests request
+                    LEFT JOIN production_actual_output_supplement_proofs proof ON proof.command_id=request.id
+                    WHERE request.source_execution_segment_id=p_segment AND request.status='APPROVED'
+                      AND proof.id IS NOT NULL
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
+                          JOIN production_daily_reports report ON report.id=claim.report_id
+                          WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
+                            AND (report.status IN(0,1) OR report.id=p_exclude_report)
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id));
+                $$;
+                """);
+        String requestMigration = Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql"));
+        int functionStart = requestMigration.indexOf("CREATE OR REPLACE FUNCTION fn_production_draw_requested(");
+        jdbc.execute(requestMigration.substring(functionStart, requestMigration.indexOf("$$;", functionStart) + 3));
+        String quantitiesMigration = Files.readString(Path.of("src/main/resources/db/migration/V564__production_draw_requested_quantities.sql"));
+        jdbc.execute(quantitiesMigration.substring(quantitiesMigration.indexOf("CREATE FUNCTION fn_production_draw_item_requested_qty("),
+                quantitiesMigration.indexOf("CREATE FUNCTION fn_guard_production_draw_quantities(")));
+        String receiving=Files.readString(Path.of("src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql"));
+        int effective=receiving.indexOf("CREATE FUNCTION fn_production_draw_item_effective_qty(");
+        jdbc.execute(receiving.substring(effective,receiving.indexOf("$$;",effective)+3));
+        String returnMigration = Files.readString(Path.of("src/main/resources/db/migration/V560__production_material_return_requests.sql"));
+        int pendingStart = returnMigration.indexOf("CREATE FUNCTION fn_material_issue_pending_return(");
+        jdbc.execute(returnMigration.substring(pendingStart,returnMigration.indexOf("$$;",pendingStart)+3));
+        // Execute the formal authoritative clearance view, not a test copy of its arithmetic.
+        String migration = Files.readString(Path.of("src/main/resources/db/migration/V152__production_material_issue_return_ledger.sql"));
+        int start = migration.lastIndexOf("CREATE OR REPLACE VIEW v_production_material_clearance AS");
+        assertThat(start).isGreaterThanOrEqualTo(0);
+        jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
+        jdbc.update("INSERT INTO departments(id) VALUES (?), (?)", WORKSHOP, OTHER_WORKSHOP);
+        jdbc.update("INSERT INTO employees(id, department_id) VALUES (?, ?)", EMPLOYEE, WORKSHOP);
+        jdbc.update("INSERT INTO production_plans(id, bill_no, status, maker_id) VALUES (?, 'PLAN-001', 1, ?)", PLAN, EMPLOYEE);
+        jdbc.update("INSERT INTO production_planning_packages(id) VALUES (?)",PLAN);
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id, owner_employee_id) VALUES (?, ?)", PLAN, EMPLOYEE);
+        insertSegment(1, "WAITING", "PREPARING", false, WORKSHOP);
+        insertSegment(2, "READY", "PREPARING", false, WORKSHOP);
+        insertSegment(3, "DISPATCHED", "READY_TO_REPORT", true, WORKSHOP);
+        insertSegment(4, "IN_PROGRESS", "READY_TO_REPORT", true, WORKSHOP);
+        insertSegment(5, "COMPLETED", "COMPLETE", false, WORKSHOP);
+        insertSegment(6, "READY", "PREPARING", false, OTHER_WORKSHOP);
+        insertSegment(7, "CANCELLED", "COMPLETE", false, WORKSHOP);
+        insertSegment(8, "REVERSED", "COMPLETE", false, WORKSHOP);
+        for (int number : new int[]{2, 3, 4, 6}) {
+            UUID demand = new UUID(1, number);
+            jdbc.update("INSERT INTO production_material_demands(id,plan_id,execution_segment_id,goods_id,required_qty) VALUES (?,?,?,?,10)",
+                    demand, PLAN, new UUID(0, number), UUID.randomUUID());
+            jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?, 'ISSUE',?)",
+                    UUID.randomUUID(), demand, number == 2 ? 4 : 10);
+        }
+        UUID settlementEvent = UUID.randomUUID();
+        jdbc.update("INSERT INTO production_material_settlement_events VALUES (?,'POST')", settlementEvent);
+        jdbc.update("INSERT INTO production_material_settlement_postings VALUES (?,?,?,'CONSUMED',10)",
+                UUID.randomUUID(), new UUID(1, 3), settlementEvent);
+        jdbc.update("INSERT INTO production_material_stock_postings(id,demand_id,posting_type,qty_base) VALUES (?,?,'ISSUE_REVERSE',10)",
+                UUID.randomUUID(), new UUID(1, 4));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
+                "production_plan_items", "plan_order_item_links", "execution_segment_sales_allocations",
+                "production_material_analysis_materials", "preplan_supply_actions",
+                "preplan_supply_action_allocations", "preplan_aggregate_batches",
+                "preplan_aggregate_batch_events", "preplan_aggregate_material_aliases");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(jdbc,
+                "fn_aggregate_relative_bom_path", "fn_preplan_aggregate_recorded_private_sources_scoped_batches",
+                "fn_preplan_aggregate_recorded_private_sources_scoped",
+                "fn_preplan_aggregate_recorded_private_sources");
+        jdbc.execute("""
+                ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
+                ALTER TABLE sales_orders ADD COLUMN remark text;
+                """);
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
+                "production_plans", "production_daily_reports", "sales_order_items", "sales_orders",
+                "stock_documents", "stock_document_items");
+        var fixtureConfiguration = new Configuration()
+                .setProperty("hibernate.hbm2ddl.auto", "none");
+        fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());
+        factory = fixtureConfiguration.buildSessionFactory();
+    }
+    private static void insertSegment(int number, String status, String preparation, boolean reportable, UUID workshop) {
+        jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,responsible_employee_id) VALUES (?, ?,?,?,?,?)", new UUID(0, number), status,PLAN,PLAN,workshop,EMPLOYEE);
+        jdbc.update("""
+                INSERT INTO v_production_execution_workbench_segments(
+                    segment_id, plan_id, root_id, segment_code, segment_no, workshop_department_id,
+                    segment_status, preparation_status, reportable, issued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, new UUID(0, number), PLAN, PLAN, "WORK-" + number, number, workshop, status, preparation, reportable, reportable);
+    }
+    @BeforeEach
+    void createService() {
+        em = factory.createEntityManager();
+        em.getTransaction().begin();
+        access = mock(ProductionDocumentAccessPolicy.class);
+        when(access.nativeReadScope(anyString(), anyString())).thenAnswer(invocation ->
+                new NativeReadScope(invocation.getArgument(0) + " IN (:" + invocation.getArgument(1) + ")",
+                        invocation.getArgument(1), Set.of(EMPLOYEE)));
+        when(access.hasAuthority(anyString())).thenAnswer(invocation -> Set.of(
+                "production_plan:view", "production_execution:view", "production_daily_report:view",
+                "production_daily_report:create").contains(invocation.getArgument(0)));
+        currentUser = mock(SecurityContextCurrentUser.class);
+        when(currentUser.employeeId()).thenReturn(Optional.of(EMPLOYEE));
+        when(currentUser.get()).thenReturn(Optional.empty());
+        var membership = mock(com.uten.imp.features.production.ProductionWorkshopMembership.class);
+        when(membership.isActiveOperator()).thenReturn(true);
+        service = new ProductionExecutionWorkbenchService(em, access,
+                mock(PurchaseDocumentAccessPolicy.class), mock(SubcontractDocumentReadAccessPort.class), currentUser,
+                new ProductionMaterialSettlementService(em, mock(TxSessionVars.class),
+                        mock(ProductionMaterialTaskAccessPolicy.class), mock(ProductionInventoryValueService.class),
+                        mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class)), membership);
+    }
+
+    @Test
+    void cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID();
+        List<UUID> history = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            var original = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                    .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+            assertThat(original.startRoute()).isNull();
+            assertThat(original.canConfirmRoute()).isTrue();
+            String[] statuses = {"CANCELLED", "REVERSED", "WAITING"};
+            String[] routes = {"BATCH", "CONTINUOUS", "BATCH"};
+            // 路线记忆(V602 恢复，2026-09-20)只是未确认行的预填展示：终态(已取消/已红冲)
+            // 任务不算历史；另一车间同产品的有效确认才成为记忆。任务自己的路线事实
+            // (startRoute/canConfirmRoute)在任何历史下都不变。
+            String[] expectedMemory = {null, null, "BATCH"};
+            for (int index = 0; index < history.size(); index++) {
+                // Actual PostgreSQL history includes terminal tasks and another
+                // workshop's current task, all sharing this exact product UUID.
+                jdbc.update("""
+                        INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                            product_goods_id,start_route,route_confirmed_at)
+                        VALUES (?,?,?,?,?,?,?,now()+interval '1 day')
+                        """, history.get(index), statuses[index], UUID.randomUUID(), UUID.randomUUID(),
+                        OTHER_WORKSHOP, goods, routes[index]);
+                var current = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                        .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+                assertThat(current.startRoute()).as("route history from %s must not change this task", statuses[index]).isNull();
+                assertThat(current.canConfirmRoute()).isTrue();
+                assertThat(current.suggestedStartRoute())
+                        .as("only a live confirmed task of the same product feeds the prefill memory (%s)", statuses[index])
+                        .isEqualTo(expectedMemory[index]);
+            }
+            jdbc.update("UPDATE production_execution_segments SET start_route='FULL_KIT' WHERE id=?", task);
+            var confirmed = service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                    .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+            assertThat(confirmed.startRoute()).isEqualTo("FULL_KIT");
+            assertThat(confirmed.canConfirmRoute()).isFalse();
+        } finally {
+            history.forEach(id -> jdbc.update("DELETE FROM production_execution_segments WHERE id=?", id));
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
+    }
+
+    /**
+     * ADR-096 路线记忆两档：本产品有有效确认记忆时按产品预填(PRODUCT)；没有时退到
+     * 当前登录人最近一次路线确认(OPERATOR，V629 部分索引点查)；两者都没有则不预填。
+     * 记忆只是预填，任务自己的 startRoute/canConfirmRoute 不受影响。
+     */
+    @Test
+    void operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID(), userId = UUID.randomUUID();
+        UUID operatorHistory = UUID.randomUUID(), productHistory = UUID.randomUUID();
+        com.uten.imp.security.AuthUser me = mock(com.uten.imp.security.AuthUser.class);
+        when(me.getId()).thenReturn(userId);
+        when(currentUser.get()).thenReturn(Optional.of(me));
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            var none = row(task);
+            assertThat(none.suggestedStartRoute()).isNull();
+            assertThat(none.suggestedStartRouteSource()).isNull();
+            // 本人在另一产品的另一工单上确认过持续生产 → 操作者记忆。
+            jdbc.update("""
+                    INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                        product_goods_id,start_route,route_confirmed_at)
+                    VALUES (?,'IN_PROGRESS',?,?,?,?,'CONTINUOUS',now())
+                    """, operatorHistory, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, UUID.randomUUID());
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now()-interval '1 hour')",
+                    operatorHistory, userId);
+            // 别人的确认不算我的记忆(更新的事件但 created_by 不同)。
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now())",
+                    operatorHistory, UUID.randomUUID());
+            var operator = row(task);
+            assertThat(operator.startRoute()).isNull();
+            assertThat(operator.canConfirmRoute()).isTrue();
+            assertThat(operator.suggestedStartRoute()).isEqualTo("CONTINUOUS");
+            assertThat(operator.suggestedStartRouteSource()).isEqualTo("OPERATOR");
+            // 同产品出现有效确认后，产品记忆优先于操作者记忆。
+            jdbc.update("""
+                    INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                        product_goods_id,start_route,route_confirmed_at)
+                    VALUES (?,'WAITING',?,?,?,?,'BATCH',now()+interval '1 day')
+                    """, productHistory, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, goods);
+            var product = row(task);
+            assertThat(product.suggestedStartRoute()).isEqualTo("BATCH");
+            assertThat(product.suggestedStartRouteSource()).isEqualTo("PRODUCT");
+            // 未登录身份(定时任务/系统调用)没有操作者记忆，产品记忆照常。
+            when(currentUser.get()).thenReturn(Optional.empty());
+            assertThat(row(task).suggestedStartRouteSource()).isEqualTo("PRODUCT");
+            jdbc.update("DELETE FROM production_execution_segments WHERE id=?", productHistory);
+            assertThat(row(task).suggestedStartRoute()).isNull();
+        } finally {
+            when(currentUser.get()).thenReturn(Optional.empty());
+            jdbc.update("DELETE FROM production_execution_segment_events WHERE execution_segment_id=?", operatorHistory);
+            jdbc.update("DELETE FROM production_execution_segments WHERE id IN (?,?)", operatorHistory, productHistory);
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
+    }
+
+    @Test
+    void operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID(), userId = UUID.randomUUID();
+        UUID older = UUID.randomUUID(), newest = UUID.randomUUID();
+        com.uten.imp.security.AuthUser me = mock(com.uten.imp.security.AuthUser.class);
+        when(me.getId()).thenReturn(userId);
+        when(currentUser.get()).thenReturn(Optional.of(me));
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            for (UUID history : List.of(older, newest)) {
+                jdbc.update("""
+                        INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                            product_goods_id,start_route,route_confirmed_at,is_deleted)
+                        VALUES (?,'IN_PROGRESS',?,?,?,?,?,now(),false)
+                        """, history, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, UUID.randomUUID(),
+                        history.equals(older) ? "CONTINUOUS" : "BATCH");
+            }
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now()-interval '1 hour')",
+                    older, userId);
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now())",
+                    newest, userId);
+            assertThat(row(task).suggestedStartRoute()).isEqualTo("BATCH");
+
+            for (String invalidStatus : List.of("CANCELLED", "REVERSED")) {
+                jdbc.update("UPDATE production_execution_segments SET status=? WHERE id=?", invalidStatus, newest);
+                assertThat(row(task).suggestedStartRoute()).as(invalidStatus).isEqualTo("CONTINUOUS");
+                assertThat(row(task).suggestedStartRouteSource()).isEqualTo("OPERATOR");
+            }
+            jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS',is_deleted=true WHERE id=?", newest);
+            assertThat(row(task).suggestedStartRoute()).isEqualTo("CONTINUOUS");
+            jdbc.update("UPDATE production_execution_segments SET status='REVERSED' WHERE id=?", older);
+            assertThat(row(task).suggestedStartRoute()).isNull();
+            assertThat(row(task).suggestedStartRouteSource()).isNull();
+        } finally {
+            when(currentUser.get()).thenReturn(Optional.empty());
+            jdbc.update("DELETE FROM production_execution_segment_events WHERE execution_segment_id IN (?,?)", older, newest);
+            jdbc.update("DELETE FROM production_execution_segments WHERE id IN (?,?)", older, newest);
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
+    }
+
+    private ProductionExecutionWorkbenchSegment row(UUID task) {
+        return service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
+                .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();
+    }
+
+    @Test void unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable() {
+        UUID task = new UUID(0, 2), request = UUID.randomUUID();
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET material_discovery_required=TRUE WHERE id=?", task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=TRUE WHERE segment_id=?", task);
+        try {
+            var before = row(task);
+            assertThat(before.materialDiscoveryRequired()).isTrue();
+            assertThat(before.zeroMaterial()).isFalse();
+            assertThat(before.canRequestMaterialDiscovery()).isTrue();
+            assertThat(before.canRequestDraw()).isFalse();
+            assertThat(before.canStart()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "READY_TO_START").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+            jdbc.update("INSERT INTO production_material_discovery_requests(id,execution_segment_id,status) VALUES (?,?,'PENDING')", request, task);
+            var pending = row(task);
+            assertThat(pending.materialDiscoveryRequestId()).isEqualTo(request);
+            assertThat(pending.materialDiscoveryStatus()).isEqualTo("PENDING");
+            assertThat(pending.canRequestMaterialDiscovery()).isFalse();
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).contains(task);
+            assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED").getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).doesNotContain(task);
+        } finally {
+            jdbc.update("DELETE FROM production_material_discovery_requests WHERE id=?", request);
+            jdbc.update("UPDATE production_execution_segments SET material_discovery_required=FALSE WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET zero_material=FALSE WHERE segment_id=?", task);
+        }
+    }
+
+    @Test
+    void materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch() {
+        factory.getStatistics().setStatisticsEnabled(true);
+        factory.getStatistics().clear();
+        var page = service.workshopTasks(1, 50, null, null, null, null, null);
+        assertThat(page.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                .containsExactly(new UUID(0, 1), new UUID(0, 2), new UUID(0, 3), new UUID(0, 4));
+        var empty = page.getItems().get(0);
+        assertThat(empty.hasMaterialActivity()).isFalse();
+        assertThat(empty.hasUnregisteredMaterial()).isFalse();
+        var partiallyIssued = page.getItems().get(1);
+        assertThat(partiallyIssued.issued()).isFalse();
+        assertThat(partiallyIssued.hasMaterialActivity()).isTrue();
+        assertThat(partiallyIssued.hasUnregisteredMaterial()).isTrue();
+        var consumed = page.getItems().get(2);
+        assertThat(consumed.hasMaterialActivity()).isTrue();
+        assertThat(consumed.hasUnregisteredMaterial()).isFalse();
+        var reversedIssue = page.getItems().get(3);
+        assertThat(reversedIssue.hasMaterialActivity()).isTrue();
+        assertThat(reversedIssue.hasUnregisteredMaterial()).isFalse();
+        // Count + page + one material-ledger batch + one source-instructions batch.
+        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(4);
+    }
+
+    @Test
+    void preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable() {
+        UUID segment = new UUID(0, 2), firstDraw = UUID.randomUUID(), secondDraw = UUID.randomUUID();
+        UUID warehouse=UUID.randomUUID();
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("INSERT INTO warehouses(id) VALUES (?)",warehouse);
+        jdbc.update("INSERT INTO stock_documents(id,doc_type,status,warehouse_id) VALUES (?,'DRAW',0,?),(?,'DRAW',0,?)", firstDraw,warehouse,secondDraw,warehouse);
+        jdbc.update("INSERT INTO stock_document_items(id,doc_id,qty) VALUES (?,?,1),(?,?,1)",UUID.randomUUID(),firstDraw,UUID.randomUUID(),secondDraw);
+        jdbc.update("INSERT INTO production_planning_package_documents VALUES (?,'DRAW',?),(?,'DRAW',?)",
+                firstDraw, segment, secondDraw, segment);
+        jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[CAST(? AS uuid)])", firstDraw);
+        try {
+            var unrequested = service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_NOT_REQUESTED");
+            assertThat(unrequested.getTotal()).isEqualTo(1);
+            assertThat(unrequested.getItems().getFirst().segmentId()).isEqualTo(segment);
+            assertThat(unrequested.getItems().getFirst().drawRequested()).isFalse();
+            assertThat(unrequested.getItems().getFirst().canRequestDraw()).isTrue();
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_REQUESTED").getTotal()).isZero();
+            jdbc.update("INSERT INTO production_execution_segment_events(action,draw_document_ids) VALUES ('DRAW_REQUEST',ARRAY[CAST(? AS uuid)])", secondDraw);
+            var requested = service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "DRAW_REQUESTED");
+            assertThat(requested.getTotal()).isEqualTo(1);
+            assertThat(requested.getItems().getFirst().drawRequested()).isTrue();
+            assertThat(requested.getItems().getFirst().canRequestDraw()).isFalse();
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "WAITING_MATERIAL").getTotal()).isEqualTo(1);
+            assertThat(service.workshopTasks(1, 1, null, "PREPARING", null, null, null, "READY_TO_START").getTotal()).isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM production_execution_segment_events");
+            jdbc.update("DELETE FROM production_planning_package_documents");
+            jdbc.update("DELETE FROM stock_document_items");
+            jdbc.update("DELETE FROM stock_documents");
+            jdbc.update("DELETE FROM warehouses WHERE id=?",warehouse);
+        }
+    }
+
+    /** V477 读侧放行回归锁：超管在我的车间任务页看到全部车间的活跃段与角标。 */
+    @Test
+    void superAdminSeesAllWorkshopsOnReadSide() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        com.uten.imp.security.AuthUser admin = mock(com.uten.imp.security.AuthUser.class);
+        when(admin.isSuperAdmin()).thenReturn(true);
+        when(currentUser.get()).thenReturn(Optional.of(admin));
+        var page = service.workshopTasks(1, 50, null, null, null, null, null);
+        // 常规员工口径是 4（OTHER_WORKSHOP 的段被排除）；超管=全部 5 个活跃段。
+        assertThat(page.getTotal()).isEqualTo(5);
+        assertThat(service.workshopTaskCount()).isEqualTo(5);
+    }
+    @Test
+    void publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults() throws Exception {
+        em.createNativeQuery("UPDATE production_execution_segments SET material_discovery_required=TRUE WHERE id=:id")
+                .setParameter("id",new UUID(0,2)).executeUpdate();
+        em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET zero_material=TRUE WHERE segment_id=:id")
+                .setParameter("id",new UUID(0,2)).executeUpdate();
+        em.createNativeQuery("""
+                CREATE OR REPLACE FUNCTION fn_actual_supplement_material_ready(p_id uuid)
+                RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+                BEGIN
+                  PERFORM set_config('uten.fixture_jit_seen',current_setting('jit'),true);
+                  RETURN COALESCE((SELECT actual_supplement_material_ready FROM workbench_execution_policy_facts WHERE segment_id=p_id),FALSE);
+                END $$
+                """).executeUpdate();
+        em.createNativeQuery("SELECT set_config('jit','on',true)").getSingleResult();
+        long started=System.nanoTime();
+        var originallyOn=service.workshopTasks(1,50,null,"PREPARING",null,null,null,"DRAW_NOT_REQUESTED");
+        double onMillis=(System.nanoTime()-started)/1_000_000.0;
+        assertThat(em.createNativeQuery("SELECT current_setting('uten.fixture_jit_seen')").getSingleResult()).isEqualTo("off");
+        assertThat(em.createNativeQuery("SELECT current_setting('jit')").getSingleResult()).isEqualTo("on");
+        em.createNativeQuery("SELECT set_config('jit','off',true)").getSingleResult();
+        started=System.nanoTime();
+        var originallyOff=service.workshopTasks(1,50,null,"PREPARING",null,null,null,"DRAW_NOT_REQUESTED");
+        double offMillis=(System.nanoTime()-started)/1_000_000.0;
+        assertThat(em.createNativeQuery("SELECT current_setting('jit')").getSingleResult()).isEqualTo("off");
+        assertThat(originallyOn.getTotal()).isEqualTo(originallyOff.getTotal());
+        assertThat(originallyOn.getTotalPages()).isEqualTo(originallyOff.getTotalPages());
+        assertThat(originallyOn.getItems()).usingRecursiveComparison().isEqualTo(originallyOff.getItems());
+        var evidence=Path.of("build/loading-validation/combined-interactive-read/public-execution-read.json");
+        Files.createDirectories(evidence.getParent());
+        new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(evidence.toFile(),
+                java.util.Map.of("scope","Real public service, original fixture role and transaction, same SQL/parameters; isolated data only",
+                        "observedDuringRead","off","restoredOriginalOn",true,"preservedOriginalOff",true,
+                        "equalPublicRowsAndTotals",true,"rows",originallyOn.getItems().size(),"total",originallyOn.getTotal(),
+                        "originalOnPublicMillis",onMillis,"originalOffPublicMillis",offMillis));
+        System.out.println("PUBLIC-EXECUTION-READ observedJit=off restoredOn=true preservedOff=true equalRowsAndTotals=true rows="
+                +originallyOn.getItems().size()+" total="+originallyOn.getTotal()+" originalOnMillis="+onMillis+" originalOffMillis="+offMillis);
+    }
+
+    @AfterEach
+    void closeEntityManager() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        if (em != null) {
+            if(em.getTransaction().isActive())em.getTransaction().rollback();
+            em.close();
+        }
+    }
+    @AfterAll
+    static void stopPostgres() {
+        if (factory != null) factory.close();
+        POSTGRES.stop();
+    }
+
+    @Test
+    void defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        var first = service.workshopTasks(1, 2, null, null, null, null, null);
+        var last = service.workshopTasks(99, 2, null, null, null, null, null);
+        assertThat(first.getTotal()).isEqualTo(4);
+        assertThat(first.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus)
+                .containsExactly("WAITING", "READY");
+        assertThat(first.getItems()).allMatch(item -> !item.canReport());
+        assertThat(last.getPage()).isEqualTo(2);
+        assertThat(last.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus)
+                .containsExactly("DISPATCHED", "IN_PROGRESS");
+        assertThat(service.workshopTaskCount()).isEqualTo(first.getTotal());
+    }
+    @Test
+    void readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions() {
+        // 2026-09-10：READY_TO_REPORT 参数删除（与 breakdown 第三列口径矛盾且无调用方），
+        // 「生产中」= IN_PROGRESS 承担可报工口径。
+        var reportable = service.workshopTasks(1, 50, "P001", "IN_PROGRESS", null, null, null);
+        assertThat(reportable.getTotal()).isEqualTo(1);
+        assertThat(reportable.getItems()).allMatch(item -> item.canReport()
+                && "IN_PROGRESS".equals(item.segmentStatus()));
+        assertThatThrownBy(() -> service.workshopTasks(1, 50, null, "READY_TO_REPORT", null, null, null))
+                .isInstanceOf(ApiException.class);
+        var startable = service.workshopTasks(1, 50, "P001", "READY_TO_START", null, null, null);
+        assertThat(startable.getTotal()).isEqualTo(1);
+        assertThat(startable.getItems()).allMatch(item -> !item.canReport()
+                && !item.canBatchReport());
+        when(access.hasAuthority("production_daily_report:create")).thenReturn(false);
+        var readonly = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
+        assertThat(readonly.getTotal()).isEqualTo(1);
+        assertThat(readonly.getItems()).allMatch(item -> !item.canReport() && !item.canBatchReport());
+    }
+
+    @Test
+    void reportInspectionSplitsFullyReportedSegmentsOutOfInProgress() {
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        // 2026-10-10「报工送检」：IN_PROGRESS 按 remaining_qty 拆两段——还有可报量=生产中，
+        // 已报完(<=0)=报工送检；两段互斥且并集=原 IN_PROGRESS，计数恒等式保持
+        // preparing + inProgress + reportInspection = total。
+        var before = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
+        assertThat(before.getTotal()).isEqualTo(1);
+        var breakdownBefore = service.workshopTaskCountBreakdown();
+        assertThat(breakdownBefore.inProgress()).isEqualTo(1);
+        assertThat(breakdownBefore.reportInspection()).isZero();
+        jdbc.update("""
+                UPDATE v_production_execution_workbench_segments
+                SET remaining_qty=0, fqc_pending_qty=2 WHERE segment_status='IN_PROGRESS'
+                """);
+        var progress = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
+        assertThat(progress.getTotal()).isZero();
+        var review = service.workshopTasks(1, 50, null, "REPORT_INSPECTION", null, null, null);
+        assertThat(review.getTotal()).isEqualTo(1);
+        assertThat(review.getItems()).allMatch(item -> "IN_PROGRESS".equals(item.segmentStatus())
+                && item.remainingReportQty() != null && item.remainingReportQty().signum() <= 0);
+        var breakdownAfter = service.workshopTaskCountBreakdown();
+        assertThat(breakdownAfter.inProgress()).isZero();
+        assertThat(breakdownAfter.reportInspection()).isEqualTo(1);
+        assertThat(breakdownAfter.total()).isEqualTo(breakdownBefore.total());
+        assertThatThrownBy(() -> service.workshopTasks(1, 50, null, "NOT_A_STATUS", null, null, null))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity() {
+        try {
+            jdbc.update("""
+                    UPDATE v_production_execution_workbench_segments
+                    SET planned_qty=100, reported_qty=120, remaining_qty=0,
+                        actual_surplus_reported_qty=20, actual_surplus_inbound_qty=20,
+                        planned_inbound_qty=0, inbound_qty=20
+                    WHERE segment_status='IN_PROGRESS'
+                    """);
+            // 2026-10-10「报工送检」拆档后，已报完(remaining=0)的工单列在 REPORT_INSPECTION；
+            // 超产续报的能力位(canReport)不受分类影响。
+            var tasks = service.workshopTasks(1, 50, "P001", "REPORT_INSPECTION", null, null, null);
+            assertThat(tasks.getItems()).singleElement().satisfies(task -> {
+                assertThat(task.canReport()).isTrue();
+                assertThat(task.canBatchReport()).isFalse();
+                assertThat(task.actualSurplusReportedQty()).isEqualByComparingTo("20");
+                assertThat(task.actualSurplusInboundQty()).isEqualByComparingTo("20");
+                assertThat(task.plannedInboundQty()).isEqualByComparingTo("0");
+                assertThat(task.inboundQty()).isEqualByComparingTo("20");
+            });
+            when(access.hasAuthority("production_daily_report:create")).thenReturn(false);
+            assertThat(service.workshopTasks(1, 50, "P001", "REPORT_INSPECTION", null, null, null).getItems())
+                    .allMatch(task -> !task.canReport() && !task.canBatchReport());
+        } finally {
+            jdbc.update("""
+                    UPDATE v_production_execution_workbench_segments
+                    SET planned_qty=10, reported_qty=0, remaining_qty=10,
+                        actual_surplus_reported_qty=0, actual_surplus_inbound_qty=0,
+                        planned_inbound_qty=0, inbound_qty=0
+                    WHERE segment_status='IN_PROGRESS'
+                    """);
+        }
+    }
+
+    @Test
+    void fixedSupplementUsesProvenSharedMaterialAndOnlyOffersRealQualityRecovery() {
+        UUID segment = new UUID(0, 4), request = UUID.randomUUID(), recovery = UUID.randomUUID();
+        var old = jdbc.queryForMap("SELECT issued,material_status,preparation_status FROM v_production_execution_workbench_segments WHERE segment_id=?", segment);
+        try {
+            jdbc.update("UPDATE production_plans SET actual_output_supplement_request_id=? WHERE id=?", request, PLAN);
+            jdbc.update("INSERT INTO workbench_execution_policy_facts(segment_id,overproduction_policy_applies,actual_supplement_material_ready) VALUES(?,FALSE,TRUE)", segment);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET issued=FALSE,material_status='KIT_SHORT',preparation_status='PREPARING' WHERE segment_id=?", segment);
+            var fixed = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(fixed.actualOutputSupplementRequestId()).isEqualTo(request);
+            assertThat(fixed.materialReady()).isTrue();
+            assertThat(fixed.issued()).isTrue();
+            assertThat(fixed.canReport()).isFalse();
+            assertThat(fixed.canBatchReport()).isFalse();
+            jdbc.update("UPDATE workbench_execution_policy_facts SET actual_supplement_material_ready=FALSE WHERE segment_id=?", segment);
+            var missing = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(missing.materialReady()).isFalse();
+            assertThat(missing.issued()).isFalse();
+            assertThat(missing.canReport()).isFalse();
+            jdbc.update("INSERT INTO production_fqc_recovery_authorizations(id,disposition_code) VALUES(?,'REWORK')", recovery);
+            jdbc.update("INSERT INTO v_production_fqc_recovery_balance(authorization_id,execution_segment_id,available_qty,cancelled) VALUES(?,?,2,FALSE)", recovery, segment);
+            var rework = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(rework.canReport()).isTrue();
+            assertThat(rework.canBatchReport()).isFalse();
+        } finally {
+            jdbc.update("DELETE FROM v_production_fqc_recovery_balance WHERE authorization_id=?", recovery);
+            jdbc.update("DELETE FROM production_fqc_recovery_authorizations WHERE id=?", recovery);
+            jdbc.update("UPDATE production_plans SET actual_output_supplement_request_id=NULL WHERE id=?", PLAN);
+            jdbc.update("DELETE FROM workbench_execution_policy_facts WHERE segment_id=?", segment);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET issued=?,material_status=?,preparation_status=? WHERE segment_id=?",
+                    old.get("issued"),old.get("material_status"),old.get("preparation_status"),segment);
+        }
+    }
+
+    /** 2026-10-06 待续报固定追加量：已批准未承接时原任务行给出待续报量与请求 id；
+     * 活跃报告写入 CLAIM 承接后归零——追加量只能从续报入口回来，不再留在公共额度外。 */
+    @Test
+    void pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport() {
+        UUID segment = new UUID(0, 4), request = UUID.randomUUID(), proof = UUID.randomUUID(), report = UUID.randomUUID();
+        try {
+            jdbc.update("INSERT INTO production_actual_output_supplement_requests(id,source_execution_segment_id,status,supplement_qty) VALUES(?,?,'APPROVED',25)", request, segment);
+            jdbc.update("INSERT INTO production_actual_output_supplement_proofs(id,command_id) VALUES(?,?)", proof, request);
+            var pending = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(pending.pendingSupplementQty()).isEqualByComparingTo("25");
+            assertThat(pending.pendingSupplementRequestId()).isEqualTo(request);
+            jdbc.update("INSERT INTO production_daily_reports(id,status,is_deleted) VALUES(?,0,FALSE)", report);
+            jdbc.update("INSERT INTO production_actual_output_supplement_claims(id,proof_id,report_id,event_type) VALUES(?,?,?,'CLAIM')", UUID.randomUUID(), proof, report);
+            var claimed = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(claimed.pendingSupplementQty()).isEqualByComparingTo("0");
+            assertThat(claimed.pendingSupplementRequestId()).isNull();
+        } finally {
+            jdbc.update("DELETE FROM production_actual_output_supplement_claims WHERE proof_id=?", proof);
+            jdbc.update("DELETE FROM production_daily_reports WHERE id=?", report);
+            jdbc.update("DELETE FROM production_actual_output_supplement_proofs WHERE id=?", proof);
+            jdbc.update("DELETE FROM production_actual_output_supplement_requests WHERE id=?", request);
+        }
+    }
+
+    @Test
+    void pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases() {
+        UUID segment=new UUID(0,4),report=UUID.randomUUID(),draft=UUID.randomUUID();
+        UUID pending=UUID.randomUUID(),held=UUID.randomUUID(),accepted=UUID.randomUUID(),draftCase=UUID.randomUUID();
+        try {
+            jdbc.update("INSERT INTO production_daily_reports(id,status,is_deleted) VALUES(?,1,FALSE),(?,0,FALSE)",report,draft);
+            for(Object[] row:List.of(new Object[]{pending,report,"PENDING",100},new Object[]{held,report,"HELD",20},
+                    new Object[]{accepted,report,"ACCEPTED",30},new Object[]{draftCase,draft,"DRAFT",40})) {
+                jdbc.update("INSERT INTO production_over_limit_dispositions(id,report_item_id,report_id,execution_segment_id,qty,status) VALUES(?,?,?,?,?,?)",
+                        row[0],UUID.randomUUID(),row[1],segment,row[3],row[2]);
+            }
+            var task=service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(task.overLimitPendingQty()).isEqualByComparingTo("120");
+            assertThat(task.overLimitDispositionId()).isIn(pending,held);
+            jdbc.update("UPDATE production_daily_reports SET status=-1 WHERE id=?",report);
+            var reversed=service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(reversed.overLimitPendingQty()).isEqualByComparingTo("0");
+            assertThat(reversed.overLimitDispositionId()).isNull();
+        } finally {
+            jdbc.update("DELETE FROM production_over_limit_dispositions WHERE report_id IN (?,?)",report,draft);
+            jdbc.update("DELETE FROM production_daily_reports WHERE id IN (?,?)",report,draft);
+        }
+    }
+
+    /** ADR-066 §1.3：历史任务 = 终态段（完工/取消/红冲）按计划完工日期时间门控。 */
+    @Test
+    void historySegmentIncludesCancelledAndReversedWithinTheDateGate() {
+        var all = service.workshopTasks(1, 50, null, "COMPLETED", null, null, null);
+        assertThat(all.getTotal()).isEqualTo(3);
+        assertThat(all.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus)
+                .containsExactlyInAnyOrder("COMPLETED", "CANCELLED", "REVERSED");
+        var gated = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                LocalDate.parse("2026-09-06"), LocalDate.parse("2026-09-06"));
+        assertThat(gated.getTotal()).isEqualTo(3);
+        var outside = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                LocalDate.parse("2026-09-07"), null);
+        assertThat(outside.getTotal()).isZero();
+        var upperOnly = service.workshopTasks(1, 50, null, "COMPLETED", null,
+                null, LocalDate.parse("2026-09-05"));
+        assertThat(upperOnly.getTotal()).isZero();
+        // 活动段忽略日期参数（徽章/列表全量口径不变）。
+        assertThat(service.workshopTasks(1, 50, null, "PREPARING", null,
+                LocalDate.parse("2030-01-01"), null).getTotal()).isEqualTo(3);
+    }
+    @Test
+    void keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope() {
+        String word = "WX" + UUID.randomUUID().toString().replace("-", "") + "10%_";
+        UUID labelRoot = UUID.randomUUID(), hiddenRoot = UUID.randomUUID();
+        boolean ownsTransaction=!em.getTransaction().isActive();
+        if(ownsTransaction)em.getTransaction().begin();
+        try {
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_code=:word,product_name='ordinary' WHERE segment_id=:id")
+                    .setParameter("word", word).setParameter("id", new UUID(0,1)).executeUpdate();
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_name=:word WHERE segment_id=:id")
+                    .setParameter("word", word).setParameter("id", new UUID(0,2)).executeUpdate();
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_name=:word WHERE segment_id=:id")
+                    .setParameter("word", word + " extra").setParameter("id", new UUID(0,3)).executeUpdate();
+            assertThat(service.workshopTasks(1,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,2));
+            assertThat(service.workshopTasks(2,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,3));
+            assertThat(service.workshopTasks(3,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,1));
+            assertThat(service.workshopTasks(1,50,"Assembly\t"+word,"PREPARING",null,null,null).getTotal()).isEqualTo(3);
+            assertThat(service.workshopTasks(1,50,"10__",null,null,null,null).getTotal()).isZero();
+            assertThat(service.workshopTaskFacets(word,"PREPARING",null,null,null,null,null).get("segment")).hasSize(3);
+            em.createNativeQuery("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,root_label) VALUES (:id,:owner,:word)")
+                    .setParameter("id",labelRoot).setParameter("owner",EMPLOYEE).setParameter("word",word).executeUpdate();
+            em.createNativeQuery("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,root_label) VALUES (:id,:owner,:word)")
+                    .setParameter("id",hiddenRoot).setParameter("owner",UUID.randomUUID()).setParameter("word",word).executeUpdate();
+            var roots=service.list(1,1,word,null,false,null,null,null);
+            assertThat(roots.getTotal()).isEqualTo(2);
+            assertThat(roots.getItems()).extracting(item -> item.rootId()).containsExactly(PLAN);
+            assertThat(service.list(2,1,word,null,false,null,null,null).getItems())
+                    .extracting(item -> item.rootId()).containsExactly(labelRoot);
+            assertThat(service.list(1,50,"Assembly "+word,null,false,null,null,null).getTotal()).isEqualTo(1);
+        } finally {
+            if(ownsTransaction)em.getTransaction().rollback();
+        }
+    }
+
+    @Test
+    void preparingAndInProgressFiltersExecuteWithAndWithoutKeyword() {
+        assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null).getTotal()).isEqualTo(3);
+        assertThat(service.workshopTasks(1, 50, "Assembly", "IN_PROGRESS", null, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.workshopTasks(1, 50, "missing", null, null, null, null).getTotal()).isZero();
+    }
+    @Test
+    void overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders() {
+        assertThat(service.list(1, 50, "P001", WORKSHOP, true, null, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.list(1, 50, null, WORKSHOP, false, null, null, null).getTotal()).isEqualTo(1);
+        assertThat(service.workOrders("PLAN", PLAN, 1, 2).getItems()).hasSize(2);
+    }
+
+    @Test
+    void productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages() {
+        UUID root = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,product_count,segment_count,completed_count,root_progress_ratio) VALUES (?,?,8,12,9,0.22680412371134020619)", root, EMPLOYEE);
+        try {
+            for (int product = 0; product < 8; product++) {
+                UUID goods = UUID.randomUUID();
+                addCompletionSegment(segments, root, goods, color, unit, "COMPLETED");
+                if (product == 0) addCompletionSegment(segments, root, goods, color, unit, "COMPLETED");
+                if (product >= 1 && product <= 3) addCompletionSegment(segments, root, goods, color, unit, "READY");
+                if (product == 0) {
+                    addCompletionSegment(segments, root, goods, color, unit, "CANCELLED");
+                    addCompletionSegment(segments, root, goods, color, unit, "REVERSED");
+                }
+            }
+            // A withdrawn-only identity is history, not an unfinished product.
+            addCompletionSegment(segments, root, UUID.randomUUID(), color, unit, "REVERSED");
+            var detail = service.group("PLAN", root);
+            assertThat(detail.completedCount()).isEqualTo(9); // old field remains a segment count
+            assertThat(detail.completedProductCount()).isEqualTo(5);
+            assertThat(detail.unfinishedProductCount()).isEqualTo(3);
+            var listed = service.list(1, 50, null, WORKSHOP, false, null, null, null)
+                    .getItems().stream().filter(item -> item.rootId().equals(root)).findFirst().orElseThrow();
+            assertThat(listed.completedProductCount()).isEqualTo(detail.completedProductCount());
+            assertThat(listed.unfinishedProductCount()).isEqualTo(detail.unfinishedProductCount());
+
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?", UUID.randomUUID(), root);
+            assertThat(service.list(1, 50, null, null, false, null, null, null).getItems())
+                    .noneMatch(item -> item.rootId().equals(root));
+            assertThatThrownBy(() -> service.group("PLAN", root)).isInstanceOf(ApiException.class);
+        } finally {
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    @Test
+    void productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities() {
+        UUID root = UUID.randomUUID(), goods = UUID.randomUUID();
+        UUID colorA = UUID.randomUUID(), colorB = UUID.randomUUID();
+        UUID unitA = UUID.randomUUID(), unitB = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id) VALUES (?,?)", root, EMPLOYEE);
+        try {
+            addCompletionSegment(segments, root, goods, colorA, unitA, "COMPLETED");
+            addCompletionSegment(segments, root, goods, colorB, unitA, "COMPLETED");
+            addCompletionSegment(segments, root, goods, colorB, unitA, "IN_PROGRESS");
+            addCompletionSegment(segments, root, goods, colorA, unitB, "COMPLETED");
+            addCompletionSegment(segments, root, goods, null, unitA, "WAITING");
+            var detail = service.group("PLAN", root);
+            assertThat(detail.completedProductCount()).isEqualTo(2);
+            assertThat(detail.unfinishedProductCount()).isEqualTo(2);
+        } finally {
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    @Test
+    void analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders() {
+        UUID root = UUID.randomUUID(), stockGoods = UUID.randomUUID(), makeGoods = UUID.randomUUID();
+        UUID purchaseGoods = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
+        // 顶层产品锚点（V1057）：自制段挂在锚定到根分析行的顶层计划上才进完成统计。
+        UUID makeItem = UUID.randomUUID(), topPlan = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        List<UUID> plans = new java.util.ArrayList<>(List.of(topPlan));
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_type,root_id,owner_employee_id) VALUES ('ANALYSIS',?,?)", root, EMPLOYEE);
+        try {
+            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", makeItem, root, makeGoods);
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id,material_analysis_id,material_analysis_item_id) VALUES (?, 'PLAN-TOP', 1, ?, ?, ?)", topPlan, EMPLOYEE, root, makeItem);
+            addCompletionSegment(segments, root, makeGoods, color, unit, "COMPLETED", topPlan);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=?", root);
+            // Stock handoff, completed manufacture and partially received purchase are
+            // three product identities. Absence of a work order never implies completion.
+            for (Object[] source : List.of(new Object[]{stockGoods, UUID.randomUUID()}, new Object[]{makeGoods, makeItem}, new Object[]{purchaseGoods, UUID.randomUUID()})) {
+                jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", source[1], root, source[0]);
+                jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,0,0)",
+                        root, source[1], source[0], color, unit);
+            }
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_fulfillment_qty=20 WHERE analysis_id=? AND goods_id=?", root, purchaseGoods);
+            var partial = service.group("ANALYSIS", root);
+            assertThat(partial.completedProductCount()).isEqualTo(2);
+            assertThat(partial.unfinishedProductCount()).isEqualTo(1);
+
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_fulfillment_qty=0 WHERE analysis_id=?", root);
+            var completed = service.group("ANALYSIS", root);
+            assertThat(completed.completedProductCount()).isEqualTo(3);
+            assertThat(completed.unfinishedProductCount()).isZero();
+
+            // A new real unmet remainder on a product already represented by a
+            // completed work order invalidates its aggregate completion.
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_schedule_qty=10,remaining_fulfillment_qty=10 WHERE analysis_id=? AND goods_id=?", root, makeGoods);
+            var reopened = service.group("ANALYSIS", root);
+            assertThat(reopened.completedProductCount()).isEqualTo(2);
+            assertThat(reopened.unfinishedProductCount()).isEqualTo(1);
+
+            // 2026-11-04 用户口径（顶层产品）：子层不进统计——锚点子件行（MAKE_COMPONENT）
+            // 与未锚定的子件计划段都不算产品，数量不因它们变化。
+            UUID componentGoods = UUID.randomUUID(), childItem = UUID.randomUUID(), childPlan = UUID.randomUUID();
+            plans.add(childPlan);
+            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,parent_analysis_material_id,source_type,is_deleted) VALUES (?,?,?,?,'MAKE_COMPONENT',FALSE)",
+                    childItem, root, componentGoods, makeItem);
+            jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,5,5)",
+                    root, childItem, componentGoods, color, unit);
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?, 'PLAN-CHILD', 1, ?)", childPlan, EMPLOYEE);
+            addCompletionSegment(segments, root, componentGoods, color, unit, "IN_PROGRESS", childPlan);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=? AND segment_status='IN_PROGRESS'", root);
+            var childless = service.group("ANALYSIS", root);
+            assertThat(childless.completedProductCount()).isEqualTo(2);
+            assertThat(childless.unfinishedProductCount()).isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM v_production_analysis_workbench_item_progress WHERE analysis_id=?", root);
+            jdbc.update("DELETE FROM production_material_analysis_items WHERE analysis_id=?", root);
+            for (UUID plan : plans) jdbc.update("DELETE FROM production_plans WHERE id=?", plan);
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
+                                              UUID color, UUID unit, String status) {
+        addCompletionSegment(segments, root, goods, color, unit, status, PLAN);
+    }
+
+    /** planId 即段的归属计划：锚定到根分析行（顶层计划）或普通未锚定计划（子层段）。 */
+    private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
+                                              UUID color, UUID unit, String status, UUID planId) {
+        UUID segment = UUID.randomUUID();
+        segments.add(segment);
+        jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,product_goods_id,product_color_id,product_unit_id,workshop_department_id,responsible_employee_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                segment, status, planId, PLAN, goods, color, unit, WORKSHOP, EMPLOYEE);
+        jdbc.update("INSERT INTO v_production_execution_workbench_segments(segment_id,plan_id,root_id,segment_status,workshop_department_id,product_goods_id,planned_qty,inbound_qty) VALUES (?,?,?,?,?,?,1000,1)",
+                segment, planId, root, status, WORKSHOP, goods);
+    }
+
+    private static void removeCompletionSegments(UUID root, List<UUID> segments) {
+        jdbc.update("DELETE FROM v_production_execution_workbench_segments WHERE root_id=?", root);
+        for (UUID segment : segments) jdbc.update("DELETE FROM production_execution_segments WHERE id=?", segment);
+        jdbc.update("DELETE FROM v_production_execution_workbench_roots WHERE root_id=?", root);
+    }
+    @Test
+    void relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized() {
+        var documents = service.relatedDocuments("PLAN", PLAN, 99, 2);
+        assertThat(documents.getPage()).isEqualTo(1);
+        assertThat(documents.getTotal()).isEqualTo(1);
+        assertThat(documents.getItems()).singleElement().satisfies(document -> {
+            assertThat(document.documentType()).isEqualTo("PRODUCTION_PLAN");
+            assertThat(document.documentId()).isEqualTo(PLAN);
+        });
+    }
+
+    @Test
+    void actualInProgressQueryUsesExactStateAndLiteralProductFilter() {
+        loginOperational("production_execution:view");
+        var result=service.inProgressTasks(null,false,1000);
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus).containsExactly("IN_PROGRESS");
+        assertThat(service.inProgressTasks("p001",false,20).getTotal()).isEqualTo(1);
+        assertThat(service.inProgressTasks("%",false,20).getTotal()).isZero();
+        assertThat(service.inProgressTasks("Assembly",false,20).getTotal()).isZero();
+        assertThatThrownBy(()->service.inProgressTask(new UUID(0,2),false)).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment() {
+        UUID other=new UUID(0,6);
+        jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS' WHERE id=?",other);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET segment_status='IN_PROGRESS' WHERE segment_id=?",other);
+        try {
+            loginOperational("production_execution:view");
+            assertThat(service.inProgressTasks(null,false,20).getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactly(new UUID(0,4));
+            assertThatThrownBy(()->service.inProgressTasks(null,true,20)).isInstanceOf(ApiException.class);
+            assertThatThrownBy(()->service.inProgressTask(other,false)).isInstanceOf(ApiException.class);
+            loginOperational("production_execution:overview");
+            assertThat(service.inProgressTasks(null,true,20).getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactlyInAnyOrder(new UUID(0,4),other);
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?",UUID.randomUUID(),PLAN);
+            assertThat(service.inProgressTasks(null,true,20).getTotal()).isZero();
+            assertThatThrownBy(()->service.inProgressTask(new UUID(0,4),true)).isInstanceOf(ApiException.class);
+        } finally {
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?",EMPLOYEE,PLAN);
+            jdbc.update("UPDATE production_execution_segments SET status='READY' WHERE id=?",other);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET segment_status='READY' WHERE segment_id=?",other);
+        }
+    }
+
+    private void loginOperational(String... permissions) {
+        var actor=new com.uten.imp.security.AuthUser(UUID.randomUUID(),EMPLOYEE,"query-operator",Set.of(permissions),false,true,false);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
+    }
+}

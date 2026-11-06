@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import 'dart:async';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -133,9 +134,10 @@ class _FinanceAssetWorkbenchPageState
       _overviewError = null;
     });
     try {
-      final result = await ref
-          .read(financeAssetOverviewRepositoryProvider)
-          .load();
+      final result = await PagedReadIntent.scopedRead(
+        () => mounted && current() && _overviewGuard.isCurrent(generation),
+        () => ref.read(financeAssetOverviewRepositoryProvider).load(),
+      );
       if (!current() || !_overviewGuard.isCurrent(generation)) return;
       setState(() {
         _overview = result;

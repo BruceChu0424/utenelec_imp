@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../security/secure_storage.dart';
 import 'api_exception.dart';
 import 'business_precision.dart';
+import '../../shared/paging/paged_read_intent.dart';
 
 /// Credential-free identity. Refresh generations and token bytes are not identity.
 class AuthenticatedRequestIdentity {
@@ -61,6 +62,54 @@ class AuthenticatedRequestScope {
   static final Object _zoneKey = Object();
   static const _requestKey = '_utenAuthenticatedRequestScope';
 
+  /// The existing operation owner can retire reads without changing command
+  /// reconciliation, identity verification, or retry authority.
+  static AuthenticatedRequestScope? get current =>
+      Zone.current[_zoneKey] as AuthenticatedRequestScope?;
+
+  /// Detach a genuinely shared read from the initiating UI intent, retaining
+  /// the exact captured identity/storage and verifying them again. The shared
+  /// provider's own session/write/query predicate is the replacement owner.
+  /// No command retry or new credential identity is adopted by this fork.
+  static Future<T> sharedRead<T>(
+    bool Function() owner,
+    Future<T> Function() action,
+  ) async {
+    final inherited = current;
+    if (inherited == null) {
+      var alive = false;
+      try {
+        alive = owner();
+      } catch (_) {}
+      if (!alive) throw changed();
+      final precision = BusinessPrecisionTransport(
+        readOnly: true,
+        isCurrent: owner,
+      );
+      final result = await PagedReadIntent.ownedRead(
+        owner,
+        () => precision.run(action),
+      );
+      if (!owner()) throw changed();
+      return result;
+    }
+    final shared = AuthenticatedRequestScope._(
+      inherited.identity,
+      inherited._storage,
+      owner,
+    );
+    await shared.verify();
+    final result = await PagedReadIntent.ownedRead(
+      owner,
+      () => runZoned(
+        () => shared._precision.run(action),
+        zoneValues: {_zoneKey: shared},
+      ),
+    );
+    await shared.verify();
+    return result;
+  }
+
   static Future<AuthenticatedRequestScope> capture({
     required String baseUrl,
     required SecureStorage? storage,
@@ -98,7 +147,14 @@ class AuthenticatedRequestScope {
   }
 
   void checkCurrent() {
-    if (_invalidated || !_isCurrent()) {
+    var alive = false;
+    try {
+      alive = !_invalidated && _isCurrent();
+    } catch (_) {
+      // A disposed provider/widget cannot remain the owner of a read or command.
+      alive = false;
+    }
+    if (!alive) {
       _invalidated = true;
       throw changed();
     }

@@ -20,7 +20,8 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/stock_ledger/widgets/goods_stock_ledger_view.dart';
 
 class _LedgerApi extends ApiClient {
-  _LedgerApi() : super(Dio());
+  _LedgerApi({this.rowCount = 1}) : super(Dio());
+  final int rowCount;
   final queries = <Map<String, dynamic>>[];
   Completer<void>? ledgerGate;
 
@@ -32,21 +33,28 @@ class _LedgerApi extends ApiClient {
     if (path.endsWith('/ledger')) {
       queries.add({...?query});
       await ledgerGate?.future;
+      final page = query?['page'] as int? ?? 1;
+      final size = query?['size'] as int? ?? 50;
       return {
         'items': [
-          {
-            'rowKind': 'M',
-            'id': 'movement-1',
-            'transactionDate': '2024-02-01T00:00:00Z',
-            'movementType': '1',
-            'direction': 1,
-            'qtySigned': 1,
-          },
+          for (
+            var index = (page - 1) * size;
+            index < rowCount && index < page * size;
+            index++
+          )
+            {
+              'rowKind': 'M',
+              'id': 'movement-${index + 1}',
+              'transactionDate': '2024-02-01T00:00:00Z',
+              'movementType': '1',
+              'direction': 1,
+              'qtySigned': 1,
+            },
         ],
-        'page': 1,
-        'size': 50,
-        'total': 1,
-        'totalPages': 1,
+        'page': page,
+        'size': size,
+        'total': rowCount,
+        'totalPages': (rowCount / size).ceil(),
         'summary': {'openingQty': 10, 'closingQty': 10},
       };
     }
@@ -61,6 +69,39 @@ class _LedgerApi extends ApiClient {
 }
 
 void main() {
+  testWidgets('流水201条首续同100批，完整保留最后业务身份', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _LedgerApi(rowCount: 201);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue(const {Perm.stockView}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: GoodsStockLedgerView(goodsId: 'goods-1')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<StockLedgerRow>>(
+      find.byType(MasterDataTableView<StockLedgerRow>),
+    );
+    expect(table.items, hasLength(201));
+    expect(table.items.last.id, 'movement-201');
+    expect(api.queries.map((query) => query['page']), [1, 2, 3]);
+    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    expect(table.totalPages, 1);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('流水默认近月，单入口取消保留范围并用完整新范围重查', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

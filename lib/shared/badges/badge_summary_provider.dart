@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/data_write_revision.dart';
@@ -390,9 +391,15 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   Future<void> _fetch(int generation) async {
     final writeRevision = ref.read(dataWriteRevisionProvider);
     try {
-      final json = await ref
-          .read(apiClientProvider)
-          .get(ApiEndpoints.workbenchBadges);
+      final api = ref.read(apiClientProvider);
+      final json = await AuthenticatedRequestScope.sharedRead(
+        () =>
+            ref.mounted &&
+            _active &&
+            generation == _generation &&
+            identical(api, ref.read(apiClientProvider)),
+        () => api.get(ApiEndpoints.workbenchBadges),
+      );
       if (generation != _generation) return;
       if (writeRevision != ref.read(dataWriteRevisionProvider)) {
         // The read predates a completed command. Keep the last accepted snapshot

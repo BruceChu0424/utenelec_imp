@@ -76,6 +76,11 @@ class WarehouseInsightPage extends ConsumerStatefulWidget {
 
 class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
     with ScopedPagedReadViewMixin<WarehouseInsightPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
@@ -249,6 +254,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
       final cached = await readScopedPage<InsightHealthRow>(
         page,
         slot: '_loadHealth',
+        idOf: (row) => row.rowKey,
         query: [
           pageRepository,
           pageScope,
@@ -284,6 +290,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
           return PagedReadSnapshot<InsightHealthRow, InsightHealthResult>(
             page: snapshot.rows,
             snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
           );
         },
       );
@@ -296,6 +303,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         _healthLoadedKey = key;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_healthRequests.isCurrent(generation)) return;
       setState(() => _healthError = _errorText(e));
     } finally {
@@ -331,6 +339,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         _cycleLoadedKey = key;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_cycleRequests.isCurrent(generation)) return;
       setState(() => _cycleError = _errorText(e));
     } finally {
@@ -354,6 +363,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
       final cached = await readScopedPage<InsightWeightAlertRow>(
         page,
         slot: '_loadAlerts',
+        idOf: (row) => row.id,
         query: [pageRepository, pageDays],
         currentQuery: () => [_repo, _alertDays],
         useCache: useCache,
@@ -365,7 +375,11 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
           return PagedReadSnapshot<
             InsightWeightAlertRow,
             InsightWeightAlertsResult
-          >(page: snapshot.rows, snapshot: snapshot);
+          >(
+            page: snapshot.rows,
+            snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
+          );
         },
       );
       final r =
@@ -381,6 +395,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         _alertsLoadedKey = key;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_alertRequests.isCurrent(generation)) return;
       setState(() => _alertsError = _errorText(e));
     } finally {
@@ -424,6 +439,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         }
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_learningRequests.isCurrent(generation)) return;
       setState(() => _learningError = _errorText(e));
     } finally {
@@ -1189,10 +1205,9 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
     final rows = _learning;
     final canSample = ref.watch(weightSampleAllowedProvider);
     final source = rows?.items ?? const <InsightLearningRow>[];
-    final items = _projectLearningRows(source);
-    projectReadWindowBinding(
+    final items = projectReadWindowBinding(
       source,
-      items,
+      _projectLearningRows(source),
       project: _projectLearningRows,
       projectionKey: 'warehouse-learning-confirmed-overlay-v1',
     );
@@ -1259,7 +1274,9 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
       if (prev != next && mounted) _onScopeChanged();
     });
     // 返回即刷新: 从盘点单/库存详情回来时数字可能已变。
-    ref.onPageResume(RouteName.warehouseInsights, _refresh);
+    final visibleReadReturn = _refresh;
+    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    ref.onPageResume(RouteName.warehouseInsights, visibleReadReturn);
     final units = ref.watch(warehouseWeightUnitsPrefsProvider);
     final searchable =
         _segment == WarehouseInsightSegment.health ||

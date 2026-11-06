@@ -424,6 +424,11 @@ void materialPolicyCases() {
         find.byKey(const ValueKey('material-bom-layout-material')),
       );
       await tester.pumpAndSettle();
+      await tester.showKeyboard(
+        find.byKey(const ValueKey('material-aggregate-qty-$aggregate')),
+      );
+      await tester.pumpAndSettle();
+      await _continueMaterialSupplyChoice(tester);
       await tester.enterText(
         find.byKey(const ValueKey('material-aggregate-qty-$aggregate')),
         '100',
@@ -453,6 +458,8 @@ void materialPolicyCases() {
       await tester.pump(const Duration(milliseconds: 650));
       await _settlePreview(tester);
       expect(latestPreviewGroup()['allowedOverproductionRate'], 0.225);
+      await _continueMaterialSupplyChoice(tester);
+      _observeMaterialUi(tester, 'before-cancel-quantity-draft');
       expect(
         find.byKey(const Key('material-aggregate-cancel-drafts')).hitTestable(),
         findsOneWidget,
@@ -462,6 +469,7 @@ void materialPolicyCases() {
         find.byKey(const Key('material-aggregate-cancel-drafts')),
       );
       await tester.pumpAndSettle();
+      _observeMaterialUi(tester, 'before-confirm-cancel-quantity-draft');
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),

@@ -46,7 +46,6 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_fit_or_compact.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -202,6 +201,9 @@ enum _CompanionRead {
 abstract class _MaterialAnalysisPageBase
     extends ConsumerState<ProductionMaterialAnalysisPage>
     with ScopedPagedReadViewMixin<ProductionMaterialAnalysisPage> {
+  @override
+  Future<void> onReadViewResumed() => _loadCandidates();
+
   static const int _maxAnalysisItems = 500;
   static const int _requestChunkSize = 500;
   static const int _maxPlansPerPrintJob = 50;
@@ -1319,9 +1321,10 @@ abstract class _MaterialAnalysisPageBase
     });
     try {
       final repository = ref.read(productionPlanRepositoryProvider);
-      final cached = await readScopedPage<MaterialAnalysisSalesCandidateLine>(
+      final cached = await readScopedPage<MaterialAnalysisSalesCandidate>(
         _candidatePageNo,
         slot: 'sales-candidates',
+        idOf: (row) => row.orderId,
         query: (
           repository,
           requestedKeyword,
@@ -1348,20 +1351,21 @@ abstract class _MaterialAnalysisPageBase
           );
           return PagedReadSnapshot(
             page: PagedResult(
-              items: result.lines,
+              items: result.items,
               page: result.page,
               size: result.size,
               total: result.total,
               totalPages: result.totalPages,
             ),
             snapshot: result,
+            rebuildSnapshot: result.withPage,
           );
         },
       );
       final result =
           (cached
                   as PagedReadSnapshot<
-                    MaterialAnalysisSalesCandidateLine,
+                    MaterialAnalysisSalesCandidate,
                     MaterialAnalysisSalesCandidatePage
                   >)
               .snapshot;
@@ -1374,11 +1378,20 @@ abstract class _MaterialAnalysisPageBase
       }
       setState(() {
         _candidatePage = result;
-        _candidateReadRows = cached.items;
+        _candidateReadRows = projectReadWindowBinding(
+          cached.items,
+          result.lines,
+          project: (orders) => [
+            for (final order in orders)
+              for (final line in order.lines) line.withOrder(order),
+          ],
+          projectionKey: 'material-analysis-candidate-lines',
+        );
         _candidatePageNo = result.page;
         _loadingCandidates = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           !readOwnerCurrent() ||
           !_candidateRequests.isCurrent(request)) {

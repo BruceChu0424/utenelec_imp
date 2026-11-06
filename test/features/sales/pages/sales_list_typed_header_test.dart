@@ -127,6 +127,19 @@ void main() {
         await tester.testTextInput.receiveAction(TextInputAction.search);
         await tester.pumpAndSettle();
         expect(api.queries.last['search.billDate'], '2026-10-01..2026-10-28');
+        expect(api.queries.last['originScope'], 'ALL');
+        expect(api.queries.last['stage'], isNull);
+        if (kind.isShipment) {
+          // Main's per-batch receivable position is authoritative money, not
+          // the old local-total column; it intentionally has no amount search.
+          final money = table().columns.singleWhere((c) => c.key == 'total');
+          expect(money.label, '货款');
+          expect(money.columnSearchEnabled, isFalse);
+          expect(money.sortable, isFalse);
+          expect(api.queries.last.containsKey('search.total'), isFalse);
+          expect(tester.takeException(), isNull);
+          return;
+        }
         if (kind == SalesDocType.order) {
           expect(
             table().columns

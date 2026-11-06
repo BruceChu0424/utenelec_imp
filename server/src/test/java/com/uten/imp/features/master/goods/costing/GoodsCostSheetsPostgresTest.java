@@ -77,6 +77,7 @@ class GoodsCostSheetsPostgresTest {
         try(var stream=GoodsCostSheetsPostgresTest.class.getResourceAsStream("/db/migration/V753__goods_cost_sheets.sql")) {
             assertThat(stream).isNotNull();sql.execute(new String(stream.readAllBytes(),StandardCharsets.UTF_8));
         }
+        GoodsCostSummaryReadFixture.initialize(sql);
     }
     @AfterAll static void stop(){POSTGRES.stop();}
     @BeforeEach void setup() {
@@ -96,7 +97,7 @@ class GoodsCostSheetsPostgresTest {
         inventoryValues=mock(InventoryValuationPort.class);valueAuthority=mock(InventoryValueAuthorityPort.class);
         var json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());sources=new GoodsCostSourceReader(db,references,owners,inventoryValues,valueAuthority);
         var imports=mock(CostImportEvidenceGuard.class);when(imports.validate(any(),any())).thenAnswer(call->call.getArgument(1));
-        service=new GoodsCostSheetService(db,new GoodsCostCalculator(sources,references,json),json,masker,references,clients,current,mock(TxSessionVars.class),imports);
+        service=new GoodsCostSheetService(db,new GoodsCostCalculator(sources,references,json),json,masker,references,clients,current,mock(TxSessionVars.class),imports,GoodsCostSummaryReadFixture.reader(sql,current));
     }
     @Test void draftSaveIdempotencyCasAndConfirmedSnapshotAreIndependentOfMasterData() {
         SaveRequest create=new SaveRequest(null,"create-command-0001",input("0.00007"));
@@ -218,6 +219,39 @@ class GoodsCostSheetsPostgresTest {
             assertThat(first.id()).isEqualTo(second.id());
             assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_sheets",Integer.class)).isEqualTo(1);
         }
+    }
+    @Test void template251IsInTheCompleteSummaryAndExactAndAutomaticResolverKeepItsOriginalSource() {
+        templatePermissions();var mapper=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());
+        for(int i=0;i<250;i++) {
+            UUID id=UUID.randomUUID();TemplateInput input=new TemplateInput(String.format("A-%03d",i),root,null,null,null,null,null,List.of(),List.of(),null);
+            sql.update("INSERT INTO goods_cost_templates(id,name,goods_id,input,created_by,updated_by) VALUES(?,?,?,CAST(? AS jsonb),?,?)",
+                    id,input.name(),root,mapper.write(input),actor,actor);
+        }
+        UUID tail=UUID.randomUUID(),foreign=UUID.randomUUID();
+        TemplateInput last=new TemplateInput("Z-251",root,null,LocalDate.of(2026,1,1),null,"1","100",
+                List.of(new FeeInput("tail","尾部完整来源","FIXED_BATCH","OTHER",null,"5",null,List.of(),"MANUAL","读取边界")),List.of(),null);
+        sql.update("INSERT INTO goods_cost_templates(id,name,goods_id,input,created_by,updated_by) VALUES(?,?,?,CAST(? AS jsonb),?,?)",
+                tail,last.name(),root,mapper.write(last),actor,actor);
+        TemplateInput other=new TemplateInput("Z-外域",material,null,null,null,null,null,List.of(),List.of(),null);
+        sql.update("INSERT INTO goods_cost_templates(id,name,goods_id,input,created_by,updated_by) VALUES(?,?,?,CAST(? AS jsonb),?,?)",
+                foreign,other.name(),material,mapper.write(other),actor,actor);
+        var summaries=service.templateSummaries(root,null,1,1000,null);
+        assertThat(summaries.total()).isEqualTo(251);assertThat(summaries.items()).hasSize(251);
+        assertThat(summaries.items().getLast().id()).isEqualTo(tail);
+        assertThat(summaries.items()).extracting(TemplateSummary::id).doesNotContain(foreign);
+        assertThat(service.templateDetail(tail,root,null).input()).isEqualTo(last);
+        assertThatThrownBy(()->service.templateDetail(foreign,root,null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.templates(root,null)).isInstanceOf(ApiException.class).hasMessageContaining("完整模板摘要");
+        DraftInput automatic=tx(()->resolved(service.previewPayload(input("1"))));
+        assertThat(automatic.fees()).singleElement().satisfies(fee->{assertThat(fee.value()).isEqualTo("5");
+            assertThat(fee.source()).isEqualTo("TEMPLATE:"+tail+":1");});
+        DraftInput base=input("1");DraftInput selected=new DraftInput(base.goodsId(),base.clientId(),base.name(),base.batchQty(),
+                base.currencyId(),base.exchangeRateToLocal(),base.effectiveDate(),base.usageStrategy(),base.priceStrategy(),tail,
+                base.lineOverrides(),base.fees(),base.priceColumns(),base.priceCells(),base.extraFields(),base.notes());
+        DraftInput exact=tx(()->resolved(service.previewPayload(selected)));
+        assertThat(exact.fees()).containsExactlyElementsOf(automatic.fees());
+        assertThat(exact.extraFields().get("costTemplateVersions")).contains(tail.toString());
+        assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_sheets",Integer.class)).isZero();
     }
     @Test void customerProductTemplateWinsAndExplicitOverrideAndExclusionRemainStable() {
         permissions(Set.of("goods:view","goods:cost:view","goods:cost:edit","goods:cost:template"));

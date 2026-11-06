@@ -14,10 +14,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/finance/widgets/finance_material_statement_dialog.dart';
@@ -34,6 +37,86 @@ final _scope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'material-maker'),
 );
 void main() {
+  testWidgets(
+    'material evidence permission rejection retires the accepted context on refresh',
+    (t) async {
+      await _size(t);
+      final api = _Api(historyRows: 251);
+      final env = await _pump(t, api, MemoryFormDraftStorage(), editor: false);
+      expect(find.widgetWithText(UtenButton, '维护本组资料'), findsOneWidget);
+      api.denyHistoryTail = true;
+      final refreshing = Future<void>.sync(
+        t.widget<UtenRefreshButton>(find.byType(UtenRefreshButton)).onRefresh,
+      );
+      await t.pumpAndSettle();
+      await refreshing;
+      expect(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+        findsNothing,
+      );
+      expect(find.widgetWithText(UtenButton, '维护本组资料'), findsNothing);
+      expect(find.text('history tail forbidden'), findsOneWidget);
+      expect(api.posts, isEmpty);
+      expect(t.takeException(), isNull);
+      await _dispose(t, env);
+    },
+  );
+  testWidgets('all 251 material evidence records stay local while scrolling', (
+    t,
+  ) async {
+    await _size(t);
+    final api = _Api(historyRows: 251);
+    final env = await _pump(t, api, MemoryFormDraftStorage(), editor: false);
+    await t.tap(find.text('审核记录'));
+    await t.pumpAndSettle();
+    final finder = find.byWidgetPredicate(
+      (w) =>
+          w is MasterDataTableView<Map<String, dynamic>> &&
+          w.tableKey == 'finance.material.evidence.$_ctx',
+    );
+    final table = t.widget<MasterDataTableView<Map<String, dynamic>>>(finder);
+    expect(table.items, hasLength(251));
+    expect(table.items.last['id'], 'history-250');
+    expect(table.onPageChange, isNull);
+    expect(api.historyQueries.map((q) => q['page']), [1, 2, 3]);
+    expect(
+      api.historyQueries.every(
+        (q) => q['contextId'] == _ctx && q['size'] == 100,
+      ),
+      isTrue,
+    );
+    final before = api.historyQueries.length;
+    await t.drag(finder, const Offset(0, -900));
+    await t.pumpAndSettle();
+    await t.drag(finder, const Offset(0, 900));
+    await t.pumpAndSettle();
+    expect(api.historyQueries, hasLength(before));
+    expect(api.posts, isEmpty);
+    expect(t.takeException(), isNull);
+    await _dispose(t, env);
+  });
+  testWidgets(
+    'denied evidence continuation does not publish partial context or allow an editor',
+    (t) async {
+      await _size(t);
+      final api = _Api(historyRows: 251, denyHistoryTail: true);
+      final env = await _pump(t, api, MemoryFormDraftStorage(), editor: false);
+      expect(api.historyQueries.map((q) => q['page']), [1, 2]);
+      expect(find.widgetWithText(UtenButton, '原表导入比对'), findsNothing);
+      expect(find.widgetWithText(UtenButton, '维护本组资料'), findsNothing);
+      final table = t.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is MasterDataTableView<Map<String, dynamic>> &&
+              w.tableKey == 'finance.material.contexts',
+        ),
+      );
+      expect(table.error, isNotNull);
+      expect(api.posts, isEmpty);
+      expect(t.takeException(), isNull);
+      await _dispose(t, env);
+    },
+  );
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'exact unfinished input restores without silently rounding or posting',
@@ -263,12 +346,12 @@ void main() {
       await t.tap(find.text('逐行明确对应'));
       await t.pumpAndSettle();
       await _chooseCalculatedRow(t, index: 0);
-      t.widget<UtenPagination>(find.byType(UtenPagination)).onPageChanged!(67);
+      expect(find.byType(UtenPagination), findsNothing);
       await t.pumpAndSettle();
       final last = t.widget<UtenEditableGrid<EditableGridRow>>(
         find.byWidgetPredicate((w) => w is UtenEditableGrid<EditableGridRow>),
       );
-      expect(last.controller.rows, hasLength(20));
+      expect(last.controller.rows, hasLength(2000));
       await _chooseCalculatedRow(t, index: 1999, last: true);
       await t.pump(const Duration(milliseconds: 650));
       await t.pumpAndSettle();
@@ -309,7 +392,7 @@ void main() {
       await t.pumpAndSettle();
       final draft = env.container.read(formDraftsProvider).single;
       expect(draft.data['mode'], 'COMPARE');
-      expect(draft.data['mappingPage'], 67);
+      expect(draft.data['mappingPage'], 1);
       expect(
         (draft.data['mapping'] as List)
             .cast<Map<String, dynamic>>()
@@ -332,10 +415,7 @@ void main() {
       expect(_field(t, '恢复原件编号').text, 'source-file');
       await t.tap(find.text('逐行明确对应'));
       await t.pumpAndSettle();
-      expect(
-        t.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        67,
-      );
+      expect(find.byType(UtenPagination), findsNothing);
       final mappingGrid = find.byWidgetPredicate(
         (w) => w is UtenEditableGrid<EditableGridRow>,
       );
@@ -355,7 +435,7 @@ void main() {
       );
       await t.pumpAndSettle();
       expect(find.text('2026-09-01 / 原产品 / 原单1999'), findsOneWidget);
-      t.widget<UtenPagination>(find.byType(UtenPagination)).onPageChanged!(1);
+      scrolling.position.jumpTo(scrolling.position.minScrollExtent);
       await t.pumpAndSettle();
       expect(find.text('2026-09-01 / 原产品 / 原单0'), findsOneWidget);
       expect(api.posts, isEmpty);
@@ -443,6 +523,17 @@ TextEditingController _field(WidgetTester t, String label) => t
 UtenButton _button(WidgetTester t, String label) =>
     t.widget(find.widgetWithText(UtenButton, label));
 typedef _Env = ({ProviderContainer container, GoRouter router});
+
+class _LocalSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
+class _LocalSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 Future<_Env> _pump(
   WidgetTester t,
   _Api api,
@@ -453,6 +544,8 @@ Future<_Env> _pump(
   final c = ProviderContainer(
     overrides: [
       apiClientProvider.overrideWithValue(api),
+      sessionProvider.overrideWith(_LocalSession.new),
+      sessionSnapshotProvider.overrideWith(_LocalSnapshot.new),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
       currentPermissionsProvider.overrideWithValue({
         Perm.financeReportView,
@@ -535,9 +628,13 @@ class _Api extends ApiClient {
     this.timeout = false,
     this.originalRows = 0,
     this.cancelActor = 'material-maker',
+    this.historyRows = 0,
+    this.denyHistoryTail = false,
   }) : super(Dio(BaseOptions(baseUrl: 'https://test.example/api')));
   final bool timeout;
-  final int originalRows;
+  final int originalRows, historyRows;
+  bool denyHistoryTail;
+  final historyQueries = <Map<String, dynamic>>[];
   String cancelActor;
   List<String> get headers =>
       ((((jsonDecode(
@@ -615,8 +712,45 @@ class _Api extends ApiClient {
         ],
       };
     }
+    if (path == '/finance/material-statements/evidence') {
+      historyQueries.add(Map.of(query ?? {}));
+      final page = query?['page'] as int? ?? 1,
+          size = query?['size'] as int? ?? 100;
+      if (denyHistoryTail && page == 2) {
+        throw ApiException(
+          'FORBIDDEN',
+          'history tail forbidden',
+          httpStatus: 403,
+        );
+      }
+      final start = (page - 1) * size;
+      return {
+        'items': [
+          for (var i = start; i < start + size && i < historyRows; i++)
+            {
+              'id': 'history-$i',
+              'context_id': _ctx,
+              'kind': 'OPENING',
+              'status': 'APPROVED',
+              'created_at': '2026-09-01',
+              'version': i + 1,
+            },
+        ],
+        'page': page,
+        'size': size,
+        'total': historyRows,
+        'totalPages': (historyRows + size - 1) ~/ size,
+        'readScopeVersion': 'material-owner',
+      };
+    }
     if (path == '/finance/material-statements') {
-      return {'items': <Object?>[], 'totalPages': 0};
+      return {
+        'items': <Object?>[],
+        'page': query?['page'] ?? 1,
+        'size': query?['size'] ?? 100,
+        'total': 0,
+        'totalPages': 0,
+      };
     }
     if (path == '/finance/material-statements/$_ctx') {
       return {

@@ -261,6 +261,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                 // 组的位置沿用服务端序（置顶优先、发布时间倒序）。
                 final groups = groupNotices(notices);
                 return UtenPagedGrid(
+                  key: ValueKey(filter),
                   // 通知是公司广播型累积数据（无时间窗/上限），客户端按页切片：
                   // 恒只构建当页 ~20 张卡片，避免一次性铺全部致卡顿。
                   // 数据真正海量时改服务端 page/size 真分页。

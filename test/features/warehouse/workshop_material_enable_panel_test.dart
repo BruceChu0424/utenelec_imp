@@ -1,3 +1,4 @@
+import '../../support/versioned_summary_test_response.dart';
 // 车间内料仓开通面板 (ADR-147): 右侧滑窗, 多车间, 发料来源仓走全站仓库滑窗 (先主仓再子仓,
 // 只能选启用中的良品子仓), 在产认料按产品去重, 全成全败失败后保留输入并复用同一个请求号。
 import 'package:dio/dio.dart';
@@ -81,18 +82,33 @@ class _SetupOnlyApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     reads.add(path);
-    if (path == '/workshop-material/settings/in-progress-pending') {
+
+    if (path == '/workshop-material/settings/in-progress-pending/summaries') {
       pendingQueries.add(query);
-      // 服务端按产品去重: 同一个产品在两个车间都在产, 只来一行并带两个车间名。
+      return versionedSummaryTestResponse([
+        {
+          'productGoodsId': 'cup',
+          'productName': '水杯',
+          'segmentCount': 3,
+          'workshopNames': ['注塑车间', '装配车间'],
+          'choiceRequired': true,
+        },
+      ], query);
+    }
+    if (path ==
+        '/workshop-material/settings/in-progress-pending/products/cup') {
       return {
-        'products': [
-          {
-            ..._pending('cup', '水杯'),
-            'taskCount': 3,
-            'workshopNames': ['注塑车间', '装配车间'],
-          },
-        ],
+        ...versionedSummaryTestResponse([], query),
+        ..._pending('cup', '水杯'),
+        'options': <Object>[],
+        'taskCount': 3,
+        'workshopNames': ['注塑车间', '装配车间'],
       };
+    }
+    if (path == '/workshop-material/choices/material-options') {
+      return versionedSummaryTestResponse([
+        {'goodsId': 'pc', 'goodsCode': 'PC-01', 'goodsName': 'PC 颗粒'},
+      ], query);
     }
     throw ApiException('FORBIDDEN', '没有额外读取权限');
   }
@@ -269,11 +285,23 @@ void main() {
         settings: const [_shopA, _shopB],
         mode: WmBinPanelMode.periodic,
       );
-      expect(api.pendingQueries.single, {'workshopIds': 'shop-a,shop-b'});
+      expect(api.pendingQueries.single, {
+        'workshopIds': 'shop-a,shop-b',
+        'page': 1,
+        'size': 1000,
+      });
       expect(find.textContaining('所选车间 (2)'), findsOneWidget);
       expect(find.text('水杯'), findsOneWidget);
       expect(find.text('注塑车间、装配车间'), findsOneWidget);
 
+      expect(
+        find.byKey(const Key('wm-enable-choice-cup')),
+        findsNothing,
+        reason:
+            'plain complete summaries allocate no editable row until requested',
+      );
+      await tester.tap(find.byKey(const ValueKey('wm-summary-open-cup')));
+      await tester.pumpAndSettle();
       final material = tester.widget<UtenDropdownField>(
         find.byKey(const Key('wm-enable-choice-cup')),
       );
@@ -347,7 +375,11 @@ void main() {
     expect(find.text('水杯'), findsNothing);
     await tester.tap(find.byKey(const Key('wm-bin-panel-periodic')));
     await tester.pumpAndSettle();
-    expect(api.pendingQueries.single, {'workshopIds': 'shop-a'});
+    expect(api.pendingQueries.single, {
+      'workshopIds': 'shop-a',
+      'page': 1,
+      'size': 1000,
+    });
     expect(find.text('水杯'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

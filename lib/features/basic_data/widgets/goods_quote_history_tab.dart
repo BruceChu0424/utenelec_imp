@@ -1,9 +1,9 @@
+import '../../../core/router/page_navigation_session.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -32,6 +32,22 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     with
         NativeReadViewScopeMixin<GoodsQuoteHistoryTab>,
         ScopedPagedReadViewMixin<GoodsQuoteHistoryTab> {
+  @override
+  Future<void> onReadViewResumed() => _load(1, preserveSelection: true);
+
+  final _navigation = PageNavigationSession();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
+  @override
+  void dispose() {
+    _navigation.dispose();
+    super.dispose();
+  }
+
   final _readViewportRows =
       MasterDataTableRowsController<GoodsQuoteHistoryRow>();
   int get _visibleReadPage => _result == null
@@ -40,6 +56,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
 
   @override
   void scopedPagedReadOwnerChanged() {
+    invalidateNativeReadAccess();
     _clearHistory();
     if (mounted) {
       setState(() {
@@ -102,18 +119,23 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     });
   }
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preserveSelection = false,
+  }) async {
     if (!mounted || !_canRead) return;
     final readQuery = (widget.goodsId, _columnsQuery, _actionFilter);
     final acceptsRead = captureNativeRead(
       readQuery,
       () => (widget.goodsId, _columnsQuery, _actionFilter),
+      retainAccepted: preserveSelection,
     );
     if (!acceptsRead()) return;
     setState(() {
       _loading = true;
       _error = null;
-      _selected = null;
+      if (!preserveSelection) _selected = null;
     });
     final repository = ref.read(goodsQuoteHistoryRepositoryProvider);
     final goodsId = widget.goodsId;
@@ -141,11 +163,18 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
       );
       if (!acceptsRead() || !_canRead) return;
       acceptNativeRead();
+      final selectedId = preserveSelection ? _selected?.text('id') : null;
       setState(() {
         _result = result;
+        _selected = selectedId == null
+            ? null
+            : result.items
+                  .where((row) => row.text('id') == selectedId)
+                  .firstOrNull;
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!acceptsRead() || !_canRead) return;
       setState(() {
         _result = null;
@@ -157,9 +186,6 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
 
   Future<void> _open(GoodsQuoteHistoryRow row) async {
     if (!nativeReadAccessConfirmed) return;
-    final ownsRead = captureNativeOwnership();
-    final goodsId = widget.goodsId;
-    final page = _visibleReadPage;
     final permissions = ref.read(currentPermissionsProvider);
     final admin = ref.read(isSuperAdminProvider);
     if (!_canRead) return;
@@ -167,18 +193,19 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     if (row.orderId.isNotEmpty &&
         !row.orderDeleted &&
         (admin || permissions.contains(Perm.salesOrderFinanceView))) {
-      await context.push(
+      await _navigation.push(
         '/finance/sales-order-confirmations/${Uri.encodeComponent(row.orderId)}',
       );
     } else if (row.orderId.isNotEmpty &&
         !row.orderDeleted &&
         permissions.contains(Perm.salesOrderView)) {
-      await context.push('/sales/orders/${Uri.encodeComponent(row.orderId)}');
+      await _navigation.push(
+        '/sales/orders/${Uri.encodeComponent(row.orderId)}',
+      );
     } else {
       _showSnapshot(row);
       return;
     }
-    if (ownsRead() && goodsId == widget.goodsId && _canRead) await _load(page);
   }
 
   void _showSnapshot(GoodsQuoteHistoryRow row) {
@@ -401,6 +428,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                 );
                 _load(1);
               },
+              rowKeyOf: (row) => row.text('id'),
               onRowTap: _open,
               onSelectionChanged: (row) => setState(() => _selected = row),
               onSelectionCleared: () => setState(() => _selected = null),
@@ -412,7 +440,9 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
               onPageChange: (page) => _load(page, useCache: true),
               toolbarActions: [
                 UtenButton(
-                  onPressed: _selected == null ? null : () => _open(_selected!),
+                  onPressed: _selected == null || _loading
+                      ? null
+                      : () => _open(_selected!),
                   child: const Text('查看单据'),
                 ),
                 UtenButton(

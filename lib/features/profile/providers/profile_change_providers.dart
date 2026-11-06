@@ -59,6 +59,7 @@ Future<PagedReadSnapshot<T, ProfileChangePage<T>>> _profilePageSnapshot<T>(
       totalPages: result.totalPages,
     ),
     snapshot: result,
+    rebuildSnapshot: result.withPage,
   );
 }
 

@@ -424,7 +424,7 @@ void main() {
     expect(repository.searches, contains('E-100'));
   });
 
-  testWidgets('分页结果可继续加载并选择首屏之外的授权员工', (tester) async {
+  testWidgets('全部分页一次读取并可选择原续页中的授权员工', (tester) async {
     final repository = _PagedEmployeeRepository();
     await _pumpPicker(tester, repository);
 
@@ -437,13 +437,8 @@ void main() {
     expect(find.text('E-001'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('department-employee-load-more')),
-      findsOneWidget,
+      findsNothing,
     );
-
-    await tester.tap(
-      find.byKey(const ValueKey('department-employee-load-more')),
-    );
-    await tester.pumpAndSettle();
 
     expect(find.text('第二页员工'), findsOneWidget);
     expect(find.text('E-101'), findsOneWidget);
@@ -457,7 +452,7 @@ void main() {
     expect(repository.requestedPages, containsAll(<int>[1, 2]));
   });
 
-  testWidgets('进入部门首屏即准备下一页，展开已准备页不重复请求', (tester) async {
+  testWidgets('进入部门一次读齐全部候选，滚动不再请求分页', (tester) async {
     final repository = _PagedEmployeeRepository();
     await _pumpPicker(tester, repository);
     await tester.tap(find.text('销售部'));
@@ -469,8 +464,8 @@ void main() {
       [1, 2],
       reason: 'page 2 starts without any wheel, thumb or load-more action',
     );
-    expect(table().items.map((item) => item.id), ['first']);
-    table().onLoadMore!();
+    expect(table().items.map((item) => item.id), ['first', 'second']);
+    expect(table().onLoadMore, isNull);
     await tester.pumpAndSettle();
     expect(repository.requestedPages, [1, 2]);
     expect(table().items.map((item) => item.id), ['first', 'second']);
@@ -838,7 +833,7 @@ class _PagedEmployeeRepository implements EmployeeRepository {
       items: [employee],
       page: page,
       size: size,
-      total: 101,
+      total: 2,
       totalPages: 2,
     );
   }

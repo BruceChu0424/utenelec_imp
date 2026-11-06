@@ -1,0 +1,11 @@
+{
+  "name": "search-input-contracts-x86",
+  "startedAtUtc": "2026-11-05T21:40:23.798141+00:00",
+  "command": [
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\Uten.Legacy.Tests.exe",
+    "--search-input-contracts"
+  ],
+  "exitCode": 0,
+  "endedAtUtc": "2026-11-05T21:40:35.836049+00:00",
+  "logSha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+}

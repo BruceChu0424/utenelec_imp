@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/retained_async_page.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_provider.dart';
@@ -64,14 +65,6 @@ class _ViewState extends ConsumerState<_View> {
   String query = 'A';
   int page = 1;
 
-  Future<void> goTo(int next) =>
-      ref.read(_reads(query)).paginate(next, () async {
-        setState(() => page = next);
-        final provider = _pages((query, next));
-        ref.invalidate(provider);
-        await _retained.waitFor(ref, provider, () => ref.read(provider.future));
-      });
-
   Future<void> refresh() async {
     ref.read(_reads(query)).invalidate();
     final provider = _pages((query, page));
@@ -125,124 +118,122 @@ Future<(_ViewState, ProviderContainer)> _mount(
   return (view, ProviderScope.containerOf(view.context));
 }
 
+// Provider-owned complete snapshots replace user page navigation and look-ahead.
 void main() {
-  testWidgets(
-    'provider paging adopts a warm request and revisits cached rows',
-    (tester) async {
-      final source = _Source();
-      final second = Completer<PagedResult<int>>();
-      source.holds[('A', 2)] = second;
-      final (view, _) = await _mount(tester, source);
-      expect(source.calls, [('A', 1), ('A', 2)]);
-      final next = view.goTo(2);
-      await tester.pump();
-      expect(source.calls.where((call) => call.$2 == 2), hasLength(1));
-      second.complete(source.page(2));
-      await tester.pumpAndSettle();
-      await next;
-      final previous = view.goTo(1);
-      await tester.pumpAndSettle();
-      await previous;
-      expect(find.text('rows=101'), findsOneWidget);
-      expect(source.calls.where((call) => call.$2 == 1), hasLength(1));
-      source.holds.remove(('A', 2));
-      source.revision = 2;
-      final refreshing = view.refresh();
-      await tester.pumpAndSettle();
-      await refreshing;
-      expect(find.text('rows=201'), findsOneWidget);
-      expect(source.calls.where((call) => call.$2 == 1), hasLength(2));
-    },
-  );
-
-  testWidgets(
-    'a completed Riverpod future cannot leave a cache intent behind',
-    (tester) async {
-      final source = _Source();
-      final container = ProviderContainer(
-        overrides: [
-          _source.overrideWithValue(source),
-          exportContextEpochProvider.overrideWith(_Epoch.new),
-        ],
+  test(
+    'invalid snapshots stop automatic full-query replay while network recovery remains enabled',
+    () async {
+      for (final error in <Object>[
+        ApiException('SNAPSHOT_CHANGED', ''),
+        ApiException('INVALID_PAGINATION', ''),
+        ApiException('FORBIDDEN', '', httpStatus: 403),
+        const FormatException('malformed'),
+        StateError('missing typed snapshot'),
+        const UiWorkCancelled(),
+      ]) {
+        var requests = 0;
+        final provider = FutureProvider<int>((ref) async {
+          requests++;
+          throw error;
+        }, retry: pagedReadProviderRetry);
+        final container = ProviderContainer();
+        final subscription = container.listen(provider, (_, _) {});
+        await expectLater(
+          container.read(provider.future),
+          throwsA(same(error)),
+        );
+        expect(pagedReadProviderRetry(0, error), isNull);
+        expect(requests, 1);
+        container.invalidate(provider);
+        await expectLater(
+          container.read(provider.future),
+          throwsA(same(error)),
+        );
+        expect(requests, 2, reason: 'Explicit refresh remains available.');
+        subscription.close();
+        container.dispose();
+      }
+      expect(pagedReadProviderRetry(0, NetworkException()), isNotNull);
+      expect(
+        pagedReadProviderRetry(
+          0,
+          ApiException('INTERNAL', '', httpStatus: 503),
+        ),
+        isNotNull,
       );
-      addTearDown(container.dispose);
-      final first = _pages(('A', 1));
-      final second = _pages(('A', 2));
-      final firstWatch = container.listen(first, (_, _) {});
-      addTearDown(firstWatch.close);
-      await container.read(first.future);
-      final lease = container.read(_reads('A'));
-      await lease.paginate(2, () async {
-        final secondWatch = container.listen(second, (_, _) {});
-        addTearDown(secondWatch.close);
-        await container.read(second.future);
-      });
-      await lease.paginate(1, () async => await container.read(first.future));
-      final before = source.calls.where((call) => call.$2 == 1).length;
-      container.invalidate(first);
-      await container.read(first.future);
-      expect(source.calls.where((call) => call.$2 == 1), hasLength(before + 1));
-      await tester.pumpAndSettle();
+      expect(
+        pagedReadProviderRetry(
+          0,
+          ApiException('RATE_LIMITED', '', httpStatus: 429),
+        ),
+        isNotNull,
+      );
     },
   );
-
-  testWidgets('prefetch denial retires retained rows without a reread loop', (
-    tester,
-  ) async {
-    final source = _Source();
-    final denied = Completer<PagedResult<int>>();
-    source.holds[('A', 2)] = denied;
-    final (view, _) = await _mount(tester, source);
-    expect(find.text('rows=101'), findsOneWidget);
-    denied.completeError(ApiException('FORBIDDEN', 'revoked', httpStatus: 403));
-    await tester.pumpAndSettle();
-    expect(find.text('rows=101'), findsNothing);
-    expect(find.text('error'), findsOneWidget);
-    expect(source.calls, [('A', 1), ('A', 2)]);
-    source.holds.remove(('A', 2));
-    final retry = view.refresh();
-    await tester.pumpAndSettle();
-    await retry;
-    expect(find.text('rows=101'), findsOneWidget);
-    expect(source.calls.where((call) => call.$2 == 1), hasLength(2));
-  });
-
   testWidgets(
-    'inactive readers skip look-ahead and owner ABA drops old pages',
+    'the first provider result contains the complete query and idle frames issue no reads',
     (tester) async {
-      final inactiveSource = _Source();
-      final active = ValueNotifier(false);
-      addTearDown(active.dispose);
-      await _mount(tester, inactiveSource, active: active);
-      expect(inactiveSource.calls, [('A', 1)]);
-      await tester.pumpWidget(const SizedBox());
       final source = _Source();
-      final oldSecond = Completer<PagedResult<int>>();
-      source.holds[('A', 2)] = oldSecond;
-      final (view, container) = await _mount(tester, source);
-      source.holds.remove(('A', 2));
-      source.revision = 3;
-      final epoch =
-          container.read(exportContextEpochProvider.notifier) as _Epoch;
-      epoch.advance();
-      epoch.advance();
+      final (_, container) = await _mount(tester, source);
+      expect(find.text('rows=101,102,103'), findsOneWidget);
+      expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
+      await tester.pump(const Duration(seconds: 1));
+      expect(source.calls.length, 3);
+      final result = await container.read(_pages(('A', 1)).future);
+      expect((result.page, result.totalPages), (1, 1));
+    },
+  );
+  testWidgets(
+    'explicit refresh obtains one new complete result and keeps no stale navigation intent',
+    (tester) async {
+      final source = _Source();
+      final (view, _) = await _mount(tester, source);
+      source.revision = 2;
+      final refresh = view.refresh();
       await tester.pumpAndSettle();
-      oldSecond.complete(
+      await refresh;
+      expect(find.text('rows=201,202,203'), findsOneWidget);
+      expect(source.calls.length, 6);
+      source.revision = 3;
+      final again = view.refresh();
+      await tester.pumpAndSettle();
+      await again;
+      expect(find.text('rows=301,302,303'), findsOneWidget);
+      expect(source.calls.length, 9);
+    },
+  );
+  testWidgets(
+    'provider epoch replacement rejects a held old response and only shows the new owner snapshot',
+    (tester) async {
+      final source = _Source();
+      final (_, container) = await _mount(tester, source);
+      source.revision = 2;
+      final gate = Completer<PagedResult<int>>();
+      source.holds[('A', 2)] = gate;
+      final old = container
+          .read(_reads('A'))
+          .read(1, fetchPage: (page) => source.fetch('A', page));
+      final rejected = expectLater(old, throwsA(anything));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1));
+      source.holds.clear();
+      source.revision = 3;
+      (container.read(exportContextEpochProvider.notifier) as _Epoch).advance();
+      await tester.pumpAndSettle();
+      gate.complete(
         const PagedResult(
-          items: [999],
+          items: [202],
           page: 2,
           size: 1,
           total: 3,
           totalPages: 3,
+          readScopeVersion: '2',
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('rows=301'), findsOneWidget);
-      final next = view.goTo(2);
-      await tester.pumpAndSettle();
-      await next;
-      expect(find.text('rows=302'), findsOneWidget);
-      expect(find.text('rows=999'), findsNothing);
+      await rejected;
+      expect(find.text('rows=301,302,303'), findsOneWidget);
+      expect(source.calls.where((call) => call.$2 == 3).length, 2);
     },
   );
 }

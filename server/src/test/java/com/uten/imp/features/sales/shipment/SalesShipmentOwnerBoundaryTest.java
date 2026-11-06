@@ -216,6 +216,9 @@ class SalesShipmentOwnerBoundaryTest {
                 chainNotice, clientShipAddressService,
                 org.mockito.Mockito.mock(com.uten.imp.features.sales.SalesMutationFootprintService.class), org.mockito.Mockito.mock(CustomerShipmentPolicy.class), org.mockito.Mockito.mock(DirectCustomerShipmentCommercialService.class), org.mockito.Mockito.mock(SalesShipmentReviewSnapshotService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.CustomerShipmentInventoryPort.class), org.mockito.Mockito.mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class), org.mockito.Mockito.mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
 
+        when(shipmentRepo.save(any(SalesShipment.class))).thenAnswer(call->{SalesShipment row=call.getArgument(0);if(row.getId()==null)row.setId(UUID.randomUUID());return row;});
+        when(itemRepo.save(any(SalesShipmentItem.class))).thenAnswer(call->{SalesShipmentItem row=call.getArgument(0);if(row.getId()==null)row.setId(UUID.randomUUID());return row;});
+
         BatchShipRequest request = new BatchShipRequest();
         org.springframework.test.util.ReflectionTestUtils.setField(service,"numericInputEvidence",numericInputEvidence);
         request.setBillDate(LocalDate.now());
@@ -252,11 +255,14 @@ class SalesShipmentOwnerBoundaryTest {
         assertTrue(savedItems.getAllValues().stream()
                 .allMatch(item -> new BigDecimal("2.5000")
                         .compareTo(item.getWeight()) == 0));
-        org.mockito.Mockito.verify(numericInputEvidence,org.mockito.Mockito.times(2)).record(
-                org.mockito.ArgumentMatchers.argThat(capture -> "SALES_SHIPMENT".equals(capture.ownerKind())
-                        &&"declaredWeightKg".equals(capture.fieldKey())
-                        &&capture.original().compareTo(new BigDecimal("2.5"))==0
-                        &&capture.recorded().compareTo(new BigDecimal("2.5"))==0));
+        var captured=ArgumentCaptor.forClass(com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture.class);
+        org.mockito.Mockito.verify(numericInputEvidence,org.mockito.Mockito.times(2)).record(captured.capture());
+        for(var proof:captured.getAllValues()){
+            assertEquals("SALES_SHIPMENT",proof.ownerKind());assertEquals("declaredWeightKg",proof.fieldKey());
+            assertEquals("2.5000",proof.original().toPlainString());assertEquals(0,new BigDecimal("2.5").compareTo(proof.recorded()));
+            assertEquals("KG",proof.originalUnit().code());assertEquals("KG",proof.recordedUnit().code());
+            assertTrue(savedItems.getAllValues().stream().anyMatch(item->item.getId().equals(proof.sourceRowId())&&item.getShipmentId().equals(proof.ownerId())));
+        }
     }
 
     @Test

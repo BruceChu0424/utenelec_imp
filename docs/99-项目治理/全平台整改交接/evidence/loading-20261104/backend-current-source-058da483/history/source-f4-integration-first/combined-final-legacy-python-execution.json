@@ -1,0 +1,15 @@
+{
+  "startedAtUtc": "2026-11-05T10:49:40.0057636Z",
+  "endedAtUtc": "2026-11-05T10:52:04.5064880Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "suites": [
+    "test_verify_rehearsal_counter_baseline",
+    "test_bootstrap_target_inventory",
+    "test_compose_bootstrap",
+    "test_verify_rehearsal_result"
+  ],
+  "log": "server/build/loading-validation/combined-final-legacy-python-tests.log",
+  "reason": "Final SQL1061 body changed; candidate inventory and checksum closure need this final-source run."
+}

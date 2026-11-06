@@ -1,0 +1,166 @@
+{
+  "label": "capacity",
+  "createdAtUtc": "2026-11-05T11:00:10.161244+00:00",
+  "log": "build/loading-validation/combined-capacity.log",
+  "selected": [
+    "DirectMakeDeliveryClosedCreditPostgresTest",
+    "InteractiveTaskReadScopePostgresTest"
+  ],
+  "missingClasses": [],
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceMissing": [],
+  "legacyInputs": [],
+  "legacyInputDrift": [],
+  "counts": {
+    "passed": 20,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0,
+    "flakyFailure": 0,
+    "flakyError": 0
+  },
+  "uniqueCases": 20,
+  "suites": [
+    {
+      "name": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "tests": "17",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "84.854"
+    },
+    {
+      "name": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "11.701"
+    }
+  ],
+  "cases": [
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[1]",
+      "status": "passed",
+      "seconds": "2.832"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[2]",
+      "status": "passed",
+      "seconds": "2.028"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[3]",
+      "status": "passed",
+      "seconds": "1.639"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[4]",
+      "status": "passed",
+      "seconds": "5.121"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[5]",
+      "status": "passed",
+      "seconds": "10.388"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[6]",
+      "status": "passed",
+      "seconds": "3.431"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[7]",
+      "status": "passed",
+      "seconds": "4.41"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[8]",
+      "status": "passed",
+      "seconds": "3.05"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[9]",
+      "status": "passed",
+      "seconds": "2.49"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[10]",
+      "status": "passed",
+      "seconds": "2.028"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "nonClosedOrForeignCandidatesNeverCredit(String)[11]",
+      "status": "passed",
+      "seconds": "2.056"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "unknownCurrentCapacityDoesNotBecomeANewRightFromHistoricalShipments",
+      "status": "passed",
+      "seconds": "1.834"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "restoredOriginalMakeKeepsItsExactProofAndOnlyTheUnrestoredHandoffCredits",
+      "status": "passed",
+      "seconds": "2.1"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "originalFourPlaceQuantitiesAreAddedWithoutRoundingOrAChangedSourceTotal",
+      "status": "passed",
+      "seconds": "1.596"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "exactClosedMakeAddsBackOnlyTheAlreadyAttributedPartOfThePrivateTotal",
+      "status": "passed",
+      "seconds": "1.633"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "fullyDeliveredAndAlreadyAttributedQuantityLeavesNoNewAdmission",
+      "status": "passed",
+      "seconds": "1.759"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "name": "frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice",
+      "status": "passed",
+      "seconds": "2.554"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "name": "actualJdbcCancellationRollsBackLocalJitOnTheSameReusableConnection",
+      "status": "passed",
+      "seconds": "0.299"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "name": "applicationFailureAndDatabaseAbortDoNotPolluteTheNextWriteOrRead",
+      "status": "passed",
+      "seconds": "0.047"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "name": "nestedReadsRestoreOriginalOnAndOffWithoutChangingConnectionOrIsolation",
+      "status": "passed",
+      "seconds": "0.083"
+    }
+  ],
+  "note": "Each receipt is independent. Never sum repeated cases across receipts; final unique ledger uses the final whole selection only."
+}

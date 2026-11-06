@@ -16,13 +16,20 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/business_submission_headers.dart';
 import '../../../core/performance/responsive_data_codec.dart';
+import '../../../core/performance/json_value_snapshot.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_column.dart';
@@ -136,14 +143,17 @@ class FinanceStatementDocumentDialog extends ConsumerStatefulWidget {
       _DirectoryState();
 }
 
-class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
+class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog>
+    with ReadViewActivityMixin<FinanceStatementDocumentDialog> {
   late final ApiClient _api;
   late final int _epoch;
   String _kind = 'REVIEWS';
   bool _busy = false, _changed = false;
   String? _error;
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _pages = 0;
+  int _generation = 0;
+  @override
+  Future<void> onReadViewResumed() => _load();
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -158,7 +168,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _load(1);
+      await _load();
       if (_current && widget.resumeDraftId != null) {
         await _command(
           widget.draftMode ?? 'SUBMIT',
@@ -170,48 +180,59 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
     });
   }
 
-  Future<void> _load(int page) async {
-    if (!_current || _busy) {
+  Future<void> _load() async {
+    if (!_current) {
       return;
     }
+    final generation = ++_generation, kind = _kind;
+    bool current() => _current && generation == _generation && kind == _kind;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final data = _kind == 'REVIEWS'
-          ? await _api.post(
-              '$_base/reviews/query',
-              body: widget.scope,
-              query: {'page': page, 'size': 50},
-            )
-          : await _api.get(
-              '$_base/profiles',
-              query: {
-                'kind': _kind,
-                'templateKey': _kind == 'CONTEXT'
-                    ? widget.scope['templateKey']
-                    : 'ALL',
-                if (_kind != 'OWN') 'partyRole': widget.scope['partyRole'],
-                if (_kind != 'OWN') 'partyId': widget.scope['partyId'],
-                'currencyId': widget.scope['currencyId'],
-                'page': page,
-                'size': 50,
-              },
-            );
-      if (_current) {
+      final data = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) => row['id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                kind == 'REVIEWS'
+                    ? await _api.post(
+                        '$_base/reviews/query',
+                        body: widget.scope,
+                        query: {'page': page, 'size': size},
+                      )
+                    : await _api.get(
+                        '$_base/profiles',
+                        query: {
+                          'kind': kind,
+                          'templateKey': kind == 'CONTEXT'
+                              ? widget.scope['templateKey']
+                              : 'ALL',
+                          if (kind != 'OWN')
+                            'partyRole': widget.scope['partyRole'],
+                          if (kind != 'OWN') 'partyId': widget.scope['partyId'],
+                          'currencyId': widget.scope['currencyId'],
+                          'page': page,
+                          'size': size,
+                        },
+                      ),
+                (row) => Map<String, dynamic>.unmodifiable(row),
+              ),
+        ),
+      );
+      if (current()) setState(() => _rows = data.items);
+    } catch (e) {
+      if (!isRetiredViewRead(e) && current()) {
         setState(() {
-          _rows = _maps(data['items']);
-          _page = page;
-          _pages = (data['totalPages'] as num?)?.toInt() ?? 0;
+          _error = _errorText(e);
+          if (pagedReadAccessDenied(e)) _rows = [];
         });
       }
-    } catch (e) {
-      if (_current) {
-        setState(() => _error = _errorText(e));
-      }
     } finally {
-      if (_current) {
+      if (current()) {
         setState(() => _busy = false);
       }
     }
@@ -241,12 +262,14 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
       if (changed == true) {
         _changed = true;
       }
-      await _load(_page);
+      await _load();
     }
   }
 
   Future<void> _open(Map<String, dynamic> row) async {
-    if (!_current || _busy) {
+    if (!_current ||
+        _busy ||
+        !_rows.any((accepted) => identical(accepted, row))) {
       return;
     }
     final id = row['id'].toString();
@@ -265,7 +288,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
       ),
     );
     if (_current) {
-      await _load(_page);
+      await _load();
     }
   }
 
@@ -305,7 +328,7 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
                     _kind = v;
                     _rows = [];
                   });
-                  _load(1);
+                  _load();
                 }
               },
             ),
@@ -338,16 +361,13 @@ class _DirectoryState extends ConsumerState<FinanceStatementDocumentDialog> {
                 idOf: (r) => r['id'].toString(),
                 busy: _busy,
                 error: _current ? _error : '身份或权限已变化，请重新打开',
-                retry: () => _load(_page),
-                page: _page,
-                pages: _pages,
-                onPage: _load,
+                retry: () => _load(),
                 onOpen: _open,
                 scope: widget.scope,
                 actions: [
                   UtenButton(
                     type: UtenButtonType.secondary,
-                    onPressed: _busy ? null : () => _load(_page),
+                    onPressed: _busy ? null : () => _load(),
                     child: const Text('刷新'),
                   ),
                   if (_kind == 'REVIEWS')
@@ -413,14 +433,26 @@ class _Original extends ConsumerStatefulWidget {
   ConsumerState<_Original> createState() => _OriginalState();
 }
 
-class _OriginalState extends ConsumerState<_Original> {
+class _OriginalState extends ConsumerState<_Original>
+    with ReadViewActivityMixin<_Original> {
   late final ApiClient _api;
   late final int _epoch;
   Map<String, dynamic>? _source;
   ReportData? _data;
+  // Native table cells may retain a prior equal raw row during refresh.
+  // Weak identity metadata lives with that row without retaining old payloads.
+  final _rowKeys = Expando<String>('frozen-original-row-identity');
   bool _busy = false;
   String? _error;
-  int _page = 1;
+  int _generation = 0;
+  @override
+  Future<void> onReadViewResumed() => _load();
+  @override
+  void dispose() {
+    _generation++;
+    super.dispose();
+  }
+
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -451,40 +483,123 @@ class _OriginalState extends ConsumerState<_Original> {
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
-  Future<void> _load(int page) async {
-    if (!_current || _busy) {
+  Future<void> _load() async {
+    if (!_current) {
       return;
     }
+    final generation = ++_generation;
+    bool current() => _current && generation == _generation;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final results = await Future.wait([
-        _api.get('$_base/reviews/${widget.id}'),
-        _api.get(_endpoint, query: {'page': page, 'size': 50}),
-      ]);
-      final parsed = await parseReportResponseResponsive(
-        results[1],
-        page,
-        isCurrent: () => _current,
-      );
-      if (_current) {
+      final values = await readViewActivity.runRead(current, () async {
+        final source = await _api.get('$_base/reviews/${widget.id}/summary');
+        ReportData? firstReport;
+        Object? frozenMetadata;
+        var hasMetadata = false;
+        final result = await loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          // Frozen opening/subtotal/original lines need not have business IDs.
+          // Omitting idOf deliberately preserves every duplicate occurrence.
+          loadPage: (page, size) async {
+            final raw = await _api.get(
+              _endpoint,
+              query: {'page': page, 'size': size},
+            );
+            final metadata = _map(raw['documentMetadata']);
+            if ((metadata['reviewId'] != null &&
+                    metadata['reviewId'].toString() != widget.id) ||
+                (metadata['documentSha256'] != null &&
+                    source['document_sha256'] != null &&
+                    metadata['documentSha256'] != source['document_sha256'])) {
+              throw ApiException('SNAPSHOT_CHANGED', '原件身份已变化，请重新打开核对');
+            }
+            // The endpoint returns ALL metadata and a new generation timestamp
+            // for every bounded read. That instant is not the frozen document
+            // version. Every other metadata fact (including confirmation,
+            // paper layout, totals, columns, currency and source) must agree.
+            final stable = <String, dynamic>{
+              for (final entry in raw.entries)
+                if (!const {
+                  'rows',
+                  'page',
+                  'statisticsGeneratedAt',
+                }.contains(entry.key))
+                  entry.key: entry.value,
+            };
+            if (hasMetadata) {
+              if (!await jsonValuesEqualResponsive(
+                frozenMetadata,
+                stable,
+                isCurrent: current,
+              )) {
+                throw ApiException('SNAPSHOT_CHANGED', '原件版本或确认状态在读取期间已变化，请重试');
+              }
+            } else {
+              frozenMetadata = await snapshotJsonValueResponsive(
+                stable,
+                isCurrent: current,
+              );
+              hasMetadata = true;
+            }
+            final parsed = await parseReportResponseResponsive(
+              raw,
+              page,
+              isCurrent: current,
+            );
+            firstReport ??= parsed;
+            return PagedResult<Map<String, dynamic>>(
+              items: parsed.rows,
+              page: parsed.page,
+              size: size,
+              total: parsed.total,
+              totalPages: parsed.totalPages,
+              totals: parsed.totals,
+              facets: parsed.facets,
+              readScopeVersion: parsed.readScopeVersion,
+            );
+          },
+        );
+        if (!current() || firstReport == null) throw const UiWorkCancelled();
+        final report = firstReport!.withPage(result);
+        // Frozen original rows may be subtotal lines without business IDs.
+        // Their immutable document identity plus ordinal keeps duplicate
+        // display values distinct without modifying any original row fields.
+        final keys = Map<Map<String, dynamic>, String>.identity();
+        final budget = UiWorkBudget(isCurrent: current);
+        for (var index = 0; index < report.rows.length; index++) {
+          keys[report.rows[index]] =
+              '${widget.id}/${source['document_sha256']}/$index';
+          await budget.checkpoint();
+        }
+        return (source, report, keys);
+      });
+      if (current()) {
         setState(() {
-          _source = results[0];
-          _data = parsed;
-          _page = page;
+          _source = values.$1;
+          _data = values.$2;
+          for (final entry in values.$3.entries) {
+            _rowKeys[entry.key] = entry.value;
+          }
         });
       }
     } catch (e) {
-      if (_current) {
-        setState(() => _error = _errorText(e));
+      if (!isRetiredViewRead(e) && current()) {
+        setState(() {
+          _error = _errorText(e);
+          if (pagedReadAccessDenied(e)) {
+            _source = null;
+            _data = null;
+          }
+        });
       }
     } finally {
-      if (_current) {
+      if (current()) {
         setState(() => _busy = false);
       }
     }
@@ -493,7 +608,7 @@ class _OriginalState extends ConsumerState<_Original> {
   Future<void> _command(String mode) async {
     await widget.onCommand(mode);
     if (_current) {
-      await _load(_page);
+      await _load();
     }
   }
 
@@ -571,14 +686,11 @@ class _OriginalState extends ConsumerState<_Original> {
                       ),
                 ],
                 rows: _current ? data?.rows ?? [] : [],
-                idOf: (r) => '${r.hashCode}',
+                idOf: (r) => _rowKeys[r]!,
                 showColumnChooser: false,
                 busy: _busy,
                 error: _error,
-                retry: () => _load(_page),
-                page: _page,
-                pages: data?.totalPages ?? 0,
-                onPage: _load,
+                retry: () => _load(),
                 actions: [
                   UtenPrintPreviewButton(
                     title:
@@ -635,7 +747,7 @@ class _OriginalState extends ConsumerState<_Original> {
                                     )['rootSourceFingerprint']?.toString() ??
                                     _source!['source_fingerprint'].toString(),
                               );
-                              if (_current) await _load(_page);
+                              if (_current) await _load();
                             },
                       child: const Text('手续费/尾数处理'),
                     ),
@@ -726,6 +838,29 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
   late final int _readEpoch;
   final Map<String, TextEditingController> _text = {};
   Map<String, dynamic>? _source, _sent;
+  Object? _previewRowsSource;
+  List<Map<String, dynamic>> _previewRows = const [];
+
+  Future<void> _prepareSourcePreviewRows() async {
+    final raw = _source?['rows'];
+    if (identical(raw, _previewRowsSource)) return;
+    final rows = <Map<String, dynamic>>[];
+    final work = UiWorkBudget(isCurrent: () => _current);
+    if (raw is List) {
+      for (final row in raw) {
+        if (row is Map<String, dynamic>) {
+          rows.add(row);
+        } else if (row is Map) {
+          rows.add(Map<String, dynamic>.from(row));
+        }
+        await work.checkpoint();
+      }
+    }
+    work.ensureCurrent();
+    _previewRowsSource = raw;
+    _previewRows = rows;
+  }
+
   Map<String, dynamic> _submissionHeaders = const {};
   Map<String, dynamic>? _settlementPreview, _settlementPreviewInput;
   bool _noDeductions = false;
@@ -960,6 +1095,10 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
       }
       if (!scope.isCurrent || !_current) {
         return;
+      }
+      if (widget.mode == 'PREVIEW' || widget.mode == 'SUBMIT') {
+        await _prepareSourcePreviewRows();
+        if (!scope.isCurrent || !_current) return;
       }
       setState(() => _loading = false);
       if (!_view) {
@@ -1581,12 +1720,7 @@ class _EditorState extends ConsumerState<FinanceStatementDocumentEditor>
                                 value: (row) => formatReportCell(column, row),
                               );
                             }).toList(),
-                            rows: [
-                              if (_source?['rows'] case final List<Object?> raw)
-                                for (final row in raw.take(100))
-                                  if (row is Map)
-                                    Map<String, dynamic>.from(row),
-                            ],
+                            rows: _previewRows,
                             idOf: (r) => '${r.hashCode}',
                             showColumnChooser: false,
                           ),

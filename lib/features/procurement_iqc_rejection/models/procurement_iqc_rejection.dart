@@ -61,7 +61,7 @@ class ProcurementIqcRejectionFilter {
     this.status,
     this.keyword = '',
     this.page = 1,
-    this.size = 50,
+    this.size = 100,
     this.columnSearch = const {},
     this.sort,
     this.ascending = true,

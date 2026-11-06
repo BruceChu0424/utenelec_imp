@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/api_exception.dart';
 import 'master_lookup_queue.dart';
 import 'master_dictionary_repository.dart';
@@ -19,9 +20,16 @@ enum MasterPartyKind {
 /// This scope stays local to party references. The general master-data key is
 /// also used by HR/payroll and must not inherit a new scoped dependency chain.
 final masterPartyLookupProvider = Provider<MasterPartyLookup>((ref) {
-  ref.watch(exportContextEpochProvider);
+  final epoch = ref.watch(exportContextEpochProvider);
   final dictionaries = ref.watch(masterDictionaryRepositoryProvider);
-  final lookup = MasterPartyLookup(ref.watch(apiClientProvider));
+  final api = ref.watch(apiClientProvider);
+  final lookup = MasterPartyLookup(
+    api,
+    isCurrent: () =>
+        ref.mounted &&
+        ref.read(exportContextEpochProvider) == epoch &&
+        identical(ref.read(apiClientProvider), api),
+  );
   final invalidations = dictionaries.invalidations.listen((key) {
     if (key == '/master/clients/dict') {
       lookup.invalidate(MasterPartyKind.client);
@@ -41,8 +49,18 @@ final masterPartyLookupProvider = Provider<MasterPartyLookup>((ref) {
 /// Calls made in the same UI turn coalesce before the existing bounded queue
 /// starts, so per-row display misses never become per-row HTTP requests.
 class MasterPartyLookup {
-  MasterPartyLookup(this.api);
+  MasterPartyLookup(this.api, {this.isCurrent});
   final ApiClient api;
+  final bool Function()? isCurrent;
+  bool get _scopeCurrent {
+    if (_disposed) return false;
+    try {
+      return isCurrent?.call() ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static const maxCachedRows = 4096;
   static const _maxConcurrentPerKind = 2;
   // Ownership retirement ends logical waits, not an HTTP transport. Keep the
@@ -77,10 +95,13 @@ class MasterPartyLookup {
   }
 
   bool resolved(MasterPartyKind kind, String id) =>
-      _denied.contains(kind) || _rows(kind).containsKey(id);
+      _scopeCurrent && (_denied.contains(kind) || _rows(kind).containsKey(id));
   Map<String, dynamic>? reference(MasterPartyKind kind, String? id) =>
-      id == null || _denied.contains(kind) ? null : _rows(kind)[id];
-  Iterable<String> ids(MasterPartyKind kind) => _denied.contains(kind)
+      !_scopeCurrent || id == null || _denied.contains(kind)
+      ? null
+      : _rows(kind)[id];
+  Iterable<String> ids(MasterPartyKind kind) =>
+      !_scopeCurrent || _denied.contains(kind)
       ? const <String>[]
       : _rows(kind).entries
             .where((entry) => entry.value != null)
@@ -102,7 +123,7 @@ class MasterPartyLookup {
     Iterable<String> requested, {
     bool refresh = false,
   }) async {
-    if (_disposed) throw StateError('名称读取作用域已结束');
+    if (!_scopeCurrent) throw StateError('名称读取作用域已结束');
     final ids = requested.where((id) => id.isNotEmpty).toSet();
     if (ids.isEmpty) return;
     final pending = _pending.putIfAbsent(kind, () => {});
@@ -140,7 +161,7 @@ class MasterPartyLookup {
     }
     try {
       await Future.wait(waits);
-      if (_disposed) throw StateError('名称读取作用域已结束');
+      if (!_scopeCurrent) throw StateError('名称读取作用域已结束');
     } finally {
       for (final id in ids) {
         final count = (pins[id] ?? 1) - 1;
@@ -214,21 +235,25 @@ class MasterPartyLookup {
         if (_readsByKey[key] case final _PartyRead read) read,
     ];
     try {
-      if (_disposed || generation != (_generation[kind] ?? 0)) {
+      if (!_scopeCurrent || generation != (_generation[kind] ?? 0)) {
         throw StateError('名称读取作用域已变化');
       }
       for (final read in reads) {
         read.started = true;
       }
       final requested = reads.map((read) => read.id).toSet();
-      final rows = await api.getList(
-        '${kind.endpoint}/lookup',
-        query: {
-          'ids': requested.join(','),
-          if (kind == MasterPartyKind.client) 'excludeLegacyFinanceStub': true,
-        },
+      final rows = await AuthenticatedRequestScope.sharedRead(
+        () => _scopeCurrent && generation == (_generation[kind] ?? 0),
+        () => api.getList(
+          '${kind.endpoint}/lookup',
+          query: {
+            'ids': requested.join(','),
+            if (kind == MasterPartyKind.client)
+              'excludeLegacyFinanceStub': true,
+          },
+        ),
       );
-      if (_disposed || generation != (_generation[kind] ?? 0)) {
+      if (!_scopeCurrent || generation != (_generation[kind] ?? 0)) {
         throw StateError('名称读取作用域已变化');
       }
       final found = <String, Map<String, dynamic>>{};

@@ -1,0 +1,20 @@
+{
+  "name": "build-x64",
+  "startedAtUtc": "2026-11-05T21:38:45.379696+00:00",
+  "command": [
+    "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+    "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+    "/nologo",
+    "/m:1",
+    "/verbosity:minimal",
+    "/t:Build",
+    "/warnaserror",
+    "/p:Configuration=Debug",
+    "/p:Platform=x64",
+    "/p:UtenBuildScope=loading3068-final",
+    "/p:OutDir=D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\"
+  ],
+  "exitCode": 0,
+  "endedAtUtc": "2026-11-05T21:39:02.017609+00:00",
+  "logSha256": "0fd25323cf556a9f8cba795925ef392946fc7313349b2f9f1a860cc03007cbec"
+}

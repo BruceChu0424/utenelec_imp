@@ -1,0 +1,43 @@
+{
+  "commits" : 1,
+  "maxPreparedParameterIndex" : 5,
+  "sqlMaxNanos" : {
+    "84cb8694508e9513" : 6436900,
+    "ae79c01b5c08d3b6" : 3196600
+  },
+  "sqlNanos" : {
+    "84cb8694508e9513" : 6436900,
+    "ae79c01b5c08d3b6" : 3196600
+  },
+  "jdbcCalls" : 2,
+  "sqlFingerprints" : {
+    "84cb8694508e9513" : 1,
+    "ae79c01b5c08d3b6" : 1
+  },
+  "logicalStatements" : 2,
+  "rollbacks" : 0,
+  "sqlLabels" : {
+    "84cb8694508e9513" : "read.other",
+    "ae79c01b5c08d3b6" : "read.other"
+  },
+  "jdbcMillis" : 9.6335,
+  "prepareMillis" : 0.083999,
+  "commitMillis" : 1.6001,
+  "rollbackMillis" : 0.0,
+  "instrumentationMillis" : 2.781699,
+  "sqlAffectedRows" : { },
+  "sqlZeroDmlCalls" : { },
+  "md5Statements" : 0,
+  "setConfigStatements" : 0,
+  "statementOrigins" : [ {
+    "fingerprint" : "84cb8694508e9513",
+    "locations" : [ "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#lambda$queryDraftClaims$1:265", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#queryDraftClaims:264", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#queryDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#taskSelectionPrecedesHeaderCountAndReadsOnlyLightColumnsWithNoUnrelatedDrafts:82" ],
+    "tables" : [ "public.production_daily_reports", "public.production_daily_report_items" ],
+    "logicalStatements" : 1
+  }, {
+    "fingerprint" : "ae79c01b5c08d3b6",
+    "locations" : [ "com.uten.imp.common.util.NativeQueryResults#objectArrayRows:21", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#readDraftClaimEvidence:285", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#queryDraftClaims:266", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#queryDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#taskSelectionPrecedesHeaderCountAndReadsOnlyLightColumnsWithNoUnrelatedDrafts:82" ],
+    "tables" : [ "production_daily_report_items", "production_daily_reports" ],
+    "logicalStatements" : 1
+  } ]
+}

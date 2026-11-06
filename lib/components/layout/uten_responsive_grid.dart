@@ -17,6 +17,49 @@
 import 'package:flutter/material.dart';
 import '../../core/responsive/compact_presentation.dart';
 
+int utenResponsiveGridColumnsFor(
+  BuildContext context,
+  double width, {
+  UtenResponsiveColumns? columns,
+  int minColumns = 1,
+  int maxColumns = 6,
+  double spacing = 16,
+  double? minItemWidth = 220,
+  double? compactMinItemWidth,
+}) {
+  final configured = columns == null
+      ? (width < 500
+            ? 1
+            : width < 800
+            ? 2
+            : width < 1100
+            ? 3
+            : width < 1500
+            ? 4
+            : width < 1900
+            ? 5
+            : 6)
+      : (width < 600
+            ? columns.compact
+            : width < 840
+            ? columns.medium
+            : columns.expanded);
+  var count = configured.clamp(minColumns, maxColumns);
+  final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+  final itemMinimum = UtenCompactPresentation.of(context)
+      ? compactMinItemWidth ?? minItemWidth
+      : minItemWidth;
+  if (itemMinimum != null) {
+    final fitting =
+        ((width + spacing) /
+                (itemMinimum * (textScale < 1 ? 1 : textScale) + spacing))
+            .floor()
+            .clamp(1, maxColumns);
+    count = count.clamp(1, fitting);
+  }
+  return count;
+}
+
 /// Uten 自适应瀑布流网格
 ///
 /// 用法：
@@ -91,20 +134,16 @@ class UtenResponsiveGrid extends StatelessWidget {
                     (padding?.resolve(Directionality.of(context)).horizontal ??
                         0))
                 .clamp(0.0, double.infinity);
-        var cols = _resolveColumns(width).clamp(minColumns, maxColumns);
-        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-        final itemMinimum = UtenCompactPresentation.of(context)
-            ? compactMinItemWidth ?? minItemWidth
-            : minItemWidth;
-        final minimum = itemMinimum == null
-            ? null
-            : itemMinimum * (textScale < 1 ? 1 : textScale);
-        if (minimum != null) {
-          final fittingColumns = ((width + spacing) / (minimum + spacing))
-              .floor()
-              .clamp(1, maxColumns);
-          cols = cols.clamp(1, fittingColumns);
-        }
+        final cols = utenResponsiveGridColumnsFor(
+          context,
+          width,
+          columns: columns,
+          minColumns: minColumns,
+          maxColumns: maxColumns,
+          spacing: spacing,
+          minItemWidth: minItemWidth,
+          compactMinItemWidth: compactMinItemWidth,
+        );
         final itemWidth = (width - spacing * (cols - 1)) / cols;
 
         // 单列直接堆叠，无需 Row 分栏
@@ -159,25 +198,6 @@ class UtenResponsiveGrid extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// 基于父容器实际宽度算列数（不依赖屏幕宽度/断点）
-  int _resolveColumns(double width) {
-    // 用户强制配置优先
-    if (columns != null) {
-      // 按宽度映射到 compact/medium/expanded
-      if (width < 600) return columns!.compact;
-      if (width < 840) return columns!.medium;
-      return columns!.expanded;
-    }
-
-    // 默认规则：纯粹按容器宽度
-    if (width < 500) return 1;
-    if (width < 800) return 2;
-    if (width < 1100) return 3;
-    if (width < 1500) return 4;
-    if (width < 1900) return 5;
-    return 6;
   }
 }
 

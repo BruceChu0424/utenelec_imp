@@ -1,0 +1,27 @@
+{
+  "label": "capacity",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-capacity-selection.txt",
+  "selected": "DirectMakeDeliveryClosedCreditPostgresTest,InteractiveTaskReadScopePostgresTest",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=DirectMakeDeliveryClosedCreditPostgresTest,InteractiveTaskReadScopePostgresTest",
+    "surefire:test"
+  ],
+  "environment": {
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-capacity-empty-benchmark.json",
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_RUN_DB_TESTS": "true"
+  },
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "startedAtUtc": "2026-11-05T10:56:14.6780362Z",
+  "wrapperPid": 43396,
+  "log": "build/loading-validation/combined-capacity.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T10:58:24.0623892Z",
+  "actualExitCode": 0
+}

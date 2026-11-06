@@ -26,6 +26,7 @@ import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../expense/pages/expense_list_page.dart';
@@ -45,29 +46,58 @@ typedef BusinessApplicationQuery = ({
   String? status,
   String? stage,
   String? departmentCode,
-  int page,
   Object scope,
 });
-final businessApplicationListProvider = FutureProvider.autoDispose
-    .family<PagedResult<BusinessApplication>, BusinessApplicationQuery>(
+final businessApplicationReadProvider = Provider.autoDispose
+    .family<
+      ScopedPagedReadProviderLease<BusinessApplication>,
+      BusinessApplicationQuery
+    >(
       (ref, query) {
         ref.watch(masterDataSessionKeyProvider);
-        ref.watch(exportContextEpochProvider);
-        return ref
-            .watch(businessApplicationRepositoryProvider)
-            .list(
-              queue: query.queue,
-              kind: query.kind,
-              status: query.status,
-              approvalStage: query.stage,
-              departmentCode: query.departmentCode,
-              page: query.page,
-            );
+        ref.watch(businessApplicationRepositoryProvider);
+        return ScopedPagedReadProviderLease<BusinessApplication>(
+          ref,
+          query: query,
+        );
       },
       dependencies: [
         masterDataSessionKeyProvider,
         exportContextEpochProvider,
         businessApplicationRepositoryProvider,
+      ],
+    );
+final businessApplicationListProvider = FutureProvider.autoDispose
+    .family<PagedResult<BusinessApplication>, BusinessApplicationQuery>(
+      (ref, query) {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(exportContextEpochProvider);
+        final repository = ref.watch(businessApplicationRepositoryProvider);
+        Future<PagedResult<BusinessApplication>> fetch(int page, int size) =>
+            repository.list(
+              queue: query.queue,
+              kind: query.kind,
+              status: query.status,
+              approvalStage: query.stage,
+              departmentCode: query.departmentCode,
+              page: page,
+              size: size,
+            );
+        return ref
+            .watch(businessApplicationReadProvider(query))
+            .read(
+              1,
+              fetchPage: (page) => fetch(page, 100),
+              fetchPageSized: fetch,
+              idOf: (row) => row.id,
+            );
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        masterDataSessionKeyProvider,
+        exportContextEpochProvider,
+        businessApplicationRepositoryProvider,
+        businessApplicationReadProvider,
       ],
     );
 
@@ -158,7 +188,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       _refreshing = false,
       _posting = false,
       _queueChosen = false;
-  int _page = 1;
   int _refreshGeneration = 0;
   final _retainedPage = RetainedAsyncPage<PagedResult<BusinessApplication>>();
   @override
@@ -187,7 +216,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       _posting = widget.initialQueue == 'prepayment-posting';
       if (_posting) _kind = 'PREPAYMENT';
       _queueChosen = widget.initialHistory || widget.initialQueue != null;
-      _page = 1;
     }
     // 宿主(审批中心)右上角刷新：递增 tick 触发本页重拉，请求登记到
     // 宿主 UtenRefreshScope，让按钮等待真实请求收尾。延迟到帧后执行，
@@ -229,13 +257,16 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
     status: widget.approval ? null : _status,
     stage: widget.stage,
     departmentCode: widget.departmentCode,
-    page: _page,
     scope: (
       ref.read(masterDataSessionKeyProvider),
       ref.read(exportContextEpochProvider),
     ),
   );
   Future<void> _refresh() async {
+    if (!widget.approval && _kind == kExpenseSegmentKind) {
+      await _refreshExpense();
+      return;
+    }
     if (_refreshing) return;
     final query = _query;
     final generation = ++_refreshGeneration;
@@ -265,7 +296,7 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
 
   /// 报销分类的刷新：与报销列表页「返回即刷新」同一组动作。
   Future<void> _refreshExpense() async {
-    ref.read(expenseListProvider.notifier).refresh();
+    await ref.read(expenseListProvider.notifier).refresh();
     ref.invalidate(expenseMineFacetsProvider);
     await refreshBadges(ref);
   }
@@ -350,6 +381,11 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       _refresh,
     );
     final query = _query;
+    if (!viewingExpense) {
+      ref
+          .watch(businessApplicationReadProvider(query))
+          .bindView(context, currentQuery: () => _query);
+    }
     // 报销段挂的是另一条数据链：不订阅业务申请列表（避免无谓请求），
     // 切回申请分类时 scope 未变、缓存仍在，照常复用。
     final result = viewingExpense
@@ -515,7 +551,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
               _posting = value == 'prepayment-posting';
               if (_posting) _kind = 'PREPAYMENT';
               _queueChosen = true;
-              _page = 1;
             });
           },
           primary: true,
@@ -529,9 +564,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
               : null,
           onRetry: _refresh,
           onRowTap: _open,
-          currentPage: applications.value?.page ?? _page,
-          totalPages: applications.value?.totalPages ?? 1,
-          onPageChange: (value) => setState(() => _page = value),
           emptyMessage: widget.approval
               ? (_posting
                     ? '暂无待入账供应商预付'
@@ -585,7 +617,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
                 _kind = value == 'ALL' ? null : value;
                 // 入账队列只属于预付申请：切到其他类别即退出该队列。
                 if (_posting && value != 'PREPAYMENT') _posting = false;
-                _page = 1;
                 _queueChosen = true;
               }),
               autoSelectBadge: false,
@@ -640,7 +671,6 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
                   selected: {_status},
                   onSelectionChanged: (value) => setState(() {
                     _status = value;
-                    _page = 1;
                   }),
                   autoSelectBadge: false,
                 ),

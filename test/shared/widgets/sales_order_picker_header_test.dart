@@ -45,8 +45,8 @@ class _Api extends ApiClient {
       'items': rows,
       'page': query?['page'] ?? 1,
       'size': 20,
-      'total': keyword.isEmpty ? 40 : rows.length,
-      'totalPages': keyword.isEmpty ? 2 : 1,
+      'total': rows.length,
+      'totalPages': rows.isEmpty ? 0 : 1,
     };
   }
 }

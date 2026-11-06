@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
+import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/inputs/uten_date_field.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
@@ -29,6 +30,10 @@ import '../../../../shared/providers/master_name_provider.dart';
 import '../../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../../shared/widgets/warehouse_selection.dart';
 import '../models/workshop_material_models.dart';
+import 'workshop_material_summary_table.dart';
+import '../../../../shared/paging/versioned_summary_read.dart';
+import '../../../../shared/paging/read_view_activity.dart';
+import '../../../../shared/auth/read_owner_fence.dart';
 import '../models/workshop_source_warehouse_option.dart';
 import '../repositories/workshop_material_repository.dart';
 
@@ -117,10 +122,41 @@ class WmPendingChoiceRow extends EditableGridRow {
 }
 
 class _WorkshopBinOpeningPanelState
-    extends ConsumerState<WorkshopBinOpeningPanel> {
+    extends ConsumerState<WorkshopBinOpeningPanel>
+    with ReadViewActivityMixin<WorkshopBinOpeningPanel> {
   final _nonce = const Uuid().v4();
   final _grid = UtenEditableGridController<WmPendingChoiceRow>();
   bool _loading = true;
+  bool _opening = false;
+  VersionedSummarySnapshot<WmMaterialRef>? _catalog;
+  Object? _catalogSummary;
+  String? _editorCatalogVersion;
+  bool _hasSubmittedWorkset = false;
+  int _readGeneration = 0;
+  bool Function()? _acceptedOwner;
+  bool Function()? _editorOwner;
+  String? _editorDataVersion;
+  String? _editorScopeVersion;
+  VersionedSummarySnapshot<Map<String, dynamic>>? _pendingSummary;
+
+  bool get _worksetOwnerCurrent => _editorOwner?.call() != false;
+  bool get _worksetCurrent =>
+      _worksetOwnerCurrent &&
+      (_catalog == null ||
+          _editorCatalogVersion == null ||
+          _editorCatalogVersion ==
+              (_catalog!.dataVersion ?? _catalog!.revision)) &&
+      (_editorDataVersion == null ||
+          (_pendingSummary != null &&
+              _editorDataVersion ==
+                  (_pendingSummary!.dataVersion ?? _pendingSummary!.revision) &&
+              _editorScopeVersion == _pendingSummary!.readScopeVersion));
+  List<String> get _pendingWorkshopIds => [
+    for (final s in _periodicTargets) s.workshopDepartmentId,
+  ];
+
+  @override
+  Future<void> onReadViewResumed() => _load();
   String? _loadError;
   List<WmSourceWarehouse> _sources = const [];
   late String? _sourceId = _initialSource();
@@ -152,6 +188,18 @@ class _WorkshopBinOpeningPanelState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _readGeneration++;
+      setState(() {
+        _loading = false;
+        _opening = false;
+        _sources = const [];
+        _pendingSummary = null;
+        _pendingLoaded = false;
+        _acceptedOwner = null;
+        _loadError = '读取身份已变化，请重新读取';
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -162,78 +210,171 @@ class _WorkshopBinOpeningPanelState
   }
 
   Future<void> _load() async {
+    final owner = captureReadOwner(ref);
+    final request = ++_readGeneration;
+    bool current() => mounted && owner() && request == _readGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final sources = await _repo.sourceWarehouses();
-      // 在产认料只在要开启整批领料时才读 (只开通不需要)。
-      final pending = _choosesPeriodic && _periodic
-          ? await _pendingFor(_periodicTargets)
-          : null;
-      if (!mounted) return;
+      final result = await readViewActivity.runRead(current, () async {
+        final sources = await _repo.sourceWarehouses();
+        final pending =
+            _choosesPeriodic && _periodic && _periodicTargets.isNotEmpty
+            ? await _repo.inProgressPendingSummaries(
+                _pendingWorkshopIds,
+                isCurrent: current,
+              )
+            : null;
+        return (sources, pending);
+      });
+      if (!mounted || !current()) return;
       setState(() {
-        _sources = sources;
+        _acceptedOwner = owner;
+        _sources = result.$1;
         if (_sourceId != null &&
-            !sources.any((w) => w.id == _sourceId && w.selectable)) {
+            !_sources.any((w) => w.id == _sourceId && w.selectable)) {
           _sourceId = null;
         }
-        if (pending != null) _usePending(pending);
-        _loading = false;
+        _pendingSummary = result.$2;
+        _catalog = null;
+        _catalogSummary = null;
+        _pendingLoaded = _periodic || _periodicTargets.isEmpty;
       });
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _loadError = e.message;
-        });
+    } catch (error) {
+      if (mounted && current() && !isRetiredViewRead(error)) {
+        setState(
+          () => _loadError = error is ApiException
+              ? error.message
+              : AppLocalizations.of(context).wmBinLoadFailed,
+        );
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _loadError = AppLocalizations.of(context).wmBinLoadFailed;
-        });
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _loading = false);
       }
     }
   }
 
   bool _pendingLoaded = false;
 
-  Future<List<WmPendingProductChoice>> _pendingFor(List<WmSetting> targets) =>
-      targets.isEmpty
-      ? Future.value(const <WmPendingProductChoice>[])
-      : _repo.inProgressPending([
-          for (final s in targets) s.workshopDepartmentId,
-        ]);
-
-  void _usePending(List<WmPendingProductChoice> pending) {
-    _grid.replaceAll([for (final p in pending) WmPendingChoiceRow(p)]);
-    _pendingLoaded = true;
-  }
-
-  /// 开通时才打开「同时开启整批领料」: 这时再读在产认料。
   Future<void> _setPeriodic(bool value) async {
+    _readGeneration++;
     setState(() {
       _periodic = value;
       _error = null;
+      _loading = false;
+      _opening = false;
     });
     if (!value || _pendingLoaded) return;
-    setState(() => _loading = true);
+    await _load();
+  }
+
+  Future<void> _closeWorkset() async {
+    if (_saving || _opening || _hasSubmittedWorkset) return;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '重新选择编辑产品',
+      content: const Text('确定清除当前认料输入并重新选择产品？'),
+      confirmLabel: '清除并重新选择',
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() {
+      _grid.replaceAll(const []);
+      _editorOwner = null;
+      _editorDataVersion = null;
+      _editorScopeVersion = null;
+      _editorCatalogVersion = null;
+    });
+  }
+
+  Future<void> _openPendingProduct(Map<String, dynamic> row) async {
+    final summary = _pendingSummary;
+    if (summary == null ||
+        _opening ||
+        _saving ||
+        !_periodic ||
+        !_worksetCurrent) {
+      return;
+    }
+    if (_grid.length >= 500) {
+      context.appWarning('一次最多认料500个产品；请先在上线准备保存产品认料，再返回开启整批领料');
+      return;
+    }
+    final productId = row['productGoodsId'] as String;
+    if (_grid.rows.any((r) => r.product.productGoodsId == productId)) return;
+    final owner = captureReadOwner(ref);
+    final request = _readGeneration;
+    final ids = List<String>.unmodifiable(_pendingWorkshopIds);
+    bool current() =>
+        mounted &&
+        owner() &&
+        request == _readGeneration &&
+        identical(_pendingSummary, summary) &&
+        _periodic;
+    setState(() => _opening = true);
     try {
-      final pending = await _pendingFor(_periodicTargets);
-      if (!mounted) return;
+      final result = await readViewActivity.runRead(current, () async {
+        final product = await _repo.inProgressPendingProduct(
+          ids,
+          productId,
+          summary: summary,
+          isCurrent: current,
+        );
+        final options = identical(_catalogSummary, summary) && _catalog != null
+            ? _catalog!
+            : await _repo.inProgressMaterialCatalog(ids, isCurrent: current);
+        return (product, options);
+      }, slot: 'product');
+      if (!mounted || !current()) return;
+      final catalogVersion = result.$2.dataVersion ?? result.$2.revision;
       setState(() {
-        _usePending(pending);
-        _loading = false;
+        _catalog = result.$2;
+        _catalogSummary = summary;
       });
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _loadError = e.message;
-        });
+      if (_editorCatalogVersion != null &&
+          _editorCatalogVersion != catalogVersion) {
+        context.appWarning('选料目录已变化，原输入保留，请重新核对编辑产品');
+        return;
+      }
+      _editorCatalogVersion ??= catalogVersion;
+      final original = result.$1;
+      WmMaterialRef named(WmMaterialRef ref) {
+        for (final option in result.$2.items) {
+          if (option.key == ref.key) return option;
+        }
+        return ref;
+      }
+
+      final product = WmPendingProductChoice(
+        productGoodsId: original.productGoodsId,
+        productCode: original.productCode,
+        productName: original.productName,
+        productColorName: original.productColorName,
+        taskCount: original.taskCount,
+        prefillMaterials: original.prefillMaterials
+            .map(named)
+            .toList(growable: false),
+        prefillSource: original.prefillSource,
+        materialOptions: result.$2.items,
+        unitWeightGrams: original.unitWeightGrams,
+        canAlsoOrderMaterials: original.canAlsoOrderMaterials,
+        workshopNames: original.workshopNames,
+      );
+      _editorOwner ??= owner;
+      _editorDataVersion ??= summary.dataVersion ?? summary.revision;
+      _editorScopeVersion ??= summary.readScopeVersion;
+      setState(() => _grid.addRow(WmPendingChoiceRow(product)));
+    } catch (error) {
+      if (mounted && current() && !isRetiredViewRead(error)) {
+        context.appWarning(
+          error is ApiException ? error.message : '读取产品认料候选失败，请重试',
+        );
+      }
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _opening = false);
       }
     }
   }
@@ -270,7 +411,12 @@ class _WorkshopBinOpeningPanelState
   }
 
   Future<void> _submit(AppLocalizations l10n) async {
-    if (_saving) return;
+    if (_saving ||
+        _opening ||
+        _acceptedOwner?.call() != true ||
+        !_worksetCurrent) {
+      return;
+    }
     final periodic = _choosesPeriodic && _periodic;
     final clearSource = widget.mode == WmBinPanelMode.source && _followOwning;
     if (widget.mode == WmBinPanelMode.source &&
@@ -281,7 +427,16 @@ class _WorkshopBinOpeningPanelState
     }
     final sourceId = clearSource ? null : _sourceId;
     final rows = periodic ? _grid.rows : const <WmPendingChoiceRow>[];
+    final opened = {for (final row in rows) row.product.productGoodsId};
     final missing = [
+      if (periodic)
+        for (final product
+            in _pendingSummary?.items ?? const <Map<String, dynamic>>[])
+          if (!opened.contains(product['productGoodsId']))
+            (product['productName'] ??
+                    product['productCode'] ??
+                    product['productGoodsId'])
+                .toString(),
       for (final row in rows)
         if (row.choice.value == null) row.product.productDisplay,
     ];
@@ -301,6 +456,7 @@ class _WorkshopBinOpeningPanelState
       _saving = true;
       _error = null;
     });
+    _hasSubmittedWorkset = true;
     try {
       final saved = await _repo.batchEnable(
         items: items,
@@ -421,7 +577,12 @@ class _WorkshopBinOpeningPanelState
                           UtenButton(
                             key: const Key('wm-bin-panel-submit'),
                             isLoading: _saving,
-                            onPressed: _saving || _loading
+                            onPressed:
+                                _saving ||
+                                    _loading ||
+                                    _opening ||
+                                    !_worksetCurrent ||
+                                    _acceptedOwner?.call() != true
                                 ? null
                                 : () => _submit(l10n),
                             child: Text(_submitLabel(l10n)),
@@ -433,6 +594,9 @@ class _WorkshopBinOpeningPanelState
               ),
             ),
           ),
+          if (_opening && !_saving) const UtenBusyOverlay(title: '正在读取产品认料'),
+          if (_loading && !_opening && !_saving)
+            const UtenBusyOverlay(title: '正在读取开通清单'),
           if (_saving)
             UtenBusyOverlay(
               title: l10n.wmBinSaving,
@@ -557,12 +721,46 @@ class _WorkshopBinOpeningPanelState
           ),
           const SizedBox(height: UtenSpacing.s16),
           Text(
-            _grid.isEmpty
+            (_pendingSummary?.items.isEmpty ?? true)
                 ? l10n.wmBinPendingNone
-                : l10n.wmBinPendingTitle(_grid.length),
+                : l10n.wmBinPendingTitle(_pendingSummary!.items.length),
             style: theme.textTheme.titleSmall,
           ),
-          if (!_grid.isEmpty) ...[
+          SizedBox(
+            height: 320,
+            child: WmProductSummaryTable(
+              key: const Key('wm-enable-complete-summary'),
+              tableKey: 'workshop.material.enable.complete-summary',
+              items: _pendingSummary?.items ?? const [],
+              openedIds: {
+                if (_worksetCurrent)
+                  for (final row in _grid.rows) row.product.productGoodsId,
+              },
+              onOpen: _openPendingProduct,
+              onRetry: _load,
+              pending: true,
+              enabled: !_opening && !_saving && _worksetCurrent,
+            ),
+          ),
+          if (!_grid.isEmpty)
+            Row(
+              children: [
+                const Text('已打开的认料明细'),
+                UtenFieldHintIcon(
+                  info: _worksetCurrent
+                      ? '认料输入保留；尚未打开的产品仍参与整批领料资格校验，一次最多500个产品。'
+                      : '读取身份或数据版本已变化，原输入保留，须重新核对后才能提交。',
+                ),
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  onPressed: !_saving && !_opening && !_hasSubmittedWorkset
+                      ? _closeWorkset
+                      : null,
+                  child: const Text('重新选择编辑产品'),
+                ),
+              ],
+            ),
+          if (!_grid.isEmpty && _worksetOwnerCurrent) ...[
             const SizedBox(height: UtenSpacing.s8),
             SizedBox(
               height: (_grid.length * 52.0 + 120).clamp(180.0, 460.0),
@@ -672,7 +870,7 @@ class _WorkshopBinOpeningPanelState
           dense: true,
           required: true,
           allowClear: false,
-          enabled: !_saving,
+          enabled: !_saving && _worksetCurrent,
           autofilled: row.prefilled,
           value: value,
           hintText: l10n.wmBinColMaterial,
@@ -716,7 +914,7 @@ class _WorkshopBinOpeningPanelState
               child: Checkbox(
                 key: Key('wm-enable-also-order-${row.product.productGoodsId}'),
                 value: value,
-                onChanged: _saving
+                onChanged: _saving || !_worksetCurrent
                     ? null
                     : (next) {
                         for (final target in _targets(row)) {

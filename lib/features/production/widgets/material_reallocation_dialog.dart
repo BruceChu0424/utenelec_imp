@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'dart:async';
 
@@ -11,7 +12,6 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
@@ -21,6 +21,7 @@ import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/search/keyword_search.dart';
@@ -170,18 +171,25 @@ class _MaterialReallocationDialogBody extends StatefulWidget {
 }
 
 class _MaterialReallocationDialogBodyState
-    extends State<_MaterialReallocationDialogBody> {
+    extends State<_MaterialReallocationDialogBody>
+    with ReadViewActivityMixin<_MaterialReallocationDialogBody> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (!_locked) await _loadCandidates(preserveSelection: true);
+  }
+
   final _formKey = GlobalKey<FormState>();
   final _searchController = TextEditingController();
   final _qtyController = TextEditingController();
   final _reasonController = TextEditingController();
   final _candidateScrollController = ScrollController();
-  final _candidateRead =
-      ScopedPagedRead<MaterialReallocationEndpointCandidate>();
+  late final _candidateRead =
+      ScopedPagedRead<MaterialReallocationEndpointCandidate>(
+        idOf: _candidateIdentity,
+      );
   ProviderSubscription<int>? _readOwnerSubscription;
   int? _readOwnerEpoch;
   int _readScopeRevision = 0;
-  Future<List<MaterialFutureTransferSource>>? _futureSourceSnapshot;
 
   late ProductionMaterialAnalysisView _sourceAnalysis;
   late ProductionMaterialAnalysisMaterial _sourceMaterial;
@@ -193,15 +201,8 @@ class _MaterialReallocationDialogBodyState
   final Set<String> _selectedIds = {};
   final Map<String, TextEditingController> _selectedQtyControllers = {};
 
-  int _page = 0;
-  int _totalPages = 0;
-  int _spotPage = 0;
-  int _spotTotalPages = 0;
-  int _futurePage = 0;
-  int _futureTotalPages = 0;
   int _loadEpoch = 0;
   bool _loading = true;
-  bool _loadingMore = false;
   bool _submitting = false;
   bool _uncertain = false;
   bool get _locked => _submitting || _uncertain;
@@ -211,7 +212,7 @@ class _MaterialReallocationDialogBodyState
   int _batchDone = 0;
   int _batchTotal = 0;
   String? _loadError;
-  String? _loadMoreError;
+  Object? _retryReadToken;
   String? _submitError;
 
   @override
@@ -231,14 +232,13 @@ class _MaterialReallocationDialogBodyState
         }
       });
     }
-    unawaited(_loadCandidates(reset: true));
+    unawaited(_loadCandidates());
   }
 
   @override
   void dispose() {
     _readOwnerSubscription?.close();
     _candidateRead.dispose();
-    _futureSourceSnapshot = null;
     _searchController.dispose();
     _qtyController.dispose();
     _reasonController.dispose();
@@ -300,12 +300,6 @@ class _MaterialReallocationDialogBodyState
     );
   }
 
-  bool get _hasMorePages => widget.futureTransfer
-      ? _futurePage < _futureTotalPages
-      : widget.receiveIntoCurrent
-      ? _spotPage < _spotTotalPages
-      : _page < _totalPages;
-
   bool _sameCandidate(
     MaterialReallocationEndpointCandidate left,
     MaterialReallocationEndpointCandidate right,
@@ -323,21 +317,12 @@ class _MaterialReallocationDialogBodyState
       candidate.fingerprint.isNotEmpty &&
       (_capacity(candidate) ?? BigInt.zero) > BigInt.zero;
 
-  Future<void> _loadCandidates({
-    required bool reset,
-    bool preserveSelection = false,
-  }) async {
-    if (_uncertain ||
-        (!reset && (_loading || _loadingMore || !_hasMorePages))) {
-      return;
-    }
+  Future<void> _loadCandidates({bool preserveSelection = false}) async {
+    if (_uncertain) return;
     final epoch = ++_loadEpoch;
     final keyword = _searchController.text;
-    if (reset) {
-      _readScopeRevision++;
-      _candidateRead.invalidate();
-      _futureSourceSnapshot = null;
-    }
+    _readScopeRevision++;
+    _candidateRead.invalidate();
     final readScope = _readScopeRevision;
     final query = _candidateQuery;
     final repository = widget.repository;
@@ -352,117 +337,67 @@ class _MaterialReallocationDialogBodyState
         samePagedReadQuery(query, _candidateQuery);
     final selected = preserveSelection ? _target : null;
     setState(() {
-      _loadMoreError = null;
-      if (reset) {
-        _loading = true;
-        _loadError = null;
-      } else {
-        _loadingMore = true;
-      }
+      _loading = true;
+      _loadError = null;
     });
     try {
       // 每种入口只查自己的一路候选：让出查接受方、现货调入查供料方、
       // 在途调入查专属份额。加载后自动匹配最合适的来源并预填数量。
-      final page = reset
-          ? 1
-          : future
-          ? _futurePage + 1
-          : receive
-          ? _spotPage + 1
-          : _page + 1;
-      final result = await _candidateRead.read(
-        page,
-        scope: [readScope, query],
-        useCache: !reset,
-        isCurrent: readCurrent,
-        canPrefetch: () =>
-            readCurrent() &&
-            TickerMode.valuesOf(context).enabled &&
-            (ModalRoute.of(context)?.isCurrent ?? true),
-        onPrefetchError: (error) {
-          if (readCurrent() && pagedReadAccessDenied(error)) {
-            _retireCandidateReads((error as ApiException).message);
-          }
-        },
-        fetchPage: (page) async {
-          if (future) {
-            final all = await (_futureSourceSnapshot ??= repository
-                .materialFutureTransferSourceSnapshot(
+      final result = await readViewActivity.runRead(
+        () => readCurrent() && epoch == _loadEpoch,
+        () => _candidateRead.read(
+          1,
+          scope: [readScope, query],
+          isCurrent: readCurrent,
+          fetchPage: (page) async {
+            if (future) {
+              final all = rankedKeywordMatches(
+                await repository.materialFutureTransferSourceSnapshot(
                   targetAnalysisId: analysisId,
                   targetMaterialId: materialId,
-                  isCurrent: readCurrent,
-                )
-                .then(
-                  (all) => rankedKeywordMatches(
-                    all,
-                    keyword,
-                    primaryFields: (source) => [source.goodsName],
-                    fields: (source) => [source.sourceLabel, source.goodsCode],
-                  ),
-                ));
-            const size = 20;
-            final start = ((page - 1) * size).clamp(0, all.length);
-            final end = (start + size).clamp(0, all.length);
-            return PagedResult<MaterialReallocationEndpointCandidate>(
-              items: all.sublist(start, end),
+                  isCurrent: () =>
+                      readCurrent() &&
+                      (PagedReadIntent.currentActivity?.call() ?? true),
+                ),
+                keyword,
+                primaryFields: (source) => [source.goodsName],
+                fields: (source) => [source.sourceLabel, source.goodsCode],
+              );
+              return PagedResult<MaterialReallocationEndpointCandidate>(
+                items: all,
+                page: 1,
+                size: all.length,
+                total: all.length,
+                totalPages: all.isEmpty ? 0 : 1,
+              );
+            }
+            if (receive) {
+              return repository.materialCrossReallocationSources(
+                targetAnalysisId: analysisId,
+                targetMaterialLineId: materialId,
+                page: page,
+                size: 100,
+                keyword: keyword,
+              );
+            }
+            return repository.materialCrossReallocationCandidates(
+              sourceAnalysisId: analysisId,
+              sourceMaterialLineId: materialId,
               page: page,
-              size: size,
-              total: all.length,
-              totalPages: (all.length / size).ceil(),
-            );
-          }
-          if (receive) {
-            return repository.materialCrossReallocationSources(
-              targetAnalysisId: analysisId,
-              targetMaterialLineId: materialId,
-              page: page,
+              size: 100,
               keyword: keyword,
             );
-          }
-          return repository.materialCrossReallocationCandidates(
-            sourceAnalysisId: analysisId,
-            sourceMaterialLineId: materialId,
-            page: page,
-            keyword: keyword,
-          );
-        },
+          },
+        ),
+        slot: 'candidates',
       );
-      final spotPage = receive && !future ? result : null;
-      final futurePage = future ? result : null;
-      final candidatePage = !receive ? result : null;
-      if (!mounted || epoch != _loadEpoch) return;
+      if (!mounted || epoch != _loadEpoch || !readCurrent()) return;
       setState(() {
-        if (reset) _candidates.clear();
-        final incoming = <MaterialReallocationEndpointCandidate>[
-          if (spotPage != null) ...spotPage.items,
-          if (futurePage != null) ...futurePage.items,
-          if (candidatePage != null) ...candidatePage.items,
-        ];
-        for (final candidate in incoming) {
-          final index = _candidates.indexWhere(
-            (existing) => _sameCandidate(existing, candidate),
-          );
-          if (index >= 0) {
-            _candidates[index] = candidate;
-          } else {
-            _candidates.add(candidate);
-          }
-        }
-        if (spotPage != null) {
-          _spotPage = spotPage.page;
-          _spotTotalPages = spotPage.totalPages;
-        }
-        if (futurePage != null) {
-          _futurePage = futurePage.page;
-          _futureTotalPages = futurePage.totalPages;
-        }
-        if (candidatePage != null) {
-          _page = candidatePage.page;
-          _totalPages = candidatePage.totalPages;
-        }
+        _candidates
+          ..clear()
+          ..addAll(result.items);
         _rebuildIdentityIndex();
         _loading = false;
-        _loadingMore = false;
         _loadError = null;
         if (selected != null) {
           final matches = _candidates.where(
@@ -477,12 +412,16 @@ class _MaterialReallocationDialogBodyState
         }
         if (_multiSelect) {
           _pruneMissingSelections();
-          if (selected == null && _selectedIds.isEmpty && reset) {
+          if (selected == null && _selectedIds.isEmpty) {
             _autoSelectCovering();
           }
         }
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (mounted && epoch == _loadEpoch) setState(() => _loading = false);
+        return;
+      }
       if (!mounted || epoch != _loadEpoch) return;
       if (pagedReadAccessDenied(error)) {
         _retireCandidateReads((error as ApiException).message);
@@ -490,17 +429,25 @@ class _MaterialReallocationDialogBodyState
       }
       setState(() {
         _loading = false;
-        _loadingMore = false;
         final message = productionErrorMessage(
           error,
           fallback: '$_counterpartRole加载失败，请检查网络后重试',
         );
-        if (reset) {
-          _loadError = message;
-        } else {
-          _loadMoreError = message;
-        }
+        _loadError = message;
       });
+    }
+  }
+
+  Future<void> _retryCandidateRead() async {
+    if (!mounted || !_readOwnerCurrent) return;
+    final token = Object();
+    setState(() => _retryReadToken = token);
+    try {
+      await _loadCandidates();
+    } finally {
+      if (mounted && identical(_retryReadToken, token)) {
+        setState(() => _retryReadToken = null);
+      }
     }
   }
 
@@ -530,16 +477,14 @@ class _MaterialReallocationDialogBodyState
     _readScopeRevision++;
     _loadEpoch++;
     _candidateRead.invalidate();
-    _futureSourceSnapshot = null;
     setState(() {
       _candidates.clear();
       _byIdentity.clear();
       _target = null;
       _selectedIds.clear();
       _loading = false;
-      _loadingMore = false;
       _loadError = message;
-      _loadMoreError = null;
+      _retryReadToken = null;
     });
   }
 
@@ -629,7 +574,7 @@ class _MaterialReallocationDialogBodyState
   }
 
   void _onSearchChanged(String _) {
-    unawaited(_loadCandidates(reset: true));
+    unawaited(_loadCandidates());
   }
 
   void _selectCandidate(String? identity) {
@@ -991,7 +936,7 @@ class _MaterialReallocationDialogBodyState
       );
       if (!mounted || !_validateOwner()) return;
       _rebaseFromView(latest);
-      await _loadCandidates(reset: true, preserveSelection: true);
+      await _loadCandidates(preserveSelection: true);
       if (!mounted) return;
       setState(() {
         _submitting = false;
@@ -1029,7 +974,7 @@ class _MaterialReallocationDialogBodyState
       _sourceAnalysis = latest;
       _sourceMaterial = source;
       widget.onSourceRebased?.call(latest);
-      await _loadCandidates(reset: true, preserveSelection: true);
+      await _loadCandidates(preserveSelection: true);
       if (!mounted) return;
       setState(() {
         _submitting = false;
@@ -1093,6 +1038,11 @@ class _MaterialReallocationDialogBodyState
                   const UtenBusyOverlay(
                     title: '正在提交跨批复用',
                     description: '正在保存供给归属调整，请勿重复提交或关闭面板。',
+                  ),
+                if (_retryReadToken != null)
+                  const UtenBusyOverlay(
+                    title: '正在加载调拨候选',
+                    showDoNotLeaveHint: false,
                   ),
                 _header(theme),
                 _sourceSummary(theme),
@@ -1241,7 +1191,7 @@ class _MaterialReallocationDialogBodyState
           key: const Key('cross-reallocation-candidates-retry'),
           size: UtenButtonSize.large,
           type: UtenButtonType.tonal,
-          onPressed: () => _loadCandidates(reset: true),
+          onPressed: _retryCandidateRead,
           child: const Text('重新加载'),
         ),
       );
@@ -1261,50 +1211,13 @@ class _MaterialReallocationDialogBodyState
                   '候选须同主仓范围、同货品/颜色/单位，且仍有真实缺口。',
       );
     }
-    return UtenLoadMoreBoundary(
-      enabled:
-          !_loading &&
-          !_loadingMore &&
-          !_locked &&
-          _loadMoreError == null &&
-          _hasMorePages,
-      scope: (
-        _sourceAnalysis.analysisId,
-        _sourceMaterial.materialLineId,
-        _searchController.text,
-        widget.receiveIntoCurrent,
-        widget.futureTransfer,
-      ),
-      onLoadMore: () => _loadCandidates(reset: false),
-      child: ListView.separated(
-        key: const Key('cross-reallocation-candidates-list'),
-        controller: _candidateScrollController,
-        itemCount: _candidates.length + (_hasMorePages ? 1 : 0),
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          if (index == _candidates.length) {
-            return Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              child: UtenButton(
-                key: const Key('cross-reallocation-load-more'),
-                size: UtenButtonSize.large,
-                type: UtenButtonType.ghost,
-                isLoading: _loadingMore,
-                isExpanded: true,
-                onPressed: _loadingMore || _locked
-                    ? null
-                    : () => _loadCandidates(reset: false),
-                child: Text(
-                  _loadMoreError == null
-                      ? '加载更多$_counterpartRole'
-                      : '$_loadMoreError，点击重试',
-                ),
-              ),
-            );
-          }
-          return _candidateTile(theme, _candidates[index]);
-        },
-      ),
+    return ListView.separated(
+      key: const Key('cross-reallocation-candidates-list'),
+      controller: _candidateScrollController,
+      itemCount: _candidates.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) =>
+          _candidateTile(theme, _candidates[index]),
     );
   }
 

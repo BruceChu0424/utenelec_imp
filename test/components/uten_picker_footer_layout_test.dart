@@ -158,74 +158,24 @@ void main() {
     },
   );
 
-  testWidgets(
-    'page field has a full control outline and navigation clamps input',
-    (tester) async {
-      final controller = MasterDataTableRowsController<int>();
-      final requested = <int>[];
-      controller.bindPagination(
-        Object(),
-        () async {},
-        false,
-        totalPages: 12,
-        goToPage: requested.add,
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
-          home: Scaffold(
-            body: Center(child: UtenPickerPageControls(controller: controller)),
-          ),
+  testWidgets('complete picker results expose no page controls in the footer', (
+    tester,
+  ) async {
+    final controller = MasterDataTableRowsController<int>();
+    controller.update([for (var index = 0; index < 120; index++) index]);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(child: UtenPickerPageControls(controller: controller)),
         ),
-      );
-      await tester.pumpAndSettle();
-      final input = find.byType(TextField);
-      final outline = find.byKey(const Key('picker-page-input-outline'));
-      expect(tester.getSize(outline).height, 28);
-      expect(
-        tester.getCenter(find.byType(EditableText)).dy,
-        closeTo(tester.getCenter(outline).dy, 1),
-      );
-      expect(
-        tester.getCenter(input).dy,
-        closeTo(tester.getCenter(find.text('/ 12')).dy, 0.1),
-      );
-      await tester.enterText(input, '99');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-      expect(requested, [12]);
-      expect(find.text('12'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'touch page outline and entered number align with pagination text',
-    (tester) async {
-      final controller = MasterDataTableRowsController<int>();
-      controller.bindPagination(Object(), () async {}, false, totalPages: 2);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildLightTheme().copyWith(platform: TargetPlatform.android),
-          home: Scaffold(
-            body: Center(child: UtenPickerPageControls(controller: controller)),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final outline = find.byKey(const Key('picker-page-input-outline'));
-      expect(tester.getSize(outline).height, 48);
-      expect(
-        tester.getCenter(outline).dy,
-        tester.getCenter(find.text('/ 2')).dy,
-      );
-      expect(
-        tester.getCenter(find.byType(EditableText)).dy,
-        closeTo(tester.getCenter(outline).dy, 1),
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    expect(find.byType(TextField), findsNothing);
+    expect(find.byKey(const Key('picker-page-input-outline')), findsNothing);
+    expect(controller.items, hasLength(120));
+    expect(tester.getSize(find.byType(UtenPickerPageControls<int>)), Size.zero);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'empty selection confirmation remains an explicit caller decision',

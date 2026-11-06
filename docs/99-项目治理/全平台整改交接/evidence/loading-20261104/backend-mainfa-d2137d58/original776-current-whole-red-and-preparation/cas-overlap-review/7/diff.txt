@@ -1,0 +1,15 @@
+--- Main/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java
++++ Task/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java
+@@ -48,11 +48,11 @@
+         int seen = 0;
+         for (int page = 1; page <= 2000; page++) {
+             LegacyExportBudget.checkpoint();
+             WarehouseTaskCenterContracts.Filter paged = withPage(filter, page, 100);
+             WarehouseTaskCenterContracts.Page result = outboundDirection
+-                    ? outbound.list(paged) : inbound.list(paged);
++                    ? outbound.list(paged,false) : inbound.list(paged,false);
+             if (page == 1) requireRows(maxRows, result.total());
+             for (WarehouseTaskCenterContracts.Row row : result.items()) {
+                 all.add(valuesOf(row, outboundDirection));
+             }
+             seen += result.items().size();

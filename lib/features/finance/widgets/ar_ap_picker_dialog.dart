@@ -14,6 +14,7 @@ import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 输入：direction（AR=客户应收 / AP=供应商应付）+ partyId（客户/供应商）。
 // 拉该往来方未清台账（settled=false）。
 import 'package:flutter/material.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,7 +27,6 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
@@ -157,16 +157,17 @@ class _ArApPickerSheet extends ConsumerStatefulWidget {
 
 class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     with ScopedPagedReadViewMixin<_ArApPickerSheet> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   List<ArApLedgerItem> _items = const [];
   final Map<String, ArApLedgerItem> _knownItems = {};
   bool _loading = false;
-  bool _loadingMore = false;
   String? _error;
-  String? _moreError;
   int _requestVersion = 0;
+  int? _activeReadVersion;
+  String? _activeReadKeyword;
   bool _readRetired = false;
-  int _page = 1;
-  int _totalPages = 1;
 
   final _keywordCtl = TextEditingController();
   String _keyword = '';
@@ -208,9 +209,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       _knownItems.clear();
       _selectedIds.clear();
       _loading = false;
-      _loadingMore = false;
       _error = scopedPagedReadRejection?.message ?? '读取身份已变化，请关闭后重新打开';
-      _moreError = null;
     });
     _rebuildGrid();
   }
@@ -225,9 +224,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     _keyword,
   ];
 
-  Future<void> _load({bool reset = true}) async {
-    if (!mounted || _readRetired) return;
-    if (!reset && (_loading || _loadingMore || _page >= _totalPages)) return;
+  Future<void> _load() async {
+    if (!mounted || _readRetired || _isQueryPending(_keyword)) return;
     final version = ++_requestVersion;
     final keyword = _keyword;
     if (!widget.receiptBatches &&
@@ -239,26 +237,21 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       return;
     }
     setState(() {
-      if (reset) {
-        _loading = true;
-      } else {
-        _loadingMore = true;
-      }
+      _loading = true;
       _error = null;
-      _moreError = null;
     });
+    _activeReadVersion = version;
+    _activeReadKeyword = keyword.trim();
     try {
-      final requestedPage = reset ? 1 : _page + 1;
       final repository = ref.read(arApLedgerRepositoryProvider);
       final direction = widget.direction;
       final partyId = widget.partyId;
       final query = _readQuery;
       final r = await readScopedPage<ArApLedgerItem>(
-        requestedPage,
+        1,
+        idOf: (row) => row.id,
         query: query,
         currentQuery: () => _readQuery,
-        useCache: !reset,
-        canPrefetch: () => false,
         fetchPage: (target) async {
           if (widget.receiptBatches) {
             final json = await ref
@@ -268,7 +261,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
                   query: {
                     'clientId': ?partyId,
                     'page': target,
-                    'size': 50,
+                    'size': 100,
                     if (keyword.isNotEmpty) 'keyword': keyword,
                   },
                 );
@@ -281,6 +274,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
             direction: direction,
             partyId: partyId!,
             page: target,
+            size: 100,
             keyword: keyword,
           );
         },
@@ -299,7 +293,11 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
             );
       }
       if (!mounted || version != _requestVersion) return;
+      final work = UiWorkBudget(
+        isCurrent: () => mounted && !_readRetired && version == _requestVersion,
+      );
       for (final it in r.items) {
+        work.ensureCurrent();
         _knownItems[it.id] = it;
         _amtCtrls.putIfAbsent(
           it.id,
@@ -312,45 +310,39 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
                           : it.amountBalanceOriginal!.toString()),
           ),
         );
+        await work.checkpoint();
       }
       setState(() {
-        _items = {
-          if (!reset)
-            for (final row in _items) row.id: row,
-          for (final row in r.items) row.id: row,
-        }.values.toList();
-        _page = r.page;
-        _totalPages = r.totalPages;
+        _items = {for (final row in r.items) row.id: row}.values.toList();
         _loading = false;
-        _loadingMore = false;
       });
       _rebuildGrid();
-      unawaited(prepareScopedNext<ArApLedgerItem>(r.page));
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
-        if (reset) {
-          _error = e.message;
-        } else {
-          _moreError = e.message;
-        }
+        _error = e.message;
         _loading = false;
-        _loadingMore = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
         final message = '加载$_ledgerNoun台账失败'; // TODO(l10n): 补 arb
-        if (reset) {
-          _error = message;
-        } else {
-          _moreError = message;
-        }
+        _error = message;
         _loading = false;
-        _loadingMore = false;
       });
+    } finally {
+      if (_activeReadVersion == version) {
+        _activeReadVersion = null;
+        _activeReadKeyword = null;
+      }
     }
   }
+
+  bool _isQueryPending(String value) =>
+      _activeReadVersion == _requestVersion &&
+      _activeReadKeyword == value.trim();
 
   List<ArApLedgerItem> get _visibleItems => _items;
 
@@ -607,7 +599,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
             ),
           ),
         ),
-        if (_loading || _loadingMore)
+        if (_loading)
           UtenBusyOverlay(
             title: _isAr ? '加载出货应收' : '加载应付',
             showDoNotLeaveHint: false,
@@ -660,6 +652,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
             controller: _keywordCtl,
             hint: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
             onInputChanged: _onKeywordInput,
+            isQueryPending: _isQueryPending,
             onChanged: (_) => _load(),
           );
           final actions = Wrap(
@@ -754,76 +747,39 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         ),
       );
     }
-    final content = UtenLoadMoreBoundary(
-      enabled:
-          !_loading &&
-          !_loadingMore &&
-          _moreError == null &&
-          _page < _totalPages,
-      scope: (widget.partyId, widget.direction, _keyword),
-      onLoadMore: () => _load(reset: false),
-      child: SingleChildScrollView(
-        child: UtenEditableGrid<_LedgerRow>(
-          headerFilterScopeDescription: '筛选已加载台账；查找全部台账请使用上方搜索',
+    final content = SingleChildScrollView(
+      child: UtenEditableGrid<_LedgerRow>(
+        headerFilterScopeDescription: '按当前往来单位的全部未结台账筛选；币种及可核销金额由原台账决定',
+        tableKey:
+            'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
+        platformBinding: PlatformTableBinding<_LedgerRow>(
           tableKey:
               'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
-          platformBinding: PlatformTableBinding<_LedgerRow>(
-            tableKey:
-                'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
-            scope: 'view_ar_ap_ledger',
-            recordIdOf: (_) => null,
-            columnAliases: const {
-              'amount': 'amountOriginal',
-              'settled': 'amountReceivedOriginal',
-              'writtenOff': 'amountWriteOffOriginal',
-              'prepaymentApplied': 'prepaymentAppliedOriginal',
-              'balance': 'amountBalanceOriginal',
-              'thisAmt': 'appliedAmountOriginal',
-            },
-          ),
-          controller: _grid,
-          columns: _columns(),
-          showAddRow: false,
-          showRowDelete: false,
-          createBlankRow: () =>
-              _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
-          emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
-          emptyPlaceholder: emptyPlaceholder,
+          scope: 'view_ar_ap_ledger',
+          recordIdOf: (_) => null,
+          columnAliases: const {
+            'amount': 'amountOriginal',
+            'settled': 'amountReceivedOriginal',
+            'writtenOff': 'amountWriteOffOriginal',
+            'prepaymentApplied': 'prepaymentAppliedOriginal',
+            'balance': 'amountBalanceOriginal',
+            'thisAmt': 'appliedAmountOriginal',
+          },
         ),
+        controller: _grid,
+        columns: _columns(),
+        showAddRow: false,
+        showRowDelete: false,
+        createBlankRow: () =>
+            _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
+        emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
+        emptyPlaceholder: emptyPlaceholder,
       ),
     );
     return Column(
       children: [
         searchRow,
         Expanded(child: content),
-        if (_moreError != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              _moreError!,
-              style: TextStyle(color: theme.colorScheme.error),
-            ),
-          ),
-        if (_page < _totalPages)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: TextButton.icon(
-              onPressed: _loadingMore ? null : () => _load(reset: false),
-              icon: _loadingMore
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.expand_more_rounded),
-              label: Text(
-                _loadingMore
-                    ? '加载中'
-                    : _moreError != null
-                    ? '重试'
-                    : '加载更多',
-              ),
-            ),
-          ),
       ],
     );
   }

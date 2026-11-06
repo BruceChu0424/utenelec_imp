@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "sourceHead": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "scope": "Existing Goods/Units complete-list incremental source only; no full ERP or Win7 target acceptance",
+  "files": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "sha256": "7ee3031248ca5f1b3ed761da93b450a0eea2c610686a32583d3f63df909a988d",
+      "sameAsLocallyStaTestedWorktree": true
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "sha256": "3f51227e80ca22fb9c057ed348505a0d271f2945c46b23714882e3436be5fc04",
+      "sameAsLocallyStaTestedWorktree": true
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": "226509822b059ba63952fc4a8fa27418f81cbaffda5b57232ea29272e6ff092c",
+      "sameAsLocallyStaTestedWorktree": true
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "3dd887d5afa5efcb65a1d59223a869312df62d7d9026a6be10350370cc355cb2",
+      "sameAsLocallyStaTestedWorktree": true
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "cdee64ea8f0220bd8c9f3e7f96a9e86fac8c01fd0bfe5fc826cb21d0d131f6a6",
+      "sameAsLocallyStaTestedWorktree": true
+    }
+  ],
+  "priorStaReceipt": "docs/99-\u9879\u76ee\u6cbb\u7406/\u5168\u5e73\u53f0\u6574\u6539\u4ea4\u63a5/evidence/loading-20261104/archive-draft-review.json",
+  "priorExecutedAtWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+  "perArchitectureAssertions": {
+    "continuous": 22,
+    "originalSearch": 125
+  },
+  "architectures": [
+    "x86",
+    "x64"
+  ],
+  "evidenceState": "combined worktree warnaserror build and actual STA continuous/search groups passed both architectures",
+  "noStatusPromotion": true,
+  "notRun": [
+    "Win7 target UAT",
+    "full native ERP migration",
+    "release packaging",
+    "production activation"
+  ],
+  "executedAtWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "combinedRecheckedAtUtc": "2026-11-05T09:08:27.499220+00:00",
+  "combinedLogs": [
+    {
+      "path": "build/loading-validation/wpf-combined/x64/build-rechecked.log",
+      "sha256": "1f933278b9b62fdcc49650c7bd8b6251265348a6a543eb24e65cb4d9747d077f"
+    },
+    {
+      "path": "build/loading-validation/wpf-combined/x64/continuous.log",
+      "sha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602"
+    },
+    {
+      "path": "build/loading-validation/wpf-combined/x64/search.log",
+      "sha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6"
+    },
+    {
+      "path": "build/loading-validation/wpf-combined/x86/build-rechecked.log",
+      "sha256": "573593c2ee96cfde6af3c023ef65ea688e1d564f1489bb69b0480637766579aa"
+    },
+    {
+      "path": "build/loading-validation/wpf-combined/x86/continuous.log",
+      "sha256": "e0025513b1348bf6c51e353ac1810b534e18a081d2921f41ccc9fdf402b74977"
+    },
+    {
+      "path": "build/loading-validation/wpf-combined/x86/search.log",
+      "sha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+    }
+  ],
+  "initialBuildFailure": {
+    "log": "build/loading-validation/wpf-combined/x64/build.log",
+    "cause": "Fresh worktree lacked ignored pinned BouncyCastle2.7.0 DLL/license; seeded identical previously tested bytes, no source/SDK/version change.",
+    "dependencyReceipt": "build/loading-validation/wpf-combined/dependency-seed.json"
+  }
+}

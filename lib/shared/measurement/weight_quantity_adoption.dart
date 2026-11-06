@@ -17,7 +17,11 @@ WeightQuantityAdoption resolveWeightQuantityAdoption({
   String? exactMassFactorKg,
   CountEstimate? estimate,
   BusinessPrecisionChoice? choice,
+  int maxScale = 24,
 }) {
+  if (maxScale < 0 || maxScale > 24) {
+    throw RangeError.range(maxScale, 0, 24, 'maxScale');
+  }
   final rate = financeExactTrimmed(financeExactDecimal(unitRate));
   if (rate == null || rate == '0' || rate.startsWith('-')) {
     return const WeightQuantityAdoption();
@@ -31,6 +35,7 @@ WeightQuantityAdoption resolveWeightQuantityAdoption({
   final result = financeExactDivideTexts(
     numerator,
     denominator,
+    maxScale: maxScale,
     choiceScale: choice?.scale,
     choiceRounding: choice?.rounding,
   );

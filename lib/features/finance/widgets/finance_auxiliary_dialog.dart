@@ -15,6 +15,10 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
@@ -57,14 +61,19 @@ class _AuxiliaryDirectory extends ConsumerStatefulWidget {
       _AuxiliaryDirectoryState();
 }
 
-class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
+class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
+    with ReadViewActivityMixin<_AuxiliaryDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   final _search = TextEditingController();
   List<Map<String, dynamic>> _items = [];
+  Set<Map<String, dynamic>> _acceptedItems = Set.identity();
   bool _busy = false;
-  int _page = 1, _pages = 0, _generation = 0;
+  int _generation = 0;
+  String _keyword = '';
   String? _error;
+  @override
+  Future<void> onReadViewResumed() => _load();
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -74,45 +83,74 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
   @override
   void dispose() {
+    _generation++;
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
-    if (!_current || _busy) return;
+  Future<void> _load({bool search = false}) async {
+    if (!_current) return;
+    final previousKeyword = _keyword;
+    if (search) _keyword = _search.text;
+    final acceptedItems = Set<Map<String, dynamic>>.identity();
     final generation = ++_generation;
+    final keyword = _keyword;
+    bool current() =>
+        _current && generation == _generation && keyword == _keyword;
     setState(() {
       _busy = true;
       _error = null;
+      if (previousKeyword != keyword) {
+        _items = [];
+        _acceptedItems.clear();
+      }
     });
     try {
-      final data = await _api.get(
-        '/finance/auxiliary-items',
-        query: {
-          if (widget.accountCode != null) 'accountCode': widget.accountCode,
-          if (widget.role != null) 'role': widget.role,
-          'keyword': _search.text,
-          'page': '$page',
-          'size': '50',
-        },
+      final data = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) => row['id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(
+                  '/finance/auxiliary-items',
+                  query: {
+                    if (widget.accountCode != null)
+                      'accountCode': widget.accountCode,
+                    if (widget.role != null) 'role': widget.role,
+                    'keyword': keyword,
+                    'page': '$page',
+                    'size': '$size',
+                  },
+                ),
+                (row) {
+                  final item = Map<String, dynamic>.unmodifiable(row);
+                  acceptedItems.add(item);
+                  return item;
+                },
+              ),
+        ),
       );
-      if (!_current || generation != _generation) return;
+      if (!current()) return;
       setState(() {
-        _items = [
-          for (final item in data['items'] as List? ?? [])
-            if (item is Map<String, dynamic>) item,
-        ];
-        _page = page;
-        _pages = (data['totalPages'] as num?)?.toInt() ?? 0;
+        _items = data.items;
+        _acceptedItems = acceptedItems;
       });
     } catch (error) {
-      if (_current && generation == _generation) {
-        setState(() => _error = _message(error));
+      if (!isRetiredViewRead(error) && current()) {
+        setState(() {
+          _error = _message(error);
+          if (pagedReadAccessDenied(error)) {
+            _items = [];
+            _acceptedItems.clear();
+          }
+        });
       }
     } finally {
       if (_current && generation == _generation) setState(() => _busy = false);
@@ -120,7 +158,9 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
   }
 
   Future<void> _edit([Map<String, dynamic>? item]) async {
-    if (!_current || _busy) return;
+    if (!_current || _busy || item != null && !_acceptedItems.contains(item)) {
+      return;
+    }
     final changed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -131,7 +171,7 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
         ownerEpoch: _epoch,
       ),
     );
-    if (_current && changed == true) await _load(_page);
+    if (_current && changed == true) await _load();
   }
 
   @override
@@ -203,7 +243,7 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
                   enabled: !_busy,
                   searchController: _search,
                   searchHint: '原项目编号或名称',
-                  onSearchSubmitted: (_) => _load(1),
+                  onSearchSubmitted: (_) => _load(search: true),
                 ),
               ],
             ),
@@ -216,14 +256,11 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
               idOf: (row) => '${row['id']}',
               busy: _busy,
               error: _error,
-              retry: () => _load(_page),
-              page: _page,
-              pages: _pages,
-              onPage: _load,
-              scope: (_epoch, widget.accountCode, widget.role, _search.text),
+              retry: _load,
+              scope: (_epoch, widget.accountCode, widget.role, _keyword),
               actions: [
                 UtenButton(
-                  onPressed: _busy ? null : () => _load(1),
+                  onPressed: _busy ? null : () => _load(search: true),
                   child: const Text('查询'),
                 ),
                 if (widget.canEdit)
@@ -232,8 +269,15 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory> {
                     child: const Text('添加'),
                   ),
               ],
-              canOpen: (row) => !_busy && row['status'] == 'ACTIVE',
+              canOpen: (row) =>
+                  _current &&
+                  !_busy &&
+                  _acceptedItems.contains(row) &&
+                  row['status'] == 'ACTIVE',
               onOpen: (row) {
+                if (!_current || _busy || !_acceptedItems.contains(row)) {
+                  return;
+                }
                 if (widget.selection) {
                   Navigator.pop(context, row);
                 } else if (widget.canEdit) {

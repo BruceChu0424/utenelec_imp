@@ -127,6 +127,55 @@ class AiUsageDashboardPostgresTest {
                 """, ok, inputTokens, outputTokens, userId, createdAt);
     }
 
+    @Test
+    void completePeoplePagingDoesNotLoseRowsBeyondTheLegacyFiveHundredInAnyWindow() {
+        var expected = new java.util.HashSet<UUID>();
+        for (int index = 0; index < 501; index++) {
+            UUID id = user("complete-" + index);
+            expected.add(id);
+            limitsRow(id, index == 500, null, 5);
+        }
+        for (String window : List.of("hour", "day", "month", "year")) {
+            var combined = new java.util.ArrayList<AiUsageDtos.DashboardPerson>();
+            for (int page = 1; page <= 6; page++) {
+                var result = dashboard.peoplePage(window, page, 100);
+                assertThat(result.getPage()).isEqualTo(page);
+                assertThat(result.getSize()).isEqualTo(100);
+                assertThat(result.getTotal()).isEqualTo(501);
+                assertThat(result.getTotalPages()).isEqualTo(6);
+                assertThat(result.getItems()).hasSize(page == 6 ? 1 : 100);
+                combined.addAll(result.getItems());
+            }
+            assertThat(combined).hasSize(501);
+            assertThat(combined.stream().map(AiUsageDtos.DashboardPerson::userId).toList())
+                    .doesNotHaveDuplicates().containsExactlyInAnyOrderElementsOf(expected);
+            assertThat(combined.stream().filter(AiUsageDtos.DashboardPerson::disabled).count()).isEqualTo(1);
+            assertThat(combined).allSatisfy(row -> {
+                assertThat(row.dailyTokenLimit()).isNull();
+                assertThat(row.dailyJobLimit()).isEqualTo(5);
+                assertThat(row.windowTokens()).isZero();
+            });
+            assertThat(dashboard.peoplePage(window, 99, 100).getTotal()).isEqualTo(501);
+            assertThat(dashboard.peoplePage(window, 99, 100).getItems()).isEmpty();
+            assertThat(dashboard.peoplePage(window, 1, 500).getSize()).isEqualTo(100);
+            assertThat(dashboard.dashboard(window, false).people()).isEmpty();
+            assertThat(dashboard.dashboard(window).people()).hasSize(500);
+        }
+    }
+
+    @Test
+    void completePeopleReadKeepsTheOriginalSuperAdminGate() {
+        var actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "ordinary",
+                Set.of("authorization:manage"), false, true, false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
+        assertThatThrownBy(() -> dashboard.peoplePage("day", 1, 100))
+                .isInstanceOfSatisfying(ApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> dashboard.peoplePage("day", 1, 100)).isInstanceOf(ApiException.class);
+    }
+
     // ------------------------------------------------------------------ 用例
 
     @Test

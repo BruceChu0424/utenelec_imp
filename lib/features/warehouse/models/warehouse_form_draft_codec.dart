@@ -154,6 +154,7 @@ Map<String, dynamic> stockDocumentDraftFacts(StockDocDetail doc) => {
         'remark': item.remark,
         'unitRate': item.unitRate,
         'unitRateExact': item.unitRateText,
+        'unitRateIsRecorded': item.recordedUnitRateText != null,
         'upstreamItemId': item.upstreamItemId,
         'executionSegmentId': item.executionSegmentId,
         'executionSegmentSalesAllocationId':

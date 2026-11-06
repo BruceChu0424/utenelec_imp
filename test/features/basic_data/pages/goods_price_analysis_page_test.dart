@@ -212,17 +212,26 @@ class _Repository implements PriceAnalysisRepository {
       return c.future;
     }
     final filters = priceMap(jsonDecode(query['filters']?.toString() ?? '{}'));
-    final rows = historyRows ?? [observation('archived-${query['page'] ?? 1}')];
+    final all = highCardinality
+        ? List.generate(
+            201,
+            (index) => {
+              ...observation('${index + 1}'),
+              'sourceNo': 'PO-${index + 1}',
+            },
+          )
+        : historyRows ?? [observation('archived-1')];
+    final rows = highCardinality && filters['sourceNo'] == 'PO-201'
+        ? all.where((row) => row['sourceNo'] == 'PO-201').toList()
+        : all;
+    final page = (query['page'] as int?) ?? 1;
+    final size = (query['size'] as int?) ?? 100;
     return PriceHistoryTableResult.fromResponse({
-      'observations': highCardinality && filters['sourceNo'] == 'PO-201'
-          ? [
-              {...observation('201'), 'sourceNo': 'PO-201'},
-            ]
-          : rows,
-      'page': query['page'] ?? 1,
-      'size': 50,
-      'total': highCardinality ? (filters.isEmpty ? 201 : 1) : 100,
-      'totalPages': highCardinality ? (filters.isEmpty ? 5 : 1) : 2,
+      'observations': rows.skip((page - 1) * size).take(size).toList(),
+      'page': page,
+      'size': size,
+      'total': rows.length,
+      'totalPages': (rows.length + size - 1) ~/ size,
       'facets': {
         'sourceNo': [
           {'value': 'PO-initial', 'label': '初始单据', 'count': 1},
@@ -449,6 +458,10 @@ void main() {
           path: '/basicinfo/goods/:id/price-analysis',
           builder: (_, s) =>
               child ?? GoodsPriceAnalysisPage(goodsId: s.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/purchase/orders/:id',
+          builder: (_, _) => const Scaffold(body: Text('source order')),
         ),
       ],
     );
@@ -1285,6 +1298,48 @@ void main() {
   );
 
   testWidgets(
+    'history-only authorization loads every summary in bounded batches without analysis',
+    (tester) async {
+      final repository = _Repository()
+        ..historyRows = List.generate(
+          240,
+          (index) => observation('authorized-$index'),
+        );
+      await pump(
+        tester,
+        repository,
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.salesQuoteFinanceView,
+        },
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('销售价格'));
+      await tester.pumpAndSettle();
+      expect(
+        repository.queries.where((query) => query['kind'] == 'SALES'),
+        isEmpty,
+      );
+      final calls = repository.tableQueries
+          .where((query) => query['kind'] == 'SALES')
+          .toList();
+      expect(calls.map((query) => query['page']), [1, 2, 3]);
+      expect(calls.every((query) => query['size'] == 100), isTrue);
+      final table = tester.widget<MasterDataTableView<PriceObservation>>(
+        find.byKey(const Key('goods-price-history-table')),
+      );
+      expect(table.items, hasLength(240));
+      expect(
+        table.items.last.identity,
+        PriceObservation(observation('authorized-239')).identity,
+      );
+      expect(table.totalPages, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
     'history discovers frozen box conversion and safe colour labels without basic-unit prices',
     (tester) async {
       final repository = _Repository()
@@ -2074,40 +2129,94 @@ void main() {
     );
   }
 
-  testWidgets('full history uses server pagination filters and sorting', (
-    tester,
-  ) async {
-    final repository = _Repository();
-    await pump(tester, repository);
-    await tester.pumpAndSettle();
-    await scrollToRows(tester);
-    await tester.ensureVisible(find.text('查看全部历史'));
-    await tester.tap(find.text('查看全部历史'));
-    await tester.pumpAndSettle();
-    final table = tester.widget<MasterDataTableView<PriceObservation>>(
-      find.byKey(const Key('goods-price-history-table')),
-    );
-    expect(repository.tableQueries.first['page'], 1);
-    expect(table.totalPages, 2);
-    table.onPageChange!(2);
-    await tester.pumpAndSettle();
-    expect(repository.tableQueries.last['page'], 2);
-    final updated = tester.widget<MasterDataTableView<PriceObservation>>(
-      find.byKey(const Key('goods-price-history-table')),
-    );
-    updated.onFilterChanged('amount', '__null__');
-    await tester.pumpAndSettle();
-    expect(repository.tableQueries.last['page'], 2);
-    expect(jsonDecode(repository.tableQueries.last['filters'] as String), {
-      'amount': '__null__',
-    });
-    final filtered = tester.widget<MasterDataTableView<PriceObservation>>(
-      find.byKey(const Key('goods-price-history-table')),
-    );
-    filtered.onSortChange!('unitPrice', false);
-    await tester.pumpAndSettle();
-    expect(repository.tableQueries.last['sort'], 'unitPrice');
-  });
+  testWidgets(
+    'price history source return has one fresh pipeline and opens a newly selected fresh identity',
+    (tester) async {
+      final source = {...observation('source'), 'canOpenSource': true};
+      final repository = _Repository()..historyRows = [source];
+      final (_, router) = await pump(tester, repository);
+      await tester.pumpAndSettle();
+      await scrollToRows(tester);
+      await tester.ensureVisible(find.text('查看全部历史'));
+      await tester.tap(find.text('查看全部历史'));
+      await tester.pumpAndSettle();
+      final finder = find.byKey(const Key('goods-price-history-table'));
+      var table = tester.widget<MasterDataTableView<PriceObservation>>(finder);
+      await openRow(tester, 'PO-source');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查看原单'));
+      await tester.pumpAndSettle();
+      expect(find.text('source order'), findsOneWidget);
+      final analyses = repository.queries.length,
+          histories = repository.tableQueries.length;
+      repository.historyRows = [
+        {...source, 'unitPrice': '77.25', 'sourceRevision': 'fresh-version'},
+      ];
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(repository.queries.length, analyses + 1);
+      expect(repository.tableQueries.length, histories + 1);
+      table = tester.widget<MasterDataTableView<PriceObservation>>(finder);
+      expect(table.items.single.price, '77.25');
+      expect(table.items.single.identity, PriceObservation(source).identity);
+      await openRow(tester, 'PO-source');
+      await tester.pumpAndSettle();
+      expect(
+        repository.detailQueries.last.text('sourceRevision'),
+        'fresh-version',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'full history reads one complete query and retains server filters and sorting',
+    (tester) async {
+      final repository = _Repository()..highCardinality = true;
+      await pump(tester, repository);
+      await tester.pumpAndSettle();
+      await scrollToRows(tester);
+      await tester.ensureVisible(find.text('查看全部历史'));
+      await tester.tap(find.text('查看全部历史'));
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<PriceObservation>>(
+        find.byKey(const Key('goods-price-history-table')),
+      );
+      expect(repository.tableQueries.first['page'], 1);
+      expect(repository.tableQueries.map((query) => query['page']), [1, 2, 3]);
+      expect(
+        repository.tableQueries.every((query) => query['size'] == 100),
+        isTrue,
+      );
+      expect(table.totalPages, 1);
+      expect(table.items, hasLength(201));
+      final reads = repository.tableQueries.length;
+      final scrollable = find
+          .descendant(
+            of: find.byKey(const Key('goods-price-history-table')),
+            matching: find.byType(Scrollable),
+          )
+          .last;
+      await tester.drag(scrollable, const Offset(0, -1500));
+      await tester.pumpAndSettle();
+      expect(repository.tableQueries.length, reads);
+      final updated = tester.widget<MasterDataTableView<PriceObservation>>(
+        find.byKey(const Key('goods-price-history-table')),
+      );
+      updated.onFilterChanged('amount', '__null__');
+      await tester.pumpAndSettle();
+      expect(repository.tableQueries.last['page'], 3);
+      expect(jsonDecode(repository.tableQueries.last['filters'] as String), {
+        'amount': '__null__',
+      });
+      final filtered = tester.widget<MasterDataTableView<PriceObservation>>(
+        find.byKey(const Key('goods-price-history-table')),
+      );
+      filtered.onSortChange!('unitPrice', false);
+      await tester.pumpAndSettle();
+      expect(repository.tableQueries.last['sort'], 'unitPrice');
+    },
+  );
 
   testWidgets(
     'full price history headers use typed server queries and search remote candidates inside the same criteria',
@@ -2319,22 +2428,20 @@ void main() {
       await tester.tap(find.text('open-price-panel'));
       await tester.pumpAndSettle();
       final tableFinder = find.byType(MasterDataTableView<MasterFacetBucket>);
-      final pageInput = find.descendant(
-        of: tableFinder,
-        matching: find.byType(TextFormField),
-      );
-      await tester.enterText(pageInput, '2');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<MasterFacetBucket>>(
         tableFinder,
       );
       expect(
         table.currentPage,
         1,
-        reason: 'the leading seed is the latest server response',
+        reason: 'the whole authorized query is one local table',
       );
-      expect(table.rowsController!.visiblePage, 2);
+      expect(table.rowsController!.visiblePage, 1);
+      expect(table.items, hasLength(2));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       final selected = table.rowsController!.items.singleWhere(
         (row) => row.value == 'PO-2',
       );

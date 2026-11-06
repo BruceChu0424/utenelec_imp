@@ -101,6 +101,8 @@ Future<UtenEditableGridController<_Row>> _pump(
   bool weighButton = false,
   String unitRate = '1',
   bool wrapParams = false,
+  int Function(_Row row)? quantityMaxScaleOf,
+  String? Function(_Row row)? quantityRateOf,
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
@@ -160,7 +162,9 @@ Future<UtenEditableGridController<_Row>> _pump(
                         qtyAutofill: autofill
                             ? WeightQtyAutofill<_Row>(
                                 qtyControllerOf: (r) => r.qty,
-                                unitRateTextOf: (_) => unitRate,
+                                unitRateTextOf:
+                                    quantityRateOf ?? (_) => unitRate,
+                                maxScaleOf: quantityMaxScaleOf,
                               )
                             : null,
                       ),
@@ -214,6 +218,88 @@ void main() {
     gamma: 0.00001,
     df: 15,
     tier: WeightTier.yellow,
+  );
+
+  testWidgets('default24 retains the original complete statistical estimate', (
+    tester,
+  ) async {
+    final row = _Row(params: _learned);
+    await _pump(tester, [row], autofill: true);
+    await tester.enterText(_inputs.first, '20');
+    await tester.pumpAndSettle();
+    expect(row.qty.text, '10003.714377185664');
+    expect(row.weight.kgText, '20');
+    expect(row.weight.qtyFromWeight, isTrue);
+    expect(row.weight.quantityPendingReason, isNull);
+    expect(row.weight.quantityPrecision, isNull);
+  });
+
+  testWidgets(
+    'domain4 finite estimate stays pending until a requested explicit choice',
+    (tester) async {
+      final row = _Row(params: _learned);
+      await _pump(tester, [row], autofill: true, quantityMaxScaleOf: (_) => 4);
+      await tester.enterText(_inputs.first, '20');
+      await tester.pumpAndSettle();
+      expect(row.qty.text, isEmpty);
+      expect(row.weight.kgText, '20');
+      expect(row.weight.quantityPendingReason, 'PRECISION_LIMIT');
+      final unregister = BusinessPrecisionCoordinator.instance.register((
+        requirement,
+      ) async {
+        expect(requirement.maxScale, 4);
+        return const BusinessPrecisionChoice(4, 'DOWN');
+      });
+      addTearDown(unregister);
+      await tester.tap(
+        find.byKey(const ValueKey('weight-cell-quantity-precision')),
+      );
+      await tester.pumpAndSettle();
+      expect(row.qty.text, '10003.7143');
+      expect(row.weight.kgText, '20');
+      expect(row.weight.qtyFromWeight, isTrue);
+    },
+  );
+
+  testWidgets(
+    'changing domain while a generic24 choice is open retires that old choice',
+    (tester) async {
+      final profile = ValueNotifier<WeightParams?>(oneKgModel);
+      addTearDown(profile.dispose);
+      var scale = 24;
+      final row = _Row();
+      await _pump(
+        tester,
+        [row],
+        autofill: true,
+        unitRate: '3',
+        paramsNotifier: profile,
+        quantityMaxScaleOf: (_) => scale,
+      );
+      await tester.enterText(_inputs.first, '1');
+      await tester.pumpAndSettle();
+      final pending = Completer<BusinessPrecisionChoice?>();
+      final unregister = BusinessPrecisionCoordinator.instance.register((
+        requirement,
+      ) {
+        expect(requirement.maxScale, 24);
+        return pending.future;
+      });
+      addTearDown(unregister);
+      await tester.tap(
+        find.byKey(const ValueKey('weight-cell-quantity-precision')),
+      );
+      await tester.pump();
+      scale = 4;
+      profile.value = oneKgModel.withStockBalance(null);
+      await tester.pumpAndSettle();
+      pending.complete(const BusinessPrecisionChoice(12, 'DOWN'));
+      await tester.pumpAndSettle();
+      expect(row.qty.text, isEmpty);
+      expect(row.weight.kgText, '1');
+      expect(row.weight.quantityPrecision, isNull);
+      expect(row.weight.quantityPendingReason, 'NON_TERMINATING');
+    },
   );
 
   testWidgets(
@@ -288,6 +374,86 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final changed in ['scale', 'rate', 'parameters', 'basis']) {
+    testWidgets(
+      'same-State $changed getter ABA retires a pending choice without notifications',
+      (tester) async {
+        var scale = 4;
+        var rate = '3';
+        final row = _Row(params: oneKgModel);
+        final grid = await _pump(
+          tester,
+          [row],
+          autofill: true,
+          quantityMaxScaleOf: (_) => scale,
+          quantityRateOf: (_) => rate,
+        );
+        final pending = Completer<BusinessPrecisionChoice?>();
+        final unregister = BusinessPrecisionCoordinator.instance.register((r) {
+          expect(r.maxScale, 4);
+          return pending.future;
+        });
+        addTearDown(unregister);
+        await tester.enterText(_inputs.first, '1');
+        await tester.pumpAndSettle();
+        expect(row.weight.quantityPendingReason, 'NON_TERMINATING');
+        final originalInputState = tester.state(_inputs.first);
+        final originalWeight = row.weight.text.value;
+        final originalQuantity = row.qty.value;
+        await tester.tap(
+          find.byKey(const ValueKey('weight-cell-quantity-precision')),
+        );
+        await tester.pump();
+        if (changed == 'scale') {
+          scale = 24;
+        } else if (changed == 'rate') {
+          rate = '7';
+        } else {
+          row.params = WeightParams(
+            goodsId: oneKgModel.goodsId,
+            basis: changed == 'basis' ? WeightBasis.none : oneKgModel.basis,
+            logMean: changed == 'parameters'
+                ? 0.6931471805599453
+                : oneKgModel.logMean,
+            lotPrior: oneKgModel.lotPrior,
+            gamma: oneKgModel.gamma,
+            df: oneKgModel.df,
+            tier: oneKgModel.tier,
+          );
+        }
+        // Reuse the live grid/row/controllers and getter closures. Neither
+        // weight/quantity text nor a parameters notifier emits a change.
+        grid.swapRows([row]);
+        await tester.pumpAndSettle();
+        expect(
+          identical(tester.state(_inputs.first), originalInputState),
+          isTrue,
+        );
+        expect(row.weight.text.value, originalWeight);
+        expect(row.qty.value, originalQuantity);
+        scale = 4;
+        rate = '3';
+        row.params = oneKgModel;
+        grid.swapRows([row]);
+        await tester.pumpAndSettle();
+        expect(
+          identical(tester.state(_inputs.first), originalInputState),
+          isTrue,
+        );
+        expect(row.weight.text.value, originalWeight);
+        expect(row.qty.value, originalQuantity);
+        pending.complete(const BusinessPrecisionChoice(4, 'DOWN'));
+        await tester.pumpAndSettle();
+        expect(row.qty.text, isEmpty);
+        expect(row.qty.autofilled, isFalse);
+        expect(row.weight.kgText, '1');
+        expect(row.weight.quantityPrecision, isNull);
+        expect(row.weight.quantityPendingReason, 'NON_TERMINATING');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('profile ABA invalidates a pending automatic quantity choice', (
     tester,

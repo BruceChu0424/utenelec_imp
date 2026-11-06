@@ -1,3 +1,4 @@
+import '../models/paged_result.dart';
 import '../formatters/exact_decimal.dart';
 // 单货品库存面板模型 (ADR-135 §6.3/§7.1/§7.4): 出入库流水页 + 单货品 KPI 条。
 //
@@ -364,6 +365,17 @@ class StockLedgerPage {
 
   /// 表头筛选桶 (服务端给, 每桶 value/label/count; 颜色「无颜色」桶的 value 为 '__null__')。
   final Map<String, List<MasterFacetBucket>> facets;
+
+  StockLedgerPage withPage(PagedResult<StockLedgerRow> combined) =>
+      StockLedgerPage(
+        items: combined.items,
+        page: combined.page,
+        size: combined.size,
+        total: combined.total,
+        totalPages: combined.totalPages,
+        summary: summary,
+        facets: facets,
+      );
 
   factory StockLedgerPage.fromJson(Map<String, dynamic> j) {
     final rawFacets = j['facets'];

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,23 +9,34 @@ import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../models/goods_detail_sequence.dart';
 import '../repositories/goods_repository.dart';
 
+final _categorySequenceActivityProvider = Provider.autoDispose
+    .family<ReadViewActivity, String>((ref, _) {
+      final activity = ReadViewActivity(onResume: ref.notifyListeners);
+      ref.onDispose(activity.dispose);
+      return activity;
+    });
+
 final _categorySequenceProvider = FutureProvider.autoDispose
     .family<GoodsDetailSequence, String>((ref, categoryId) async {
       final boundary = ref.watch(sensitiveReadBoundaryProvider);
       final repository = ref.watch(goodsRepositoryProvider);
+      final activity = ref.watch(_categorySequenceActivityProvider(categoryId));
       var disposed = false;
       ref.onDispose(() => disposed = true);
-      final rows = await loadCompletePagedSnapshot(
-        loadPage: (page, size) => repository.list(
-          categoryId,
-          page: page,
-          size: size,
-          sort: 'code',
-          order: 'asc',
+      final rows = await activity.runRead(
+        () => !disposed && boundary == ref.read(sensitiveReadBoundaryProvider),
+        () => loadCompletePagedSnapshot(
+          loadPage: (page, size) => repository.list(
+            categoryId,
+            page: page,
+            size: size,
+            sort: 'code',
+            order: 'asc',
+          ),
+          idOf: (row) => row.id,
+          isCurrent: () =>
+              !disposed && boundary == ref.read(sensitiveReadBoundaryProvider),
         ),
-        idOf: (row) => row.id,
-        isCurrent: () =>
-            !disposed && boundary == ref.read(sensitiveReadBoundaryProvider),
       );
       return GoodsDetailSequence(rows.map((row) => row.id), label: '当前分类');
     });
@@ -51,6 +63,9 @@ class GoodsBomNavigation extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final supplied = sequence;
     final category = categoryId;
+    if (supplied == null && category != null) {
+      ref.watch(_categorySequenceActivityProvider(category)).bindView(context);
+    }
     final state = supplied != null || category == null
         ? AsyncData(supplied ?? GoodsDetailSequence([goodsId]))
         : ref.watch(_categorySequenceProvider(category));

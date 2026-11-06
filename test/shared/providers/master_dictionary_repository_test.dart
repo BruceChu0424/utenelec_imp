@@ -3,6 +3,11 @@
 //   · 本端新建/改名单位(网络层记下写路径)后, 单位字典作废, 已加载的服务与下拉随之重取,
 //     不重登也能看到新值; 与单位无关的写不作废任何字典。
 import 'package:dio/dio.dart';
+import 'dart:async';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -18,6 +23,9 @@ class _DictApi extends ApiClient {
   _DictApi() : super(Dio());
 
   final Map<String, int> calls = {};
+  Completer<void>? gate;
+  final precisionModes = <bool?>[];
+  final identities = <AuthenticatedRequestIdentity?>[];
   List<Map<String, dynamic>> units = [
     {'id': 'unit-1', 'name': '件'},
   ];
@@ -28,6 +36,16 @@ class _DictApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     calls[path] = (calls[path] ?? 0) + 1;
+    final logical = PagedReadIntent.currentRead;
+    final active = PagedReadIntent.currentActivity;
+    final scope = AuthenticatedRequestScope.current;
+    precisionModes.add(BusinessPrecisionTransport.current?.readOnly);
+    identities.add(scope?.identity);
+    if (gate != null) await gate!.future;
+    if (!(logical?.call() ?? true) || !(active?.call() ?? true)) {
+      throw const UiWorkCancelled();
+    }
+    if (scope != null) scope.checkCurrent();
     if (path == ApiEndpoints.unitsDict) return units;
     if (path == ApiEndpoints.currenciesDict) {
       return const [
@@ -56,6 +74,83 @@ ProviderContainer _container(_DictApi api) {
 }
 
 void main() {
+  test(
+    'shared dictionary producer survives its first UI leaving with the same immutable identity',
+    () async {
+      final gate = Completer<void>();
+      final api = _DictApi()..gate = gate;
+      final repository = MasterDictionaryRepository(api);
+      addTearDown(repository.dispose);
+      var firstCurrent = true;
+      final firstScope = await AuthenticatedRequestScope.capture(
+        baseUrl: 'https://metadata.invalid/api',
+        storage: null,
+        isCurrent: () => firstCurrent,
+      );
+      final first = firstScope.run(
+        () => PagedReadIntent.scopedRead(
+          () => firstCurrent,
+          () => repository.load(ApiEndpoints.unitsDict),
+          activity: PagedReadActivityFence(isCurrent: () => firstCurrent),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final second = repository.load(ApiEndpoints.unitsDict);
+      firstCurrent = false;
+      gate.complete();
+      final values = await Future.wait([first, second]);
+      expect(identical(values.first, values.last), isTrue);
+      expect(repository.cached(ApiEndpoints.unitsDict), same(values.last));
+      expect(api.calls[ApiEndpoints.unitsDict], 1);
+      expect(api.identities.single, firstScope.identity);
+      expect(api.precisionModes.single, isTrue);
+    },
+  );
+
+  test(
+    'headless shared dictionary never borrows write precision and still retires on own session',
+    () async {
+      var own = true;
+      final api = _DictApi()..gate = Completer<void>();
+      final repository = MasterDictionaryRepository(api, isCurrent: () => own);
+      addTearDown(repository.dispose);
+      final write = BusinessPrecisionTransport();
+      final loading = write.run(() => repository.load(ApiEndpoints.unitsDict));
+      final rejected = expectLater(loading, throwsA(isA<UiWorkCancelled>()));
+      await Future<void>.delayed(Duration.zero);
+      expect(api.precisionModes.single, isTrue);
+      own = false;
+      api.gate!.complete();
+      await rejected;
+      expect(repository.cached(ApiEndpoints.unitsDict), isNull);
+    },
+  );
+
+  test(
+    'a shared dictionary write generation cannot publish its old in-flight rows',
+    () async {
+      final api = _DictApi()..gate = Completer<void>();
+      final repository = MasterDictionaryRepository(api);
+      addTearDown(repository.dispose);
+      final loading = repository.load(ApiEndpoints.unitsDict);
+      final rejected = expectLater(loading, throwsA(isA<UiWorkCancelled>()));
+      await Future<void>.delayed(Duration.zero);
+      repository.invalidate(ApiEndpoints.unitsDict);
+      api.gate!.complete();
+      await rejected;
+      expect(repository.cached(ApiEndpoints.unitsDict), isNull);
+      api.gate = null;
+      api.units = [
+        {'id': 'unit-1', 'name': '新单位'},
+      ];
+      expect(
+        (await repository.load(ApiEndpoints.unitsDict)).single['name'],
+        '新单位',
+      );
+      expect(api.calls[ApiEndpoints.unitsDict], 2);
+    },
+  );
+
   test(
     'business dictionaries retain original cache and invalidation keys on minimal sources',
     () async {

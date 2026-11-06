@@ -23,6 +23,9 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/master/goods/periodic-bom")
 public class GoodsPeriodicBomPreparationController {
+    @org.springframework.beans.factory.annotation.Autowired private PeriodicPreparationSummaryService summaries;
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.features.warehouse.materialbin.PeriodicMaterialCandidateReadService candidates;
+
 
     private final GoodsPeriodicBomPreparationService service;
 
@@ -40,5 +43,21 @@ public class GoodsPeriodicBomPreparationController {
     @PreAuthorize("hasAuthority('goods:bom:create') and hasAuthority('goods:bom:edit')")
     public PreparationBatchResult batch(@Valid @RequestBody PreparationBatchRequest request) {
         return service.save(request);
+    }
+
+    @GetMapping("/preparation/summaries")
+    @PreAuthorize("hasAuthority('goods:view') and hasAuthority('workshop_material:setup')")
+    public PeriodicPreparationSummaryService.Summary summaries(@RequestParam UUID workshopId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,@RequestParam(required=false) String readSnapshotRevision,@RequestParam(required=false) String windowAsOf) {
+        return summaries.summaries(workshopId,page,size,readSnapshotRevision,windowAsOf);
+    }
+    @GetMapping("/preparation/products/{productId}")
+    @PreAuthorize("hasAuthority('goods:view') and hasAuthority('workshop_material:setup')")
+    public PeriodicPreparationSummaryService.Detail product(@org.springframework.web.bind.annotation.PathVariable UUID productId,@RequestParam UUID workshopId,@RequestParam(defaultValue="1000") int size,@RequestParam(required=false) String readSnapshotRevision,@RequestParam(required=false) String windowAsOf) {
+        return summaries.product(workshopId,productId,size,readSnapshotRevision,windowAsOf);
+    }
+    @GetMapping("/preparation/material-options")
+    @PreAuthorize("hasAuthority('goods:view') and hasAuthority('workshop_material:setup')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<com.uten.imp.features.warehouse.materialbin.PeriodicMaterialCandidateReadService.Candidate> candidates(@RequestParam UUID workshopId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return candidates.candidates(java.util.List.of(workshopId),true,page,size,readSnapshotRevision);
     }
 }

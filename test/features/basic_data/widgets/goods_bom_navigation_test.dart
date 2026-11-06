@@ -28,7 +28,7 @@ void main() {
     );
     await pump('b');
     expect(find.text('2 / 3'), findsOneWidget);
-    expect(find.byTooltip('当前页结果 2 / 3'), findsOneWidget);
+    expect(find.byTooltip('当前筛选结果 2 / 3'), findsOneWidget);
     await tester.tap(find.byKey(const Key('goods-previous-bom')));
     await tester.tap(find.byKey(const Key('goods-next-bom')));
     expect(selected, ['a', 'c']);

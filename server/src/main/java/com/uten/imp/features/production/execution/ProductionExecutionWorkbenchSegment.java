@@ -158,6 +158,11 @@ public record ProductionExecutionWorkbenchSegment(
         /** 最近一份待处理超限案件；车间可在自身任务范围内直接查看。 */
         UUID overLimitDispositionId,
         java.util.List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> salesRequirements) {
+    @com.fasterxml.jackson.annotation.JsonProperty(value="remainingReportQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS)
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
+    public BigDecimal remainingReportQtyExact(){return remainingReportQty;}
+
     @com.fasterxml.jackson.annotation.JsonProperty(value="overLimitPendingQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
     public BigDecimal overLimitPendingQtyExact(){return overLimitPendingQty;}

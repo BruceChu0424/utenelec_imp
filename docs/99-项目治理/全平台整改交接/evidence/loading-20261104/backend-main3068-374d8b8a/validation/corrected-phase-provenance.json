@@ -1,0 +1,14 @@
+{
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "sourceFiles": 7389,
+  "priorSource": "a8ddb083780a6602f15ef5cb0292b299e23b26b8b09061fd3cb7b1a2994a78f5",
+  "deltaOnly": [
+    "contracts/table-output-cost-identities.json",
+    "contracts/table-output-selection/v1.json",
+    "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java"
+  ],
+  "newContractSha256": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6",
+  "newCostContractSha256": "63e8d996a50d5c578f9aee35e5503532eb6709394a563548cc1b1dcc97d30422",
+  "allProductionSourceAndPriorInputsExceptOneFixtureByteExact": true,
+  "priorFailedWholeFastNativeCode": 1
+}

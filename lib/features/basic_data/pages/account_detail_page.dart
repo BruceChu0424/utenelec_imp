@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../shared/providers/native_facet_options.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -74,6 +75,9 @@ class AccountDetailPage extends ConsumerStatefulWidget {
 
 class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     with ScopedPagedReadViewMixin<AccountDetailPage> {
+  @override
+  Future<void> onReadViewResumed() => _loadFlow(1);
+
   final _readViewportRows =
       MasterDataTableRowsController<AccountStatementRow>();
   int get _visibleReadPage => _statement == null
@@ -330,6 +334,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     Object pagingQuery() => [
       ref.read(accountRepositoryProvider),
       widget.accountId,
+      100,
       _date(_from),
       _date(_to),
       _flowKeyword,
@@ -349,6 +354,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             dateTo: to,
             keyword: keyword,
             page: target,
+            size: 100,
             billNo: billNo,
             columnQuery: columnQuery,
           );
@@ -361,6 +367,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
               totalPages: result.totalPages,
             ),
             snapshot: result,
+            rebuildSnapshot: result.withPage,
           );
         },
       );
@@ -373,18 +380,19 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
               .snapshot;
       if (!mounted || !_flowRequests.isCurrent(generation)) return;
       // 单号 facets 与流水同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
       setState(() {
         _statement = result;
         _flowLoading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || !_flowRequests.isCurrent(generation)) return;
       setState(() {
         _flowError = error.message;
         _flowLoading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_flowRequests.isCurrent(generation)) return;
       setState(() {
         _flowError = '加载账户流水失败';
@@ -393,23 +401,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     }
   }
 
-  /// 单号 facets（2026-09-25 单号列统一）：与流水列表同过滤口径
-  /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
-    () async => {
-      'billNo': await ref
-          .read(accountRepositoryProvider)
-          .statementBillNoFacets(
-            accountId: widget.accountId,
-            dateFrom: _date(_from),
-            dateTo: _date(_to),
-            keyword: _flowKeyword,
-          ),
-    },
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
+  Map<String, dynamic> get _flowFacetScope => {
+    'accountId': widget.accountId,
+    'dateFrom': _date(_from),
+    'dateTo': _date(_to),
+    'keyword': _flowKeyword,
+  };
 
   String _currencyLabel(String? id, {String? name, String? code}) {
     if (id == null) return '未设置币种';
@@ -1140,11 +1137,21 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             items: _statement?.rows ?? const [],
             // 单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
             // 滚动余额顺序语义固定，不做表头排序。
-            facets: {
-              'billNo': _columnFilters.bucketOf('billNo'),
+            facets: const {
               'sourceDocType': accountStatementSources,
               'entryKind': accountStatementEntryKinds,
             },
+            facetPageLoaders: nativeFacetLoaders(
+              ref,
+              path: '/finance/reports/account/statement/facets',
+              fields: const ['billNo'],
+              filters: _flowFacetScope,
+            ),
+            facetSearchScope: nativeFacetSearchScope(
+              ref,
+              '/finance/reports/account/statement/facets',
+              _flowFacetScope,
+            ),
             nullCounts: const {},
             filters: _columnFilters.values,
             onFilterChanged: (key, value) {

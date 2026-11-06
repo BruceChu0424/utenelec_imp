@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sourceWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+  "sourceBase": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "interpretation": "Historical OLD structural PostgreSQL fixtures and actual plans. These are not NEW combined validation, company SLA, or runtime evidence for every current caller. No shared production data was changed.",
+  "copiedAtUtc": "2026-11-05T10:41:27.608471+00:00",
+  "files": [
+    {
+      "source": "server/build/loading-validation/backend-final-growth/warehouse-metadata-history-10000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/warehouse-metadata-history-10000.json",
+      "sha256": "9c601bd58ab0e8fed73d87ce97a8db6afc793392db653dc0bf320c5017b32537"
+    },
+    {
+      "source": "server/build/loading-validation/backend-final-growth/warehouse-metadata-history-100000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/warehouse-metadata-history-100000.json",
+      "sha256": "03811c4f4b7f4489c3186ba9dcc8597ac0faa52e9ca30955eb56b1bdbe4c0055"
+    },
+    {
+      "source": "server/build/loading-validation/backend-final-growth/warehouse-metadata-history-1000000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/warehouse-metadata-history-1000000.json",
+      "sha256": "2a2e504dc3f1069ac94b4b27f21e8d99304114d368d29d3449ca99b29062a808"
+    },
+    {
+      "source": "server/build/loading-validation/backend-final-growth/workbench-page-detail-history-10000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/workbench-page-detail-history-10000.json",
+      "sha256": "0ff785c7fe0cd453ae740ea8dfe48557c20313e398960bcae99f622a6a780bba"
+    },
+    {
+      "source": "server/build/loading-validation/backend-final-growth/workbench-page-detail-history-100000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/workbench-page-detail-history-100000.json",
+      "sha256": "540c666da063c4fa62ea9e031bf59a555e6c5f29a701f00847939c0df9284d51"
+    },
+    {
+      "source": "server/build/loading-validation/backend-final-growth/workbench-page-detail-history-1000000.json",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/workbench-page-detail-history-1000000.json",
+      "sha256": "6b92d4542cf23c2506928ada4d2b5dab7e25169f0163af9ed5ba8ad8fca9bc9e"
+    }
+  ]
+}

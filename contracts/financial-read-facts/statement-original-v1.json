@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "originalRowJson": "{\"amount\":999999999999.123456789012345678900,\"count\":9007199254740993,\"huge\":9999999999999999999999999,\"raw\":\"0.0000\",\"masked\":null,\"maskedExact\":\"original-private-proof\"}",
+  "wireRowJson": "{\"amount\":999999999999.123456789012345678900,\"count\":9007199254740993,\"huge\":9999999999999999999999999,\"raw\":\"0.0000\",\"masked\":null,\"maskedExact\":\"original-private-proof\",\"amountExact\":\"999999999999.123456789012345678900\",\"countExact\":\"9007199254740993\",\"hugeExact\":\"9999999999999999999999999\"}",
+  "expectedDisplay": {
+    "amount": "999999999999.1234567890123456789",
+    "count": "9007199254740993",
+    "huge": "9999999999999999999999999",
+    "masked": null
+  },
+  "policy": "Frozen original literals and existing Exact values preserved; additive exact strings carry values across JavaScript JSON decoding."
+}

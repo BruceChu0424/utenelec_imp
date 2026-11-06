@@ -72,6 +72,11 @@ class FinancePayablesPage extends ConsumerStatefulWidget {
 
 class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     with ScopedPagedReadViewMixin<FinancePayablesPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   final _requests = LatestRequestGuard();
   FinancePayablesResult? _result;
   bool _loading = false;
@@ -256,12 +261,14 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     try {
       final cachedPage = await readScopedPage<FinancePayableItem>(
         page,
+        idOf:(row)=>row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
         fetchPage: (target) async {
           final response = await repo.list(
             page: target,
+            size: 100,
             filter: filter,
             sort: sort,
             order: order,
@@ -275,6 +282,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
               totalPages: response.totalPages,
             ),
             snapshot: response,
+            rebuildSnapshot: response.withPage,
           );
         },
       );
@@ -306,8 +314,10 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
         }
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       _setLoadError(generation, error.message);
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       _setLoadError(generation, '服务暂不可用，请稍后重试');
     }
   }
@@ -801,7 +811,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     // 已付/抵销/未付列与 KPI 此前停在旧数据，只能手动刷新；登记后期间写过
     // 数据即静默重拉当前工作台数据。
     _myLocation ??= currentLocationOr(context, RouteName.finance);
-    ref.onPageResume(_myLocation!, _refreshWorkspace);
+    final visibleReadReturn = _refreshWorkspace;
+    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     final settlementMethods =

@@ -64,7 +64,7 @@ class FinanceApplicationsPostgresTest {
         assertThat(db.queryForObject("SELECT decided_name_snapshot FROM finance_application_nodes WHERE application_id=? AND step_no=1",String.class,id)).isEqualTo(w.department.name);
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_executions WHERE application_id=?",Integer.class,id)).isZero();
         assertThatThrownBy(()->db.update("UPDATE finance_applications SET source_id=gen_random_uuid() WHERE id=?",id)).hasMessageContaining("原始内容已冻结");
-        login(w.owner);assertThat(applications.list("mine",null,1,20).get("total")).isEqualTo(1L);
+        login(w.owner);assertThat(queueIds("mine")).doesNotContain(id.toString());assertThat(queueIds("history")).contains(id.toString());
     }
     @Test void withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney(){
         Prepared original=prepared.get("withdraw");World w=original.world();login(w.owner);UUID id=original.input().id();var submitted=applications.detail(id);
@@ -75,12 +75,15 @@ class FinanceApplicationsPostgresTest {
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_nodes WHERE application_id=? AND submission_round=1 AND status='WITHDRAWN'",Integer.class,id)).isEqualTo(3);
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_nodes WHERE application_id=? AND submission_round>1",Integer.class,id)).isZero();
         UUID rejected=prepared.get("reject").input().id();login(w.department);var returned=decide(rejected,false,"行程依据需要补齐");assertThat(returned.get("status")).isEqualTo("REJECTED");
+        login(w.owner);assertThat(queueIds("mine")).contains(id.toString(),rejected.toString());assertThat(queueIds("history")).doesNotContain(id.toString(),rejected.toString());
         assertThatThrownBy(()->db.update("UPDATE finance_application_nodes SET status='APPROVED' WHERE application_id=? AND submission_round=1 AND step_no=1",rejected)).hasMessageContaining("不能覆盖");
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_executions WHERE application_id IN (?,?)",Integer.class,id,rejected)).isZero();
     }
     @Test void nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl() throws Exception {
         Prepared original=prepared.get("expense");World w=original.world();Actor payer=payer();UUID account=account(),style=original.style();UUID id=original.input().id();
         approvePayment(w,id);
+        login(w.owner);assertThat(queueIds("mine")).contains(id.toString());assertThat(queueIds("history")).doesNotContain(id.toString());
+        login(payer);assertThat(queueIds("payment")).contains(id.toString());
         assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",java.math.BigDecimal.class,account)).isEqualByComparingTo("1000");
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_executions WHERE application_id=?",Integer.class,id)).isZero();
         login(payer);var approved=applications.detail(id);Execute execute=execute(approved,account,style,"100.1234");
@@ -88,7 +91,7 @@ class FinanceApplicationsPostgresTest {
         proof(id,"FINANCE_APPLICATION_PAYMENT_PROOF");
         try(var threads=java.util.concurrent.Executors.newFixedThreadPool(4)){
             var start=new java.util.concurrent.CountDownLatch(1);List<java.util.concurrent.Future<Map<String,Object>>> requests=new ArrayList<>();
-            for(int i=0;i<4;i++)requests.add(threads.submit(()->{login(payer);try{start.await();return applications.execute(id,execute);}finally{SecurityContextHolder.clearContext();}}));
+            for(int i=0;i<4;i++)requests.add(threads.submit(()->{login(payer);try{start.await();assertThat(db.queryForObject("SELECT current_database()",String.class)).isEqualTo(PG.getDatabaseName());return applications.execute(id,execute);}finally{SecurityContextHolder.clearContext();}}));
             start.countDown();for(var request:requests)assertThat(request.get(40,java.util.concurrent.TimeUnit.SECONDS).get("status")).isEqualTo("EXECUTED");
         }
         login(payer);var posted=applications.detail(id);UUID doc=(UUID)posted.get("native_doc_id");
@@ -98,9 +101,11 @@ class FinanceApplicationsPostgresTest {
         assertBalanced(doc);assertThat(db.queryForObject("SELECT approver_id FROM finance_expenses WHERE id=?",UUID.class,doc)).isEqualTo(w.management.employee);
         assertThat(((Map<?,?>)applications.receipt(id,execute.requestId()).get("result")).get("status")).isEqualTo("EXECUTED");
         var confirmed=applications.confirm(id,action(posted));assertThat(confirmed.get("status")).isEqualTo("CONFIRMED");
+        assertThat(queueIds("payment")).doesNotContain(id.toString());assertThat(queueIds("history")).contains(id.toString());
         assertThatThrownBy(()->applications.reverse(id,reason(confirmed,"真实付款需要按原顺序撤回"))).hasMessageContaining("撤销财务确认");
         var unconfirmed=applications.unconfirm(id,reason(confirmed,"原回单核对后撤销本次确认"));
         var reversed=applications.reverse(id,reason(unconfirmed,"按原付款资金及GL对称撤销"));assertThat(reversed.get("status")).isEqualTo("REVERSED");
+        login(w.owner);assertThat(queueIds("mine")).contains(id.toString());assertThat(queueIds("history")).doesNotContain(id.toString());login(payer);
         assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",java.math.BigDecimal.class,account)).isEqualByComparingTo("1000");assertBalanced(doc);
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_events WHERE application_id=? AND event_type='PAYMENT_POSTED'",Integer.class,id)).isEqualTo(1);
         assertThatThrownBy(()->applications.execute(id,new Execute(execute.requestId(),execute.expectedVersion(),execute.sourceFingerprint(),account,execute.paymentDate(),execute.bankBookedAt(),"不同实际流水",execute.bankAmount(),"0",null,style,"1","ORDINARY_EXPENSE"))).hasMessageContaining("不同内容");
@@ -358,6 +363,7 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
         }catch(Exception e){throw new IllegalStateException("Cannot freeze the actual migration source",e);}
     }
     private UUID payrollStyle(String category,String prefix,String classification,UUID actor){UUID id=UUID.randomUUID(),base=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);String code=prefix+new java.math.BigInteger(id.toString().replace("-",""),16).toString().substring(0,18);db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,?,'使用')",id,"FQ-P-"+id,"原工资科目-"+id,category);db.update("INSERT INTO finance_chart_codes(code,name,currency_name,currency_id,classification,source_kind,source_reference,sort_order,source_row,updated_by) VALUES(?,?,'',?,?,'MANUAL','匿名原工资明确科目依据',1,1,?)",code,"原财务工资科目-"+id,base,classification,actor);db.update("INSERT INTO finance_chart_code_styles(code,style_id,created_by) VALUES(?,?,?)",code,id,actor);return id;}
+    private Set<String> queueIds(String queue){return ((List<?>)applications.list(queue,null,1,100).get("rows")).stream().map(row->((Map<?,?>)row).get("id").toString()).collect(java.util.stream.Collectors.toSet());}
     private void approvePayment(World w,UUID id){for(Actor reviewer:List.of(w.department,w.finance1,w.finance2,w.management)){login(reviewer);decide(id,true,null);}}
     private DraftInput payment(UUID id,String kind,String nature,UUID supplier,UUID payable,UUID style,String amount){UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);return new DraftInput(UUID.randomUUID(),id,-1,kind,"原实际付款申请","原单据与款项依据",BusinessTime.today().toString(),null,null,nature,supplier,currency,List.of(new RequestLine(UUID.randomUUID(),"原款项",amount,payable,style)),null,null,null,null);}
     private Execute execute(Map<String,Object> app,UUID account,UUID style,String amount){return new Execute(UUID.randomUUID(),((Number)app.get("row_version")).longValue(),app.get("source_fingerprint").toString(),account,BusinessTime.today().toString(),java.time.OffsetDateTime.now().toString(),"真实回单-"+UUID.randomUUID(),amount,"0",null,style,"1","ORDINARY_EXPENSE");}

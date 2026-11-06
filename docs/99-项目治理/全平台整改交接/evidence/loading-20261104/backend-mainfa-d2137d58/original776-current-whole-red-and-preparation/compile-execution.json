@@ -1,0 +1,16 @@
+{
+  "state": "completed",
+  "startedAtUtc": "2026-11-06T01:32:31.1237696Z",
+  "completedAtUtc": "2026-11-06T01:38:17.0207338Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "upstreamMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-fa-final",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "wrapperPid": 22268,
+  "log": "build\\loading-validation\\main-fa-final\\compile.log"
+}

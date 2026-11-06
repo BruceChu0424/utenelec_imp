@@ -1,0 +1,44 @@
+--- Current/server/src/test/java/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.java
++++ Staged/server/src/test/java/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.java
+@@ -99,24 +99,37 @@
+         assertThat(ap(receipt)).isEqualByComparingTo("100");
+     }
+ 
+     @Test void receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce(){
+         F f=fixture();UUID receipt=receipt(f,"10","1",new BigDecimal("11.0000"));receipts.approve(receipt);passAndStock(f,receipt);
++        UUID originalItem=receipts.detail(receipt).getItems().getFirst().getId();
++        String evidenceSql="SELECT jsonb_agg(to_jsonb(evidence) ORDER BY id)::text FROM business_numeric_input_evidence evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'";
++        String originalEvidence=db.queryForObject(evidenceSql,String.class,receipt,originalItem);
++        assertThat(originalEvidence).isNotNull();
++        assertThat(db.queryForObject("SELECT original_decimal FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",String.class,receipt,originalItem)).isEqualTo("11.0000");
++        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",receipt)).isEqualByComparingTo("1");
++        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",receipt)).isEqualByComparingTo("1");
++        assertThat(db.queryForObject("SELECT precision_policy->'choices'='{}'::jsonb AND original_unit->>'code'='KG' AND recorded_unit=original_unit FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",Boolean.class,receipt,originalItem)).isTrue();
+         var request=new DocumentUnapprovalService.UnapproveRequest("gift-unapprove-"+receipt,"收费和免费实物同代际守恒");
+         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
+         assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(receipt)).isZero();
+         assertThat(number("SELECT received_qty+gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
+         var again=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
+         assertThat(again.getId()).isEqualTo(draft.getId());assertThat(stock(f)).isZero();
+         assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("CHARGED_PLUS_GIFT_V1");
+-        assertThat(number("SELECT original_decimal::numeric FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",draft.getId(),draft.getItems().getFirst().getId())).isEqualByComparingTo("11");
+-        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("2");
+-        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("2");
+-        assertThat(db.queryForObject("SELECT precision_policy->'choices'='{}'::jsonb AND original_unit->>'code'='KG' AND recorded_unit=original_unit FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",Boolean.class,draft.getId(),draft.getItems().getFirst().getId())).isTrue();
++        UUID draftItem=draft.getItems().getFirst().getId();
++        assertThat(number("SELECT weight FROM purchase_receipt_items WHERE id=?",draftItem)).isEqualByComparingTo("11");
++        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_receipt_items WHERE id=?",UUID.class,draftItem)).isEqualTo(originalItem);
++        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_id=?",draft.getId())).isZero();
++        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("1");
++        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("1");
++        assertThat(db.queryForObject(evidenceSql,String.class,receipt,originalItem)).isEqualTo(originalEvidence);
+         receipts.approve(draft.getId());passAndStock(f,draft.getId());
+         assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");assertThat(ap(draft.getId())).isEqualByComparingTo("100");
+         assertThat(number("SELECT count(*) FROM procurement_inspection_items WHERE receipt_id=? AND status='RESOLVED'",draft.getId())).isEqualByComparingTo("2");
++        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_id=?",draft.getId())).isZero();
++        assertThat(db.queryForObject(evidenceSql,String.class,receipt,originalItem)).isEqualTo(originalEvidence);
+         assertThatThrownBy(()->receipts.approve(draft.getId())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+         assertThat(stock(f)).isEqualByComparingTo("11");
+     }
+ 
+     @Test void legacyGiftAnnotationKeepsRecordedTenOnReverseAndCloneUnlessOwnerExplicitlyUpgradesDraft(){

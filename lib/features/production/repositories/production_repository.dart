@@ -1,6 +1,5 @@
 import '../../../shared/documents/imported_document_policy.dart';
 import 'dart:convert';
-import '../../../shared/search/keyword_search.dart';
 
 import '../../../shared/documents/document_unapproval.dart';
 // 生产模块仓库（生产管理 / production）。
@@ -36,7 +35,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/paging/prepared_page_read.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -1294,35 +1292,6 @@ class ProductionPlanRepository {
     );
   }
 
-  Future<PagedResult<MaterialFutureTransferSource>>
-  materialFutureTransferSources({
-    required String targetAnalysisId,
-    required String targetMaterialId,
-    int page = 1,
-    int size = 20,
-    String keyword = '',
-  }) async {
-    final snapshot = await materialFutureTransferSourceSnapshot(
-      targetAnalysisId: targetAnalysisId,
-      targetMaterialId: targetMaterialId,
-    );
-    final all = rankedKeywordMatches(
-      snapshot,
-      keyword,
-      primaryFields: (source) => [source.goodsName],
-      fields: (source) => [source.sourceLabel, source.goodsCode],
-    );
-    final start = ((page - 1) * size).clamp(0, all.length);
-    final end = (start + size).clamp(0, all.length);
-    return PagedResult(
-      items: all.sublist(start, end),
-      page: page,
-      size: size,
-      total: all.length,
-      totalPages: (all.length / size).ceil(),
-    );
-  }
-
   Future<ProductionMaterialAnalysisView> createMaterialFutureTransfer({
     required ProductionMaterialAnalysisView targetAnalysis,
     required String targetMaterialId,
@@ -2303,11 +2272,13 @@ class ProductionDailyReportRepository {
     ProductionDailyReportFilter filter = const ProductionDailyReportFilter(),
     String? sort,
     String? order,
+    bool includeDraftClaims = false,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
       ...filter.toQuery(),
+      if (includeDraftClaims) 'includeDraftClaims': true,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
@@ -2319,6 +2290,37 @@ class ProductionDailyReportRepository {
       json,
       ProductionDailyReportListItem.fromJson,
     );
+  }
+
+  /// Pure scoped read: all claims of draft headers related to these current tasks.
+  Future<PagedResult<ProductionDailyReportListItem>> draftClaimsBySegments({
+    required List<String> executionSegmentIds,
+    int page = 1,
+    int size = 100,
+  }) async {
+    final json = await api.post(
+      '/production/daily-reports/draft-claims/query',
+      body: {
+        'executionSegmentIds': executionSegmentIds,
+        'page': page,
+        'size': size,
+      },
+    );
+    if (json['items'] is! List ||
+        json['page'] is! int ||
+        json['size'] is! int ||
+        json['total'] is! int ||
+        json['totalPages'] is! int) {
+      throw const FormatException('报工草稿范围分页信息不完整');
+    }
+    return PagedResult.fromJsonResponsive(json, (row) {
+      if (row['closed'] is! bool ||
+          row['canceled'] is! bool ||
+          row['status'] is! int) {
+        throw const FormatException('报工草稿状态尚未核对');
+      }
+      return ProductionDailyReportListItem.fromJson(row);
+    });
   }
 
   Future<ProductionDailyReportDetail> detail(String id) async {
@@ -2455,49 +2457,3 @@ final productionDailyReportRepositoryProvider =
 /// 沿用 purchase 的错误文案策略（ApiException 取 message，其余给中性提示）。
 String productionErrorMessage(Object e, {String fallback = '操作失败，请稍后重试'}) =>
     e is ApiException ? e.message : fallback;
-
-extension ProductionSchedulePreparedRead on ProductionPlanRepository {
-  Future<PagedResult<SchedulePendingRow>> readSchedulePending({
-    int page = 1,
-    int size = 20,
-    String keyword = '',
-    String? sort,
-    String? order,
-    String? status,
-    String? billNo,
-    bool preferPrepared = false,
-    PreparedPageRead<SchedulePendingRow>? preparedRead,
-  }) {
-    Future<PagedResult<SchedulePendingRow>> fetch() => schedulePending(
-      page: page,
-      size: size,
-      keyword: keyword,
-      sort: sort,
-      order: order,
-      status: status,
-      billNo: billNo,
-    );
-    final prepared = preparedRead;
-    if (page != 1 || prepared == null) return fetch();
-    return prepared.read(
-      [this, size, keyword.trim(), sort, order, status, billNo],
-      fetch,
-      preferPrepared: preferPrepared,
-    );
-  }
-
-  Future<void> prepareSchedulePending({
-    String keyword = '',
-    PreparedPageRead<SchedulePendingRow>? preparedRead,
-  }) =>
-      (preparedRead)?.prepare([
-        this,
-        100,
-        keyword.trim(),
-        null,
-        null,
-        null,
-        null,
-      ], () => schedulePending(size: 100, keyword: keyword)) ??
-      Future.value();
-}

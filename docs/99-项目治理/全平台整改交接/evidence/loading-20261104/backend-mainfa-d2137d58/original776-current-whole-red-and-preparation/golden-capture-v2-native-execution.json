@@ -1,0 +1,11 @@
+{
+  "observedAtUtc": "2026-11-06T02:14:34.925620+00:00",
+  "actualExitCode": 0,
+  "nativeExitEvidence": "exec session3846 write_stdin returned exit_code0 after v2 capture; no exact end timestamp claimed.",
+  "capturedAtUtc": "2026-11-06T01:52:04.151645+00:00",
+  "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "scriptSha256": "54ef6097d28e11a92c4f680a60176b77f2727a4a2c629db91c3ccfd4361bc027",
+  "rawHistorySha256": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+  "beginReadOnlyRollback": true,
+  "sharedTemplateOrCompanyConnected": false
+}

@@ -42,6 +42,9 @@ class _SubjectPicker extends ConsumerStatefulWidget {
 class _SubjectPickerState extends ConsumerState<_SubjectPicker>
     with ScopedPagedReadViewMixin<_SubjectPicker> {
   @override
+  Future<void> onReadViewResumed() => _load(1);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     if (mounted) {
       setState(_invalidate);
@@ -146,6 +149,7 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker>
       });
       _reconcileSelection(request);
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || request != _request) return;
       setState(() {
         _error = error is ApiException ? error.message : '查询失败，请重试';

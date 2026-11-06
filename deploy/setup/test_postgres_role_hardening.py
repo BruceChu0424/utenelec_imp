@@ -116,11 +116,19 @@ class RoleHardeningSourceContractTest(unittest.TestCase):
 class PostgresRoleHardeningTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        probe = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"], capture_output=True, timeout=20)
+        # Only daemon availability is needed; full system/plugin discovery is
+        # unrelated to the actual isolated PostgreSQL role proof below.
+        probe = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"], capture_output=True, timeout=20)
         if probe.returncode:
             raise unittest.SkipTest("Docker daemon is unavailable for the isolated role proof")
         result = subprocess.run([
-            "docker", "run", "--detach", "--rm", "--cpus", "1", "--memory", "512m",
+            "docker", "run", "--detach", "--rm", "--network", "none",
+            "--label", "uten.task=platform-loading-flyway-role-fixture",
+            # This suite validates role/catalog predicates and rolls every test
+            # back; it has no crash/durability assertion. Keep scratch cluster
+            # initialization off the contended host disk, not a longer timeout.
+            "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,nodev,size=128m",
+            "--cpus", "1", "--memory", "512m",
             "--env", "POSTGRES_HOST_AUTH_METHOD=trust", "--env", "POSTGRES_DB=uten_imp", "postgres:16-alpine",
         ], capture_output=True, check=True, timeout=60)
         cls.container = result.stdout.decode().strip()
@@ -136,7 +144,12 @@ class PostgresRoleHardeningTest(unittest.TestCase):
             if ready.returncode == 0:
                 return
             time.sleep(0.2)
-        raise AssertionError("isolated PostgreSQL did not become ready")
+        logs = subprocess.run(["docker", "logs", "--tail", "40", cls.container],
+                              capture_output=True, timeout=10)
+        raise AssertionError("isolated PostgreSQL did not become ready; last probe="
+            + ready.stdout.decode("utf-8", "replace") + ready.stderr.decode("utf-8", "replace")
+            + "; isolated container startup=" + logs.stdout.decode("utf-8", "replace")
+            + logs.stderr.decode("utf-8", "replace"))
 
     def sql(self, body):
         # No ports are published. Every role, grant and object below belongs only

@@ -66,6 +66,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     with
         MasterInlinePageMixin<CurrencyPage, CurrencyListItem>,
         ScopedPagedReadViewMixin<CurrencyPage> {
+  @override
+  Future<void> onReadViewResumed() => _loadCurrencies(1);
+
   final _readViewportRows = MasterDataTableRowsController<CurrencyListItem>();
   int get _visibleReadPage => _page == null
       ? (_pageNum)
@@ -276,6 +279,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
@@ -285,7 +289,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {

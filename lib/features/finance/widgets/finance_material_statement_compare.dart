@@ -34,7 +34,6 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
   final _grid = UtenEditableGridController<_ComparisonRow>();
   final _mappingScroll = ScrollController();
   List<Map<String, dynamic>> _mapping = [];
-  int _mappingPage = 1;
   Map<String, dynamic>? _context, _source, _result;
   Map<String, dynamic> _targetMetadata = {};
   List<Map<String, dynamic>> _targets = [];
@@ -67,7 +66,7 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
     'sourceImportId': _sourceId.text,
     'dateFrom': _from.text,
     'dateTo': _to.text,
-    'mappingPage': _mappingPage,
+    'mappingPage': 1,
     'mapping': _captureMapping(),
   };
   @override
@@ -78,8 +77,6 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
     if (widget.contextData != null && _id(widget.contextData) != id) {
       throw StateError('原草稿属于另一个分组，不能改配');
     }
-    _mappingPage = _mi(saved['mappingPage']);
-    if (_mappingPage < 1) _mappingPage = 1;
     _sourceId.text = saved['sourceImportId']?.toString() ?? '';
     _from.text = saved['dateFrom']?.toString() ?? '';
     _to.text = saved['dateTo']?.toString() ?? '';
@@ -147,18 +144,11 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
     ];
   }
 
-  void _showMappingPage(int page, {bool preserve = true}) {
+  void _showMapping({bool preserve = true}) {
     if (preserve) _mapping = _captureMapping();
-    final last = (_mapping.length + 29) ~/ 30;
-    _mappingPage = page.clamp(1, last < 1 ? 1 : last);
-    final begin = (_mappingPage - 1) * 30,
-        end = (_mappingPage * 30).clamp(0, _mapping.length);
     if (_mappingScroll.hasClients) _mappingScroll.jumpTo(0);
     _grid.replaceAll([
-      for (final value in _mapping.sublist(
-        begin.clamp(0, _mapping.length),
-        end,
-      ))
+      for (final value in _mapping)
         _ComparisonRow(
           _mi(value['sourceRow']),
           target: value['reportRowKey']?.toString(),
@@ -238,7 +228,7 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
       }
     }
     _mapping = rows;
-    _showMappingPage(_mappingPage, preserve: false);
+    _showMapping(preserve: false);
     setState(() => _error = null);
   }
 
@@ -527,17 +517,6 @@ class _MaterialCompareState extends ConsumerState<_MaterialCompare>
                               ],
                             ),
                           ),
-                        ),
-                        UtenPagination(
-                          currentPage: _mappingPage,
-                          totalPages: (_mapping.length + 29) ~/ 30,
-                          busy: _busy,
-                          onPageChanged: _busy
-                              ? null
-                              : (page) {
-                                  setState(() => _showMappingPage(page));
-                                  markFormDraftChanged();
-                                },
                         ),
                       ],
                     )

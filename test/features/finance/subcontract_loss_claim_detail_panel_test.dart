@@ -17,6 +17,63 @@ import '../../attachments/attachment_test_actions.dart';
 
 void main() {
   testWidgets(
+    'loss offset candidate picker reads all eligible supplier payables and retains exact amount on later rows',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _DetailApi(_openDetail)..payableCount = 205;
+      await _pump(
+        tester,
+        detail: _openDetail,
+        api: api,
+        permissions: const {
+          Perm.subcontractLossClaimView,
+          Perm.subcontractLossClaimReview,
+          Perm.financeViewAll,
+        },
+      );
+      await tester.tap(find.text('责任决定'));
+      await tester.pumpAndSettle();
+      final dropdown = tester.widget<UtenDropdownField>(
+        find.byType(UtenDropdownField).last,
+      );
+      dropdown.onChanged('AP_OFFSET');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('选择同供应商正应付'));
+      await tester.pumpAndSettle();
+      expect(api.payableReads, [
+        {'page': 1, 'size': 200, 'supplierId': 'supplier-1'},
+        {'page': 2, 'size': 200, 'supplierId': 'supplier-1'},
+      ]);
+      final list = find.byType(ListView).last;
+      expect(tester.widget<ListView>(list).semanticChildCount, 205);
+      final scroll = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final last = find.widgetWithText(CheckboxListTile, 'PI-204 · —');
+      await tester.scrollUntilVisible(
+        last,
+        500,
+        scrollable: scroll,
+        maxScrolls: 65,
+      );
+      await tester.tap(last);
+      await tester.pump();
+      final amount = find.descendant(
+        of: last,
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(amount).controller!.text, '100.0001');
+      await tester.enterText(amount, '0.0001');
+      expect(api.payableReads, hasLength(2));
+      expect(find.text('加载更多'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'cash fulfillment uses minimum account references without account master permission',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 1400);
@@ -404,6 +461,8 @@ class _DetailApi extends ApiClient {
 
   final Map<String, dynamic> detail;
   final accountReads = <String>[];
+  int? payableCount;
+  final payableReads = <Map<String, dynamic>>[];
   final fulfillments = <Map<String, dynamic>>[];
 
   @override
@@ -466,5 +525,29 @@ class _DetailApi extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => detail;
+  }) async {
+    if (path == '/finance/payables' && payableCount != null) {
+      payableReads.add({...?query});
+      final page = query!['page'] as int;
+      final size = query['size'] as int;
+      final total = payableCount!;
+      return {
+        'page': page,
+        'size': size,
+        'total': total,
+        'totalPages': (total + size - 1) ~/ size,
+        'items': [
+          for (var i = (page - 1) * size; i < page * size && i < total; i++)
+            {
+              'id': 'p-$i',
+              'sourceDocNo': 'PI-$i',
+              'openItemKind': 'PAYABLE',
+              'status': 'OPEN',
+              'outstandingOriginal': '100.0001',
+            },
+        ],
+      };
+    }
+    return detail;
+  }
 }

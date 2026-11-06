@@ -88,9 +88,10 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
                 CREATE TABLE production_plans(id uuid PRIMARY KEY, actual_output_supplement_request_id uuid, bill_no text, status integer, maker_id uuid,
-                    material_analysis_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
+                    material_analysis_id uuid, material_analysis_item_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
-                CREATE TABLE production_material_analysis_items(analysis_id uuid, goods_id uuid,
+                CREATE TABLE production_material_analysis_items(id uuid, analysis_id uuid, goods_id uuid,
+                    parent_analysis_material_id uuid, source_type text DEFAULT 'SALES_ORDER_ITEM',
                     sales_order_item_id uuid, is_deleted boolean, source_ref text);
                 -- V719: 工作台根工单列引用 root 分析的编号子查询(漂移守卫要求全列对齐真表)。
                 CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, warehouse_id uuid, status text,
@@ -278,8 +279,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 "fn_preplan_aggregate_recorded_private_sources_scoped",
                 "fn_preplan_aggregate_recorded_private_sources");
         jdbc.execute("""
-                ALTER TABLE production_plans ADD COLUMN IF NOT EXISTS material_analysis_item_id uuid;
-                ALTER TABLE production_material_analysis_items ADD COLUMN IF NOT EXISTS id uuid, ADD COLUMN IF NOT EXISTS parent_analysis_material_id uuid;
                 ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
                 ALTER TABLE sales_orders ADD COLUMN remark text;
                 """);
@@ -302,6 +301,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     @BeforeEach
     void createService() {
         em = factory.createEntityManager();
+        em.getTransaction().begin();
         access = mock(ProductionDocumentAccessPolicy.class);
         when(access.nativeReadScope(anyString(), anyString())).thenAnswer(invocation ->
                 new NativeReadScope(invocation.getArgument(0) + " IN (:" + invocation.getArgument(1) + ")",
@@ -577,10 +577,52 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         assertThat(page.getTotal()).isEqualTo(5);
         assertThat(service.workshopTaskCount()).isEqualTo(5);
     }
+    @Test
+    void publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults() throws Exception {
+        em.createNativeQuery("UPDATE production_execution_segments SET material_discovery_required=TRUE WHERE id=:id")
+                .setParameter("id",new UUID(0,2)).executeUpdate();
+        em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET zero_material=TRUE WHERE segment_id=:id")
+                .setParameter("id",new UUID(0,2)).executeUpdate();
+        em.createNativeQuery("""
+                CREATE OR REPLACE FUNCTION fn_actual_supplement_material_ready(p_id uuid)
+                RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+                BEGIN
+                  PERFORM set_config('uten.fixture_jit_seen',current_setting('jit'),true);
+                  RETURN COALESCE((SELECT actual_supplement_material_ready FROM workbench_execution_policy_facts WHERE segment_id=p_id),FALSE);
+                END $$
+                """).executeUpdate();
+        em.createNativeQuery("SELECT set_config('jit','on',true)").getSingleResult();
+        long started=System.nanoTime();
+        var originallyOn=service.workshopTasks(1,50,null,"PREPARING",null,null,null,"DRAW_NOT_REQUESTED");
+        double onMillis=(System.nanoTime()-started)/1_000_000.0;
+        assertThat(em.createNativeQuery("SELECT current_setting('uten.fixture_jit_seen')").getSingleResult()).isEqualTo("off");
+        assertThat(em.createNativeQuery("SELECT current_setting('jit')").getSingleResult()).isEqualTo("on");
+        em.createNativeQuery("SELECT set_config('jit','off',true)").getSingleResult();
+        started=System.nanoTime();
+        var originallyOff=service.workshopTasks(1,50,null,"PREPARING",null,null,null,"DRAW_NOT_REQUESTED");
+        double offMillis=(System.nanoTime()-started)/1_000_000.0;
+        assertThat(em.createNativeQuery("SELECT current_setting('jit')").getSingleResult()).isEqualTo("off");
+        assertThat(originallyOn.getTotal()).isEqualTo(originallyOff.getTotal());
+        assertThat(originallyOn.getTotalPages()).isEqualTo(originallyOff.getTotalPages());
+        assertThat(originallyOn.getItems()).usingRecursiveComparison().isEqualTo(originallyOff.getItems());
+        var evidence=Path.of("build/loading-validation/combined-interactive-read/public-execution-read.json");
+        Files.createDirectories(evidence.getParent());
+        new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(evidence.toFile(),
+                java.util.Map.of("scope","Real public service, original fixture role and transaction, same SQL/parameters; isolated data only",
+                        "observedDuringRead","off","restoredOriginalOn",true,"preservedOriginalOff",true,
+                        "equalPublicRowsAndTotals",true,"rows",originallyOn.getItems().size(),"total",originallyOn.getTotal(),
+                        "originalOnPublicMillis",onMillis,"originalOffPublicMillis",offMillis));
+        System.out.println("PUBLIC-EXECUTION-READ observedJit=off restoredOn=true preservedOff=true equalRowsAndTotals=true rows="
+                +originallyOn.getItems().size()+" total="+originallyOn.getTotal()+" originalOnMillis="+onMillis+" originalOffMillis="+offMillis);
+    }
+
     @AfterEach
     void closeEntityManager() {
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
-        if (em != null) em.close();
+        if (em != null) {
+            if(em.getTransaction().isActive())em.getTransaction().rollback();
+            em.close();
+        }
     }
     @AfterAll
     static void stopPostgres() {
@@ -792,7 +834,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     void keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope() {
         String word = "WX" + UUID.randomUUID().toString().replace("-", "") + "10%_";
         UUID labelRoot = UUID.randomUUID(), hiddenRoot = UUID.randomUUID();
-        em.getTransaction().begin();
+        boolean ownsTransaction=!em.getTransaction().isActive();
+        if(ownsTransaction)em.getTransaction().begin();
         try {
             em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_code=:word,product_name='ordinary' WHERE segment_id=:id")
                     .setParameter("word", word).setParameter("id", new UUID(0,1)).executeUpdate();
@@ -820,7 +863,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     .extracting(item -> item.rootId()).containsExactly(labelRoot);
             assertThat(service.list(1,50,"Assembly "+word,null,false,null,null,null).getTotal()).isEqualTo(1);
         } finally {
-            em.getTransaction().rollback();
+            if(ownsTransaction)em.getTransaction().rollback();
         }
     }
 
@@ -898,17 +941,24 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     void analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders() {
         UUID root = UUID.randomUUID(), stockGoods = UUID.randomUUID(), makeGoods = UUID.randomUUID();
         UUID purchaseGoods = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
+        // 顶层产品锚点（V1057）：自制段挂在锚定到根分析行的顶层计划上才进完成统计。
+        UUID makeItem = UUID.randomUUID(), topPlan = UUID.randomUUID();
         List<UUID> segments = new java.util.ArrayList<>();
+        List<UUID> plans = new java.util.ArrayList<>(List.of(topPlan));
         jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_type,root_id,owner_employee_id) VALUES ('ANALYSIS',?,?)", root, EMPLOYEE);
         try {
-            addCompletionSegment(segments, root, makeGoods, color, unit, "COMPLETED");
+            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", makeItem, root, makeGoods);
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id,material_analysis_id,material_analysis_item_id) VALUES (?, 'PLAN-TOP', 1, ?, ?, ?)", topPlan, EMPLOYEE, root, makeItem);
+            addCompletionSegment(segments, root, makeGoods, color, unit, "COMPLETED", topPlan);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=?", root);
             // Stock handoff, completed manufacture and partially received purchase are
             // three product identities. Absence of a work order never implies completion.
-            for (Object[] source : List.of(new Object[]{stockGoods, 0}, new Object[]{makeGoods, 0}, new Object[]{purchaseGoods, 20})) {
-                jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,0,?)",
-                        root, UUID.randomUUID(), source[0], color, unit, source[1]);
+            for (Object[] source : List.of(new Object[]{stockGoods, UUID.randomUUID()}, new Object[]{makeGoods, makeItem}, new Object[]{purchaseGoods, UUID.randomUUID()})) {
+                jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", source[1], root, source[0]);
+                jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,0,0)",
+                        root, source[1], source[0], color, unit);
             }
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_fulfillment_qty=20 WHERE analysis_id=? AND goods_id=?", root, purchaseGoods);
             var partial = service.group("ANALYSIS", root);
             assertThat(partial.completedProductCount()).isEqualTo(2);
             assertThat(partial.unfinishedProductCount()).isEqualTo(1);
@@ -924,20 +974,43 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             var reopened = service.group("ANALYSIS", root);
             assertThat(reopened.completedProductCount()).isEqualTo(2);
             assertThat(reopened.unfinishedProductCount()).isEqualTo(1);
+
+            // 2026-11-04 用户口径（顶层产品）：子层不进统计——锚点子件行（MAKE_COMPONENT）
+            // 与未锚定的子件计划段都不算产品，数量不因它们变化。
+            UUID componentGoods = UUID.randomUUID(), childItem = UUID.randomUUID(), childPlan = UUID.randomUUID();
+            plans.add(childPlan);
+            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,parent_analysis_material_id,source_type,is_deleted) VALUES (?,?,?,?,'MAKE_COMPONENT',FALSE)",
+                    childItem, root, componentGoods, makeItem);
+            jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,5,5)",
+                    root, childItem, componentGoods, color, unit);
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?, 'PLAN-CHILD', 1, ?)", childPlan, EMPLOYEE);
+            addCompletionSegment(segments, root, componentGoods, color, unit, "IN_PROGRESS", childPlan);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=? AND segment_status='IN_PROGRESS'", root);
+            var childless = service.group("ANALYSIS", root);
+            assertThat(childless.completedProductCount()).isEqualTo(2);
+            assertThat(childless.unfinishedProductCount()).isEqualTo(1);
         } finally {
             jdbc.update("DELETE FROM v_production_analysis_workbench_item_progress WHERE analysis_id=?", root);
+            jdbc.update("DELETE FROM production_material_analysis_items WHERE analysis_id=?", root);
+            for (UUID plan : plans) jdbc.update("DELETE FROM production_plans WHERE id=?", plan);
             removeCompletionSegments(root, segments);
         }
     }
 
     private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
                                               UUID color, UUID unit, String status) {
+        addCompletionSegment(segments, root, goods, color, unit, status, PLAN);
+    }
+
+    /** planId 即段的归属计划：锚定到根分析行（顶层计划）或普通未锚定计划（子层段）。 */
+    private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
+                                              UUID color, UUID unit, String status, UUID planId) {
         UUID segment = UUID.randomUUID();
         segments.add(segment);
         jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,product_goods_id,product_color_id,product_unit_id,workshop_department_id,responsible_employee_id) VALUES (?,?,?,?,?,?,?,?,?)",
-                segment, status, PLAN, PLAN, goods, color, unit, WORKSHOP, EMPLOYEE);
+                segment, status, planId, PLAN, goods, color, unit, WORKSHOP, EMPLOYEE);
         jdbc.update("INSERT INTO v_production_execution_workbench_segments(segment_id,plan_id,root_id,segment_status,workshop_department_id,product_goods_id,planned_qty,inbound_qty) VALUES (?,?,?,?,?,?,1000,1)",
-                segment, PLAN, root, status, WORKSHOP, goods);
+                segment, planId, root, status, WORKSHOP, goods);
     }
 
     private static void removeCompletionSegments(UUID root, List<UUID> segments) {

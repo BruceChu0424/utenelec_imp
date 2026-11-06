@@ -1,8 +1,11 @@
+import { readCmsNews } from '@/lib/cms-list-queries';
+import { requireCmsPermission } from '@/lib/auth';
+import { CmsContinuousTable } from '@/components/admin/CmsContinuousTable';
 import Link from 'next/link';
 import { prisma } from '@/lib/db';
 import { tr, formatDate } from '@/lib/content';
 import { deleteNews } from '@/app/admin/actions';
-import { DeleteButton } from '@/components/admin/DeleteButton';
+import { CmsDeleteButton } from '@/components/admin/CmsDeleteButton';
 import { Plus } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -13,12 +16,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 export default async function NewsAdmin({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
-  const news = await prisma.news.findMany({ orderBy: { publishedAt: 'desc' } });
+  await requireCmsPermission('website:view');
+  const news = await readCmsNews(prisma);
   return (
     <div>
       <div className="flex items-center justify-between">
         <h1 className="font-heading text-2xl font-bold">新闻资讯</h1>
-        <Link href="/admin/news/edit" className="btn-accent btn-sm"><Plus className="h-4 w-4" />新增文章</Link>
+        <Link prefetch={false} href="/admin/news/edit" className="btn-accent btn-sm"><Plus className="h-4 w-4" />新增文章</Link>
       </div>
       {error === 'invalid-category' && (
         <p role="alert" className="mt-5 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-900 dark:bg-red-950/35 dark:text-red-200">
@@ -26,7 +30,7 @@ export default async function NewsAdmin({ searchParams }: { searchParams: Promis
         </p>
       )}
       <div className="mt-6 card-uten overflow-x-auto">
-        <table className="w-full text-sm">
+        <CmsContinuousTable rowCount={news.length} className="w-full text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground"><tr><th className="p-3">标题</th><th className="p-3">分类</th><th className="p-3">发布日期</th><th className="p-3 text-right">操作</th></tr></thead>
           <tbody>
             {news.map((n) => (
@@ -35,14 +39,14 @@ export default async function NewsAdmin({ searchParams }: { searchParams: Promis
                 <td className="p-3 text-muted-foreground">{CATEGORY_LABELS[n.category] || '未知分类'}</td>
                 <td className="p-3 text-muted-foreground">{formatDate(n.publishedAt, 'zh')}</td>
                 <td className="whitespace-nowrap p-3 text-right">
-                  <Link href={`/admin/news/edit/${n.id}`} className="text-accent hover:underline">编辑</Link>
+                  <Link prefetch={false} href={`/admin/news/edit/${n.id}`} className="text-accent hover:underline">编辑</Link>
                   <span className="mx-2 text-border">|</span>
-                  <DeleteButton draft action={deleteNews.bind(null, n.id)} />
+                  <CmsDeleteButton draft targetId={n.id} action={deleteNews} />
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </CmsContinuousTable>
       </div>
     </div>
   );

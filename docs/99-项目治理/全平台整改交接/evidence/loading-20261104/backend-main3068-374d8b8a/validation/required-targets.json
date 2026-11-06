@@ -1,0 +1,87 @@
+{
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "groups": {
+    "final-fast": {
+      "classes": [
+        "ArchitectureBoundaryTest",
+        "ExactBodyReadRoutesTest",
+        "NativeTaskReadScopeInterceptorTest",
+        "ProductionDraftClaimsReadRoutesTest",
+        "ExportRowSelectionTest",
+        "MasterExportSelectionTest",
+        "OutputSelectionCapabilitiesTest",
+        "SelectedDocumentProjectionTest",
+        "SelectedExportIdsTest",
+        "XlsxSelectedRowsStreamingTest",
+        "CommercialReportLineIdentityTest",
+        "StockFinanceReportLineIdentityTest",
+        "OutputSelectionRequestBodyLimitMvcTest",
+        "MasterExportSelectionAspectTest",
+        "GoodsBomExportProjectionTest",
+        "GoodsImportMouldReferenceTest",
+        "GoodsImportCellCorrectionsSafetyTest",
+        "GoodsImportPaperTest",
+        "FulfillmentWorkbenchQueryServiceTest",
+        "ProductionWorkshopTaskExportServiceTest",
+        "WhereUsedExportAndReplacementSecurityTest",
+        "WhereUsedExportServiceTest",
+        "ProductionSubcontractLineIdentityTest",
+        "MasterReportExportSourceTest",
+        "ReportExportServiceTest",
+        "ShelfLabelOutputScopeTest",
+        "ShelfLabelExportPagingTest",
+        "StockReportWarehouseInventoryScopeTest",
+        "WarehouseTaskCenterOutputIdentityTest",
+        "ProcurementReferencePriceTest",
+        "PurchaseOrderTotalAmountTest",
+        "SubcontractOrderTotalAmountTest",
+        "SalesOrderListSortTest",
+        "SalesReturnAmountAuthorityTest",
+        "LegacyMigrationSafetyContractTest",
+        "HotTableTriggerHygieneContractTest",
+        "PaymentStyleReferenceGuardMigrationContractTest",
+        "AuditSessionTableExportServiceTest",
+        "FinanceChartDirectoryExportTest"
+      ],
+      "reason": "All newly composed selected-output/import-mould/shelf identities, body-budget guards and affected API/architecture/policy contracts; no Main-only unrelated history/cost workflow rerun."
+    },
+    "final-pg": {
+      "classes": [
+        "MigratedSchemaBaselinePostgresTest",
+        "LegacyQuantityAdoptionCompatibilityPostgresTest",
+        "PurchaseQuantityPolicyGuardPostgresTest",
+        "ProcurementReferencePricePolicyPostgresTest",
+        "ProcurementTotalAmountPostgresTest",
+        "ProcurementCaseBookAllocationPostgresTest",
+        "FinancialPaymentStyleReferencePostgresTest",
+        "PaymentStyleHierarchyConcurrencyPostgresTest",
+        "FinanceApplicationsPostgresTest",
+        "ProcurementFinanceReviewReadOnlyEndToEndTest",
+        "DirectMakeDeliveryClosedCreditPostgresTest",
+        "ProductionExecutionWorkbenchQueryPostgresTest",
+        "FulfillmentWorkbenchPageReadPostgresTest",
+        "FulfillmentWorkbenchEmptyPageLatencyPostgresTest",
+        "WarehouseTaskPageMetadataPostgresTest",
+        "InteractiveTaskReadScopePostgresTest",
+        "DailyReportDraftClaimsPostgresTest",
+        "FinanceDocumentPartyReferenceHttpPostgresTest",
+        "ReceiptExplicitOrderAttributionPostgresTest",
+        "ReceiptExplicitOrderLifecyclePostgresTest",
+        "ReportExportSpecialSourcesPostgresTest",
+        "PermissionChainReachabilityContractTest"
+      ],
+      "reason": "Real complete1009 migration and immutable clone schema, overlapping Main1060..1065 with candidate1066..1070, frozen quantity/reference-policy/precision, same-workflow claims, finance reversal, top-level execution/closed-MAKE, metadata6growth/department/physical scope/JIT and actual ordinary-owner HTTP/draft service."
+    },
+    "final-extra": {
+      "classes": [
+        "CostDocumentExportTest",
+        "GoodsCostDocumentMapperTest",
+        "ShelfLabelQueryPostgresTest",
+        "SalesShipmentFinanceReleaseRateEndToEndTest"
+      ],
+      "reason": "Coverage audit: actual Java consumer of the new shared cost-identities contract and both Excel/PDF exact fee/BOM selections; ShelfLabelSql new rack/level/status predicates need real physical5001goods/warehouse/color/disabled/selection/complete-page SQL coverage beyond mock/string checks; Main BomDelivery/SalesShipmentDelivery/SalesDeliveryOrderClaim guards changed, so the typed BigDecimal shipment release/receivable E2E4 needs a current native run despite unchanged typed fixture. Existing compiled current tests only; source remains unchanged."
+    }
+  },
+  "historicalEvidence": "Oldf6 47/289, legacy66+1 bridge/private18 and6growth remain their original source scope; never add them to this current native-run count. New current source-equivalence bridge records exact unchanged producer paths and explicit remaining limits."
+}

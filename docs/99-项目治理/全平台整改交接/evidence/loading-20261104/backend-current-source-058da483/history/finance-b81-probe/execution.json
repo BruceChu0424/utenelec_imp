@@ -1,0 +1,27 @@
+{
+  "label": "finance-current",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-finance-current-selection.txt",
+  "selected": "FinanceApplicationsPostgresTest",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=FinanceApplicationsPostgresTest",
+    "surefire:test"
+  ],
+  "environment": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_RUN_DB_TESTS": "true",
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-finance-current-empty-benchmark.json"
+  },
+  "sourceInputSha256": "b81e056189d9998e0581e4494ca37123f0f63a8a0110b7b8cc8f8d7302243a63",
+  "startedAtUtc": "2026-11-05T12:06:17.9262821Z",
+  "wrapperPid": 52972,
+  "log": "build/loading-validation/combined-finance-current.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T12:10:54.9106494Z",
+  "actualExitCode": 1
+}

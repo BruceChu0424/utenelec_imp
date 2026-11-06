@@ -1,0 +1,42 @@
+{
+  "updatedAtUtc": "2026-11-05T15:34:04.482245+00:00",
+  "state": "whole19 passed with current captured source",
+  "files": [
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "47e9f7d51371166d44194c0bdf4e7b88af4ea5c5fd3baf42dcb6c68b5181dcf6"
+    },
+    {
+      "path": "test/features/finance/finance_report_header_query_test.dart",
+      "sha256": "6e806ce89806ac717c6cf29028c2efca4775d7f8efbce23f4fde11ba305b22c0"
+    }
+  ],
+  "rootPriorFailure": "public-activity-owned-first-whole:14 of15 HeaderQuery passed; ordinary failed new-query headers assertion exposed real caller loss",
+  "behavior": [
+    "Retain only confirmed known-version schema shell for same API/readerEpoch/endpoint/report-defining parameters; search/sort/page differences do not change schema identity. Currency, party, template, dates and all other arguments remain exact.",
+    "ReportData.pendingQuery supplies columns/searchKeys only; old rows/facets/totals/documentMetadata cleared, result counts remain unknown. A small version proof supports repeated ordinary failures without storing old result rows.",
+    "An accepted-query flag requires both actual data and controller result, so a pending schema is never published as an accepted empty result.",
+    "401/403/READ_SCOPE_CHANGED/SESSION_CHANGED retire schema proof and facts; visible error is published even when legacy denial callback retires the pending generation.",
+    "Remove private _page/requestedPage/onPageChange/reuseMetadata and old canPrefetch lambda. Bounded internal report protocol/metadata and denial callback remain.",
+    "Original search/sort/exact-value/print/export/full-scope totals/late stale-query tests preserved. Four new denial/currency guards; original503 tests repeated failure."
+  ],
+  "analysis": [
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "actualExitCode": 0,
+      "log": "report-schema-final-caller-v2.log"
+    },
+    {
+      "path": "test/features/finance/finance_report_header_query_test.dart",
+      "actualExitCode": 0,
+      "log": "report-schema-final-test.log",
+      "currentTestSha256MatchesAnalysis": true
+    }
+  ],
+  "wholeTestsDeclared": 19,
+  "runtimePassed": true,
+  "publicSharedReadAndPermissionsChanged": false,
+  "execution": "all-activity-manual-final-whole-execution.json",
+  "wholePassed": 19,
+  "wholeFailed": 0
+}

@@ -458,30 +458,44 @@ void main() {
     },
   );
 
-  testWidgets('mobile card pager is above full-height scrolling content', (
-    tester,
-  ) async {
-    _window(tester, const Size(390, 850));
-    await tester.pumpWidget(
-      _app(
-        UtenCapsuleNavScope(
-          occlusion: 90,
-          child: UtenPagedGrid<int>(
-            items: List.generate(25, (i) => i),
-            itemBuilder: (_, i, _) => SizedBox(height: 80, child: Text('卡片$i')),
+  testWidgets(
+    'mobile cards stay continuous and the final card is reachable without a pager',
+    (tester) async {
+      _window(tester, const Size(390, 850));
+      await tester.pumpWidget(
+        _app(
+          UtenCapsuleNavScope(
+            occlusion: 90,
+            child: UtenPagedGrid<int>(
+              items: List.generate(25, (i) => i),
+              itemBuilder: (_, i, _) =>
+                  SizedBox(height: 80, child: Text('卡片$i')),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.byType(UtenGridPager)).dy, 0);
-    final scroll = find.descendant(
-      of: find.byType(UtenPagedGrid<int>),
-      matching: find.byType(SingleChildScrollView),
-    );
-    expect(tester.getRect(scroll).bottom, 850);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenGridPager), findsNothing);
+      final scroll = find.descendant(
+        of: find.byType(UtenPagedGrid<int>),
+        matching: find.byType(SingleChildScrollView),
+      );
+      expect(tester.getRect(scroll).bottom, 850);
+      await tester.scrollUntilVisible(
+        find.text('卡片24'),
+        400,
+        scrollable: find
+            .descendant(
+              of: find.byType(UtenPagedGrid<int>),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('卡片24').hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'bottom actions stay above navigation and primary stays rightmost',

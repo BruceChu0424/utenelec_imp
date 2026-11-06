@@ -1,0 +1,119 @@
+{
+  "reviewedMain": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "baseMain": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "candidateOldCount": 1010,
+  "mainCommittedCount": 1009,
+  "main1069Present": false,
+  "financeReservation": {
+    "ref": "28f52c2798865ffe8b55e883971e8f7b4563a120",
+    "path": "server/src/main/resources/db/migration/V1069__expense_claim_payment_reversal_event_contract.sql",
+    "sha256": "f5137843ead7fff3988636eee5b75ca5ce225e00b8e28eb935397a23374b89bd",
+    "ancestorOfMain": false,
+    "supersededByCommittedMain": "server/src/main/resources/db/migration/V1068__restore_expense_payment_reversal_audit_event.sql",
+    "mainSha256": "a876ec44a18fd11876f1f4e4bc60e43596b78b4648eccccf30abf6cc5422e434",
+    "eventCatalogs": {
+      "finance1069": [
+        "ABANDONED",
+        "APPROVED",
+        "CREATED",
+        "EDITED",
+        "PAID",
+        "PAYMENT_REVERSED",
+        "REJECTED",
+        "STAGE_APPROVED",
+        "SUBMITTED",
+        "WITHDRAWN"
+      ],
+      "main1068": [
+        "ABANDONED",
+        "APPROVED",
+        "CREATED",
+        "EDITED",
+        "PAID",
+        "PAYMENT_REVERSED",
+        "REJECTED",
+        "STAGE_APPROVED",
+        "SUBMITTED",
+        "WITHDRAWN"
+      ],
+      "task1070": [
+        "ABANDONED",
+        "APPROVED",
+        "CREATED",
+        "EDITED",
+        "PAID",
+        "PAYMENT_REVERSED",
+        "REJECTED",
+        "STAGE_APPROVED",
+        "SUBMITTED",
+        "WITHDRAWN"
+      ]
+    },
+    "scope": "The existing unpublished finance V1069 reservation is fully supplied by committed Main V1068. Do not adopt unrelated untracked finance V1081-V1083."
+  },
+  "proposal": {
+    "count": 1013,
+    "head": 1074,
+    "preserveAll1009MainSQLRawBytes": true,
+    "main1069Gap": "Retain Task existing V1069 direct-MAKE capacity body byte-for-byte; this is the original loading candidate already using V1069 before the fa wave, not a newly invented filler/noop. Its functions are disjoint from Main1070 purchase quantity CHECK constraints. Finance1069 restoration is fully superseded by immutable Main1068.",
+    "retireOnlyUnappliedRedundantCandidate": "V1070__expense_payment_reversal_event_contract.sql",
+    "forward": [
+      {
+        "old": "V1067__verified_legacy_quantity_adoption.sql",
+        "new": "V1072__verified_legacy_quantity_adoption.sql",
+        "bodyChange": "Compose only two guarded entry anchors after the existing Main1067 unapproval branches. Main frozen-source branch keeps precedence; verified historical branch remains source-bound; original native INSERT/weight guard unchanged."
+      },
+      {
+        "old": "V1068__legacy_return_quantity_source_proofs.sql",
+        "new": "V1073__legacy_return_quantity_source_proofs.sql",
+        "bodyChange": "none"
+      },
+      {
+        "old": "V1071__execution_workbench_top_level_product_caliber.sql",
+        "new": "V1074__execution_workbench_top_level_product_caliber.sql",
+        "bodyChange": "none"
+      }
+    ],
+    "legacyReturnMinimumSchema": 1073,
+    "retiredVersionsStillOnly1010": true
+  },
+  "taskSQL": [
+    {
+      "name": "V1067__verified_legacy_quantity_adoption.sql",
+      "sha256": "8ac700039933f5dbec8c8c0974ae224ce712d31f135013536fbd6073c3d0b9a2",
+      "functions": [
+        "CREATE FUNCTION public.fn_accept_verified_legacy_quantity_adoption(p_table text,p_row jsonb)",
+        "regprocedure);"
+      ]
+    },
+    {
+      "name": "V1068__legacy_return_quantity_source_proofs.sql",
+      "sha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486",
+      "functions": [
+        "CREATE FUNCTION public.fn_guard_legacy_return_quantity_source_facts() RETURNS trigger",
+        "CREATE FUNCTION public.fn_legacy_return_quantity_source_projection(p_kind text,s jsonb) RETURNS jsonb",
+        "CREATE OR REPLACE FUNCTION public.fn_legacy_quantity_counter_bound_fields(p_kind text) RETURNS text[]",
+        "CREATE OR REPLACE FUNCTION public.fn_legacy_quantity_counter_kind(p_kind text)",
+        "regprocedure);"
+      ]
+    },
+    {
+      "name": "V1069__direct_make_closed_delivery_capacity_branches.sql",
+      "sha256": "76dea0c8f7980171e58adc5ce0c3919984ffc200e72cae13be4263d5d44904bf",
+      "functions": [
+        "CREATE OR REPLACE FUNCTION fn_preplan_direct_make_total_capacity(p_child UUID,p_material UUID)",
+        "regprocedure) INTO definition;"
+      ]
+    },
+    {
+      "name": "V1070__expense_payment_reversal_event_contract.sql",
+      "sha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2",
+      "functions": []
+    },
+    {
+      "name": "V1071__execution_workbench_top_level_product_caliber.sql",
+      "sha256": "9b7003020f6b9a3af12f0ba86676490b32d5c776d23b6547c3de81453c4d630c",
+      "functions": []
+    }
+  ]
+}

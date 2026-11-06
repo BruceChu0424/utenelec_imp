@@ -299,6 +299,33 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets(
+    'all local usage people remain in one searchable table after twenty rows',
+    (tester) async {
+      final json = _dashboardJson();
+      final example = (json['people'] as List).first as Map<String, dynamic>;
+      json['people'] = [
+        for (var index = 0; index < 125; index++)
+          {
+            ...example,
+            'userId': 'usage-$index',
+            'name': '员工$index',
+            'code': 'E$index',
+          },
+      ];
+      final repo = _Repo(dashboard: AiUsageDashboard.fromJson(json));
+      await _pump(tester, const AdminAiUsagePage(), repo: repo);
+      final tableFinder = find.byKey(const Key('ai-usage-people-table'));
+      final table = tester.widget<MasterDataTableView<AiUsagePerson>>(
+        tableFinder,
+      );
+      expect(table.items, hasLength(125));
+      expect(table.items.map((row) => row.userId), contains('usage-124'));
+      expect(table.onPageChange, isNull);
+      expect(repo.dashboardCalls, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
   setUpAll(() async {
     final loader = FontLoader('NotoSansSC')
       ..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'));
@@ -423,6 +450,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.dashboardCalls, ['day', 'hour', 'year']);
   });
+
+  testWidgets(
+    'a failed new window cannot label the accepted day data as yearly',
+    (tester) async {
+      final repo = _Repo();
+      await _pump(tester, const AdminAiUsagePage(), repo: repo);
+      expect(find.text('123,456'), findsOneWidget);
+      repo.dashboardError = ApiException('NETWORK', '用量读取中断');
+      await tester.tap(find.text(_zh.aiUsageWindowYearly));
+      await tester.pumpAndSettle();
+      expect(repo.dashboardCalls, ['day', 'year']);
+      expect(find.text('123,456'), findsNothing);
+      expect(find.byKey(const Key('ai-usage-people-table')), findsNothing);
+      expect(find.byKey(const ValueKey('ai-usage-error')), findsOneWidget);
+      expect(find.text('用量读取中断'), findsOneWidget);
+      expect(find.text(_zh.aiSettingsRetry), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a failed same-window refresh keeps authorized data and reports the failure',
+    (tester) async {
+      final repo = _Repo();
+      final container = await _pump(
+        tester,
+        const AdminAiUsagePage(),
+        repo: repo,
+      );
+      repo.dashboardError = ApiException('NETWORK', '用量读取中断');
+      await tester.tap(find.byKey(const ValueKey('ai-usage-refresh')));
+      await tester.pumpAndSettle();
+      expect(repo.dashboardCalls, ['day', 'day']);
+      expect(find.text('123,456'), findsOneWidget);
+      expect(find.byKey(const Key('ai-usage-people-table')), findsOneWidget);
+      expect(_messages(container), contains('用量读取中断'));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'an all-zero trend series renders floor-height bars without NaN',

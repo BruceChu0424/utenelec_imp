@@ -1,0 +1,443 @@
+{
+  "main": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "base": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "rows": [
+    {
+      "path": "docs/数据迁移/README.md",
+      "classification": "both-changed",
+      "base": "2f0eb11ad63be1986764f121133620482d1983d876a394af23dfddf91ab2e494",
+      "task": "8a62a2445fbfde62c5ddba0f945bee4debb4232d315373a23c7e28e735f6c824",
+      "main": "09ef61c29088ea542531815e9250cd911ba62589a77ec23b10290feabf6ead81",
+      "mergeExit": 1,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\0"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalPort.java",
+      "classification": "both-changed",
+      "base": "6837d66d0413d09b7706e2df224fdc3a66304e75a56ad84085d74610641906b4",
+      "task": "5a5ea47494db98d8c82a3f2eb1ae1445310b2ac0162cf931b817b64dce592156",
+      "main": "0b1a8e13daf2c4761fcbb53383594832375629e4bcb9e9e74fe4c731e172678f",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\1"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportDocumentProjectionService.java",
+      "classification": "task-equals-base",
+      "base": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815",
+      "task": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815",
+      "main": "fcd1010ee60a6479b08a8027202be2aa215a975fd8656892391fb0cb816979d9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalService.java",
+      "classification": "both-changed",
+      "base": "983c3da3231fbf38a54ff40b7d4f98101bd57d3d3f5944c750f884f70d9ddddd",
+      "task": "7dd12057269f96a3c908ff5dd1cb0cef8b3e36cfb63478d5eb74b949d3130fe8",
+      "main": "be8a50098078b5666383fe74f09fa7191d41897829fbea0160720232487b00ec",
+      "mergeExit": 1,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\3"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicationSourceAdapter.java",
+      "classification": "task-equals-base",
+      "base": "edf24259097c428b736b75e8ed00f00360c9af130740e1abf3444acb6c196f7d",
+      "task": "edf24259097c428b736b75e8ed00f00360c9af130740e1abf3444acb6c196f7d",
+      "main": "3cec00035606f837099c239caf88512969d2e08097d22f0e199c16423c2a0589"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
+      "classification": "both-changed",
+      "base": "50463bdc052444ea4aeb7e94424cdf874d5f801945be1a04c34802492b438984",
+      "task": "870551d69bdc948b7ca56e25c15dbb6d1750a9ece3f55f1c8d0f59b21b3ade09",
+      "main": "8376d43200baa0a4271028d87d3ed39eed30939ad0d1db8c4a68657e17be5db6",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\5"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationService.java",
+      "classification": "both-changed",
+      "base": "66b7bb889d7b28dae135c8a497a723a83fb55499bcddbcbe1724fcbb7526049a",
+      "task": "24317ebbb01f49de4169ec63a878aa58c448f366c2dee3f9876236a47c84771c",
+      "main": "7306a4c5e25d0c83958fca512370f0ffd7a5fb151ba0f6ca78a5c91e262d3564",
+      "mergeExit": 2,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentUnapprovalAdapter.java",
+      "classification": "task-equals-base",
+      "base": "e45adcd0ca57666e4995f83f3a76ed2edb6266ede24111d7ec47b95734ad8c1c",
+      "task": "e45adcd0ca57666e4995f83f3a76ed2edb6266ede24111d7ec47b95734ad8c1c",
+      "main": "50ad4b68015e7a68cc3bf992e449651d67e54780bd38add328f9b8f43ba623d6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderUnapprovalAdapter.java",
+      "classification": "task-equals-base",
+      "base": "1e65f017f3d3c8ff4da7e622b8904f15e8223b1df747542017ce8be0cce1b63a",
+      "task": "1e65f017f3d3c8ff4da7e622b8904f15e8223b1df747542017ce8be0cce1b63a",
+      "main": "6e8bdb918e813eef869b672ea4eb3e975106204abb29e21a8405cf0d313d0a69"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java",
+      "classification": "both-changed",
+      "base": "6dc0972618d2bdbb18bb99e51ceb5efc45d83af6b89706c9051f2890d715aca1",
+      "task": "9c86169d746e6af9a12e265602d0eb84f4802e85f0de6bf5e3ff3ee898504136",
+      "main": "69c672078638f9dd6dbb8033387801ef36fb73ad9b00e3090811f0e1e117f82c",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\9"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+      "classification": "both-changed",
+      "base": "e5a3eea0190749e9447ea73637b23b13c892a024c78f4aaf3f31fc4b2a1f7872",
+      "task": "0a4e3ea02405a5b22bff818a98118f065478ffda3987ac86358ab1cb8923585f",
+      "main": "3e12efa60d23c10ced981ea386ce1ce961a34f1d7b8d882ddcb8013190434669",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\10"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnUnapprovalAdapter.java",
+      "classification": "task-equals-base",
+      "base": "512b9b138c574644832f99654adaf59ae4aabf365d439d8144730783541c9ceb",
+      "task": "512b9b138c574644832f99654adaf59ae4aabf365d439d8144730783541c9ceb",
+      "main": "59d04cd4bc0f45c79f5648f905796429d563454e43a288ca3691222bf64199ae"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderUnapprovalAdapter.java",
+      "classification": "task-equals-base",
+      "base": "81cdb9a7e425b6fe5b5fdaaa04aba1474a29a2141b8ce3372c42009f42f75906",
+      "task": "81cdb9a7e425b6fe5b5fdaaa04aba1474a29a2141b8ce3372c42009f42f75906",
+      "main": "f153a3caa50eb25ded955c419beef9f7239e475116e903507f0adb835b299e26"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+      "classification": "both-changed",
+      "base": "be83958fd5187ddc309a30ee5b01a080aaac64382e7a46638227ed654e95fe44",
+      "task": "63221adde1c42b7ecf6314e58460553a50053aee437290985f0f62d5d731f16b",
+      "main": "6c478753acc281e955b60a8eeeeedc903f0a664b0032273746c341fb558e2d81",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\13"
+    },
+    {
+      "path": "server/src/main/resources/ai-feature-map.json",
+      "classification": "task-equals-base",
+      "base": "722f5546ed22cf805b17cb085edab3327d63bbfc812d88784ba579d378fbd4cb",
+      "task": "722f5546ed22cf805b17cb085edab3327d63bbfc812d88784ba579d378fbd4cb",
+      "main": "edee718b8df55c01c7df6e71c48826fe03aa6426fb4eccb272065aa2645cdcd4"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1067__inherit_unapproval_frozen_quantity_and_reference_proofs.sql",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "749c13f7629a203a4795231c03f761b1c0600e6b0cdf1a23351d4a3f616ad655"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1068__restore_expense_payment_reversal_audit_event.sql",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "a876ec44a18fd11876f1f4e4bc60e43596b78b4648eccccf30abf6cc5422e434"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1070__native_purchase_charged_and_gift_quantity_capacity.sql",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "f40b7be41fe8267ee9c5dd59fb9c5d0427467f4dbcf4a8a25259a463b1d41072"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1071__delivery_components_goods_lifetime_tracking.sql",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "e9e16ba30c356cfda49f04612299f8d730e2712a54847d214c44a09d04b35f36"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceUnapprovalEligibilityEndToEndTest.java",
+      "classification": "task-equals-base",
+      "base": "980797849116531242bc9458e09a47620e9307d4e1575255faec335517c12b58",
+      "task": "980797849116531242bc9458e09a47620e9307d4e1575255faec335517c12b58",
+      "main": "a6f0bd592565cb51ba56ef6e4247842674923e05776faacffbb6111d25ea61ba"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FrozenUnapprovalInputs.java",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "9fa1396ab5f71b9cfd8ce150f9827246b7426c83f78fe7c730597852c9f5a164"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.java",
+      "classification": "both-changed",
+      "base": "91f427b9ac7f9a572c265db594e82d2fe1cff19828e3c9cacd809384b393c787",
+      "task": "5b0a69492fd13aa0b9794dfcaff12d2412426aa45b43efd2484114ea674460f5",
+      "main": "4caf36a361969a7b016bdd2b867cd92dd742f9ad7fa406c737eed94e3930e1da",
+      "mergeExit": 0,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\21"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/GiftUnitRateConservationEndToEndTest.java",
+      "classification": "both-changed",
+      "base": "99524fc6f9ea466add5069381902b4dee7b49b3436c0d494a1d143d8d5781ab7",
+      "task": "c8cceb78e29e2db423fd72efb69262ea29466d2b7292247bfaecf2e5a2770df0",
+      "main": "a4e8e1402689a078ffbd79185280cda59c2c4552f7c285d4709478ed09f8fc4f",
+      "mergeExit": 1,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\22"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/HistoricalInventoryJdbc.java",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "f10f3cc574092b34fba49e95bce5cd3b026433c10bddb79924080921184fd58e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/InventoryValueOutputRefreshContinuationPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "a7eff731dc7161fc46a6dbfb0521f0a6f562bfe069350c8f7108515bb6116e3d",
+      "task": "a7eff731dc7161fc46a6dbfb0521f0a6f562bfe069350c8f7108515bb6116e3d",
+      "main": "25661c248ea802f04856a9b40ac8442ce95921dfaf057ac58481972673369560"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/IqcExactProofUpgradeEndToEndTest.java",
+      "classification": "task-equals-base",
+      "base": "f4685605d5d0219fc5da75a1cd71d53f35dca7b47d5ab975853eef9acc793a89",
+      "task": "f4685605d5d0219fc5da75a1cd71d53f35dca7b47d5ab975853eef9acc793a89",
+      "main": "ed4233300b26fd8dd26f2fc19fbc483031df879b966a72740583a13b1773a2ca"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/LegacyValuationComponentUpgradePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "ea048dc6724b47fbdfdcd3238ac60c7a4a40f3ed8f50d135eb3036192ca59833",
+      "task": "ea048dc6724b47fbdfdcd3238ac60c7a4a40f3ed8f50d135eb3036192ca59833",
+      "main": "9b19aeea22abb1e09ec9dd98a0a2ef6d120d860eed5147568be99d45d53a05d7"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/MaterialReturnQuantityLegacyValueUpgradePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "b91422f4386412f8f83b37a4fb71bbdc5f4dac64eb83456b9f64e236e191efe3",
+      "task": "b91422f4386412f8f83b37a4fb71bbdc5f4dac64eb83456b9f64e236e191efe3",
+      "main": "2ff3f975cb488d66ccc48a143301abb383ff756c274e7f7548b1150c1c6de754"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/ProcurementUnapprovalEligibilityEndToEndTest.java",
+      "classification": "both-changed",
+      "base": "105774e5d66c0d7a730f6f7dd337c2a3d740ad9c2854bdf5d18409f4d29a01c0",
+      "task": "b485711e22ac9c9c2a0befc4bede29f71553cdfae9d68e7452f675005aee95ab",
+      "main": "75d8246d8c17c9e36175c4eddcba76f1185cfc2313a644a018212a644d41089c",
+      "mergeExit": 4,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\28"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/StandaloneDepartmentLifecycleConservationEndToEndTest.java",
+      "classification": "task-equals-base",
+      "base": "4514087cd7ad36dab6b6cbd6bbbc8fe3cbbb15e95cec0d30a1ba6260e97d7416",
+      "task": "4514087cd7ad36dab6b6cbd6bbbc8fe3cbbb15e95cec0d30a1ba6260e97d7416",
+      "main": "9653c0ff678440301c3a74d0a40d698e6a18cface0be59c9f68de8afbc54e16f"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractMaterialReturnOriginalCostEndToEndTest.java",
+      "classification": "task-equals-base",
+      "base": "7e17b6fd203d801d09f5fb642e2d4909b62c13a7992b4931a31d131009887bee",
+      "task": "7e17b6fd203d801d09f5fb642e2d4909b62c13a7992b4931a31d131009887bee",
+      "main": "b7aa8b0af32441fcc2477759127382bee8690db33933440bce1dcb0da8f6b53a"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/WorkshopMaterialStockAuthorizationPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "9d7dbcb466f3a179775eea2e51f45f01f7dfb3ae11bfe9bacc4a02032f2670e9",
+      "task": "9d7dbcb466f3a179775eea2e51f45f01f7dfb3ae11bfe9bacc4a02032f2670e9",
+      "main": "6448be1beb56ce6cf0008bbe8da0aa072c5e4256a633c959799b84c66efbfff5"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/UnapprovalFrozenAdoptionPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "865d36bd824f072995fec3ced80b650c9326aff54f9986e42860a5624fe4f722"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/StockFinanceReportLineIdentityTest.java",
+      "classification": "task-equals-base",
+      "base": "9bde0b75452463e8a84f41f4fa383275756dc6cddc07d14295bb825d27916b85",
+      "task": "9bde0b75452463e8a84f41f4fa383275756dc6cddc07d14295bb825d27916b85",
+      "main": "c576658c81c912b5eecf079deed3909186b1908305f24adb38a80d46e061afe2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/ai/chat/AiDocumentRoutePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "579d7400accf5a7790dfff1a5563900cc54050dd4a96d6c8f50b63aa873b737f",
+      "task": "579d7400accf5a7790dfff1a5563900cc54050dd4a96d6c8f50b63aa873b737f",
+      "main": "773a35088ba9d6bc61f3de0d85ec2280b519c27924e80c4113b2acd37e0972b8"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/ai/usage/AiProviderBillingPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "4c79489728de7e7b68b9c76b97995d20a228ded08317a9465504f82541c226a5",
+      "task": "4c79489728de7e7b68b9c76b97995d20a228ded08317a9465504f82541c226a5",
+      "main": "351064d011009176a62184d70067829a6146f65b49afdca8e774894b975bd833"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimServiceTest.java",
+      "classification": "task-equals-base",
+      "base": "982384625618a8fd59b327096c7d6fcdf0841b223d1f09223418238cd932fdc1",
+      "task": "982384625618a8fd59b327096c7d6fcdf0841b223d1f09223418238cd932fdc1",
+      "main": "aabc67da1f7531f3da9ab0fb8dfed0d420ce18366216714e91379c9b42f21a1c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/expenseclaim/HistoricalExpenseSourceJdbc.java",
+      "classification": "task-equals-base",
+      "base": "2d79b99af10e604f78dd27019c43470d681a2892c515b572666a9ba12783f5ee",
+      "task": "2d79b99af10e604f78dd27019c43470d681a2892c515b572666a9ba12783f5ee",
+      "main": "4deb15d9ecbce6b2bcc541e3605f4dfeba660ca682ecea797c332447eaa74255"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+      "classification": "both-changed",
+      "base": "271ce693a13c000464ed22b3d66817ce6c23e6d61f90a4a4b6bfcddf0c4ba087",
+      "task": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce",
+      "main": "6851db6f2f20297b492ef1890e677cf499453a0819434b5e9c556e3fcced9d30",
+      "mergeExit": 3,
+      "preview": "server\\build\\loading-validation\\main-fa-composition\\38"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/receivables/SalesOrderFuturePositionPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "3d53591b7d5e484828ba55550eba4b6d7503f388e38f9fa88e7808a8806f9856",
+      "task": "3d53591b7d5e484828ba55550eba4b6d7503f388e38f9fa88e7808a8806f9856",
+      "main": "29f3cbf46fa53ff6a8173b3df5bccc04d8b5465875a5667a9c26eb5989b0d161"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/MasterNumericHeadersPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "6bd923e2c5365ba146f3adedd7b5e5229b5827c89e3836ae6946e051ec00a0d8",
+      "task": "6bd923e2c5365ba146f3adedd7b5e5229b5827c89e3836ae6946e051ec00a0d8",
+      "main": "b176c66e607506a28b3069ecfbef195ab7ed597b0b0feba96696bffea8e19cd0"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsClientGoodsNamePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "ed0fd04fc25e87cf4ce695639143ec778a366e5f4cc10b00775ac97b3ba2fc42",
+      "task": "ed0fd04fc25e87cf4ce695639143ec778a366e5f4cc10b00775ac97b3ba2fc42",
+      "main": "53efdc4b3e8f8586266b4e6c1221314aea92b8bd63657b45afec9ac69587a6ce"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsActualCostStreamingExportTest.java",
+      "classification": "task-equals-base",
+      "base": "993bad5af62f055c8b87c1389f8ec0951d7280762686e73016b6dcdc6bb6c06b",
+      "task": "993bad5af62f055c8b87c1389f8ec0951d7280762686e73016b6dcdc6bb6c06b",
+      "main": "e01a92bda1810e9f4aa5c008a638e1f36766b4ab0d98f4f3945c967eed11bc01"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryCapturePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "0e4399b73e40690f1d9815d92942445985ccd85667a1e1232779aec8023cd188",
+      "task": "0e4399b73e40690f1d9815d92942445985ccd85667a1e1232779aec8023cd188",
+      "main": "4a2707bd77feb933da48a585081279b2c1b05f1e13c3afbc5158150743d65a0f"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "c56351b63e907e90c11b6859050508625e2aa4ed085117ff2a993ebc3c8c4cb3",
+      "task": "c56351b63e907e90c11b6859050508625e2aa4ed085117ff2a993ebc3c8c4cb3",
+      "main": "0cf10e11a11e70556b6e5f0a3c0669ed79a75d75597c06a8cccdabd2a8f5fe65"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportHistoryPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "8ebcc00e11960ddd082f55e70275d4b940d8184d91e5b35ed2ccf749b05c37a4",
+      "task": "8ebcc00e11960ddd082f55e70275d4b940d8184d91e5b35ed2ccf749b05c37a4",
+      "main": "4fcf9bb2dce3c4ca619a190c83ad1bc270ed0514ddbddd458c3af564dd51f22a"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/PreplanExternalSupplySourceGuardPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "57b54a299bccdde1c35d609acd8bda7c836f3242a6e10b7225c0765a5fce3225",
+      "task": "57b54a299bccdde1c35d609acd8bda7c836f3242a6e10b7225c0765a5fce3225",
+      "main": "cfb9e14d0c27e192b7a7d0e93c0bac7eb1de6dc61b785e7a9ee34188dab4e629"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionCompletionReversePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "9e80c2abd0a352d42788276264a615da15b19b5b8d1095f2c99be87ce2ee1950",
+      "task": "9e80c2abd0a352d42788276264a615da15b19b5b8d1095f2c99be87ce2ee1950",
+      "main": "9627063bc548440ebbc9e1cde50f1bfbaecdea6c0891806f30cd9573951350d3"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentOperationsPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "bc4f074d1942636a16332400c7e79bb5c3f8b6db586a06c6cbafa1d2c930fb73",
+      "task": "bc4f074d1942636a16332400c7e79bb5c3f8b6db586a06c6cbafa1d2c930fb73",
+      "main": "c3296d54df5c0be78020b1e3a5de9937464f51fa7c1779c530290e806c38990c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionPurchaseReceiptProvenancePostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "620366eddfdb54943a2c60ef17ec881bf59fb2a8403d78a65a0cd4c405e72cc4",
+      "task": "620366eddfdb54943a2c60ef17ec881bf59fb2a8403d78a65a0cd4c405e72cc4",
+      "main": "980d55ef50fd6916af99f2f71b0623b495c4493afecd718cbc12c1a9fd65da47"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionPurchaseSupplyTransitionPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "b705cc68bd189f3232c25dde859e1abde9c8d700751c3600e835a41bcdbed4c3",
+      "task": "b705cc68bd189f3232c25dde859e1abde9c8d700751c3600e835a41bcdbed4c3",
+      "main": "fb1376059818e4de6c948663e15487f341fdba03e12ea9b66d72d247eca5718a"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/mrp/ProductionExecutionSegmentPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "f6386d469ff1ccbe60f5902b9300778057d6ff8edb7605c84b63d0c96cd94fc0",
+      "task": "f6386d469ff1ccbe60f5902b9300778057d6ff8edb7605c84b63d0c96cd94fc0",
+      "main": "4ec7cd5b87fd309063c30ad8c5b58388335d75afef8f47b4131148b5c986ac63"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/sales/report/SalesReportUnitsPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "157b78a6c0d8a0bc7bd33513db1d12bfbf7321c7035273a2a7737b144108646f",
+      "task": "157b78a6c0d8a0bc7bd33513db1d12bfbf7321c7035273a2a7737b144108646f",
+      "main": "830e898666fe91b666f0d74de48cc7ba05c393fed9a3e302ca7a74481ba11c5c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/insight/WarehouseInsightPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "59983d949085f166236f7c4bd7bd2e389e4b60e2630fbe0b200a0ac75ef620af",
+      "task": "59983d949085f166236f7c4bd7bd2e389e4b60e2630fbe0b200a0ac75ef620af",
+      "main": "fcf835f3745f3fadd85f857aeb3871d6ffbf10ad43cb4481246579b463392c0f"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionIntegrityPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": "08fbcfa2c27afa3836f827f34f4f53cfd2d75cb884759f9f31c44546a7c7105c",
+      "task": "08fbcfa2c27afa3836f827f34f4f53cfd2d75cb884759f9f31c44546a7c7105c",
+      "main": "658fe9009929ecdf51cc600bed0e945ce54105868d1f0a1f89f69a795beddf48"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/SecurityPermissionMigrationTest.java",
+      "classification": "task-equals-base",
+      "base": "cefe3ef01240476282af03094c8e9d908da7ecdc07e8838b028871f777532234",
+      "task": "cefe3ef01240476282af03094c8e9d908da7ecdc07e8838b028871f777532234",
+      "main": "d6c14190e70dc8a47b28d4537d755a347d971c4f5da4c7b1de6ce6be675ee723"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/testsupport/FixtureAuditTransactions.java",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "52fc846256d0db8801221b7857000843e2f06157db41f16da92995d176363798"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/testsupport/FixtureAuditTransactionsPostgresTest.java",
+      "classification": "task-equals-base",
+      "base": null,
+      "task": null,
+      "main": "d36e549c56dbb1655dd63d5a6ff7717e2fdc4809045069e945fd235e95d79ec5"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/testsupport/HistoricalJdbcNativeSqlTest.java",
+      "classification": "task-equals-base",
+      "base": "81180b7e93e8b92457b965ce2ee1889ac6d67c7d2ea14791fd64a0d78d243efc",
+      "task": "81180b7e93e8b92457b965ce2ee1889ac6d67c7d2ea14791fd64a0d78d243efc",
+      "main": "f552726628e174e92d2d65940a3e4d66d3afe4aedad81239fe9b1b7d47eda027"
+    }
+  ]
+}

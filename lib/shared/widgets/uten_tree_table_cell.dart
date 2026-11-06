@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../components/data_display/uten_tree_branch_guide.dart';
@@ -28,6 +29,7 @@ class UtenTreeTableCell extends StatelessWidget {
     String? levelLabel,
     Widget? titleBadge,
     String? titleBadgeLabel,
+    bool titleBadgeCanShrink = false,
     Widget? titleWidget,
     Widget? leafAction,
     Color? foregroundColor,
@@ -55,6 +57,7 @@ class UtenTreeTableCell extends StatelessWidget {
          subtitle: subtitle,
          titleBadge: titleBadge,
          titleBadgeLabel: titleBadgeLabel,
+         titleBadgeCanShrink: titleBadgeCanShrink,
          titleWidget: titleWidget,
          leafAction: leafAction,
          foregroundColor: foregroundColor,
@@ -107,6 +110,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.sequenceInline = false,
     this.titleBadge,
     this.titleBadgeLabel,
+    this.titleBadgeCanShrink = false,
     this.titleWidget,
     this.leafAction,
     this.foregroundColor,
@@ -276,6 +280,10 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 自带整枚 Widget（语义色由徽章自己决定），层级色不掺和。不传即不变。
   final Widget? titleBadge;
 
+  /// Only display badges may shrink in a narrow identity column. Interactive
+  /// badges keep their original hit area and keyboard behavior by default.
+  final bool titleBadgeCanShrink;
+
   /// [titleBadge] 的语义朗读名（徽章本体在 ExcludeSemantics 里，读不到自己的
   /// 文本）；不传则徽章纯视觉、不进朗读标签。
   final String? titleBadgeLabel;
@@ -358,6 +366,47 @@ class UtenTreeTableCell extends StatelessWidget {
         ),
       ),
     );
+
+    Widget inlineTitle() {
+      final prefix = <Widget>[
+        if (sequence.trim().isNotEmpty) ...[
+          sequenceChip(theme),
+          const SizedBox(width: UtenSpacing.s4),
+        ],
+        if (titleBadge != null) ...[
+          titleBadge!,
+          const SizedBox(width: UtenSpacing.s4),
+        ],
+      ];
+      final titleContent =
+          titleWidget ??
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          );
+      if (!titleBadgeCanShrink || titleBadge == null) {
+        return Row(
+          children: [
+            ...prefix,
+            Expanded(child: titleContent),
+          ],
+        );
+      }
+      return _ReadonlyTreeHeading(
+        textDirection: Directionality.of(context),
+        prefix: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Row(mainAxisSize: MainAxisSize.min, children: prefix),
+        ),
+        title: titleContent,
+      );
+    }
 
     final guideWidth = visualDepth * indent;
     final hasExpandedChildren = hasChildren && expanded;
@@ -514,37 +563,7 @@ class UtenTreeTableCell extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (sequenceInline)
-                          Row(
-                            children: [
-                              // 级联号（P1 / P1.1）是可选的：物料分析主表与分桶详情
-                              // 2026-09-14 起传空串不再显示——层级由缩进+连接线表达，
-                              // 名称前挂一串编号反而把货品名挤到后面。
-                              if (sequence.trim().isNotEmpty) ...[
-                                sequenceChip(theme),
-                                const SizedBox(width: UtenSpacing.s4),
-                              ],
-                              if (titleBadge != null) ...[
-                                titleBadge!,
-                                const SizedBox(width: UtenSpacing.s4),
-                              ],
-                              Expanded(
-                                child:
-                                    titleWidget ??
-                                    Text(
-                                      title,
-                                      // 单行省略号（2026-09-16 全站口径）：树格名称
-                                      // 不再折两行撑高整行，列宽由宿主列 textOf 量宽。
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: textColor,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                              ),
-                            ],
-                          )
+                          inlineTitle()
                         else ...[
                           Row(
                             children: [
@@ -616,6 +635,147 @@ class UtenTreeTableCell extends StatelessWidget {
 /// 展开/收起按钮的图形：28px 实心圆底 + 自绘粗箭头（3px 圆头描边，2026-09-12
 /// 起替换细线图标——浅色模式黑底上白色粗箭头一眼可见），未展开且已知子件数时
 /// 右下角叠「N」徽章。命中区仍由外层 IconButton 的 48×48 保证。
+/// Keeps one selectable title subtree and measures without a layout callback.
+class _ReadonlyTreeHeading extends MultiChildRenderObjectWidget {
+  _ReadonlyTreeHeading({
+    required Widget prefix,
+    required Widget title,
+    required this.textDirection,
+  }) : super(children: [prefix, title]);
+
+  final TextDirection textDirection;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _ReadonlyTreeHeadingRender(textDirection);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _ReadonlyTreeHeadingRender renderObject,
+  ) => renderObject.textDirection = textDirection;
+}
+
+class _ReadonlyTreeHeadingParentData
+    extends ContainerBoxParentData<RenderBox> {}
+
+class _ReadonlyTreeHeadingRender extends RenderBox
+    with
+        ContainerRenderObjectMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        >,
+        RenderBoxContainerDefaultsMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        > {
+  _ReadonlyTreeHeadingRender(this._textDirection);
+
+  TextDirection _textDirection;
+  set textDirection(TextDirection value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! ContainerBoxParentData<RenderBox>) {
+      child.parentData = _ReadonlyTreeHeadingParentData();
+    }
+  }
+
+  Size _measure(BoxConstraints limits, {required bool dry}) {
+    final prefix = firstChild!;
+    final title = lastChild!;
+    Size measure(RenderBox child, BoxConstraints childLimits) {
+      if (dry) return child.getDryLayout(childLimits);
+      child.layout(childLimits, parentUsesSize: true);
+      return child.size;
+    }
+
+    final prefixSize = measure(
+      prefix,
+      BoxConstraints(
+        maxWidth: limits.hasBoundedWidth
+            ? limits.maxWidth / 2
+            : double.infinity,
+        maxHeight: limits.maxHeight,
+      ),
+    );
+    final remaining = limits.hasBoundedWidth
+        ? (limits.maxWidth - prefixSize.width)
+              .clamp(0.0, limits.maxWidth)
+              .toDouble()
+        : double.infinity;
+    final titleSize = measure(
+      title,
+      BoxConstraints(
+        minWidth: remaining.isFinite ? remaining : 0,
+        maxWidth: remaining,
+        maxHeight: limits.maxHeight,
+      ),
+    );
+    final result = limits.constrain(
+      Size(
+        prefixSize.width + titleSize.width,
+        prefixSize.height > titleSize.height
+            ? prefixSize.height
+            : titleSize.height,
+      ),
+    );
+    if (!dry) {
+      final prefixData =
+          prefix.parentData! as ContainerBoxParentData<RenderBox>;
+      final titleData = title.parentData! as ContainerBoxParentData<RenderBox>;
+      prefixData.offset = Offset(
+        _textDirection == TextDirection.ltr
+            ? 0
+            : result.width - prefixSize.width,
+        (result.height - prefixSize.height) / 2,
+      );
+      titleData.offset = Offset(
+        _textDirection == TextDirection.ltr ? prefixSize.width : 0,
+        (result.height - titleSize.height) / 2,
+      );
+    }
+    return result;
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      firstChild!.getMinIntrinsicWidth(height) +
+      lastChild!.getMinIntrinsicWidth(height);
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      firstChild!.getMaxIntrinsicWidth(height) +
+      lastChild!.getMaxIntrinsicWidth(height);
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _measure(BoxConstraints(maxWidth: width), dry: true).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _measure(BoxConstraints(maxWidth: width), dry: true).height;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _measure(constraints, dry: true);
+
+  @override
+  void performLayout() => size = _measure(constraints, dry: false);
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
 class _ToggleGlyph extends StatelessWidget {
   const _ToggleGlyph({
     required this.expanded,

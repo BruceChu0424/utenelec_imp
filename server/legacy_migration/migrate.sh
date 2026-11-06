@@ -80,8 +80,6 @@ EXPECTED_FLYWAY_MIGRATION_COUNT=""
 EXPECTED_FLYWAY_HEAD=""
 MAPPING_VERSION=""
 
-# Version semantics are generated from the same reviewed pure contract as the
-# signed inventory tools. TSV is data on fd3, never Python/shell program text.
 flyway_contract() {
   python3 -I - "$@" <<'PY'
 from __future__ import annotations
@@ -684,6 +682,12 @@ preflight () {
         exit 66
     fi
     IFS='|' read -r EXPECTED_FLYWAY_MIGRATION_COUNT EXPECTED_FLYWAY_HEAD MAPPING_VERSION <<< "$candidate"
+    local flyway_state_sql flyway_rows_sql
+    if ! flyway_state_sql=$(python3 -I "$HERE/verify_candidate.py" --history-state-sql) \
+        || ! flyway_rows_sql=$(python3 -I "$HERE/verify_candidate.py" --history-rows-sql); then
+        echo "✗ 无法取得受审只读 Flyway history 查询；已拒绝迁移。" >&2
+        exit 66
+    fi
     FLYWAY_MANIFEST_SHA256=$(sha256sum "$FLYWAY_CHECKSUM_MANIFEST" | awk '{print tolower($1)}')
     FLYWAY_MANIFEST_BYTES=$(wc -c < "$FLYWAY_CHECKSUM_MANIFEST" | tr -d '[:space:]')
     # HR 清理/正式名录、货架库位不依赖老库导出快照：HR 输入来自 build_hr_roster.py 生成的
@@ -776,34 +780,36 @@ preflight () {
     local flyway_state
     flyway_state=$("$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
         -v ON_ERROR_STOP=1 -AtF '|' -c \
-        "SELECT COUNT(*),
-                COUNT(*) FILTER (WHERE success),
-                COUNT(DISTINCT version),
-                COALESCE((SELECT CASE WHEN latest.version ~ '^[0-9]+$' THEN (latest.version::numeric)::text ELSE latest.version END FROM flyway_schema_history latest WHERE latest.version IS NOT NULL ORDER BY string_to_array(latest.version, '.')::numeric[] DESC LIMIT 1), '0')
-         FROM flyway_schema_history
-         WHERE version IS NOT NULL")
+        "$flyway_state_sql")
     if [ "$flyway_state" != \
         "$EXPECTED_FLYWAY_MIGRATION_COUNT|$EXPECTED_FLYWAY_MIGRATION_COUNT|$EXPECTED_FLYWAY_MIGRATION_COUNT|$EXPECTED_FLYWAY_HEAD" ]; then
         echo "✗ 目标库 Flyway 数量、成功状态、唯一版本或 head 与当前候选不一致；已拒绝迁移。" >&2
         exit 69
     fi
-    local raw_live_flyway_rows live_flyway_rows live_flyway_summary
-    raw_live_flyway_rows=$("$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
-        -v ON_ERROR_STOP=1 -AtF $'\t' -c \
-        "SELECT version, script, checksum
-         FROM flyway_schema_history
-         WHERE version IS NOT NULL
-         ORDER BY string_to_array(version, '.')::numeric[]")
-    if ! live_flyway_rows=$(flyway_contract history 3<<<"$raw_live_flyway_rows"); then
-        echo "✗ 目标 Flyway 原始 history 身份与原脚本不符；已拒绝迁移。" >&2
+    local flyway_expected_rows flyway_actual_rows
+    if ! flyway_expected_rows=$(python3 -I "$HERE/verify_candidate.py" "$HERE/../.." "$FLYWAY_CHECKSUM_MANIFEST" --expected-history-rows); then
+        echo "✗ 无法从受审清单还原原始 Flyway version/script 身份；已拒绝迁移。" >&2
+        exit 66
+    fi
+    if ! flyway_actual_rows=$("$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 -AtF $'\t' -c "$flyway_rows_sql"); then
+        echo "✗ 无法读取原始 Flyway history；已拒绝迁移。" >&2
         exit 69
     fi
-    if ! live_flyway_summary=$(flyway_contract summary 3<<<"$live_flyway_rows"); then
-        echo "✗ 目标 Flyway history 版本、脚本或 checksum 格式不合法；已拒绝迁移。" >&2
+    local flyway_validated_rows flyway_validated_summary
+    if ! flyway_validated_rows=$(flyway_contract history 3<<<"$flyway_actual_rows"); then
+        echo "✗ 目标原始 Flyway history 与确切脚本身份不符；已拒绝迁移。" >&2
         exit 69
     fi
-    if [ "$live_flyway_summary" != "$EXPECTED_FLYWAY_MIGRATION_COUNT"$'\t'"$EXPECTED_FLYWAY_HEAD" ] \
-       || ! cmp -s <(tail -n +2 "$FLYWAY_CHECKSUM_MANIFEST") <(printf '%s\n' "$live_flyway_rows"); then
+    if ! flyway_validated_summary=$(flyway_contract summary 3<<<"$flyway_validated_rows"); then
+        echo "✗ 目标 Flyway history 顺序、唯一身份或CRC不合法；已拒绝迁移。" >&2
+        exit 69
+    fi
+    if [ "$flyway_validated_summary" != "$EXPECTED_FLYWAY_MIGRATION_COUNT"$'\t'"$EXPECTED_FLYWAY_HEAD" ]; then
+        echo "✗ 目标 Flyway history 完整摘要与冻结源码不符；已拒绝迁移。" >&2
+        exit 69
+    fi
+    if ! cmp -s <(printf '%s\n' "$flyway_expected_rows") <(printf '%s\n' "$flyway_actual_rows"); then
         echo "✗ 目标库逐行 Flyway history 与当前候选 checksum manifest 不一致；已拒绝迁移。" >&2
         exit 69
     fi

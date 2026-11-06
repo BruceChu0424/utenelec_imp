@@ -59,6 +59,9 @@ class WarehouseInventoryPanel extends ConsumerStatefulWidget {
 class _WarehouseInventoryPanelState
     extends ConsumerState<WarehouseInventoryPanel>
     with ScopedPagedReadViewMixin<WarehouseInventoryPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   final _readViewportRows =
       MasterDataTableRowsController<InstantInventoryRow>();
   int get _visibleReadPage =>
@@ -361,7 +364,8 @@ class _WarehouseInventoryPanelState
         _result = result;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!_isCurrent(version, boundary)) return;
       setState(() {
         _loading = false;

@@ -17,6 +17,9 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
@@ -38,6 +41,8 @@ class _BadgeApi extends ApiClient {
   final Map<String, Map<String, dynamic>> scopedBodies = {};
   final List<Completer<Map<String, dynamic>>> responses = [];
   final List<String> selectedWarehouseReads = [];
+  bool checkReadOwner = false;
+  final precisionModes = <bool?>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -48,12 +53,19 @@ class _BadgeApi extends ApiClient {
       throw StateError('unexpected GET $path');
     }
     calls++;
+    final logical = PagedReadIntent.currentRead;
+    final activity = PagedReadIntent.currentActivity;
+    precisionModes.add(BusinessPrecisionTransport.current?.readOnly);
     if (query?['scopeWarehouseId'] case final String warehouseId) {
       selectedWarehouseReads.add(warehouseId);
     }
     if (responses.isNotEmpty) return responses.removeAt(0).future;
     final pending = gate;
     if (pending != null) await pending.future;
+    if (checkReadOwner &&
+        (!(logical?.call() ?? true) || !(activity?.call() ?? true))) {
+      throw const UiWorkCancelled();
+    }
     final error = failWith;
     if (error != null) throw error;
     return scopedBodies[query?['scopeWarehouseId']] ?? body;
@@ -119,6 +131,36 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'global badge producer is not owned by its initiating UI or write precision',
+    (tester) async {
+      final (container, api) = _container();
+      await _settle(tester);
+      expect(container.read(badgeSummaryProvider).total.todo, 1);
+      var firstCurrent = true;
+      api.gate = Completer<void>();
+      api.checkReadOwner = true;
+      api.body = _summaryJson(todo: 7);
+      final writePrecision = BusinessPrecisionTransport();
+      final pending = writePrecision.run(
+        () => PagedReadIntent.scopedRead(
+          () => firstCurrent,
+          () => container.read(badgeSummaryProvider.notifier).refresh(),
+          activity: PagedReadActivityFence(isCurrent: () => firstCurrent),
+        ),
+      );
+      await _settle(tester);
+      firstCurrent = false;
+      api.gate!.complete();
+      await pending;
+      expect(container.read(badgeSummaryProvider).total.todo, 7);
+      expect(api.calls, 2);
+      expect(api.precisionModes.last, isTrue);
+      api.gate = null;
+      container.dispose();
+    },
+  );
+
   testWidgets('administrator A-B-A retires both intervening badge reads', (
     tester,
   ) async {

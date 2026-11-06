@@ -100,12 +100,12 @@ class _MaterialTransferLauncherDialogState
             }),
       if (widget.futureEnabled)
         widget.repository
-            .materialFutureTransferSources(
+            .materialFutureTransferSourceSnapshot(
               targetAnalysisId: widget.analysis.analysisId,
               targetMaterialId: widget.material.materialLineId,
             )
-            .then((page) {
-              if (mounted) setState(() => _futureCount = page.total);
+            .then((sources) {
+              if (mounted) setState(() => _futureCount = sources.length);
             })
             .catchError((_) {
               if (mounted) setState(() => _futureCount = null);

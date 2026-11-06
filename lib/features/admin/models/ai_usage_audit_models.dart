@@ -4,6 +4,8 @@
 // 供汇总卡/按人员表/按记录表/详情面板共用。wire 字段缺失时按空值兜底, 不抛异常。
 library;
 
+import '../../../shared/models/paged_result.dart';
+
 /// 一行费用: basis=ACTUAL(按服务商账单核定) / ESTIMATED(按计费单价估算)。
 class AiUsageAuditCost {
   const AiUsageAuditCost({
@@ -150,6 +152,14 @@ class AiUsageAuditResult {
     required this.records,
     required this.total,
   });
+
+  AiUsageAuditResult withPage(PagedResult<AiUsageAuditRecord> combined) =>
+      AiUsageAuditResult(
+        summary: summary,
+        users: users,
+        records: combined.items,
+        total: combined.total,
+      );
 
   factory AiUsageAuditResult.fromJson(Map<String, dynamic> json) =>
       AiUsageAuditResult(

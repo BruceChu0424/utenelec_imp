@@ -30,6 +30,15 @@ class DocumentWeightAdoptionTest {
         assertThat(value.getValue().usedPolicy()).containsEntry("weight.kg-field",new BusinessPrecisionContext.Choice(24,"HALF_UP"));
         assertThat(value.getValue().originalUnit().code()).isEqualTo("KG");
     }
+    @Test void anUnknownWeightProducesNoEvidenceWhileAnExplicitZeroIsRecorded() {
+        var evidence=mock(BusinessNumericInputEvidencePort.class);UUID document=UUID.randomUUID(),item=UUID.randomUUID();
+        DocumentWeightAdoption.capture(evidence,"PURCHASE_RECEIPT",document,item,null,null);
+        verifyNoInteractions(evidence);
+        DocumentWeightAdoption.capture(evidence,"PURCHASE_RECEIPT",document,item,BigDecimal.ZERO,BigDecimal.ZERO);
+        var captured=ArgumentCaptor.forClass(BusinessNumericInputEvidencePort.Capture.class);verify(evidence).record(captured.capture());
+        assertThat(captured.getValue().original()).isZero();assertThat(captured.getValue().recorded()).isZero();
+        assertThat(captured.getValue().usedPolicy()).isEmpty();
+    }
     @Test void aPositiveWeightCannotBecomeZeroAndRawCapacityIsDistinctFromNative()throws Exception {
         try(var context=BusinessPrecisionContext.use(Map.of("weight.kg-field",new BusinessPrecisionContext.Choice(24,"DOWN")))){
             assertThatThrownBy(()->DocumentWeightAdoption.adopt(new BigDecimal("1e-25"))).isInstanceOfSatisfying(BusinessPrecisionRequiredException.class,e->assertThat(e.details()).containsEntry("selectionRejected",true));

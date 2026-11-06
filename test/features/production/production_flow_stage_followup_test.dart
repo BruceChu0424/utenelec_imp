@@ -1,10 +1,79 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/features/production/models/production_flow_stage.dart';
+import 'package:uten_imp/features/production/models/production_exact_quantity.dart';
+import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
 
 void main() {
+  test(
+    'report preview and shared stage preserve exact large and tiny facts',
+    () {
+      ProductionFlowStage stage(Object? base, Object? claimed) =>
+          ProductionFlowStage.forSegment(
+            segmentStatus: 'IN_PROGRESS',
+            zeroMaterial: false,
+            remainingReportQty: base,
+            draftReportedQty: claimed,
+          );
+      final tiny = ProductionReportPreview(
+        remaining: '90071992547409.1236',
+        draft: '90071992547409.1235',
+      );
+      expect(tiny.remainingText, '0.0001');
+      expect(tiny.fullyClaimed, isFalse);
+      expect(
+        stage('90071992547409.1236', '90071992547409.1235').label,
+        '生产中 · 可报工',
+      );
+      expect(
+        stage('90071992547409.1236', '90071992547409.1236').label,
+        '报工草稿待审核',
+      );
+      expect(
+        ProductionReportPreview(remaining: '0.000001').atMostThreshold,
+        isTrue,
+      );
+      expect(
+        ProductionReportPreview(remaining: '0.0000011').atMostThreshold,
+        isFalse,
+      );
+      final unknown = ProductionReportPreview(remaining: 90071992547409.1236);
+      expect(unknown.remainingText, isNull);
+      expect(unknown.atMostThreshold, isFalse);
+      expect(unknown.fullyClaimed, isFalse);
+      ProductionExecutionWorkbenchSegment task(Map<String, dynamic> facts) =>
+          ProductionExecutionWorkbenchSegment.fromJson({
+            'segmentId': 's',
+            'planId': 'p',
+            'planNo': 'P',
+            'segmentCode': 'S',
+            ...facts,
+          });
+      expect(
+        task({
+          'remainingReportQty': 90071992547409.1236,
+          'remainingReportQtyExact': '90071992547409.1236',
+        }).remainingReportQtyText,
+        '90071992547409.1236',
+      );
+      expect(
+        task({
+          'remainingReportQty': 90071992547409.1236,
+        }).remainingReportQtyText,
+        isNull,
+      );
+      expect(
+        task({
+          'remainingReportQty': null,
+          'remainingReportQtyExact': null,
+        }).remainingReportQtyText,
+        isNull,
+      );
+      expect(task({'remainingReportQty': 8000}).remainingReportQtyText, '8000');
+    },
+  );
   test(
     'cancelled execution arrangement retains the plan without claiming workshop receipt',
     () {

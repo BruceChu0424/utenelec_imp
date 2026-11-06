@@ -1,0 +1,3949 @@
+package com.uten.imp.features.sales.shipment;
+
+import com.uten.imp.common.util.EmployeeNameResolver.HistoricalWorkerRole;
+
+import com.uten.imp.common.web.HeaderColumnFilter;
+
+import com.uten.imp.application.port.WarehouseUse;
+import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.PartyOpenBalanceView;
+import com.uten.imp.common.util.NameRefKeyword;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.SettlementMethodReferenceResolver;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.finance.arap.ArApLedgerService.SourceRef;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesGoodsSnapshot;
+import com.uten.imp.features.sales.order.SalesOrder;
+import com.uten.imp.features.sales.order.SalesPriceMasker;
+import com.uten.imp.features.sales.shipment.dto.ShipmentDetail;
+import com.uten.imp.features.sales.shipment.dto.ShipmentItemDto;
+import com.uten.imp.features.sales.shipment.dto.ShipmentItemLine;
+import com.uten.imp.features.sales.shipment.dto.ShipmentListItem;
+import com.uten.imp.features.sales.shipment.dto.ShipmentQueryFilter;
+import com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest;
+import com.uten.imp.features.stock.StockReservation;
+import com.uten.imp.features.stock.StockReservationService;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
+import com.uten.imp.features.stock.weight.SourceKind;
+import com.uten.imp.features.stock.weight.WeightSource;
+import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
+
+import java.math.BigDecimal;
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
+
+/**
+ * 销售出货单服务：CRUD（主+明细）+ 审核状态机（库存 + 订单回写 + 立应收 + 结案）。
+ *
+ * <p>审核（status 0→1）同事务内：
+ * <ol>
+ *   <li>挂单行超发硬校验（未发余量；链上行还须 ≤ 预留量）</li>
+ *   <li>消耗库存软预留（FIFO + 行锁，全局预留改绑出货仓）</li>
+ *   <li>逐明细 {@link StockService#recordMovement} 出库（TYPE_SALES_OUT / DIR_OUT）</li>
+ *   <li>回写 sales_order_items.shipped_qty += qty、reserved_qty -= qty、chain_status 推进 8/9（order_item_id 非空时）</li>
+ *   <li>{@link ArApLedgerService#postArAp} 立应收（AR, SALES_SHIPMENT, BStyle=3, 正应收）</li>
+ *   <li>ar_posted=true</li>
+ *   <li>重算受影响订货单 is_closed</li>
+ * </ol>
+ *
+ * <p>红冲（1→-1）同事务反向：先 {@link ArApLedgerService#reverseArAp}（钱流校验无收款核销，否则抛
+ * "此单已经存在收款，请先反审收款单!"，对齐老库 RAISERROR）→ 反向库存 + 回减 shipped_qty
+ * + 链上行重新挂预留（绑原出货仓，货回库恢复可发货）+ 结案重算 + ar_posted=false。
+ *
+ * <p>处理库存段 + 钱流立 M_in 段（design 20 §〇/§4.3）。
+ */
+@Service
+@RequiredArgsConstructor
+public class SalesShipmentService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
+
+    private static final short STATUS_DRAFT = 0;
+    private static final short STATUS_APPROVED = 1;
+    private static final short STATUS_REVERSED = -1;
+
+    /** 老库 BStyle=3 销售出货正应收。 */
+    private static final short BSTYLE_SALES_SHIPMENT = 3;
+    /** 出货财审查看(也是财务读取出货单的范围旁路；动作另有 approve/reject/reverse)。 */
+    private static final String FINANCE_AUDIT_AUTHORITY = "sales_shipment_finance:view";
+    private static final String FINANCE_APPROVE_AUTHORITY = "sales_shipment_finance:approve";
+    private static final String FINANCE_REJECT_AUTHORITY = "sales_shipment_finance:reject";
+    private static final String FINANCE_REVERSE_AUTHORITY = "sales_shipment_finance:reverse";
+    private static final String REJECT_AUTHORITY = "sales_shipment:reject";
+    /** 仓库销售出库查看(仓库读取出货单的范围旁路)。 */
+    private static final String WAREHOUSE_VIEW_AUTHORITY = "warehouse_sales_outbound:view";
+    /** 仓库销售出库执行(推进拣货 / 确认出库)。 */
+    private static final String WAREHOUSE_WORK_AUTHORITY = "warehouse_sales_outbound:execute";
+    private static final String SETTLEMENT_ROLE_CASH = "CASH";
+
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate", "total", "totalLocal",
+            "billNo", "billNo"); // 2026-09-25 单号列统一
+
+    private final SalesShipmentRepository shipmentRepo;
+    private final SalesShipmentItemRepository itemRepo;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private SalesShipmentDeliveryService deliveryFulfillment;
+    private final StockService stockService;
+    // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
+    // ADR-135 出库称重核对观测: 同上字段注入+可空, 单测手工构造时不登记观测(观测不承载过账事实)。
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private GoodsWeightObservationService weightObservations;
+    private final StockReservationService reservationService;
+    private final ArApLedgerService arApService;
+    private final TxSessionVars tx;
+    private final EntityManager em;
+    private final DocNumberService docNumberService;
+    private final SalesDocumentAccessPolicy accessPolicy;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.CustomerActualReceiptContextPort actualReceipts;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SalesOrderMoneyReadPort orderMoney;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ShipmentReceivablePositionPort shipmentReceivables;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ShipmentReceivableFilterPort shipmentReceivableFilter;
+    private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    // 客户收货地址簿学习（V300）：保存时记住本次地址+电话，ADR-017 全限定名内联。
+    private final com.uten.imp.features.master.client.ClientShipAddressService clientShipAddressService;
+    private final com.uten.imp.features.sales.SalesMutationFootprintService mutationFootprint;
+    private final CustomerShipmentPolicy customerShipmentPolicy;
+    private final DirectCustomerShipmentCommercialService directCommercial;
+    private final SalesShipmentReviewSnapshotService reviewSnapshots;
+    private final com.uten.imp.application.port.CustomerShipmentInventoryPort customerInventory;
+    private final com.uten.imp.features.common.taskclaim.TaskClaimService taskClaims;
+    // ADR-128: 客户余额(本单币种、全币种正式应收毛额、可用预收)只经 finance 的共用余额查询取。
+    private final com.uten.imp.application.port.PartyOpenBalancePort partyBalances;
+
+    /**
+     * 出货单生命周期阶段（列表分段，2026-09-20）。status 只在仓库确认出库时变 1，财审前后的
+     * 中间态全是 status=0，所以列表不能按 status 分「草稿/已审」，改按这里的阶段过滤：
+     * DRAFT 销售未确认 / PENDING_FINANCE 等待财务审核 / FINANCE_REJECTED 财务已退回 /
+     * FINANCE_APPROVED 财务已放行待出库 / SHIPPED 已出库 / REVERSED 红冲。
+     * 历史来源不完整的 LEGACY 单与仓库驳回单不进任何活动阶段，只在历史记录里可见。
+     */
+    static final Set<String> SHIPMENT_STAGES = Set.of(
+            "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "FINANCE_HISTORY", "SHIPPED", "REVERSED", "ACTIVE");
+
+    private static void addStagePredicates(
+            List<Predicate> ps, CriteriaBuilder cb, Root<SalesShipment> root, String rawStage) {
+        if (rawStage == null || rawStage.isBlank()) return;
+        String stage = rawStage.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SHIPMENT_STAGES.contains(stage)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段的筛选值不正确：" + rawStage);
+        }
+        Predicate salesConfirmed = cb.and(
+                cb.isNotNull(root.get("salesConfirmedAt")),
+                cb.equal(root.get("salesConfirmedRevision"), root.get("reviewRevision")));
+        switch (stage) {
+            case "ACTIVE" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.or(cb.isFalse(root.get("rejected")), cb.isTrue(root.get("financeRejected"))));
+            }
+            case "DRAFT" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.isFalse(root.get("rejected")));
+                ps.add(cb.isFalse(root.get("financeRejected")));
+                ps.add(cb.equal(root.get("financeAudit"), (short) 0));
+                // 只有两审版本才有「销售确认」这一步；老版本单据没有草稿态，直接算等待财审。
+                ps.add(cb.ge(root.get("financeGateVersion"), 2));
+                ps.add(cb.not(salesConfirmed));
+            }
+            case "PENDING_FINANCE" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.isFalse(root.get("rejected")));
+                ps.add(cb.isFalse(root.get("financeRejected")));
+                ps.add(cb.equal(root.get("financeAudit"), (short) 0));
+                ps.add(cb.or(cb.lt(root.get("financeGateVersion"), 2), salesConfirmed));
+            }
+            case "FINANCE_REJECTED" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.isTrue(root.get("financeRejected")));
+            }
+            case "FINANCE_APPROVED" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.isFalse(root.get("rejected")));
+                ps.add(cb.equal(root.get("financeAudit"), (short) 1));
+            }
+            case "FINANCE_HISTORY" -> ps.add(cb.or(
+                    cb.equal(root.get("financeAudit"), (short) 1),
+                    root.get("status").in((short) 1, (short) -1),
+                    cb.equal(root.get("shipmentKind"), "LEGACY"),
+                    cb.and(cb.isTrue(root.get("rejected")), cb.isFalse(root.get("financeRejected")))));
+            case "SHIPPED" -> ps.add(cb.equal(root.get("status"), (short) 1));
+            case "REVERSED" -> ps.add(cb.equal(root.get("status"), (short) -1));
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段的筛选值不正确：" + rawStage);
+        }
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public PageResponse<ShipmentListItem> list(ShipmentQueryFilter originalFilter, int page, int size, String sort, String order) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        HeaderColumnFilter.requireAmountSortVisible(sort,canViewCommercialData());
+        Specification<SalesShipment> spec = shipmentSpec(f);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        var searchPage = NameRefKeyword.page(spec, pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
+        Page<SalesShipment> p = shipmentRepo.findAll(searchPage.specification(), searchPage.pageable());
+        boolean canEdit = hasObjectActionAuthority();
+        boolean hasRejectAuthority = accessPolicy.hasAuthority(REJECT_AUTHORITY);
+        boolean hasWarehouseAuthority = accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY);
+        var writeScope = canEdit ? accessPolicy.scope() : null;
+        var rejectScope = hasRejectAuthority ? accessPolicy.scope(REJECT_AUTHORITY) : null;
+        var warehouseScope = hasWarehouseAuthority
+                ? accessPolicy.scope(WAREHOUSE_WORK_AUTHORITY) : null;
+        var positions=shipmentReceivablePositions(p.getContent().stream().map(SalesShipment::getId).toList());
+        PageResponse<ShipmentListItem> result = new PageResponse<>(p.map(s -> withReceivable(toList(
+                        s,
+                        canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), writeScope),
+                        hasRejectAuthority && isRejectableState(s)
+                                && accessPolicy.canWrite(s.getOwnerEmployeeId(), rejectScope),
+                        hasWarehouseAuthority
+                                && isWarehouseManageableState(s)
+                                && accessPolicy.canWrite(
+                                        s.getOwnerEmployeeId(), warehouseScope)),positions.get(s.getId()))).getContent(),
+                p);
+        return retainedRecords.page(result, "sales_shipments", p.getContent());
+    }
+
+    /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> facets(ShipmentQueryFilter originalFilter) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        return java.util.Map.of("billNo",
+                com.uten.imp.common.web.TableFacets.groupCount(em, SalesShipment.class, shipmentSpec(f), "billNo"));
+    }
+
+    /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
+    private Specification<SalesShipment> shipmentSpec(ShipmentQueryFilter originalFilter) {
+        final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        if(f.receivableState()!=null){
+            if(!canViewShipmentReceivables())throw new ApiException(ErrorCode.FORBIDDEN,"当前无权按本批款项筛选出货单");
+            if(!Set.of("OPEN","OVERDUE").contains(f.receivableState()))throw new ApiException(ErrorCode.VALIDATION_FAILED,"本批款项筛选仅支持还欠或逾期");
+            if(shipmentReceivableFilter==null)throw new ApiException(ErrorCode.CONFLICT,"本批还欠筛选尚不可用，请刷新后重试");
+        }
+        var readScope = accessPolicy.scope(
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
+        return (Root<SalesShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                CriteriaBuilder cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            if(f.receivableState()!=null){
+                ps.add(cb.equal(root.get("status"),STATUS_APPROVED));
+                ps.add(shipmentReceivableFilter.predicate(cb,q,root.get("id"),f.receivableState()));
+            }
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
+            if (f.shipmentKind()!=null && !f.shipmentKind().isBlank()) {
+                String kind=f.shipmentKind().trim().toUpperCase(java.util.Locale.ROOT);
+                customerShipmentPolicy.requireRead(kind);
+                ps.add(cb.equal(root.get("shipmentKind"),kind));
+            }
+            if (!customerShipmentPolicy.has(FINANCE_AUDIT_AUTHORITY) && !customerShipmentPolicy.has(WAREHOUSE_VIEW_AUTHORITY)) {
+                if (!customerShipmentPolicy.can(CustomerShipmentPolicy.DIRECT,"view")) ps.add(cb.notEqual(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
+                if (!customerShipmentPolicy.can(CustomerShipmentPolicy.ORDER,"view")) ps.add(cb.equal(root.get("shipmentKind"),CustomerShipmentPolicy.DIRECT));
+            }
+            boolean rejectedOnly = Boolean.TRUE.equals(f.financeRejected());
+            if (Short.valueOf((short)0).equals(f.financeAudit()) && !rejectedOnly) {
+                ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isFalse(root.get("financeRejected"))));
+                ps.add(cb.or(cb.lt(root.get("financeGateVersion"),2),cb.and(
+                        cb.isNotNull(root.get("salesConfirmedAt")),cb.equal(root.get("salesConfirmedRevision"),root.get("reviewRevision")))));
+            }
+            // V578：财务「已退回」看板——被退回且尚未重新提交的单据集中展示，
+            // 财务可在这里进入详情「撤回退回」，销售可看到退回待处理的全量。
+            if (rejectedOnly) {
+                ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
+                ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.isTrue(root.get("financeRejected"))));
+            }
+            addStagePredicates(ps, cb, root, f.stage());
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
+            if (f.keyword() != null && !f.keyword().isBlank()) {
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
+                // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
+                jakarta.persistence.criteria.Subquery<java.util.UUID> cs = q.subquery(java.util.UUID.class);
+                Root<com.uten.imp.features.master.client.Client> cr =
+                        cs.from(com.uten.imp.features.master.client.Client.class);
+                cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
+                        NameRefKeyword.text(cb, cr.get("name"), kw));
+                var kws = NameRefKeyword.keywords();
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
+                kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
+                        com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "code", kw);
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
+            }
+            if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
+            if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
+            // 仓库数据范围(ADR-149)：仓库侧销售出库列表与计数同一谓词(warehouseScopePredicate)。
+            if (f.warehouseScope().active()) ps.add(warehouseScopePredicate(root, q, cb, f.warehouseScope()));
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
+            if (f.status() != null) ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,cb.equal(root.get("status"), f.status())));
+            if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
+            if (f.financeAudit() != null) {
+                ps.add(cb.equal(root.get("financeAudit"), f.financeAudit()));
+                ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
+            }
+            if (f.warehouseWorkStatus() != null
+                    && !f.warehouseWorkStatus().isBlank()) {
+                ps.add(cb.equal(
+                        root.get("warehouseWorkStatus"),
+                        f.warehouseWorkStatus().trim()
+                                .toUpperCase(java.util.Locale.ROOT)));
+            }
+            if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
+            if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。
+            if (f.billNo() != null && !f.billNo().isBlank()) {
+                ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+            }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", canViewCommercialData(), null, false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "billDate",HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total",HeaderColumnFilter.SearchField.decimal("totalLocal"),
+                    "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class)));
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    public long countPendingFinanceAudit() {
+        if (!accessPolicy.hasAuthority("sales_shipment_finance:view")
+                || (!accessPolicy.hasAuthority("sales_shipment_finance:approve")
+                    && !accessPolicy.hasAuthority("sales_shipment_finance:reject"))) return 0L;
+        var scope=accessPolicy.scope(FINANCE_AUDIT_AUTHORITY);
+        return shipmentRepo.count((root,q,cb)->cb.and(
+                accessPolicy.readablePredicate(root,cb,"ownerEmployeeId",scope),cb.isFalse(root.get("deleted")),
+                cb.equal(root.get("status"),(short)0),cb.isFalse(root.get("rejected")),cb.isFalse(root.get("financeRejected")),
+                cb.equal(root.get("financeAudit"),(short)0),cb.notEqual(root.get("shipmentKind"),"LEGACY"),
+                cb.equal(root.get("warehouseWorkStatus"),SalesShipment.WORK_PENDING_PICK),
+                cb.or(cb.lt(root.get("financeGateVersion"),2),cb.and(cb.isNotNull(root.get("salesConfirmedAt")),
+                        cb.equal(root.get("salesConfirmedRevision"),root.get("reviewRevision"))))));
+    }
+
+    /**
+     * 仓库待出库计数（出库任务中心 / 工作台角标）：财务已放行、未驳回、未删除，
+     * 且仓库尚未确认出库的当前任务——已出库、已取消、已红冲不计。
+     *
+     * <p>2026-09-20 起只数 {@code PENDING_PICK}: {@code LEGACY_PENDING} 是 V443 起只读的
+     * 迁移异常(仓库没有任何动作, 只能人工重建), 红徽章只数「轮到仓库动手」的单, 否则
+     * 徽章永远清不掉. 该口径与 {@link #countWarehouseWorkByStatus()} 的 PENDING_PICK 键
+     * 以及「待出库」小类列表逐张一致(hub 卡 = 父分类 = 小类 = 列表行数).</p>
+     *
+     * <p>谓词仍落在 V582 部分索引 {@code idx_sales_shipments_warehouse_pending} 内
+     * (等值 PENDING_PICK 蕴含索引谓词的 IN 列表), 60s 轮询的计数查询继续走该索引.</p>
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    public long countPendingWarehouseWork() {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return 0L;
+        return countPendingWarehouseWork(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)计数, 与仓库投影列表同一谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    public long countPendingWarehouseWork(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return 0L;
+        var readScope = accessPolicy.scope(
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
+        Specification<SalesShipment> spec = (root, q, cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
+            ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
+            ps.add(cb.equal(root.get("financeAudit"), (short) 1));
+            ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
+            ps.add(cb.isFalse(root.get("rejected")));
+            ps.add(cb.equal(root.get("warehouseWorkStatus"), SalesShipment.WORK_PENDING_PICK));
+            if (warehouseScope != null && warehouseScope.active()) {
+                ps.add(warehouseScopePredicate(root, q, cb, warehouseScope));
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        return shipmentRepo.count(spec);
+    }
+
+    /**
+     * 销售出库任务的「所在仓」(ADR-149, 唯一定义): 表头仓或任一明细拣货仓(V631 逐行选仓)在范围内即算;
+     * 表头和明细都还没定仓 = 未定仓, 只在范围含未定仓(「其他人」的默认范围)时算。
+     */
+    private Predicate warehouseScopePredicate(Root<SalesShipment> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> q, CriteriaBuilder cb,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        java.util.List<java.util.UUID> scopeIds = warehouseScope.warehouseIds();
+        List<Predicate> inScope = new ArrayList<>();
+        if (!scopeIds.isEmpty()) {
+            inScope.add(root.get("warehouseId").in(scopeIds));
+            jakarta.persistence.criteria.Subquery<java.util.UUID> lines = q.subquery(java.util.UUID.class);
+            Root<SalesShipmentItem> line = lines.from(SalesShipmentItem.class);
+            lines.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
+                    line.get("warehouseId").in(scopeIds));
+            inScope.add(root.get("id").in(lines));
+        }
+        if (warehouseScope.includeUnassigned()) {
+            jakarta.persistence.criteria.Subquery<java.util.UUID> placed = q.subquery(java.util.UUID.class);
+            Root<SalesShipmentItem> line = placed.from(SalesShipmentItem.class);
+            placed.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
+                    cb.isNotNull(line.get("warehouseId")));
+            inScope.add(cb.and(cb.isNull(root.get("warehouseId")), cb.not(root.get("id").in(placed))));
+        }
+        return inScope.isEmpty() ? cb.disjunction() : cb.or(inScope.toArray(Predicate[]::new));
+    }
+
+    /**
+     * 仓库作业状态分组计数(出库任务中心「销售出库」小类行: 待出库红徽章 / 已出库中性计数).
+     *
+     * <p>与仓库投影 {@code WarehouseSalesOutboundProjectionService#list} 同一读范围与谓词
+     * (未删除 / 财务已放行 / 非 LEGACY 类型 / 归属可见), 不按单据 status 过滤——一步式确认出库
+     * 在 approveLocked 末尾把 status 翻成 1, 已出库单只能靠 warehouse_work_status 识别.
+     * 一条 SQL 按 warehouse_work_status 分组, 键为状态码, 未出现的状态不给键(调用方补 0).</p>
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    public Map<String, Long> countWarehouseWorkByStatus() {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return Map.of();
+        return countWarehouseWorkByStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)分组计数, 与仓库投影列表同一谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    @com.uten.imp.security.BusinessTaskRead
+    public Map<String, Long> countWarehouseWorkByStatus(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        if (!accessPolicy.hasAuthority(WAREHOUSE_VIEW_AUTHORITY)
+                || !accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)) return Map.of();
+        var readScope = accessPolicy.scope(
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
+        CriteriaBuilder cb = em.getCriteriaBuilder();
+        jakarta.persistence.criteria.CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
+        Root<SalesShipment> root = query.from(SalesShipment.class);
+        List<Predicate> where = new ArrayList<>(List.of(
+                cb.isFalse(root.get("deleted")),
+                accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope),
+                cb.equal(root.get("financeAudit"), (short) 1),
+                cb.notEqual(root.get("shipmentKind"), "LEGACY"),
+                cb.isNotNull(root.get("warehouseWorkStatus"))));
+        if (warehouseScope != null && warehouseScope.active()) {
+            where.add(warehouseScopePredicate(root, query, cb, warehouseScope));
+        }
+        query.select(cb.array(root.get("warehouseWorkStatus"), cb.count(root)))
+                .where(where.toArray(Predicate[]::new))
+                .groupBy(root.get("warehouseWorkStatus"));
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        for (Object[] row : em.createQuery(query).getResultList()) {
+            counts.put((String) row[0], ((Number) row[1]).longValue());
+        }
+        return counts;
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public ShipmentDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public ShipmentDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ShipmentDetail readDetail(UUID id, boolean historyRead) {
+        SalesShipment s = requireReadableShipment(id, historyRead);
+        List<SalesShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        Set<UUID> readableOrderItems = readableOrderItemIds(entities.stream()
+                .map(SalesShipmentItem::getOrderItemId).filter(Objects::nonNull).toList());
+        List<ShipmentItemDto> items = entities.stream()
+                .map(item -> toItemDto(item,
+                        item.getOrderItemId() == null
+                                || readableOrderItems.contains(item.getOrderItemId())))
+                .toList();
+        boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
+        ShipmentDetail result=toDetail(s, items, headerSourceReadable);
+        result.setReceivablePosition(shipmentReceivablePositions(List.of(id)).get(id));
+        return finishHistory(result, s, historyRead);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('sales_shipment:create','sales_other_shipment:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_shipment_item")
+    public ShipmentDetail create(ShipmentSaveRequest req) {
+        tx.bind();
+        String kind=CustomerShipmentPolicy.requestedKind(req.getShipmentKind());
+        customerShipmentPolicy.require(kind,"create");
+        mutationFootprint.lockShipment(null, requestedFootprint(req));
+        LinkedSource source;
+        if (CustomerShipmentPolicy.DIRECT.equals(kind)) {
+            directCommercial.normalize(req);
+            source=new LinkedSource(false,null,null,null,null,Map.of());
+        } else {
+            requireOrderLinkedNewShipment(req);
+            lockAndValidateDraftAllocation(req, null, true);
+            source=validateLinkedOrderItems(req);
+            assertShipmentPolicy(req);
+        }
+        SalesShipment s = new SalesShipment();
+        s.setBatchRequestKey(req.getBatchRequestKey());
+        s.setBatchRequestHash(req.getBatchRequestHash());
+        s.setBatchPosition(req.getBatchPosition());
+        s.setShipmentKind(kind);
+        s.setWarehouseChosenAtPick(req.getWarehouseId()==null || req.isWarehouseChoiceByWarehouse());
+        s.setWarehouseId(req.getWarehouseId());
+        s.setFinanceGateVersion((short)2);
+        applyHeader(req, s);
+        applySource(s, source);
+        s.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
+        s.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        s.setStatus(STATUS_DRAFT);
+        s.setWarehouseWorkStatus(SalesShipment.WORK_PENDING_PICK);
+        s.setWarehouseWorkUpdatedAt(OffsetDateTime.now());
+        s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
+        shipmentRepo.save(s);
+        List<ShipmentItemDto> items = saveItems(s, req.getItems(), source.amounts());
+        applyTotals(s, items);
+        recordWarehouseEvent(
+                s, null, SalesShipment.WORK_PENDING_PICK,
+                CustomerShipmentPolicy.DIRECT.equals(kind) ? "创建客户零星发货，等待销售确认" : "从已确认订单创建出货，等待财务确认", currentUser.requireEmployeeId(),
+                OffsetDateTime.now());
+        if (!customerShipmentPolicy.direct(s)) {
+            reviewSnapshots.submit(s);
+            shipmentRepo.saveAndFlush(s);
+            chainNotice.notifyShipmentPendingFinanceAudit(s.getId());
+        }
+        // V459 办结撤回：销售已开出货单——撤回该订单「全部完工可发货」待审卡
+        // （后续进度由出货放行/拣货事件链继续跟进）。
+        if (source.sourceOrderId() != null) {
+            chainNotice.resolveReviewNotices(
+                    "SALES_ORDER", source.sourceOrderId(), "OUTBOUND_CREATED");
+        }
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
+        return toDetail(s, items, true);
+    }
+
+    /**
+     * 批量发货开单（SOP §一9）：按客户、归属人与商业条款分组，同组才合并一张出货草稿。
+     * 逐行硬校验：订单行必须当前仍有可发预留（reserved>0）且本次数量不超预留；
+     * 归属隔离与订单列表同口径（不可见归属的行直接拒绝）。
+     * 草稿占用订单的可发分配额度，但不重复减少 ATP、也不扣在手；
+     * 仓库确认出库才进入实物作业边界，并在同一事务消费预留、扣库存。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_shipment:create')")
+    public List<ShipmentDetail> batchCreate(com.uten.imp.features.sales.shipment.dto.BatchShipRequest req) {
+        tx.bind();
+        if (req.getLines() == null || req.getLines().isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "未选择发货行");
+        }
+        // 取订单行 + 订单头（客户/币种/归属）；IN 查询一次性取回
+        List<UUID> ids = req.getLines().stream()
+                .map(com.uten.imp.features.sales.shipment.dto.BatchShipRequest.Line::getOrderItemId).toList();
+        if (Set.copyOf(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量发货不能重复选择同一订单行");
+        }
+        mutationFootprint.lockShipmentBatch(ids);
+        String batchKey = req.getIdempotencyKey() == null ? null : req.getIdempotencyKey().trim();
+        String batchHash = null;
+        if (batchKey != null) {
+            if (batchKey.length()<8 || batchKey.length()>128) throw new ApiException(ErrorCode.VALIDATION_FAILED,"批量出货操作编号长度应为8至128");
+            batchHash = batchRequestHash(req);
+            em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                    .setParameter("key","SALES-SHIPMENT-BATCH:"+currentUser.requireId()+":"+batchKey).getSingleResult();
+            var replay = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id,batch_request_hash FROM sales_shipments
+                    WHERE created_by=:actor AND batch_request_key=:key ORDER BY batch_position
+                    """).setParameter("actor",currentUser.requireId()).setParameter("key",batchKey));
+            if (!replay.isEmpty()) {
+                List<ShipmentDetail> result=new ArrayList<>();
+                for(Object[] row:replay) {
+                    if(!batchHash.equals(row[1])) throw new ApiException(ErrorCode.CONFLICT,"同一批量出货操作编号已用于不同内容，请刷新后重试");
+                    SalesShipment prior=requireReadableShipment((UUID)row[0]);
+
+                    accessPolicy.requireWritable(prior.getOwnerEmployeeId(),"无权重放该批出货单",accessPolicy.scope());
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",prior);
+                    result.add(detail(prior.getId()));
+                }
+                return result;
+            }
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                       i.price, i.reserved_qty,
+                       o.client_id, o.currency_id, o.bill_no,
+                       o.owner_employee_id, o.status, o.is_stopped, o.is_closed,
+                       o.tax_rate, o.payment_style_id, o.seller_id, o.id,
+                       o.settlement_method_id, o.finance_rejected,
+                       o.finance_confirmed
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids) AND COALESCE(i.is_deleted,false) = false AND COALESCE(o.is_deleted,false) = false
+                """).setParameter("ids", ids).getResultList();
+        Map<UUID, Object[]> byId = new HashMap<>();
+        for (Object[] r : rows) byId.put((UUID) r[0], r);
+
+        var writeScope = accessPolicy.scope();
+        // Reject the complete selection before reading warehouse balances. A
+        // guessed inaccessible item must never reveal stock feasibility.
+        for(var line:req.getLines()) validateBatchSourceLine(req,line,byId.get(line.getOrderItemId()),writeScope);
+        // Existing unkeyed callers retain their old grouping; current UI always
+        // supplies a stable intent key for idempotency and source splitting.
+        Map<UUID,Map<UUID,BigDecimal>> physicalSplits = null;
+        if(batchKey!=null){
+            var physicalRequest=new com.uten.imp.features.sales.shipment.dto.BatchShipRequest();
+            org.springframework.beans.BeanUtils.copyProperties(req,physicalRequest);
+            physicalRequest.setLines(req.getLines().stream().filter(line->deliveryFulfillment==null
+                    ||!deliveryFulfillment.isBom(line.getOrderItemId())).toList());
+            physicalSplits=physicalRequest.getLines().isEmpty()?new LinkedHashMap<>():new LinkedHashMap<>(new SalesShipmentBatchAllocation(em).allocate(physicalRequest));
+            for(var line:req.getLines())if(deliveryFulfillment!=null&&deliveryFulfillment.isBom(line.getOrderItemId())){
+                Map<UUID,BigDecimal> split=new LinkedHashMap<>();split.put(req.getWarehouseId(),line.getQty());
+                physicalSplits.put(line.getOrderItemId(),split);
+            }
+        }
+        // 分组键包含客户、原始 owner 与所有会影响应收的商业条款。
+        Map<BatchGroupKey, List<ShipmentItemLine>> grouped = new LinkedHashMap<>();
+        Map<BatchGroupKey, CommercialTerms> termsByGroup = new HashMap<>();
+        for (var line : req.getLines()) {
+            Object[] r = byId.get(line.getOrderItemId());
+            UUID owner = (UUID) r[10];
+            ShipmentItemLine l = new ShipmentItemLine();
+            l.setOrderItemId(line.getOrderItemId());
+            l.setGoodsId((UUID) r[1]);
+            l.setColorId((UUID) r[2]);
+            l.setUnitId((UUID) r[3]);
+            l.setUnitRate((BigDecimal) r[4]);
+            l.setQty(line.getQty());
+            l.setWeight(line.getWeight());
+            l.setRemark(line.getRemark());
+            l.setPrice((BigDecimal) r[5]);
+            l.setSourceDocNo((String) r[9]);
+            Integer paymentStyle = r[15] == null
+                    ? null : ((Number) r[15]).intValue();
+            CommercialTerms terms = new CommercialTerms(
+                    (UUID) r[8], (BigDecimal) r[14],
+                    paymentStyle, (UUID) r[18], (UUID) r[16]);
+            if (req.getSellerId()!=null && !req.getSellerId().equals(terms.sellerId())
+                    || req.getSettlementMethodId()!=null && !req.getSettlementMethodId().equals(terms.settlementMethodId())) {
+                throw new ApiException(ErrorCode.CONFLICT,"出货单业务员及结算方式须与来源订单一致，请刷新订单后重试");
+            }
+            Map<UUID,BigDecimal> splits=physicalSplits==null ? new LinkedHashMap<>() : physicalSplits.get(line.getOrderItemId());
+            if(physicalSplits==null) splits.put(req.getWarehouseId(),line.getQty());
+            if(splits.size()>1 && line.getWeight()!=null && line.getWeight().signum()>0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"该产品将分成多张出货单，请先清空本行重量，生成后分别填写实际重量");
+            }
+            for(var split:splits.entrySet()) {
+                ShipmentItemLine part=new ShipmentItemLine();
+                org.springframework.beans.BeanUtils.copyProperties(l,part);part.setQty(split.getValue());
+                BatchGroupKey key = new BatchGroupKey(
+                        (UUID) r[7], owner, terms.currencyId(), normalizedDecimalKey(terms.taxRate()),
+                        terms.paymentStyleId(), terms.settlementMethodId(), terms.sellerId(), (UUID) r[17],split.getKey());
+                grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(part);
+                termsByGroup.putIfAbsent(key, terms);
+            }
+        }
+
+        if(grouped.size()>1 && req.getParcelCount()!=null && req.getParcelCount()>0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"本次将生成多张出货单，请先清空物流件数，生成后按各单实际填写");
+        }
+        List<ShipmentDetail> out = new ArrayList<>(grouped.size());
+        for (var e : grouped.entrySet()) {
+            ShipmentSaveRequest one = new ShipmentSaveRequest();
+            one.setBillDate(req.getBillDate());
+            one.setClientId(e.getKey().clientId());
+            one.setWarehouseId(e.getKey().warehouseId());
+            one.setWarehouseChoiceByWarehouse(batchKey!=null);
+            one.setShipAddr(req.getShipAddr());one.setLinkPhone(req.getLinkPhone());
+            one.setLogisticsNo(req.getLogisticsNo());one.setSenderId(req.getSenderId());
+            one.setParcelCount(req.getParcelCount());
+            CommercialTerms terms = termsByGroup.get(e.getKey());
+            one.setCurrencyId(terms.currencyId());
+            one.setExchangeRate(null);
+            one.setTaxRate(terms.taxRate());
+            one.setPaymentStyleId(terms.paymentStyleId());
+            one.setSettlementMethodId(terms.settlementMethodId());
+            one.setSellerId(terms.sellerId());
+            one.setRemark(req.getRemark() == null || req.getRemark().isBlank()
+                    ? "批量发货开单" : req.getRemark());
+            int lineNo = 1;
+            for (ShipmentItemLine l : e.getValue()) l.setLineNo(lineNo++);
+            one.setItems(e.getValue());
+            if(batchKey!=null) {
+                one.setBatchRequestKey(batchKey);one.setBatchRequestHash(batchHash);one.setBatchPosition(out.size()+1);
+            }
+            out.add(create(one));
+        }
+        return out;
+    }
+
+    /** The field snapshot must follow the same complete S/I prefix as update and review commands. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
+    public void lockPlatformColumnSave(UUID id, ShipmentSaveRequest request) {
+        tx.bind();
+        mutationFootprint.lockShipment(id, requestedFootprint(request));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_shipment_item", requestArgument=1, documentIdArgument=0)
+    public ShipmentDetail update(UUID id, ShipmentSaveRequest req) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, requestedFootprint(req));
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        customerShipmentPolicy.require(s.getShipmentKind(),"edit");
+        requireLegacyShipmentMutable(s);
+        if (s.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        if (s.isRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "已驳回的出货单不可编辑，请删除后重新开单");
+        }
+        if (!isEditableState(s)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "出货单已确认出库或已不是待出库草稿，不可直接编辑");
+        }
+        requireExpectedRevision(s,req.getExpectedRevision());
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireCanRevise(id);
+        if (req.getShipmentKind()!=null && !s.getShipmentKind().equals(CustomerShipmentPolicy.requestedKind(req.getShipmentKind()))) {
+            throw new ApiException(ErrorCode.CONFLICT,"出货类型不能在编辑时更换，请按实际业务新建");
+        }
+        LinkedSource source;
+        if (customerShipmentPolicy.direct(s)) {
+            directCommercial.normalize(req, s.getClientId());
+            source=new LinkedSource(false,null,null,null,null,Map.of());
+        } else {
+            requireOrderLinkedNewShipment(req);
+            lockAndValidateDraftAllocation(req,id,true);
+            source=validateLinkedOrderItems(req);
+            assertShipmentPolicy(req);
+        }
+        if (source.present() && !Objects.equals(source.ownerEmployeeId(), s.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单与出货单归属不一致");
+        }
+        revokeForCommercialChange(s,"修改出货内容后重新提交审核");
+        s.setFinanceGateVersion((short)2);
+        s.setReviewRevision(s.getReviewRevision()+1);
+        s.setSalesConfirmedRevision(null);
+        s.setSalesConfirmedAt(null);
+        s.setSalesConfirmedBy(null);
+        s.setFinanceRejected(false);
+        s.setFinanceRejectionReason(null);
+        applyHeader(req, s);
+        applySource(s, source);
+        List<ShipmentItemDto> items = saveItems(s, req.getItems(), source.amounts());
+        applyTotals(s, items);
+        if (!customerShipmentPolicy.direct(s)) {
+            reviewSnapshots.submit(s);
+            shipmentRepo.saveAndFlush(s);
+            chainNotice.notifyShipmentPendingFinanceAudit(id);
+        }
+        clientShipAddressService.learn(s.getClientId(), s.getShipAddr(), s.getLinkPhone());
+        return toDetail(s, items, true);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('sales_shipment:delete','sales_other_shipment:delete')")
+    public void delete(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        customerShipmentPolicy.require(s.getShipmentKind(),"delete");
+        requireLegacyShipmentMutable(s);
+        if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "只有草稿或已驳回草稿可删除；已出库单据必须保留历史");
+        }
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
+        if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())
+                && !SalesShipment.WORK_CANCELLED.equals(s.getWarehouseWorkStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "出货单已确认出库，不可删除；纠错请走销售退货");
+        }
+        String fromStatus = s.getWarehouseWorkStatus();
+        if(deliveryFulfillment!=null)deliveryFulfillment.cancelPrepared(id);
+        revokeForCommercialChange(s,"销售取消未出库发货");
+        OffsetDateTime now = OffsetDateTime.now();
+        UUID actor = currentUser.requireEmployeeId();
+        s.setWarehouseWorkStatus(SalesShipment.WORK_CANCELLED);
+        s.setWarehouseWorkUpdatedAt(now);
+        s.setWarehouseWorkUpdatedBy(actor);
+        s.setDeleted(true);
+        s.setDeletedAt(now);
+        shipmentRepo.save(s);
+        recordWarehouseEvent(
+                s, fromStatus, SalesShipment.WORK_CANCELLED,
+                "销售删除未出库草稿", actor, now);
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"CANCELLED");
+    }
+
+    /** The miscellaneous-sales approve permission confirms commercial instructions only. */
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('sales_shipment:approve','sales_other_shipment:approve')")
+    public ShipmentDetail confirmSales(UUID id,Long expectedRevision) {
+        tx.bind();
+        SalesShipment s=requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        customerShipmentPolicy.require(s.getShipmentKind(),"approve");
+        requireLegacyShipmentMutable(s);
+        requireFinanceAuditEditableState(s);
+        requireExpectedRevision(s,expectedRevision);
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        if (customerShipmentPolicy.salesConfirmed(s) && !s.isFinanceRejected()) return detail(id);
+        if (s.isFinanceRejected()) {
+            // V578：退回原因与出货内容无关时（如客户资料问题），销售无需假改单——
+            // 允许原样重新提交。修订号+1 形成新一轮提交事实，财务重新走一遍审核；
+            // 财务若坚持要求改单可再次退回。
+            s.setReviewRevision(s.getReviewRevision()+1);
+            s.setFinanceRejected(false);
+            s.setFinanceRejectionReason(null);
+            reviewSnapshots.submit(s);
+            shipmentRepo.saveAndFlush(s);
+            chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"SALES_RESUBMITTED");
+            chainNotice.notifyShipmentPendingFinanceAudit(id);
+            return detail(id);
+        }
+        List<SalesShipmentItem> items=itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        directCommercial.validateStored(s,items);
+        if (!customerShipmentPolicy.direct(s)) assertStoredOrderLinks(s,items,true);
+        requireNonNegativeStoredCommercial(items);
+        requireNonNegativeTotals(s);
+        s.setFinanceGateVersion((short)2);
+        reviewSnapshots.submit(s);
+        shipmentRepo.saveAndFlush(s);
+        chainNotice.notifyShipmentPendingFinanceAudit(id);
+        return detail(id);
+    }
+
+    private static void requireExpectedRevision(SalesShipment s,Long expected) {
+        if ((s.getFinanceGateVersion()!=null && s.getFinanceGateVersion()>=2 && expected==null)
+                || (expected!=null && expected!=s.getReviewRevision())) {
+            throw new ApiException(ErrorCode.CONFLICT,"出货内容已变化，请刷新后重新提交");
+        }
+    }
+
+    // ======================== C6 财务发货审核 ========================
+
+    /** V443：所有非历史兼容出货单都必须先有真实财务放行事实。 */
+    static void assertFinanceAudited(SalesShipment s) {
+        if ("LEGACY".equals(s.getShipmentKind())) throw new ApiException(ErrorCode.CONFLICT,"历史来源不完整的出货单只供查阅，请人工核对后新建当前发货任务");
+        boolean pendingPhysicalWork = SalesShipment.WORK_PENDING_PICK.equals(
+                s.getWarehouseWorkStatus());
+        if ((s.getFinanceGateVersion() == null || s.getFinanceGateVersion() >= 1
+                || pendingPhysicalWork)
+                && (s.getFinanceAudit() == null || s.getFinanceAudit() != 1)) {
+            throw new ApiException(ErrorCode.BUSINESS, "所有客户出货均须先完成财务审核，再由仓库作业");
+        }
+        if (s.getFinanceGateVersion()!=null && s.getFinanceGateVersion()>=2
+                && (!CustomerShipmentPolicy.salesConfirmed(s) || s.getFinanceReleaseEventId()==null || s.isFinanceRejected())) {
+            throw new ApiException(ErrorCode.CONFLICT,"当前发货内容尚未完成销售与财务确认，请刷新任务");
+        }
+    }
+
+    /** 财务审核发货：所有客户逐张人工放行；标签不自动决定是否可发货。 */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
+    public Map<String, Object> financeAudit(UUID id) {
+        return financeAudit(id,null);
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
+    public Map<String, Object> financeAudit(UUID id,
+            com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_APPROVE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        requireFinanceAuditEditableState(s);
+        requireFinanceDecision(s,request);
+        if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "已财务审核，请勿重复操作");
+        }
+        // 放行同事务 FOR SHARE 锁住客户主档行(须启用、未删)，让风险快照与客户条款在同一读一致性下形成；
+        // 结账方式来自本单头/客户默认(resolveEffectiveSettlementMethod)，V630 起不再有客户级货款分类闸门。
+        loadClientSettlementDefaults(s.getClientId(), true);
+        // V632：记账汇率在财务放行时确认——预填币种主档参考汇率、财务可按放行当日汇率改，
+        // 放行即冻结到本单，仓库确认出库按它折算本币立应收(同金蝶/用友「审核前可改、审核后锁定」)。
+        // 免费发货不立应收，不需要汇率。
+        FinanceReleaseRate releaseRate = CustomerShipmentPolicy.free(s) ? null
+                : resolveFinanceReleaseRate(s.getCurrencyId(), request == null ? null : request.exchangeRate());
+        List<SalesShipmentItem> items =
+                itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可财务审核");
+        }
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, true, FINANCE_AUDIT_AUTHORITY);
+        directCommercial.validateStored(s,items);
+        requireNonNegativeStoredCommercial(items);
+        requireNonNegativeTotals(s);
+        UUID actorUserId = currentUser.requireId();
+        String actorName=currentReviewActorName();
+        OffsetDateTime decisionTime = OffsetDateTime.now();
+        s.setFinanceAudit((short) 1);
+        s.setFinanceAuditorId(actorUserId);
+        s.setFinanceAuditorNameSnapshot(actorName);
+        s.setFinanceAuditedAt(decisionTime);
+        s.setExchangeRate(releaseRate == null ? null : releaseRate.rate());
+        shipmentRepo.save(s);
+        Map<String, Object> info = new LinkedHashMap<>(financeAuditInfo(s));
+        info.put("exchangeRateSource", releaseRate == null ? "" : releaseRate.source());
+        UUID event=appendFinanceReleaseEvent(
+                s, "RELEASED", actorUserId, decisionTime, info,request==null?null:request.expectedClaimId(),null);
+        s.setFinanceReleaseEventId(event);
+        shipmentRepo.saveAndFlush(s);
+        taskClaims.release(CustomerShipmentPolicy.CLAIM_TYPE,id.toString(),request==null?null:request.expectedClaimId());
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_APPROVED");
+        chainNotice.notifyShipmentPendingPick(s.getId(), s.getFinanceAuditedAt());
+        return info;
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
+    public Map<String,Object> financeAuditReject(UUID id,
+            com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
+        tx.bind();
+        SalesShipment s=requireWritableShipmentForUpdate(id,FINANCE_REJECT_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        requireFinanceAuditEditableState(s);
+        requireFinanceDecision(s,request);
+        String reason=request==null?null:trimToNull(request.reason());
+        if (reason==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写退回原因，方便销售修改");
+        Map<String,Object> info=financeAuditInfo(s);
+        appendFinanceReleaseEvent(s,"REJECTED",currentUser.requireId(),OffsetDateTime.now(),info,request.expectedClaimId(),reason);
+        s.setFinanceRejected(true);
+        s.setFinanceRejectionReason(reason);
+        shipmentRepo.saveAndFlush(s);
+        taskClaims.release(CustomerShipmentPolicy.CLAIM_TYPE,id.toString(),request.expectedClaimId());
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_REJECTED");
+        chainNotice.notifyShipmentFinanceRejected(id,reason);
+        return financeAuditInfo(s);
+    }
+
+    /**
+     * 批量放行（财务工作台多选）：整批同一事务，任一项状态/revision/哈希/认领
+     * 失效或客户未分类即整体回滚——对齐订货审批批量口径。内部逐项复用单笔
+     * [financeAudit] 的全部校验与副作用（事件、通知、认领释放）。
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:approve')")
+    public java.util.List<Map<String, Object>> financeAuditBatch(
+            com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
+        tx.bind();
+        // 写任何一张之前对全部出货单合并预锁(2026-10-06 修正), 逐张放行的取锁只核对覆盖。
+        mutationFootprint.lockShipments(request.items().stream()
+                .map(com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest.Item::id).toList());
+        java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+        for (var item : request.items()) {
+            results.add(financeAudit(item.id(), item.toDecision(null)));
+        }
+        return results;
+    }
+
+    /** 批量退回：整批共用一个原因；任一项失败即整体回滚。 */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reject')")
+    public java.util.List<Map<String, Object>> financeAuditRejectBatch(
+            com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
+        tx.bind();
+        String reason = trimToNull(request.reason());
+        if (reason == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写退回原因，方便销售修改");
+        }
+        mutationFootprint.lockShipments(request.items().stream()
+                .map(com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest.Item::id).toList());
+        java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+        for (var item : request.items()) {
+            results.add(financeAuditReject(item.id(), item.toDecision(reason)));
+        }
+        return results;
+    }
+
+    /**
+     * 撤回退回（V578）：财务发现退回原因与出货内容无关（如客户货款分类未维护、
+     * 自己误退）时，把单据收回财务待审队列，避免「财务找不到、销售改不了」的悬空态。
+     * 仅作用于未放行且仓库未作业的退回单；销售确认事实保留，无需销售重走确认。
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
+    public Map<String, Object> financeRejectReverse(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        requireFinanceAuditEditableState(s);
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        if (!s.isFinanceRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "该出货单没有被退回，无需撤回");
+        }
+        if (s.getFinanceAudit() != null && s.getFinanceAudit() == 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "已放行的出货单不能撤回退回");
+        }
+        Map<String, Object> info = financeAuditInfo(s);
+        appendFinanceReleaseEvent(s, "REJECT_REVOKED", currentUser.requireId(),
+                OffsetDateTime.now(), info, null, "财务撤回退回，恢复待审");
+        s.setFinanceRejected(false);
+        s.setFinanceRejectionReason(null);
+        shipmentRepo.saveAndFlush(s);
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_REJECT_REVOKED");
+        chainNotice.notifyShipmentPendingFinanceAudit(id);
+        return financeAuditInfo(s);
+    }
+
+    private void requireFinanceDecision(SalesShipment s,
+            com.uten.imp.features.sales.shipment.dto.ShipmentFinanceDecisionRequest request) {
+        if (s.isFinanceRejected()) throw new ApiException(ErrorCode.CONFLICT,"出货已退回销售，请等待修改后重新确认");
+        if (s.getFinanceGateVersion()!=null && s.getFinanceGateVersion()>=2) {
+            if (!CustomerShipmentPolicy.salesConfirmed(s)) throw new ApiException(ErrorCode.CONFLICT,"请等待销售确认当前出货内容");
+            requireExpectedRevision(s,request==null?null:request.expectedRevision());
+            if (request==null || request.expectedClaimId()==null || request.expectedContentHash()==null
+                    || !reviewSnapshots.snapshot(s.getId()).hash().equals(request.expectedContentHash())) {
+                throw new ApiException(ErrorCode.CONFLICT,"审核内容或认领已变化，请重新进入审核");
+            }
+        }
+        taskClaims.requireActiveClaimByMe(CustomerShipmentPolicy.CLAIM_TYPE,s.getId().toString(),request==null?null:request.expectedClaimId());
+    }
+
+    /** 财务反审：仅未审核出货（status=0）的单据可回退财务审核。 */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:reverse')")
+    public Map<String, Object> financeAuditReverse(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, FINANCE_REVERSE_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        requireFinanceAuditEditableState(s);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        if (s.getFinanceAudit() == null || s.getFinanceAudit() != 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "该出货单尚未财务审核，不能反审");
+        }
+        UUID actorUserId = currentUser.requireId();
+        OffsetDateTime decisionTime = OffsetDateTime.now();
+        s.setFinanceAudit((short) 0);
+        s.setFinanceAuditorId(null);
+        s.setFinanceAuditorNameSnapshot(null);
+        s.setFinanceAuditedAt(null);
+        // V632：撤回放行即撤回这次冻结的记账汇率，下次放行重新预填/填写。
+        s.setExchangeRate(null);
+        shipmentRepo.save(s);
+        Map<String, Object> info = financeAuditInfo(s);
+        appendFinanceReleaseEvent(
+                s, "REVOKED", actorUserId, decisionTime, info,null,"财务撤回确认");
+        s.setFinanceReleaseEventId(null);
+        shipmentRepo.saveAndFlush(s);
+        chainNotice.notifyShipmentFinanceReleaseRevoked(s.getId());
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT",id,"FINANCE_REVOKED");
+        chainNotice.notifyShipmentPendingFinanceAudit(id);
+        return info;
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('sales_shipment_finance:view')")
+    public Map<String, Object> financeAuditInfo(UUID id) {
+        SalesShipment shipment = requireReadableShipment(id);
+        Map<String, Object> info = new LinkedHashMap<>(financeAuditInfo(shipment));
+        // permissions-15：财审页的放行 / 退回 / 撤回按钮只按这里下发的动作显隐，
+        // 服务端按动作码 + 对象范围 + 单据状态一次算好，页面不再本地拼权限。
+        info.put("allowedActions", financeAllowedActions(shipment));
+        return info;
+    }
+
+    /** 当前用户对这张出货单此刻能做的财务动作(APPROVE / REJECT / REVERSE)，与各写入口的校验同口径。 */
+    private List<String> financeAllowedActions(SalesShipment shipment) {
+        if (!financeAuditEditable(shipment)) {
+            return List.of();
+        }
+        boolean released = shipment.getFinanceAudit() != null && shipment.getFinanceAudit() == 1;
+        boolean rejected = shipment.isFinanceRejected();
+        boolean awaitingDecision = !released && !rejected
+                && (shipment.getFinanceGateVersion() == null || shipment.getFinanceGateVersion() < 2
+                    || CustomerShipmentPolicy.salesConfirmed(shipment));
+        UUID owner = shipment.getOwnerEmployeeId();
+        List<String> actions = new ArrayList<>();
+        if (awaitingDecision && canFinanceAct(owner, FINANCE_APPROVE_AUTHORITY)) {
+            actions.add("APPROVE");
+        }
+        if (awaitingDecision && canFinanceAct(owner, FINANCE_REJECT_AUTHORITY)) {
+            actions.add("REJECT");
+        }
+        if ((released || rejected) && canFinanceAct(owner, FINANCE_REVERSE_AUTHORITY)) {
+            actions.add("REVERSE");
+        }
+        return List.copyOf(actions);
+    }
+
+    private boolean canFinanceAct(UUID owner, String authority) {
+        return accessPolicy.hasAuthority(authority) && accessPolicy.canWrite(owner, authority);
+    }
+
+    /** {@link #requireFinanceAuditEditableState} 的只读判定版本(不抛错)。 */
+    private static boolean financeAuditEditable(SalesShipment shipment) {
+        return !"LEGACY".equals(shipment.getShipmentKind())
+                && shipment.getStatus() != null && shipment.getStatus() == STATUS_DRAFT
+                && !shipment.isRejected()
+                && SalesShipment.WORK_PENDING_PICK.equals(shipment.getWarehouseWorkStatus());
+    }
+
+    /**
+     * 财务审核辅助信息：标签、UUID 结算方式、客户余额与铺底。
+     *
+     * <p>ADR-128: 客户余额是共用视图 {@code clientBalance}: 本单币种的应收 / 可用预收 / 还差多少,
+     * 其它币种另列; {@code openBookLocal} = 全币种正式应收账面本币毛额(不扣预收),
+     * 只和铺底额比({@code creditLimitLocal} = 铺底额, 未填按 0; {@code overLimitLocal} = 超出铺底额, 可为负)。
+     */
+    private Map<String, Object> financeAuditInfo(SalesShipment s) {
+        var commercialSnapshot=reviewSnapshots.snapshot(s.getId());
+        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
+                s.getClientId(), false);
+        var method = resolveEffectiveSettlementMethod(s, defaults);
+        FinanceRateState rateState = financeRateState(s.getCurrencyId());
+        Object[] c = (Object[]) em.createNativeQuery("""
+                SELECT c.name, COALESCE(c.credit_floor, 0)
+                FROM clients c WHERE c.id = :id
+                """)
+                .setParameter("id", s.getClientId())
+                .getSingleResult();
+        BigDecimal creditFloor = c[1] == null
+                ? BigDecimal.ZERO : (BigDecimal) c[1];
+        PartyOpenBalanceView clientBalance = partyBalances
+                .clients(java.util.Collections.singletonList(s.getClientId()))
+                .forDocument(s.getClientId(), s.getCurrencyId(), creditFloor);
+        return Map.ofEntries(
+                Map.entry("shipmentId", s.getId()),
+                Map.entry("orderMoneyPositions",orderMoneyPositions(s)),
+                Map.entry("receivablePosition",shipmentReceivableFact(s.getId())),
+                Map.entry("frozenReceivablePosition",frozenShipmentReceivable(s)),
+                Map.entry("shipmentKind",s.getShipmentKind()),
+                Map.entry("billingMode",s.getBillingMode()),
+                Map.entry("directPurpose",Objects.toString(s.getDirectPurpose(),"")),
+                Map.entry("freeReason",Objects.toString(s.getFreeReason(),"")),
+                Map.entry("reviewRevision",s.getReviewRevision()),
+                Map.entry("salesConfirmed",CustomerShipmentPolicy.salesConfirmed(s)),
+                Map.entry("financeRejected",s.isFinanceRejected()),
+                Map.entry("financeRejectionReason",Objects.toString(s.getFinanceRejectionReason(),"")),
+                Map.entry("contentHash",commercialSnapshot.hash()),
+                Map.entry("commercialSnapshot",commercialSnapshot.json()),
+                Map.entry("previousCommercialSnapshot",reviewSnapshots.previousDecision(s.getId(),s.getReviewRevision())),
+                Map.entry("financeAudit", s.getFinanceAudit()),
+                Map.entry("financeAuditorName",Objects.toString(s.getFinanceAuditorNameSnapshot(),"")),
+                Map.entry("actualReceiptContext",actualReceipts==null?
+                    new com.uten.imp.application.port.CustomerActualReceiptContextPort.Context(false,OffsetDateTime.now().toString(),0,null,0,List.of(),false,"真实到账来源尚未读取"):
+                    actualReceipts.read(s.getClientId(),s.getCurrencyId(),OffsetDateTime.now())),
+                Map.entry("clientName", c[0] == null ? "" : c[0]),
+                // priceStyle is retained only as a display-compatible snapshot.
+                Map.entry("priceStyle", method == null || method.legacyId() == null
+                        ? -1 : method.legacyId()),
+                Map.entry("settlementMethodId", method == null ? "" : method.id().toString()),
+                Map.entry("settlementMethodCode", method == null || method.code() == null
+                        ? "" : method.code()),
+                Map.entry("settlementMethodName", method == null || method.name() == null
+                        ? "" : method.name()),
+                Map.entry("cashClient", isCashSettlement(method)),
+                // V631/V632：币种财务汇率的当前状态——财审页据此预填记账汇率；主档没维护时
+                // 不再挡放行，改由财务在放行时填写(仓库只管仓库的事)。
+                Map.entry("currencyName", rateState.currencyName()),
+                Map.entry("financeRate", rateState.rate() == null ? "" : rateState.rate().toPlainString()),
+                Map.entry("financeRateReady", CustomerShipmentPolicy.free(s) || rateState.ready()),
+                Map.entry("baseCurrency", rateState.baseCurrency()),
+                // 本单已冻结的记账汇率(放行后有值；撤回后清空)。
+                Map.entry("shipmentExchangeRate", s.getExchangeRate() == null
+                        ? "" : s.getExchangeRate().stripTrailingZeros().toPlainString()),
+                // 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空(要财务填)。
+                Map.entry("suggestedExchangeRate", suggestedFinanceReleaseRate(s, rateState)),
+                Map.entry(CLIENT_BALANCE, clientBalance));
+    }
+
+    private boolean canViewShipmentReceivables(){
+        return accessPolicy.hasAuthority(FINANCE_AUDIT_AUTHORITY)
+                ||accessPolicy.hasAuthority("sales_order_finance:view")
+                ||accessPolicy.hasAuthority("finance:view:all")
+                ||accessPolicy.hasAuthority(SalesPriceMasker.PERM);
+    }
+    private Map<UUID,com.uten.imp.application.port.ShipmentReceivablePositionPort.Position> shipmentReceivablePositions(Collection<UUID> ids){
+        if(shipmentReceivables==null||ids.isEmpty()||!canViewShipmentReceivables())return Map.of();
+        return shipmentReceivables.read(ids);
+    }
+    private Object shipmentReceivableFact(UUID id){
+        var value=shipmentReceivablePositions(List.of(id)).get(id);
+        return value==null?Map.of():value;
+    }
+    private Object frozenShipmentReceivable(SalesShipment shipment){
+        if(shipmentReceivables==null||shipment.getFinanceReleaseEventId()==null)return Map.of();
+        List<?> rows=em.createNativeQuery("SELECT (print_context->'frozenReceivablePosition')::text FROM sales_shipment_finance_release_events WHERE id=:event AND shipment_id=:shipment AND event_type='RELEASED'")
+                .setParameter("event",shipment.getFinanceReleaseEventId()).setParameter("shipment",shipment.getId()).getResultList();
+        if(rows.size()!=1||rows.getFirst()==null)return Map.of();
+        try{return new com.fasterxml.jackson.databind.ObjectMapper().readTree(rows.getFirst().toString());}
+        catch(com.fasterxml.jackson.core.JsonProcessingException invalid){throw new ApiException(ErrorCode.CONFLICT,"原审核的本批货款依据不完整，请核对原审核事件");}
+    }
+    private static ShipmentListItem withReceivable(ShipmentListItem row,com.uten.imp.application.port.ShipmentReceivablePositionPort.Position position){row.setReceivablePosition(position);return row;}
+
+    private Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position> orderMoneyPositions(SalesShipment shipment) {
+        if(Short.valueOf((short)1).equals(shipment.getFinanceAudit()) && shipment.getFinanceReleaseEventId()!=null)
+            return frozenOrderMoneyPositions(em,shipment.getId(),shipment.getFinanceReleaseEventId());
+        if(orderMoney==null)return Map.of();
+        var ids=com.uten.imp.common.util.NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT ordered.order_id FROM sales_shipment_items shipped
+                JOIN sales_order_items ordered ON ordered.id=shipped.order_item_id
+                WHERE shipped.shipment_id=:id AND NOT shipped.is_deleted AND NOT ordered.is_deleted
+                """).setParameter("id",shipment.getId()),UUID.class);
+        return ids.isEmpty()?Map.of():orderMoney.read(ids,false);
+    }
+
+    static Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position> frozenOrderMoneyPositions(
+            EntityManager em,UUID shipmentId,UUID eventId) {
+        List<?> rows=em.createNativeQuery("""
+                SELECT (print_context->'orderMoneyPositions')::text FROM sales_shipment_finance_release_events
+                WHERE id=:event AND shipment_id=:shipment AND event_type='RELEASED'
+                """).setParameter("event",eventId).setParameter("shipment",shipmentId).getResultList();
+        if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原财务审核事件缺失，不能重算历史订单资金依据");
+        if(rows.getFirst()==null)return Map.of(); // Historical releases without this field stay unavailable.
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(rows.getFirst().toString(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<UUID,com.uten.imp.application.port.SalesOrderMoneyReadPort.Position>>(){});
+        } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            throw new ApiException(ErrorCode.CONFLICT,"原审核订单资金快照无法读取，请核对原事件");
+        }
+    }
+
+    /** 财审信息里客户余额视图的键(页面与放行事件快照同读这一份)。 */
+    private static final String CLIENT_BALANCE = "clientBalance";
+
+    private UUID appendFinanceReleaseEvent(
+            SalesShipment shipment,
+            String eventType,
+            UUID actorUserId,
+            OffsetDateTime occurredAt,
+            Map<String, Object> info,UUID claimId,String reason) {
+        UUID eventId=UUID.randomUUID();
+        var snapshot=reviewSnapshots.snapshot(shipment.getId());
+        // 放行事件冻结的余额与页面看到的是同一份视图(ADR-128), 不再各取一遍。
+        PartyOpenBalanceView balance = (PartyOpenBalanceView) info.get(CLIENT_BALANCE);
+        String settlementMethod = Objects.toString(
+                info.get("settlementMethodId"), "").trim();
+        // V632：只有放行事件记录这次冻结的记账汇率与来源；撤回/退回/免费发货为空(成对约束)。
+        String rateSource = Objects.toString(info.get("exchangeRateSource"), "").trim();
+        boolean rateFrozen = "RELEASED".equals(eventType)
+                && shipment.getExchangeRate() != null && !rateSource.isEmpty();
+        em.createNativeQuery("""
+                INSERT INTO sales_shipment_finance_release_events (
+                    id,review_revision,claim_id,content_hash,commercial_snapshot,billing_mode,reverses_event_id,decision_reason,
+                    shipment_id, event_type, actor_user_id, occurred_at,
+                    client_id, client_name, currency_id,
+                    settlement_method_id, shipment_total_original,
+                    formal_ar_outstanding_local,
+                    credit_floor_local, over_floor_local,
+                    available_prepayment_original,
+                    available_prepayment_local,
+                    exchange_rate, exchange_rate_source,actor_employee_id,actor_name_snapshot,actual_receipt_context,print_context)
+                VALUES (
+                    :eventId,:revision,:claimId,:hash,CAST(:snapshot AS jsonb),:billingMode,:reversesEventId,:reason,
+                    :shipmentId, :eventType, :actorUserId, :occurredAt,
+                    :clientId, :clientName, :currencyId,
+                    :settlementMethodId, :shipmentTotalOriginal,
+                    :formalOutstanding,
+                    :creditFloor, :overFloor,
+                    :availablePrepaymentOriginal,
+                    :availablePrepaymentLocal,
+                    :exchangeRate, :exchangeRateSource,:actorEmployee,:actorName,CAST(:receiptContext AS jsonb),CAST(:printContext AS jsonb))
+                """)
+                .setParameter("actorEmployee",currentUser.requireEmployeeId())
+                .setParameter("actorName",currentReviewActorName())
+                .setParameter("receiptContext",receiptContextJson(info.get("actualReceiptContext")))
+                .setParameter("printContext","RELEASED".equals(eventType)?receiptContextJson(Map.of(
+                    "lines",SalesShipmentPrintFacts.capture(em,shipment.getId()),
+                    "orderMoneyPositions",info.getOrDefault("orderMoneyPositions",Map.of()),
+                    "frozenReceivablePosition",info.getOrDefault("receivablePosition",Map.of()),
+                    "settlementName",Objects.toString(info.get("settlementMethodName"),""),
+                    "makerName",Objects.toString(nameResolver.nameOf(shipment.getMakerId()),""))):null)
+                .setParameter("exchangeRate", rateFrozen ? shipment.getExchangeRate() : null)
+                .setParameter("exchangeRateSource", rateFrozen ? rateSource : null)
+                .setParameter("eventId",eventId)
+                .setParameter("revision",shipment.getReviewRevision())
+                .setParameter("claimId",claimId)
+                .setParameter("hash",snapshot.hash())
+                .setParameter("snapshot",snapshot.json())
+                .setParameter("billingMode",shipment.getBillingMode())
+                .setParameter("reversesEventId","REVOKED".equals(eventType)?shipment.getFinanceReleaseEventId():null)
+                .setParameter("reason",reason)
+                .setParameter("shipmentId", shipment.getId())
+                .setParameter("eventType", eventType)
+                .setParameter("actorUserId", actorUserId)
+                .setParameter("occurredAt", occurredAt)
+                .setParameter("clientId", shipment.getClientId())
+                .setParameter("clientName", Objects.toString(
+                        info.get("clientName"), ""))
+                .setParameter("currencyId", shipment.getCurrencyId())
+                .setParameter("settlementMethodId",
+                        settlementMethod.isEmpty()
+                                ? null : UUID.fromString(settlementMethod))
+                .setParameter("shipmentTotalOriginal",
+                        shipment.getTotalOriginal())
+                .setParameter("formalOutstanding", balance.openBookLocal())
+                .setParameter("creditFloor", balance.creditLimitLocal())
+                .setParameter("overFloor", balance.overLimitLocal())
+                .setParameter("availablePrepaymentOriginal", balance.creditOriginal())
+                .setParameter("availablePrepaymentLocal", balance.creditBookLocal())
+                .executeUpdate();
+        return eventId;
+    }
+    private String currentReviewActorName(){
+        String name=nameResolver.nameOf(currentUser.requireEmployeeId());
+        if(name==null||name.isBlank())throw new ApiException(ErrorCode.CONFLICT,"审核人档案姓名尚未核对，不能形成无姓名的财务审核记录");return name;
+    }
+    private static String receiptContextJson(Object context){try{return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(context);}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException("真实到账快照无法保留",e);}}
+
+    private void revokeForCommercialChange(SalesShipment s,String reason) {
+        if (s.getFinanceAudit()!=null && s.getFinanceAudit()==1) {
+            appendFinanceReleaseEvent(s,"REVOKED",currentUser.requireId(),OffsetDateTime.now(),financeAuditInfo(s),null,reason);
+            chainNotice.notifyShipmentFinanceReleaseRevoked(s.getId());
+        } else chainNotice.resolveReviewNotices("SALES_SHIPMENT",s.getId(),"SALES_EDITED");
+        s.setFinanceAudit((short)0);
+        s.setFinanceAuditorId(null);
+        s.setFinanceAuditorNameSnapshot(null);
+        s.setFinanceAuditedAt(null);
+        s.setFinanceReleaseEventId(null);
+        // V632：商业内容变了，放行时冻结的记账汇率一并作废。
+        s.setExchangeRate(null);
+    }
+
+    /**
+     * 仓库一步确认出库（V582）：财务放行后的 {@code PENDING_PICK} 草稿由仓库在同一
+     * 事务里核对实际发货仓与逐行库位、证明本仓可发，随后 {@code approveLocked} 扣库存、
+     * 消费预留、回写销售订单并立唯一正式 AR，直接落到 {@code SHIPPED}。
+     *
+     * <p>原「开始拣货 → 拣货完成 → 交接出库」三段与 EXCEPTION 退拣回路已整体删除：
+     * 中间态既不占库存也不产生会计事实，只是把同一批校验拆成三次点击。
+     * {@code LEGACY_PENDING} 仍是只读迁移异常，只能人工核对后重建当前两审任务。</p>
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public ShipmentDetail transitionWarehouseWork(
+            UUID id,
+            com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest req) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(
+                id, WAREHOUSE_WORK_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT
+                || s.isRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅有效待出库草稿可执行仓库作业");
+        }
+        // 确认出库属于财务已放行的实物任务；深层命令调用不得绕过任务列表的放行过滤。
+        assertFinanceAudited(s);
+        String current = s.getWarehouseWorkStatus();
+        if (SalesShipment.WORK_LEGACY_PENDING.equals(current)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后按当前财审→仓库两审流程重新开单");
+        }
+        String target = req.getTargetStatus().trim()
+                .toUpperCase(java.util.Locale.ROOT);
+        String reason = req.getReason() == null ? "" : req.getReason().trim();
+        validateWarehouseTransition(current, target);
+        OffsetDateTime now = OffsetDateTime.now();
+        UUID actor = currentUser.requireEmployeeId();
+        List<SalesShipmentItem> items =
+                itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        com.uten.imp.common.validation.ExactDocumentSelection.requireComplete(req.getItemIds(),
+                items.stream().map(SalesShipmentItem::getId).toList());
+        requireWarehouseTransition(
+                current, SalesShipment.WORK_PENDING_PICK, target);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可确认出库");
+        }
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, true, WAREHOUSE_WORK_AUTHORITY);
+        assertStoredShipmentPolicy(items);
+        assertFinanceAudited(s);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requirePickingWarehouseScope(items,req);
+        if(req.getWarehouseId()!=null) {
+            if(!s.isWarehouseChosenAtPick() && !req.getWarehouseId().equals(s.getWarehouseId()))
+                throw new ApiException(ErrorCode.CONFLICT,"该出货单已按原来源仓完成财审，请按原仓核对；需要换仓时先撤回重审");
+            if(warehouseScopes!=null)warehouseScopes.require(req.getWarehouseId(),"实际出货仓",WarehouseUse.GOOD_OUT);
+            s.setWarehouseId(req.getWarehouseId());
+        }
+        Map<UUID,String> stockPlaces=warehouseStockPlaces(req,items);
+        // V631：发出仓按行落定（行指定 > 本次默认仓 > 行已落定 > 单据表头仓），一行缺仓就拒绝；
+        // 推迟选仓的单据表头仓取第一行的发出仓——V582 出库事件仍按表头仓取证。
+        if(deliveryFulfillment!=null)deliveryFulfillment.resolveCommercialWarehouses(s,items,req);
+        Map<UUID,UUID> lineWarehouses=resolveLineWarehouses(s,req,items);
+        if(s.getWarehouseId()==null) s.setWarehouseId(lineWarehouses.get(items.getFirst().getId()));
+        directCommercial.validateStored(s,items);
+        adoptUnpickedLegacyQuantities(items);
+        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
+        // 实物分配边界：先按各发出仓证明真的发得出（扣安全库存、其它硬预留、来源承诺），
+        // 再由 approveLocked 在同一事务真正扣账。两段共用同一批 goods/color 互斥锁，
+        // 并发的第二张单会排队后按已扣减的余额重算，不存在"都校验通过再一起扣"的窗口。
+        if (CustomerShipmentPolicy.direct(s)) customerInventory.reservePicking(id,s.getReviewRevision(),customerInventoryLines(items,baseQuantities));
+        else assertWarehousePickCapacity(items.stream().filter(it->!isBomDelivery(it)).toList(),baseQuantities);
+        // ADR-135：出库实称重量(千克)只进库存重量账和本次出库事件证据, 从不写回销售明细。
+        // 放在可发量校验之后、交接事实之前: 它的查询不会让交接字段提前落盘。
+        Map<UUID,BigDecimal> lineWeights=warehouseLineWeights(s.getId(),req);
+        s.setWarehouseExceptionReason(null);
+        s.setHandedOverAt(now);
+        s.setHandedOverBy(actor);
+        s.setWarehouseWorkUpdatedAt(now);
+        s.setWarehouseWorkUpdatedBy(actor);
+        // 出库事件必须先于 approveLocked 写入：V582 的实仓取证按 handed_over_by/at
+        // 与本条 SHIPPED 事件逐字段比对，库位证据也挂在这条事件上。
+        // warehouse_work_status 只能由 approveLocked 末尾与 status=1 一起落盘——
+        // 中途任何一次 flush 把它提前写成 SHIPPED，都会撞 V511「已出库事实不可变」闸。
+        recordWarehouseEvent(
+                s, current, SalesShipment.WORK_SHIPPED, reason, actor, now, stockPlaces, lineWarehouses,
+                lineWeights);
+        if(deliveryFulfillment!=null)deliveryFulfillment.post(s,items,req,now);
+        ShipmentDetail shipped = approveLocked(s, lineWeights, WAREHOUSE_WORK_AUTHORITY);
+        // 「待出库」待办到此办结（原来挂在开始拣货那一跳）。
+        chainNotice.resolveReviewNotices("SALES_SHIPMENT", id, "WAREHOUSE_SHIPPED");
+        return shipped;
+    }
+
+    private static void requireWarehouseTransition(
+            String current, String expected, String target) {
+        if (!expected.equals(current)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "仓库状态已变化，不能从 " + current + " 转为 " + target);
+        }
+    }
+
+    /**
+     * 一步式拓扑：只认 {@code PENDING_PICK → SHIPPED}。旧客户端或旧脚本重放
+     * PICKING/PICKED/EXCEPTION 等目标态时按 VALIDATION_FAILED 明确拒绝，
+     * 不做静默兼容——它们对应的实物与会计语义已经不存在。
+     */
+    static void validateWarehouseTransition(
+            String current, String target) {
+        if (!SalesShipment.WORK_SHIPPED.equals(target)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "仓库目标状态仅支持确认出库（SHIPPED）");
+        }
+        requireWarehouseTransition(
+                current, SalesShipment.WORK_PENDING_PICK, target);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view') and hasAuthority('warehouse_sales_outbound:execute')")
+    public SalesShipmentDeliveryService.Component processingWarehouseWork(UUID shipmentId,UUID componentId,String action,
+            SalesShipmentDeliveryService.ProcessingWarehouseAction request){
+        tx.bind();
+        SalesShipment shipment=requireWritableShipmentForUpdate(shipmentId,WAREHOUSE_WORK_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",shipment);
+        if(shipment.getStatus()==null||shipment.getStatus()!=STATUS_DRAFT||shipment.isRejected()
+                ||!SalesShipment.WORK_PENDING_PICK.equals(shipment.getWarehouseWorkStatus()))
+            throw new ApiException(ErrorCode.CONFLICT,"仅有效待出库备货单可办理加工实物");
+        assertFinanceAudited(shipment);
+        if(deliveryFulfillment==null)throw new ApiException(ErrorCode.CONFLICT,"交付作业服务暂不可用");
+        return deliveryFulfillment.warehouseProcessing(shipmentId,componentId,action,request,currentUser.requireEmployeeId());
+    }
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    public Map<String,Object> deliveryWarehouseRequestOutcome(UUID shipmentId,UUID requestId){
+        requireReadableShipment(shipmentId);
+        if(deliveryFulfillment==null)return Map.of("found",false);
+        return deliveryFulfillment.warehouseRequestOutcome(shipmentId,requestId);
+    }
+
+    /**
+     * Exact target states offered to a warehouse client for the current state.
+     *
+     * <p>The command still revalidates every transition, inventory lock and finance-release
+     * precondition in {@link #transitionWarehouseWork(UUID,
+     * com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest)}.</p>
+     */
+    public static List<String> allowedWarehouseTransitionTargets(String current) {
+        if (SalesShipment.WORK_PENDING_PICK.equals(current)) {
+            return List.of(SalesShipment.WORK_SHIPPED);
+        }
+        return List.of();
+    }
+
+    /**
+     * 确认出库是实物分配边界。待出库草稿只占订单额度、不占库存；本检查串行化
+     * 库存维度，并证明所选仓在扣除安全库存与其它订单硬预留后仍能覆盖本单。
+     */
+    /** V631：按行发出仓分组，每个仓只对落在它上面的行做可发量校验。 */
+    private void assertWarehousePickCapacity(List<SalesShipmentItem> items,Map<UUID,BigDecimal> baseQuantities) {
+        Map<UUID, List<SalesShipmentItem>> byWarehouse = new LinkedHashMap<>();
+        for (SalesShipmentItem item : items) {
+            if (item.getWarehouseId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货明细缺少实际发出仓");
+            }
+            byWarehouse.computeIfAbsent(item.getWarehouseId(), ignored -> new ArrayList<>()).add(item);
+        }
+        for (Map.Entry<UUID, List<SalesShipmentItem>> group : byWarehouse.entrySet()) {
+            assertWarehousePickCapacity(group.getKey(), group.getValue(),baseQuantities);
+        }
+    }
+
+    /**
+     * V631：每行的实际发出仓 = 行上指定 > 本次默认仓 > 行已落定的仓 > 单据表头仓；缺一行就拒绝，
+     * 仓必须是启用的核算叶仓；解析结果同时写回明细行（approveLocked/红冲按它扣账）。
+     */
+    private Map<UUID, UUID> resolveLineWarehouses(
+            SalesShipment s,
+            com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest req,
+            List<SalesShipmentItem> items) {
+        Map<UUID, UUID> requested = new HashMap<>();
+        if (req.getStockPlaces() != null) {
+            for (var line : req.getStockPlaces()) {
+                if (line != null && line.shipmentItemId() != null && line.warehouseId() != null) {
+                    requested.put(line.shipmentItemId(), line.warehouseId());
+                }
+            }
+        }
+        Map<UUID, UUID> resolved = new LinkedHashMap<>();
+        for (SalesShipmentItem item : items) {
+            UUID warehouse = requested.get(item.getId());
+            if (warehouse == null) warehouse = req.getWarehouseId();
+            if (warehouse == null) warehouse = item.getWarehouseId();
+            if (warehouse == null) warehouse = s.getWarehouseId();
+            if (warehouse == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "第 " + item.getLineNo() + " 行未选择实际发出仓，请仓库人员按行确认发出仓");
+            }
+            if (warehouseScopes != null) {
+                warehouseScopes.require(warehouse, "第 " + item.getLineNo() + " 行发出仓", WarehouseUse.GOOD_OUT);
+            }
+            item.setWarehouseId(warehouse);
+            resolved.put(item.getId(), warehouse);
+        }
+        return resolved;
+    }
+
+    private void assertWarehousePickCapacity(
+            UUID warehouseId, List<SalesShipmentItem> items,Map<UUID,BigDecimal> baseQuantities) {
+        Map<InventoryKey, BigDecimal> requested = new java.util.TreeMap<>();
+        Map<InventoryKey, Set<UUID>> ownOrderItems = new java.util.TreeMap<>();
+        Map<UUID, BigDecimal> linkedRequested = new java.util.TreeMap<>();
+        for (SalesShipmentItem item : items) {
+            BigDecimal rate = item.getUnitRate() == null
+                    ? BigDecimal.ONE : item.getUnitRate();
+            if (item.getGoodsId() == null || item.getQty() == null
+                    || item.getQty().signum() <= 0 || rate.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "出货明细缺少有效货品、数量或换算率");
+            }
+            InventoryKey key = new InventoryKey(
+                    item.getGoodsId(), item.getColorId());
+            BigDecimal base = requireBaseQuantity(baseQuantities,item);
+            requested.merge(key, base, BigDecimal::add);
+            if (item.getOrderItemId() != null) {
+                ownOrderItems.computeIfAbsent(
+                        key, ignored -> new java.util.TreeSet<>())
+                        .add(item.getOrderItemId());
+                linkedRequested.merge(item.getOrderItemId(), base, BigDecimal::add);
+            }
+        }
+        stockService.lockInventory(requested.keySet());
+        for (Map.Entry<InventoryKey, BigDecimal> entry : requested.entrySet()) {
+            InventoryKey key = entry.getKey();
+            Set<UUID> ownIds = ownOrderItems.getOrDefault(key, Set.of());
+            // Reuse the inventory kernel budget: sibling moves preserve all claims and one safety buffer.
+            List<UUID> globalOwners=ownIds.isEmpty()?List.of(new UUID(0,0)):List.copyOf(ownIds);
+            BigDecimal movable=scalarDecimal(em.createNativeQuery("""
+                    SELECT fn_stock_storage_movable(:wid,:gid,CAST(:cid AS uuid),
+                        CAST(string_to_array(:ownIds, ',') AS uuid[]),TRUE)
+                    """).setParameter("wid",warehouseId).setParameter("gid",key.goodsId()).setParameter("cid",key.colorId())
+                    .setParameter("ownIds",globalOwners.stream().map(UUID::toString)
+                            .collect(java.util.stream.Collectors.joining(","))));
+            if (entry.getValue().compareTo(movable) > 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "出货仓可出库存不足(已扣安全库存与其它硬预留)：可出 "
+                                + movable.stripTrailingZeros().toPlainString()
+                                + "，本单需要 "
+                                + entry.getValue().stripTrailingZeros().toPlainString());
+            }
+
+            for (UUID ownOrderItem:ownIds) {
+                BigDecimal eligible = scalarDecimal(em.createNativeQuery("""
+                        SELECT COALESCE(SUM(
+                            fn_stock_claim_open_at(id,:wid)),0)
+                        FROM stock_reservations
+                        WHERE is_deleted = FALSE
+                          AND status = 0
+                          AND order_item_id IN (:ownIds)
+                          AND goods_id = :gid
+                          AND color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
+                              -- Global reservations are protected by global ATP
+                              -- and allocated by their own warehouse tasks.
+                              -- Counting every global promise in every
+                              -- warehouse would deadlock valid split delivery.
+                              AND fn_stock_claim_open_at(id,:wid)>0
+                        """).setParameter("ownIds", List.of(ownOrderItem))
+                        .setParameter("gid", key.goodsId())
+                        .setParameter("cid", key.colorId())
+                        .setParameter("wid", warehouseId));
+                // 同一订单行的其它出货单：一步式下要么尚未确认（对本事务不可见且被
+                // goods/color 互斥锁串行化），要么已确认——consumeForOrderItem 已经扣过
+                // consumed_qty，eligible 自动变小。无需再减"在拣任务"占用。
+                BigDecimal need = linkedRequested
+                        .getOrDefault(ownOrderItem, BigDecimal.ZERO);
+                if (eligible.compareTo(need) < 0) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "订单硬预留不在当前出货仓或已被消耗");
+                }
+            }
+        }
+    }
+
+    private BigDecimal scalarDecimal(jakarta.persistence.Query query) {
+        Object value = query.getSingleResult();
+        return value == null ? BigDecimal.ZERO
+                : value instanceof BigDecimal decimal
+                ? decimal : new BigDecimal(value.toString());
+    }
+
+    private void recordWarehouseEvent(
+            SalesShipment shipment,
+            String fromStatus,
+            String toStatus,
+            String reason,
+            UUID actor,
+            OffsetDateTime occurredAt) {
+        recordWarehouseEvent(shipment,fromStatus,toStatus,reason,actor,occurredAt,Map.of(),Map.of(),Map.of());
+    }
+
+    private Map<UUID,String> warehouseStockPlaces(com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request,
+                                                List<SalesShipmentItem> items) {
+        if(request.getStockPlaces()==null)return Map.of();
+        Map<UUID,String> places=new LinkedHashMap<>();
+        Set<UUID> valid=items.stream().map(SalesShipmentItem::getId).collect(java.util.stream.Collectors.toSet());
+        for(var line:request.getStockPlaces()) {
+            if(line==null || line.shipmentItemId()==null || !valid.contains(line.shipmentItemId())
+                    || places.containsKey(line.shipmentItemId()))throw new ApiException(ErrorCode.CONFLICT,"库位明细与当前出货行不一致，请刷新后核对");
+            String place=line.stockPlace()==null?"":line.stockPlace().strip();
+            if(place.length()>200)throw new ApiException(ErrorCode.VALIDATION_FAILED,"实际库位最多200字");
+            places.put(line.shipmentItemId(),place);
+        }
+        return places;
+    }
+
+    /**
+     * 出库实称重量(ADR-135 §3.7): 出货明细 id -> 明确采用的千克数。只收大于 0 的值(0 = 没称);
+     * 按重量计的行(货品基本单位或本行单位是重量单位)丢弃, 库存账按数量精确换算。
+     * 行归属与重复已由 {@link #warehouseStockPlaces} 核过(同一列表)。
+     */
+    private Map<UUID,BigDecimal> warehouseLineWeights(UUID shipmentId,com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest request) {
+        if(request.getStockPlaces()==null)return Map.of();
+        Map<UUID,BigDecimal> weights=new LinkedHashMap<>();
+        for(var line:request.getStockPlaces()) {
+            BigDecimal kg=com.uten.imp.features.stock.dto.WeightInput.rawKg(line.weightKg(),"出库实称重量");
+            if(kg!=null&&kg.signum()>0)weights.put(line.shipmentItemId(),kg);
+        }
+        if(weights.isEmpty())return Map.of();
+        List<UUID> exact=com.uten.imp.common.util.NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT item.id
+                FROM sales_shipment_items item
+                JOIN goods goods_row ON goods_row.id = item.goods_id
+                LEFT JOIN unit_measurement_profiles goods_profile ON goods_profile.unit_id = goods_row.unit_id
+                LEFT JOIN unit_measurement_profiles line_profile ON line_profile.unit_id = item.unit_id
+                WHERE item.id IN (:ids)
+                  AND (goods_profile.mass_unit_code IS NOT NULL OR line_profile.mass_unit_code IS NOT NULL)
+                """).setParameter("ids",List.copyOf(weights.keySet())),UUID.class);
+        exact.forEach(weights::remove);
+        Map<UUID,BigDecimal> adopted=new LinkedHashMap<>();
+        weights.forEach((item,raw)->{
+            BigDecimal value=normalizedLineWeightKg(raw);
+            com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"SALES_SHIPMENT",shipmentId,item,"warehouseMeasuredWeightKg",raw,value);
+            adopted.put(item,value);
+        });
+        return adopted;
+    }
+
+    /** Native measured weight; zero retains the existing "not weighed" meaning. */
+    static BigDecimal normalizedLineWeightKg(BigDecimal value) {
+        if(value==null||value.signum()==0)return null;
+        return com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(value,"出库实称重量");
+    }
+
+    private void recordWarehouseEvent(SalesShipment shipment,String fromStatus,String toStatus,String reason,
+                                      UUID actor,OffsetDateTime occurredAt,Map<UUID,String> stockPlaces,
+                                      Map<UUID,UUID> lineWarehouses,Map<UUID,BigDecimal> lineWeights) {
+        String places;
+        String warehouses;
+        String weights;
+        try {
+            var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+            places=mapper.writeValueAsString(stockPlaces);
+            warehouses=mapper.writeValueAsString(lineWarehouses);
+            // 值是去尾零、非负小数位的 BigDecimal, 序列化为普通 JSON 数字(库里 fn_weight_kg_map_is_valid 校验形状)。
+            weights=mapper.writeValueAsString(lineWeights);
+        }
+        catch(com.fasterxml.jackson.core.JsonProcessingException failure){throw new IllegalStateException("Cannot encode warehouse location evidence",failure);}
+        em.createNativeQuery("""
+                INSERT INTO sales_shipment_warehouse_events (
+                    id, shipment_id, from_status, to_status,
+                    reason, actor_employee_id, occurred_at,warehouse_id,review_revision,line_stock_places,line_warehouses,
+                    line_weights
+                ) VALUES (
+                    gen_random_uuid(), :shipmentId, :fromStatus, :toStatus,
+                    :reason, :actor, :occurredAt,:warehouse,:revision,CAST(:places AS jsonb),CAST(:lineWarehouses AS jsonb),
+                    CAST(:lineWeights AS jsonb)
+                )
+                """)
+                .setParameter("shipmentId", shipment.getId())
+                .setParameter("fromStatus", fromStatus)
+                .setParameter("toStatus", toStatus)
+                .setParameter(
+                        "reason",
+                        reason == null || reason.isBlank()
+                                ? null : reason.trim())
+                .setParameter("actor", actor)
+                .setParameter("occurredAt", occurredAt)
+                .setParameter("warehouse",shipment.getWarehouseId())
+                .setParameter("revision",shipment.getReviewRevision())
+                .setParameter("places",places)
+                .setParameter("lineWarehouses",warehouses)
+                .setParameter("lineWeights",weights)
+                .executeUpdate();
+    }
+
+    static void requireFinanceAuditEditableState(SalesShipment shipment) {
+        if ("LEGACY".equals(shipment.getShipmentKind()) || SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后重建当前两审任务");
+        }
+        if (shipment.getStatus() == null || shipment.getStatus() != STATUS_DRAFT
+                || shipment.isRejected()
+                || !SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "财务审核或反审只允许在仓库确认出库前；已出库的单据不可再审核或反审");
+        }
+    }
+
+    static void requireFinanceAuditClearedForMutation(
+            SalesShipment shipment) {
+        if (shipment.getFinanceAudit() != null
+                && shipment.getFinanceAudit() == 1) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "出货单已财务审核；编辑、删除或驳回前必须先完成财务反审");
+        }
+    }
+
+    /**
+     * A SHIPPED state is already an outbound fact. Historical migrated rows
+     * deliberately have no synthetic handover timestamp, so a missing
+     * timestamp must never be interpreted as proof that the goods stayed in
+     * the warehouse. Physical goods may return only through sales return and
+     * receiving/quality disposition; bookkeeping reversal cannot create stock.
+     */
+    static void requireDirectReversalAllowed(SalesShipment shipment) {
+        if (SalesShipment.WORK_SHIPPED.equals(
+                    shipment.getWarehouseWorkStatus())
+                || shipment.getHandedOverAt() != null) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "货物已出库或历史交接事实未知，不能直接红冲增加库存；请走销售退货与收货检验流程");
+        }
+        // 已审核单据若仓库执行状态缺失，则无法证实货物确未出库，同样不得直接红冲。
+        // 历史迁移草稿以 WORK_LEGACY_PENDING 显式标记且只读，不落入已审反向分支；
+        // 缺失状态（NULL）不等同于"货物未出库"。
+        if (shipment.getStatus() != null
+                && shipment.getStatus() == STATUS_APPROVED
+                && shipment.getWarehouseWorkStatus() == null) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "已审核出货单缺少仓库执行状态，无法证实货物未出库，不能直接红冲增加库存；请走销售退货与收货检验流程");
+        }
+    }
+
+    @Transactional
+    @PreAuthorize("hasAnyAuthority('sales_shipment:approve','sales_other_shipment:approve')")
+    public ShipmentDetail approve(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        customerShipmentPolicy.require(s.getShipmentKind(),"approve");
+        return rejectRetiredDirectApproval(s);
+    }
+
+    static ShipmentDetail rejectRetiredDirectApproval(SalesShipment shipment) {
+        if (SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史出货草稿缺少当前订单关联、财审和仓库作业事实，已转为只读；请人工核对后按当前订单关联流程重新开单");
+        }
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "当前出货单须由仓库在出库任务中心确认出库");
+    }
+
+    /**
+     * @param lineWeights 本次出库实称重量(出货明细 id -> 千克, 已校验且与出库事件证据同一份);
+     *                    没称的行不在里面, 由库存账按均重/单重推算
+     */
+    private ShipmentDetail approveLocked(
+            SalesShipment s, Map<UUID, BigDecimal> lineWeights, String... operationAuthorities) {
+        UUID id = s.getId();
+        if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+        }
+        if (s.isRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "已驳回的出货单不可审核，请删除后重新开单");
+        }
+        if (s.getWarehouseId() == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "出货单需指定仓库");
+        }
+        if (s.getClientId() == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "出货单需指定客户");
+        }
+        String warehouseActorName=currentReviewActorName();
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime recognitionTimestamp = s.getHandedOverAt() == null
+                ? now : s.getHandedOverAt();
+        LocalDate recognitionDate = recognitionTimestamp
+                .atZoneSameInstant(BusinessTime.ZONE)
+                .toLocalDate();
+        // V443: AR starts only at final warehouse confirmation.  The draft
+        // document date remains on the shipment, while ledger/due dates use
+        // the SHIPPED business date.
+        ClientSettlementSnapshot settlement = CustomerShipmentPolicy.free(s)
+                ? new ClientSettlementSnapshot(null,recognitionDate,null,false)
+                : lockClientSettlementSnapshot(s, recognitionDate);
+        assertFinanceAudited(s);
+        List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        }
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, true, true, operationAuthorities);
+        directCommercial.validateStored(s,items);
+        // The source-order comparison above is against the untouched draft.
+        // Only after it succeeds may the explicit client-default UUID fallback
+        // become this shipment's immutable UUID/legacy settlement snapshot.
+        s.setSettlementMethodId(settlement.settlementMethodId());
+        s.setPaymentStyleId(settlement.settlementStyleLegacy() == null
+                ? null : settlement.settlementStyleLegacy().intValue());
+        assertStoredShipmentPolicy(items);
+        requireNonNegativeStoredCommercial(items);
+        requireNonNegativeTotals(s);
+        captureGoodsSnapshots(items, true, now);
+        applyFinancePostingRate(s, items);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        // V631：行上没有发出仓的历史/单仓单据按表头仓过账，并把它落回行上作为事实。
+        for (SalesShipmentItem it : items) {
+            if (it.getWarehouseId() == null) it.setWarehouseId(s.getWarehouseId());
+        }
+        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
+        Set<UUID> bomDeliveryIds=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requirePosted(id,bomDeliveryIds);
+        if (CustomerShipmentPolicy.direct(s)) customerInventory.consumeShipment(id,customerInventoryLines(items,baseQuantities));
+        for (SalesShipmentItem it : items) {
+            if(bomDeliveryIds.contains(it.getId())) {
+                validateShippable(it);
+                addShippedQty(it.getOrderItemId(),it.getQty());
+                updateDeliveryChain(it.getOrderItemId());
+                recalcOrderClosed(it.getOrderItemId());
+                continue;
+            }
+            if (it.getOrderItemId() != null) {
+                validateShippable(it); // 超发硬校验（未发余量 + 链上行预留量）
+                // 消耗预留（FIFO + 行锁；链上行才有预留，无预留时实耗 0 不报错——历史单兼容）
+                BigDecimal needBase = requireBaseQuantity(baseQuantities,it);
+                BigDecimal consumed = reservationService.consumeForOrderItem(
+                        it.getOrderItemId(), it.getWarehouseId(), needBase);
+                if (chainStatusOf(it.getOrderItemId()) > 0
+                        && consumed.compareTo(needBase) != 0) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "订单预留不在当前出货仓或已被占用，请刷新仓库任务");
+                }
+            }
+            StockService.PostedMovement posted =
+                    applyMovement(s, it, StockService.DIR_OUT, now, null, lineWeights.get(it.getId()),requireBaseQuantity(baseQuantities,it));
+            recordShipmentObservation(s, it, posted, now,requireBaseQuantity(baseQuantities,it));
+            if (it.getOrderItemId() != null) {
+                addShippedQty(it.getOrderItemId(), it.getQty()); // +qty
+                applyReservedAndChainOnShip(it.getOrderItemId(), it.getQty().negate()); // 预留扣减 + 行状态推进
+                recalcOrderClosed(it.getOrderItemId());
+            }
+        }
+
+        // 立应收（AR, SALES_SHIPMENT, BStyle=3, 正应收）。原/本币金额及订单来源均取本次发运快照。
+        if (!s.isArPosted() && !CustomerShipmentPolicy.free(s)) {
+            List<SourceRef> sourceRefs = salesOrderSourceRefs(s.getId());
+            arApService.postArAp(new ArApPostingRequest(
+                    "AR",
+                    StockService.SRC_SALES_SHIPMENT,
+                    s.getId(), s.getBillNo(), recognitionDate,
+                    s.getClientId(), null,
+                    s.getCurrencyId(), s.getExchangeRate(),
+                    s.getTotalLocal(),
+                    BSTYLE_SALES_SHIPMENT,
+                    s.getRemark(),
+                    s.getTotalOriginal(),
+                    settlement.dueDate(),
+                    settlement.settlementStyleLegacy(),
+                    sourceRefs,
+                    settlement.settlementMethodId()));
+            s.setArPosted(true);
+        }
+
+        s.setStatus(STATUS_APPROVED);
+        s.setWarehouseWorkStatus(SalesShipment.WORK_SHIPPED);
+        s.setWarehouseWorkUpdatedAt(now);
+        s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
+        s.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        s.setWarehouseApproverNameSnapshot(warehouseActorName);
+        s.setApprovedAt(now);
+        s.setLastDate(now);
+        shipmentRepo.save(s);
+        chainNotice.notifyShipmentApproved(id); // 旁路通知：发货→订单归属销售，提交后发送
+        return detail(id);
+    }
+
+    /**
+     * Lock the finance-maintained currency master and make it the authoritative
+     * recognition-rate snapshot for this shipment. Sales-order rate snapshots
+     * are never reused for AR posting.
+     */
+    private void applyFinancePostingRate(
+            SalesShipment shipment, List<SalesShipmentItem> items) {
+        // V632：财务放行时冻结的记账汇率优先(放行事件在、汇率在)；V632 之前放行的老单
+        // 没有冻结值，仍回落到币种主档(FOR SHARE 锁住主档行)。
+        BigDecimal frozen = shipment.getExchangeRate();
+        BigDecimal financeRate = shipment.getFinanceReleaseEventId() != null
+                && frozen != null && frozen.signum() > 0
+                ? frozen : lockFinancePostingRate(shipment.getCurrencyId());
+        applyPostingRateSnapshot(shipment, items, financeRate);
+        requirePostedLocalAmounts(shipment, items);
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    /**
+     * 币种主档的财务汇率状态(financeAuditInfo 展示 + financeAudit 放行汇率共用，V631/V632)。
+     * {@code ready}=本位币或主档参考汇率大于 0；{@code exists}=币种在用。
+     */
+    record FinanceRateState(String currencyName, BigDecimal rate, boolean baseCurrency, boolean exists) {
+        boolean ready() { return exists && (baseCurrency || (rate != null && rate.signum() > 0)); }
+    }
+
+    /** 财务放行冻结的记账汇率及其来源(CURRENCY_MASTER=主档预填 / FINANCE_MANUAL=财务手填)。 */
+    record FinanceReleaseRate(BigDecimal rate, String source) {}
+
+    static final String RATE_SOURCE_CURRENCY_MASTER = "CURRENCY_MASTER";
+    static final String RATE_SOURCE_FINANCE_MANUAL = "FINANCE_MANUAL";
+
+    private FinanceRateState financeRateState(UUID currencyId) {
+        if (currencyId == null) return new FinanceRateState("", null, false, false);
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT currency.name, currency.exchange_rate, currency.is_base_currency
+                FROM currencies currency
+                WHERE currency.id = :currencyId
+                  AND COALESCE(currency.is_deleted, false) = false
+                  AND currency.status = '使用'
+                """).setParameter("currencyId", currencyId));
+        if (rows.isEmpty()) return new FinanceRateState("", null, false, false);
+        Object[] row = rows.getFirst();
+        BigDecimal rate = row[1] == null ? null
+                : row[1] instanceof BigDecimal decimal ? decimal : new BigDecimal(row[1].toString());
+        return new FinanceRateState(Objects.toString(row[0], ""), rate, Boolean.TRUE.equals(row[2]), true);
+    }
+
+    /** 财审页汇率框的预填值：已冻结的 > 本位币恒 1 > 主档参考汇率 > 空。 */
+    private static String suggestedFinanceReleaseRate(SalesShipment s, FinanceRateState state) {
+        if (s.getExchangeRate() != null && s.getExchangeRate().signum() > 0) {
+            return s.getExchangeRate().stripTrailingZeros().toPlainString();
+        }
+        if (state.baseCurrency()) return "1";
+        if (state.rate() != null && state.rate().signum() > 0) {
+            return state.rate().stripTrailingZeros().toPlainString();
+        }
+        return "";
+    }
+
+    /** 放行时确定记账汇率：财务填了以财务为准，否则用币种主档；本位币恒 1。 */
+    private FinanceReleaseRate resolveFinanceReleaseRate(UUID currencyId, BigDecimal requested) {
+        if (currencyId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "出货单缺少币种，无法财务放行");
+        }
+        return decideFinanceReleaseRate(financeRateState(currencyId), requested);
+    }
+
+    /**
+     * 纯规则(单测覆盖)：
+     * <ul>
+     *   <li>币种停用/不存在 → 409；</li>
+     *   <li>财务填了汇率：必须大于 0、最多 6 位小数；本位币只能是 1；与主档相同记 CURRENCY_MASTER，
+     *       否则记 FINANCE_MANUAL；</li>
+     *   <li>没填：本位币恒 1；主档参考汇率大于 0 就用主档；否则 409 提示在放行时填写。</li>
+     * </ul>
+     */
+    static FinanceReleaseRate decideFinanceReleaseRate(FinanceRateState state, BigDecimal requested) {
+        if (!state.exists()) {
+            throw new ApiException(ErrorCode.CONFLICT, "出货单币种已停用或不存在，无法财务放行");
+        }
+        if (requested != null) {
+            if (requested.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "记账汇率必须大于 0");
+            }
+            BigDecimal rate = requested.stripTrailingZeros();
+            if (rate.scale() > 6) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "记账汇率最多保留 6 位小数");
+            }
+            if (rate.scale() < 0) rate = rate.setScale(0);
+            if (state.baseCurrency() && rate.compareTo(BigDecimal.ONE) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "本位币「" + state.currencyName() + "」的记账汇率固定为 1");
+            }
+            boolean sameAsMaster = state.rate() != null && state.rate().compareTo(rate) == 0;
+            return new FinanceReleaseRate(rate,
+                    sameAsMaster ? RATE_SOURCE_CURRENCY_MASTER : RATE_SOURCE_FINANCE_MANUAL);
+        }
+        if (state.baseCurrency()) {
+            return new FinanceReleaseRate(BigDecimal.ONE, RATE_SOURCE_CURRENCY_MASTER);
+        }
+        if (state.rate() != null && state.rate().signum() > 0) {
+            return new FinanceReleaseRate(state.rate(), RATE_SOURCE_CURRENCY_MASTER);
+        }
+        String current = state.rate() == null ? "空" : state.rate().stripTrailingZeros().toPlainString();
+        throw new ApiException(ErrorCode.CONFLICT,
+                "币种「" + state.currencyName() + "」的参考汇率未维护(当前 " + current
+                        + ")，请在放行时填写记账汇率，或先到 基础资料→币种 维护参考汇率；仓库确认出库要按它立账");
+    }
+
+    private BigDecimal lockFinancePostingRate(UUID currencyId) {
+        if (currencyId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "发运币别缺失，财务汇率无法确认");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+                SELECT currency.exchange_rate
+                FROM currencies currency
+                WHERE currency.id = :currencyId
+                  AND COALESCE(currency.is_deleted, false) = false
+                  AND currency.status = '使用'
+                FOR SHARE
+                """)
+                .setParameter("currencyId", currencyId)
+                .getResultList();
+        if (rows.size() != 1 || rows.getFirst() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "币种未启用或财务汇率缺失，禁止发运立账");
+        }
+        BigDecimal rate = rows.getFirst() instanceof BigDecimal decimal
+                ? decimal
+                : new BigDecimal(rows.getFirst().toString());
+        if (rate.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "财务维护的币种汇率必须大于 0，禁止发运立账");
+        }
+        return rate;
+    }
+
+    /**
+     * Lock the active client master used by this shipment and derive immutable
+     * AR settlement metadata. {@code last_date} is an operation timestamp and
+     * must never be reused as the receivable due date.
+     */
+    @SuppressWarnings("unchecked")
+    private ClientSettlementDefaults loadClientSettlementDefaults(
+            UUID clientId, boolean forShare) {
+        if (clientId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "发运客户缺失，无法确认应收账期");
+        }
+        String sql = """
+                SELECT client.default_settlement_method_id,
+                       client.price_style,
+                       client.tday
+                FROM clients client
+                WHERE client.id = :clientId
+                  AND COALESCE(client.is_deleted, false) = false
+                  AND client.status = '使用'
+                """ + (forShare ? " FOR SHARE" : "");
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("clientId", clientId)
+                .getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户主档未启用或不存在，禁止发运立账");
+        }
+        Object[] row = rows.getFirst();
+        return new ClientSettlementDefaults(
+                row[0] == null ? null : (UUID) row[0],
+                row[1] == null ? null : ((Number) row[1]).intValue(),
+                row[2] == null ? null : ((Number) row[2]).intValue());
+    }
+
+    private SettlementMethodReferenceResolver.SettlementMethodReference
+            resolveEffectiveSettlementMethod(
+                    SalesShipment shipment,
+                    ClientSettlementDefaults defaults) {
+        boolean headerReferencePresent = shipment.getSettlementMethodId() != null
+                || shipment.getPaymentStyleId() != null;
+        UUID authoritativeId = headerReferencePresent
+                ? shipment.getSettlementMethodId()
+                : defaults.defaultSettlementMethodId();
+        Integer legacyShadow = headerReferencePresent
+                ? shipment.getPaymentStyleId()
+                : defaults.legacyShadow();
+        return SettlementMethodReferenceResolver.resolve(
+                em, authoritativeId, legacyShadow,
+                headerReferencePresent ? "出货结账方式" : "客户默认结账方式");
+    }
+
+    private static boolean isCashSettlement(
+            SettlementMethodReferenceResolver.SettlementMethodReference method) {
+        return method != null
+                && SETTLEMENT_ROLE_CASH.equals(method.systemRole());
+    }
+
+    private ClientSettlementSnapshot lockClientSettlementSnapshot(
+            SalesShipment shipment, LocalDate recognitionDate) {
+        ClientSettlementDefaults defaults = loadClientSettlementDefaults(
+                shipment.getClientId(), true);
+        var method = resolveEffectiveSettlementMethod(shipment, defaults);
+        return settlementSnapshot(
+                method == null ? null : method.legacyId(),
+                defaults.settlementDays(),
+                recognitionDate,
+                method == null ? null : method.id(),
+                isCashSettlement(method));
+    }
+
+    static ClientSettlementSnapshot settlementSnapshot(
+            Integer settlementStyleLegacy,
+            Integer settlementDays,
+            LocalDate recognitionDate,
+            UUID settlementMethodId,
+            boolean cashSettlement) {
+        if (recognitionDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "仓库出库确认日期缺失，无法确认应收到期日");
+        }
+        long days = settlementDays != null && settlementDays > 0
+                ? settlementDays.longValue()
+                : 0L;
+        try {
+            return new ClientSettlementSnapshot(
+                    settlementStyleLegacy(settlementStyleLegacy),
+                    recognitionDate.plusDays(days),
+                    settlementMethodId,
+                    cashSettlement);
+        } catch (DateTimeException ex) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户账期超出有效日期范围");
+        }
+    }
+
+    record ClientSettlementSnapshot(
+            Short settlementStyleLegacy,
+            LocalDate dueDate,
+            UUID settlementMethodId,
+            boolean cashSettlement) {
+    }
+
+    record ClientSettlementDefaults(
+            UUID defaultSettlementMethodId,
+            Integer legacyShadow,
+            Integer settlementDays) {
+    }
+
+    static void applyPostingRateSnapshot(
+            SalesShipment shipment,
+            List<SalesShipmentItem> items,
+            BigDecimal financeRate) {
+        if (financeRate == null || financeRate.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "财务维护的币种汇率必须大于 0，禁止发运立账");
+        }
+        BigDecimal totalOriginal = BigDecimal.ZERO;
+        BigDecimal totalLocal = BigDecimal.ZERO;
+        for (SalesShipmentItem item : items) {
+            BigDecimal original = item.getAmountOriginal() == null
+                    ? BigDecimal.ZERO
+                    : item.getAmountOriginal();
+            if (original.signum() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "发运原币金额无效，禁止发运立账");
+            }
+            // 直发与订货发货同一规则: 本币 = 原币 × 财务冻结汇率, 完整乘积不舍入。
+            BigDecimal local = MoneyPolicy.local(original, financeRate);
+            item.setAmountLocal(local);
+            totalOriginal = totalOriginal.add(original);
+            totalLocal = totalLocal.add(local);
+        }
+        shipment.setExchangeRate(financeRate);
+        shipment.setTotalOriginal(totalOriginal);
+        shipment.setTotalLocal(totalLocal);
+    }
+
+    private static void requirePostedLocalAmounts(
+            SalesShipment shipment, List<SalesShipmentItem> items) {
+        if (shipment.getExchangeRate() == null
+                || shipment.getExchangeRate().signum() <= 0
+                || shipment.getTotalLocal() == null
+                || shipment.getTotalLocal().signum() < 0
+                || items.stream().anyMatch(item -> item.getAmountLocal() == null
+                        || item.getAmountLocal().signum() < 0)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "发运本币金额未按财务汇率形成，禁止发运立账");
+        }
+    }
+
+    /**
+     * 按销售订单聚合本次发运行金额，形成不可变 AR 来源快照。
+     *
+     * <p>只接受持久化的 shipment_item.order_item_id 链；不按单号、客户或日期猜历史关联。
+     * 金额使用发运行快照，订单后续修改不会改写已经立账的来源金额。
+     */
+    @SuppressWarnings("unchecked")
+    private List<SourceRef> salesOrderSourceRefs(UUID shipmentId) {
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT sales_order.id,
+                       sales_order.bill_no,
+                       COALESCE(SUM(shipment_item.amount_original), 0),
+                       COALESCE(SUM(shipment_item.amount_local), 0)
+                FROM sales_shipment_items shipment_item
+                JOIN sales_order_items order_item
+                  ON order_item.id = shipment_item.order_item_id
+                 AND COALESCE(order_item.is_deleted, false) = false
+                JOIN sales_orders sales_order
+                  ON sales_order.id = order_item.order_id
+                 AND COALESCE(sales_order.is_deleted, false) = false
+                WHERE shipment_item.shipment_id = :shipmentId
+                  AND shipment_item.order_item_id IS NOT NULL
+                  AND COALESCE(shipment_item.is_deleted, false) = false
+                GROUP BY sales_order.id, sales_order.bill_no
+                ORDER BY sales_order.bill_no, sales_order.id
+                """)
+                .setParameter("shipmentId", shipmentId)
+                .getResultList();
+        return rows.stream()
+                .map(row -> new SourceRef(
+                        SourceRef.SALES_ORDER,
+                        (UUID) row[0],
+                        String.valueOf(row[1]),
+                        row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2],
+                        row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3]))
+                .toList();
+    }
+
+    private static Short settlementStyleLegacy(Integer paymentStyleId) {
+        if (paymentStyleId == null) {
+            return null;
+        }
+        if (paymentStyleId < Short.MIN_VALUE || paymentStyleId > Short.MAX_VALUE) {
+            throw new ApiException(ErrorCode.CONFLICT, "销售出货单关联的结算方式数据异常，请联系管理员处理");
+        }
+        return paymentStyleId.shortValue();
+    }
+
+    /** 仓库驳回：草稿出货单备货异常 → 逐行释放预留 + 订单行回退待排产，缺口自动回调度待排产列表。 */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_shipment:reject')")
+    public ShipmentDetail reject(UUID id, String reason) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id, REJECT_AUTHORITY);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        taskClaims.requireNoActiveClaim(CustomerShipmentPolicy.CLAIM_TYPE,id.toString());
+        customerInventory.requireNoUnreleased(id);
+        if(deliveryFulfillment!=null)deliveryFulfillment.requireNoProcessing(id);
+        requireLegacyShipmentMutable(s);
+        if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿(待备货)出货单可驳回；已审核请走红冲");
+        }
+        if (s.isRejected()) {
+            throw new ApiException(ErrorCode.BUSINESS, "该出货单已驳回");
+        }
+        requireFinanceAuditClearedForMutation(s);
+        if (!SalesShipment.WORK_PENDING_PICK.equals(s.getWarehouseWorkStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "出货单已确认出库，不可驳回释放订单预留");
+        }
+        List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, true, REJECT_AUTHORITY);
+        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
+        Set<UUID> physicalDeliveryItems=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        if(deliveryFulfillment!=null)deliveryFulfillment.cancelPrepared(id);
+        for (SalesShipmentItem it : items) {
+            if(physicalDeliveryItems.contains(it.getId()))continue;
+            if (it.getOrderItemId() == null || chainStatusOf(it.getOrderItemId()) <= 0) continue;
+            // 释放该行对应预留（货损/丢失/找不到 → 这批货不再属于该订单）
+            reservationService.releaseForOrderItem(it.getOrderItemId(), requireBaseQuantity(baseQuantities,it));
+            // reserved_qty 回减 + 行状态回退（V545 统一派生：剩余未排量 > 0 即回 1/2 待排产重走生产）
+            int reservedUpdated = em.createNativeQuery("UPDATE sales_order_items\n"
+                    + "SET reserved_qty = COALESCE(reserved_qty,0) - :q,\n"
+                    + "    chain_status = "
+                    + SalesOrderChainSql.chainStatusCaseSql(
+                            SalesOrderChainSql.ChainStatusInputs.of("").reservedDelta(" - :q"))
+                    + "\nWHERE id = :id AND COALESCE(reserved_qty,0) >= :q")
+                    .setParameter("q", it.getQty()).setParameter("id", it.getOrderItemId())
+                    .executeUpdate();
+            if (reservedUpdated != 1) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "订单预留累计小于出货驳回释放量，禁止自动吞并错账");
+            }
+        }
+        String warehouseFromStatus = s.getWarehouseWorkStatus();
+        s.setRejected(true);
+        s.setRejectedAt(OffsetDateTime.now());
+        s.setRejectedBy(currentUser.requireEmployeeId());
+        s.setRejectReason(reason == null || reason.isBlank() ? "仓库备货异常" : reason.trim());
+        s.setWarehouseWorkStatus(SalesShipment.WORK_CANCELLED);
+        s.setWarehouseWorkUpdatedAt(OffsetDateTime.now());
+        s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
+        s.setWarehouseExceptionReason(s.getRejectReason());
+        shipmentRepo.save(s);
+        recordWarehouseEvent(
+                s, warehouseFromStatus,
+                SalesShipment.WORK_CANCELLED,
+                s.getRejectReason(), s.getWarehouseWorkUpdatedBy(),
+                s.getWarehouseWorkUpdatedAt());
+        chainNotice.notifyShipmentRejected(id, reason); // 旁路通知：驳回→订单归属销售，提交后发送
+        return detail(id);
+    }
+
+    /** 红冲：status 1→-1，先校验收款核销 → 反向库存 + 回减 shipped_qty + 结案重算 + ar_posted=false。 */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_shipment:reverse')")
+    public ShipmentDetail reverse(UUID id) {
+        tx.bind();
+        SalesShipment s = requireWritableShipmentForUpdate(id);
+        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_shipments",s);
+        if (s.getStatus() == null || s.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+        requireDirectReversalAllowed(s);
+        List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        lockStoredOrderTargets(items);
+        assertStoredOrderLinks(s, items, false);
+        validateShipmentReversible(items);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+
+        // 1. 钱流先校验：若已有收款核销 → reverseArAp 抛 IllegalStateException（阻止红冲）
+        if (s.isArPosted()) {
+            arApService.reverseArAp(s.getId(), StockService.SRC_SALES_SHIPMENT);
+            s.setArPosted(false);
+        }
+
+        Set<UUID> bomReverseIds=deliveryFulfillment==null?Set.of():deliveryFulfillment.bomItemIds(items);
+        Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items.stream().filter(it->!bomReverseIds.contains(it.getId())).toList(),true);
+        // 2. 反向库存（type=3 dir=+1 倒回）+ 回减 shipped_qty
+        // 反向只翻 direction；amountLocal 必须传正数（StockService.recordMovement 内部乘 direction 取符号）。
+        // 若再 negate() 金额 → (-amt)×(+1) 与原 (+amt)×(-1) 同号 → 库存金额无法回滚（design §一决策）。
+        OffsetDateTime now = OffsetDateTime.now();
+        if(deliveryFulfillment!=null&&!bomReverseIds.isEmpty())deliveryFulfillment.reverse(s.getId(),now);
+        for (SalesShipmentItem it : items) {
+            if(bomReverseIds.contains(it.getId())){
+                addShippedQty(it.getOrderItemId(),it.getQty().negate());
+                updateDeliveryChain(it.getOrderItemId());
+                recalcOrderClosed(it.getOrderItemId());
+                continue;
+            }
+            applyMovement(s, it, StockService.DIR_IN, now, null, null,requireBaseQuantity(baseQuantities,it));
+            if (weightObservations != null) {
+                weightObservations.reverseBySourceItem(
+                        StockService.SRC_SALES_SHIPMENT, it.getId(), SourceKind.SHIPMENT);
+            }
+            if (it.getOrderItemId() != null) {
+                addShippedQty(it.getOrderItemId(), it.getQty().negate()); // -qty
+                // 货退回仓库：链上行重新挂预留（绑定原出货仓），恢复可发货量与行状态
+                if (chainStatusOf(it.getOrderItemId()) > 0) {
+                    reservationService.reserve(it.getOrderItemId(), it.getGoodsId(), it.getColorId(),
+                            it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId(),
+                            requireBaseQuantity(baseQuantities,it),
+                            StockReservation.SOURCE_ORDER, "SALES_SHIPMENT_REVERSE", s.getId());
+                    restoreReservedAndChainOnReverse(it.getOrderItemId(), it.getQty());
+                }
+                recalcOrderClosed(it.getOrderItemId());
+            }
+        }
+
+        String warehouseFromStatus = s.getWarehouseWorkStatus();
+        s.setStatus(STATUS_REVERSED);
+        s.setReversedAt(now);
+        s.setReversedBy(currentUser.requireEmployeeId());
+        s.setWarehouseWorkStatus(SalesShipment.WORK_REVERSED);
+        s.setWarehouseWorkUpdatedAt(now);
+        s.setWarehouseWorkUpdatedBy(currentUser.requireEmployeeId());
+        shipmentRepo.save(s);
+        recordWarehouseEvent(
+                s, warehouseFromStatus,
+                SalesShipment.WORK_REVERSED,
+                "受控账务红冲", s.getWarehouseWorkUpdatedBy(), now);
+        return detail(id);
+    }
+
+    /**
+     * 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。
+     *
+     * <p>重量(ADR-135): 出库只认仓库出库作业时实称的 measuredKg(千克), 从不取销售明细上的实际重量;
+     * 没称由库存账按均重推算。红冲不带重量, 库存账按原流水镜像。
+     */
+    private StockService.PostedMovement applyMovement(
+            SalesShipment s, SalesShipmentItem it, short direction,
+            OffsetDateTime ts, BigDecimal overrideAmount, BigDecimal measuredKg,BigDecimal baseQty) {
+        BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
+        return stockService.recordMovement(new StockService.MovementRequest(
+                ts, StockService.TYPE_SALES_OUT, StockService.SRC_SALES_SHIPMENT,
+                s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), movementWarehouse(s, it),
+                direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
+                direction < 0 ? null : "红冲",
+                direction < 0 ? com.uten.imp.features.stock.weight.CapturedWeight.measured(measuredKg) : null));
+    }
+
+    /** A single bounded read for all detail quantities, including actual historical picking. */
+    private Map<UUID,BigDecimal> shipmentBaseQuantities(List<SalesShipmentItem> items,boolean originalMovement){
+        if(items.isEmpty())return Map.of();
+        em.flush();
+        String expression=originalMovement?"fn_sales_shipment_original_base(item)":
+                "CASE WHEN document.shipment_kind='DIRECT_CUSTOMER' THEN fn_customer_shipment_picked_base(item) ELSE fn_sales_shipment_frozen_base(item) END";
+        var query=em.createNativeQuery("SELECT item.id,"+expression+
+                " FROM sales_shipment_items item JOIN sales_shipments document ON document.id=item.shipment_id WHERE item.id IN(:ids)")
+                .setParameter("ids",items.stream().map(SalesShipmentItem::getId).toList());
+        Map<UUID,BigDecimal> result=new HashMap<>();
+        for(var row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(query))
+            result.put((UUID)row[0],com.uten.imp.common.util.FinancialExactAmount.quantity((BigDecimal)row[1],"原出货基本数量"));
+        if(result.size()!=items.size())throw new ApiException(ErrorCode.CONFLICT,"原出货数量依据不完整，请保留原单核对");
+        return result;
+    }
+    private static BigDecimal requireBaseQuantity(Map<UUID,BigDecimal> quantities,SalesShipmentItem item){
+        BigDecimal value=quantities.get(item.getId());
+        if(value==null||value.signum()<=0)throw new ApiException(ErrorCode.CONFLICT,"原出货实际基本数量缺失");
+        return value;
+    }
+    /** Only an unpicked historical draft can adopt a current quantity. Actual old facts are never retagged. */
+    private void adoptUnpickedLegacyQuantities(List<SalesShipmentItem> items){
+        if(items.isEmpty())return;
+        em.flush();
+        em.createNativeQuery("""
+            UPDATE sales_shipment_items item SET quantity_adoption_version=2
+            WHERE item.id IN(:ids) AND item.quantity_adoption_version=1
+              AND NOT EXISTS(SELECT 1 FROM stock_movements movement WHERE movement.source_doc_type='SALES_SHIPMENT'
+                AND movement.source_doc_id=item.shipment_id AND movement.source_item_id=item.id)
+              AND NOT EXISTS(SELECT 1 FROM stock_reservations reservation WHERE reservation.owner_type='CUSTOMER_SHIPMENT_ITEM'
+                AND reservation.owner_id=item.id AND NOT reservation.is_deleted AND (reservation.consumed_qty>0
+                  OR reservation.status=0 AND reservation.qty-reservation.consumed_qty-reservation.released_qty>0))
+            """).setParameter("ids",items.stream().map(SalesShipmentItem::getId).toList()).executeUpdate();
+    }
+
+    /** V631：按行的实际发出仓过账；没有行仓的历史行回落到表头仓。 */
+    private static UUID movementWarehouse(SalesShipment s, SalesShipmentItem it) {
+        return it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId();
+    }
+
+    /**
+     * 出库称重核对(ADR-135 §3.7): 销售出库流水按实称记账(MEASURED)后登记一条 SHIPMENT 观测,
+     * 往来方 = 客户, 幂等键 'SHIPMENT:' + 流水 id。它只核对拣货(CHECK), 不教单重; 数量是财务放行的出货数,
+     * 没有「按称重改数量」。没称、按重量计的货品、流水没按实称记账时不登记。
+     */
+    private void recordShipmentObservation(SalesShipment s, SalesShipmentItem it,
+                                           StockService.PostedMovement posted, OffsetDateTime ts,BigDecimal baseQty) {
+        if (weightObservations == null || posted == null || posted.movementId() == null
+                || posted.weightSource() != WeightSource.MEASURED || posted.weightKg() == null) {
+            return;
+        }
+        weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
+                it.getGoodsId(), it.getColorId(), movementWarehouse(s, it), SourceKind.SHIPMENT,
+                baseQty, posted.weightKg(), null,
+                s.getClientId() == null ? null : "CLIENT", s.getClientId(),
+                StockService.SRC_SALES_SHIPMENT, s.getId(), it.getId(), posted.movementId(),
+                "SHIPMENT:" + posted.movementId(), ts, null, null, null,
+                false, it.getUnitId(), false, null, currentUser.requireId()));
+    }
+
+    /** sales_order_items.shipped_qty += delta（delta=±qty）。 */
+    private void addShippedQty(UUID orderItemId, BigDecimal delta) {
+        em.createNativeQuery(
+                "UPDATE sales_order_items SET shipped_qty = COALESCE(shipped_qty,0) + :d WHERE id = :id")
+                .setParameter("d", delta)
+                .setParameter("id", orderItemId)
+                .executeUpdate();
+    }
+
+    /**
+     * 超发硬校验（出货审核前置，服务端权威）：
+     * ① 本次数量 ≤ 订单未发余量（qty − shipped + returned − flag）——所有挂单行都查；
+     * ② 链上行（chain_status > 0）本次数量 ≤ 可发货量（reserved_qty）——无预留不准发。
+     * 历史迁移行 chain_status=0 不查②（老单无预留概念，兼容）。
+     */
+
+    /**
+     * 出货红冲前的下游与累计门禁。退货必须先红冲；同订单行多条出货明细按合计校验，
+     * 防止逐行判断后把 shipped_qty 写成负数。
+     */
+    private void validateShipmentReversible(List<SalesShipmentItem> items) {
+        Map<UUID, BigDecimal> reverseByOrderItem = new HashMap<>();
+        for (SalesShipmentItem item : items) {
+            requireNoActiveReturn(item);
+            if (item.getQty() == null || item.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "历史出货明细的数量数据不对，不能自动红冲，请联系管理员");
+            }
+            if (item.getOrderItemId() != null) {
+                reverseByOrderItem.merge(
+                        item.getOrderItemId(), item.getQty(), BigDecimal::add);
+            }
+        }
+        if (reverseByOrderItem.isEmpty()) return;
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, COALESCE(shipped_qty,0)
+                        FROM sales_order_items
+                        WHERE id IN (:ids)
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("ids", new TreeSet<>(reverseByOrderItem.keySet()))
+                .getResultList();
+        if (rows.size() != reverseByOrderItem.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "出货红冲关联的销售订单行不存在");
+        }
+        for (Object[] row : rows) {
+            BigDecimal currentShipped = toBd(row[1]);
+            BigDecimal reversing = reverseByOrderItem.get((UUID) row[0]);
+            if (!hasSufficientShippedForReverse(currentShipped, reversing)) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单已发累计小于本单红冲量，禁止自动吞并错账");
+            }
+        }
+    }
+
+    static void requireNoActiveReturn(SalesShipmentItem item) {
+        BigDecimal returnedQty = item.getReturnedQty() == null
+                ? BigDecimal.ZERO : item.getReturnedQty();
+        BigDecimal returnedAmount = item.getReturnedAmount() == null
+                ? BigDecimal.ZERO : item.getReturnedAmount();
+        if (returnedQty.signum() != 0 || returnedAmount.signum() != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "出货明细已有退货，请先红冲关联退货单");
+        }
+    }
+
+    static boolean hasSufficientShippedForReverse(
+            BigDecimal currentShipped, BigDecimal reversing) {
+        return currentShipped != null && reversing != null
+                && reversing.signum() > 0
+                && currentShipped.compareTo(reversing) >= 0;
+    }
+    private void validateShippable(SalesShipmentItem it) {
+        Object[] r = (Object[]) em.createNativeQuery(
+                "SELECT qty, shipped_qty, returned_qty, flag_qty, reserved_qty, chain_status"
+                        + " FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_order_items WHERE id = :id")
+                .setParameter("id", it.getOrderItemId())
+                .getSingleResult();
+        BigDecimal qty = toBd(r[0]);
+        BigDecimal deliverable = qty.subtract(toBd(r[1])).add(toBd(r[2])).subtract(toBd(r[3]));
+        if (it.getQty().compareTo(deliverable) > 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "发货数量超过订单未发数量(剩 " + deliverable.stripTrailingZeros().toPlainString() + ")");
+        }
+        short chain = r[5] == null ? 0 : ((Number) r[5]).shortValue();
+        BigDecimal reserved = toBd(r[4]);
+        if (!isBomDelivery(it) && chain > 0 && it.getQty().compareTo(reserved) > 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "发货数量超过可发货数量(预留 " + reserved.stripTrailingZeros().toPlainString() + ")");
+        }
+    }
+
+    private boolean isBomDelivery(SalesShipmentItem item) {
+        return deliveryFulfillment!=null&&deliveryFulfillment.isBom(item.getOrderItemId());
+    }
+    private void updateDeliveryChain(UUID orderItemId){
+        em.createNativeQuery("""
+            UPDATE sales_order_items SET chain_status=CASE
+             WHEN qty-shipped_qty+returned_qty-flag_qty<=0 THEN 9
+             WHEN shipped_qty-returned_qty>0 THEN 8 ELSE 2 END,
+             updated_at=now() WHERE id=:id
+            """).setParameter("id",orderItemId).executeUpdate();
+    }
+
+    /** 订单行链路状态（0=未上链/历史行）。 */
+    private short chainStatusOf(UUID orderItemId) {
+        Object v = em.createNativeQuery("SELECT chain_status FROM sales_order_items WHERE id = :id")
+                .setParameter("id", orderItemId)
+                .getSingleResult();
+        return v == null ? 0 : ((Number) v).shortValue();
+    }
+
+    /**
+     * 出货审核后：reserved_qty 扣减（delta 为负）+ 行状态推进（8部分发货 / 9已发货）。
+     * 须在 addShippedQty 之后执行（状态判定读最新 shipped_qty）。链上行才推进。
+     * 这是唯一不走 {@link SalesOrderChainSql#chainStatusCaseSql} 的写点：部分发货事实只由出货
+     * 交接产生，后续任何数量回写再按统一顺序（9/7/8/未排…）收敛。
+     */
+    private void applyReservedAndChainOnShip(UUID orderItemId, BigDecimal delta) {
+        int updated = em.createNativeQuery("""
+                UPDATE sales_order_items
+                SET reserved_qty = COALESCE(reserved_qty,0) + :d,
+                    chain_status = CASE WHEN COALESCE(chain_status,0) > 0 THEN
+                        CASE WHEN COALESCE(qty,0) - COALESCE(shipped_qty,0)
+                                       + COALESCE(returned_qty,0) - COALESCE(flag_qty,0) <= 0
+                             THEN 9 ELSE 8 END
+                    ELSE COALESCE(chain_status,0) END
+                WHERE id = :id AND COALESCE(reserved_qty,0) + :d >= 0
+                """).setParameter("d", delta).setParameter("id", orderItemId).executeUpdate();
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订单预留累计小于本次出货量，禁止自动吞并错账");
+        }
+    }
+
+    /**
+     * 出货红冲后：reserved_qty 回补（货已回库并重新挂预留）+ 行状态回退（V545 统一派生：
+     * 预留够→7 可发货，否则按剩余未排量 1/2 或既有排产 3-6）。
+     * 须在 addShippedQty(-qty) 之后执行。仅链上行调用。
+     */
+    private void restoreReservedAndChainOnReverse(UUID orderItemId, BigDecimal qtyBack) {
+        em.createNativeQuery("UPDATE sales_order_items\n"
+                + "SET reserved_qty = COALESCE(reserved_qty,0) + :d,\n"
+                + "    chain_status = "
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("").reservedDelta(" + :d"))
+                + "\nWHERE id = :id")
+                .setParameter("d", qtyBack).setParameter("id", orderItemId).executeUpdate();
+    }
+
+    private static BigDecimal toBd(Object v) {
+        return v == null ? BigDecimal.ZERO : (BigDecimal) v;
+    }
+
+    /** 重算订货单结案：所有明细 qty - shipped_qty + returned_qty - flag_qty ≤ 0 → is_closed=true。 */
+    private void recalcOrderClosed(UUID orderItemId) {
+        em.createNativeQuery("""
+                UPDATE sales_orders o SET is_closed = (
+                    SELECT COALESCE(bool_and(
+                        COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
+                        + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0) <= 0
+                    ), true)
+                    FROM sales_order_items i
+                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
+                ) WHERE o.id = (SELECT order_id FROM sales_order_items WHERE id = :iid)
+                """).setParameter("iid", orderItemId).executeUpdate();
+    }
+
+    /**
+     * Resolve and validate every order-item link in one query. A linked
+     * shipment will later update its source order, so source write access (not
+     * merely visibility) is required at draft creation/update time.
+     */
+    private LinkedSource validateLinkedOrderItems(ShipmentSaveRequest req) {
+        return validateLinkedOrderItems(
+                req, true, true, true, true, new String[0]);
+    }
+
+    /**
+     * A sales shipment is a fulfilment document, not a miscellaneous
+     * stock-out shortcut. Every new-flow line must therefore originate from a
+     * sales-order line so shipment policy, ownership and hard reservation are
+     * all server-enforced. Historical LEGACY_PENDING rows remain readable but
+     * are never executable; ad-hoc outbound belongs to the dedicated
+     * other-shipment document.
+     */
+    private void requireOrderLinkedNewShipment(ShipmentSaveRequest request) {
+        if (request.getItems() == null || request.getItems().isEmpty()
+                || request.getItems().stream().anyMatch(
+                        line -> line.getOrderItemId() == null)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "订货发货必须全部从订货单引入；无订单的客户发货请使用客户零星发货");
+        }
+    }
+
+    private LinkedSource validateLinkedOrderItems(ShipmentSaveRequest req,
+                                                   boolean requireOpenSource,
+                                                   boolean rejectDuplicateLinks,
+                                                   boolean enforceCommercialSource,
+                                                   boolean deriveAmounts,
+                                                   String... operationAuthorities) {
+        if (req.getItems() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货明细不能为空");
+        }
+        List<ShipmentItemLine> linked = req.getItems().stream()
+                .filter(line -> line.getOrderItemId() != null).toList();
+        if (linked.isEmpty()) {
+            return new LinkedSource(false, null, null, null, null, Map.of());
+        }
+        List<UUID> ids = linked.stream().map(ShipmentItemLine::getOrderItemId).toList();
+        if (rejectDuplicateLinks && Set.copyOf(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一订单行不能在出货单中重复关联");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                       o.client_id, o.owner_employee_id, o.status,
+                       o.is_stopped, o.is_closed, o.bill_no,
+                       o.currency_id, o.tax_rate, o.payment_style_id,
+                       o.seller_id, i.price, i.amount_original, i.qty,
+                       i.discount, i.machining_price, i.client_no,
+                       i.client_model, i.source_doc_no, o.id,
+                       o.settlement_method_id, o.finance_rejected,
+                       o.finance_confirmed
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        Map<UUID, Object[]> byId = new HashMap<>();
+        for (Object[] row : rows) {
+            byId.put((UUID) row[0], row);
+        }
+        Map<UUID, BigDecimal[]> priorNet = enforceCommercialSource && deriveAmounts
+                ? netShippedByOrderItem(ids) : Map.of();
+        Map<UUID, BigDecimal> amounts = new HashMap<>();
+
+        var writeScope = accessPolicy.scope(operationAuthorities);
+        UUID commonOwner = null;
+        boolean ownerInitialized = false;
+        UUID commonOrderId = null;
+        String commonOrderNo = null;
+        CommercialTerms commonTerms = null;
+        for (ShipmentItemLine line : linked) {
+            Object[] row = byId.get(line.getOrderItemId());
+            if (row == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源订单行不存在或已删除");
+            }
+            UUID owner = (UUID) row[6];
+            accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
+            UUID orderId = (UUID) row[23];
+            if (commonOrderId == null) {
+                commonOrderId = orderId;
+                commonOrderNo = (String) row[10];
+            } else if (!commonOrderId.equals(orderId)) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "一张销售出货单只能关联同一张销售订单");
+            }
+            if (!ownerInitialized) {
+                commonOwner = owner;
+                ownerInitialized = true;
+            } else if (!Objects.equals(commonOwner, owner)) {
+                throw new ApiException(ErrorCode.CONFLICT, "一张出货单不能合并不同归属人的订单行");
+            }
+            if (!Objects.equals(req.getClientId(), row[5])) {
+                throw new ApiException(ErrorCode.CONFLICT, "出货客户与来源订单客户不一致");
+            }
+            requireLinkedDimension(
+                    line.getGoodsId(), line.getColorId(), line.getUnitId(), line.getUnitRate(),
+                    (UUID) row[1], (UUID) row[2], (UUID) row[3], (BigDecimal) row[4],
+                    "出货");
+            short status = row[7] == null ? 0 : ((Number) row[7]).shortValue();
+            if (status != STATUS_APPROVED
+                    || (requireOpenSource && (Boolean.TRUE.equals(row[8]) || Boolean.TRUE.equals(row[9])))) {
+                throw new ApiException(ErrorCode.BUSINESS, "来源订单 " + row[10] + " 当前不可发货");
+            }
+            if (Boolean.TRUE.equals(row[25])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "来源订单 " + row[10] + " 已被财务驳回，不可创建出货作业");
+            }
+            if (!Boolean.TRUE.equals(row[26])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "来源订单 " + row[10] + " 尚未完成财务确认，不可发货");
+            }
+            if (enforceCommercialSource) {
+                CommercialTerms terms = commercialTerms(row);
+                requireValidCommercialTerms(terms, String.valueOf(row[10]));
+                if (commonTerms == null) {
+                    commonTerms = terms;
+                } else if (!sameCommercialTerms(commonTerms, terms)) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "一张出货单不能合并币种、税率、结算方式或业务员不同的订单");
+                }
+                normalizeCommercialLine(line, row);
+                if (deriveAmounts) {
+                    amounts.put(line.getOrderItemId(), authoritativeShipmentAmount(
+                            line, row, priorNet.get(line.getOrderItemId())));
+                }
+            }
+        }
+        if (enforceCommercialSource && commonTerms != null) {
+            req.setCurrencyId(commonTerms.currencyId());
+            // The order rate is not a commercial term. The draft deliberately
+            // carries no local posting rate; SHIPPED fixes the finance rate.
+            req.setExchangeRate(null);
+            req.setTaxRate(commonTerms.taxRate());
+            req.setPaymentStyleId(commonTerms.paymentStyleId());
+            req.setSettlementMethodId(commonTerms.settlementMethodId());
+            req.setSellerId(commonTerms.sellerId());
+        }
+        return new LinkedSource(
+                true, commonOrderId, commonOrderNo, commonOwner, commonTerms, Map.copyOf(amounts));
+    }
+
+    private static CommercialTerms commercialTerms(Object[] row) {
+        Integer paymentStyleId = row[13] == null
+                ? null : ((Number) row[13]).intValue();
+        return new CommercialTerms(
+                (UUID) row[11],
+                (BigDecimal) row[12],
+                paymentStyleId,
+                (UUID) row[24],
+                (UUID) row[14]);
+    }
+
+    private static void requireValidCommercialTerms(
+            CommercialTerms terms, String sourceBillNo) {
+        if (terms.taxRate() != null && terms.taxRate().signum() < 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "来源订单 " + sourceBillNo + " 税率不正确，不能生成出货应收");
+        }
+    }
+
+    private static boolean sameCommercialTerms(
+            CommercialTerms left, CommercialTerms right) {
+        return Objects.equals(left.currencyId(), right.currencyId())
+                && sameDecimal(left.taxRate(), right.taxRate())
+                && Objects.equals(
+                        left.paymentStyleId(), right.paymentStyleId())
+                && Objects.equals(left.settlementMethodId(), right.settlementMethodId())
+                && Objects.equals(left.sellerId(), right.sellerId());
+    }
+
+    private static void normalizeCommercialLine(
+            ShipmentItemLine line, Object[] sourceRow) {
+        BigDecimal sourcePrice = (BigDecimal) sourceRow[15];
+        BigDecimal sourceOriginal = (BigDecimal) sourceRow[16];
+        BigDecimal sourceQty = (BigDecimal) sourceRow[17];
+        BigDecimal shipQty = line.getQty();
+        if (sourceQty == null || sourceQty.signum() <= 0
+                || shipQty == null || shipQty.signum() <= 0
+                || shipQty.compareTo(sourceQty) > 0
+                || sourcePrice == null || sourcePrice.signum() < 0
+                || sourceOriginal == null || sourceOriginal.signum() < 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "来源订单 " + sourceRow[10]
+                            + " 的数量或金额不是可安全出货的已审事实");
+        }
+        line.setPrice(sourcePrice);
+        line.setDiscount((BigDecimal) sourceRow[18]);
+        line.setMachiningPrice((BigDecimal) sourceRow[19]);
+        line.setClientNo((String) sourceRow[20]);
+        line.setClientModel((String) sourceRow[21]);
+        line.setSourceDocNo((String) sourceRow[10]);
+        // These fields have no audited sales-order source. A caller may not
+        // inject undocumented price components into AR.
+        line.setMaterialPrice(null);
+        line.setDieCastPrice(null);
+    }
+
+    private static BigDecimal authoritativeShipmentAmount(
+            ShipmentItemLine line, Object[] sourceRow, BigDecimal[] priorNet) {
+        return authoritativeShipmentAmount(
+                (BigDecimal) sourceRow[16], (BigDecimal) sourceRow[17],
+                priorNet == null ? BigDecimal.ZERO : priorNet[0],
+                priorNet == null ? BigDecimal.ZERO : priorNet[1],
+                line.getQty());
+    }
+
+    /**
+     * 出货行金额 = 订单行金额按「已出净量 + 本次」的累计份额 − 已出净额(ADR-112)。
+     * 已出净量/净额 = 已出库出货行合计 − 其有效退货合计; 本次出完订单行全部数量时取订单行全部剩余金额,
+     * 各批合计恰好等于订单行金额。订单行金额 = 数量 × 单价 × 折扣(精确乘积)时, 每批就是本批数量的精确乘积。
+     */
+    static BigDecimal authoritativeShipmentAmount(
+            BigDecimal sourceAmount,
+            BigDecimal sourceQty,
+            BigDecimal priorNetQty,
+            BigDecimal priorNetAmount,
+            BigDecimal shipmentQty) {
+        if (sourceAmount == null || sourceAmount.signum() < 0
+                || sourceQty == null || sourceQty.signum() <= 0
+                || shipmentQty == null || shipmentQty.signum() <= 0
+                || priorNetQty == null || priorNetQty.signum() < 0
+                || priorNetAmount == null || priorNetAmount.signum() < 0
+                || priorNetQty.add(shipmentQty).compareTo(sourceQty) > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "来源订单的数量或金额不正确，或本次出货超过订单未出数量，不能生成出货应收，请刷新后重试");
+        }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(shipmentQty, "出货数量");
+        return MoneyPolicy.prorate(sourceAmount, priorNetQty.add(shipmentQty), sourceQty, priorNetAmount);
+    }
+
+    /** 各订单行已出库出货的净量与净额(出货行合计 − 有效退货行合计), 一条语句取全。 */
+    private Map<UUID, BigDecimal[]> netShippedByOrderItem(List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty()) return Map.of();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT item.order_item_id,
+                       COALESCE(SUM(item.qty),0) - COALESCE(SUM(returned.qty),0),
+                       COALESCE(SUM(item.amount_original),0) - COALESCE(SUM(returned.amount_original),0)
+                FROM sales_shipment_items item
+                JOIN sales_shipments shipment ON shipment.id = item.shipment_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(return_item.qty) AS qty,
+                           SUM(return_item.amount_original) AS amount_original
+                    FROM sales_return_items return_item
+                    JOIN sales_returns return_doc ON return_doc.id = return_item.return_id
+                    WHERE return_item.out_item_id = item.id
+                      AND return_doc.status = 1
+                      AND NOT return_item.is_deleted AND NOT return_doc.is_deleted
+                ) returned ON TRUE
+                WHERE item.order_item_id IN (:ids)
+                  AND shipment.status = 1
+                  AND NOT item.is_deleted AND NOT shipment.is_deleted
+                GROUP BY item.order_item_id
+                """).setParameter("ids", orderItemIds).getResultList();
+        Map<UUID, BigDecimal[]> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], new BigDecimal[]{(BigDecimal) row[1], (BigDecimal) row[2]});
+        }
+        return result;
+    }
+
+    private static boolean sameDecimal(BigDecimal left, BigDecimal right) {
+        return left == null ? right == null
+                : right != null && left.compareTo(right) == 0;
+    }
+
+    private static String normalizedDecimalKey(BigDecimal value) {
+        return value == null ? null
+                : value.stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * A draft shipment is already a warehouse allocation even though it has
+     * not consumed ATP. Source rows are locked before other active drafts are
+     * summed, preventing concurrent clerks from assigning the same reservation
+     * to multiple pick tasks.
+     */
+    private void lockAndValidateDraftAllocation(
+            ShipmentSaveRequest req,
+            UUID excludedShipmentId,
+            boolean requireActivatedChain) {
+        if (req.getItems() == null) return;
+        List<ShipmentItemLine> linked = req.getItems().stream()
+                .filter(line -> line.getOrderItemId() != null).toList();
+        if (linked.isEmpty()) return;
+        List<UUID> ids = linked.stream().map(ShipmentItemLine::getOrderItemId)
+                .distinct().sorted().toList();
+        List<UUID> orderIds = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                SELECT DISTINCT order_id
+                FROM sales_order_items
+                WHERE id IN (:ids) AND COALESCE(is_deleted,false) = false
+                ORDER BY order_id
+                """).setParameter("ids", ids), UUID.class);
+        if (orderIds.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单行已变化，请刷新后重试");
+        }
+        List<UUID> locked = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                SELECT item.id
+                FROM sales_order_items item
+                JOIN sales_orders sales_order ON sales_order.id = item.order_id
+                WHERE item.order_id IN (:orderIds)
+                  AND COALESCE(item.is_deleted,false) = false
+                  AND COALESCE(sales_order.is_deleted,false) = false
+                ORDER BY sales_order.id, item.id
+                FOR UPDATE OF sales_order, item
+                """).setParameter("orderIds", orderIds), UUID.class);
+        if (!locked.containsAll(ids)) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单行已变化，请刷新后重试");
+        }
+
+        String exclusion = excludedShipmentId == null
+                ? "" : " AND s.id <> CAST(:excludedShipmentId AS uuid)\n";
+        jakarta.persistence.Query allocationQuery = em.createNativeQuery("""
+                SELECT i.id, COALESCE(i.reserved_qty,0), COALESCE(i.chain_status,0),
+                       COALESCE(SUM(si.qty) FILTER (WHERE s.id IS NOT NULL),0)
+                FROM sales_order_items i
+                LEFT JOIN sales_shipment_items si
+                  ON si.order_item_id = i.id
+                 AND COALESCE(si.is_deleted,false) = false
+                LEFT JOIN sales_shipments s
+                  ON s.id = si.shipment_id
+                 AND COALESCE(s.is_deleted,false) = false
+                 AND s.status = 0
+                 AND COALESCE(s.rejected,false) = false
+                """ + exclusion + """
+                WHERE i.id IN (:ids)
+                GROUP BY i.id, i.reserved_qty, i.chain_status
+                ORDER BY i.id
+                """).setParameter("ids", ids);
+        if (excludedShipmentId != null) {
+            allocationQuery.setParameter("excludedShipmentId", excludedShipmentId);
+        }
+        Map<UUID, Object[]> capacity = new HashMap<>();
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(allocationQuery)) {
+            capacity.put((UUID) row[0], row);
+        }
+        Map<UUID, BigDecimal> requested = new HashMap<>();
+        for (ShipmentItemLine line : linked) {
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货数量必须大于 0");
+            }
+            requested.merge(line.getOrderItemId(), line.getQty(), BigDecimal::add);
+        }
+        for (UUID id : ids) {
+            Object[] row = capacity.get(id);
+            if (row == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "来源订单行已变化，请刷新后重试");
+            }
+            BigDecimal reserved = row[1] == null ? BigDecimal.ZERO : (BigDecimal) row[1];
+            int chainStatus = ((Number) row[2]).intValue();
+            BigDecimal drafted = row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3];
+            if(deliveryFulfillment!=null&&deliveryFulfillment.isBom(id)) {
+                BigDecimal outstanding=(BigDecimal)em.createNativeQuery("SELECT GREATEST(qty-shipped_qty+returned_qty-flag_qty,0) FROM sales_order_items WHERE id=:id")
+                        .setParameter("id",id).getSingleResult();
+                if(drafted.add(requested.getOrDefault(id,BigDecimal.ZERO)).compareTo(outstanding)>0)
+                    throw new ApiException(ErrorCode.CONFLICT,"该订单的未发组合数量已被其它出货草稿占用");
+                continue;
+            }
+            // deliberately did not invent reservations for migrated open
+            // orders. A new warehouse task must not silently turn that
+            // unknown history into a hard promise. LEGACY_PENDING drafts are
+            // read-only migration exceptions; new-flow documents fail early
+            // until a per-order migration reconciliation activates the chain
+            // explicitly.
+            requireActivatedReservationChain(
+                    requireActivatedChain, chainStatus);
+            if (chainStatus > 0
+                    && drafted.add(requested.getOrDefault(id, BigDecimal.ZERO))
+                    .compareTo(reserved) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "订单可发预留已被其它待备货单占用，请刷新后重试");
+            }
+        }
+    }
+
+    static void requireActivatedReservationChain(
+            boolean requiredForNewFlow, int chainStatus) {
+        if (requiredForNewFlow && chainStatus <= 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史订单尚未完成库存、已发与旧排产对账，不能创建新仓库任务；请先完成订单链路激活");
+        }
+    }
+
+    private void assertShipmentPolicy(ShipmentSaveRequest request) {
+        Map<UUID, BigDecimal> requested = new HashMap<>();
+        if (request.getItems() != null) {
+            for (ShipmentItemLine line : request.getItems()) {
+                if (line.getOrderItemId() != null && line.getQty() != null) {
+                    requested.merge(line.getOrderItemId(), line.getQty(), BigDecimal::add);
+                }
+            }
+        }
+        assertShipmentPolicy(requested);
+    }
+
+    private void assertStoredShipmentPolicy(List<SalesShipmentItem> items) {
+        Map<UUID, BigDecimal> requested = new HashMap<>();
+        for (SalesShipmentItem item : items) {
+            if (item.getOrderItemId() != null && item.getQty() != null) {
+                requested.merge(item.getOrderItemId(), item.getQty(), BigDecimal::add);
+            }
+        }
+        assertShipmentPolicy(requested);
+    }
+
+    /**
+     * A complete shipment must cover the current outstanding quantity of every
+     * open line of each referenced order. A customer confirmation is a stored
+     * fact; the UI cannot bypass this check by hiding a warning.
+     */
+    private void assertShipmentPolicy(Map<UUID, BigDecimal> requested) {
+        if (requested.isEmpty()) return;
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT i.id, i.order_id, o.bill_no, o.shipment_policy,
+                               o.partial_shipment_confirmed_at,
+                               GREATEST(
+                                   COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
+                                   + COALESCE(i.returned_qty,0)
+                                   - COALESCE(i.flag_qty,0),
+                                   0)
+                        FROM sales_order_items i
+                        JOIN sales_orders o ON o.id = i.order_id
+                        WHERE i.order_id IN (
+                            SELECT DISTINCT source.order_id
+                            FROM sales_order_items source
+                            WHERE source.id IN (:ids)
+                              AND COALESCE(source.is_deleted,false) = false
+                        )
+                          AND COALESCE(i.is_deleted,false) = false
+                          AND COALESCE(o.is_deleted,false) = false
+                        ORDER BY i.order_id, i.id
+                        """).setParameter("ids", requested.keySet()));
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单已变化，请刷新后重试");
+        }
+        Map<UUID, ShipmentPolicyState> states = new LinkedHashMap<>();
+        Set<UUID> seenRequested = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            UUID itemId = (UUID) row[0];
+            UUID orderId = (UUID) row[1];
+            BigDecimal outstanding = toBd(row[5]);
+            BigDecimal shipping = requested.getOrDefault(itemId, BigDecimal.ZERO);
+            if (requested.containsKey(itemId)) seenRequested.add(itemId);
+            ShipmentPolicyState state = states.computeIfAbsent(
+                    orderId,
+                    ignored -> new ShipmentPolicyState(
+                            String.valueOf(row[2]),
+                            row[3] == null
+                                    ? SalesOrder.SHIPMENT_POLICY_LEGACY
+                                    : String.valueOf(row[3]),
+                            false));
+            if (shipping.compareTo(outstanding) < 0) {
+                state.partial = true;
+            }
+        }
+        if (!seenRequested.containsAll(requested.keySet())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单行已变化，请刷新后重试");
+        }
+        for (ShipmentPolicyState state : states.values()) {
+            if (!state.partial) continue;
+            if (SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(state.policy)) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "订单 " + state.billNo + " 要求整单齐套，当前不可部分发货");
+            }
+            // CUSTOMER_CONFIRM 不再拦截：员工选了这个策略就是这个策略，不强制先登记客户同意
+            // 依据——那一步（partial_shipment_confirmed_at）从没做过录入 UI，选了这个策略的
+            // 订单此前实际上永远无法部分发货（问题 #16）。字段本身仍保留可选、仍落库，只是
+            // 不再当成一道拦审批的门。
+        }
+    }
+
+    private void assertStoredOrderLinks(SalesShipment shipment,
+                                        List<SalesShipmentItem> items,
+                                        boolean requireOpenSource,
+                                        String... operationAuthorities) {
+        assertStoredOrderLinks(shipment, items, requireOpenSource, false, operationAuthorities);
+    }
+
+    /**
+     * 出库确认(SHIPPED)时 deriveAmounts=true: 订单行已在本事务锁住, 按锁内的已出净量/净额重新派生
+     * 出货行原币金额并回写表头合计——应收只认这一刻的结果; 草稿期金额只是同一规则的预览。
+     */
+    private void assertStoredOrderLinks(SalesShipment shipment,
+                                        List<SalesShipmentItem> items,
+                                        boolean requireOpenSource,
+                                        boolean deriveAmounts,
+                                        String... operationAuthorities) {
+        ShipmentSaveRequest snapshot = new ShipmentSaveRequest();
+        snapshot.setClientId(shipment.getClientId());
+        snapshot.setCurrencyId(shipment.getCurrencyId());
+        snapshot.setExchangeRate(shipment.getExchangeRate());
+        snapshot.setTaxRate(shipment.getTaxRate());
+        snapshot.setPaymentStyleId(shipment.getPaymentStyleId());
+        snapshot.setSellerId(shipment.getSellerId());
+        List<ShipmentItemLine> links = new ArrayList<>(items.size());
+        for (SalesShipmentItem item : items) {
+            if (item.getQty() == null || item.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "历史出货明细数量无效，禁止继续联动");
+            }
+            ShipmentItemLine line = new ShipmentItemLine();
+            line.setOrderItemId(item.getOrderItemId());
+            line.setGoodsId(item.getGoodsId());
+            line.setColorId(item.getColorId());
+            line.setUnitId(item.getUnitId());
+            line.setUnitRate(item.getUnitRate());
+            line.setQty(item.getQty());
+            line.setPrice(item.getPrice());
+            line.setClientNo(item.getClientNo());
+            line.setClientModel(item.getClientModel());
+            line.setMaterialPrice(item.getMaterialPrice());
+            line.setDieCastPrice(item.getDieCastPrice());
+            line.setMachiningPrice(item.getMachiningPrice());
+            line.setDiscount(item.getDiscount());
+            line.setSourceDocNo(item.getSourceDocNo());
+            links.add(line);
+        }
+        snapshot.setItems(links);
+        boolean strictCommercial = shipment.getWarehouseWorkStatus() != null
+                && !SalesShipment.WORK_LEGACY_PENDING.equals(
+                        shipment.getWarehouseWorkStatus());
+        LinkedSource source = validateLinkedOrderItems(
+                snapshot, requireOpenSource, false, strictCommercial,
+                deriveAmounts && strictCommercial, operationAuthorities);
+        if (source.present()
+                && !Objects.equals(source.ownerEmployeeId(), shipment.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单与出货单归属不一致");
+        }
+        if (source.present()) {
+            if (shipment.getSourceOrderId() == null) {
+                applySource(shipment, source);
+            } else if (!shipment.getSourceOrderId().equals(source.sourceOrderId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "出货单头来源订单与明细关联不一致");
+            }
+        }
+        if (strictCommercial && source.present()) {
+            requireStoredCommercialAuthority(
+                    shipment, items, links, source.terms());
+            if (deriveAmounts) {
+                for (SalesShipmentItem item : items) {
+                    BigDecimal derived = source.amounts().get(item.getOrderItemId());
+                    // 销售确认/财务放行冻结的是确认那一刻的金额。之后同一订单行又有别的出货或退货时,
+                    // 累计分摊(一口价行)会让本单金额变化: 这里给出看得懂的冲突, 不让库级快照守卫报一句英文。
+                    if (shipment.getSalesConfirmedRevision() != null && item.getAmountOriginal() != null
+                            && derived != null && derived.compareTo(item.getAmountOriginal()) != 0) {
+                        throw new ApiException(ErrorCode.CONFLICT,
+                                "同一订单行在本单确认后又有出货或退货，按累计分摊本单金额应为 "
+                                        + derived.stripTrailingZeros().toPlainString() + " (确认时为 "
+                                        + item.getAmountOriginal().stripTrailingZeros().toPlainString()
+                                        + ")。请财务撤销放行、销售重新提交确认后再出库");
+                    }
+                    item.setAmountOriginal(derived);
+                }
+                shipment.setTotalOriginal(MoneyPolicy.sum(
+                        items.stream().map(SalesShipmentItem::getAmountOriginal).toList()));
+            }
+        }
+    }
+
+    private static void requireStoredCommercialAuthority(
+            SalesShipment shipment,
+            List<SalesShipmentItem> storedItems,
+            List<ShipmentItemLine> authoritativeItems,
+            CommercialTerms terms) {
+        CommercialTerms storedTerms = new CommercialTerms(
+                shipment.getCurrencyId(),
+                shipment.getTaxRate(),
+                shipment.getPaymentStyleId(),
+                shipment.getSettlementMethodId(),
+                shipment.getSellerId());
+        if (terms == null || !sameCommercialTerms(storedTerms, terms)
+                || storedItems.size() != authoritativeItems.size()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "出货商业条款与已审订货单不一致，请由财务反审后重新生成");
+        }
+        for (int i = 0; i < storedItems.size(); i++) {
+            SalesShipmentItem stored = storedItems.get(i);
+            ShipmentItemLine expected = authoritativeItems.get(i);
+            if (!sameDecimal(stored.getPrice(), expected.getPrice())
+                    || !sameDecimal(
+                            stored.getDiscount(), expected.getDiscount())
+                    || !sameDecimal(
+                            stored.getMachiningPrice(),
+                            expected.getMachiningPrice())
+                    || stored.getCostAmount() != null
+                    || stored.getMaterialPrice() != null
+                    || stored.getDieCastPrice() != null
+                    || !Objects.equals(
+                            stored.getClientNo(), expected.getClientNo())
+                    || !Objects.equals(
+                            stored.getClientModel(), expected.getClientModel())
+                    || !Objects.equals(
+                            stored.getSourceDocNo(),
+                            expected.getSourceDocNo())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "出货行单价、折扣或来源快照与已审订货单不一致，禁止财审或出库");
+            }
+        }
+    }
+
+    /**
+     * Linked chain quantities must remain in one identical goods/color/unit/rate dimension.
+     */
+    static void requireLinkedDimension(
+            UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
+            UUID sourceGoodsId, UUID sourceColorId, UUID sourceUnitId,
+            BigDecimal sourceUnitRate, String documentName) {
+        if (!Objects.equals(goodsId, sourceGoodsId)
+                || !Objects.equals(colorId, sourceColorId)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    documentName + "货品或颜色与来源行不一致");
+        }
+        if (unitId == null || sourceUnitId == null
+                || !Objects.equals(unitId, sourceUnitId)
+                || unitRate == null || sourceUnitRate == null
+                || unitRate.signum() <= 0 || sourceUnitRate.signum() <= 0
+                || unitRate.compareTo(sourceUnitRate) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    documentName + "单位或换算率与来源行不一致");
+        }
+    }
+
+    /**
+     * Lock every linked order header and line in one stable order before
+     * validating or mutating shipment-chain counters.
+     */
+    private void lockStoredOrderTargets(List<SalesShipmentItem> items) {
+        TreeSet<UUID> ids = new TreeSet<>();
+        for (SalesShipmentItem item : items) {
+            if (item.getOrderItemId() != null) {
+                ids.add(item.getOrderItemId());
+            }
+        }
+        if (ids.isEmpty()) return;
+        List<?> locked = em.createNativeQuery("""
+                        SELECT i.id
+                        FROM sales_order_items i
+                        JOIN sales_orders o ON o.id = i.order_id
+                        WHERE i.id IN (:ids)
+                        ORDER BY o.id, i.id
+                        FOR UPDATE OF o, i
+                        """)
+                .setParameter("ids", ids)
+                .getResultList();
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源销售订单或订单行不存在");
+        }
+    }
+
+    private Set<UUID> readableOrderItemIds(List<UUID> ids) {
+        if (ids.isEmpty() || !accessPolicy.hasAuthority("sales_order:view")) {
+            return Set.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, o.owner_employee_id
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        var readScope = accessPolicy.scope();
+        java.util.HashSet<UUID> readable = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            if (accessPolicy.canRead((UUID) row[1], readScope)) {
+                readable.add((UUID) row[0]);
+            }
+        }
+        return readable;
+    }
+
+    private boolean isOrderSourceReadable(UUID sourceOrderId) {
+        if (sourceOrderId == null) {
+            return true;
+        }
+        if (!accessPolicy.hasAuthority("sales_order:view")) {
+            return false;
+        }
+        @SuppressWarnings("unchecked")
+        List<UUID> owners = em.createNativeQuery("""
+                SELECT owner_employee_id
+                FROM sales_orders
+                WHERE id = :sourceOrderId
+                  AND COALESCE(is_deleted,false)=false
+                """)
+                .setParameter("sourceOrderId", sourceOrderId)
+                .getResultList();
+        return owners.size() == 1 && accessPolicy.canRead(owners.getFirst());
+    }
+
+    private static void applySource(SalesShipment shipment, LinkedSource source) {
+        UUID previousSourceId = shipment.getSourceOrderId();
+        shipment.setSourceOrderId(source.sourceOrderId());
+        if (source.present()) {
+            shipment.setSourceDocNo(source.sourceBillNo());
+        } else if (previousSourceId != null) {
+            shipment.setSourceDocNo(null);
+        }
+    }
+
+    private void applyHeader(ShipmentSaveRequest req, SalesShipment s) {
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (s.getBillNo() == null || s.getBillNo().isBlank()) {
+            s.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_SHIPMENT));
+        }
+        s.setBillDate(req.getBillDate());
+        s.setClientId(req.getClientId());
+        if (CustomerShipmentPolicy.direct(s)) {
+            s.setBillingMode(req.getBillingMode());
+            s.setDirectPurpose(trimToNull(req.getDirectPurpose()));
+            s.setFreeReason(trimToNull(req.getFreeReason()));
+        } else {
+            if (req.getBillingMode()!=null && !CustomerShipmentPolicy.CHARGED.equals(req.getBillingMode())) throw new ApiException(ErrorCode.VALIDATION_FAILED,"订货发货沿用已确认订单金额，不能改为免费");
+            s.setBillingMode(CustomerShipmentPolicy.CHARGED);
+        }
+        // V476 运营红线：出货必须落到具体叶子仓；主仓库只作查询聚合。
+        if (warehouseScopes != null) {
+            warehouseScopes.require(s.getWarehouseId(), req.getWarehouseId(), "出货仓库", WarehouseUse.GOOD_OUT);
+        }
+        if(!s.isWarehouseChosenAtPick())s.setWarehouseId(req.getWarehouseId());
+        s.setCurrencyId(req.getCurrencyId());
+        // Draft shipments do not carry a sales-authored posting rate.
+        s.setExchangeRate(null);
+        s.setTaxRate(req.getTaxRate());
+        if (!(req.getSettlementMethodId() == null && req.getPaymentStyleId() == null
+                && s.getSettlementMethodId() == null && s.getPaymentStyleId() != null)) {
+            var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
+                    em, req.getSettlementMethodId(), req.getPaymentStyleId(), "结帐方式");
+            s.setSettlementMethodId(settlement == null ? null : settlement.id());
+            s.setPaymentStyleId(settlement == null ? null : settlement.legacyId());
+        }
+        s.setSellerId(req.getSellerId());
+        s.setSenderId(req.getSenderId());
+        s.setShipAddr(req.getShipAddr());
+        s.setLinkPhone(req.getLinkPhone());
+        s.setParcelCount(req.getParcelCount());
+        s.setLogisticsNo(trimToNull(req.getLogisticsNo()));
+        s.setRemark(req.getRemark());
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputEvidence;
+
+    private List<ShipmentItemDto> saveItems(
+            SalesShipment s, List<ShipmentItemLine> lines, Map<UUID, BigDecimal> linkedAmounts) {
+        Map<UUID,SalesShipmentItem> existing=new HashMap<>();
+        itemRepo.findByShipmentIdOrderByLineNoAsc(s.getId()).forEach(item->existing.put(item.getId(),item));
+        Set<UUID> retained=new java.util.HashSet<>();
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                lines.stream().map(ShipmentItemLine::getOrderItemId).toList(),
+                SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                lines.stream()
+                        .filter(line -> line.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(line.getOrderItemId()))
+                        .map(ShipmentItemLine::getGoodsId)
+                        .toList(),
+                SalesGoodsSnapshot.MASTER_AT_SAVE);
+        List<ShipmentItemDto> out = new ArrayList<>(lines.size());
+        int auto = 1;
+        for (ShipmentItemLine l : lines) {
+            requireNonNegativeCommercialLine(l);
+            SalesShipmentItem it;
+            if (l.getId()==null) it=new SalesShipmentItem();
+            else {
+                it=existing.get(l.getId());
+                if (it==null || !retained.add(l.getId())) throw new ApiException(ErrorCode.CONFLICT,"出货明细已变化，请刷新后重新编辑");
+            }
+            it.setShipmentId(s.getId());
+            it.setBillNo(s.getBillNo());
+            it.setBillDate(s.getBillDate());
+            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setOrderItemId(l.getOrderItemId());
+            it.setGoodsId(l.getGoodsId());
+            applyGoodsSnapshot(
+                    it,
+                    preferredSnapshot(
+                            orderSnapshots, l.getOrderItemId(), masterSnapshots,
+                            l.getGoodsId(), "销售出货明细"),
+                    null);
+            it.setColorId(l.getColorId());
+            if(it.getId()==null||it.getQty()==null||it.getQty().compareTo(l.getQty())!=0
+                    ||!java.util.Objects.equals(it.getUnitId(),l.getUnitId())||it.getUnitRate()==null
+                    ||l.getUnitRate()==null||it.getUnitRate().compareTo(l.getUnitRate())!=0)
+                com.uten.imp.common.finance.DocumentUnitConversion.project(l.getQty(),l.getUnitId(),l.getUnitRate());
+            it.setUnitId(l.getUnitId());
+            it.setUnitRate(l.getUnitRate());
+            it.setQty(l.getQty());
+            it.setPrice(l.getPrice());
+            // 原币金额只由服务端派生: 订货发货按订单行累计分摊, 零星发货 = 数量 × 单价 × 折扣。
+            // 本币没有草稿事实, 只在出库确认时按财务冻结汇率形成。
+            it.setAmountOriginal(l.getOrderItemId() != null
+                    ? linkedAmounts.get(l.getOrderItemId())
+                    : DirectCustomerShipmentCommercialService.lineAmount(s, l));
+            it.setAmountLocal(null);
+            it.setCostAmount(null);
+            BigDecimal adoptedWeight=com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(l.getWeight(),"销售单声明重量");
+            it.setWeight(adoptedWeight);
+            it.setParcelQty(l.getParcelQty());
+            it.setCartonCount(l.getCartonCount());
+            it.setClientNo(l.getClientNo());
+            it.setClientModel(l.getClientModel());
+            it.setMaterialPrice(l.getMaterialPrice());
+            it.setDieCastPrice(l.getDieCastPrice());
+            it.setMachiningPrice(l.getMachiningPrice());
+            it.setCircumference(l.getCircumference());
+            it.setDiscount(l.getDiscount());
+            it.setSourceDocNo(l.getSourceDocNo());
+            it.setRemark(l.getRemark());
+            itemRepo.save(it);
+            com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"SALES_SHIPMENT",s.getId(),it.getId(),"declaredWeightKg",l.getWeight(),adoptedWeight);
+            out.add(toItemDto(it));
+            auto++;
+        }
+        for (SalesShipmentItem old:existing.values()) if (!retained.contains(old.getId())) {
+            old.setDeleted(true);old.setDeletedAt(OffsetDateTime.now());itemRepo.save(old);
+        }
+        if(deliveryFulfillment!=null)deliveryFulfillment.synchronize(s,itemRepo.findByShipmentIdOrderByLineNoAsc(s.getId()));
+        return out;
+    }
+
+    private void captureGoodsSnapshots(
+            List<SalesShipmentItem> items, boolean approval, OffsetDateTime lockedAt) {
+        Map<UUID, SalesGoodsSnapshot> orderSnapshots = SalesGoodsSnapshot.fromOrderItems(
+                em,
+                items.stream().map(SalesShipmentItem::getOrderItemId).toList(),
+                approval
+                        ? SalesGoodsSnapshot.ORDER_ITEM_AT_APPROVAL
+                        : SalesGoodsSnapshot.ORDER_ITEM_AT_SAVE);
+        Map<UUID, SalesGoodsSnapshot> masterSnapshots = SalesGoodsSnapshot.fromMaster(
+                em,
+                items.stream()
+                        .filter(item -> item.getOrderItemId() == null
+                                || !orderSnapshots.containsKey(item.getOrderItemId()))
+                        .map(SalesShipmentItem::getGoodsId)
+                        .toList(),
+                approval
+                        ? SalesGoodsSnapshot.MASTER_AT_APPROVAL
+                        : SalesGoodsSnapshot.MASTER_AT_SAVE);
+        for (SalesShipmentItem item : items) {
+            applyGoodsSnapshot(
+                    item,
+                    preferredSnapshot(
+                            orderSnapshots, item.getOrderItemId(), masterSnapshots,
+                            item.getGoodsId(), "销售出货明细"),
+                    lockedAt);
+        }
+    }
+
+    private static SalesGoodsSnapshot preferredSnapshot(
+            Map<UUID, SalesGoodsSnapshot> preferred,
+            UUID preferredId,
+            Map<UUID, SalesGoodsSnapshot> master,
+            UUID goodsId,
+            String subject) {
+        SalesGoodsSnapshot inherited = preferredId == null ? null : preferred.get(preferredId);
+        return inherited != null
+                ? inherited
+                : SalesGoodsSnapshot.require(master, goodsId, subject);
+    }
+
+    private static void applyGoodsSnapshot(
+            SalesShipmentItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
+        item.setGoodsCodeSnapshot(snapshot.code());
+        item.setGoodsNameSnapshot(snapshot.name());
+        item.setGoodsSnapshotSource(snapshot.source());
+        item.setGoodsSnapshotLockedAt(lockedAt);
+    }
+
+    private void applyTotals(SalesShipment s, List<ShipmentItemDto> items) {
+        BigDecimal original = items.stream()
+                .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        s.setTotalLocal(null);
+        s.setTotalOriginal(original);
+        requireNonNegativeTotals(s);
+        shipmentRepo.save(s);
+    }
+
+    private static void requireNonNegativeCommercialLine(
+            ShipmentItemLine line) {
+        if (line.getQty() == null || line.getQty().signum() <= 0
+                || isNegative(line.getPrice())
+                || isNegative(line.getWeight())
+                || isNegative(line.getMaterialPrice())
+                || isNegative(line.getDieCastPrice())
+                || isNegative(line.getMachiningPrice())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "出货数量必须大于 0，实际总重量与价格不得为负数");
+        }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "出货数量");
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            List<SalesShipmentItem> items) {
+        for (SalesShipmentItem item : items) {
+            if (item.getQty() == null || item.getQty().signum() <= 0
+                    || isNegative(item.getPrice())
+                    || isNegative(item.getAmountOriginal())
+                    || isNegative(item.getAmountLocal())
+                    || isNegative(item.getCostAmount())
+                    || isNegative(item.getWeight())
+                    || isNegative(item.getMaterialPrice())
+                    || isNegative(item.getDieCastPrice())
+                    || isNegative(item.getMachiningPrice())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "出货明细存在无效负数或非正数量，禁止财审或出库");
+            }
+        }
+    }
+
+    private static void requireNonNegativeTotals(SalesShipment shipment) {
+        if (shipment.getTotalOriginal() == null
+                || shipment.getTotalOriginal().signum() < 0
+                || isNegative(shipment.getTotalLocal())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "出货合计金额无效，禁止财审或出库");
+        }
+    }
+
+    private static boolean isNegative(BigDecimal value) {
+        return value != null && value.signum() < 0;
+    }
+
+    private ShipmentListItem toList(
+            SalesShipment s, boolean writable, boolean canReject,
+            boolean canManageWarehouseWork) {
+        boolean canViewCommercial = canViewCommercialData();
+        ShipmentListItem result=new ShipmentListItem(s.getId(), s.getBillNo(), s.getBillDate(), s.getClientId(),
+                s.getWarehouseId(),
+                canViewCommercial ? s.getTotalLocal() : null,
+                s.getStatus(), s.isClosed(), s.isArPosted(),
+                s.getLegacyId(), s.isRejected(), writable && hasObjectActionAuthority(s.getShipmentKind()) && isEditableState(s), canReject,
+                s.getFinanceAudit(), s.getFinanceGateVersion(),
+                s.getWarehouseWorkStatus(), canManageWarehouseWork);
+        result.getWorkflow().populate(s,customerShipmentPolicy);
+        if (canViewCommercial) {
+            result.getMoney().setCurrencyId(s.getCurrencyId());result.getMoney().setTotalOriginal(s.getTotalOriginal());
+        }
+        result.getWorkflow().setCanConfirmSales(result.getWorkflow().isCanConfirmSales() && accessPolicy.canWrite(s.getOwnerEmployeeId()));
+        return result;
+    }
+
+    private ShipmentItemDto toItemDto(SalesShipmentItem it) {
+        return toItemDto(it, true);
+    }
+
+    private ShipmentItemDto toItemDto(SalesShipmentItem it, boolean sourceReadable) {
+        return new ShipmentItemDto(it.getId(), it.getLineNo(),
+                sourceReadable ? it.getOrderItemId() : null, it.getGoodsId(),
+                it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
+                it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(),
+                it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
+                it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getReturnedQty(),
+                it.getReturnedAmount(), it.getWeight(), it.getParcelQty(), it.getCartonCount(),
+                it.getClientNo(), it.getClientModel(), it.getMaterialPrice(), it.getDieCastPrice(),
+                it.getMachiningPrice(), it.getCircumference(), it.getDiscount(),
+                sourceReadable ? it.getSourceDocNo() : null,
+                it.getRemark());
+    }
+
+    private ShipmentDetail toDetail(SalesShipment s, List<ShipmentItemDto> items,
+                                    boolean sourceReadable) {
+        boolean canViewCommercial = canViewCommercialData();
+        List<ShipmentItemDto> visibleItems = canViewCommercial
+                ? items : items.stream().map(this::maskCommercial).toList();
+        boolean writable = hasObjectActionAuthority(s.getShipmentKind())
+                && isEditableState(s)
+                && accessPolicy.canWrite(s.getOwnerEmployeeId());
+        boolean canReject = accessPolicy.hasAuthority(REJECT_AUTHORITY)
+                && isRejectableState(s)
+                && accessPolicy.canWrite(s.getOwnerEmployeeId(), REJECT_AUTHORITY);
+        boolean canManageWarehouseWork =
+                accessPolicy.hasAuthority(WAREHOUSE_WORK_AUTHORITY)
+                && isWarehouseManageableState(s)
+                && accessPolicy.canWrite(
+                        s.getOwnerEmployeeId(), WAREHOUSE_WORK_AUTHORITY);
+        ShipmentDetail result=new ShipmentDetail(s.getId(), s.getLegacyId(), s.getBillNo(), s.getBillDate(),
+                s.getClientId(), s.getWarehouseId(),
+                canViewCommercial ? s.getCurrencyId() : null,
+                canViewCommercial ? s.getExchangeRate() : null,
+                canViewCommercial ? s.getTaxRate() : null,
+                canViewCommercial ? s.getPaymentStyleId() : null,
+                canViewCommercial ? s.getSettlementMethodId() : null,
+                s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
+                s.getShipAddr(), s.getLinkPhone(), s.getLogisticsNo(),
+                s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
+                s.getRemark(),
+                canViewCommercial ? s.getTotalOriginal() : null,
+                canViewCommercial ? s.getTotalLocal() : null,
+                s.getStatus(), s.isClosed(),
+                sourceReadable ? s.getSourceOrderId() : null,
+                sourceReadable ? s.getSourceDocNo() : null,
+                s.isArPosted(), s.isRejected(), s.getRejectReason(),
+                s.getFinanceAudit(), s.getFinanceAuditedAt(),
+                s.getWarehouseWorkStatus(), s.getWarehouseWorkUpdatedAt(),
+                s.getPickingStartedAt(), s.getPickedAt(), s.getHandedOverAt(),
+                s.getWarehouseExceptionReason(), visibleItems,
+                nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable,
+                canReject, canManageWarehouseWork, !canViewCommercial);
+        result.setSellerName(s.getSellerId() != null
+                ? nameResolver.nameOf(s.getSellerId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_SHIPMENT_SELLER));
+        result.setSenderName(s.getSenderId() != null
+                ? nameResolver.nameOf(s.getSenderId())
+                : nameResolver.historicalWorkerNameWithCodeOf(null, s.getId(), s.getLegacyId(),
+                        HistoricalWorkerRole.SALES_SHIPMENT_SENDER));
+        result.setFinanceAuditorName(s.getFinanceAuditorNameSnapshot());
+        result.getWorkflow().populate(s,customerShipmentPolicy);
+        result.getWorkflow().setCanConfirmSales(result.getWorkflow().isCanConfirmSales() && accessPolicy.canWrite(s.getOwnerEmployeeId()));
+        return result;
+    }
+
+    private ShipmentItemDto maskCommercial(ShipmentItemDto item) {
+        return new ShipmentItemDto(
+                item.getId(), item.getLineNo(), item.getOrderItemId(),
+                item.getGoodsId(), item.getGoodsCodeSnapshot(), item.getGoodsNameSnapshot(),
+                item.getGoodsSnapshotSource(), item.getGoodsSnapshotLockedAt(),
+                item.getColorId(), item.getUnitId(),
+                item.getUnitRate(), item.getQty(),
+                null, null, null, null,
+                item.getReturnedQty(), null,
+                item.getWeight(), item.getParcelQty(), item.getCartonCount(),
+                item.getClientNo(), item.getClientModel(),
+                null, null, null,
+                item.getCircumference(), null,
+                item.getSourceDocNo(), item.getRemark());
+    }
+
+    private boolean canViewCommercialData() {
+        return accessPolicy.hasAuthority(SalesPriceMasker.PERM)
+                || accessPolicy.hasAuthority(FINANCE_AUDIT_AUTHORITY);
+    }
+
+    private boolean isRejectableState(SalesShipment shipment) {
+        return shipment.getStatus() != null
+                && !"LEGACY".equals(shipment.getShipmentKind())
+                && shipment.getStatus() == STATUS_DRAFT
+                && !shipment.isRejected()
+                && (shipment.getFinanceAudit() == null
+                    || shipment.getFinanceAudit() != 1)
+                && SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus());
+    }
+
+    private boolean isEditableState(SalesShipment shipment) {
+        return shipment.getStatus() != null
+                && !"LEGACY".equals(shipment.getShipmentKind())
+                && shipment.getStatus() == STATUS_DRAFT
+                && !shipment.isRejected()
+                && SalesShipment.WORK_PENDING_PICK.equals(
+                        shipment.getWarehouseWorkStatus());
+    }
+
+    static void requireLegacyShipmentMutable(SalesShipment shipment) {
+        if ("LEGACY".equals(shipment.getShipmentKind()) || SalesShipment.WORK_LEGACY_PENDING.equals(
+                shipment.getWarehouseWorkStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后按当前订单关联两审流程重新开单");
+        }
+    }
+
+    private boolean isWarehouseManageableState(SalesShipment shipment) {
+        return shipment.getStatus() != null
+                && !"LEGACY".equals(shipment.getShipmentKind())
+                && shipment.getStatus() == STATUS_DRAFT
+                && !shipment.isRejected()
+                && !SalesShipment.WORK_LEGACY_PENDING.equals(
+                        shipment.getWarehouseWorkStatus());
+    }
+
+    private boolean hasObjectActionAuthority() {
+        return hasObjectActionAuthority(CustomerShipmentPolicy.DIRECT)||hasObjectActionAuthority(CustomerShipmentPolicy.ORDER);
+    }
+    private boolean hasObjectActionAuthority(String kind) {
+        return customerShipmentPolicy.can(kind,"edit")||customerShipmentPolicy.can(kind,"delete")
+                ||customerShipmentPolicy.can(kind,"approve")||customerShipmentPolicy.can(kind,"reverse");
+    }
+
+    private SalesShipment requireShipment(UUID id) { return requireShipment(id, false); }
+
+    private SalesShipment requireShipment(UUID id, boolean includeDeleted) {
+        return shipmentRepo.findById(id).filter(s -> includeDeleted || !s.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售出货单不存在"));
+    }
+
+    private SalesShipment requireReadableShipment(UUID id) { return requireReadableShipment(id, false); }
+
+    private SalesShipment requireReadableShipment(UUID id, boolean includeDeleted) {
+        SalesShipment shipment = requireShipment(id, includeDeleted);
+        customerShipmentPolicy.requireRead(shipment.getShipmentKind());
+        accessPolicy.requireReadable(shipment.getOwnerEmployeeId(), "销售出货单不存在",
+                FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY,
+                WAREHOUSE_VIEW_AUTHORITY);
+        return shipment;
+    }
+
+    private SalesShipment requireWritableShipmentForUpdate(
+            UUID id, String... operationAuthorities) {
+        return requireWritableShipmentForUpdate(id, List.of(), operationAuthorities);
+    }
+
+    private SalesShipment requireWritableShipmentForUpdate(UUID id,
+            List<com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine> requested,
+            String... operationAuthorities) {
+        mutationFootprint.lockShipment(id, requested);
+        SalesShipment shipment = em.find(
+                SalesShipment.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (shipment != null) em.refresh(shipment, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (shipment == null || shipment.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售出货单不存在");
+        }
+        accessPolicy.requireWritable(shipment.getOwnerEmployeeId(), "无权操作该销售出货单",
+                operationAuthorities);
+        return shipment;
+    }
+
+    private static List<com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine> requestedFootprint(
+            ShipmentSaveRequest request) {
+        return request.getItems() == null ? List.of() : request.getItems().stream()
+                .map(line -> new com.uten.imp.features.sales.SalesMutationFootprintService.RequestedLine(
+                        line.getGoodsId(), line.getColorId(), line.getOrderItemId(), null)).toList();
+    }
+
+    private static List<com.uten.imp.application.port.CustomerShipmentInventoryPort.Line> customerInventoryLines(List<SalesShipmentItem> items,Map<UUID,BigDecimal> baseQuantities) {
+        return items.stream().map(item->new com.uten.imp.application.port.CustomerShipmentInventoryPort.Line(
+                item.getId(),item.getGoodsId(),item.getColorId(),requireBaseQuantity(baseQuantities,item),
+                item.getWarehouseId())).toList();
+    }
+
+    private record LinkedSource(
+            boolean present,
+            UUID sourceOrderId,
+            String sourceBillNo,
+            UUID ownerEmployeeId,
+            CommercialTerms terms,
+            Map<UUID, BigDecimal> amounts) {}
+    private record CommercialTerms(
+            UUID currencyId,
+            BigDecimal taxRate,
+            Integer paymentStyleId,
+            UUID settlementMethodId,
+            UUID sellerId) {}
+    private void validateBatchSourceLine(com.uten.imp.features.sales.shipment.dto.BatchShipRequest req,
+            com.uten.imp.features.sales.shipment.dto.BatchShipRequest.Line line,Object[] r,
+            com.uten.imp.security.OwnerVisibility.OwnerScope writeScope) {
+            if (r == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "订单行不存在或已删除：" + line.getOrderItemId());
+            }
+            accessPolicy.requireWritable((UUID)r[10], "只能对本人负责的销售订单批量发货", writeScope);
+            BigDecimal reserved = r[6] instanceof BigDecimal b ? b : BigDecimal.ZERO;
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.BUSINESS, "本次数量必须大于 0(订单 " + r[9] + ")");
+            }
+            com.uten.imp.features.stock.dto.WeightInput.rawKg(line.getWeight(),"本次销售单声明重量");
+            if ((deliveryFulfillment==null||!deliveryFulfillment.isBom(line.getOrderItemId()))
+                    && (reserved.signum() <= 0 || line.getQty().compareTo(reserved) > 0)) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "订单 " + r[9] + " 可发预留不足(可发 " + reserved.stripTrailingZeros().toPlainString() + ")，请刷新后重试");
+            }
+            if (((Number) r[11]).shortValue() != 1 || (boolean) r[12] || (boolean) r[13]) {
+                throw new ApiException(ErrorCode.BUSINESS, "订单 " + r[9] + " 非已审在途状态，不可发货");
+            }
+            if (Boolean.TRUE.equals(r[19])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "订单 " + r[9] + " 已被财务驳回，不可创建出货作业");
+            }
+            if (!Boolean.TRUE.equals(r[20])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT, "订单 " + r[9] + " 尚未完成财务确认，不可创建出货作业");
+            }
+
+            if(req.getSellerId()!=null && !req.getSellerId().equals(r[16])
+                    || req.getSettlementMethodId()!=null && !req.getSettlementMethodId().equals(r[18])) {
+                throw new ApiException(ErrorCode.CONFLICT,"出货单业务员及结算方式须与来源订单一致，请刷新订单后重试");
+            }
+    }
+
+    private static String batchRequestHash(com.uten.imp.features.sales.shipment.dto.BatchShipRequest request) {
+        List<String> parts=new ArrayList<>();
+        parts.add("BATCH-SHIP-V1");
+        Object[] header={request.getBillDate(),request.getWarehouseId(),request.getShipAddr(),request.getLinkPhone(),
+                request.getLogisticsNo(),request.getSellerId(),request.getSenderId(),request.getSettlementMethodId(),
+                request.getParcelCount(),request.getRemark()};
+        for(int index=0;index<header.length;index++) parts.add("header:"+index+":"+fingerprintValue(header[index]));
+        for(var line:request.getLines()) {
+            String prefix="line:"+line.getOrderItemId()+":";
+            parts.add(prefix+"qty:"+fingerprintValue(normalizedDecimalKey(line.getQty())));
+            parts.add(prefix+"weight:"+fingerprintValue(line.getWeight()==null?null:normalizedDecimalKey(line.getWeight())));
+            parts.add(prefix+"remark:"+fingerprintValue(line.getRemark()));
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(parts);
+    }
+
+    private static String fingerprintValue(Object value) { return value==null ? "NULL" : "VALUE:"+value; }
+
+    private record BatchGroupKey(
+            UUID clientId,
+            UUID ownerEmployeeId,
+            UUID currencyId,
+            String taxRate,
+            Integer paymentStyleId,
+            UUID settlementMethodId,
+            UUID sellerId,
+            UUID sourceOrderId,
+            UUID warehouseId) {}
+
+    private static final class ShipmentPolicyState {
+        private final String billNo;
+        private final String policy;
+        private boolean partial;
+
+        private ShipmentPolicyState(String billNo, String policy, boolean partial) {
+            this.billNo = billNo;
+            this.policy = policy;
+            this.partial = partial;
+        }
+    }
+
+    private ShipmentDetail finishHistory(ShipmentDetail view, SalesShipment entity, boolean historyRead) {
+        return retainedRecords.detail(view, "sales_shipments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_shipments",id,beforeId,size);
+    }
+}

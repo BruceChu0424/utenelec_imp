@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/payroll/models/payroll_slip.dart';
 import 'package:uten_imp/features/payroll/models/payroll_batch.dart';
@@ -24,6 +26,39 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 const _name = '这是一个需要完整保留而不能挤掉提交日期的员工姓名';
 
 class _Payroll extends Fake implements PayrollRepository {
+  int generated = 0;
+  @override
+  Future<PayrollBatch> createBatch(PayrollBatchCreateInput input) async {
+    generated++;
+    return PayrollBatch(
+      id: 'complete-preview',
+      year: input.year,
+      month: input.month,
+      status: PayrollBatchStatus.draft,
+      headcount: 251,
+      grossIncome: 9876543211.12,
+      totalDeduction: 1,
+      netIncome: 9876543210.12,
+      slips: [
+        for (var i = 0; i < 251; i++)
+          PayrollSlip(
+            id: 'preview-slip-$i',
+            employeeId: 'employee-$i',
+            employeeName: '预览员工-$i',
+            employeeCode: 'EMP-$i',
+            year: input.year,
+            month: input.month,
+            items: const [],
+            grossIncome: 9876543211.12,
+            totalDeduction: 1,
+            netIncome: 9876543210.12,
+            status: PayrollSlipStatus.pending,
+            publishedAt: null,
+          ),
+      ],
+    );
+  }
+
   final viewed = <String>[];
   final reads = <String>[];
 
@@ -110,6 +145,53 @@ class _Suggestions extends Fake implements SuggestionRepository {
 
 void main() {
   for (final systemText in [1.0, 2.0]) {
+    testWidgets(
+      'all 251 generated payroll slips scroll without refetch system=$systemText',
+      (tester) async {
+        final payroll = _Payroll();
+        await _pump(
+          tester,
+          const PayrollGeneratePage(),
+          preferences: await _preferences(),
+          payroll: payroll,
+          systemText: systemText,
+        );
+        await tester.tap(find.widgetWithText(UtenButton, '下一步'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(UtenButton, '预览计算'));
+        await tester.pumpAndSettle();
+        final window = find.byKey(
+          const ValueKey('payroll-batch-preview-complete-preview'),
+        );
+        expect(window, findsOneWidget);
+        final table = tester.widget<UtenAncestorRowWindow<PayrollSlip>>(window);
+        expect(table.rows, hasLength(251));
+        expect(table.deferRowMounts, isFalse);
+        final reveal = table.controller.reveal(table.rows.last);
+        await tester.pumpAndSettle();
+        expect(await reveal, isTrue);
+        await tester.pumpAndSettle();
+        expect(find.text('预览员工-250(EMP-250)'), findsOneWidget);
+        final scrollable = find.byElementPredicate(
+          (element) =>
+              element is StatefulElement &&
+              identical(
+                element.state,
+                Scrollable.of(tester.element(window), axis: Axis.vertical),
+              ),
+        );
+        await tester.drag(scrollable, const Offset(0, 300));
+        await tester.pumpAndSettle();
+        await tester.drag(scrollable, const Offset(0, -300));
+        await tester.pumpAndSettle();
+        expect(find.text('¥ 9876543210.12'), findsWidgets);
+        expect(table.controller.mountedRowCount, lessThan(251));
+        expect(payroll.generated, 1);
+        expect(payroll.reads, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       '200% payroll preserves large amount and one view receipt system=$systemText',
       (tester) async {

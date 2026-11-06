@@ -29,7 +29,8 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
             "sales_delivery_entitlement_handoffs","preplan_stock_entitlement_events","preplan_analysis_stock_exact_pegs",
             "stock_document_items","stock_documents","production_plan_items","production_plans","sales_shipment_delivery_components",
             "sales_shipment_items","sales_shipments","stock_movements","stock_reservations","sales_delivery_fulfillment_allocations",
-            "sales_delivery_fulfillment_groups","sales_delivery_fulfillment_events","sales_delivery_entitlement_restores","preplan_reallocation_make_supplements");
+            "sales_delivery_fulfillment_groups","sales_delivery_fulfillment_events","sales_delivery_entitlement_restores","preplan_reallocation_make_supplements",
+            "preplan_aggregate_material_aliases");
 
     @BeforeAll static void database() throws Exception {
         DB.start();
@@ -59,9 +60,20 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
                 ALTER TABLE sales_delivery_fulfillment_groups ADD PRIMARY KEY (shipment_item_id);
                 ALTER TABLE sales_delivery_fulfillment_events ADD PRIMARY KEY (id);
                 ALTER TABLE sales_delivery_entitlement_restores ADD PRIMARY KEY (id);
-                CREATE FUNCTION fn_preplan_aggregate_source_capacity(p_material uuid) RETURNS numeric LANGUAGE sql STABLE AS $$SELECT required_qty FROM production_material_analysis_materials WHERE id=p_material$$;
+                CREATE TABLE preplan_aggregate_material_aliases(id uuid PRIMARY KEY,source_material_id uuid,qty numeric,frozen_capacity numeric,valid boolean);
+                CREATE FUNCTION fn_preplan_aggregate_alias_qty(p_alias uuid) RETURNS numeric LANGUAGE sql STABLE AS $$SELECT qty FROM preplan_aggregate_material_aliases WHERE id=p_alias$$;
+                CREATE FUNCTION fn_preplan_aggregate_alias_identity_valid(p_alias uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT valid FROM preplan_aggregate_material_aliases WHERE id=p_alias$$;
+                -- Preserve this fixture's explicit unknown-current oracle while
+                -- representing both real aggregate source-capacity branches.
+                CREATE FUNCTION fn_preplan_aggregate_source_capacity(p_material uuid) RETURNS numeric LANGUAGE sql STABLE AS $$
+                  SELECT CASE WHEN material.required_qty IS NULL THEN NULL ELSE GREATEST(
+                    material.required_qty+COALESCE((SELECT sum(alias.qty) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND alias.valid),0),
+                    COALESCE((SELECT max(alias.frozen_capacity) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND alias.valid),0)) END
+                  FROM production_material_analysis_materials material WHERE material.id=p_material
+                $$;
                 """);
         jdbc.execute(new ClassPathResource("db/migration/V1058__direct_make_closed_delivery_credit.sql").getContentAsString(StandardCharsets.UTF_8));
+        jdbc.execute(new ClassPathResource("db/migration/V1092__direct_make_closed_delivery_capacity_branches.sql").getContentAsString(StandardCharsets.UTF_8));
     }
     @AfterAll static void stop(){DB.stop();}
 
@@ -108,6 +120,34 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
         jdbc.update("UPDATE preplan_analysis_stock_exact_pegs SET qty=10 WHERE id=?",exact);
         assertThat(closed()).isEqualByComparingTo("10");assertThat(total()).isEqualByComparingTo("10");
         assertThat(jdbc.queryForObject("SELECT GREATEST(fn_preplan_direct_make_admitted_qty(?,?)-(SELECT sum(qty) FROM preplan_analysis_stock_exact_pegs WHERE make_source_analysis_item_id=?),0)",BigDecimal.class,child,material,child)).isZero();
+    }
+
+    @Test void frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice(){
+        jdbc.update("UPDATE production_material_analysis_items SET requested_qty=20 WHERE id=?",child);
+        UUID alias=UUID.randomUUID();row("preplan_aggregate_material_aliases","id",alias,"source_material_id",material,"qty",BigDecimal.ZERO,"frozen_capacity",new BigDecimal("10"),"valid",true);
+        assertThat(closed()).isEqualByComparingTo("4");assertThat(total()).isEqualByComparingTo("10");assertThat(admitted()).isEqualByComparingTo("10");
+        jdbc.update("UPDATE preplan_aggregate_material_aliases SET qty=2 WHERE id=?",alias);
+        assertThat(total()).isEqualByComparingTo("12");
+        jdbc.update("UPDATE preplan_aggregate_material_aliases SET frozen_capacity=15 WHERE id=?",alias);
+        assertThat(total()).isEqualByComparingTo("15");
+    }
+
+    @Test void originalFourPlaceQuantitiesAreAddedWithoutRoundingOrAChangedSourceTotal(){
+        jdbc.update("UPDATE production_material_analysis_materials SET required_qty=6.0001 WHERE id=?",material);
+        jdbc.update("UPDATE sales_delivery_entitlement_handoffs SET quantity=3.9999 WHERE id=?",handoff);
+        jdbc.update("UPDATE stock_reservations SET qty=3.9999,consumed_qty=3.9999 WHERE id=?",held);
+        jdbc.update("UPDATE sales_shipment_delivery_components SET required_qty=3.9999 WHERE id=?",component);
+        jdbc.update("UPDATE stock_movements SET qty=3.9999 WHERE id=?",movement);
+        jdbc.update("UPDATE preplan_analysis_stock_exact_pegs SET qty=3.9999 WHERE id=?",exact);
+        assertThat(closed()).isEqualByComparingTo("3.9999");assertThat(total()).isEqualByComparingTo("10");
+        assertThat(jdbc.queryForObject("SELECT fn_preplan_aggregate_source_capacity(?)",BigDecimal.class,material)).isEqualByComparingTo("6.0001");
+    }
+
+    @Test void restoredOriginalMakeKeepsItsExactProofAndOnlyTheUnrestoredHandoffCredits() throws Exception {
+        jdbc.update("UPDATE preplan_stock_entitlement_events SET event_type='RESTORE',counter_event_id=? WHERE id=?",UUID.randomUUID(),origin);
+        assertThat(closed()).isEqualByComparingTo("4");assertThat(total()).isEqualByComparingTo("10");
+        row("sales_delivery_entitlement_restores","id",UUID.randomUUID(),"handoff_id",handoff);
+        assertThat(closed()).isZero();assertThat(total()).isEqualByComparingTo("6");
     }
 
     @ParameterizedTest

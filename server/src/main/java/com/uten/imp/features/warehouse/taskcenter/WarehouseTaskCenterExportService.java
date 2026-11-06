@@ -50,7 +50,7 @@ public class WarehouseTaskCenterExportService {
             LegacyExportBudget.checkpoint();
             WarehouseTaskCenterContracts.Filter paged = withPage(filter, page, 100);
             WarehouseTaskCenterContracts.Page result = outboundDirection
-                    ? outbound.list(paged) : inbound.list(paged);
+                    ? outbound.list(paged,false) : inbound.list(paged,false);
             if (page == 1) requireRows(maxRows, result.total());
             for (WarehouseTaskCenterContracts.Row row : result.items()) {
                 all.add(valuesOf(row, outboundDirection));

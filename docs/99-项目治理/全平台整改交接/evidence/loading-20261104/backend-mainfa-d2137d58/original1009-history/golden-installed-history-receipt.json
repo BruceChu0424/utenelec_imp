@@ -1,0 +1,152 @@
+{
+  "capturedAtUtc": "2026-11-05T22:23:39.783909+00:00",
+  "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "observedRunLabel": "final-extra",
+  "observedWholeRunState": "running",
+  "ownedMavenJvmPid": 25000,
+  "containerId": "2d56fe916325af68c2f1dca726da6cc5ee59790b75dcbe5815fdb97238124067",
+  "image": "postgres:16-alpine",
+  "testcontainersLabelVerified": true,
+  "database": "uten_imp (owned disposable fixture, not company)",
+  "query": "BEGIN READ ONLY;\nSELECT jsonb_agg(jsonb_build_object('installedRank',installed_rank,'version',version,\n'description',description,'type',type,'script',script,'checksum',checksum,'success',success)\nORDER BY installed_rank)::text FROM public.flyway_schema_history;\nROLLBACK;",
+  "transactionMode": "BEGIN READ ONLY / ROLLBACK",
+  "migrationCount": 1009,
+  "compoundCount": 14,
+  "headRawVersion": "1070",
+  "firstNineRawRows": [
+    {
+      "type": "SQL",
+      "script": "V01__enable_pgcrypto.sql",
+      "success": true,
+      "version": "01",
+      "checksum": 604773495,
+      "description": "enable pgcrypto",
+      "installedRank": 1
+    },
+    {
+      "type": "SQL",
+      "script": "V02__departments_positions.sql",
+      "success": true,
+      "version": "02",
+      "checksum": 1896827104,
+      "description": "departments positions",
+      "installedRank": 2
+    },
+    {
+      "type": "SQL",
+      "script": "V03__employees.sql",
+      "success": true,
+      "version": "03",
+      "checksum": -693287036,
+      "description": "employees",
+      "installedRank": 3
+    },
+    {
+      "type": "SQL",
+      "script": "V04__auth_rbac.sql",
+      "success": true,
+      "version": "04",
+      "checksum": -354440194,
+      "description": "auth rbac",
+      "installedRank": 4
+    },
+    {
+      "type": "SQL",
+      "script": "V05__audit.sql",
+      "success": true,
+      "version": "05",
+      "checksum": -922429949,
+      "description": "audit",
+      "installedRank": 5
+    },
+    {
+      "type": "SQL",
+      "script": "V06__seed_rbac.sql",
+      "success": true,
+      "version": "06",
+      "checksum": 1951858396,
+      "description": "seed rbac",
+      "installedRank": 6
+    },
+    {
+      "type": "SQL",
+      "script": "V07__seed_org.sql",
+      "success": true,
+      "version": "07",
+      "checksum": -815039927,
+      "description": "seed org",
+      "installedRank": 7
+    },
+    {
+      "type": "SQL",
+      "script": "V08__seed_admin.sql",
+      "success": true,
+      "version": "08",
+      "checksum": 2039547646,
+      "description": "seed admin",
+      "installedRank": 8
+    },
+    {
+      "type": "SQL",
+      "script": "V09__audit_redact_password.sql",
+      "success": true,
+      "version": "09",
+      "checksum": -1859531317,
+      "description": "audit redact password",
+      "installedRank": 9
+    }
+  ],
+  "compoundSamples": [
+    {
+      "type": "SQL",
+      "script": "V990_1__explicit_business_precision_choices.sql",
+      "success": true,
+      "version": "990.1",
+      "checksum": -654021414,
+      "description": "explicit business precision choices",
+      "installedRank": 917
+    },
+    {
+      "type": "SQL",
+      "script": "V999_1__finance_chart_code_imports.sql",
+      "success": true,
+      "version": "999.1",
+      "checksum": -939959002,
+      "description": "finance chart code imports",
+      "installedRank": 927
+    },
+    {
+      "type": "SQL",
+      "script": "V999_9__finance_expense_report_notes_and_period_policy.sql",
+      "success": true,
+      "version": "999.9",
+      "checksum": -889818002,
+      "description": "finance expense report notes and period policy",
+      "installedRank": 935
+    },
+    {
+      "type": "SQL",
+      "script": "V999_10__procurement_reconciliation_first_payables.sql",
+      "success": true,
+      "version": "999.10",
+      "checksum": -146013903,
+      "description": "procurement reconciliation first payables",
+      "installedRank": 936
+    },
+    {
+      "type": "SQL",
+      "script": "V999_13__finance_open_item_classification_allocations.sql",
+      "success": true,
+      "version": "999.13",
+      "checksum": 1767760367,
+      "description": "finance open item classification allocations",
+      "installedRank": 939
+    }
+  ],
+  "rawVersionsExactlyMatchOriginalFilenameToken": true,
+  "canonicalHistorySha256": "3f491bae81811f3bb69147d2a44febb3d808460872af1d9fe09adc99382ebf7a",
+  "rawProjectionSha256": "96973247105e5b8a795c65532f1cd1d2ddf1715ecadc8e496ab0d6f7acb73fdb",
+  "auditVersionsNormalized": false,
+  "companyDbWritten": false,
+  "mainWritten": false
+}

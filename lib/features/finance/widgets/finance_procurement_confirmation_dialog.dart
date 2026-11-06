@@ -23,6 +23,10 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import 'finance_entry_file_picker.dart';
 import 'finance_source_table.dart';
 import 'finance_durable_command_dialog.dart';
@@ -203,14 +207,16 @@ class _ConfirmationDirectory extends ConsumerStatefulWidget {
       _ConfirmationDirectoryState();
 }
 
-class _ConfirmationDirectoryState
-    extends ConsumerState<_ConfirmationDirectory> {
+class _ConfirmationDirectoryState extends ConsumerState<_ConfirmationDirectory>
+    with ReadViewActivityMixin<_ConfirmationDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   String _kind = 'PENDING';
   bool _busy = false;
   String? _error;
-  int _page = 1, _pages = 0;
+  int _generation = 0;
+  @override
+  Future<void> onReadViewResumed() => _load();
   List<Map<String, dynamic>> _rows = [];
   final Map<String, Map<String, dynamic>> _selected = {};
   bool get _current =>
@@ -228,37 +234,52 @@ class _ConfirmationDirectoryState
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
-  Future<void> _load(int page) async {
-    if (!_current || _busy) return;
+  Future<void> _load() async {
+    if (!_current) return;
+    final generation = ++_generation, kind = _kind;
+    bool current() => _current && generation == _generation && kind == _kind;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final data = await _api.get(
-        _kind == 'PENDING' ? '$_path/candidates' : _path,
-        query: {
-          'supplierId': widget.supplierId,
-          'currencyId': widget.currencyId,
-          'page': '$page',
-          'size': '50',
-          if (_kind == 'PENDING') 'status': 'PENDING',
-        },
+      final data = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) => row['id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(
+                  kind == 'PENDING' ? '$_path/candidates' : _path,
+                  query: {
+                    'supplierId': widget.supplierId,
+                    'currencyId': widget.currencyId,
+                    'page': '$page',
+                    'size': '$size',
+                    if (kind == 'PENDING') 'status': 'PENDING',
+                  },
+                ),
+                (row) => Map<String, dynamic>.unmodifiable(row),
+              ),
+        ),
       );
-      if (_current) {
+      if (current()) setState(() => _rows = data.items);
+    } catch (e) {
+      if (!isRetiredViewRead(e) && current()) {
         setState(() {
-          _rows = _maps(data['items']);
-          _page = page;
-          _pages = (data['totalPages'] as num?)?.toInt() ?? 0;
+          _error = _message(e);
+          if (pagedReadAccessDenied(e)) {
+            _rows = [];
+            _selected.clear();
+          }
         });
       }
-    } catch (e) {
-      if (_current) setState(() => _error = _message(e));
     } finally {
-      if (_current) setState(() => _busy = false);
+      if (current()) setState(() => _busy = false);
     }
   }
 
@@ -278,24 +299,29 @@ class _ConfirmationDirectoryState
         _selected.clear();
         _kind = 'HISTORY';
       });
-      await _load(1);
+      await _load();
     }
   }
 
   Future<void> _open(Map<String, dynamic> row) async {
-    if (!_current || _busy || _kind != 'HISTORY') return;
+    if (!_current ||
+        _busy ||
+        _kind != 'HISTORY' ||
+        !_rows.any((accepted) => identical(accepted, row))) {
+      return;
+    }
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (_) => _ConfirmationDetail(id: '${row['id']}'),
     );
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   Future<void> _policy() async {
     if (!_current || _busy) return;
     await showFinanceProcurementPolicyDialog(context);
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   @override
@@ -336,8 +362,11 @@ class _ConfirmationDirectoryState
               ],
               onChanged: (value) {
                 if (value != null && !_busy) {
-                  setState(() => _kind = value);
-                  _load(1);
+                  setState(() {
+                    _kind = value;
+                    _rows = [];
+                  });
+                  _load();
                 }
               },
             ),
@@ -391,10 +420,7 @@ class _ConfirmationDirectoryState
               idOf: (r) => '${r['id']}',
               busy: _busy,
               error: _error,
-              retry: () => _load(_page),
-              page: _page,
-              pages: _pages,
-              onPage: _load,
+              retry: () => _load(),
               onOpen: pending ? null : _open,
               selectable: pending,
               selectedIds: _selected.keys.toSet(),
@@ -416,7 +442,7 @@ class _ConfirmationDirectoryState
                     child: const Text('提交对账确认'),
                   ),
                 UtenButton(
-                  onPressed: _busy ? null : () => _load(_page),
+                  onPressed: _busy ? null : () => _load(),
                   child: const Text('刷新'),
                 ),
                 if (_canWrite &&

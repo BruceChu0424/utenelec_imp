@@ -3,34 +3,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
-import 'package:uten_imp/shared/paging/prepared_page_read.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 
 void main() {
   test(
-    'prepared working rows retain the complete response and ordinary refresh stays fresh',
+    'selected working rows retain complete metadata and ordinary refresh stays fresh',
     () async {
       var reads = 0;
-      final pages = PreparedPageRead<OperationsWorkbenchTask>();
-      addTearDown(pages.dispose);
       final repository = OperationsWorkbenchRepository(
         _api((request) {
+          expect(
+            request.queryParameters.containsKey('includeMetadata'),
+            isFalse,
+          );
           reads++;
           return _preparedResponse(reads);
         }),
-        prepared: pages,
       );
-      await repository.prepareWorkingPage(
-        OperationsWorkbenchDepartment.purchase,
-        'IN_PROGRESS',
-      );
+
       final first = await repository.load(
         department: OperationsWorkbenchDepartment.purchase,
         size: 50,
         status: 'IN_PROGRESS',
-        preferPrepared: true,
       );
       expect(reads, 1);
       expect(first.summary.openTasks, 1);
@@ -47,14 +43,13 @@ void main() {
         size: 50,
         status: 'IN_PROGRESS',
         columnFilters: {'search.goodsName': 'other'},
-        preferPrepared: true,
       );
       expect(reads, 3);
     },
   );
 
   test(
-    'writes retire prepared rows without replacing the repository or resetting its caller',
+    'writes keep selected reads fresh without replacing the repository or resetting its caller',
     () async {
       var reads = 0;
       final api = _api((request) => _preparedResponse(++reads));
@@ -66,9 +61,10 @@ void main() {
       );
       addTearDown(container.dispose);
       final repository = container.read(operationsWorkbenchRepositoryProvider);
-      await repository.prepareWorkingPage(
-        OperationsWorkbenchDepartment.purchase,
-        'IN_PROGRESS',
+      await repository.load(
+        department: OperationsWorkbenchDepartment.purchase,
+        size: 50,
+        status: 'IN_PROGRESS',
       );
       container.read(dataWriteRevisionProvider.notifier).state++;
       await container.pump();
@@ -80,7 +76,6 @@ void main() {
         department: OperationsWorkbenchDepartment.purchase,
         size: 50,
         status: 'IN_PROGRESS',
-        preferPrepared: true,
       );
       expect(reads, 2);
       expect(next.summary.openTasks, 2);
@@ -260,6 +255,7 @@ void main() {
       expect(captured.queryParameters, {
         'page': 2,
         'size': 50,
+        'includeMetadata': false,
         'status': 'WAITING_ORDER',
         'dateFrom': '2026-09-01',
         'dateTo': '2026-09-30',

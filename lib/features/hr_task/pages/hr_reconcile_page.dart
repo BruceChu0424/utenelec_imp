@@ -1,9 +1,13 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 员工资料核对：计划/原回执保留服务端权威；建议只读，手填后勾选确认。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -20,7 +24,6 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/data_display/uten_revision_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_error.dart';
@@ -1492,10 +1495,55 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   }
 }
 
+final _hrReconcileRecordsActivityProvider = Provider.autoDispose
+    .family<ReadViewActivity, String>((ref, _) {
+      final activity = ReadViewActivity(onResume: ref.notifyListeners);
+      ref.onDispose(activity.dispose);
+      return activity;
+    });
+
 final _hrReconcileRecordsPageProvider = FutureProvider.autoDispose
-    .family<HrReconcilePlanSummaryPage, ({int page, String sessionKey})>(
-      (ref, query) =>
-          ref.watch(hrReconcileRepositoryProvider).listPlans(page: query.page),
+    .family<HrReconcilePlanSummaryPage, String>(
+      (ref, sessionKey) async {
+        ref.watch(exportContextEpochProvider);
+        final repository = ref.watch(hrReconcileRepositoryProvider);
+        final activity = ref.watch(
+          _hrReconcileRecordsActivityProvider(sessionKey),
+        );
+        var current = true;
+        ref.onDispose(() => current = false);
+        final complete = await activity.runRead(
+          () => current,
+          () => loadCompletePagedResult<HrReconcilePlanSummary>(
+            isCurrent: () => current,
+            idOf: (summary) => summary.id,
+            loadPage: (page, size) async {
+              final response = await repository.listPlans(
+                page: page,
+                size: size,
+              );
+              return PagedResult(
+                items: response.items,
+                page: response.page,
+                size: response.size,
+                total: response.total,
+                totalPages: response.totalPages,
+              );
+            },
+          ),
+        );
+        return HrReconcilePlanSummaryPage(
+          items: complete.items,
+          page: 1,
+          size: complete.size,
+          total: complete.total,
+          totalPages: complete.totalPages,
+        );
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        _hrReconcileRecordsActivityProvider,
+      ],
     );
 
 class _HrReconcileRecordsSheet extends ConsumerStatefulWidget {
@@ -1508,9 +1556,6 @@ class _HrReconcileRecordsSheet extends ConsumerStatefulWidget {
 
 class _HrReconcileRecordsSheetState
     extends ConsumerState<_HrReconcileRecordsSheet> {
-  int _page = 1;
-  String? _sessionKey;
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1520,13 +1565,13 @@ class _HrReconcileRecordsSheetState
         (permissions.contains(Perm.employeeView) &&
             permissions.contains(Perm.employeeEdit));
     final sessionKey = ref.watch(masterDataSessionKeyProvider);
-    if (_sessionKey != sessionKey) {
-      _sessionKey = sessionKey;
-      _page = 1;
+    if (canReadRecords) {
+      ref
+          .watch(_hrReconcileRecordsActivityProvider(sessionKey))
+          .bindView(context);
     }
-    final query = (page: _page, sessionKey: sessionKey);
     final records = canReadRecords
-        ? ref.watch(_hrReconcileRecordsPageProvider(query))
+        ? ref.watch(_hrReconcileRecordsPageProvider(sessionKey))
         : null;
     return SafeArea(
       child: SizedBox(
@@ -1558,7 +1603,7 @@ class _HrReconcileRecordsSheetState
                               : l10n.commonError,
                           actionLabel: l10n.hrReconcileRetry,
                           onAction: () => ref.invalidate(
-                            _hrReconcileRecordsPageProvider(query),
+                            _hrReconcileRecordsPageProvider(sessionKey),
                           ),
                         ),
                         data: (page) => Column(
@@ -1592,23 +1637,6 @@ class _HrReconcileRecordsSheetState
                                       ],
                                     ),
                             ),
-                            if (page.totalPages > 1)
-                              UtenGridPager(
-                                key: const Key('hr-reconcile-records-pager'),
-                                currentPage: page.page,
-                                totalPages: page.totalPages,
-                                totalItems: page.total,
-                                onPageChanged: (target) =>
-                                    setState(() => _page = target),
-                                onPrev: page.page > 1
-                                    ? () =>
-                                          setState(() => _page = page.page - 1)
-                                    : null,
-                                onNext: page.page < page.totalPages
-                                    ? () =>
-                                          setState(() => _page = page.page + 1)
-                                    : null,
-                              ),
                           ],
                         ),
                       ),

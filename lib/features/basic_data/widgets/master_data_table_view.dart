@@ -2,9 +2,8 @@ import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../components/layout/uten_scroll_gutter.dart';
 import '../../../components/layout/uten_page_scrollbar_host.dart';
 import '../../../components/layout/uten_page_layout.dart';
-import '../../../components/layout/uten_scroll_prefetch_policy.dart';
-import '../../../shared/paging/paged_read_intent.dart';
-import '../../../core/responsive/display_zoom.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_table_action_scope.dart';
@@ -53,7 +52,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/data_display/master_data_table_rows_controller.dart';
-import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_overlay_lifecycle.dart';
 import '../../../components/feedback/uten_motion.dart';
@@ -70,7 +68,6 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_table_header_menu.dart';
 import '../../../components/layout/uten_table_horizontal_scroll_controller.dart';
 import '../../../components/layout/uten_panel_opening_scope.dart';
@@ -91,8 +88,6 @@ import '../../../components/data_display/uten_color_name.dart';
 import '../../../shared/ai/page_context/ai_page_context.dart';
 
 export '../../../components/data_display/master_data_table_rows_controller.dart';
-
-import 'package:uten_imp/core/ui/human_error_message.dart';
 
 part 'master_data_table_view_ai.dart';
 
@@ -513,7 +508,6 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.isRefreshing = false,
     this.refreshError,
     this.refreshedPages = const {},
-    this.onRetainedPagesChanged,
     this.onLoadMore,
     this.error,
     this.onRetry,
@@ -527,8 +521,6 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onPageChange,
     this.paginationScope,
     this.paginationRevision,
-    this.maxRetainedPages = 5,
-    this.maxRetainedRows = 1000,
     this.summaryBar,
     this.summaryBarInline = true,
     this.toolbarActions,
@@ -582,9 +574,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.appendRows = const [],
     this.appendRowsSource,
     this.onRowDoubleTap,
-  }) : assert(maxRetainedPages >= 2),
-       assert(maxRetainedRows > 0),
-       assert(dataCellVerticalPadding >= 0),
+  }) : assert(dataCellVerticalPadding >= 0),
        assert(
          !embedded || !virtualized,
          'virtualized=true requires a bounded, non-embedded table',
@@ -626,12 +616,6 @@ class MasterDataTableView<T> extends StatefulWidget {
   final int scrollToEndRequest;
   final String? revealItemId;
   final int revealRequest;
-
-  /// Automatic scrolling retains a contiguous window. A visible boundary page
-  /// and one incoming response may temporarily add at most two pages; selected
-  /// business rows are held separately and never discarded with a cache page.
-  final int maxRetainedPages;
-  final int maxRetainedRows;
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
@@ -959,15 +943,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// [onRetry] without replacing the table with a full-page error.
   final String? refreshError;
 
-  /// A successfully revalidated window, published as one complete map.
+  /// Compatibility slot for an accepted complete refresh, keyed only by 1.
   final Map<int, List<T>> refreshedPages;
-  final ValueChanged<List<int>>? onRetainedPagesChanged;
 
-  /// 表体真实视口临近已加载边界时，按共享预取距离提前回调；滚轮、滑块、
-  /// 轨道、箭头及触摸滚动均使用同一入口，不必等到最底才加载下一页。
-  /// 与 [loadingMore]（末尾转圈行 + 本组件防重入）配合；纯布局不发起请求。
-  /// 组件不感知是否还有更多页——增量加载式页面不传 currentPage/totalPages（避免
-  /// 渲染翻页条），由调用方在回调里自行判断 [_loadMore] 类守卫后 no-op。
+  /// Legacy remote-query marker. Scrolling never invokes this callback.
+  /// New callers provide the complete current-query rows before display.
   final VoidCallback? onLoadMore;
   final String? error;
   final VoidCallback? onRetry;
@@ -1071,125 +1051,35 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   final _pages = SplayTreeMap<int, List<T>>();
-  final _readWindowOwner = Object();
   PagedReadWindowBinding<T>? _readWindowBinding;
-  PagedReadWindowBinding<T>? _acceptedReadWindowBinding;
-  Map<int, List<T>>? _replacementWindowPages;
 
   void _bindReadWindow() {
     final incoming = readWindowBindingOf<T>(widget.items);
     final previous = _readWindowBinding;
-    final next =
+    _readWindowBinding =
         incoming ??
-        (previous?.isCurrent == true && (previous!.pending || previous.failed)
+        (previous != null &&
+                (!previous.isCurrent ||
+                    previous.pending ||
+                    previous.failed ||
+                    previous.empty)
             ? previous
             : null);
-    if (previous != null && !previous.sameSession(next)) {
-      previous.detachPresentation(_readWindowOwner);
-    }
-    _readWindowBinding = next;
-    next?.attachPresentation(
-      _readWindowOwner,
-      retainedPages: () => _pages.keys.toList(growable: false),
-      visiblePage: () => mounted ? _currentPage : null,
-      isCurrent: () =>
-          mounted && _automaticPagination && _prefetchViewportActive,
-    );
   }
 
-  SplayTreeMap<int, List<T>> _proposedMeasuredPages() =>
-      _replacementWindowPages == null
-      ? _withPage(_appendPage!, _prependPageItems!)
-      : SplayTreeMap<int, List<T>>.of(_replacementWindowPages!);
-
-  ({Object id, double top, RenderBox viewport})? _measurementAnchor() {
-    if (_replacementWindowPages == null) return _visiblePaginationAnchor();
-    final proposed = _collectRows(_proposedMeasuredPages());
-    final surviving = {
-      for (final row in proposed) ('data', _paginationRowId(row)),
-    };
-    ({Object id, double top, RenderBox viewport})? anchor;
-    for (final entry in _mountedPaginationRows.entries) {
-      if (!surviving.contains(entry.key)) continue;
-      final box = entry.value.box;
-      if (!box.attached || !box.hasSize) continue;
-      final object = RenderAbstractViewport.maybeOf(box);
-      if (object is! RenderBox) continue;
-      final viewport = object as RenderBox;
-      if (!viewport.hasSize) continue;
-      final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-      if (!top.isFinite ||
-          top + box.size.height <= .5 ||
-          top >= viewport.size.height) {
-        continue;
-      }
-      if (anchor == null || top < anchor.top) {
-        anchor = (id: entry.key, top: top, viewport: viewport);
-      }
-    }
-    return anchor;
-  }
-
-  bool _beginReadWindowReplacement(Map<int, List<T>> pages) {
-    _appendGeneration++;
-    _appendError = null;
-    _prependAnchor.reset();
-    _replacementWindowPages = {
-      for (final entry in pages.entries)
-        entry.key: _reuseUnchangedMapRows(entry.key, entry.value),
-    };
-    _selectedRows.clear();
-    _exhaustedPage = null;
-    _exhaustedPreviousPage = null;
-    _appendPage = widget.currentPage;
-    _prependPageItems = widget.items;
-    _prepending = true;
-    _prependMeasureItems = const [];
-    _removeMeasureItems = const [];
-    if (widget.embedded || _displayItems.isEmpty || _expensiveRowMounts) {
-      // Input-heavy rows keep their live editors; never mount a second copy
-      // of their controllers merely to measure refreshed display geometry.
-      _pages
-        ..clear()
-        ..addAll(_replacementWindowPages!);
-      _replacementWindowPages = null;
-      _appendPage = null;
-      _prependPageItems = null;
-      _prependMeasureItems = null;
-      _prepending = false;
-      _acceptedPage = widget.currentPage;
-      _syncRows();
-    } else {
-      _bindPagination();
-    }
-    return true;
-  }
+  bool get _resultOwnerRetired => _readWindowBinding?.isCurrent == false;
+  List<MasterDataGroup<T>>? get _authorizedLeadingGroups =>
+      _resultOwnerRetired ? const [] : widget.leadingGroups;
 
   final _selectedRows = <String, T>{};
   late List<T> _items;
-  int? _appendPage;
-  int _acceptedPage = 1;
+  int? get _appendPage => null;
   int? _visiblePage;
   final _rowPages = <Object, int>{};
-  bool _visiblePageScheduled = false;
-  bool _readAheadPrepend = false;
-  (PagedReadWindowBinding<T>, int, bool)? _preparedReadingPosition;
-  bool _settlingPageLayout = false;
   int _pageLayoutGeneration = 0;
-  RenderBox? _externalPageViewport;
-  String? _appendError;
+  String? get _appendError => null;
   int _appendGeneration = 0;
-  bool _appendScheduled = false;
-  int? _exhaustedPage;
-  int? _exhaustedPreviousPage;
-  bool _prepending = false;
-  final _prependAnchor = UtenPrependScrollAnchor();
-  final _prependMeasureKey = GlobalKey();
-  final _removeMeasureKey = GlobalKey();
-  List<T> _removeMeasureItems = const [];
-  List<T>? _prependMeasureItems;
-  List<T>? _prependPageItems;
-  int? _prependMeasureGeneration;
+  bool get _prepending => false;
   double _prependBottomSpace = 0;
   final _mountedPaginationRows = <Object, ({RenderBox box, bool paged})>{};
   Map<String, String?> _filterSnapshot = const {};
@@ -1202,98 +1092,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _appendPage != null;
   bool get _loadingMore =>
       !_prepending && (widget.loadingMore || _appendPage != null);
-  int get _currentPage => _visiblePage ?? _acceptedPage;
-  int get _firstPage => _pages.isEmpty ? _acceptedPage : _pages.firstKey()!;
-  int get _lastPage => _pages.isEmpty ? _acceptedPage : _pages.lastKey()!;
-  bool get _automaticPagination =>
-      widget.onPageChange != null && widget.onLoadMore == null;
+  int get _currentPage => 1;
 
-  SplayTreeMap<int, List<T>> _withPage(int page, List<T> incoming) {
-    final identity = widget.rowKeyOf ?? _outputIdOf;
-    final updates = <String, T>{};
-    if (identity != null) {
-      for (final row in incoming) {
-        final id = identity(row);
-        if (id != null && id.isNotEmpty) updates[id] = row;
-      }
-    }
-    return SplayTreeMap<int, List<T>>()..addAll({
-      for (final entry in _pages.entries)
-        entry.key: [
-          for (final row in entry.value) updates[identity?.call(row)] ?? row,
-        ],
-      page: incoming,
-    });
-  }
+  void _aiRebuild(VoidCallback change) => setState(change);
 
-  void _acceptPage(int page, List<T> rows) {
-    _retainSelectedRows();
-    final next = _trimWindow(_withPage(page, rows));
-    _pages
-      ..clear()
-      ..addAll(next);
-  }
-
-  Set<Object> _visibleRowIds() => {
-    for (final entry in _mountedPaginationRows.entries)
-      if (entry.value.box.attached &&
-          entry.value.box.hasSize &&
-          _rowIntersectsViewport(entry.value.box))
-        entry.key,
-  };
-
-  bool _rowIntersectsViewport(RenderBox box) {
-    final object = RenderAbstractViewport.maybeOf(box);
-    if (object is! RenderBox) return false;
-    final viewport = object as RenderBox;
-    if (!viewport.hasSize) return false;
-    final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-    return top + box.size.height > 0.5 && top < viewport.size.height;
-  }
-
-  bool _pageVisible(List<T> rows, Set<Object> visible) =>
-      rows.any((row) => visible.contains(('data', _paginationRowId(row))));
-
-  int get _pageWindowLimit {
-    final nonemptySizes = _pages.values
-        .map((rows) => rows.length)
-        .where((count) => count > 0);
-    final pageSize = nonemptySizes.isEmpty
-        ? math.max(1, widget.items.length)
-        : nonemptySizes.reduce(math.min);
-    // Both ordinary limits apply. Whole pages stay atomic: an oversized single
-    // response is retained once, never multiplied by the default page count.
-    final ordinary = math.max(
-      1,
-      math.min(widget.maxRetainedPages, widget.maxRetainedRows ~/ pageSize),
-    );
-    // Small pages may need more than the configured page count to fill a real
-    // viewport. This exception is tied to visible data rows plus one incoming
-    // page, rather than to the row budget divided by a tiny server page size.
-    final visible = _visibleRowIds()
-        .where((id) => id is (String, Object) && id.$1 == 'data')
-        .length;
-    final viewport =
-        (visible / pageSize).ceil() +
-        (pageSize > widget.maxRetainedRows ? 0 : 1);
-    return widget.onRetainedPagesChanged == null
-        ? math.max(ordinary, viewport)
-        : math.min(5, ordinary);
-  }
-
-  SplayTreeMap<int, List<T>> _trimWindow(SplayTreeMap<int, List<T>> source) {
-    final result = SplayTreeMap<int, List<T>>.of(source);
-    final visible = _visibleRowIds();
-    while (result.length > _pageWindowLimit) {
-      final edge = _prepending ? result.lastKey()! : result.firstKey()!;
-      if (widget.onRetainedPagesChanged == null &&
-          _pageVisible(result[edge]!, visible)) {
-        break;
-      }
-      result.remove(edge);
-    }
-    return result;
-  }
+  bool get _automaticPagination => false;
 
   void _retainSelectedRows() {
     _selectedRows.removeWhere((id, _) => !_outputSelectedIds.contains(id));
@@ -1326,12 +1129,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   );
 
   List<T> _collectRowsImpl(Map<int, List<T>> pages) {
-    final rows = _automaticPagination
-        ? pages.values.expand((rows) => rows)
-        : widget.items;
-    // Only an actual row identity is suitable for de-duplication. Equal cell
-    // text does not imply the same business record.
-    final identity = widget.rowKeyOf ?? _outputIdOf;
+    if (_resultOwnerRetired) return <T>[];
+    final rows = pages[1] ?? <T>[];
+    // Output content tokens are not business identities. Keep every report
+    // occurrence unless the caller explicitly provides a real record key.
+    final identity = widget.rowKeyOf ?? widget.idOf;
     final merged = <T>[];
     final indexes = <String, int>{};
     for (final row in [...widget.unpagedItems, ...rows]) {
@@ -1353,6 +1155,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _profileMasterTableWork('master.sync-rows', _syncRowsImpl);
 
   void _syncRowsImpl() {
+    _bindReadWindow();
+    if (_resultOwnerRetired || _readWindowBinding?.empty == true) {
+      _pages
+        ..clear()
+        ..[1] = <T>[];
+      _selectedRows.clear();
+    }
     _items = _collectRows(_pages);
     // This already runs at data/projection changes, never at a scroll tick.
     // Compare values rather than the newly collected List identity so selection
@@ -1389,44 +1198,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
     }
     _bindPagination();
-    _bindReadWindow();
-    _reportRetainedPages();
-  }
-
-  List<int>? _reportedRetainedPages;
-  bool _retainedPagesReportScheduled = false;
-
-  void _reportRetainedPages() {
-    if (widget.onRetainedPagesChanged == null ||
-        _retainedPagesReportScheduled) {
-      return;
-    }
-    _retainedPagesReportScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _retainedPagesReportScheduled = false;
-      if (!mounted) return;
-      final pages = _pages.keys.toList(growable: false);
-      if (listEquals(pages, _reportedRetainedPages)) return;
-      _reportedRetainedPages = pages;
-      widget.onRetainedPagesChanged?.call(pages);
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   void _bindPagination() => widget.rowsController?.bindPagination(
     this,
-    _loadNextFromController,
+    () async {},
     _busy,
-    currentPage: _currentPage,
-    totalPages: widget.totalPages,
-    goToPage: _gotoPage,
-    onScrollIntent: _releaseExplicitReadingPage,
     settlePresentation: _waitForRowLayout,
-    loadPrevious: _loadPreviousFromController,
-    updateVisiblePage: (viewport) {
-      _externalPageViewport = viewport;
-      _scheduleVisiblePage();
-    },
   );
 
   Future<void> _waitForRowLayout() async {
@@ -1435,7 +1213,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     for (var pass = 0; pass < 120; pass++) {
       if (!mounted ||
           generation != _appendGeneration ||
-          !_prefetchViewportActive) {
+          !_visiblePresentationActive) {
         return;
       }
       await Future.wait([
@@ -1473,185 +1251,57 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// Fetch position and reading position are separate. Wait for insertion /
   /// eviction compensation before resolving the actual visible business page.
   void _acceptPageIndicator(int page, {bool reset = false}) {
-    _acceptedPage = page;
     if (reset) _visiblePage = null;
-    _settlingPageLayout = true;
-    final generation = ++_pageLayoutGeneration;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && generation == _pageLayoutGeneration) {
-          _settlingPageLayout = false;
-          _scheduleVisiblePage();
-        }
-      });
-      WidgetsBinding.instance.ensureVisualUpdate();
-    });
-  }
-
-  void _scheduleVisiblePage() {
-    if (_visiblePageScheduled ||
-        _explicitReadingPage != null ||
-        !_automaticPagination ||
-        (_busy && _appendPage == null && _readWindowBinding?.pending != true) ||
-        _settlingPageLayout ||
-        _pages.isEmpty) {
-      return;
-    }
-    _visiblePageScheduled = true;
-    final generation = _pageLayoutGeneration;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _visiblePageScheduled = false;
-      if (!mounted ||
-          _explicitReadingPage != null ||
-          generation != _pageLayoutGeneration ||
-          (_busy &&
-              _appendPage == null &&
-              _readWindowBinding?.pending != true) ||
-          _settlingPageLayout) {
-        return;
-      }
-      int? page;
-      double? firstTop;
-      int? bottomPage;
-      double? lastBottom;
-      var contentContinuesBelow = false;
-      for (final entry in _mountedPaginationRows.entries) {
-        if (!entry.value.paged) continue;
-        final rowPage = _rowPages[entry.key];
-        final box = entry.value.box;
-        if (rowPage == null || !box.attached || !box.hasSize) continue;
-        final viewportObject = widget.embedded && !_fullscreen
-            ? _externalPageViewport
-            : RenderAbstractViewport.maybeOf(box);
-        if (viewportObject is! RenderBox) continue;
-        final viewport = viewportObject;
-        if (!viewport.attached || !viewport.hasSize) continue;
-        final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-        final bottom = box
-            .localToGlobal(Offset(0, box.size.height), ancestor: viewport)
-            .dy;
-        // Kept-alive offscreen cells can remain attached with a singular paint
-        // transform. They have no visible position and must not win the anchor.
-        if (!top.isFinite || !bottom.isFinite || bottom <= 0.5) {
-          continue;
-        }
-        if (top >= viewport.size.height) {
-          contentContinuesBelow = true;
-          continue;
-        }
-        if (firstTop == null || top < firstTop) {
-          firstTop = top;
-          page = rowPage;
-        }
-        if (bottomPage == null || bottom > lastBottom!) {
-          lastBottom = bottom;
-          bottomPage = rowPage;
-        }
-      }
-      if (page == null) return;
-      // 滑到已加载内容末尾时，末页可能不满一屏：视口顶部仍是上一页的行。
-      // 此时读页取视口内最底一行所属页，页码在底部如实报到最后一页。
-      if (!contentContinuesBelow && bottomPage != null && bottomPage > page) {
-        page = bottomPage;
-      }
-      if (page != _currentPage || _visiblePage == null) {
-        setState(() => _visiblePage = page);
-        _bindPagination();
-        if (!_pageFocus.hasFocus) _pageCtrl.text = '$page';
-        if (_fullscreen) _fsTick.value++;
-      }
-      _prepareReadingPosition();
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
-  }
-
-  void _prepareReadingPosition() {
-    final binding = _readWindowBinding;
-    if (binding == null ||
-        !binding.isCurrent ||
-        binding.pending ||
-        binding.failed ||
-        widget.error != null ||
-        _appendError != null ||
-        !_prefetchViewportActive) {
-      return;
-    }
-    final page = _currentPage;
-    final position = (binding, page, _readAheadPrepend);
-    if (_preparedReadingPosition == position) return;
-    _preparedReadingPosition = position;
-    unawaited(
-      binding.prepareAround(
-        page,
-        prepend: _readAheadPrepend,
-        canPrepare: () {
-          if (!mounted) return false;
-          if (!_prefetchViewportActive) {
-            // A covered route may stop the worker before either target starts.
-            // Its next real scroll must be able to resume this same position.
-            if (_preparedReadingPosition == position) {
-              _preparedReadingPosition = null;
-            }
-            return false;
-          }
-          return _automaticPagination &&
-              _readWindowBinding?.sameSession(binding) == true &&
-              _currentPage == page &&
-              widget.error == null &&
-              _appendError == null;
-        },
-      ),
-    );
+    _pageLayoutGeneration++;
   }
 
   void _resetPages() {
-    _preparedReadingPosition = null;
-    _readAheadPrepend = false;
-    _replacementWindowPages = null;
-    _explicitReadingPage = null;
-    _reportedRetainedPages = null;
     if (_queryChanged || (widget.error != null && widget.items.isEmpty)) {
       _selectedRows.clear();
     } else {
       _retainSelectedRows();
     }
     _appendGeneration++;
-    _appendPage = null;
-    _appendError = null;
-    _exhaustedPage = null;
-    _exhaustedPreviousPage = null;
-    _prepending = false;
-    _prependMeasureItems = null;
-    _prependPageItems = null;
-    _removeMeasureItems = const [];
     _prependBottomSpace = 0;
-    _prependAnchor.reset();
     _acceptPageIndicator(widget.currentPage, reset: true);
     _pages
       ..clear()
-      ..[widget.currentPage] = widget.items;
+      ..[1] = widget.items;
     _syncRows();
   }
 
-  /// Returns true only for an accepted continuation, so the scroll position is
-  /// retained while explicit navigation still starts at the top of its page.
-  List<T> _reuseUnchangedMapRows(int page, List<T> incoming) {
-    final previous = _pages[page];
-    if (previous == null) return incoming;
+  List<T> _reuseUnchangedMapRows(List<T> incoming) {
+    final previous = _pages[1];
+    if (previous == null || identical(previous, incoming)) return incoming;
     const equality = DeepCollectionEquality();
+    bool canReuse(T current, T before) {
+      if (identical(current, before)) return true;
+      if (current is! Map<Object?, Object?> ||
+          before is! Map<Object?, Object?>) {
+        return false;
+      }
+      final currentLine = current['__lineId'];
+      final previousLine = before['__lineId'];
+      // A line selector already owns identity. Adopt its latest raw snapshot
+      // without enumerating the payload or retaining old facts by the same ID.
+      if ((currentLine is String && currentLine.isNotEmpty) ||
+          (previousLine is String && previousLine.isNotEmpty)) {
+        return false;
+      }
+      return equality.equals(current, before);
+    }
+
     return [
       for (var index = 0; index < incoming.length; index++)
         if (index < previous.length &&
-            incoming[index] is Map<Object?, Object?> &&
-            previous[index] is Map<Object?, Object?> &&
-            equality.equals(incoming[index], previous[index]))
+            canReuse(incoming[index], previous[index]))
           previous[index]
         else
           incoming[index],
     ];
   }
 
-  bool _updatePages(MasterDataTableView<T> oldWidget) {
+  void _updatePages(MasterDataTableView<T> oldWidget) {
     final scopeChanged =
         oldWidget.paginationScope != widget.paginationScope ||
         !mapEquals(_filterSnapshot, widget.filters) ||
@@ -1659,284 +1309,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         oldWidget.sortAscending != widget.sortAscending ||
         !_sameColumnKeys(oldWidget.columns, widget.columns);
     _filterSnapshot = Map.of(widget.filters);
-    final previousBinding = _readWindowBinding;
-    final incomingBinding = readWindowBindingOf<T>(widget.items);
-    if (previousBinding != null &&
-        widget.items.isEmpty &&
-        (!previousBinding.isCurrent || previousBinding.empty)) {
-      _queryChanged = true;
-      _acceptedReadWindowBinding = null;
-      _resetPages();
-      return false;
-    }
-    final sameWindow =
-        incomingBinding?.isCurrent == true &&
-        previousBinding?.isCurrent == true &&
-        incomingBinding!.sameSession(previousBinding);
-    final continuingWindow =
-        previousBinding?.isCurrent == true &&
-        (sameWindow || incomingBinding == null);
-    if (_automaticPagination &&
-        _pages.isNotEmpty &&
-        continuingWindow &&
-        (previousBinding!.pending || previousBinding.failed)) {
-      _queryChanged = false;
-      _syncRows();
-      return true;
-    }
-    final boundReplacement =
-        incomingBinding?.isCurrent == true &&
-            !identical(incomingBinding, _acceptedReadWindowBinding)
-        ? incomingBinding!.replacementPages
-        : null;
-    if (_automaticPagination &&
-        sameWindow &&
-        boundReplacement?.isNotEmpty == true) {
-      _queryChanged = false;
-      _acceptedReadWindowBinding = incomingBinding;
-      _bindReadWindow();
-      return _beginReadWindowReplacement(boundReplacement!);
-    }
     _queryChanged = scopeChanged;
-    if (!_automaticPagination || scopeChanged) {
-      _replacementWindowPages = null;
-      _acceptedReadWindowBinding = null;
-      _resetPages();
-      return false;
+    if (scopeChanged ||
+        _readWindowBinding?.isCurrent == false ||
+        (widget.error != null && widget.items.isEmpty)) {
+      _selectedRows.clear();
     }
-    if (!identical(oldWidget.refreshedPages, widget.refreshedPages) &&
-        widget.refreshedPages.isNotEmpty &&
-        oldWidget.paginationRevision == widget.paginationRevision) {
-      return _beginReadWindowReplacement(widget.refreshedPages);
-    }
-    if (_appendPage != null) {
-      if (widget.error != null && !widget.loadingMore && !widget.isLoading) {
-        _appendError = widget.error;
-        _appendPage = null;
-        _prependMeasureItems = null;
-        _prependPageItems = null;
-      } else if (!widget.loadingMore &&
-          !widget.isLoading &&
-          widget.currentPage == _appendPage) {
-        if ((_prepending || _pages.length >= _pageWindowLimit) &&
-            !widget.embedded &&
-            widget.items.isNotEmpty &&
-            _displayItems.isNotEmpty) {
-          if (_prependMeasureItems == null) {
-            _prependMeasureItems = const [];
-          }
-          _prependPageItems = widget.items;
-          _bindPagination();
-          // Measure only the newly inserted rows, at their actual column/card
-          // width. Keep the old visible rows mounted until that layout exists.
-          return true;
-        }
-        if (widget.items.isEmpty) {
-          if (_prepending) {
-            _exhaustedPreviousPage = widget.currentPage;
-          } else {
-            _exhaustedPage = widget.currentPage;
-          }
-        }
-        _acceptPage(widget.currentPage, widget.items);
-        _acceptPageIndicator(widget.currentPage);
-        _appendPage = null;
-        _appendError = null;
-        _syncRows();
-        return true;
-      }
-      _syncRows();
-      return true;
-    }
-    final reloadStarted =
-        (!oldWidget.loadingMore && widget.loadingMore) ||
-        (!oldWidget.isLoading && widget.isLoading);
-    if (reloadStarted ||
-        oldWidget.currentPage != widget.currentPage ||
-        oldWidget.paginationRevision != widget.paginationRevision) {
-      _resetPages();
-    } else if (_appendError == null) {
-      if (!identical(oldWidget.items, widget.items)) {
-        _pages[widget.currentPage] = widget.items;
-      }
-      _syncRows();
-    } else {
-      _syncRows();
-    }
-    return false;
-  }
-
-  bool _hasAdjacentPage(bool prepend) => prepend
-      ? _firstPage > 1 && _exhaustedPreviousPage != _firstPage
-      : _lastPage < widget.totalPages && _exhaustedPage != _lastPage;
-
-  void _scheduleAppend({bool prepend = false}) {
-    if (_appendRows.isNotEmpty ||
-        !_automaticPagination ||
-        _busy ||
-        _appendScheduled ||
-        !_hasAdjacentPage(prepend) ||
-        _appendError != null ||
-        widget.error != null) {
-      return;
-    }
-    _appendScheduled = true;
-    final generation = _appendGeneration;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _appendScheduled = false;
-      if (!mounted || generation != _appendGeneration || _busy) return;
-      _extendPages(prepend: prepend);
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
-  }
-
-  Future<void> _appendNextPage() => _extendPages(prepend: false);
-
-  Future<void> _extendPages({required bool prepend}) async {
-    if (_appendRows.isNotEmpty ||
-        !_automaticPagination ||
-        _busy ||
-        !_hasAdjacentPage(prepend) ||
-        (widget.error != null && _appendError == null)) {
-      return;
-    }
-    if (_pages.length > _pageWindowLimit) {
-      final edge = prepend ? _pages.lastKey()! : _pages.firstKey()!;
-      if (_pageVisible(_pages[edge]!, _visibleRowIds())) return;
-    }
-    final target = prepend ? _firstPage - 1 : _lastPage + 1;
-    final generation = ++_appendGeneration;
-    setState(() {
-      _appendPage = target;
-      _appendError = null;
-      _prepending = prepend;
-    });
-    _bindPagination();
-    if (_fullscreen) _fsTick.value++;
-    try {
-      if (prepend && target == (_explicitReadingPage ?? 0) - 1) {
-        await PagedReadIntent.bufferSeed(
-          () => PagedReadIntent.navigation(
-            _currentPage,
-            () => widget.onPageChange!(target),
-          ),
-        );
-      } else {
-        await PagedReadIntent.navigation(
-          _currentPage,
-          () => widget.onPageChange!(target),
-        );
-      }
-    } catch (caughtError) {
-      if (!mounted || generation != _appendGeneration) return;
-      setState(() {
-        _appendPage = null;
-        _appendError =
-            humanErrorMessage(caughtError) ??
-            '${prepend ? '上一页' : '下一页'}加载失败，请重试';
-      });
-      _bindPagination();
-      if (_fullscreen) _fsTick.value++;
-      return;
-    }
-    // The callback may finish before the parent rebuilds, or be a synchronous
-    // provider setter. Accept rows only from a completed widget update.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          generation != _appendGeneration ||
-          _appendPage == null ||
-          widget.loadingMore ||
-          widget.isLoading) {
-        return;
-      }
-      if (widget.currentPage != target || widget.error != null) {
-        setState(() {
-          _appendPage = null;
-          _appendError = widget.error ?? '${prepend ? '上一页' : '下一页'}加载失败，请重试';
-        });
-        _bindPagination();
-        if (_fullscreen) _fsTick.value++;
-      }
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
-  }
-
-  Future<void> _loadNextFromController() async {
-    if (_appendError != null || widget.error != null) return;
-    await _appendNextPage();
-  }
-
-  Future<void> _loadPreviousFromController() async {
-    if (_appendError != null || widget.error != null) return;
-    await _extendPages(prepend: true);
-  }
-
-  Object? _explicitBufferToken;
-  int? _explicitReadingPage;
-
-  void _releaseExplicitReadingPage() {
-    if (_explicitReadingPage == null) return;
-    _explicitReadingPage = null;
-    _scheduleVisiblePage();
-  }
-
-  Object? _explicitBufferScope;
-  int? _explicitBufferPage;
-  bool _explicitBufferCallbackDone = false;
-  bool _explicitBufferDataAccepted = false;
-  Object? _explicitBufferScheduledToken;
-
-  void _cancelExplicitBuffer() {
-    _explicitBufferToken = null;
-    _explicitBufferPage = null;
-    _explicitBufferCallbackDone = false;
-    _explicitBufferDataAccepted = false;
-  }
-
-  void _scheduleExplicitBuffer() {
-    final token = _explicitBufferToken;
-    if (token == null ||
-        identical(_explicitBufferScheduledToken, token) ||
-        !_explicitBufferCallbackDone ||
-        !_explicitBufferDataAccepted ||
-        !_prefetchViewportActive ||
-        _busy ||
-        widget.error != null ||
-        _appendError != null ||
-        !_automaticPagination ||
-        widget.currentPage != _explicitBufferPage ||
-        widget.paginationScope != _explicitBufferScope) {
-      return;
-    }
-    _explicitBufferScheduledToken = token;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (identical(_explicitBufferScheduledToken, token)) {
-        _explicitBufferScheduledToken = null;
-      }
-      if (!mounted ||
-          !identical(token, _explicitBufferToken) ||
-          !_prefetchViewportActive ||
-          _busy ||
-          _hasPendingPageAnchor ||
-          widget.error != null ||
-          _appendError != null ||
-          widget.currentPage != _explicitBufferPage ||
-          widget.paginationScope != _explicitBufferScope) {
-        return;
-      }
-      // Only a successful, explicit pager action gets one leading buffer.
-      // Initial routes and layout/automatic continuations never arm this token.
-      _explicitReadingPage = _explicitBufferPage;
-      _visiblePage = _explicitBufferPage;
-      if (!_pageFocus.hasFocus) _pageCtrl.text = '$_explicitBufferPage';
-      _cancelExplicitBuffer();
-      if (_hasAdjacentPage(true) && _items.isNotEmpty) {
-        unawaited(
-          PagedReadIntent.bufferSeed(() => _extendPages(prepend: true)),
-        );
-      }
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
+    if (scopeChanged) _readWindowBinding = null;
+    _visiblePage = null;
+    final incoming = scopeChanged
+        ? widget.items
+        : _reuseUnchangedMapRows(widget.items);
+    _pages
+      ..clear()
+      ..[1] = incoming;
+    _syncRows();
   }
 
   void _schedulePageStart() {
@@ -1953,12 +1340,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
       final controller = _verticalScrollController;
       if (controller != null && controller.hasClients) {
-        _prefetchCorrectionDepth++;
-        try {
-          controller.jumpTo(0);
-        } finally {
-          _prefetchCorrectionDepth--;
-        }
+        controller.jumpTo(0);
         if (_deferredFallbackActive) {
           _deferredLeadingEdge = true;
           _deferredTrailingEdge = false;
@@ -1981,105 +1363,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     });
   }
 
-  Object? _pageNavigationToken;
-
-  void _gotoPage(int page) {
-    if (_busy || widget.onPageChange == null) return;
-    final readingPage = _currentPage;
-    final layoutGeneration = _pageLayoutGeneration;
-    final scope = widget.paginationScope;
-    final navigation = Object();
-    _pageNavigationToken = navigation;
-    var readAccepted = false;
-    _explicitReadingPage = null;
-    _appendGeneration++;
-    _appendError = null;
-    _prependMeasureItems = null;
-    _prependPageItems = null;
-    _prependAnchor.reset();
-    _cancelExplicitBuffer();
-    final token = _automaticPagination && page > 1 ? navigation : null;
-    _explicitBufferToken = token;
-    _explicitBufferPage = token == null ? null : page;
-    _explicitBufferScope = scope;
-
-    bool current() =>
-        mounted &&
-        identical(_pageNavigationToken, navigation) &&
-        widget.paginationScope == scope;
-    void finish() {
-      if (!current() ||
-          widget.error != null ||
-          widget.isLoading ||
-          widget.loadingMore) {
-        return;
-      }
-      if (readAccepted &&
-          widget.currentPage == page &&
-          layoutGeneration == _pageLayoutGeneration) {
-        // The parent can publish the exact cached DTO it already held. A real
-        // read receipt, not identity changes or a cancelled confirmation,
-        // authorizes replacing the visible window and positioning its start.
-        setState(_resetPages);
-        _schedulePageStart();
-        if (_fullscreen) _fsTick.value++;
-      }
-      if (token != null && identical(token, _explicitBufferToken)) {
-        if (readAccepted && widget.currentPage == page) {
-          _explicitBufferDataAccepted = true;
-        }
-        _scheduleExplicitBuffer();
-      }
-    }
-
-    unawaited(
-      Future<void>.sync(
-        () => PagedReadIntent.navigation(
-          readingPage,
-          () => widget.onPageChange!(page),
-          replaceWindow: true,
-          onAccepted: (accepted) {
-            if (!current() || accepted != page) return;
-            readAccepted = true;
-            if (token != null && identical(token, _explicitBufferToken)) {
-              _explicitBufferDataAccepted = true;
-            }
-          },
-        ),
-      ).then<void>(
-        (_) {
-          if (!current()) return;
-          if (token != null && identical(token, _explicitBufferToken)) {
-            _explicitBufferCallbackDone = true;
-          }
-          finish();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!current()) return;
-            finish();
-            if (!widget.isLoading && !widget.loadingMore) {
-              if (!readAccepted &&
-                  !_explicitBufferDataAccepted &&
-                  layoutGeneration == _pageLayoutGeneration) {
-                _cancelExplicitBuffer();
-              }
-              _pageNavigationToken = null;
-            }
-          });
-          WidgetsBinding.instance.ensureVisualUpdate();
-        },
-        onError: (Object error, StackTrace stack) {
-          if (current()) {
-            _pageNavigationToken = null;
-            _cancelExplicitBuffer();
-          }
-          Error.throwWithStackTrace(error, stack);
-        },
-      ),
-    );
-  }
-
   Object _paginationRowId(T row) =>
-      widget.rowKeyOf?.call(row) ?? _outputIdOf?.call(row) ?? row as Object;
+      widget.rowKeyOf?.call(row) ?? widget.idOf?.call(row) ?? row as Object;
 
   Widget _trackPaginationRow(Object id, bool paged, Widget child) =>
       !_automaticPagination
@@ -2088,7 +1373,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           key: ValueKey(('pagination-row', id)),
           register: (box) {
             _mountedPaginationRows[id] = (box: box, paged: paged);
-            _scheduleVisiblePage();
           },
           unregister: (box) {
             if (identical(_mountedPaginationRows[id]?.box, box)) {
@@ -2098,379 +1382,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           child: child,
         );
 
-  ({Object id, double top, RenderBox viewport})? _visiblePaginationAnchor() {
-    ({Object id, double top, RenderBox viewport})? anchor;
-    for (final entry in _mountedPaginationRows.entries) {
-      final box = entry.value.box;
-      if (!box.attached || !box.hasSize) continue;
-      final viewportObject = RenderAbstractViewport.maybeOf(box);
-      if (viewportObject is! RenderBox) continue;
-      final viewport = viewportObject as RenderBox;
-      if (!viewport.hasSize) continue;
-      final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-      if (!top.isFinite ||
-          top + box.size.height <= 0.5 ||
-          top >= viewport.size.height) {
-        continue;
-      }
-      if (anchor == null || top < anchor.top) {
-        anchor = (id: entry.key, top: top, viewport: viewport);
-      }
-    }
-    return anchor;
-  }
+  Widget _measurePrepend(Widget child, Widget Function(T) buildRow) => child;
 
-  List<T> _rowsInsertedBefore(Object? anchorId) {
-    if (_appendPage == null || _prependPageItems == null) return const [];
-    final proposed = _applyRowView(_collectRows(_proposedMeasuredPages()));
-    final anchorIndex = proposed.indexWhere(
-      (row) => ('data', _paginationRowId(row)) == anchorId,
-    );
-    // A group header stays before the main rows. Local sorting may also put
-    // some new rows below the visible anchor; those must not move the viewport.
-    if (anchorIndex < 0) return const [];
-    final known = {for (final row in _items) _paginationRowId(row): row};
-    return proposed
-        .take(anchorIndex)
-        .where(
-          (row) =>
-              !known.containsKey(_paginationRowId(row)) ||
-              (_replacementWindowPages != null &&
-                  !identical(known[_paginationRowId(row)], row)),
-        )
-        .toList();
-  }
-
-  List<T> _rowsRemovedBefore(Object? anchorId) {
-    if (_appendPage == null || _prependPageItems == null || anchorId == null) {
-      return const [];
-    }
-    final retained = _collectRows(
-      _replacementWindowPages == null
-          ? _trimWindow(_proposedMeasuredPages())
-          : _proposedMeasuredPages(),
-    ).map(_paginationRowId).toSet();
-    final current = _applyRowView(_items);
-    final anchorIndex = current.indexWhere(
-      (row) => ('data', _paginationRowId(row)) == anchorId,
-    );
-    if (anchorIndex < 0) return const [];
-    final proposed = {
-      for (final row in _collectRows(_proposedMeasuredPages()))
-        _paginationRowId(row): row,
-    };
-    return current
-        .take(anchorIndex)
-        .where(
-          (row) =>
-              !retained.contains(_paginationRowId(row)) ||
-              (_replacementWindowPages != null &&
-                  !identical(proposed[_paginationRowId(row)], row)),
-        )
-        .toList();
-  }
-
-  void _schedulePrependMeasurement() {
-    if (_prependMeasureItems == null ||
-        _prependMeasureGeneration == _appendGeneration) {
-      return;
-    }
-    final generation = _appendGeneration;
-    // A new replacement may begin before the old queued callback runs. Only
-    // coalesce work owned by this generation; an old callback cannot retire
-    // the newer generation's scheduled measurement.
-    _prependMeasureGeneration = generation;
-    final measuredWidths = List<double>.of(_widths);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_prependMeasureGeneration == generation) {
-        _prependMeasureGeneration = null;
-      }
-      if (!mounted ||
-          generation != _appendGeneration ||
-          _prependMeasureItems == null ||
-          _appendPage == null) {
-        return;
-      }
-      if (_displayItems.isEmpty) {
-        // A local filter can hide the old anchor while the measuring frame is
-        // pending. There is then no position to preserve and no measuring tree.
-        _prependAnchor.reset();
-        _commitPrepend();
-        return;
-      }
-      if (!listEquals(measuredWidths, _widths)) {
-        // Auto-width growth can run earlier in this same post-frame phase.
-        // Wait for layout at those final widths before using the measured height.
-        _schedulePrependMeasurement();
-        WidgetsBinding.instance.ensureVisualUpdate();
-        return;
-      }
-      final box = _prependMeasureKey.currentContext?.findRenderObject();
-      if (box is! RenderBox || !box.hasSize) return;
-      final controller = _verticalScrollController;
-      final position = controller != null && controller.positions.length == 1
-          ? controller.position
-          : null;
-      final anchor = _measurementAnchor();
-      final replacingWindow = _replacementWindowPages != null;
-      final needed = _rowsInsertedBefore(anchor?.id);
-      final removed = _rowsRemovedBefore(anchor?.id);
-      if (!listEquals(needed, _prependMeasureItems) ||
-          !listEquals(removed, _removeMeasureItems)) {
-        setState(() {
-          _prependMeasureItems = needed;
-          _removeMeasureItems = removed;
-        });
-        return;
-      }
-      final measurementKeys = [
-        for (final row in needed) (false, _paginationRowId(row)),
-        for (final row in removed) (true, _paginationRowId(row)),
-      ];
-      if (measurementKeys.any(
-        (key) => _measurementRowMounts[key]?.hasMountedContent != true,
-      )) {
-        if (_prefetchViewportActive) {
-          _schedulePrependMeasurement();
-          WidgetsBinding.instance.ensureVisualUpdate();
-        }
-        return;
-      }
-      final removedBox = _removeMeasureKey.currentContext?.findRenderObject();
-      if (removed.isNotEmpty &&
-          (removedBox is! RenderBox || !removedBox.hasSize)) {
-        return;
-      }
-      final insertedExtent = box.size.height;
-      final removedExtent = removedBox is RenderBox && removedBox.hasSize
-          ? removedBox.size.height
-          : 0.0;
-      _prependAnchor.prepareChange(insertedExtent - removedExtent);
-      // Replacing equal-height pages at opposite edges can leave the total
-      // scroll extent unchanged. Still run the pending measured correction in
-      // the next layout instead of silently skipping it with unchanged metrics.
-      if (_prependAnchor.pending && position != null) position.correctBy(0);
-      setState(() {
-        if (position != null &&
-            position.maxScrollExtent <= 0.5 &&
-            insertedExtent > 0) {
-          // A list shorter than its viewport needs real trailing room to keep
-          // the old row in place after prepending. Otherwise its offset clamps
-          // to zero despite the measured correction.
-          final anchorBox = anchor == null
-              ? null
-              : _mountedPaginationRows[anchor.id]?.box;
-          final viewportObject = anchorBox == null
-              ? null
-              : RenderAbstractViewport.maybeOf(anchorBox);
-          if (viewportObject is RenderBox) {
-            final viewport = viewportObject as RenderBox;
-            final viewportBottom = viewport.size.height;
-            var contentBottom = 0.0;
-            for (final entry in _mountedPaginationRows.values) {
-              if (entry.box.attached &&
-                  entry.box.hasSize &&
-                  identical(
-                    RenderAbstractViewport.maybeOf(entry.box),
-                    viewport,
-                  )) {
-                contentBottom = math.max(
-                  contentBottom,
-                  entry.box.localToGlobal(Offset.zero, ancestor: viewport).dy +
-                      entry.box.size.height,
-                );
-              }
-            }
-            _prependBottomSpace += math.max(0, viewportBottom - contentBottom);
-          }
-        }
-      });
-      _commitPrepend();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || generation != _appendGeneration) return;
-        // A short list can keep maxScrollExtent == 0, so the physics callback
-        // need not run. Never leave a correction to affect a later interaction.
-        _prependAnchor.reset();
-        final retained = anchor == null
-            ? null
-            : _mountedPaginationRows[anchor.id]?.box;
-        if (position == null ||
-            retained == null ||
-            !retained.attached ||
-            !retained.hasSize ||
-            !position.hasContentDimensions ||
-            controller?.positions.contains(position) != true ||
-            !identical(
-              RenderAbstractViewport.maybeOf(retained),
-              anchor!.viewport,
-            )) {
-          return;
-        }
-        final residual =
-            retained.localToGlobal(Offset.zero, ancestor: anchor.viewport).dy -
-            anchor.top;
-        if (residual.abs() > 0.5) {
-          position.jumpTo(
-            (position.pixels + residual).clamp(
-              position.minScrollExtent,
-              position.maxScrollExtent,
-            ),
-          );
-        }
-        if (replacingWindow) {
-          unawaited(
-            _settleReadWindowAnchor(
-              anchor,
-              position,
-              generation,
-              position.pixels,
-            ),
-          );
-        }
-      });
-    });
-  }
-
-  Future<void> _settleReadWindowAnchor(
-    ({Object id, double top, RenderBox viewport}) anchor,
-    ScrollPosition position,
-    int generation,
-    double expectedPixels,
-  ) async {
-    // A newly visible row may replace its estimated height after the atomic
-    // map has been laid out. Wait for the existing row budget to settle before
-    // applying its final geometry correction. A new scroll cancels this work.
-    await _waitForRowLayout();
-    if (!mounted ||
-        generation != _appendGeneration ||
-        _verticalScrollController?.positions.contains(position) != true ||
-        position.isScrollingNotifier.value ||
-        !position.hasContentDimensions ||
-        (position.pixels - expectedPixels).abs() > .5) {
-      return;
-    }
-    final box = _mountedPaginationRows[anchor.id]?.box;
-    if (box == null ||
-        !box.attached ||
-        !box.hasSize ||
-        !identical(RenderAbstractViewport.maybeOf(box), anchor.viewport)) {
-      return;
-    }
-    final residual =
-        box.localToGlobal(Offset.zero, ancestor: anchor.viewport).dy -
-        anchor.top;
-    if (residual.abs() > .5) {
-      position.jumpTo(
-        (position.pixels + residual).clamp(
-          position.minScrollExtent,
-          position.maxScrollExtent,
-        ),
-      );
-    }
-  }
-
-  void _commitPrepend() {
-    setState(() {
-      _acceptPageIndicator(_appendPage!);
-      if (_replacementWindowPages != null) {
-        _pages
-          ..clear()
-          ..addAll(_replacementWindowPages!);
-        _replacementWindowPages = null;
-      } else {
-        _acceptPage(_acceptedPage, _prependPageItems!);
-      }
-      _appendPage = null;
-      _appendError = null;
-      _prependMeasureItems = null;
-      _prependPageItems = null;
-      _removeMeasureItems = const [];
-      _syncRows();
-    });
-    if (!_pageFocus.hasFocus) _pageCtrl.text = '$_currentPage';
-    _configurePlatform();
-    if (_fullscreen) _fsTick.value++;
-  }
-
-  Widget _measurePrepend(Widget child, Widget Function(T) buildRow) {
-    if (_prependMeasureItems != null) {
-      _prependMeasureItems = _rowsInsertedBefore(_measurementAnchor()?.id);
-      _removeMeasureItems = _rowsRemovedBefore(_measurementAnchor()?.id);
-    }
-    final measuring = _prependMeasureItems;
-    if (measuring != null) _schedulePrependMeasurement();
-    final liveMeasurementKeys = {
-      for (final row in measuring ?? <T>[]) (false, _paginationRowId(row)),
-      for (final row in _removeMeasureItems) (true, _paginationRowId(row)),
-    };
-    _measurementRowMounts.removeWhere(
-      (key, _) => !liveMeasurementKeys.contains(key),
-    );
-    Widget measureRow(T row, bool removing) {
-      final id = _paginationRowId(row);
-      final key = (removing, id);
-      final dataKey = ('data', id);
-      return UtenDeferredRowMount(
-        key: ValueKey(('measurement', key)),
-        controller: _measurementRowMounts.putIfAbsent(
-          key,
-          UtenDeferredRowMountController.new,
-        ),
-        estimatedExtent:
-            _deferredRowHeights[dataKey] ??
-            UtenEditableGridCellSpec.heightOf(context) + UtenSpacing.s16,
-        onExtentMeasured: (height) {
-          _deferredRowHeights[dataKey] = height;
-          _schedulePrependMeasurement();
-        },
-        builder: (_) => buildRow(row),
-      );
-    }
-
-    return Stack(
-      children: [
-        child,
-        if (measuring != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: Offstage(
-              child: Column(
-                key: _prependMeasureKey,
-                mainAxisSize: MainAxisSize.min,
-                children: [for (final row in measuring) measureRow(row, false)],
-              ),
-            ),
-          ),
-        if (_removeMeasureItems.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: Offstage(
-              child: Column(
-                key: _removeMeasureKey,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final row in _removeMeasureItems) measureRow(row, true),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget? get _prependFeedback => !_prepending
-      ? null
-      : _appendError != null
-      ? Material(child: _appendFailure())
-      : _appendPage != null
-      ? const _MasterTableFeedbackTicker(
-          child: LinearProgressIndicator(minHeight: 2),
-        )
-      : null;
+  Widget? get _prependFeedback => null;
 
   /// 重查反馈：已有旧行时再次查询（回车搜索/切筛选/翻页），行区顶部钉 2px 细
   /// 进度条。此前这类重查只有表尾 loadingMore 小转圈，视口在顶部时完全不可见，
@@ -2573,30 +1487,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  Widget _appendFailure() => Padding(
-    padding: const EdgeInsets.all(UtenSpacing.s8),
-    child: Center(
-      child: UtenTableReadStatus(
-        keyPrefix: 'master-table-page-read',
-        ownerIdentity: (
-          this,
-          widget.paginationScope,
-          widget.paginationRevision,
-          _platform.authorizationRevision,
-          _platform.queryLifecycle,
-          _appendGeneration,
-        ),
-        title: tableReadStatusText(
-          context,
-          _prepending ? 'prependFailed' : 'appendFailed',
-        ),
-        reason: _appendError ?? tableReadStatusText(context, 'appendFailed'),
-        impact: tableReadStatusText(context, 'pageImpact'),
-        guidance: tableReadStatusText(context, 'guidance'),
-        retry: () => _extendPages(prepend: _prepending),
-      ),
-    ),
-  );
+  Widget _appendFailure() => const SizedBox.shrink();
 
   final _platform = PlatformTableController<T>();
   late final _searchLifecycle = PageSearchLifecycle(
@@ -2648,9 +1539,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _projectionScheduled = false;
   Object? _projectionOwner;
   final _aiSlot = AiPageSlot();
-
-  /// [setState] for the AI part file (extension members cannot call it).
-  void _aiRebuild(VoidCallback change) => setState(change);
 
   List<MasterColumnDef<T>> get _columns {
     if (_platformColumnCache != null &&
@@ -2704,12 +1592,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       context,
       descriptor: PlatformTableDescriptor<T>(
         kind: 'master',
-        revision: (_items, widget.leadingGroups),
+        revision: (_items, _authorizedLeadingGroups),
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
         rows: [
           ..._items,
-          for (final group in widget.leadingGroups ?? <MasterDataGroup<T>>[])
+          for (final group
+              in _authorizedLeadingGroups ?? <MasterDataGroup<T>>[])
             ...group.items,
         ],
       ),
@@ -3176,8 +2065,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   late final ScrollController _overlayH = ScrollController();
   bool _overlaySyncing = false;
   // 分页跳转输入框：填数字回车跳页；外部翻页（上一页/下一页/跳页）时同步回当前页。
-  late final TextEditingController _pageCtrl;
-  final FocusNode _pageFocus = FocusNode();
+
   bool _syncing = false;
 
   // —— 本地取值筛选 / 本地排序（filterFromRows 列；2026-09-25）——
@@ -4195,7 +3083,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.scrollToEndRequest != 0) {
       _pendingScrollToEnd = widget.scrollToEndRequest;
     }
-    _pageCtrl = TextEditingController(text: '${widget.currentPage}');
+
     if (widget.stickyHeaderPinned != null) {
       _sticky = UtenStickyHeaderTracker(
         stackKey: _stickyStackKey,
@@ -4227,7 +3115,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     // Resume an already-armed, successful explicit pager's one-shot buffer
     // after a popup closes. Initial layout never arms a buffer token.
-    _scheduleExplicitBuffer();
+
     // 吸顶表：绑定祖先滚动 position（详情页页面 ListView）——滚动 tick 同帧
     // 定表头位置，post-frame 复核量位（与 UtenEditableGrid 同款两段式）。
     if (_sticky == null) return;
@@ -4555,7 +3443,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (listEquals(previous, current)) return true;
       if (previous.length != current.length) return false;
       for (var i = 0; i < previous.length; i++) {
-        if (before.idOf?.call(previous[i]) != _outputIdOf?.call(current[i]) ||
+        if (before.idOf?.call(previous[i]) != widget.idOf?.call(current[i]) ||
             before.rowKeyOf?.call(previous[i]) !=
                 widget.rowKeyOf?.call(current[i])) {
           return false;
@@ -4629,28 +3517,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!identical(oldWidget.rowsController, widget.rowsController)) {
       oldWidget.rowsController?.detachPagination(this);
     }
-    final appended = _updatePages(oldWidget);
-    if (_queryChanged ||
-        widget.paginationScope != _explicitBufferScope ||
-        widget.error != null) {
-      _cancelExplicitBuffer();
-    } else if (_explicitBufferToken != null &&
-        widget.currentPage == _explicitBufferPage &&
-        !widget.loadingMore &&
-        !widget.isLoading &&
-        (oldWidget.currentPage != widget.currentPage ||
-            oldWidget.loadingMore ||
-            oldWidget.isLoading ||
-            !identical(oldWidget.items, widget.items) ||
-            oldWidget.paginationRevision != widget.paginationRevision)) {
-      _explicitBufferDataAccepted = true;
-    }
-    if (appended) {
-      // An endpoint belongs to the loaded window that the user visited.
-      // Appending a response must keep that viewport, not follow the new end.
-      _deferredLeadingEdge = false;
-      _deferredTrailingEdge = false;
-    }
+    _updatePages(oldWidget);
     _configurePlatform();
     if (!listEquals(
       oldWidget.temporaryLeadingColumnKeys,
@@ -4717,28 +3584,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _deferredTrailingEdge = false;
       _pendingScrollToEnd = widget.scrollToEndRequest;
       _scrollToEndAttempts = 0;
-    } else if ((!appended && oldWidget.currentPage != widget.currentPage) ||
+    } else if (oldWidget.currentPage != widget.currentPage ||
         oldWidget.paginationScope != widget.paginationScope ||
         widget.scrollToEndRequest == 0) {
       _pendingScrollToEnd = null;
     }
-    if (!appended &&
-        !requestedEnd &&
+    if (!requestedEnd &&
         !requestedReveal &&
         (oldWidget.currentPage != widget.currentPage || _queryChanged)) {
       _schedulePageStart();
-    }
-    // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。
-    if (!_pageFocus.hasFocus && _pageCtrl.text != '$_currentPage') {
-      if (_fullscreen) {
-        // The pager lives in a different route during fullscreen. Updating its
-        // controller in this route's build would mark that TextFormField dirty.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _pageCtrl.text = '$_currentPage';
-        });
-      } else {
-        _pageCtrl.text = '$_currentPage';
-      }
     }
     // 全屏中：数据/列变化 bump tick，驱动全屏路由内的表格重建。
     // didUpdateWidget 处于 build 阶段，直接写 ValueNotifier 会让全屏路由里的
@@ -4750,7 +3604,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       });
     }
     _applyPlatformLayout();
-    _scheduleExplicitBuffer();
   }
 
   /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。
@@ -5035,8 +3888,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能)。
   List<T> _widthSamplePool() => <T>[
     ..._items,
-    ...?_prependMeasureItems,
-    for (final g in (widget.leadingGroups ?? <MasterDataGroup<T>>[]))
+    for (final g in (_authorizedLeadingGroups ?? <MasterDataGroup<T>>[]))
       ...g.items,
   ];
 
@@ -5276,7 +4128,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   void dispose() {
-    _readWindowBinding?.detachPresentation(_readWindowOwner);
     _widthGrowthTimer?.cancel();
     _widthGrowthTimer = null;
     final widthFrameReset = _widthFrameReset;
@@ -5314,8 +4165,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _hBarY.dispose();
     _clearFloatingBatchAncestors();
     _floatingBatchBottomInset.dispose();
-    _pageCtrl.dispose();
-    _pageFocus.dispose();
+
     _stickyPagePos?.removeListener(_onStickyPageScroll);
     _sticky?.dispose();
     super.dispose();
@@ -5740,7 +4590,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     for (final it in _displayItems) {
       add(it);
     }
-    final leading = widget.leadingGroups;
+    final leading = _authorizedLeadingGroups;
     if (leading != null) {
       for (final g in leading) {
         if (_expandedGroups.contains(g.id)) {
@@ -6005,7 +4855,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   ///
   /// 由 [_buildTable] 里表体区的 LayoutBuilder 调用，但**只在宽度变化或宿主重建时**
   /// 调用一次；高度只变时 LayoutBuilder 原样交回上一次的实例(见那里的注释)。
-  /// 因此这里不能读任何高度值：ListView 的高度全靠约束传下来。
+  /// 只区分有界/无界布局；实际区高仍经约束传给 ListView，不成为重建键。
   Widget _buildBodyStage(
     BuildContext context,
     ThemeData theme,
@@ -6013,6 +4863,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     plan,
     double total,
     double viewportWidth,
+    bool hasBoundedHeight,
   ) {
     // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
     // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
@@ -6037,7 +4888,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!_automaticPagination &&
           item != null &&
           widget.rowKeyOf?.call(item) == null &&
-          _outputIdOf?.call(item) == null) {
+          widget.idOf?.call(item) == null) {
         return ('slot', index);
       }
       return planId(index);
@@ -6171,7 +5022,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
       // 稳定 key：rowKeyOf 优先，缺省回落 idOf（数据刷新时 Selectable
       // 复用而非重建，降低 SelectionArea 的 CME 抖动，FM2）；否则用下标。
-      final idKey = widget.rowKeyOf?.call(item) ?? _outputIdOf?.call(item);
+      final idKey = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
       final rowWidget = RepaintBoundary(
         key:
             widget.rowWidgetKeyOf?.call(item) ??
@@ -6238,17 +5089,25 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // the shared measured row window locate destination rows directly. Server
     // prepend/pagination and row dragging retain their existing anchor paths.
     final itemCount = summaryIndex + (summaryInline ? 1 : 0);
-    if ((widget.virtualized || widget.primary) &&
+    if ((widget.virtualized ||
+            widget.primary ||
+            (!widget.embedded && hasBoundedHeight)) &&
         !_automaticPagination &&
         widget.onLoadMore == null &&
-        widget.rowDrag == null &&
-        (widget.rowKeyOf != null || _outputIdOf != null)) {
+        widget.rowDrag == null) {
       final ids = <Object>[
-        for (var i = 0; i < plan.length; i++) planId(i),
+        // Anonymous report rows keep the same position identity as the
+        // fallback list; equal display values never become a business ID.
+        for (var i = 0; i < plan.length; i++) mountId(i),
         if (hasFooter) const ('footer',),
         for (final row in appendRows) ('append', row.key),
         if (summaryInline) const ('summary',),
       ];
+      if (ids.toSet().length != ids.length) {
+        for (var index = 0; index < ids.length; index++) {
+          ids[index] = ('local-row-position', ids[index], index);
+        }
+      }
       final unique = ids.toSet();
       if (unique.length == ids.length) {
         _localWindowSlots.removeWhere((id, _) => !unique.contains(id));
@@ -6315,7 +5174,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
         estimatedExtent: _deferredRowHeights[id] ?? estimatedRowExtent,
         onExtentMeasured: (height) => _deferredRowHeights[id] = height,
-        deferNewMounts: stageFallbackRows,
+        deferNewMounts: false,
         admitOnFirstFrame: _immediateFallbackMountIds.contains(id),
         expensive: _expensiveRowMounts,
         builder: (context) => buildRow(context, index),
@@ -6340,11 +5199,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 (_automaticPagination && !widget.embedded)
             ? false
             : true,
-        physics: _prependAnchor.wrap(
-          widget.primary
-              ? const AlwaysScrollableScrollPhysics()
-              : const ClampingScrollPhysics(),
-        ),
+        physics: widget.primary
+            ? const AlwaysScrollableScrollPhysics()
+            : const ClampingScrollPhysics(),
         findChildIndexCallback:
             window != null ||
                 (indexes == null &&
@@ -6361,6 +5218,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 rows: window,
                 viewportOnly: true,
                 expensiveRows: _expensiveRowMounts,
+                deferRowMounts: false,
                 preserveRowAnchorOnSourceChange: false,
                 estimatedRowExtent: estimatedRowExtent,
                 rowBuilder: (context, _, index) => buildRow(context, index),
@@ -6412,7 +5270,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   );
 
   bool get _hasFloatingBatchActions =>
-      _outputSelectable && widget.batchActionsBuilder != null;
+      !_resultOwnerRetired &&
+      _outputSelectable &&
+      widget.batchActionsBuilder != null;
 
   bool get _usesBoundedFloatingBatchActions =>
       _hasFloatingBatchActions && (!widget.embedded || _fullscreen);
@@ -6430,7 +5290,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool get _hasRowContent =>
       _appendRows.isNotEmpty ||
       _displayItems.isNotEmpty ||
-      (widget.leadingGroups ?? const []).any(
+      (_authorizedLeadingGroups ?? const []).any(
         (g) =>
             g.items.isNotEmpty ||
             (g.total ?? 0) > 0 ||
@@ -6439,10 +5299,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             g.onExpand != null,
       );
 
-  bool _legacyPrefetchScheduled = false;
-  int _prefetchCorrectionDepth = 0;
-
-  bool get _prefetchViewportActive {
+  bool get _visiblePresentationActive {
     if (!mounted) return false;
     // Fullscreen transfers the same keyed table stage to another route. Its
     // original State context stays on the covered source route.
@@ -6451,113 +5308,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         (ModalRoute.of(presentation)?.isCurrent ?? true);
   }
 
-  bool _ownsPrefetchNotification(ScrollNotification notification) {
-    final sourceContext = notification.context;
-    final source = sourceContext == null
-        ? null
-        : Scrollable.maybeOf(sourceContext)?.position;
-    final controller = _verticalScrollController;
-    return source != null &&
-        controller != null &&
-        controller.positions.contains(source);
-  }
-
-  void _prefetchAdjacent(ScrollMetrics metrics, {required bool prepend}) {
-    if (!_prefetchViewportActive ||
-        _prefetchCorrectionDepth != 0 ||
-        _restoringDeferredEdge ||
-        _hasPendingPageAnchor) {
-      return;
-    }
-    if (_readAheadPrepend != prepend) {
-      _readAheadPrepend = prepend;
-      _scheduleVisiblePage();
-    }
-    if (!UtenScrollPrefetchPolicy.isNearEdge(
-      metrics,
-      prepend: prepend,
-      fontZoom: UtenDisplayScale.fontZoomOf(context),
-    )) {
-      return;
-    }
-    if (!prepend) _maybeTriggerLoadMore(metrics);
-    _scheduleAppend(prepend: prepend);
-  }
-
-  /// 竖向滚动临近底部时触发 [MasterDataTableView.onLoadMore]。
-  /// loadingMore 为 true 期间不重复触发；更多页判断在调用方（见参数文档）。
-  void _maybeTriggerLoadMore(ScrollMetrics metrics) {
-    if (_appendRows.isNotEmpty ||
-        widget.onLoadMore == null ||
-        _busy ||
-        widget.error != null ||
-        _appendError != null ||
-        _legacyPrefetchScheduled ||
-        !_prefetchViewportActive ||
-        !UtenScrollPrefetchPolicy.isNearEdge(
-          metrics,
-          fontZoom: UtenDisplayScale.fontZoomOf(context),
-        )) {
-      return;
-    }
-    _legacyPrefetchScheduled = true;
-    final generation = _appendGeneration;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _legacyPrefetchScheduled = false;
-      if (!mounted ||
-          generation != _appendGeneration ||
-          !_prefetchViewportActive ||
-          _busy ||
-          widget.error != null ||
-          _appendError != null ||
-          _appendRows.isNotEmpty) {
-        return;
-      }
-      final controller = _verticalScrollController;
-      if (controller == null ||
-          controller.positions.length != 1 ||
-          !UtenScrollPrefetchPolicy.isNearEdge(
-            controller.position,
-            fontZoom: UtenDisplayScale.fontZoomOf(context),
-          )) {
-        return;
-      }
-      widget.onLoadMore?.call();
-    });
-    WidgetsBinding.instance.ensureVisualUpdate();
-  }
-
-  void _onPaginationWheel(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent ||
-        event.scrollDelta.dy == 0 ||
-        event.scrollDelta.dy.abs() < event.scrollDelta.dx.abs()) {
-      return;
-    }
-    final axisModifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
-    if (HardwareKeyboard.instance.logicalKeysPressed.any(
-      axisModifiers.contains,
-    )) {
-      return;
-    }
-    _pendingScrollToEnd = null;
-    _deferredLeadingEdge = false;
-    _deferredTrailingEdge = false;
-    _releaseExplicitReadingPage();
-    final controller = _verticalScrollController;
-    if (controller == null || !controller.hasClients) return;
-    _scheduleVisiblePage();
-    // At a clamped edge Flutter may emit no ScrollNotification at all. Observe
-    // the wheel without claiming it from the normal scroll/zoom machinery.
-    final prepend = event.scrollDelta.dy < 0;
-    for (final position in controller.positions) {
-      _prefetchAdjacent(position, prepend: prepend);
-    }
-  }
-
-  bool get _hasPendingPageAnchor =>
-      _prependMeasureItems != null ||
-      _prependAnchor.pending ||
-      _appendPage != null;
+  bool get _hasPendingPageAnchor => false;
 
   void _observeDeferredLeadingEdge(ScrollNotification notification) {
     if (_restoringDeferredEdge ||
@@ -6624,7 +5375,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!_deferredFallbackActive ||
           _hasPendingPageAnchor ||
           _deferredEdgeGeneration != _appendGeneration ||
-          !_prefetchViewportActive ||
+          !_visiblePresentationActive ||
           controller == null ||
           controller.positions.length != 1) {
         _deferredLeadingEdge = false;
@@ -6665,13 +5416,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 悬浮在右下角。动作层属于表格自身，因此普通视图和全屏路由使用同一实现。
   Widget _buildTableStage(BuildContext context) {
     return Listener(
-      onPointerSignal: _onPaginationWheel,
       behavior: HitTestBehavior.translucent,
       child: NotificationListener<ScrollMetricsNotification>(
         onNotification: (notification) {
           if (notification.metrics.axis == Axis.vertical) {
+            _localRowWindow.notifyViewportChanged();
             _scheduleHBarUpdate();
-            _scheduleVisiblePage();
           }
           return false;
         },
@@ -6680,23 +5430,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             if (notification.metrics.axis == Axis.vertical) {
               _observeDeferredLeadingEdge(notification);
               _scheduleHBarUpdate();
-              if (notification is ScrollUpdateNotification ||
-                  notification is OverscrollNotification ||
-                  notification is ScrollEndNotification) {
-                _scheduleVisiblePage();
-              }
-              final direction = UtenScrollPrefetchPolicy.directionOf(
-                notification,
-              );
-              if (direction != 0 && _ownsPrefetchNotification(notification)) {
-                if (!_hasPendingPageAnchor &&
-                    !_settlingPageLayout &&
-                    !_restoringDeferredEdge &&
-                    _prefetchCorrectionDepth == 0) {
-                  _releaseExplicitReadingPage();
-                }
-                _prefetchAdjacent(notification.metrics, prepend: direction < 0);
-              }
             }
             return false;
           },
@@ -6855,9 +5588,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       for (var i = 0; i < rows.length; i++)
         ValueKey(('pagination-row', ('data', _paginationRowId(rows[i])))): i,
     };
-    final proposed = _appendPage != null && _prependPageItems != null
-        ? _applyRowView(_collectRows(_proposedMeasuredPages()))
-        : rows;
+    final proposed = rows;
     final separatorIndexes = {
       for (var i = 0; i < proposed.length; i++)
         _paginationRowId(proposed[i]): i,
@@ -6870,7 +5601,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       controller: _bodyV,
       scrollCacheExtent: _rowScrollCache(context),
       primary: false,
-      physics: _prependAnchor.wrap(const ClampingScrollPhysics()),
+      physics: const ClampingScrollPhysics(),
       padding: padding.copyWith(
         bottom:
             padding.bottom +
@@ -7005,7 +5736,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
     // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
-    final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
+    final groups = _authorizedLeadingGroups ?? <MasterDataGroup<T>>[];
     final displayItems = _displayItems;
     final selectionRows = _profileMasterTableWork(
       'master.selection-row-keys',
@@ -7342,6 +6073,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 表体舞台缓存(见下方 LayoutBuilder 内注释)：本次 build 的局部变量，键 = 区宽。
       Widget? bodyStage;
       double? bodyStageWidth;
+      bool? bodyStageBoundedHeight;
       final Widget tableBody = _BodyFlex(
         embedded: widget.embedded && !_fullscreen,
         primary: _usesPrimaryScroll,
@@ -7376,10 +6108,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       // 且 ListView 里已布局过的行按原约束缓存、不再动。宽度变了(拖窗 /
                       // 折叠侧栏 / 换列)或宿主重建(bodyStage 是本次 build 的局部变量，
                       // 每次 build 天然作废)才真正重建。
-                      if (bodyStage != null && bodyStageWidth == c.maxWidth) {
+                      if (bodyStage != null &&
+                          bodyStageWidth == c.maxWidth &&
+                          bodyStageBoundedHeight == c.hasBoundedHeight) {
                         return bodyStage!;
                       }
                       bodyStageWidth = c.maxWidth;
+                      bodyStageBoundedHeight = c.hasBoundedHeight;
                       return bodyStage = _profileMasterTableWork<Widget>(
                         'master.body-stage',
                         () => _buildBodyStage(
@@ -7388,6 +6123,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           plan,
                           math.max(total, c.maxWidth),
                           c.maxWidth,
+                          c.hasBoundedHeight,
                         ),
                       );
                     },
@@ -8762,7 +7498,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   String _textSelectionRowKey(T item) =>
       widget.rowKeyOf?.call(item) ??
-      _outputIdOf?.call(item) ??
+      widget.idOf?.call(item) ??
       _columns.map((column) => column.value(item)).join('\u0000');
 
   Widget _buildDataCell(
@@ -9285,18 +8021,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return interactive;
   }
 
-  /// Toolbar and picker pagination share the goods-table compact controls.
-  Widget? _buildToolbarPager(BuildContext context) {
-    if (!widget.showPaginationControls || widget.totalPages <= 1) return null;
-    return UtenPagination(
-      currentPage: _currentPage,
-      totalPages: widget.totalPages,
-      busy: _busy,
-      onPageChanged: widget.onPageChange == null ? null : _gotoPage,
-      controller: _pageCtrl,
-      focusNode: _pageFocus,
-    );
-  }
+  Widget? _buildToolbarPager(BuildContext context) => null;
 }
 
 /// The status owns one ticker; table rows are outside its animated subtree.
@@ -9515,9 +8240,7 @@ class _FilterCellState extends State<_FilterCell> {
   List<MasterFacetBucket> _remoteBuckets = const [];
   bool _remoteLoading = false;
   bool _remoteManualLoading = false;
-  bool _remoteHasMore = false;
   bool _remoteFailed = false;
-  int _remotePage = 0;
   String _remoteQuery = '';
   bool _remoteComposing = false;
   TextEditingValue? _lastSearchValue;
@@ -9589,18 +8312,16 @@ class _FilterCellState extends State<_FilterCell> {
     final revision = ++_searchRevision;
     _remoteQuery = value.trim();
     _remoteBuckets = const [];
-    _remotePage = 0;
-    _remoteHasMore = false;
     _remoteFailed = false;
     _remoteLoading = true;
     _remoteManualLoading = immediate;
     _overlay?.markNeedsBuild();
     if (immediate) {
-      _fetchRemote(revision, 1);
+      _fetchRemote(revision);
     } else {
       _searchDebounce = Timer(
         const Duration(milliseconds: 250),
-        () => _fetchRemote(revision, 1),
+        () => _fetchRemote(revision),
       );
     }
   }
@@ -9618,7 +8339,6 @@ class _FilterCellState extends State<_FilterCell> {
       _searchDebounce?.cancel();
       _searchRevision++;
       _remoteBuckets = const [];
-      _remoteHasMore = false;
       _remoteFailed = false;
       _remoteLoading = false;
       _remoteManualLoading = false;
@@ -9628,53 +8348,56 @@ class _FilterCellState extends State<_FilterCell> {
     _searchRemote(value.text);
   }
 
-  Future<void> _fetchRemote(
-    int revision,
-    int page, {
-    bool manual = false,
-  }) async {
-    if (!(widget.isCurrent?.call() ?? true)) return;
-    if (_fetchingRevision == revision) return;
+  Future<void> _fetchRemote(int revision, {bool manual = false}) async {
+    if (!(widget.isCurrent?.call() ?? true) || _fetchingRevision == revision) {
+      return;
+    }
     _fetchingRevision = revision;
     _remoteLoading = true;
     _remoteManualLoading = _remoteManualLoading || manual;
     _remoteFailed = false;
     _overlay?.markNeedsBuild();
+    bool current() =>
+        mounted &&
+        _overlay != null &&
+        revision == _searchRevision &&
+        (widget.isCurrent?.call() ?? true);
     try {
       final query = _remoteQuery;
-      final result = await PagedReadIntent.scopedRead(
-        () =>
-            mounted &&
-            _overlay != null &&
-            revision == _searchRevision &&
-            (widget.isCurrent?.call() ?? true),
-        () => widget.loadFacetPage!(query, page),
+      final result = await loadCompletePagedResult<MasterFacetBucket>(
+        isCurrent: current,
+        idOf: (bucket) => ('facet-value', bucket.value),
+        allowUnknownTotal: true,
+        unknownPageCountIsHorizon: true,
+        onPage: (batch) {
+          // Preserve only the first accepted batch during a failed read. Avoid
+          // copying the growing full option set on every internal batch.
+          if (current() && batch.page == 1 && batch.totalPages > 1) {
+            _remoteBuckets = batch.items;
+            _overlay?.markNeedsBuild();
+          }
+        },
+        loadPage: (page, _) async {
+          final response = await widget.loadFacetPage!(query, page);
+          return PagedResult<MasterFacetBucket>(
+            items: response.items,
+            page: response.page ?? page,
+            size: response.size ?? 100,
+            total: -1,
+            totalPages: response.hasMore
+                ? (response.page ?? page) + 1
+                : (response.page ?? page),
+          );
+        },
       );
-      if (!mounted ||
-          _overlay == null ||
-          revision != _searchRevision ||
-          !(widget.isCurrent?.call() ?? true)) {
-        return;
-      }
+      if (!current()) return;
       _fetchingRevision = null;
-      final byValue = <String, MasterFacetBucket>{
-        if (page > 1)
-          for (final bucket in _remoteBuckets) bucket.value: bucket,
-        for (final bucket in result.items) bucket.value: bucket,
-      };
-      _remoteBuckets = byValue.values.toList();
-      _remoteHasMore = result.hasMore;
-      _remotePage = page;
+      _remoteBuckets = result.items;
       _remoteLoading = false;
       _remoteManualLoading = false;
       _overlay?.markNeedsBuild();
     } catch (_) {
-      if (!mounted ||
-          _overlay == null ||
-          revision != _searchRevision ||
-          !(widget.isCurrent?.call() ?? true)) {
-        return;
-      }
+      if (!current()) return;
       _fetchingRevision = null;
       _remoteLoading = false;
       _remoteManualLoading = false;
@@ -10084,21 +8807,9 @@ class _FilterCellState extends State<_FilterCell> {
                   ),
                 if (_remoteFailed)
                   TextButton(
-                    onPressed: () => _fetchRemote(
-                      _searchRevision,
-                      _remotePage + 1,
-                      manual: true,
-                    ),
+                    onPressed: () =>
+                        _fetchRemote(_searchRevision, manual: true),
                     child: Text(basicDataL10n(ctx).tableFacetLoadFailed),
-                  ),
-                if (_remoteHasMore && !_remoteLoading && !_remoteFailed)
-                  TextButton(
-                    onPressed: () => _fetchRemote(
-                      _searchRevision,
-                      _remotePage + 1,
-                      manual: true,
-                    ),
-                    child: Text(basicDataL10n(ctx).tableFacetLoadMore),
                   ),
                 if (buckets.isEmpty &&
                     !_remoteLoading &&

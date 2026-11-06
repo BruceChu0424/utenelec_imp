@@ -1,7 +1,12 @@
+import '../shared/finance_complete_summary_read.dart';
+import 'finance_summary_scope_field.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/models/paged_result.dart';
 import '../shared/finance_template_source_upload.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -151,6 +156,8 @@ class _FinanceAssetOpeningGroupSurfaceState
   String? _primaryVoucher, _error;
   int _tab = 0, _read = 0;
   bool _busy = false, _loading = true, _reviewed = false;
+  FinanceSummaryScope _groupsScope = FinanceSummaryScope.active;
+  int _groupsRead = 0;
   bool get _deferred => _template == 'amortization';
   FinanceAssetLedger get _ledger => _deferred
       ? FinanceAssetLedger.deferredExpense
@@ -336,12 +343,50 @@ class _FinanceAssetOpeningGroupSurfaceState
   }
 
   Future<void> _refreshGroups() async {
+    final generation = ++_groupsRead, range = _groupsScope;
     final scope = await captureFormDraftRequestScope();
-    final result = await scope.run(
-      () => ref.read(apiClientProvider).get('/finance/asset-opening-groups'),
+    final api = ref.read(apiClientProvider);
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        scope.isCurrent &&
+        generation == _groupsRead &&
+        range == _groupsScope &&
+        identical(api, ref.read(apiClientProvider));
+    final groups = await scope.run(
+      () => readCompleteFinanceSummaries(
+        isCurrent: current,
+        idOf: (row) => row['id'],
+        loadPage: (page, size, revision) => api.get(
+          '/finance/asset-opening-groups/summaries',
+          query: {
+            'scope': range.name,
+            'page': page,
+            'size': size,
+            'readSnapshotRevision': ?revision,
+          },
+        ),
+      ),
     );
-    if (mounted && formDraftIdentityIsCurrent && scope.isCurrent) {
-      setState(() => _groups = _maps(result['items']));
+    if (current()) setState(() => _groups = groups);
+  }
+
+  Future<void> _changeGroupsScope(FinanceSummaryScope value) async {
+    if (_busy || _loading || _pending != null || value == _groupsScope) return;
+    setState(() {
+      _groupsScope = value;
+      _groups = [];
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await _refreshGroups();
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _error = humanErrorMessage(error) ?? '接续组读取失败，请重试');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -1379,6 +1424,14 @@ class _FinanceAssetOpeningGroupSurfaceState
 
   Widget _records() => Column(
     children: [
+      FinanceSummaryScopeField(
+        key: const Key('finance-asset-opening-record-scope'),
+        label: '接续记录范围',
+        value: _groupsScope,
+        enabled: !_busy && !_loading && _pending == null,
+        info: '待办理保留原提交与撤销待复核事项；已接续及已撤销记录在历史查看，合法申请撤销仍从原记录发起。',
+        onChanged: _changeGroupsScope,
+      ),
       if (_group != null)
         Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -1669,10 +1722,15 @@ class _DraftPicker extends ConsumerStatefulWidget {
   ConsumerState<_DraftPicker> createState() => _DraftPickerState();
 }
 
-class _DraftPickerState extends ConsumerState<_DraftPicker> {
+class _DraftPickerState extends ConsumerState<_DraftPicker>
+    with ReadViewActivityMixin<_DraftPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _search = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _total = 0, _generation = 0;
+  int _total = 0, _generation = 0;
+  int? _activeGeneration;
+  String? _activeQuery;
   bool _loading = true;
   bool _retired = false;
   String? _error;
@@ -1703,36 +1761,55 @@ class _DraftPickerState extends ConsumerState<_DraftPicker> {
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load() async {
+    if (!_current) return;
     final generation = ++_generation;
+    final query = _search.text.trim();
+    _activeGeneration = generation;
+    _activeQuery = query;
     setState(() => _loading = true);
     try {
       final scope = await _api.captureRequestScope(
         isCurrent: () => _current && generation == _generation,
       );
-      final value = await scope.run(
-        () => _api.get(
-          widget.ledger.basePath,
-          query: {
-            'page': page,
-            'size': 30,
-            'status': 'DRAFT',
-            'q': _search.text.trim(),
-          },
+      final complete = await readViewActivity.runRead(
+        () => _current && generation == _generation,
+        () => scope.run(
+          () => loadCompletePagedResult<Map<String, dynamic>>(
+            isCurrent: () =>
+                _current && generation == _generation && scope.isCurrent,
+            idOf: (row) => row['id'],
+            loadPage: (page, size) async {
+              final value = await _api.get(
+                widget.ledger.basePath,
+                query: {
+                  'page': page,
+                  'size': size,
+                  'status': 'DRAFT',
+                  'q': query,
+                },
+              );
+              return PagedResult.fromJson(value, (row) => row);
+            },
+          ),
         ),
       );
       if (!_current || generation != _generation || !scope.isCurrent) return;
       setState(() {
-        _rows = _maps(value['items']);
-        _page = page;
-        _total = (value['total'] as num?)?.toInt() ?? _rows.length;
+        _rows = complete.items;
+        _total = complete.total;
         _error = null;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (_current && generation == _generation) {
         setState(() => _error = humanErrorMessage(e) ?? '草稿未读取');
       }
     } finally {
+      if (_activeGeneration == generation) {
+        _activeGeneration = null;
+        _activeQuery = null;
+      }
       if (_current && generation == _generation) {
         setState(() => _loading = false);
       }
@@ -1761,7 +1838,14 @@ class _DraftPickerState extends ConsumerState<_DraftPicker> {
                   hint: '按编码／名称搜索',
                   onInputChanged: (_) {
                     _generation++;
+                    setState(() {
+                      _rows = [];
+                      _loading = true;
+                    });
                   },
+                  isQueryPending: (value) =>
+                      _activeGeneration == _generation &&
+                      _activeQuery == value.trim(),
                   onChanged: (_) => _load(),
                   onSubmitted: (_) => _load(),
                 ),
@@ -1780,10 +1864,7 @@ class _DraftPickerState extends ConsumerState<_DraftPicker> {
                       },
                 child: const Text('新增草稿'),
               ),
-              UtenRefreshButton(
-                busy: _loading,
-                onRefresh: () => _load(page: _page),
-              ),
+              UtenRefreshButton(busy: _loading, onRefresh: _load),
             ],
           ),
         ),
@@ -1837,25 +1918,7 @@ class _DraftPickerState extends ConsumerState<_DraftPicker> {
         ),
         Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: UtenResponsiveActionWrap(
-            children: [
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: !_loading && _page > 1
-                    ? () => _load(page: _page - 1)
-                    : null,
-                child: const Text('上一页'),
-              ),
-              Text('第$_page页，共$_total条'),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: !_loading && _page * 30 < _total
-                    ? () => _load(page: _page + 1)
-                    : null,
-                child: const Text('下一页'),
-              ),
-            ],
-          ),
+          child: UtenResponsiveActionWrap(children: [Text('共$_total条')]),
         ),
       ],
     ),

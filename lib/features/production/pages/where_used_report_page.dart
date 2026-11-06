@@ -683,9 +683,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     // 返回即刷新：已查出的结果在行点击 push 的计划详情操作后可能过期，
     // 返回时重查当前查询；尚未查询（无物料/无结果）不触发，避免弹「请先选物料」。
     _myLocation ??= currentLocationOr(context, RouteName.production);
-    ref.onPageResume(_myLocation!, () {
+    FutureOr<void> visibleReadReturn() {
       if (_subject != null) _refreshQuery();
-    });
+    }
+
+    _reportRead.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return UtenRefreshScope(
       controller: _refreshController,
       child: Stack(

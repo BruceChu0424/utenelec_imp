@@ -20,6 +20,18 @@ WITH matched AS (
     FROM public.legacy_quantity_counter_import_sources proof
     LEFT JOIN public.sales_shipment_items target ON proof.target_table='sales_shipment_items' AND target.id=proof.target_id
     WHERE proof.run_id=:'run_id'::uuid AND proof.target_table='sales_shipment_items'
+    UNION ALL
+    SELECT proof.source_kind,proof.id,target.id IS NOT NULL,
+        proof.target_snapshot_sha256=encode(public.digest(public.fn_legacy_finance_snapshot(to_jsonb(target),proof.target_fields)::text,'sha256'),'hex')
+    FROM public.legacy_quantity_counter_import_sources proof
+    LEFT JOIN public.purchase_return_items target ON proof.target_table='purchase_return_items' AND target.id=proof.target_id
+    WHERE proof.run_id=:'run_id'::uuid AND proof.target_table='purchase_return_items'
+    UNION ALL
+    SELECT proof.source_kind,proof.id,target.id IS NOT NULL,
+        proof.target_snapshot_sha256=encode(public.digest(public.fn_legacy_finance_snapshot(to_jsonb(target),proof.target_fields)::text,'sha256'),'hex')
+    FROM public.legacy_quantity_counter_import_sources proof
+    LEFT JOIN public.subcontract_material_return_items target ON proof.target_table='subcontract_material_return_items' AND target.id=proof.target_id
+    WHERE proof.run_id=:'run_id'::uuid AND proof.target_table='subcontract_material_return_items'
 )
 SELECT source_kind,count(*) AS source_proofs,
     count(*) FILTER(WHERE NOT target_exists) AS missing_targets,

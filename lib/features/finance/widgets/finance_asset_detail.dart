@@ -978,7 +978,6 @@ class _FinanceAssetActionInputState
       .listPickerPage(
         query,
         purpose: EmployeeReferencePurpose.financeAssetCustodian,
-        size: 30,
         departmentId: _department?.id,
         includeSubtree: true,
       );

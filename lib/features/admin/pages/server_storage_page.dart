@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
@@ -12,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -21,6 +23,8 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../models/server_storage.dart';
 import '../providers/server_operations_access.dart';
 import '../providers/server_storage_request_store.dart';
@@ -44,7 +48,9 @@ class _ServerStorageSession extends ConsumerStatefulWidget {
 }
 
 class _ServerStorageState extends ConsumerState<_ServerStorageSession>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ReadViewActivityMixin<_ServerStorageSession> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final Object? _owner;
   late final String? _requestOwner;
   ServerStorageSummary? _summary;
@@ -52,6 +58,8 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
   ServerStorageCategory? _category;
   ServerStorageCleanupReceipt? _receipt;
   final Set<String> _selected = {};
+  final _resourceRows =
+      UtenAncestorRowWindowController<ServerStorageResource>();
   bool _loading = false, _itemsLoading = false, _busy = false;
   int _generation = 0, _itemsGeneration = 0;
   String? _error, _itemsError;
@@ -126,8 +134,12 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
       _itemsError = null;
       _itemsLoading = false;
     });
+    var retired = false;
     try {
-      final result = await _repository.summary();
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _generation,
+        _repository.summary,
+      );
       if (!_current || generation != _generation) return;
       setState(() => _summary = result);
       if (_category != null) {
@@ -137,6 +149,10 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
         _category = matching.isEmpty ? null : matching.first;
       }
     } catch (error) {
+      if (isRetiredViewRead(error)) {
+        retired = true;
+        return;
+      }
       if (_current && generation == _generation) {
         setState(() {
           _error = _message(error, '无法读取存储用量。');
@@ -146,12 +162,12 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
     } finally {
       if (_current && generation == _generation) {
         setState(() => _loading = false);
-        if (_category != null) unawaited(_loadItems());
+        if (!retired && _category != null) await _loadItems();
       }
     }
   }
 
-  Future<void> _loadItems({bool more = false}) async {
+  Future<void> _loadItems() async {
     final category = _category;
     if (!_current ||
         _summary?.available != true ||
@@ -161,42 +177,58 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
         !category.canList) {
       return;
     }
-    final cursor = more ? _resources?.nextCursor : null;
-    if (more && cursor == null) return;
     final generation = ++_itemsGeneration;
     setState(() {
       _itemsLoading = true;
       _itemsError = null;
-      if (!more) {
-        _resources = null;
-        _selected.clear();
-      }
+      _resources = null;
+      _selected.clear();
     });
     try {
-      final result = await _repository.resources(category.kind, cursor: cursor);
+      bool current() =>
+          _current &&
+          generation == _itemsGeneration &&
+          _category?.kind == category.kind;
+      final repository = _repository;
+      final result = await readViewActivity.runRead(
+        current,
+        () =>
+            loadCompleteCursorSnapshot<
+              ServerStorageResource,
+              ServerStorageResources,
+              String
+            >(
+              isCurrent: current,
+              idOf: (resource) => resource.id,
+              revisionOf: (response) =>
+                  (response.kind, response.revision, response.total),
+              loadPage: (cursor, size) async {
+                final response = await repository.resources(
+                  category.kind,
+                  cursor: cursor,
+                );
+                if (response.kind != category.kind) {
+                  throw const FormatException('Invalid inventory category');
+                }
+                return response;
+              },
+              rowsOf: (response) => response.items,
+              nextCursorOf: (response) => response.nextCursor,
+              rebuildSnapshot: (first, rows) =>
+                  first.withItems(rows, complete: true),
+            ),
+      );
       if (!_current ||
           generation != _itemsGeneration ||
           _category?.kind != category.kind) {
         return;
       }
-      if (result.kind != category.kind) {
-        throw const FormatException('Invalid inventory category');
+      if (result.total != result.items.length) {
+        throw ApiException('SNAPSHOT_CHANGED', '存储内容已变化，请重新读取此分类后再选择。');
       }
-      final previous = _resources;
-      if (more && previous != null && previous.revision != result.revision) {
-        setState(() {
-          _selected.clear();
-          _resources = null;
-          _itemsError = '存储内容已变化，请重新读取此分类后再选择。';
-        });
-        return;
-      }
-      setState(
-        () => _resources = more && previous != null
-            ? result.withItems([...previous.items, ...result.items])
-            : result,
-      );
+      setState(() => _resources = result);
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (_current && generation == _itemsGeneration) {
         setState(() => _itemsError = _message(error, '无法读取此分类，请重试。'));
       }
@@ -205,6 +237,11 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
         setState(() => _itemsLoading = false);
       }
     }
+  }
+
+  Future<void> _readItemsWithBusy() async {
+    if (_itemsLoading || _busy || !_current) return;
+    await UtenBusyOverlay.run(context, title: '正在读取存储资源', action: _loadItems);
   }
 
   Future<void> _preview() async {
@@ -527,7 +564,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                                               !_busy &&
                                               !_loading &&
                                               _pending == null
-                                          ? () {
+                                          ? () async {
                                               _itemsGeneration++;
                                               setState(() {
                                                 _category = category;
@@ -536,7 +573,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                                                 _itemsLoading = false;
                                                 _itemsError = null;
                                               });
-                                              _loadItems();
+                                              await _readItemsWithBusy();
                                             }
                                           : null,
                                     ),
@@ -548,41 +585,40 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                         if (_category != null) ...[
                           const SizedBox(height: UtenSpacing.s24),
                           UtenSectionHeader(
-                            title: _category!.displayLabel,
-                            info: _summary?.canCleanup == true
-                                ? '每次最多选择 50 项；受保护资源不可选择。'
-                                : null,
+                            title: _resources == null
+                                ? _category!.displayLabel
+                                : '${_category!.displayLabel}（${_resources!.items.length}）',
+                            info: [
+                              if (_summary?.canCleanup == true)
+                                '每次最多选择 50 项；受保护资源不可选择。',
+                              if (_category!.detail != null) _category!.detail!,
+                            ].join('\n'),
                           ),
-                          if (_category!.detail != null)
-                            Text(_category!.detail!),
                           if (_itemsError != null)
                             UtenInlineNotice(
                               level: UtenInlineNoticeLevel.error,
                               message: _itemsError,
                               trailing: UtenButton(
                                 type: UtenButtonType.secondary,
-                                onPressed: _itemsLoading ? null : _loadItems,
+                                onPressed: _itemsLoading
+                                    ? null
+                                    : _readItemsWithBusy,
                                 child: const Text('重新读取'),
                               ),
-                            ),
-                          if (_resources != null)
-                            Text(
-                              '已显示 ${_resources!.items.length} / ${_resources!.total ?? '—'} 项',
                             ),
                           if (_itemsLoading) const LinearProgressIndicator(),
                           if (!_itemsLoading &&
                               _resources?.items.isEmpty == true)
                             const UtenEmpty(message: '此分类暂无资源'),
-                          for (final resource
-                              in _resources?.items ?? <ServerStorageResource>[])
-                            _resource(resource),
-                          if (_resources?.nextCursor != null)
-                            UtenButton(
-                              type: UtenButtonType.secondary,
-                              onPressed: _itemsLoading || _busy
-                                  ? null
-                                  : () => _loadItems(more: true),
-                              child: const Text('加载更多'),
+                          if (_resources case final resources?)
+                            UtenAncestorRowWindow<ServerStorageResource>(
+                              rows: resources.items,
+                              controller: _resourceRows,
+                              estimatedRowExtent: 110,
+                              expensiveRows: false,
+                              deferRowMounts: false,
+                              rowBuilder: (_, resource, _) =>
+                                  _resource(resource),
                             ),
                           if (_summary?.canCleanup == true)
                             Padding(
@@ -668,7 +704,18 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                   : null,
             )
           : const Icon(Icons.shield_outlined),
-      title: Text(resource.label),
+      title: Row(
+        children: [
+          Expanded(child: Text(resource.label)),
+          if (resource.detail != null || resource.protectionReasons.isNotEmpty)
+            UtenFieldHintIcon(
+              info: [
+                if (resource.detail != null) resource.detail!,
+                ...resource.protectionReasons,
+              ].join('\n'),
+            ),
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -679,8 +726,6 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
             Text(
               '修改：${DisplayDateTime.beijing(resource.modifiedAt!.toIso8601String())}',
             ),
-          if (resource.detail != null) Text(resource.detail!),
-          for (final reason in resource.protectionReasons) Text(reason),
         ],
       ),
     ),

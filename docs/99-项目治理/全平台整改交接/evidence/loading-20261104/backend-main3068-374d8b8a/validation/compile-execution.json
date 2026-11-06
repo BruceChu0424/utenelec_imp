@@ -1,0 +1,16 @@
+{
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T21:25:23.1807508Z",
+  "completedAtUtc": "2026-11-05T21:29:46.8263364Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-3068-output-fixed",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "wrapperPid": 7736,
+  "log": "build\\loading-validation\\main-3068-output-fixed\\compile.log"
+}

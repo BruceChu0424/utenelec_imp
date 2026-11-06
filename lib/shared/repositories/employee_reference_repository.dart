@@ -150,6 +150,7 @@ extension EmployeeReferencePickerCandidates on EmployeeReferenceRepository {
           .toList(growable: false),
       page: result.page,
       totalPages: result.totalPages,
+      total: result.total,
     );
   }
 }

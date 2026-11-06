@@ -1,3 +1,5 @@
+import '../../../shared/models/paged_result.dart';
+
 enum QualityInspectionRecordDomain {
   iqc('IQC'),
   fqc('FQC');
@@ -56,6 +58,17 @@ class QualityInspectionRecordPage {
   final int total;
   final int totalPages;
   final List<QualityInspectionRecordMetric> metrics;
+
+  QualityInspectionRecordPage withPage(
+    PagedResult<QualityInspectionRecord> combined,
+  ) => QualityInspectionRecordPage(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+    metrics: metrics,
+  );
 
   factory QualityInspectionRecordPage.fromJson(Map<String, dynamic> json) =>
       QualityInspectionRecordPage(

@@ -332,6 +332,9 @@ class _MouldSearchSheet extends ConsumerStatefulWidget {
 class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
     with ScopedPagedReadViewMixin<_MouldSearchSheet> {
   @override
+  Future<void> onReadViewResumed() => _search(_query, preserveSelection: true);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     _boundaryChanged = true;
     _requestVersion++;
@@ -448,14 +451,16 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
     String text, {
     int page = 1,
     bool useCache = false,
+    bool preserveSelection = false,
   }) async {
     final query = text.trim();
     if (!_canRead || query != _searchCtl.text.trim()) return;
+    final selectedId = preserveSelection ? _picked?.id : null;
     final requestVersion = ++_requestVersion;
     setState(() {
       _query = query;
       _requestedPage = page;
-      _picked = null;
+      if (!preserveSelection) _picked = null;
       _loading = true;
       _error = null;
     });
@@ -479,25 +484,29 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
             ? repo.listGlobal(
                 keyword: query,
                 page: target,
-                size: 50,
+                size: 100,
                 filters: filters,
               )
             : repo.list(
                 category,
                 keyword: query,
                 page: target,
-                size: 50,
+                size: 100,
                 filters: filters,
               ),
       );
       if (!_canRead || requestVersion != _requestVersion) return;
       setState(() {
         _results = result.items;
+        _picked = selectedId == null
+            ? null
+            : result.items.where((row) => row.id == selectedId).firstOrNull;
         _page = result.page;
         _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!_canRead || requestVersion != _requestVersion) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '模具搜索失败，请重试';

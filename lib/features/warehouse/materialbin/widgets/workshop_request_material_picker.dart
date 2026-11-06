@@ -193,6 +193,9 @@ class _RequestMaterialPicker extends ConsumerStatefulWidget {
 
 class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
     with ScopedPagedReadViewMixin<_RequestMaterialPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   final _rows = MasterDataTableRowsController<WmMaterialOption>();
   PagedResult<WmMaterialOption>? _page;
   WmMaterialOption? _selected;
@@ -279,6 +282,7 @@ class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
         _reconcileSelection(generation);
       }
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (mounted && generation == _generation) {
         setState(() {
           _error = error is ApiException ? error.message : '物料未读到，请重试';

@@ -10,6 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/network/business_precision_coordinator.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -35,6 +38,9 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/production_material_discovery.dart';
+import 'package:uten_imp/shared/measurement/weight_params.dart';
+import 'package:uten_imp/shared/measurement/weight_predictor.dart';
+import 'package:uten_imp/shared/widgets/business_precision_dialog.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -786,8 +792,17 @@ void main() {
             row.quantity.text = '12.5';
             row.values['warehouseId'] = 'w1';
           }
+          // The compatibility double cannot carry every supported kg digit.
+          // Unknown replay must keep the submitted decimal text and key.
+          _table(tester).issueWeights!['item-normal']!.weight.setKgText(
+            '9007199254740993.125',
+          );
           await _submit(tester);
           final calls = mixed ? tasks.submissions : tasks.ordinarySubmissions;
+          expect(
+            ((calls.single['weights'] as List).single as Map)['weightKg'],
+            '9007199254740993.125',
+          );
           final original = jsonEncode(calls.single);
           final id = storage.draft['id'] as String;
           if (revoked) {
@@ -1478,6 +1493,9 @@ void main() {
         '0.0000000000000000000000001',
         '10000000000000000000000000000000000000000',
         '1e-25',
+        '1.00001',
+        '1.0000100',
+        '1e14',
       ]) {
         row.quantity.text = input;
         expect(row.quantityError, isNotNull, reason: input);
@@ -1809,6 +1827,9 @@ void main() {
       expect(tasks.ordinarySubmissions.single['weights'], [
         {'itemId': 'item-normal', 'weightKg': '1.25', 'qtyFromWeight': false},
       ]);
+      final originalBody = jsonEncode(tasks.ordinarySubmissions.single);
+      final originalKey = data['requestKey'];
+      final frozenWeights = jsonEncode(data['submittedWeights']);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       await _pump(
@@ -1821,8 +1842,21 @@ void main() {
         draftGuard: true,
       );
       expect(_table(tester).issueWeights!['item-normal']!.weight.kg, 1.25);
+      expect(
+        _table(tester).issueWeights!['item-normal']!.weight.kgText,
+        '1.25',
+      );
       expect(_table(tester).issueSaving, isTrue);
       expect(tasks.ordinaryCalls, 1, reason: 'reopening must not submit again');
+      tasks.failure = null;
+      await _submit(tester);
+      expect(tasks.ordinaryCalls, 2);
+      expect(tasks.ordinarySubmissions.last['key'], originalKey);
+      expect(jsonEncode(tasks.ordinarySubmissions.last), originalBody);
+      expect(
+        jsonEncode(tasks.ordinarySubmissions.last['weights']),
+        frozenWeights,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -1886,13 +1920,47 @@ void main() {
   );
 
   testWidgets(
-    'empty discovery quantity is estimated from the weighed amount and marked qtyFromWeight',
+    'nonMASS material quantity requires an explicit domain-four choice and keeps its weighing source',
     (tester) async {
       final tasks = _Tasks();
       final weights = FakeWeightRepository(
-        byGoods: {'plastic': learnedWeightParams('plastic')},
+        byGoods: {
+          'plastic': const WeightParams(
+            goodsId: 'plastic',
+            basis: WeightBasis.learned,
+            logMean: -6.214979467174846,
+            lotPrior: 3.869930380683166e-05,
+            df: 15,
+            tier: WeightTier.yellow,
+            nInliers: 12,
+            tolerancePct: 3,
+            baseUnitDimension: 'LENGTH',
+          ),
+        },
       );
-      await _pump(tester, tasks, docs: [], weights: weights);
+      final requests = _DiscoveryRepository()
+        ..values['request'] = _request(
+          'request',
+          items: [
+            {..._plastic, 'unitId': 'metre', 'unitName': '米'},
+          ],
+        );
+      await _pump(
+        tester,
+        tasks,
+        docs: [],
+        weights: weights,
+        discoveryRepository: requests,
+      );
+      final requirements = <BusinessPrecisionRequirement>[];
+      final context = tester.element(find.byType(ProductionDrawBatchIssuePage));
+      final unregister = BusinessPrecisionCoordinator.instance.register((
+        requirement,
+      ) {
+        requirements.add(requirement);
+        return showBusinessPrecisionDialog(context, requirement);
+      });
+      addTearDown(unregister);
       expect(weights.requests.single, ['plastic']);
       final row = _table(tester).discoveryRows.single;
       row.values['warehouseId'] = 'w1';
@@ -1905,9 +1973,66 @@ void main() {
         '2',
       );
       await tester.pump();
+      expect(row.quantity.text, isEmpty);
+      expect(row.weight.kgText, '2');
+      expect(row.weight.weight.quantityPendingReason, 'PRECISION_LIMIT');
+      expect(tasks.submissions, isEmpty);
+      final precision = find.byKey(
+        const ValueKey('weight-cell-quantity-precision'),
+      );
+      await tester.ensureVisible(precision);
+      await tester.pumpAndSettle();
+      expect(precision.hitTestable(), findsOneWidget);
+      await tester.tap(precision);
+      await tester.pumpAndSettle();
+      expect(requirements.last.maxScale, 4);
+      expect(find.byType(BusinessPrecisionDialog), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确认本次精度'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('取消，保留原输入'));
+      await tester.pumpAndSettle();
+      expect(row.weight.kgText, '2');
+      expect(row.quantity.text, isEmpty);
+      await _submit(tester);
+      expect(tasks.submissions, isEmpty);
+      await tester.ensureVisible(precision);
+      await tester.pumpAndSettle();
+      expect(precision.hitTestable(), findsOneWidget);
+      await tester.tap(precision);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('处理方式'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('直接截取，不进位').last);
+      await tester.pumpAndSettle();
+      final scale = find.byWidgetPredicate(
+        (widget) => widget is UtenInput && widget.label == '保留小数位数',
+      );
+      await tester.enterText(scale, '5');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确认本次精度'))
+            .onPressed,
+        isNull,
+      );
+      await tester.enterText(scale, '4');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认本次精度'));
+      await tester.pumpAndSettle();
       expect(row.quantity.autofilled, isTrue);
+      expect(row.quantity.text, '1000.3714');
       expect(double.parse(row.quantity.text), closeTo(1000, 30));
       expect(row.weight.qtyFromWeight, isTrue);
+      expect(row.weight.weight.quantityPrecision?.toJson(), {
+        'scale': 4,
+        'rounding': 'DOWN',
+      });
+      expect(row.weight.weight.quantityPendingReason, isNull);
+      expect(row.weight.kgText, '2');
       await _submit(tester);
       final discovery =
           (tasks.submissions.single['discoveries'] as List).single as Map;
@@ -1915,6 +2040,50 @@ void main() {
         ((discovery['weights'] as List).single as Map)['qtyFromWeight'],
         isTrue,
       );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'registered MASS readonly preserves high precision without creating an observed weighing',
+    (tester) async {
+      final tasks = _Tasks();
+      final weights = FakeWeightRepository(
+        byGoods: {
+          'plastic': const WeightParams(
+            goodsId: 'plastic',
+            basis: WeightBasis.exact,
+            massFactorKg: 1,
+            massFactorKgExact: '1',
+            baseUnitDimension: 'MASS',
+          ),
+        },
+      );
+      await _pump(tester, tasks, docs: [], weights: weights);
+      final row = _table(tester).discoveryRows.single;
+      row.values['warehouseId'] = 'w1';
+      await _table(tester).weightParams!.ensure([row.weight.paramsLine!]);
+      const original = '99999999999999.9999';
+      row.quantity.text = original;
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<ProductionDrawDetailRow>>(
+        find.byKey(const Key('production-draw-detail-table')),
+      );
+      final column = table.columns.singleWhere(
+        (column) => column.key == 'issueWeight',
+      );
+      expect(row.quantity.text, original);
+      expect(row.weight.kgText, isNull);
+      expect(column.exactValueOf!(table.items.single), original);
+      final displayed = find.byKey(const ValueKey('weight-cell-exact'));
+      await tester.ensureVisible(displayed);
+      await tester.pumpAndSettle();
+      expect(displayed.hitTestable(), findsOneWidget);
+      expect(
+        tester.widget<Text>(displayed).data!.replaceAll(RegExp(r'[\s,]'), ''),
+        '=99999999999.9999999t',
+      );
+      expect(tasks.submissions, isEmpty);
       expect(tester.takeException(), isNull);
     },
   );

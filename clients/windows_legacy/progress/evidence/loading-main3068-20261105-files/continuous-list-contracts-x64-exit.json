@@ -1,0 +1,11 @@
+{
+  "name": "continuous-list-contracts-x64",
+  "startedAtUtc": "2026-11-05T21:39:12.800893+00:00",
+  "command": [
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+    "--continuous-list-contracts"
+  ],
+  "exitCode": 0,
+  "endedAtUtc": "2026-11-05T21:39:26.615192+00:00",
+  "logSha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602"
+}

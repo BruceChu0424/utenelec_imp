@@ -1,0 +1,53 @@
+{
+  "primarySource": "0d49fabceb36b97e6c871ab47762231f59bf4533e1bbdb46deab690c75377bbb",
+  "completeInputInventory": "37195a9255368b61933f8c657439f5206211e96334b236d5b025455041bc5bd3",
+  "draftClaims": {
+    "measuredSource": "a5ed5b7a883891d58f7402daa0056a376f5aa95378f7bd4891485f64f491ff48",
+    "sealedSample": "server/build/loading-validation/main-f6e-scoped/draft-scoped-pg-receipt/current-task-service-comparison.json",
+    "scope": "One isolated actual public service sample: same original owner, 1001 current DRAFT headers, one accepted task segment. Global11batches/1001headers 53284.555ms; selected1batch/1header 80.822ms, same real claim retained. No per-report detail calls. This does not measure HTTP/native publication overhead, client rows-ready or actions-ready latency and is not a production SLA.",
+    "currentDeltaApplicability": "The seven-file metadata phase does not modify ProductionDailyReportService, query DTOs, projections, item mapping, claim SQL/fingerprint, normal GET list or the exact-quantity companion. The new exact-route publication profile is corrected to the original production owner domain and receives independent current HTTP tests; the older service sample is never relabelled a current whole-run green.",
+    "currentMeasuredSample": {
+      "source": "0d49fabceb36b97e6c871ab47762231f59bf4533e1bbdb46deab690c75377bbb",
+      "completeInventory": "37195a9255368b61933f8c657439f5206211e96334b236d5b025455041bc5bd3",
+      "path": "server/build/loading-validation/main-f6e-metadata/current-source-claims-sample/current-task-service-comparison.json",
+      "provenance": "server/build/loading-validation/main-f6e-metadata/current-source-claims-sample/provenance.json",
+      "sampleSha256": "d805a86b40222656324fc8c66cba7178e7303d101683bdef3a02f85477a86a4b",
+      "globalPublicServiceMillis": 34198.3217,
+      "selectedPublicServiceMillis": 56.3409,
+      "activeDraftHeaders": 1001,
+      "acceptedTaskSegments": 1,
+      "globalHeaderBatches": 11,
+      "selectedHeaderBatches": 1,
+      "qualifiedClassTests": 10,
+      "qualifiedClassPassed": 10,
+      "scope": "Latest same-source single actual public service fixture sample. Class10 complete; whole B native result required independently. Not HTTP/client/SLA; do not combine older samples."
+    }
+  },
+  "metadata": {
+    "decision": "Preserve the original MATERIALIZED source and all selected rows/permissions/source predicates/facets. Aggregate broad status/exception/pending metadata in one narrow grouped pass.",
+    "rejected": "NOT MATERIALIZED improved the flat history fixture but doubled actual empty active source planning in the observed pair (475.259 to908.704ms). It was not applied to production.",
+    "observedMaterializedVariant": "At fixed active50/history1m the structural plan decreased2416.602 to1943.594ms and tempRead blocks37112 to18556, while tempWrite remained9278. Three-warm medians1911.286 to1817.089ms;100k nearly unchanged. Exact broad lifecycle statistics still depend on history N. No O(1), active-history independence or platform SLA claim.",
+    "equivalence": "Preimplementation ignored144-case SQL matrix kept all58 columns equal across3departments/status/exception/date/column/page modes;48 volatile cases retained one evaluation per source row. Current production PageRead/Query/warehouse guards must complete independently."
+  },
+  "jit": {
+    "scope": "Only diagnosed interactive task reads use the existing transaction-local JIT scope. Preserve original SQL/rows/authority/isolation and restore the initial on/off value on the same physical connection. Current actual success/exception/abort/cancel/nested/read-only tests are required; historical single-SQL and service samples are not added together.",
+    "globalConfigurationChanged": false
+  },
+  "officialReferences": [
+    {
+      "title": "PostgreSQL16 SET",
+      "url": "https://www.postgresql.org/docs/16/sql-set.html",
+      "support": "SET LOCAL applies to the current transaction and is reverted at transaction end; rollback to an earlier savepoint also cancels it."
+    },
+    {
+      "title": "PostgreSQL16 JIT configuration",
+      "url": "https://www.postgresql.org/docs/16/jit-configuration.html",
+      "support": "The jit setting controls compilation, while the cost settings determine when enabled JIT and its optimization stages are used."
+    },
+    {
+      "title": "PostgreSQL16 common table expression materialization",
+      "url": "https://www.postgresql.org/docs/16/queries-with.html#QUERIES-WITH-CTE-MATERIALIZATION",
+      "support": "Materialization and inlining have different reuse/pushdown costs. Volatile expressions restrict folding; a flat-fixture improvement alone does not establish a public-source benefit."
+    }
+  ]
+}

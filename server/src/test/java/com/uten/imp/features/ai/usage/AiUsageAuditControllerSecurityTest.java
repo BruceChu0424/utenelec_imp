@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.util.AopTestUtils;
 import java.util.Set;
+import java.util.List;
 import java.util.UUID;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -67,6 +68,18 @@ class AiUsageAuditControllerSecurityTest {
     private void login(boolean superAdmin, UUID impersonatedBy) {
         var actor = new AuthUser(actorId, UUID.randomUUID(), "admin", Set.of("authorization:manage"), false, true, superAdmin, false, impersonatedBy, sessionId);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
+    }
+    @Test void peopleBatchesKeepSuperAdminAndImpersonationReadBoundaries() throws Exception {
+        login(false, null);
+        mvc.perform(get("/api/admin/ai/usage-dashboard/people")).andExpect(status().isForbidden());
+        login(true, actorId);
+        mvc.perform(get("/api/admin/ai/usage-dashboard/people")).andExpect(status().isForbidden());
+        verifyNoInteractions(dashboard);
+        login(true, null);
+        when(dashboard.peoplePage("day", 1, 100)).thenReturn(new com.uten.imp.common.web.PageResponse<>(List.of(), 1, 100, 0, 0));
+        mvc.perform(get("/api/admin/ai/usage-dashboard/people")).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        verify(dashboard).peoplePage("day", 1, 100);
+        verifyNoInteractions(sessions);
     }
     @Test void ordinaryStaffCannotReadOtherEmployeesOrPricesEvenWithManageAuthority() throws Exception {
         login(false, null);

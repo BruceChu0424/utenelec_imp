@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "state": "in_progress_final_natural_checks",
+  "createdAtUtc": "2026-11-05T10:33:58.900345+00:00",
+  "scope": "Current combined source validation and safe local integration; not deployment",
+  "historicalEvidencePreserved": true,
+  "mainIntegrated": false,
+  "formalCi": false,
+  "deployment": false,
+  "updatedAtUtc": "2026-11-05T14:42:38.058870+00:00",
+  "backend": {
+    "state": "passed",
+    "receipt": "backend-combined-acceptance.json",
+    "uniqueClasses": 53,
+    "uniqueCases": 377,
+    "sourceDigest": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+    "currentExtension": "Workshop optional draft-summary read contract: implementation/current compile and affected PostgreSQL tests pending independent receipt; base53 result is not relabelled as extension source"
+  },
+  "websiteCms": {
+    "state": "passed",
+    "receipt": "website-cms-continuous-review.json",
+    "sourcePaths": 29
+  },
+  "wpf": {
+    "state": "passed_for_implemented_history_and_loading_subscope",
+    "receipt": "../../../../../clients/windows_legacy/progress/evidence/platform-loading-history-20261105.json",
+    "architectures": {
+      "x64": 228,
+      "x86": 228
+    },
+    "fullErpWin7Uat": false
+  },
+  "dartActivityFollowup": {
+    "state": "in_progress_affected_fixes_and_public_boundary_checks",
+    "lastWholeFiles": 57,
+    "lastWholePassed": 747,
+    "lastWholeFailed": 18,
+    "lastWholeSkipped": 0,
+    "sourceDrift": 0,
+    "failedAggregatePreserved": true,
+    "hiddenLifecycleAndLoadingExcluded": true,
+    "affectedWholeFiles": 15,
+    "affectedWholePassed": 268,
+    "affectedWholeFailed": 0,
+    "aiRecordsCaptureWhole": {
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "execution": "final-finance-leaf-first-whole-execution.json",
+      "standaloneCaptureBeforeWhole": true,
+      "twoScreenshotsActuallyViewed": true
+    },
+    "latestLeafWhole": {
+      "files": 12,
+      "passed": 129,
+      "failed": 11,
+      "skipped": 0,
+      "actualExitCode": 1,
+      "sourceDrift": 0,
+      "metadataDrift": 0,
+      "newFinanceCompleteCasesPassed": 9,
+      "formalActivityCasesPassed": 26,
+      "remainingFailedFiles": [
+        "finance_report_header_query_test.dart",
+        "finance_native_posting_accounts_dialog_test.dart",
+        "finance_supplier_prepayment_dialog_test.dart",
+        "finance_subcontract_loss_policy_dialog_test.dart"
+      ]
+    }
+  }
+}

@@ -98,7 +98,7 @@ void main() {
     },
   );
   testWidgets(
-    'large source and actual reports mount only one page and private data stays retired after permission ABA',
+    'complete large source and actual reports remain virtual and private data stays retired after permission ABA',
     (tester) async {
       final grants = StateProvider<Set<String>>(
         (ref) => {
@@ -118,10 +118,24 @@ void main() {
       );
       await tester.tap(find.text('导入原表'));
       await tester.pumpAndSettle();
-      expect(_table(tester, 'source').items, hasLength(50));
-      expect(_table(tester, 'source').totalPages, 40);
-      expect(_table(tester, 'actual').items, hasLength(50));
-      expect(_table(tester, 'actual').totalPages, 400);
+      expect(_table(tester, 'source').items, hasLength(2000));
+      expect(_table(tester, 'source').onPageChange, isNull);
+      expect(_table(tester, 'actual').items, hasLength(20000));
+      expect(_table(tester, 'actual').onPageChange, isNull);
+      var sourceTable = _table(tester, 'source');
+      sourceTable.onRowTap!(sourceTable.items.last);
+      await tester.pump();
+      var actualTable = _table(tester, 'actual');
+      actualTable.onRowTap!(actualTable.items.last);
+      await tester.pumpAndSettle();
+      sourceTable = _table(tester, 'source');
+      actualTable = _table(tester, 'actual');
+      expect(sourceTable.items.last['sourceRow'], 2006);
+      expect(sourceTable.items.last['__mapping'], '20000');
+      expect(actualTable.items.last['__number'], 20000);
+      expect(actualTable.items.last['amount'], _precise);
+      expect(sourceTable.virtualized, true);
+      expect(actualTable.virtualized, true);
       final old = container.read(grants);
       container.read(grants.notifier).state = {};
       await tester.pumpAndSettle();
@@ -134,6 +148,38 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('anonymous-original.xlsx'), findsNothing);
       expect(api.comparisons, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  testWidgets(
+    'every comparison difference remains reachable beyond row fifty without changing original row numbers or money',
+    (tester) async {
+      final api = _Api()
+        ..sourceCount = 125
+        ..actualCount = 125
+        ..comparisonCount = 125;
+      final container = await _mount(tester, api, MemoryFormDraftStorage());
+      await tester.tap(find.text('导入原表'));
+      await tester.pumpAndSettle();
+      final source = _table(tester, 'source');
+      final actual = _table(tester, 'actual');
+      for (var i = 0; i < 125; i++) {
+        source.onRowTap!(source.items[i]);
+        actual.onRowTap!(actual.items[i]);
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('逐列比对'));
+      await tester.pumpAndSettle();
+      final differences = _table(tester, 'differences');
+      expect(differences.items, hasLength(125));
+      expect(differences.items.last['sourceRow'], 131);
+      expect(differences.items.last['reportRowNumber'], 125);
+      expect(differences.items.last['actual'], _precise);
+      expect(differences.onPageChange, isNull);
+      expect(api.comparisons.single['rows'], hasLength(125));
+      expect(api.moneyWrites, 0);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       container.dispose();
@@ -234,7 +280,7 @@ const _keys = [
 class _Api extends ApiClient {
   _Api() : super(Dio());
   String fingerprint = 'facts-1';
-  int sourceCount = 1, actualCount = 1, moneyWrites = 0;
+  int sourceCount = 1, actualCount = 1, moneyWrites = 0, comparisonCount = 1;
   final comparisons = <Map<String, dynamic>>[];
   Map<String, dynamic> get source => {
     'importId': 'source-1',
@@ -310,20 +356,21 @@ class _Api extends ApiClient {
       comparisons.add(Map<String, dynamic>.from(body as Map));
       return {
         'results': [
-          {
-            'sourceRow': 7,
-            'reportRowNumber': 1,
-            'status': 'DIFFERENT',
-            'cells': [
-              {
-                'column': 7,
-                'label': '含税金额',
-                'source': '80.000000000000000000000000',
-                'actual': _precise,
-                'status': 'DIFFERENT',
-              },
-            ],
-          },
+          for (var i = 0; i < comparisonCount; i++)
+            {
+              'sourceRow': 7 + i,
+              'reportRowNumber': 1 + i,
+              'status': 'DIFFERENT',
+              'cells': [
+                {
+                  'column': 7,
+                  'label': '含税金额',
+                  'source': '80.000000000000000000000000',
+                  'actual': _precise,
+                  'status': 'DIFFERENT',
+                },
+              ],
+            },
         ],
         'unmappedSourceRows': <Object>[],
         'unmappedActualRows': <Object>[],

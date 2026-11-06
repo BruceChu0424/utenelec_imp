@@ -28,7 +28,12 @@ void _expectCovered(
   bool allowPending = false,
 }) {
   final viewport = tester.getRect(
-    find.descendant(of: find.byType(ListView), matching: find.byType(Viewport)),
+    find.descendant(
+      of: find.byType(ListView),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Viewport || widget is ShrinkWrappingViewport,
+      ),
+    ),
   );
   final rectangles = <Rect>[];
   for (final element in _rowMarkers().evaluate()) {
@@ -67,6 +72,7 @@ Future<void> _mount(
   bool editor = true,
   ValueChanged<int>? onBuild,
   double textScale = 1,
+  bool nullableIds = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1100, 720));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -82,12 +88,11 @@ Future<void> _mount(
       home: Scaffold(
         body: MasterDataTableView<int>(
           items: List.generate(1000, (index) => index),
-          virtualized: true,
           selectable: true,
           showColumnChooser: false,
           showFullscreenToggle: false,
-          rowKeyOf: (row) => 'r$row',
-          idOf: (row) => 'r$row',
+          rowKeyOf: (row) => nullableIds ? null : 'r$row',
+          idOf: (row) => nullableIds ? null : 'r$row',
           onSelectedIdsChanged: select,
           listItemBuilder: picker
               ? (_, row) => SizedBox(
@@ -338,48 +343,55 @@ void main() {
     );
   }
 
-  testWidgets(
-    'focused native editor remains alive outside the small mount buffer',
-    (tester) async {
-      await _mount(tester, picker: false, select: (_) {});
-      final field = find.byKey(const ValueKey('edit:0'));
-      await tester.tap(field);
-      await tester.enterText(field, 'unsaved exact value');
-      await tester.pump();
-      final input = find.descendant(
-        of: field,
-        matching: find.byType(EditableText),
-      );
-      final originalState = tester.state<EditableTextState>(input);
-      final controller = originalState.widget.controller;
-      final focus = originalState.widget.focusNode;
-      controller.selection = const TextSelection(
-        baseOffset: 2,
-        extentOffset: 7,
-      );
-      controller.value = controller.value.copyWith(
-        composing: const TextRange(start: 2, end: 7),
-      );
-      final position = _body(tester).position;
-      position.jumpTo(position.viewportDimension * 50);
-      await tester.pump();
-      expect(originalState.mounted, isTrue);
-      expect(focus.hasFocus, isTrue);
-      expect(controller.text, 'unsaved exact value');
-      expect(
-        controller.selection,
-        const TextSelection(baseOffset: 2, extentOffset: 7),
-      );
-      expect(controller.value.composing, const TextRange(start: 2, end: 7));
-      _expectCovered(tester, picker: false, allowPending: true);
-      await tester.pumpAndSettle();
-      _expectCovered(tester, picker: false);
-      position.jumpTo(0);
-      await tester.pumpAndSettle();
-      expect(tester.state<EditableTextState>(input), same(originalState));
-      expect(focus.hasFocus, isTrue);
-      expect(controller.text, 'unsaved exact value');
-      expect(tester.takeException(), isNull);
-    },
-  );
+  for (final nullableIds in [false, true]) {
+    testWidgets(
+      'focused native editor remains alive outside the small mount buffer (nullable IDs: $nullableIds)',
+      (tester) async {
+        await _mount(
+          tester,
+          picker: false,
+          select: (_) {},
+          nullableIds: nullableIds,
+        );
+        final field = find.byKey(const ValueKey('edit:0'));
+        await tester.tap(field);
+        await tester.enterText(field, 'unsaved exact value');
+        await tester.pump();
+        final input = find.descendant(
+          of: field,
+          matching: find.byType(EditableText),
+        );
+        final originalState = tester.state<EditableTextState>(input);
+        final controller = originalState.widget.controller;
+        final focus = originalState.widget.focusNode;
+        controller.selection = const TextSelection(
+          baseOffset: 2,
+          extentOffset: 7,
+        );
+        controller.value = controller.value.copyWith(
+          composing: const TextRange(start: 2, end: 7),
+        );
+        final position = _body(tester).position;
+        position.jumpTo(position.viewportDimension * 50);
+        await tester.pump();
+        expect(originalState.mounted, isTrue);
+        expect(focus.hasFocus, isTrue);
+        expect(controller.text, 'unsaved exact value');
+        expect(
+          controller.selection,
+          const TextSelection(baseOffset: 2, extentOffset: 7),
+        );
+        expect(controller.value.composing, const TextRange(start: 2, end: 7));
+        _expectCovered(tester, picker: false, allowPending: true);
+        await tester.pumpAndSettle();
+        _expectCovered(tester, picker: false);
+        position.jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(input), same(originalState));
+        expect(focus.hasFocus, isTrue);
+        expect(controller.text, 'unsaved exact value');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

@@ -88,14 +88,14 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         Fixture f = new Fixture(Set.of("stock_doc:view", "warehouse_sales_outbound:view"), true,
                 new OwnerScope(true, Set.of()));
         UUID sharedId = UUID.randomUUID();
-        Query count = query(); when(count.getSingleResult()).thenReturn(4L);
+        Query metadata = query(); when(metadata.getResultList()).thenReturn(List.of(
+                new Object[]{"TOTAL",null,4L}, new Object[]{"STATUS","SALES_PENDING",2L},
+                new Object[]{"STATUS","SALES_SHIPPED",1L}, new Object[]{"STATUS","OTHER_APPROVED",1L},
+                new Object[]{"BILL","SAME-NUMBER",4L}));
         Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
                 row("SALES", "SALES_SHIPMENT", sharedId, "SALES_SHIPPED", OTHER_OWNER, false),
                 row("OTHER", "STOCK_DOC", sharedId, "OTHER_APPROVED", ACTOR, false)));
-        Query states = query(); when(states.getResultList()).thenReturn(List.of(
-                new Object[]{"SALES_PENDING", 2L}, new Object[]{"SALES_SHIPPED", 1L}, new Object[]{"OTHER_APPROVED", 1L}));
-        Query bills = query(); when(bills.getResultList()).thenReturn(Collections.singletonList(new Object[]{"SAME-NUMBER", 4L}));
-        when(f.em.createNativeQuery(anyString())).thenReturn(count, rows, states, bills);
+        when(f.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
 
         Page result = f.service.list(new Filter("ALL", null, null, null, null, null, null, 2, 2, "billNo", "asc", TaskView.ALL));
         assertThat(result.page()).isEqualTo(2);
@@ -109,12 +109,41 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         verify(rows).setParameter("offset", 2L);
         verify(rows).setParameter("limit", 2);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(f.em, times(4)).createNativeQuery(sql.capture());
+        verify(f.em, times(2)).createNativeQuery(sql.capture());
         assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,bill_no,id", "OFFSET :offset")
                 .doesNotContain("ORDER BY keyword_rank,bill_no ASC");
-        assertThat(sql.getAllValues().get(3)).contains("GROUP BY bill_no", "LIMIT 500");
+        assertThat(sql.getAllValues().getFirst()).contains("GROUP BY bill_no", "LIMIT 500", "SELECT 'TOTAL'");
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
         assertThat(json).doesNotContain("amountLocal", "totalOriginal", "price", "currency", "cost");
+    }
+
+    @Test void emptySelectedPageSkipsRowsButRetainsExclusiveFacets() {
+        Fixture f = new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
+        Query metadata=query();when(metadata.getResultList()).thenReturn(List.of(
+                new Object[]{"TOTAL",null,0L},new Object[]{"STATUS","OTHER_DRAFT",3L},
+                new Object[]{"BILL","OTHER-001",2L}));
+        when(f.em.createNativeQuery(anyString())).thenReturn(metadata);
+        var result=f.service.list(new Filter("OTHER","OTHER_APPROVED",null,null,null,null,null,9,20));
+        assertThat(result.items()).isEmpty();assertThat(result.page()).isEqualTo(1);
+        assertThat(result.total()).isZero();
+        assertThat(result.facets().get("status")).anyMatch(value->value.value().equals("OTHER_DRAFT")&&value.count()==3L);
+        assertThat(result.facets().get("billNo")).hasSize(1);
+        verify(f.em).createNativeQuery(anyString());
+    }
+
+    @Test void continuationKeepsExactCountAndRowFactsWithoutQueryingAnyFacet() throws Exception {
+        Fixture f=new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
+        Query count=query();when(count.getSingleResult()).thenReturn(3L);
+        Query rows=query();when(rows.getResultList()).thenReturn(Collections.singletonList(
+                row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true)));
+        when(f.em.createNativeQuery(anyString())).thenReturn(count,rows);
+        var page=f.service.list(new Filter("OTHER",null,null,null,null,null,null,2,2),false);
+        assertThat(page.metadataIncluded()).isFalse();assertThat(page.facets()).isNull();
+        assertThat(page.total()).isEqualTo(3);assertThat(page.page()).isEqualTo(2);assertThat(page.items()).hasSize(1);
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(f.em,times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).allSatisfy(value->assertThat(value).doesNotContain("metadata_context","GROUP BY status","GROUP BY bill_no"));
+        var json=new ObjectMapper().findAndRegisterModules().readTree(new ObjectMapper().findAndRegisterModules().writeValueAsString(page));
+        assertThat(json.path("metadataIncluded").asBoolean()).isFalse();assertThat(json.path("facets").isNull()).isTrue();
     }
 
     @Test
@@ -167,13 +196,12 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         for (boolean participant : List.of(false, true)) {
             Fixture fixture = new Fixture(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"),
                     participant, new OwnerScope(false, Set.of(ACTOR)));
-            Query count = query(); when(count.getSingleResult()).thenReturn(2L);
+            Query metadata = query(); when(metadata.getResultList()).thenReturn(
+                    Collections.singletonList(new Object[]{"TOTAL",null,2L}));
             Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
                     row("DRAW", "MATERIAL_DISCOVERY", discovery, "DRAW_DISCOVERY_PENDING", OTHER_OWNER, true),
                     row("DRAW", "STOCK_DOC", draw, "DRAW_PENDING", OTHER_OWNER, true)));
-            Query states = query(); when(states.getResultList()).thenReturn(List.of());
-            Query bills = query(); when(bills.getResultList()).thenReturn(List.of());
-            when(fixture.em.createNativeQuery(anyString())).thenReturn(count, rows, states, bills);
+            when(fixture.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
 
             Page result = fixture.service.list(new Filter("DRAW", null, null, null, null, null, null, 1, 20));
             assertThat(result.items()).extracting(Row::id).containsExactly(discovery, draw);

@@ -1,0 +1,1895 @@
+package com.uten.imp.features.production.mrp;
+
+import com.uten.imp.application.port.PreplanAnalysisPegPort;
+import com.uten.imp.application.port.ProductionSubcontractRequestPort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionSegmentRepository;
+import com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
+import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
+import com.uten.imp.features.production.fulfillment.ProductionPlanningPackageRepository;
+import com.uten.imp.features.production.fulfillment.ProductionSubcontractApplicationCoordinator;
+import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
+import com.uten.imp.features.stock.StockDocument;
+import com.uten.imp.features.stock.StockDocumentItem;
+import com.uten.imp.features.stock.StockDocumentItemRepository;
+import com.uten.imp.features.stock.StockDocumentRepository;
+import com.uten.imp.features.stock.StockGoodsSnapshot;
+import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/** Atomic command path for finished-product execution segments. */
+@Service
+@RequiredArgsConstructor
+public class ProductionExecutionPackageCommandService {
+
+    private final EntityManager em;
+    private final ProductionExecutionPlanningService planning;
+    private final ProductionFulfillmentLedgerService ledger;
+    private final ProductionExecutionSegmentRepository segmentRepo;
+    private final ProductionPlanningPackageRepository packageRepo;
+    private final ProductionMaterialAllocationFacade stockAllocation;
+    private final ProductionPurchaseRequestFacade purchaseFacade;
+    private final ProductionSubcontractApplicationCoordinator
+            subcontractCoordinator;
+    private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
+    private final SecurityContextCurrentUser currentUser;
+    private final StockDocumentRepository stockDocumentRepo;
+    private final StockDocumentItemRepository stockDocumentItemRepo;
+    private final DocNumberService docNumberService;
+    private final MasterCodeService masterCodeService;
+    private final TxSessionVars tx;
+    private final MrpService mrpService;
+    private final ProductionPlanningRequestValidator requestValidator;
+    private final ChainNoticeService chainNotice;
+    private final com.uten.imp.application.port.PreplanAnalysisPegPort
+            preplanAnalysisPeg;
+    private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
+    private final org.springframework.beans.factory.ObjectProvider<
+            com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> readiness;
+    /** 委外件缺 BOM 转研发(ADR-143 §二.3); 字段注入, 手工构造的单测里为空时只拒绝不登记。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
+
+    private void freezeConsumptionRules(List<SegmentDraft> segments,
+                                        List<ProductionMaterialDemand> demands) {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        Map<UUID, SegmentDraft> byId = segments.stream().collect(Collectors.toMap(
+                segment -> segment.segment().getId(), segment -> segment));
+        Map<UUID, Map<CompleteKitAllocator.MaterialKey,CompleteKitAllocator.MaterialUsage>> rulesBySegment =
+                segments.stream().collect(Collectors.toMap(segment -> segment.segment().getId(),
+                        segment -> segment.proposal().line().materials().stream().collect(Collectors.toMap(
+                                CompleteKitAllocator.MaterialUsage::materialKey, usage -> usage))));
+        List<Map<String,Object>> frozen = new ArrayList<>(demands.size());
+        for (ProductionMaterialDemand demand : demands) {
+            SegmentDraft segment = byId.get(demand.getExecutionSegmentId());
+            CompleteKitAllocator.MaterialUsage usage = rulesBySegment.get(demand.getExecutionSegmentId())
+                    .get(new CompleteKitAllocator.MaterialKey(demand.getGoodsId(),demand.getColorId()));
+            if (usage == null) throw conflict("冻结物料缺少耗用规则");
+            boolean exact = usage.requiresExactSnapshot();
+            var rules = exact ? usage.consumptionRules() : List.of(
+                    new CompleteKitAllocator.ConsumptionRule("PER_UNIT", usage.perProductQty(),
+                            BigDecimal.ONE, true));
+            frozen.add(Map.of("id", demand.getId(), "snapshot", Map.of("rules", rules, "productUnitRate",
+                    exact ? segment.proposal().line().productUnitRate() : BigDecimal.ONE)));
+        }
+        if (frozen.isEmpty()) return;
+        int updated = em.createNativeQuery("""
+                UPDATE production_material_demands demand SET consumption_snapshot=frozen.snapshot
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS frozen(id uuid,snapshot jsonb)
+                WHERE demand.id=frozen.id AND demand.consumption_snapshot IS NULL
+                """).setParameter("rows",json.valueToTree(frozen).toString()).executeUpdate();
+        if (updated != frozen.size()) throw conflict("冻结物料耗用规则数量不一致，本次下达没有生效");
+    }
+
+    /**
+     * 确认排产预览为正式执行计划包：冻结执行分段与销售分摊、写入物料需求，
+     * 为齐套段分配库存并生成领料单。旧/手工计划仍按缺口生成采购、委外申请与
+     * 自制子计划；物料分析来源计划只复用已存在的计划前供给责任，禁止重复下达。
+     * 全部在同一事务内完成，预览指纹须与冻结快照一致；幂等键命中已确认计划包
+     * 时直接重放既有结果。
+     */
+    @Transactional
+    public PlanningPackageResult confirm(
+            UUID planId,
+            GeneratePlanningPackageRequest request) {
+        tx.bind();
+        requestValidator.validateRequestStructure(request);
+        var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
+        UUID prelockedAnalysisId =
+                preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
+        PlanHeader plan = lockPlan(planId);
+        if (!Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
+            throw conflict("生产计划的来源物料分析已变化，请重新预览后重试");
+        }
+        // A material-analysis plan has already externalized BUY,
+        // SUBCONTRACT and MAKE responsibility through path-owned
+        // preplan_supply_actions. The formal package persists the exact
+        // demands and execution segment, but must not create a second set of
+        // supply documents for the same shortage.
+        boolean packageOwnsSupply = packageOwnsSupply(plan.materialAnalysisId());
+        requireNoActiveLegacyPackage(planId);
+        // Plan lock serializes this immutable-key lookup. beginConfirmation still
+        // validates the exact hash, preview and warehouse before returning a replay.
+        boolean sameKeyExists = !em.createNativeQuery("""
+                SELECT id FROM production_planning_packages
+                WHERE plan_id=:planId AND idempotency_key=:key AND is_deleted=FALSE
+                """).setParameter("planId",planId)
+                .setParameter("key",request.getIdempotencyKey().strip()).getResultList().isEmpty();
+        if (!sameKeyExists) sourceGuard.verifyUnchanged();
+        ProductionFulfillmentLedgerService.BeginConfirmation begin =
+                ledger.beginConfirmation(
+                        planId,
+                        request.getWarehouseId(),
+                        request.getIdempotencyKey(),
+                        requestHash(request),
+                        request.getPreviewFingerprint());
+        if (begin.replayed()) {
+            return replay(begin.planningPackage());
+        }
+        ProductionPlanningRequestValidator.Validated initialValidation =
+                requestValidator.validateCurrent(planId, request);
+        Map<CompleteKitAllocator.MaterialKey, String> routes =
+                initialValidation.routes();
+
+        requireNoLegacyExecutionFacts(loadLegacyExecutionFacts(
+                planId,
+                begin.planningPackage().getId()));
+
+        begin.planningPackage().setExecutionModelVersion((short) 1);
+        em.createNativeQuery("""
+                        UPDATE production_planning_packages
+                        SET execution_model_version = 1, updated_at = now()
+                        WHERE id = :id
+                        """)
+                .setParameter("id", begin.planningPackage().getId())
+                .executeUpdate();
+
+        List<ProductionPurchaseRequestFacade.MaterialDimension> dimensions =
+                initialValidation.snapshot().productLines().stream()
+                        .flatMap(line -> line.materials().stream())
+                        .map(material ->
+                                new ProductionPurchaseRequestFacade.MaterialDimension(
+                                        material.goodsId(), material.colorId()))
+                        .distinct()
+                        .sorted()
+                        .toList();
+        stockAllocation.lockMaterialDimensions(dimensions.stream()
+                .map(dimension ->
+                        new ProductionMaterialAllocationFacade.MaterialDimension(
+                                dimension.goodsId(), dimension.colorId()))
+                .toList());
+        ProductionExecutionPlanningService.Snapshot locked =
+                planning.lockedSnapshot(
+                        planId, request.getWarehouseId(), routes);
+        if (!locked.fingerprint().equalsIgnoreCase(
+                request.getPreviewFingerprint())) {
+            throw ProductionExecutionPlanningService.stalePreview(
+                    ProductionExecutionPlanningService.STALE_PREVIEW,
+                    plan.materialAnalysisId() == null);
+        }
+        CompleteKitAllocator.Allocation allocation = requestValidator
+                .validateAgainstSnapshot(request, locked)
+                .allocation();
+        AnalysisExecutionSnapshotScope.beforeFormalMutation();
+        allocation = awaitWorkshopRoute(allocation);
+        List<SegmentDraft> segmentDrafts = persistSegments(
+                begin.planningPackage(), allocation);
+        persistSalesAllocations(segmentDrafts);
+
+        List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
+                demandDrafts(segmentDrafts);
+        List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
+                ? List.of()
+                : ledger.createDemands(begin.planningPackage(), demandDrafts);
+        // Persist the frozen curve before applying the effective default route.
+        freezeConsumptionRules(segmentDrafts, demands);
+        Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
+                demands.stream().collect(Collectors.groupingBy(
+                        ProductionMaterialDemand::getExecutionSegmentId,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        Set<UUID> readySegmentIds = segmentDrafts.stream()
+                .filter(segment -> ProductionExecutionSegment.STATUS_READY.equals(
+                        segment.segment().getStatus()))
+                .map(segment -> segment.segment().getId())
+                .collect(Collectors.toSet());
+        List<ProductionMaterialDemand> readyDemands = demands.stream()
+                .filter(demand -> readySegmentIds.contains(
+                        demand.getExecutionSegmentId()))
+                .toList();
+
+        // WAITING segments must never release partial analysis stock. Only the
+        // demands that will receive a formal reservation in this transaction
+        // may consume an entitlement lot.
+        List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers =
+                plan.materialAnalysisId() == null || readyDemands.isEmpty()
+                        ? List.of()
+                        : preplanAnalysisPeg.transferToPlanDemands(
+                                plan.materialAnalysisId(), planId,
+                                begin.planningPackage().getWarehouseId(),
+                                readyDemands.stream()
+                                        .map(demand -> new PreplanAnalysisPegPort
+                                                .DemandSlice(
+                                                demand.getId(),
+                                                demand.getGoodsId(),
+                                                demand.getColorId(),
+                                                demand.getRequiredQty()))
+                                        .toList());
+
+        ReadyAllocation readyAllocation = allocateReady(
+                begin.planningPackage(), segmentDrafts, demandsBySegment,
+                preparedTransfers, !packageOwnsSupply);
+        Map<UUID, BigDecimal> allocatedByDemand =
+                readyAllocation.allocatedByDemand();
+        assertAllocationMatchesProposal(
+                segmentDrafts, demandsBySegment, allocatedByDemand);
+        preplanAnalysisPeg.formalizePlanDemandTransfers(
+                begin.planningPackage().getId(), preparedTransfers,
+                readyAllocation.formalReservations());
+
+        for (SegmentDraft segment : segmentDrafts) {
+            if (!ProductionExecutionSegment.STATUS_READY.equals(
+                    segment.segment().getStatus())) {
+                continue;
+            }
+            List<ProductionMaterialDemand> segmentDemands =
+                    demandsBySegment.getOrDefault(
+                            segment.segment().getId(), List.of());
+            if (segmentDemands.isEmpty()) {
+                // DIRECT_MAKE / authorized no-BOM product: READY is a valid
+                // zero-material execution segment and must not create an empty DRAW.
+                continue;
+            }
+            Map<UUID, Map<UUID, BigDecimal>> warehouseQuantities =
+                    drawQuantitiesByWarehouse(
+                            segmentDemands, readyAllocation.allocations());
+            for (var warehouse : warehouseQuantities.entrySet()) {
+                createDraw(
+                        plan, begin.planningPackage(), segment.segment(),
+                        segmentDemands.stream()
+                                .filter(demand -> warehouse.getValue()
+                                        .containsKey(demand.getId()))
+                                .toList(),
+                        warehouse.getKey(), warehouse.getValue());
+            }
+        }
+
+        Map<DemandMaterialKey, BigDecimal> purchaseShortage =
+                packageOwnsSupply
+                        ? proposedPurchaseShortage(segmentDrafts)
+                        : Map.of();
+        Map<UUID, String> segmentCodeById = segmentCodeById(segmentDrafts);
+        List<ProductionPurchaseRequestFacade.DraftLine> purchaseLines =
+                demands.stream()
+                        .map(demand -> {
+                            BigDecimal qty = purchaseShortage.getOrDefault(
+                                    new DemandMaterialKey(
+                                            demand.getExecutionSegmentId(),
+                                            demand.getGoodsId(),
+                                            demand.getColorId()),
+                                    BigDecimal.ZERO);
+                            return new ProductionPurchaseRequestFacade.DraftLine(
+                                    demand.getId(),
+                                    demand.getGoodsId(),
+                                    demand.getColorId(),
+                                    demand.getUnitId(),
+                                    qty,
+                                    demand.getNeedDate(),
+                                    segmentDemandRemark(segmentCodeById, demand));
+                        })
+                        .filter(line -> line.qty().signum() > 0)
+                        .toList();
+        if (packageOwnsSupply) {
+            requirePurchaseRequestForBuyShortage(
+                    request.isGeneratePurchaseRequest(), purchaseLines);
+        }
+        if (packageOwnsSupply && request.isGeneratePurchaseRequest()) {
+            createPurchase(plan, begin.planningPackage(), request.getWarehouseId(), demands, purchaseLines);
+        }
+
+        Map<DemandMaterialKey, BigDecimal> subcontractShortage =
+                packageOwnsSupply
+                        ? proposedShortage(
+                                segmentDrafts,
+                                ProductionMaterialDemand.ROUTE_SUBCONTRACT)
+                        : Map.of();
+        List<ProductionSubcontractRequestPort.DraftLine> subcontractLines =
+                demands.stream()
+                        .map(demand -> {
+                            BigDecimal qty =
+                                    subcontractShortage.getOrDefault(
+                                            new DemandMaterialKey(
+                                                    demand.getExecutionSegmentId(),
+                                                    demand.getGoodsId(),
+                                                    demand.getColorId()),
+                                            BigDecimal.ZERO);
+                            return new ProductionSubcontractRequestPort.DraftLine(
+                                    demand.getId(),
+                                    demand.getGoodsId(),
+                                    demand.getColorId(),
+                                    demand.getUnitId(),
+                                    qty,
+                                    demand.getNeedDate(),
+                                    segmentDemandRemark(segmentCodeById, demand));
+                        })
+                        .filter(line -> line.qty().signum() > 0)
+                        .toList();
+        rejectSubcontractBomGaps(planId, plan, subcontractLines);
+        if (packageOwnsSupply) {
+            subcontractCoordinator.create(plan.billNo(), plan.deliveryDate(), request.getWarehouseId(),
+                    begin.planningPackage(), demands, subcontractLines);
+        }
+
+        // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
+        // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
+        List<GenerateSubplansRequest.Created> subplanResults =
+                packageOwnsSupply
+                        ? mrpService.generateSelfMadeSubplansForPackage(
+                                planId, begin.planningPackage().getId(),
+                                directMakeRequirements(allocation))
+                        : List.of();
+        for (GenerateSubplansRequest.Created subplan : subplanResults) {
+            ledger.recordDocument(
+                    begin.planningPackage().getId(),
+                    "SUBPLAN",
+                    subplan.planId(),
+                    subplan.billNo(),
+                    currentUser.requireId());
+        }
+        if (packageOwnsSupply) {
+            createMakeSupplyPegs(
+                    begin.planningPackage(), demands,
+                    segmentDrafts, subplanResults);
+        }
+        ledger.refreshDemandStatuses(
+                demands.stream()
+                        .map(ProductionMaterialDemand::getId)
+                        .toList());
+        workshopPreferences.learnFromConfirmedSegments(
+                segmentDrafts.stream()
+                        .map(SegmentDraft::segment).toList(),
+                currentUser.requireEmployeeId());
+        // V699 defaults the persisted route to CONTINUOUS in every creation
+        // path. Prepare against that actual route now, without issuing material
+        // or starting production on behalf of the workshop.
+        em.flush();
+        for (SegmentDraft draft : segmentDrafts) {
+            if (draft.segment().isAutoPromoteWhenReady()
+                    && ProductionExecutionSegment.STATUS_WAITING.equals(draft.segment().getStatus())) {
+                readiness.getObject().promoteAfterRouteConfirmation(draft.segment().getId(),
+                        begin.planningPackage().getWarehouseId(), true);
+            }
+            em.refresh(draft.segment());
+            // A package may be confirmed after its plan-scheduled event was already delivered.
+            // Each newly created task therefore owns a durable assignment event of its own.
+            chainNotice.notifyExecutionSegmentWorkshopAssigned(draft.segment().getId());
+        }
+        // These segments were just flushed/refreshed after readiness. An analysis
+        // package never creates its own purchase, subcontract or child plans;
+        // its existing supply belongs to the analysis actions, not this package.
+        // Still read actual demands, reservations and every DRAW after promotion.
+        return readCurrentResult(begin.planningPackage(),
+                segmentDrafts.stream().map(SegmentDraft::segment).toList(),
+                false, !packageOwnsSupply);
+    }
+
+    /**
+     * Grow the original, untouched workshop task using its frozen consumption rules.
+     * The caller has already increased the plan/link and sales-order allocation capacity.
+     * Existing physical reservations and unrequested draft DRAWs retain their provenance;
+     * readiness allocates only the additional material needed for the new total.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public GrownSegment growSegment(UUID planId, GrowSegmentRequest request) {
+        if (request == null || request.planItemId() == null
+                || request.qty() == null || request.qty().signum() <= 0) {
+            throw conflict("并入追加的数量必须大于零");
+        }
+        BigDecimal qty;
+        try {
+            qty = request.qty().setScale(4, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw conflict("并入追加的数量最多保留四位小数");
+        }
+        tx.bind();
+        var sourceGuard = mutationFootprint.beginPlan(planId, List.of());
+        UUID prelockedAnalysisId =
+                preplanAnalysisPeg.lockPlanningPackageInventoryDimensions(planId);
+        PlanHeader plan = lockPlan(planId);
+        if (plan.materialAnalysisId() == null
+                || !Objects.equals(prelockedAnalysisId, plan.materialAnalysisId())) {
+            throw conflict("只有物料分析生成、来源未变化的生产计划才能并入追加");
+        }
+        ProductionPlanningPackage planningPackage = packageRepo.lockConfirmedByPlan(planId)
+                .orElseThrow(() -> conflict("生产计划没有生效的计划包，不能并入追加"));
+        if (planningPackage.getExecutionModelVersion() == null
+                || planningPackage.getExecutionModelVersion() != 1) {
+            throw conflict("旧模型的计划包不能并入追加");
+        }
+        sourceGuard.verifyUnchanged();
+        List<UUID> candidates = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT segment.id
+                FROM production_execution_segments segment
+                WHERE segment.package_id = :packageId
+                  AND segment.source_plan_item_id = :itemId
+                  AND NOT segment.is_deleted
+                  AND fn_material_analysis_execution_segment_growable(segment.id)
+                  AND (CAST(:workshopId AS uuid) IS NULL
+                       OR segment.workshop_department_id = CAST(:workshopId AS uuid))
+                ORDER BY segment.segment_no, segment.id
+                LIMIT 1 FOR UPDATE OF segment
+                """, UUID.class)
+                .setParameter("packageId", planningPackage.getId())
+                .setParameter("itemId", request.planItemId())
+                .setParameter("workshopId", request.workshopDepartmentId()), UUID.class);
+        if (candidates.isEmpty()) {
+            throw conflict("原车间工单已开始领料或执行，请刷新后重新追加");
+        }
+        UUID segmentId = candidates.getFirst();
+        UUID growthEventId = (UUID) em.createNativeQuery("""
+                SELECT fn_grow_material_analysis_execution_segment(
+                    CAST(:segmentId AS uuid), CAST(:qty AS numeric), CAST(:salesQty AS numeric))
+                """)
+                .setParameter("segmentId", segmentId)
+                .setParameter("qty", qty)
+                .setParameter("salesQty", request.salesAllocatedQty() == null
+                        ? BigDecimal.ZERO : request.salesAllocatedQty())
+                .getSingleResult();
+        ledger.refreshDemandStatuses(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM production_material_demands
+                WHERE execution_segment_id=:segmentId AND NOT is_deleted
+                """, UUID.class).setParameter("segmentId", segmentId), UUID.class));
+        readiness.getObject().promoteAfterPlanGrowth(
+                segmentId, planningPackage.getWarehouseId(), growthEventId);
+        ProductionExecutionSegment segment = em.find(ProductionExecutionSegment.class, segmentId);
+        em.refresh(segment);
+        return new GrownSegment(planningPackage.getId(), segmentId,
+                segment.getSegmentCode(), segment.getStatus());
+    }
+    private List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts(
+            List<SegmentDraft> segmentDrafts) {
+        List<ProductionFulfillmentLedgerService.DemandDraft> demandDrafts =
+                new ArrayList<>();
+        for (SegmentDraft segment : segmentDrafts) {
+            for (CompleteKitAllocator.MaterialAllocation material
+                    : segment.proposal().materials()) {
+                CompleteKitAllocator.MaterialUsage usage =
+                        materialUsage(segment, material);
+                boolean exactSnapshot = ProductionMaterialDemand
+                        .REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(
+                                material.requirementMode());
+                if (exactSnapshot != usage.requiresExactSnapshot()) {
+                    throw conflict("执行分段物料计量模式与冻结 BOM 规则不一致");
+                }
+                demandDrafts.add(
+                        new ProductionFulfillmentLedgerService.DemandDraft(
+                                segment.segment().getId(),
+                                segment.segment().getSourcePlanItemId(),
+                                material.goodsId(),
+                                material.colorId(),
+                                material.unitId(),
+                                material.perProductQty(),
+                                material.requiredQty(),
+                                segment.segment().getPlanBeginDate(),
+                                material.supplyRoute(),
+                                segment.segment().getId() + ":"
+                                        + material.goodsId() + ":"
+                                        + Objects.toString(
+                                                material.colorId(), "NONE"),
+                                exactSnapshot
+                                        ? ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_EXACT_SNAPSHOT
+                                        : ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_LINEAR,
+                                exactSnapshot
+                                        ? segment.segment().getPlannedQty()
+                                        : null,
+                                exactSnapshot
+                                        ? usage.requirementFingerprint(
+                                                segment.proposal().line()
+                                                        .productUnitRate())
+                                        : null));
+            }
+        }
+        return demandDrafts;
+    }
+
+    /** 追加保留原工单的路线、指派和日期；换车间须另建计划。 */
+    public record GrowSegmentRequest(
+            UUID planItemId,
+            BigDecimal qty,
+            BigDecimal salesAllocatedQty,
+            UUID workshopDepartmentId) {
+    }
+
+    public record GrownSegment(
+            UUID packageId, UUID segmentId, String segmentCode, String status) {
+    }
+
+    /** Legacy/manual plans let the package own supply generation. */
+    static boolean packageOwnsSupply(UUID materialAnalysisId) {
+        return materialAnalysisId == null;
+    }
+
+    /** Planning freezes demand and assignment; only workshop route confirmation reserves material. */
+    static CompleteKitAllocator.Allocation awaitWorkshopRoute(CompleteKitAllocator.Allocation allocation) {
+        return new CompleteKitAllocator.Allocation(allocation.segments().stream().map(segment -> {
+            if (segment.materials().isEmpty()) return segment;
+            var materials = segment.materials().stream().map(material ->
+                    new CompleteKitAllocator.MaterialAllocation(material.goodsId(), material.colorId(),
+                            material.unitId(), material.perProductQty(), material.requiredQty(),
+                            material.availableBeforeQty(), BigDecimal.ZERO, material.shortageQty(),
+                            material.supplyRoute(), material.requirementMode())).toList();
+            return new CompleteKitAllocator.SegmentAllocation(segment.clientSegmentKey(), segment.line(),
+                    ProductionExecutionSegment.STATUS_WAITING, segment.plannedQty(), materials,
+                    segment.autoPromoteWhenReady());
+        }).toList(), allocation.remainingAvailability());
+    }
+
+    private List<SegmentDraft> persistSegments(
+            ProductionPlanningPackage planningPackage, CompleteKitAllocator.Allocation allocation) {
+        List<SegmentDraft> result = new ArrayList<>();
+        int no = 0;
+        for (CompleteKitAllocator.SegmentAllocation proposal
+                : allocation.segments()) {
+            no++;
+            result.add(persistSegment(planningPackage, proposal, no));
+        }
+        segmentRepo.flush();
+        return List.copyOf(result);
+    }
+
+    private SegmentDraft persistSegment(
+            ProductionPlanningPackage planningPackage,
+            CompleteKitAllocator.SegmentAllocation proposal,
+            int segmentNo) {
+        ProductionExecutionSegment segment =
+                new ProductionExecutionSegment();
+        segment.setPackageId(planningPackage.getId());
+        segment.setPlanId(planningPackage.getPlanId());
+        segment.setSourcePlanItemId(
+                proposal.line().sourcePlanItemId());
+        segment.setSegmentNo(segmentNo);
+        segment.setSegmentCode(masterCodeService.nextCode(
+                MasterCodePrefix.PRODUCTION_EXECUTION_SEGMENT));
+        segment.setClientSegmentKey(proposal.clientSegmentKey());
+        segment.setProductGoodsId(
+                proposal.line().productGoodsId());
+        segment.setProductColorId(
+                proposal.line().productColorId());
+        segment.setProductUnitId(
+                proposal.line().productUnitId());
+        segment.setProductUnitRate(
+                proposal.line().productUnitRate());
+        segment.setPlannedQty(proposal.plannedQty());
+        freezeMaterialRequirementShape(segment, proposal);
+        segment.setStatus(proposal.status());
+        segment.setAutoPromoteWhenReady(
+                proposal.autoPromoteWhenReady());
+        segment.setWorkshopDepartmentId(
+                proposal.line().defaultWorkshopDepartmentId());
+        segment.setTeamDepartmentId(
+                proposal.line().defaultTeamDepartmentId());
+        segment.setResponsibleEmployeeId(
+                proposal.line().defaultResponsibleEmployeeId());
+        segment.setPlanBeginDate(proposal.line().planBeginDate());
+        segment.setPlanEndDate(proposal.line().planEndDate());
+        segment.setBomFingerprint(
+                proposal.line().bomFingerprint().toLowerCase());
+        segment.setIdempotencyKey(
+                planningPackage.getId() + ":SEG:"
+                        + proposal.clientSegmentKey());
+        segmentRepo.save(segment);
+        return new SegmentDraft(segment, proposal);
+    }
+
+    static void freezeMaterialRequirementShape(
+            ProductionExecutionSegment segment,
+            CompleteKitAllocator.SegmentAllocation proposal) {
+        String zeroReason = proposal.line().zeroMaterialReason();
+        if (!proposal.materials().isEmpty()) {
+            if (zeroReason != null
+                    || proposal.line().zeroMaterialAnalysisId() != null
+                    || proposal.line().zeroMaterialExceptionReason() != null
+                    || proposal.line().zeroMaterialAuthorizedBy() != null) {
+                throw conflict("有物料需求的执行分段不能携带无物料例外原因");
+            }
+            segment.setMaterialRequirementMode(
+                    ProductionExecutionSegment
+                            .MATERIAL_REQUIREMENT_MODE_DEMANDED);
+            segment.setZeroMaterialReason(null);
+            segment.setZeroMaterialAnalysisId(null);
+            segment.setZeroMaterialExceptionReason(null);
+            segment.setZeroMaterialAuthorizedBy(null);
+            return;
+        }
+        if (!ProductionExecutionSegment.STATUS_READY.equals(
+                proposal.status())) {
+            throw conflict("无物料执行分段必须直接进入 READY");
+        }
+        if (zeroReason == null || !List.of(
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_DIRECT_MAKE,
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE,
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_PERIODIC_MATERIAL)
+                .contains(zeroReason)) {
+            throw conflict("无物料执行分段缺少可审计的合法原因");
+        }
+        UUID analysisId = proposal.line().zeroMaterialAnalysisId();
+        String exceptionReason = proposal.line().zeroMaterialExceptionReason();
+        UUID authorizedBy = proposal.line().zeroMaterialAuthorizedBy();
+        boolean validEvidence = switch (zeroReason) {
+            case ProductionExecutionSegment.ZERO_MATERIAL_REASON_DIRECT_MAKE ->
+                    analysisId != null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            case ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE ->
+                    analysisId == null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            // ADR-131：料由车间内料仓供给，证据只在 BOM 上(期间边)，不带分析与授权事实。
+            case ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_PERIODIC_MATERIAL ->
+                    analysisId == null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            default -> false;
+        };
+        if (!validEvidence) {
+            throw conflict("无物料执行分段的授权或例外事实不完整");
+        }
+        segment.setMaterialRequirementMode(
+                ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO);
+        segment.setZeroMaterialReason(zeroReason);
+        segment.setZeroMaterialAnalysisId(analysisId);
+        segment.setZeroMaterialExceptionReason(exceptionReason);
+        segment.setZeroMaterialAuthorizedBy(authorizedBy);
+    }
+
+    /**
+     * Freezes the exact sales ownership of every execution segment.
+     *
+     * <p>Both candidate sets use a stable order. Segments follow their
+     * persisted segment number. Sales links follow source-plan-item,
+     * requested delivery date, order date/id, order line/id and link id.
+     * A sales-backed plan item must be partitioned in full; an internal plan
+     * item has no allocation rows.
+     */
+    private void persistSalesAllocations(List<SegmentDraft> segments) {
+        List<UUID> planItemIds = segments.stream()
+                .map(segment -> segment.segment().getSourcePlanItemId())
+                .distinct()
+                .sorted()
+                .toList();
+        if (planItemIds.isEmpty()) {
+            return;
+        }
+
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT link.id, link.plan_item_id,
+                                       link.order_item_id, link.allocated_qty
+                                FROM (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('plan_order_item_links',to_jsonb(archive_origin))) link
+                                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) order_item
+                                  ON order_item.id = link.order_item_id
+                                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_order
+                                  ON sales_order.id = order_item.order_id
+                                WHERE link.plan_item_id IN (:planItemIds)
+                                  AND link.is_deleted = FALSE
+                                  AND order_item.is_deleted = FALSE
+                                  AND sales_order.is_deleted = FALSE
+                                ORDER BY link.plan_item_id,
+                                         COALESCE(
+                                             order_item.deliver_date,
+                                             sales_order.deliver_date)
+                                             ASC NULLS LAST,
+                                         sales_order.bill_date ASC NULLS LAST,
+                                         sales_order.id,
+                                         order_item.line_no ASC NULLS LAST,
+                                         order_item.id,
+                                         link.id
+                                FOR UPDATE OF link
+                                """)
+                        .setParameter("planItemIds", planItemIds));
+
+        Map<UUID, List<SalesLinkSlice>> linksByPlanItem =
+                new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            BigDecimal quantity = decimal(row[3]);
+            if (quantity.signum() <= 0) {
+                throw conflict(
+                        "销售关联的生产联动存在不大于零的分摊数量");
+            }
+            linksByPlanItem.computeIfAbsent(
+                            (UUID) row[1], ignored -> new ArrayList<>())
+                    .add(new SalesLinkSlice(
+                            (UUID) row[0],
+                            (UUID) row[2],
+                            quantity));
+        }
+
+        Map<UUID, List<SegmentDraft>> segmentsByPlanItem =
+                segments.stream()
+                        .sorted(Comparator.comparingInt(
+                                segment ->
+                                        segment.segment().getSegmentNo()))
+                        .collect(Collectors.groupingBy(
+                                segment -> segment.segment()
+                                        .getSourcePlanItemId(),
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+
+        for (Map.Entry<UUID, List<SegmentDraft>> entry :
+                segmentsByPlanItem.entrySet()) {
+            List<SalesLinkSlice> links =
+                    linksByPlanItem.getOrDefault(
+                            entry.getKey(), List.of());
+            if (links.isEmpty()) {
+                continue;
+            }
+            BigDecimal segmentTotal = entry.getValue().stream()
+                    .map(segment -> segment.segment().getPlannedQty())
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal linkTotal = links.stream()
+                    .map(SalesLinkSlice::remaining)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (linkTotal.compareTo(segmentTotal) > 0) {
+                throw conflict(
+                        "执行分段总量与销售分摊总量不一致");
+            }
+            // 2026-09-15 分析计划超量下达：计划数量 = 归需求量 + 公共备货产出，
+            // 销售分摊（link 容量）只覆盖归需求量，段总量可以大于分摊总量——
+            // 按 min(段总量, 分摊总量) 依序分摊，分摊仍须被精确消耗完。
+
+            int linkIndex = 0;
+            for (SegmentDraft segment : entry.getValue()) {
+                BigDecimal remaining =
+                        segment.segment().getPlannedQty();
+                while (remaining.signum() > 0 && linkIndex < links.size()) {
+                    SalesLinkSlice link = links.get(linkIndex);
+                    BigDecimal quantity =
+                            remaining.min(link.remaining());
+                    em.createNativeQuery("""
+                                    INSERT INTO
+                                      execution_segment_sales_allocations(
+                                        execution_segment_id,
+                                        plan_order_item_link_id,
+                                        sales_order_item_id,
+                                        allocated_qty,
+                                        created_by
+                                      )
+                                    VALUES (
+                                      :segmentId, :linkId, :orderItemId,
+                                      :quantity, :createdBy
+                                    )
+                                    """)
+                            .setParameter(
+                                    "segmentId",
+                                    segment.segment().getId())
+                            .setParameter("linkId", link.linkId())
+                            .setParameter(
+                                    "orderItemId", link.orderItemId())
+                            .setParameter("quantity", quantity)
+                            .setParameter(
+                                    "createdBy", currentUser.requireId())
+                            .executeUpdate();
+                    remaining = remaining.subtract(quantity);
+                    link.consume(quantity);
+                    if (link.remaining().signum() == 0) {
+                        linkIndex++;
+                    }
+                }
+            }
+            if (links.stream().anyMatch(
+                    link -> link.remaining().signum() != 0)) {
+                throw conflict(
+                        "生产占用的销售分摊未被精确消耗完");
+            }
+        }
+    }
+
+    /**
+     * WAITING never holds partial stock. READY demands are allocated in a
+     * separate first pass and must be covered exactly.
+     */
+    private ReadyAllocation allocateReady(
+            ProductionPlanningPackage planningPackage,
+            List<SegmentDraft> segments,
+            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
+            List<PreplanAnalysisPegPort.PreparedPlanTransfer> preparedTransfers,
+            boolean sameMainWarehouse) {
+        List<ProductionMaterialAllocationFacade.AllocationRequest> requests =
+                segments.stream()
+                        .filter(segment ->
+                                ProductionExecutionSegment.STATUS_READY.equals(
+                                        segment.segment().getStatus()))
+                        .flatMap(segment -> demandsBySegment
+                                .getOrDefault(
+                                        segment.segment().getId(), List.of())
+                                .stream())
+                        .map(demand ->
+                                new ProductionMaterialAllocationFacade
+                                        .AllocationRequest(
+                                        planningPackage.getId(),
+                                        demand.getId(),
+                                        demand.getGoodsId(),
+                                        demand.getColorId(),
+                                        planningPackage.getWarehouseId(),
+                                        demand.getRequiredQty(),
+                                        planningPackage.getId()
+                                                + ":STOCK:" + demand.getId(),
+                                        currentUser.requireId()))
+                        .toList();
+        List<ProductionMaterialAllocationFacade.AllocationResult> allocations =
+                sameMainWarehouse
+                        ? stockAllocation.allocateWithinMainWarehouse(requests,
+                        preparedTransfers.stream()
+                                .map(transfer -> new ProductionMaterialAllocationFacade
+                                        .AllocationPreference(transfer.demandId(),
+                                        transfer.warehouseId(), transfer.qty()))
+                                .toList())
+                        : stockAllocation.allocate(requests);
+        Map<UUID, BigDecimal> quantities = new HashMap<>();
+        List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations =
+                new ArrayList<>();
+        for (ProductionMaterialAllocationFacade.AllocationResult allocation
+                : allocations) {
+            quantities.merge(allocation.demandId(), allocation.allocatedQty(),
+                    BigDecimal::add);
+            if (allocation.allocationId() != null
+                    && allocation.allocatedQty().signum() > 0) {
+                formalReservations.add(new PreplanAnalysisPegPort
+                        .FormalReservationSlice(
+                        allocation.demandId(), allocation.allocationId(),
+                        allocation.allocatedQty()));
+            }
+        }
+        return new ReadyAllocation(
+                Map.copyOf(quantities), List.copyOf(formalReservations),
+                List.copyOf(allocations));
+    }
+
+    /** Split a complete kit into physical warehouse draws without duplicating demand. */
+    static Map<UUID, Map<UUID, BigDecimal>> drawQuantitiesByWarehouse(
+            List<ProductionMaterialDemand> demands,
+            List<ProductionMaterialAllocationFacade.AllocationResult> allocations) {
+        Set<UUID> demandIds = demands.stream()
+                .map(ProductionMaterialDemand::getId).collect(Collectors.toSet());
+        Map<UUID, Map<UUID, BigDecimal>> byWarehouse = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> totals = new HashMap<>();
+        for (var allocation : allocations) {
+            if (!demandIds.contains(allocation.demandId())
+                    || allocation.allocatedQty().signum() <= 0) continue;
+            if (allocation.warehouseId() == null || allocation.allocationId() == null) {
+                throw conflict("领料分配缺少实际子仓或库存预留记录");
+            }
+            byWarehouse.computeIfAbsent(allocation.warehouseId(),
+                            ignored -> new LinkedHashMap<>())
+                    .merge(allocation.demandId(), allocation.allocatedQty(), BigDecimal::add);
+            totals.merge(allocation.demandId(), allocation.allocatedQty(), BigDecimal::add);
+        }
+        for (var demand : demands) {
+            if (totals.getOrDefault(demand.getId(), BigDecimal.ZERO)
+                    .compareTo(demand.getRequiredQty()) != 0) {
+                throw conflict("READY 执行分段必须由完整库存支持");
+            }
+        }
+        return byWarehouse;
+    }
+    private void assertAllocationMatchesProposal(
+            List<SegmentDraft> segments,
+            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
+            Map<UUID, BigDecimal> allocatedByDemand) {
+        for (SegmentDraft segment : segments) {
+            Map<CompleteKitAllocator.MaterialKey, BigDecimal> expected =
+                    segment.proposal().materials().stream()
+                            .collect(Collectors.toMap(
+                                    material ->
+                                            new CompleteKitAllocator.MaterialKey(
+                                                    material.goodsId(),
+                                                    material.colorId()),
+                                    CompleteKitAllocator.MaterialAllocation
+                                            ::candidateAllocatedQty));
+            for (ProductionMaterialDemand demand :
+                    demandsBySegment.getOrDefault(
+                            segment.segment().getId(), List.of())) {
+                BigDecimal planned = expected.getOrDefault(
+                        new CompleteKitAllocator.MaterialKey(
+                                demand.getGoodsId(), demand.getColorId()),
+                        BigDecimal.ZERO);
+                BigDecimal actual = allocatedByDemand.getOrDefault(
+                        demand.getId(), BigDecimal.ZERO);
+                if (planned.compareTo(actual) != 0) {
+                    throw conflict(
+                            "库存分配与齐套方案不一致，本次操作没有生效，请刷新后重试");
+                }
+            }
+        }
+    }
+
+    private MrpGenerateResult createDraw(
+            PlanHeader plan,
+            ProductionPlanningPackage planningPackage,
+            ProductionExecutionSegment segment,
+            List<ProductionMaterialDemand> demands,
+            UUID warehouseId,
+            Map<UUID, BigDecimal> allocatedByDemand) {
+        if (demands.isEmpty()
+                || demands.stream().anyMatch(demand ->
+                        allocatedByDemand.getOrDefault(
+                                        demand.getId(), BigDecimal.ZERO)
+                                .signum() <= 0)) {
+            throw conflict("领料单必须包含本子仓实际分配的物料");
+        }
+        StockDocument document = new StockDocument();
+        document.setDocType("DRAW");
+        document.setBillNo(
+                docNumberService.nextNumber(DocNumberPrefix.STOCK_DRAW));
+        document.setBillDate(BusinessTime.today());
+        document.setWarehouseId(warehouseId);
+        document.setPlanNo(plan.billNo());
+        document.setSourceDocNo(plan.billNo());
+        document.setRemark(
+                "执行分段 " + segment.getSegmentCode() + " 自动备料");
+        document.setDepartmentId(segment.getWorkshopDepartmentId());
+        document.setWorkerId(segment.getResponsibleEmployeeId());
+        document.setMakerId(currentUser.requireEmployeeId());
+        document.setStatus((short) 0);
+        stockDocumentRepo.save(document);
+
+        Map<UUID, StockGoodsSnapshot> goodsSnapshots =
+                StockGoodsSnapshot.fromMaster(
+                        em,
+                        demands.stream()
+                                .map(ProductionMaterialDemand::getGoodsId)
+                                .toList(),
+                        StockGoodsSnapshot.MASTER_AT_SAVE);
+        int lineNo = 0;
+        for (ProductionMaterialDemand demand : demands.stream()
+                .sorted(Comparator
+                        .comparing(ProductionMaterialDemand::getGoodsId)
+                        .thenComparing(value ->
+                                Objects.toString(value.getColorId(), "")))
+                .toList()) {
+            lineNo++;
+            StockDocumentItem item = new StockDocumentItem();
+            item.setDocId(document.getId());
+            item.setBillType("DRAW");
+            item.setBillNo(document.getBillNo());
+            item.setBillDate(document.getBillDate());
+            item.setLineNo(lineNo);
+            item.setGoodsId(demand.getGoodsId());
+            StockGoodsSnapshot.require(
+                            goodsSnapshots,
+                            demand.getGoodsId(),
+                            "执行分段领料明细")
+                    .applyTo(item, null);
+            item.setColorId(demand.getColorId());
+            item.setUnitId(demand.getUnitId());
+            item.setUnitRate(BigDecimal.ONE);
+            item.setQty(allocatedByDemand.get(demand.getId()));
+            item.setBaseQty(allocatedByDemand.get(demand.getId()));
+            item.setSourceDocNo(plan.billNo());
+            item.setRemark("执行分段 " + segment.getSegmentCode() + " 需求");
+            stockDocumentItemRepo.save(item);
+            em.createNativeQuery("""
+                            INSERT INTO
+                                production_planning_package_document_items (
+                                    package_id, demand_id, document_type,
+                                    document_id, document_item_id, created_by
+                                )
+                            VALUES (
+                                :packageId, :demandId, 'DRAW',
+                                :documentId, :itemId, :actorId
+                            )
+                            """)
+                    .setParameter("packageId", planningPackage.getId())
+                    .setParameter("demandId", demand.getId())
+                    .setParameter("documentId", document.getId())
+                    .setParameter("itemId", item.getId())
+                    .setParameter("actorId", currentUser.requireId())
+                    .executeUpdate();
+        }
+        stockDocumentItemRepo.flush();
+        stockDocumentRepo.flush();
+        ledger.recordDocument(
+                planningPackage.getId(),
+                segment.getId(),
+                "DRAW",
+                document.getId(),
+                document.getBillNo(),
+                currentUser.requireId());
+        em.createNativeQuery("""
+                        INSERT INTO plan_draw_links(
+                            plan_id, draw_id, created_by)
+                        VALUES (:planId, :drawId, :actorId)
+                        """)
+                .setParameter("planId", planningPackage.getPlanId())
+                .setParameter("drawId", document.getId())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+        // Complete-kit reservation remains internal until the workshop requests these DRAWs.
+        return new MrpGenerateResult(
+                document.getId(), document.getBillNo(), lineNo, List.of());
+    }
+
+    private static CompleteKitAllocator.MaterialUsage materialUsage(
+            SegmentDraft segment,
+            CompleteKitAllocator.MaterialAllocation material) {
+        CompleteKitAllocator.MaterialKey key =
+                new CompleteKitAllocator.MaterialKey(
+                        material.goodsId(), material.colorId());
+        return segment.proposal().line().materials().stream()
+                .filter(usage -> usage.materialKey().equals(key))
+                .findFirst()
+                .orElseThrow(() -> conflict(
+                        "执行分段物料缺少冻结的 BOM 消耗规则"));
+    }
+
+    private MrpGenerateResult createPurchase(
+            PlanHeader plan,
+            ProductionPlanningPackage planningPackage,
+            UUID warehouseId,
+            List<ProductionMaterialDemand> demands,
+            List<ProductionPurchaseRequestFacade.DraftLine> lines) {
+        ProductionPurchaseRequestFacade.DraftResult purchase =
+                purchaseFacade.createProductionDraft(
+                        plan.billNo(),
+                        null,
+                        plan.deliveryDate(),
+                        warehouseId,
+                        lines,
+                        currentUser.requireEmployeeId(),
+                        currentUser.requireEmployeeId());
+        if (purchase == null) {
+            return null;
+        }
+        ledger.attachPurchaseRequest(
+                planningPackage, purchase.requestId());
+        ledger.recordDocument(
+                planningPackage.getId(),
+                "PURCHASE_REQUEST",
+                purchase.requestId(),
+                purchase.billNo(),
+                currentUser.requireId());
+        Map<UUID, ProductionMaterialDemand> demandById =
+                demands.stream().collect(Collectors.toMap(
+                        ProductionMaterialDemand::getId,
+                        demand -> demand));
+        for (ProductionPurchaseRequestFacade.DraftLineResult line
+                : purchase.lines()) {
+            ledger.createSupplyPeg(
+                    demandById.get(line.demandId()),
+                    "PURCHASE_REQUEST_ITEM",
+                    line.requestItemId(),
+                    line.qty(),
+                    line.expectedDate());
+        }
+        return new MrpGenerateResult(
+                purchase.requestId(),
+                purchase.billNo(),
+                purchase.lines().size(),
+                List.of());
+    }
+
+    static void requirePurchaseRequestForBuyShortage(
+            boolean generatePurchaseRequest,
+            List<?> purchaseLines) {
+        if (!generatePurchaseRequest
+                && purchaseLines != null
+                && !purchaseLines.isEmpty()) {
+            throw validation(
+                    "存在外购物料缺口，必须同时生成采购申请草稿");
+        }
+    }
+
+    static List<MrpService.DirectMakeRequirement> directMakeRequirements(
+            CompleteKitAllocator.Allocation allocation) {
+        Map<CompleteKitAllocator.MaterialKey,
+                MrpService.DirectMakeRequirement> totals =
+                new LinkedHashMap<>();
+        for (CompleteKitAllocator.SegmentAllocation segment
+                : allocation.segments()) {
+            for (CompleteKitAllocator.MaterialAllocation material
+                    : segment.materials()) {
+                if (!ProductionMaterialDemand.ROUTE_MAKE.equals(
+                        material.supplyRoute())) {
+                    continue;
+                }
+                CompleteKitAllocator.MaterialKey key =
+                        new CompleteKitAllocator.MaterialKey(
+                                material.goodsId(), material.colorId());
+                MrpService.DirectMakeRequirement previous = totals.get(key);
+                if (previous != null
+                        && !Objects.equals(
+                                previous.unitId(), material.unitId())) {
+                    throw conflict("同一直接层自制物料颜色维度存在不同基本单位，不能生成子计划");
+                }
+                totals.put(key, new MrpService.DirectMakeRequirement(
+                        material.goodsId(),
+                        material.colorId(),
+                        material.unitId(),
+                        (previous == null ? BigDecimal.ZERO
+                                : previous.requiredQty())
+                                .add(material.requiredQty()),
+                        (previous == null ? BigDecimal.ZERO
+                                : previous.shortageQty())
+                                .add(material.shortageQty())));
+            }
+        }
+        return totals.values().stream()
+                .filter(value -> value.shortageQty().signum() > 0)
+                .sorted(Comparator
+                        .comparing((MrpService.DirectMakeRequirement value) ->
+                                value.goodsId().toString())
+                        .thenComparing(value ->
+                                Objects.toString(value.colorId(), ""))
+                        .thenComparing(value -> value.unitId().toString()))
+                .toList();
+    }
+
+    private void createMakeSupplyPegs(
+            ProductionPlanningPackage planningPackage,
+            List<ProductionMaterialDemand> demands,
+            List<SegmentDraft> segments,
+            List<GenerateSubplansRequest.Created> subplans) {
+        Map<DemandMaterialKey, BigDecimal> shortageByDemand =
+                proposedShortage(
+                        segments, ProductionMaterialDemand.ROUTE_MAKE);
+        if (shortageByDemand.isEmpty()) {
+            if (subplans != null && !subplans.isEmpty()) {
+                throw conflict(
+                        "存在自制子计划，但没有对应的直接物料缺口");
+            }
+            return;
+        }
+        if (subplans == null || subplans.size() != 1) {
+            throw conflict(
+                    "直接自制缺口必须且只能归属一个子计划");
+        }
+
+        em.flush();
+        UUID subplanId = subplans.getFirst().planId();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT item.id, item.goods_id,
+                                       item.color_id, item.unit_id,
+                                       item.qty * COALESCE(
+                                           item.unit_rate, 1)
+                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                JOIN subplan_links link
+                                  ON link.subplan_id = item.plan_id
+                                 AND link.plan_id = :planId
+                                 AND link.planning_package_id = :packageId
+                                 AND link.source = 'EXECUTION_V1'
+                                 AND link.is_deleted = FALSE
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) child
+                                  ON child.id = item.plan_id
+                                 AND child.is_deleted = FALSE
+                                 AND child.status <> -1
+                                WHERE item.plan_id = :subplanId
+                                  AND item.is_deleted = FALSE
+                                ORDER BY item.goods_id,
+                                         item.color_id NULLS FIRST,
+                                         item.id
+                                FOR UPDATE OF item
+                                """)
+                        .setParameter(
+                                "planId", planningPackage.getPlanId())
+                        .setParameter(
+                                "packageId", planningPackage.getId())
+                        .setParameter("subplanId", subplanId));
+        record MakeSourceItem(
+                UUID itemId, UUID unitId, BigDecimal capacity) {
+        }
+        Map<CompleteKitAllocator.MaterialKey, MakeSourceItem> sources =
+                new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            CompleteKitAllocator.MaterialKey key =
+                    new CompleteKitAllocator.MaterialKey(
+                            (UUID) row[1], (UUID) row[2]);
+            MakeSourceItem previous = sources.putIfAbsent(
+                    key,
+                    new MakeSourceItem(
+                            (UUID) row[0], (UUID) row[3],
+                            decimal(row[4])));
+            if (previous != null) {
+                throw conflict(
+                        "直接自制子计划包含重复的物料维度(货品+颜色)");
+            }
+        }
+
+        Map<CompleteKitAllocator.MaterialKey, BigDecimal> expected =
+                new LinkedHashMap<>();
+        shortageByDemand.forEach((key, qty) -> expected.merge(
+                new CompleteKitAllocator.MaterialKey(
+                        key.goodsId(), key.colorId()),
+                qty, BigDecimal::add));
+        if (!sources.keySet().equals(expected.keySet())) {
+            throw conflict(
+                    "直接自制子计划行与计划包缺口不一致");
+        }
+
+        Map<UUID, BigDecimal> peggedBySource = new LinkedHashMap<>();
+        Set<DemandMaterialKey> peggedDemands = new java.util.HashSet<>();
+        for (ProductionMaterialDemand demand : demands.stream()
+                .sorted(Comparator
+                        .comparing(ProductionMaterialDemand::getExecutionSegmentId)
+                        .thenComparing(ProductionMaterialDemand::getGoodsId)
+                        .thenComparing(value -> Objects.toString(
+                                value.getColorId(), ""))
+                        .thenComparing(ProductionMaterialDemand::getId))
+                .toList()) {
+            DemandMaterialKey demandKey = new DemandMaterialKey(
+                    demand.getExecutionSegmentId(),
+                    demand.getGoodsId(), demand.getColorId());
+            BigDecimal qty = shortageByDemand.getOrDefault(
+                    demandKey, BigDecimal.ZERO);
+            if (qty.signum() <= 0) {
+                continue;
+            }
+            MakeSourceItem source = sources.get(
+                    new CompleteKitAllocator.MaterialKey(
+                            demand.getGoodsId(), demand.getColorId()));
+            if (source == null
+                    || !Objects.equals(
+                            source.unitId(), demand.getUnitId())
+                    || !ProductionMaterialDemand.ROUTE_MAKE.equals(
+                            demand.getSupplyRoute())) {
+                throw conflict(
+                        "直接自制需求与子计划的物料维度不一致");
+            }
+            ledger.createSupplyPeg(
+                    demand, "PRODUCTION_PLAN_ITEM", source.itemId(),
+                    qty, demand.getNeedDate());
+            peggedBySource.merge(source.itemId(), qty, BigDecimal::add);
+            peggedDemands.add(demandKey);
+        }
+        if (!peggedDemands.equals(shortageByDemand.keySet())
+                || sources.values().stream().anyMatch(source ->
+                        peggedBySource.getOrDefault(
+                                        source.itemId(), BigDecimal.ZERO)
+                                .compareTo(source.capacity()) != 0)) {
+            throw conflict(
+                    "直接自制供给锚点未能精确覆盖子计划数量");
+        }
+    }
+
+    private static Map<DemandMaterialKey, BigDecimal>
+            proposedPurchaseShortage(List<SegmentDraft> segments) {
+        return proposedShortage(
+                segments, ProductionMaterialDemand.ROUTE_BUY);
+    }
+
+    private static Map<DemandMaterialKey, BigDecimal> proposedShortage(
+            List<SegmentDraft> segments,
+            String supplyRoute) {
+        Map<DemandMaterialKey, BigDecimal> result = new HashMap<>();
+        for (SegmentDraft segment : segments) {
+            for (CompleteKitAllocator.MaterialAllocation material
+                    : segment.proposal().materials()) {
+                if (!supplyRoute.equals(material.supplyRoute())
+                        || material.shortageQty().signum() <= 0) {
+                    continue;
+                }
+                result.put(
+                        new DemandMaterialKey(
+                                segment.segment().getId(),
+                                material.goodsId(),
+                                material.colorId()),
+                        material.shortageQty());
+            }
+        }
+        return result;
+    }
+
+    private List<ExecutionSegmentResult> results(
+            List<SegmentDraft> segments,
+            Map<UUID, List<ProductionMaterialDemand>> demandsBySegment,
+            Map<UUID, BigDecimal> allocatedByDemand,
+            Map<UUID, MrpGenerateResult> draws) {
+        return segments.stream().map(draft -> {
+            ProductionExecutionSegment segment = draft.segment();
+            List<ExecutionSegmentResult.Material> materials =
+                    demandsBySegment.getOrDefault(segment.getId(), List.of())
+                            .stream()
+                            .map(demand -> {
+                                BigDecimal allocated =
+                                        allocatedByDemand.getOrDefault(
+                                                demand.getId(), BigDecimal.ZERO);
+                                return new ExecutionSegmentResult.Material(
+                                        demand.getId(),
+                                        demand.getGoodsId(),
+                                        demand.getColorId(),
+                                        demand.getUnitId(),
+                                        demand.getPerProductQty(),
+                                        demand.getRequiredQty(),
+                                        allocated,
+                                        demand.getRequiredQty()
+                                                .subtract(allocated)
+                                                .max(BigDecimal.ZERO),
+                                        demand.getSupplyRoute(),
+                                        demand.getRequirementMode());
+                            })
+                            .toList();
+            return new ExecutionSegmentResult(
+                    segment.getId(),
+                    segment.getSegmentCode(),
+                    segment.getClientSegmentKey(),
+                    segment.getSourcePlanItemId(),
+                    segment.getProductGoodsId(),
+                    segment.getProductColorId(),
+                    segment.getPlannedQty(),
+                    segment.getStatus(),
+                    segment.getMaterialRequirementMode(),
+                    segment.getZeroMaterialReason(),
+                    segment.getWorkshopDepartmentId(),
+                    segment.getTeamDepartmentId(),
+                    segment.getResponsibleEmployeeId(),
+                    segment.getPlanBeginDate(),
+                    segment.getPlanEndDate(),
+                    materials,
+                    draws.get(segment.getId()));
+        }).toList();
+    }
+
+    PlanningPackageResult replay(
+            ProductionPlanningPackage planningPackage) {
+        // A replay may include later operations or historical package documents.
+        // Only a fresh confirmation can supply its known-empty document context.
+        return readCurrentResult(planningPackage, null, true, false);
+    }
+
+    private PlanningPackageResult readCurrentResult(
+            ProductionPlanningPackage planningPackage,
+            List<ProductionExecutionSegment> confirmedSegments,
+            boolean replayed,
+            boolean freshAnalysisPackage) {
+        List<ProductionExecutionSegment> segments =
+                confirmedSegments == null
+                        ? segmentRepo.findByPackageIdAndDeletedFalseOrderBySegmentNoAsc(
+                                planningPackage.getId())
+                        : confirmedSegments;
+        Map<UUID, MrpGenerateResult> draws = new LinkedHashMap<>();
+        List<Object[]> drawRows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT h.execution_segment_id,
+                                       h.document_id,
+                                       h.document_no,
+                                       COUNT(i.id)
+                                FROM production_planning_package_documents h
+                                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) i
+                                  ON i.doc_id = h.document_id
+                                 AND i.is_deleted = FALSE
+                                WHERE h.package_id = :packageId
+                                  AND h.document_type = 'DRAW'
+                                  AND h.execution_segment_id IS NOT NULL
+                                GROUP BY h.execution_segment_id,
+                                         h.document_id, h.document_no,
+                                         h.created_at
+                                ORDER BY h.created_at, h.document_id
+                                """)
+                        .setParameter(
+                                "packageId", planningPackage.getId()));
+        for (Object[] row : drawRows) {
+            draws.putIfAbsent(
+                    (UUID) row[0],
+                    new MrpGenerateResult(
+                            (UUID) row[1],
+                            (String) row[2],
+                            ((Number) row[3]).intValue(),
+                            List.of()));
+        }
+        List<SegmentDraft> drafts = segments.stream()
+                .map(segment -> new SegmentDraft(segment, null))
+                .toList();
+        Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
+                em.createQuery("""
+                                SELECT d
+                                FROM ProductionMaterialDemand d
+                                WHERE d.packageId = :packageId
+                                  AND d.executionSegmentId IS NOT NULL
+                                  AND d.deleted = FALSE
+                                ORDER BY d.executionSegmentId, d.goodsId
+                                """, ProductionMaterialDemand.class)
+                        .setParameter(
+                                "packageId", planningPackage.getId())
+                        .getResultList()
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                ProductionMaterialDemand::getExecutionSegmentId,
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+        Map<UUID, BigDecimal> allocated = allocationTotals(
+                demandsBySegment.values().stream()
+                        .flatMap(List::stream)
+                        .map(ProductionMaterialDemand::getId)
+                        .toList());
+        MrpGenerateResult purchase = freshAnalysisPackage ? null : replayPurchase(planningPackage);
+        MrpGenerateResult subcontract = freshAnalysisPackage ? null : replaySubcontract(planningPackage);
+        List<GenerateSubplansRequest.Created> subplans =
+                freshAnalysisPackage ? List.of() : replaySubplans(planningPackage.getId());
+        List<ExecutionSegmentResult> executionResults =
+                results(drafts, demandsBySegment, allocated, draws);
+        // The segment keeps its first DRAW for compatibility; package replay
+        // must return every physical warehouse document created for the kit.
+        List<MrpGenerateResult> drawResults =
+                drawRows.stream().map(row -> new MrpGenerateResult(
+                        (UUID) row[1], (String) row[2],
+                        ((Number) row[3]).intValue(), List.of())).toList();
+        return new PlanningPackageResult(
+                planningPackage.getId(),
+                planningPackage.getStatus(),
+                replayed,
+                subplans,
+                purchase,
+                subcontract,
+                drawResults.isEmpty() ? null : drawResults.getFirst(),
+                executionResults,
+                drawResults);
+    }
+
+    private List<GenerateSubplansRequest.Created> replaySubplans(
+            UUID packageId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT plan.id, plan.bill_no,
+                                       COUNT(item.id), plan.workshop_name
+                                FROM production_planning_package_documents doc
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                                  ON plan.id = doc.document_id
+                                 AND plan.is_deleted = FALSE
+                                LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                  ON item.plan_id = plan.id
+                                 AND item.is_deleted = FALSE
+                                WHERE doc.package_id = :packageId
+                                  AND doc.document_type = 'SUBPLAN'
+                                GROUP BY plan.id, plan.bill_no,
+                                         plan.workshop_name, doc.created_at
+                                ORDER BY doc.created_at, plan.id
+                                """)
+                        .setParameter("packageId", packageId));
+        return rows.stream()
+                .map(row -> new GenerateSubplansRequest.Created(
+                        (UUID) row[0],
+                        (String) row[1],
+                        ((Number) row[2]).intValue(),
+                        row[3] == null ? null : row[3].toString()))
+                .toList();
+    }
+
+    private Map<UUID, BigDecimal> allocationTotals(List<UUID> demandIds) {
+        if (demandIds.isEmpty()) return Map.of();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT demand_id,
+                                       COALESCE(SUM(
+                                           qty - released_qty), 0)
+                                FROM stock_reservations
+                                WHERE demand_id IN (:ids)
+                                  AND is_deleted = FALSE
+                                GROUP BY demand_id
+                                """)
+                        .setParameter("ids", demandIds));
+        Map<UUID, BigDecimal> result = new HashMap<>();
+        rows.forEach(row -> result.put(
+                (UUID) row[0], decimal(row[1])));
+        return result;
+    }
+
+    private MrpGenerateResult replayPurchase(
+            ProductionPlanningPackage planningPackage) {
+        if (planningPackage.getPurchaseRequestId() == null) return null;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT r.bill_no, COUNT(i.id)
+                                FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r
+                                LEFT JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
+                                  ON i.request_id = r.id
+                                 AND i.is_deleted = FALSE
+                                WHERE r.id = :id
+                                GROUP BY r.id, r.bill_no
+                                """)
+                        .setParameter(
+                                "id",
+                                planningPackage.getPurchaseRequestId()));
+        if (rows.isEmpty()) return null;
+        return new MrpGenerateResult(
+                planningPackage.getPurchaseRequestId(),
+                (String) rows.getFirst()[0],
+                ((Number) rows.getFirst()[1]).intValue(),
+                List.of());
+    }
+
+    private MrpGenerateResult replaySubcontract(
+            ProductionPlanningPackage planningPackage) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT application.id,
+                                       application.bill_no,
+                                       COUNT(item.id)
+                                FROM production_planning_package_documents doc
+                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                                  ON application.id = doc.document_id
+                                 AND application.is_deleted = FALSE
+                                LEFT JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) item
+                                  ON item.application_id = application.id
+                                 AND item.is_deleted = FALSE
+                                WHERE doc.package_id = :packageId
+                                  AND doc.document_type =
+                                      'SUBCONTRACT_APPLICATION'
+                                GROUP BY application.id,
+                                         application.bill_no,
+                                         doc.created_at
+                                ORDER BY doc.created_at, application.id
+                                LIMIT 1
+                                """)
+                        .setParameter(
+                                "packageId", planningPackage.getId()));
+        if (rows.isEmpty()) {
+            return null;
+        }
+        return new MrpGenerateResult(
+                (UUID) rows.getFirst()[0],
+                (String) rows.getFirst()[1],
+                ((Number) rows.getFirst()[2]).intValue(),
+                List.of());
+    }
+
+    private Map<CompleteKitAllocator.MaterialKey, String> routes(
+            GeneratePlanningPackageRequest request,
+            ProductionExecutionPlanningService.Snapshot snapshot) {
+        Map<CompleteKitAllocator.MaterialKey, String> result =
+                new LinkedHashMap<>();
+        snapshot.productLines().stream()
+                .flatMap(line -> line.materials().stream())
+                .forEach(material -> result.put(
+                        new CompleteKitAllocator.MaterialKey(
+                                material.goodsId(), material.colorId()),
+                        ProductionMaterialDemand.ROUTE_BUY));
+        if (request.getRoutes() == null) return result;
+        for (GeneratePlanningPackageRequest.MaterialRoute route
+                : request.getRoutes()) {
+            CompleteKitAllocator.MaterialKey key =
+                    new CompleteKitAllocator.MaterialKey(
+                            route.getGoodsId(), route.getColorId());
+            if (!result.containsKey(key)) {
+                throw validation("供给路线不属于当前 BOM 物料");
+            }
+            if (!ProductionMaterialDemand.ROUTE_BUY.equals(
+                    route.getSupplyRoute())) {
+                throw conflict(
+                        "委外/自制供给尚未接通可追溯申请与挂接，禁止确认");
+            }
+            result.put(key, ProductionMaterialDemand.ROUTE_BUY);
+        }
+        return result;
+    }
+
+    private PlanHeader lockPlan(UUID planId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT bill_no, delivery_date, status,
+                                       is_deleted, is_canceled, is_stopped,
+                                       material_analysis_id
+                                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                                WHERE id = :id
+                                FOR UPDATE
+                                """)
+                        .setParameter("id", planId));
+        if (rows.isEmpty() || Boolean.TRUE.equals(rows.getFirst()[3])) {
+            throw new ApiException(
+                    ErrorCode.NOT_FOUND, "生产计划不存在");
+        }
+        Object[] row = rows.getFirst();
+        if (((Number) row[2]).shortValue() != 1
+                || Boolean.TRUE.equals(row[4])
+                || Boolean.TRUE.equals(row[5])) {
+            throw conflict("仅已审核且未取消、未中止的生产计划可正式下达执行分段；草稿请先保存预排草案并审核");
+        }
+        return new PlanHeader(
+                (String) row[0], date(row[1]), (UUID) row[6]);
+    }
+
+    private void requireNoActiveLegacyPackage(UUID planId) {
+        Object value = em.createNativeQuery("""
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM production_planning_packages package
+                            WHERE package.plan_id = :planId
+                              AND package.execution_model_version = 0
+                              AND package.status = 'CONFIRMED'
+                              AND package.is_deleted = FALSE
+                        )
+                        """)
+                .setParameter("planId", planId)
+                .getSingleResult();
+        if (Boolean.TRUE.equals(value)) {
+            requireNoLegacyExecutionFacts(new LegacyExecutionFacts(
+                    false, false, false, false, true));
+        }
+    }
+
+    private LegacyExecutionFacts loadLegacyExecutionFacts(
+            UUID planId,
+            UUID currentPackageId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT
+                                  EXISTS (
+                                    SELECT 1
+                                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                    WHERE item.plan_id = :planId
+                                      AND item.is_deleted = FALSE
+                                      AND (
+                                        COALESCE(item.fqty, 0) > 0
+                                        OR COALESCE(item.iqty, 0) > 0
+                                      )
+                                  ),
+                                  EXISTS (
+                                    SELECT 1
+                                    FROM mrp_generations link
+                                    JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) request
+                                      ON request.id = link.request_id
+                                    WHERE link.plan_id = :planId
+                                      AND link.is_deleted = FALSE
+                                      AND request.is_deleted = FALSE
+                                      AND request.status <> -1
+                                  ),
+                                  EXISTS (
+                                    SELECT 1
+                                    FROM plan_draw_links link
+                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw
+                                      ON draw.id = link.draw_id
+                                    WHERE link.plan_id = :planId
+                                      AND link.is_deleted = FALSE
+                                      AND draw.doc_type = 'DRAW'
+                                      AND draw.is_deleted = FALSE
+                                      AND draw.status <> -1
+                                  ),
+                                  EXISTS (
+                                    SELECT 1
+                                    FROM subplan_links link
+                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) subplan
+                                      ON subplan.id = link.subplan_id
+                                    WHERE link.plan_id = :planId
+                                      AND link.is_deleted = FALSE
+                                      AND subplan.is_deleted = FALSE
+                                      AND subplan.status <> -1
+                                      AND (link.planning_package_id IS NULL
+                                           OR link.source IS DISTINCT FROM 'EXECUTION_V1')
+                                  ),
+                                  EXISTS (
+                                    SELECT 1
+                                    FROM production_planning_packages package
+                                    WHERE package.plan_id = :planId
+                                      AND package.id <> :currentPackageId
+                                      AND package.execution_model_version = 0
+                                      AND package.status = 'CONFIRMED'
+                                      AND package.is_deleted = FALSE
+                                  )
+                                """)
+                        .setParameter("planId", planId)
+                        .setParameter(
+                                "currentPackageId", currentPackageId));
+        Object[] row = rows.getFirst();
+        return new LegacyExecutionFacts(
+                Boolean.TRUE.equals(row[0]),
+                Boolean.TRUE.equals(row[1]),
+                Boolean.TRUE.equals(row[2]),
+                Boolean.TRUE.equals(row[3]),
+                Boolean.TRUE.equals(row[4]));
+    }
+
+    static void requireNoLegacyExecutionFacts(
+            LegacyExecutionFacts facts) {
+        if (facts == null || !facts.any()) {
+            return;
+        }
+        throw conflict(
+                "该生产计划仍有旧执行事实或旧版计划包；请先完成/反向旧链，或新建生产计划后再生成执行子计划");
+    }
+
+    static String requestHash(
+            GeneratePlanningPackageRequest request) {
+        List<String> parts = new ArrayList<>();
+        parts.add("WAREHOUSE|" + request.getWarehouseId());
+        parts.add("PURCHASE|" + request.isGeneratePurchaseRequest());
+        if (request.getRoutes() != null) {
+            request.getRoutes().forEach(route -> parts.add(String.join("|",
+                    "ROUTE",
+                    Objects.toString(route.getGoodsId(), ""),
+                    Objects.toString(route.getColorId(), ""),
+                    Objects.toString(route.getSupplyRoute(), ""))));
+        }
+        if (request.getSegments() != null) {
+            request.getSegments().forEach(segment -> parts.add(String.join("|",
+                    "SEGMENT",
+                    Objects.toString(segment.getClientSegmentKey(), ""),
+                    Objects.toString(segment.getSourcePlanItemId(), ""),
+                    Objects.toString(segment.getRequestedStatus(), ""),
+                    Boolean.toString(segment.isDeferUntilManualRelease()),
+                    decimalText(segment.getPlannedQty()),
+                    Objects.toString(
+                            segment.getWorkshopDepartmentId(), ""),
+                    Objects.toString(segment.getTeamDepartmentId(), ""),
+                    Objects.toString(
+                            segment.getResponsibleEmployeeId(), ""),
+                    Objects.toString(segment.getPlanBeginDate(), ""),
+                    Objects.toString(segment.getPlanEndDate(), ""),
+                    Objects.toString(segment.getBomFingerprint(), ""))));
+        }
+        return PlanningPackageFingerprint.sha256(parts);
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null
+                ? BigDecimal.ZERO
+                : new BigDecimal(value.toString());
+    }
+
+    private static String decimalText(BigDecimal value) {
+        return value == null
+                ? "0"
+                : value.stripTrailingZeros().toPlainString();
+    }
+
+    private static LocalDate date(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate localDate) return localDate;
+        return ((java.sql.Date) value).toLocalDate();
+    }
+
+    private static ApiException validation(String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, message);
+    }
+
+    /**
+     * ADR-143 §二.3：委外件必须先有可发外的直属物料(BOM，唯一判定 {@code fn_subcontract_draw_edges})
+     * 计划才能给它下委外申请。旧/手工计划包按缺口生成委外申请前检查：缺 BOM 的委外件逐个转工程研发部
+     * 完善(独立事务立即提交，随后的 409 不撤销；当前操作人进等待名单)，再整次拒绝本次确认。
+     */
+    private void rejectSubcontractBomGaps(
+            UUID planId, PlanHeader plan,
+            List<ProductionSubcontractRequestPort.DraftLine> lines) {
+        List<UUID> goodsIds = lines.stream()
+                .map(ProductionSubcontractRequestPort.DraftLine::goodsId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (goodsIds.isEmpty()) return;
+        List<Object[]> missing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT goods.id, COALESCE(goods.name, ''), COALESCE(goods.code, '')
+                FROM goods
+                WHERE goods.id IN (:goodsIds)
+                  AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(goods.id))
+                ORDER BY goods.code, goods.id
+                """).setParameter("goodsIds", goodsIds));
+        if (missing.isEmpty()) return;
+        List<String> labels = new ArrayList<>(missing.size());
+        for (Object[] row : missing) {
+            String label = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                    Objects.toString(row[1], ""), Objects.toString(row[2], ""));
+            labels.add(label);
+            if (rdBomGaps != null) {
+                rdBomGaps.forwardBomGap((UUID) row[0],
+                        com.uten.imp.application.port.RdBomGapPort.SOURCE_PRODUCTION_PLAN,
+                        planId, plan.billNo(),
+                        "生产计划 " + Objects.toString(plan.billNo(), "") + " 里的委外件 " + label
+                                + " 还没有维护 BOM(直属物料)，计划不能下达委外");
+            }
+        }
+        throw conflict(com.uten.imp.application.port.RdBomGapPort
+                .subcontractBomMissingMessage(labels, false));
+    }
+
+    private static ApiException conflict(String message) {
+        return new ApiException(ErrorCode.CONFLICT, message);
+    }
+
+    private record PlanHeader(
+            String billNo, LocalDate deliveryDate, UUID materialAnalysisId) {
+    }
+
+    private record SegmentDraft(
+            ProductionExecutionSegment segment,
+            CompleteKitAllocator.SegmentAllocation proposal) {
+    }
+
+    private record ReadyAllocation(
+            Map<UUID, BigDecimal> allocatedByDemand,
+            List<PreplanAnalysisPegPort.FormalReservationSlice> formalReservations,
+            List<ProductionMaterialAllocationFacade.AllocationResult> allocations) {
+    }
+
+    /** 明细备注用分段编号（ZX…）而非分段 UUID，单据对业务人员可读。 */
+    private static Map<UUID, String> segmentCodeById(List<SegmentDraft> segmentDrafts) {
+        return segmentDrafts.stream()
+                .collect(Collectors.toMap(
+                        draft -> draft.segment().getId(),
+                        draft -> draft.segment().getSegmentCode(),
+                        (left, right) -> left));
+    }
+
+    private static String segmentDemandRemark(
+            Map<UUID, String> segmentCodeById, ProductionMaterialDemand demand) {
+        String code = segmentCodeById.get(demand.getExecutionSegmentId());
+        return code == null ? null : "执行分段 " + code;
+    }
+
+    private static final class SalesLinkSlice {
+        private final UUID linkId;
+        private final UUID orderItemId;
+        private BigDecimal remaining;
+
+        private SalesLinkSlice(
+                UUID linkId, UUID orderItemId, BigDecimal remaining) {
+            this.linkId = linkId;
+            this.orderItemId = orderItemId;
+            this.remaining = remaining;
+        }
+
+        UUID linkId() { return linkId; }
+        UUID orderItemId() { return orderItemId; }
+        BigDecimal remaining() { return remaining; }
+        void consume(BigDecimal quantity) {
+            remaining = remaining.subtract(quantity);
+        }
+    }
+
+    record LegacyExecutionFacts(
+            boolean reportedOrInbounded,
+            boolean activeMrpGeneration,
+            boolean activeDraw,
+            boolean activeSubplan,
+            boolean activeModelZeroPackage) {
+
+        boolean any() {
+            return reportedOrInbounded
+                    || activeMrpGeneration
+                    || activeDraw
+                    || activeSubplan
+                    || activeModelZeroPackage;
+        }
+    }
+
+    private record DemandMaterialKey(
+            UUID executionSegmentId,
+            UUID goodsId,
+            UUID colorId) {
+    }
+}

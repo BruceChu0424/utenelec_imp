@@ -80,7 +80,7 @@ public class ProductionExecutionReadinessService
                         JOIN v_preplan_stock_entitlement_beneficiary_balance balance
                           ON balance.stock_reservation_id = origin.stock_reservation_id
                          AND balance.effective_qty > 0
-                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
                           ON plan.material_analysis_id = balance.beneficiary_analysis_id
                          AND fn_analysis_plan_material_matches(
                              plan.material_analysis_item_id,
@@ -115,8 +115,8 @@ public class ProductionExecutionReadinessService
                           -- entitlement priority hooks unchanged.
                           AND NOT EXISTS (
                               SELECT 1
-                              FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) direct_document
-                              JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) direct_stock
+                              FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) direct_document
+                              JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) direct_stock
                                 ON direct_stock.doc_id=direct_document.id
                                AND direct_stock.id=origin.source_stock_document_item_id
                                AND direct_stock.bill_type='FINISHED_IN'
@@ -163,8 +163,8 @@ public class ProductionExecutionReadinessService
             UUID warehouseId) {
         List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT d.execution_segment_id
-                        FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
-                        JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) receipt
+                        FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
+                        JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
                           ON receipt.id = receipt_item.receipt_id
                          AND receipt.status = 1
                          AND receipt.is_deleted = FALSE
@@ -206,8 +206,8 @@ public class ProductionExecutionReadinessService
             UUID warehouseId) {
         List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT demand.execution_segment_id
-                        FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
-                        JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
+                        FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
+                        JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
                           ON receipt.id = receipt_item.receipt_id
                          AND receipt.status = 1
                          AND receipt.is_deleted = FALSE
@@ -260,7 +260,7 @@ public class ProductionExecutionReadinessService
                                 WITH receipt_segments AS (
                                     SELECT DISTINCT
                                            demand.execution_segment_id
-                                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) receipt_item
+                                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) receipt_item
                                     JOIN production_material_supply_pegs peg
                                       ON peg.supply_type =
                                             'PRODUCTION_PLAN_ITEM'
@@ -291,7 +291,7 @@ public class ProductionExecutionReadinessService
                                 ), dimensions AS (
                                     SELECT receipt_item.goods_id,
                                            receipt_item.color_id
-                                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) receipt_item
+                                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) receipt_item
                                     WHERE receipt_item.doc_id = :receiptId
                                       AND receipt_item.bill_type =
                                             'FINISHED_IN'
@@ -328,8 +328,8 @@ public class ProductionExecutionReadinessService
         List<UUID> segmentIds = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT DISTINCT demand.execution_segment_id
-                                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) receipt_item
-                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) receipt
+                                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) receipt_item
+                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) receipt
                                   ON receipt.id = receipt_item.doc_id
                                  AND receipt.doc_type = 'FINISHED_IN'
                                  AND receipt.status = 1
@@ -532,7 +532,7 @@ public class ProductionExecutionReadinessService
                                        document.is_deleted
                                 FROM
                                   production_planning_package_documents header
-                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
+                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
                                   ON document.id = header.document_id
                                  AND document.doc_type = 'DRAW'
                                 WHERE header.package_id = :packageId
@@ -557,7 +557,7 @@ public class ProductionExecutionReadinessService
         List<Object[]> drawItems = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT item.id, item.issued_qty
-                                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
                                 WHERE item.doc_id IN (:drawIds)
                                   AND item.is_deleted = FALSE
                                 ORDER BY item.id
@@ -567,7 +567,7 @@ public class ProductionExecutionReadinessService
         Object postings = em.createNativeQuery("""
                         SELECT COUNT(*)
                         FROM production_material_stock_postings posting
-                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
                           ON item.id = posting.stock_document_item_id
                         WHERE item.doc_id IN (:drawIds)
                         """)
@@ -933,7 +933,7 @@ public class ProductionExecutionReadinessService
         Object[] context=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT segment.package_id,segment.plan_id,plan.bill_no,package.warehouse_id,
                        segment.workshop_department_id,segment.responsible_employee_id
-                FROM production_execution_segments segment JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
+                FROM production_execution_segments segment JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id
                 WHERE segment.id=:id AND segment.material_discovery_required
                 """).setParameter("id",segmentId)).getFirst();
@@ -979,7 +979,7 @@ public class ProductionExecutionReadinessService
                 FROM production_execution_segments segment
                 JOIN production_planning_packages package ON package.id=segment.package_id
                   AND package.status='CONFIRMED' AND NOT package.is_deleted
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id AND plan.status=1 AND NOT plan.is_deleted
                   AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
                 WHERE segment.id=:segment AND NOT segment.is_deleted AND segment.start_route IS NOT NULL
                   AND segment.status IN('READY','DISPATCHED','IN_PROGRESS')
@@ -1015,7 +1015,7 @@ public class ProductionExecutionReadinessService
             demands.putIfAbsent(demand,new DemandRow(demand,uuid(row[2]),uuid(row[3]),uuid(row[4]),BigDecimal.ZERO));
         }
         em.createNativeQuery("""
-                SELECT document.id FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
+                SELECT document.id FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
                 WHERE document.id IN(SELECT document_id FROM production_planning_package_documents
                     WHERE execution_segment_id=:segment AND document_type='DRAW')
                 ORDER BY document.id FOR UPDATE
@@ -1025,8 +1025,8 @@ public class ProductionExecutionReadinessService
                        SUM(GREATEST(fn_production_draw_item_effective_qty(item.id)-COALESCE(item.issued_qty,0),0)*COALESCE(item.unit_rate,1))
                 FROM production_planning_package_document_items mapping
                 JOIN production_material_demands demand ON demand.id=mapping.demand_id
-                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=item.doc_id AND document.status IN(0,1) AND NOT document.is_deleted
+                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=item.doc_id AND document.status IN(0,1) AND NOT document.is_deleted
                 WHERE demand.execution_segment_id=:segment AND mapping.document_type='DRAW'
                 GROUP BY mapping.demand_id,document.warehouse_id
                 """).setParameter("segment",segmentId))) {
@@ -1069,7 +1069,7 @@ public class ProductionExecutionReadinessService
         }
         List<Object[]> candidates = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT DISTINCT segment.id, package.warehouse_id, segment.plan_id
-                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
                         JOIN production_material_demands demand
                           ON demand.goods_id = item.goods_id
                          AND demand.color_id IS NOT DISTINCT FROM item.color_id
@@ -1182,12 +1182,12 @@ public class ProductionExecutionReadinessService
                               AND (EXISTS (
                                        SELECT 1
                                        FROM production_planning_package_documents mapping
-                                       JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
+                                       JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
                                          ON document.id = mapping.document_id
                                         AND document.doc_type = 'DRAW'
                                         AND document.is_deleted = FALSE
                                         AND document.warehouse_id = line_side.id
-                                       JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item
+                                       JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
                                          ON item.doc_id = document.id
                                         AND item.is_deleted = FALSE
                                         AND COALESCE(item.issued_qty, 0) < fn_production_draw_item_effective_qty(item.id)
@@ -1911,7 +1911,7 @@ public class ProductionExecutionReadinessService
         if (demands.isEmpty()) return List.of();
         if (analysisId == null) throw conflict("预览物料缺少已验证的分析路径");
         if (matchingMaterialIds.isEmpty() && ((Number)em.createNativeQuery("""
-                SELECT COUNT(*) FROM production_material_demands demand JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=demand.plan_id
+                SELECT COUNT(*) FROM production_material_demands demand JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=demand.plan_id
                 WHERE demand.id IN (:ids) AND NOT demand.is_deleted AND plan.material_analysis_id=:analysis
                 """).setParameter("ids",demands.stream().map(PreviewDemand::id).distinct().toList())
                 .setParameter("analysis",analysisId).getSingleResult()).intValue()!=demands.size())
@@ -2192,11 +2192,11 @@ public class ProductionExecutionReadinessService
                                            'PURCHASE'::text AS receipt_kind,
                                            receipt.bill_date,actual.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
-                                    JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipt_items',archive_origin.id)) receipt_item
+                                    JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
                                       ON receipt_item.order_item_id =
                                          peg.supply_item_id
                                      AND receipt_item.is_deleted = FALSE
-                                     JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_receipts',archive_origin.id)) receipt
+                                     JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
@@ -2256,11 +2256,11 @@ public class ProductionExecutionReadinessService
                                            'SUBCONTRACT'::text AS receipt_kind,
                                            receipt.bill_date,actual.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
-                                    JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                                    JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
                                       ON receipt_item.order_item_id =
                                          peg.supply_item_id
                                      AND receipt_item.is_deleted = FALSE
-                                     JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt
+                                     JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
@@ -2323,14 +2323,14 @@ public class ProductionExecutionReadinessService
                                            'MAKE'::text AS receipt_kind,
                                            receipt.bill_date,receipt.warehouse_id,NULL::uuid AS custody_reservation_id
                                     FROM production_material_supply_pegs peg
-                                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) receipt_item
+                                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) receipt_item
                                       ON receipt_item.upstream_item_id =
                                          peg.supply_item_id
                                      AND receipt_item.bill_type =
                                          'FINISHED_IN'
                                      AND receipt_item.is_deleted = FALSE
                                      AND NOT fn_finished_in_is_public_output(receipt_item.id)
-                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) receipt
+                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) receipt
                                       ON receipt.id = receipt_item.doc_id
                                      AND receipt.doc_type = 'FINISHED_IN'
                                      AND receipt.is_deleted = FALSE
@@ -2373,9 +2373,9 @@ public class ProductionExecutionReadinessService
                     JOIN production_workshop_material_custody_moves moved ON moved.target_reservation_id=custody.id
                     JOIN production_workshop_direct_transfer_items direct ON direct.id=moved.transfer_item_id
                     JOIN production_workshop_direct_transfers transfer ON transfer.id=direct.transfer_id
-                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) receipt_item ON receipt_item.source_daily_report_item_id=direct.source_report_item_id
+                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) receipt_item ON receipt_item.source_daily_report_item_id=direct.source_report_item_id
                       AND receipt_item.bill_type='FINISHED_IN' AND NOT receipt_item.is_deleted
-                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) receipt ON receipt.id=receipt_item.doc_id AND receipt.status=1 AND NOT receipt.is_deleted
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) receipt ON receipt.id=receipt_item.doc_id AND receipt.status=1 AND NOT receipt.is_deleted
                       AND receipt.warehouse_id=transfer.line_side_warehouse_id
                     JOIN production_material_supply_pegs peg ON peg.demand_id=:demand AND peg.supply_type='PRODUCTION_PLAN_ITEM'
                       AND peg.supply_item_id=receipt_item.upstream_item_id AND peg.status<>'REVERSED'
@@ -2499,11 +2499,11 @@ public class ProductionExecutionReadinessService
         List<UUID> reusable = NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT document.id FROM production_planning_package_documents mapping
                 JOIN production_execution_segments segment ON segment.id=mapping.execution_segment_id
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
+                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND document.status=0 AND NOT document.is_deleted
                 WHERE mapping.execution_segment_id=:segment AND mapping.document_type='DRAW'
                   AND document.warehouse_id=:warehouse
-                  AND NOT EXISTS(SELECT 1 FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item WHERE item.doc_id=document.id
+                  AND NOT EXISTS(SELECT 1 FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item WHERE item.doc_id=document.id
                       AND NOT item.is_deleted AND fn_production_draw_item_requested_qty(item.id)>0)
                 ORDER BY document.id LIMIT 1 FOR UPDATE OF document
                 """, UUID.class).setParameter("segment", segmentId)
@@ -2555,13 +2555,13 @@ public class ProductionExecutionReadinessService
             return responsibleEmployeeId;
         }
         return NativeQueryResults.typedRows(em.createNativeQuery(
-                        "SELECT maker_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans WHERE id=:plan", UUID.class)
+                        "SELECT maker_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans WHERE id=:plan", UUID.class)
                 .setParameter("plan", planId), UUID.class).stream().findFirst().orElse(null);
     }
 
     private int nextDrawLine(StockDocument draw, Map<UUID, Integer> lineNumbers) {
         int previous = lineNumbers.computeIfAbsent(draw.getId(), id -> ((Number) em.createNativeQuery(
-                "SELECT COALESCE(MAX(line_no),0) FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) stock_document_items WHERE doc_id=:id")
+                "SELECT COALESCE(MAX(line_no),0) FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items WHERE doc_id=:id")
                 .setParameter("id", id).getSingleResult()).intValue());
         lineNumbers.put(draw.getId(), previous + 1);
         return previous + 1;

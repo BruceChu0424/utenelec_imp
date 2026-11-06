@@ -537,13 +537,25 @@ abstract class _MaterialAnalysisMaterialTableState
           facets = cached.facets;
           aggregates = cached.aggregates;
         } else {
-          await consume(
-            _bomFilterProjectionWork(
-              analysis,
-              aggregate,
-              (value) => projection = value,
-            ),
-          );
+          // Expanding a tree changes its rows, not its filter/facet facts.
+          // Reuse the existing projection only within its exact read scope;
+          // a cold or changed intent still uses the cancellable work budget.
+          final existingProjection = _bomProjectionCache;
+          if (existingProjection != null &&
+              identical(_bomProjectionAnalysis, analysis) &&
+              _bomProjectionScope == scope &&
+              aggregate == _bomAggregateByMaterial &&
+              _bomProjectionKey == _bomProjectionCacheKey()) {
+            projection = existingProjection;
+          } else {
+            await consume(
+              _bomFilterProjectionWork(
+                analysis,
+                aggregate,
+                (value) => projection = value,
+              ),
+            );
+          }
           facets = projection.facets;
           if (aggregate) {
             await consume(
@@ -2858,6 +2870,7 @@ abstract class _MaterialAnalysisMaterialTableState
       titleBadge: _bomAggregateByMaterial && product != null
           ? const MaterialTopLevelBadge()
           : null,
+      titleBadgeCanShrink: true,
       titleBadgeLabel: _bomAggregateByMaterial && product != null ? '顶层' : null,
       subtitle: aggregate == null
           ? null

@@ -90,15 +90,14 @@ class LegacyMigrationSafetyContractTest {
         assertThat(shell)
                 .contains("python3 -i \"$here/verify_candidate.py\"")
                 .contains("read -r expected_flyway_migration_count expected_flyway_head mapping_version")
-                .contains("select count(*), count(*) filter (where success), "
-                        + "count(distinct version)")
-                .contains("order by string_to_array(latest.version, '.')::numeric[] desc limit 1")
-                .contains("select version, script, checksum from flyway_schema_history "
-                        + "where version is not null order by string_to_array(version, '.')::numeric[]")
-                .contains("flyway_contract history 3<<<\"$raw_live_flyway_rows\"")
-                .contains("flyway_contract summary 3<<<\"$live_flyway_rows\"")
+                .contains("--history-state-sql")
+                .contains("--history-rows-sql")
+                .contains("--expected-history-rows")
+                .contains("flyway_expected_rows")
+                .contains("flyway_actual_rows")
+                .contains("flyway_contract history 3<<<\"$flyway_actual_rows\"")
+                .contains("flyway_contract summary 3<<<\"$flyway_validated_rows\"")
                 .contains("cmp -s")
-                .contains("tail -n +2 \"$flyway_checksum_manifest\"")
                 .contains("'uten-imp-flyway-checksums.tsv'")
                 .contains("uten_legacy_target_system_identifier")
                 .contains("uten_legacy_target_approval_reference")
@@ -109,7 +108,17 @@ class LegacyMigrationSafetyContractTest {
         assertThat(verifier).contains("uten-imp-flyway-checksums-v1")
                 .contains("flyway_checksum(path.read_bytes())")
                 .contains("ls-files").contains("--error-unmatch")
-                .contains("manifest is not the exact reviewed source inventory");
+                .contains("manifest is not the exact reviewed source inventory")
+                .contains("deploy/contracts/flyway_version_contract.py")
+                .contains("string_to_array(version, '.')::numeric[]")
+                .contains("count(*) filter (where success)")
+                .contains("count(distinct version)")
+                .contains("order by string_to_array(version, '.')::numeric[] desc limit 1")
+                .contains("select version, script, checksum from flyway_schema_history")
+                .contains("validate_flyway_history_version")
+                .contains("flyway_raw_version_from_filename")
+                .contains("git_path_batch_size = 60")
+                .doesNotContain("version::integer", "version::int,");
 
         String legacyReadme = compact(Files.readString(LEGACY_ROOT.resolve("README.md")));
         assertThat(legacyReadme)
@@ -397,7 +406,7 @@ class LegacyMigrationSafetyContractTest {
         assertThat(compact(Files.readString(LEGACY_ROOT.resolve("prepare_source_authority.py"))))
                 .doesNotContain("=\"warehouses\"");
         assertThat(compact(Files.readString(LEGACY_ROOT.resolve("verify_candidate.py"))))
-                .contains("\"warehouse_crosswalk.csv\"");
+                .contains("warehouse_crosswalk.csv");
         // The crosswalk and the manual owning list are recorded with the run but are not export files.
         assertThat(executable(LEGACY_ROOT.resolve("migrate_reconciliation.sql")))
                 .contains("file_name not in ('warehouse_crosswalk.csv', 'goods_owning_warehouse.csv')");

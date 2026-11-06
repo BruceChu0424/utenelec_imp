@@ -142,6 +142,7 @@ class StockDocItem {
     this.requestedQtyText,
     this.unitRate,
     this.unitRateText,
+    this.unitRateIsRecorded = true,
     this.upstreamItemId,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
@@ -212,6 +213,8 @@ class StockDocItem {
   final String? remark;
   final double? unitRate;
   final String? unitRateText;
+  final bool unitRateIsRecorded;
+  String? get recordedUnitRateText => unitRateIsRecorded ? unitRateText : null;
   final String? upstreamItemId;
   final String? executionSegmentId;
   final String? executionSegmentSalesAllocationId;
@@ -278,6 +281,9 @@ class StockDocItem {
     requestedQtyText: recordedDocumentDecimal(json, 'requestedQty'),
     unitRate: (json['unitRate'] as num?)?.toDouble(),
     unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    unitRateIsRecorded:
+        json['unitRateIsRecorded'] != false &&
+        recordedDocumentDecimal(json, 'unitRate') != null,
     upstreamItemId: json['upstreamItemId'] as String?,
     sourceDocNo: json['sourceDocNo'] as String?,
     executionSegmentId: json['executionSegmentId'] as String?,

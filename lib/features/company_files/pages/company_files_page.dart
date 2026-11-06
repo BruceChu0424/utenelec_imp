@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import '../../../core/l10n/localized_text.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/history/record_history_action.dart';
@@ -20,6 +21,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_context_menu_policy.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_motion.dart';
 import '../../../components/inputs/uten_drop_target.dart';
@@ -27,7 +29,6 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_page_scrollbar_host.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_grid_header_filter_cell.dart';
 import '../../../shared/search/calendar_column_query.dart';
 import '../../../shared/search/numeric_column_query.dart';
@@ -49,6 +50,7 @@ import '../models/company_file_access_draft.dart';
 import '../models/company_file_upload.dart';
 import '../models/company_file_upload_rules.dart';
 import '../repositories/company_file_repository.dart';
+import '../repositories/company_file_complete_listing.dart';
 import '../widgets/company_file_dialogs.dart';
 import '../widgets/company_file_item.dart';
 import '../widgets/company_file_detail_row.dart';
@@ -76,7 +78,9 @@ class CompanyFilesPage extends ConsumerStatefulWidget {
 }
 
 class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, ReadViewActivityMixin<CompanyFilesPage> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   CompanyFileListing? _listing;
   CompanyFile? _selected;
 
@@ -84,11 +88,12 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   /// must use the same basis as the side-panel render condition.
   double _contentWidth = 0;
   Object? _error;
+  Object? _readActionToken;
   bool _loading = true, _busy = false, _trash = false, _details = false;
   String? _parentId;
   String _search = '', _sort = 'name', _direction = 'asc';
   final Map<String, String?> _columnFilters = {};
-  int _page = 0, _request = 0, _epoch = 0;
+  int _request = 0, _epoch = 0;
   CompanyFileView _view = CompanyFileView.icons;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   var _searchFieldKey = GlobalKey(debugLabel: 'companyFilesSearch');
@@ -164,8 +169,8 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         _listing = null;
         _selected = null;
         _error = null;
+        _readActionToken = null;
         _parentId = null;
-        _page = 0;
         _search = '';
         _columnFilters.clear();
         _trash = false;
@@ -226,14 +231,17 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _error = null;
     });
     try {
-      final value = await repository.list(
-        parentId: _parentId,
-        search: _search,
-        sort: _sort,
-        direction: _direction,
-        trash: _trash,
-        page: _page,
-        columnFilters: Map.unmodifiable(_columnFilters),
+      final value = await readViewActivity.runRead(
+        current,
+        () => repository.readCompleteListing(
+          isCurrent: current,
+          parentId: _parentId,
+          search: _search,
+          sort: _sort,
+          direction: _direction,
+          trash: _trash,
+          columnFilters: Map.unmodifiable(_columnFilters),
+        ),
       );
       if (!mounted || !current()) return;
       setState(() {
@@ -245,10 +253,18 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         }
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !current()) return;
       setState(() {
         _error = e;
-        if (e is ApiException && {401, 403, 404}.contains(e.httpStatus)) {
+        if (e is ApiException &&
+            ({401, 403, 404}.contains(e.httpStatus) ||
+                {
+                  'SNAPSHOT_CHANGED',
+                  'READ_SCOPE_CHANGED',
+                  'SESSION_CHANGED',
+                  'INVALID_PAGINATION',
+                }.contains(e.code))) {
           _listing = null;
           _selected = null;
         }
@@ -258,12 +274,24 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     }
   }
 
+  Future<void> _loadFromAction() async {
+    if (!mounted) return;
+    final token = Object();
+    setState(() => _readActionToken = token);
+    try {
+      await _load();
+    } finally {
+      if (mounted && identical(_readActionToken, token)) {
+        setState(() => _readActionToken = null);
+      }
+    }
+  }
+
   void _navigate(String? id, {bool trash = false}) {
     if (_blocked) return;
     setState(() {
       _parentId = id;
       _trash = trash;
-      _page = 0;
       _listing = null;
       _selected = null;
       _search = '';
@@ -271,7 +299,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _searchController.clear();
       _searchFieldKey = GlobalKey(debugLabel: 'companyFilesSearch');
     });
-    unawaited(_load());
+    unawaited(_loadFromAction());
   }
 
   Future<void> _command(
@@ -1332,7 +1360,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
             key: const ValueKey('company-files-refresh'),
             busy: _loading,
             enabled: !_blocked,
-            onRefresh: _load,
+            onRefresh: _loadFromAction,
           ),
         ],
       ),
@@ -1423,6 +1451,11 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          if (_readActionToken != null)
+                            UtenBusyOverlay(
+                              title: l.companyFilesLoading,
+                              showDoNotLeaveHint: false,
+                            ),
                           _breadcrumbs(sidebar: wide),
                           if (_busy || _loading && _listing != null)
                             const LinearProgressIndicator(minHeight: 2),
@@ -1435,7 +1468,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                                 children: [
                                   Text(companyFileError(_error!, l)),
                                   TextButton(
-                                    onPressed: _load,
+                                    onPressed: _loadFromAction,
                                     child: Text(l.companyFilesRetry),
                                   ),
                                 ],
@@ -1525,7 +1558,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           if (!mounted || searchKey != _searchFieldKey) return;
           setState(() {
             _search = value;
-            _page = 0;
             _listing = null;
             _selected = null;
           });
@@ -1814,9 +1846,8 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         onSelected: (v) {
           setState(() {
             _sort = v;
-            _page = 0;
           });
-          unawaited(_load());
+          unawaited(_loadFromAction());
         },
         itemBuilder: (_) => [
           PopupMenuItem(value: 'name', child: Text(l.companyFilesName)),
@@ -1835,7 +1866,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           ? null
           : () {
               setState(() => _direction = _direction == 'asc' ? 'desc' : 'asc');
-              unawaited(_load());
+              unawaited(_loadFromAction());
             },
       icon: Icon(
         _direction == 'asc' ? Icons.arrow_upward : Icons.arrow_downward,
@@ -1921,7 +1952,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
             ? l.companyFilesLoadFailed
             : companyFileError(_error!, l),
         actionLabel: l.companyFilesRetry,
-        onAction: _load,
+        onAction: _loadFromAction,
       );
     }
     final listing = _listing!;
@@ -2090,7 +2121,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
               setState(() {
                 _sort = ascending == null ? 'manual' : key;
                 _direction = ascending == false ? 'desc' : 'asc';
-                _page = 0;
                 _selected = null;
                 _listing = null;
               });
@@ -2155,7 +2185,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       } else {
         _columnFilters[key] = cleaned;
       }
-      _page = 0;
       _listing = null;
       _selected = null;
     });
@@ -2208,16 +2237,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                 UtenFieldHintIcon(info: l.companyFilesDragHint, dense: true),
             ],
           ),
-          if (listing.total > listing.size)
-            UtenPagination(
-              currentPage: _page + 1,
-              totalPages: (listing.total / listing.size).ceil(),
-              busy: _blocked || _loading,
-              onPageChanged: (target) {
-                _page = target - 1;
-                _load();
-              },
-            ),
         ],
       ),
     );

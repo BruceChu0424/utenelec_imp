@@ -1,0 +1,22 @@
+--- Main/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java
++++ Task/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java
+@@ -55,14 +55,17 @@
+                      @RequestParam(required=false) UUID scopeWarehouseId,
+                      @RequestParam(required=false) String sort,
+                      @RequestParam(required=false) String order,
+                      @RequestParam(defaultValue="1") int page,
+                      @RequestParam(defaultValue="30") int size) {
+-        return service.list(new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,
++        var filter=new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,
+                 WarehouseTaskCenterContracts.TaskView.requested(view)).withColumnSearch(
+                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(
+-                                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest())));
++                                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()));
++        if(!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
++            return service.list(filter,false);
++        return service.list(filter);
+     }
+ 
+     /** 按当前筛选结果导出表格（2026-10-29 用户批注）：与列表同授权同投影，密码走请求体。 */
+     @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
+     @PostMapping("/export")

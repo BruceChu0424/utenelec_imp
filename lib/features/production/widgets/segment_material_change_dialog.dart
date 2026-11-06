@@ -26,6 +26,8 @@ import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_repository.dart';
 import '../repositories/workshop_material_choice_repository.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/paging/read_view_activity.dart';
 
 /// 弹出换料对话框; 换成功返回 true。
 Future<bool?> showSegmentMaterialChangeDialog(
@@ -48,7 +50,8 @@ class SegmentMaterialChangeDialog extends ConsumerStatefulWidget {
 }
 
 class _SegmentMaterialChangeDialogState
-    extends ConsumerState<SegmentMaterialChangeDialog> {
+    extends ConsumerState<SegmentMaterialChangeDialog>
+    with ReadViewActivityMixin<SegmentMaterialChangeDialog> {
   /// 「原来用的料」下拉里代表「加一种料」的取值。
   static const _addMaterial = '__add__';
 
@@ -56,6 +59,14 @@ class _SegmentMaterialChangeDialogState
   final String _nonce = const Uuid().v4();
 
   bool _loading = true;
+  int _readGeneration = 0;
+  bool Function()? _acceptedReadOwner;
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_acceptedReadOwner?.call() == true && !_loading) return;
+    await _load();
+  }
+
   String? _loadError;
   WorkshopMaterialSegmentMaterials? _data;
 
@@ -81,6 +92,13 @@ class _SegmentMaterialChangeDialogState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _readGeneration++;
+      setState(() {
+        _loading = false;
+        _loadError = '读取身份已变化，请重新读取';
+      });
+    });
     _load();
   }
 
@@ -91,34 +109,52 @@ class _SegmentMaterialChangeDialogState
   }
 
   Future<void> _load() async {
+    if (_busy) return;
+    if (_data != null && _acceptedReadOwner?.call() == false) {
+      setState(() {
+        _loading = false;
+        _loadError = '读取身份已变化，原输入已保留，请关闭后重新打开换料';
+      });
+      return;
+    }
+    final owner = captureReadOwner(ref);
+    final request = ++_readGeneration;
+    bool current() => mounted && owner() && request == _readGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final data = await ref
-          .read(workshopMaterialChoiceRepositoryProvider)
-          .segmentMaterials(widget.task.segmentId);
-      if (!mounted) return;
+      final data = await readViewActivity.runRead(
+        current,
+        () => ref
+            .read(workshopMaterialChoiceRepositoryProvider)
+            .segmentMaterials(widget.task.segmentId, isCurrent: current),
+      );
+      if (!current()) return;
       final active = data.activeRows;
       final today = ChinaDateTime.today();
       final parsed = ChinaDateTime.tryParse(data.earliestEffectiveFrom);
       final start = parsed == null ? today : _dateOnly(parsed);
       setState(() {
+        _acceptedReadOwner = owner;
         _data = data;
         _from = active.length == 1 ? active.single.id : null;
         _effectiveFrom = start.isAfter(today) ? start : today;
-        _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadError = productionErrorMessage(
-          error,
-          fallback: '这张工单现在用的料没有读出来，请重试',
-        );
-      });
+      if (current() && !isRetiredViewRead(error)) {
+        setState(() {
+          _loadError = productionErrorMessage(
+            error,
+            fallback: '这张工单现在用的料没有读出来，请重试',
+          );
+        });
+      }
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -173,7 +209,12 @@ class _SegmentMaterialChangeDialogState
   }
 
   Future<void> _submit() async {
-    if (_busy || _loading) return;
+    if (_busy ||
+        _loading ||
+        _loadError != null ||
+        _acceptedReadOwner?.call() != true) {
+      return;
+    }
     final invalid = _invalidReason;
     if (invalid != null) {
       setState(() => _error = invalid);

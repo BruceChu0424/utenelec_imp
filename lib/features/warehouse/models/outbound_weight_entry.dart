@@ -11,6 +11,8 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/weight_mass_units.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_totals.dart';
 
@@ -24,10 +26,12 @@ class OutboundWeightEntry extends EditableGridRow {
   OutboundWeightEntry({
     required this.goodsId,
     required this._qtyOf,
+    this._qtyBaseExactOf,
     this.qtyController,
     Listenable? qtyListenable,
     this.unitRate,
     this.unitRateExact,
+    this.quantityMaxScale = 24,
     this.supplierId,
     this.colorId,
     this.warehouseId,
@@ -57,16 +61,32 @@ class OutboundWeightEntry extends EditableGridRow {
   final double? unitRate;
   final String? unitRateExact;
 
+  /// This caller's quantity field, independent of raw kilogram support.
+  final int quantityMaxScale;
+
   /// 可改的本次数量 (称重推算数量时黄框预填); null = 数量既定。
   final UtenAutofillTextController? qtyController;
 
   /// 数量变化源 (占位「应称」与偏差跟着数量重算)。
   final Listenable? qtyListenable;
   final double? Function() _qtyOf;
+  final String? Function()? _qtyBaseExactOf;
   final WeightEntryController weight;
 
   /// 本行数量 (行单位); 空/非法为 null。
   double? get qty => _qtyOf();
+
+  /// Authoritative basic quantity for readonly MASS facts. The numeric preview
+  /// is never converted back into an exact source when original text is absent.
+  String? get qtyBaseText => _qtyBaseExactOf != null
+      ? financeExactDecimal(_qtyBaseExactOf())
+      : outboundExactBaseQuantityText(qtyController?.text, unitRateExact);
+
+  String? exactKgTextIn(WeightParamsCache? cache) => warehouseExactLineKg(
+    lineQty: qtyBaseText,
+    unitRate: '1',
+    params: paramsIn(cache),
+  );
 
   /// 本行数量 (基本单位); 数量为空或换算未知时为 null。
   double? get qtyBase {
@@ -140,6 +160,22 @@ class OutboundWeightEntry extends EditableGridRow {
     weight.dispose();
     super.dispose();
   }
+}
+
+/// One exact product for the complete outbound caller family. Missing source
+/// quantity/rate remains unknown; statistical previews keep their own doubles.
+String? outboundExactBaseQuantityText(String? quantity, String? rate) {
+  final qty = financeExactTrimmed(financeExactDecimal(quantity));
+  final ratio = financeExactTrimmed(financeExactDecimal(rate));
+  if (qty == null ||
+      ratio == null ||
+      qty == '0' ||
+      ratio == '0' ||
+      qty.startsWith('-') ||
+      ratio.startsWith('-')) {
+    return null;
+  }
+  return financeExactTrimmed(financeExactMultiplyTexts([qty, ratio]));
 }
 
 /// 页面取参: 所有有货品的行一次批量取 (已有/在途的不重复取)。

@@ -21,6 +21,7 @@ using Uten.Legacy.Desktop.Features.Goods;
 using Uten.Legacy.Desktop.Features.Publish;
 using Uten.Legacy.Core.Tests;
 using Uten.Legacy.Desktop.Views;
+using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Tests
 {
@@ -187,6 +188,87 @@ namespace Uten.Legacy.Tests
             return assertions;
         }
 
+        internal static int RunContinuousLists()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            int assertions = 0;
+            Action<bool, string> check = (value, message) => { if (!value) throw new InvalidOperationException(message); assertions++; };
+            var configuration = new ClientConfiguration(new[] { new ServerEndpoint("first", "Fixture", "https://first.company.test/api") }, "first");
+            foreach (bool goods in new[] { true, false })
+            {
+                var handler = new SearchReadUiHandler { TotalItems = 501 };
+                using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
+                {
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                    FrameworkElement view = goods ? (FrameworkElement)new GoodsWorkspaceView(session) : new UnitsWorkspaceView(session);
+                    var window = new Window { Content = view, Width = 1400, Height = 850, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                    var held = new TaskCompletionSource<bool>();
+                    try
+                    {
+                        window.Show();
+                        var table = FindVisual<DataGrid>(view, item => true);
+                        PumpUntil(() => table.Items.Count == 501 && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.");
+                        check(handler.ListReads == 6 && handler.RequestedSizes.All(size => size == 100), "Internal native reads use six bounded 100-row batches.");
+                        check(FindVisual<Button>(view, button => Equals(button.Content, "上一页") || Equals(button.Content, "下一页")) == null,
+                            "Continuous native tables expose no page navigation buttons.");
+                        check(table.EnableRowVirtualization && table.EnableColumnVirtualization, "Complete summaries retain native row and column virtualization.");
+                        object source = table.ItemsSource;
+                        for (int index = 0; index < 12; index++)
+                        {
+                            table.ScrollIntoView(table.Items[index % 2 == 0 ? 500 : 0]); window.UpdateLayout(); Pump(window);
+                        }
+                        check(handler.ListReads == 6 && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
+                        check((goods ? ((GoodsRecord)table.Items[500]).Id : ((UnitRecord)table.Items[500]).Id).EndsWith("000000000501"), "The final row remains reachable with its server identity.");
+                        if (!goods)
+                        {
+                            table.SelectAll(); PumpFor(20);
+                            var selection = (Uten.Legacy.Desktop.Shared.PersistentRowSelection<UnitRecord>)view.GetType()
+                                .GetField("selection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
+                            check(selection.Count == 501, "Select-all retains the complete explicit selection.");
+                            var batch = (Task)view.GetType().GetMethod("OpenBatchAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                .Invoke(view, new object[] { UnitBatchAction.Delete, null });
+                            PumpUntil(() => batch.IsCompleted, "An oversized selection must be rejected locally.");
+                            check(selection.Count == 501 && handler.BusinessWrites == 0, "The original 500-item command limit rejects 501 without writes, split commands or losing selection.");
+                        }
+                        var search = FindVisual<TextBox>(view, item => true);
+                        handler.BeforeList = (uri, token) => SearchReadUiHandler.Parameter(uri, "keyword") == "held" && SearchReadUiHandler.Parameter(uri, "page") == "2" ? held.Task : Task.CompletedTask;
+                        search.Text = "held"; RaiseEnter(search);
+                        PumpUntil(() => handler.ListReads == 8, "A replacement must wait for its actual second batch.");
+                        check(ReferenceEquals(source, table.ItemsSource), "An incomplete replacement cannot publish its first batch over complete accepted rows.");
+                        search.Text = "replacement"; RaiseEnter(search);
+                        PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == 501 && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.");
+                        int reads = handler.ListReads;
+                        held.SetResult(true); PumpFor(60);
+                        check(ShownSearchName(table, goods).Contains("replacement") && handler.ListReads == reads, "A retired later batch neither publishes nor dispatches the old query's remaining pages.");
+                        check(reads == 14, "Supersession sends only two started old batches and six current batches.");
+                        Snapshot(view, goods ? "goods-continuous-list.png" : "units-continuous-list.png");
+                    }
+                    finally { handler.BeforeList = null; held.TrySetResult(true); window.Close(); }
+                }
+            }
+            foreach (string defect in new[] { "scope", "total", "duplicate", "empty" })
+            {
+                int calls = 0;
+                try
+                {
+                    CompletePagedSnapshot.ReadAsync<int>((page, size, token) =>
+                    {
+                        calls++;
+                        return Task.FromResult(new SnapshotPage<int> { Items = page == 1 ? new[] { 1 } : defect == "empty" ? new int[0] : new[] { defect == "duplicate" ? 1 : 2 },
+                            Page = page, Size = 1, Total = page == 2 && defect == "total" ? 3 : 2, TotalPages = page == 2 && defect == "total" ? 3 : 2,
+                            ReadScopeVersion = page == 2 && defect == "scope" ? "changed" : "first" });
+                    }, item => item.ToString(), () => true, CancellationToken.None).GetAwaiter().GetResult();
+                    throw new InvalidOperationException("Malformed native sequence was accepted: " + defect);
+                }
+                catch (ApiException error) { check(error.Code == "SNAPSHOT_CHANGED" && calls == 2, "Malformed native sequences fail atomically: " + defect); }
+            }
+            return assertions;
+        }
+
         private static bool ReadBusy(object view, bool goods) => (bool)view.GetType()
             .GetField(goods ? "listBusy" : "loading", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
         private static string ShownSearchName(DataGrid table, bool goods) => goods ? ((GoodsRecord)table.Items[0]).Name : ((UnitRecord)table.Items[0]).Name;
@@ -206,6 +288,8 @@ namespace Uten.Legacy.Tests
         private sealed class SearchReadUiHandler : HttpMessageHandler
         {
             internal int ListReads;
+            internal int TotalItems = -1, BusinessWrites;
+            internal readonly List<int> RequestedSizes = new List<int>();
             internal string LastQuery, UserId = "fixture-search-owner";
             internal int CommittedVersion;
             internal Func<Uri, CancellationToken, Task> BeforeList;
@@ -221,6 +305,7 @@ namespace Uten.Legacy.Tests
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
             {
                 string path = request.RequestUri.AbsolutePath, body;
+                if (request.Method != HttpMethod.Get && !path.EndsWith("/auth/login") && !path.EndsWith("/auth/refresh")) Interlocked.Increment(ref BusinessWrites);
                 var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
                 if (path.EndsWith("/auth/login") || path.EndsWith("/auth/refresh"))
                     body = "{\"accessToken\":\"access.fixture\",\"refreshToken\":\"refresh.fixture\",\"expiresIn\":900,\"user\":{\"id\":\"" + UserId
@@ -238,9 +323,14 @@ namespace Uten.Legacy.Tests
                     if (hold != null) await hold(request.RequestUri, token);
                     token.ThrowIfCancellationRequested();
                     string marker = Parameter(request.RequestUri, "keyword") + "|" + Parameter(request.RequestUri, "categoryId") + "|" + UserId + "|v" + snapshotVersion;
-                    var rows = Enumerable.Range(1, path.EndsWith("/goods") ? 20 : 1).Select(index => new Dictionary<string, object> {
+                    int page = TotalItems < 0 ? 1 : Int32.Parse(Parameter(request.RequestUri, "page"));
+                    int size = TotalItems < 0 ? 20 : Int32.Parse(Parameter(request.RequestUri, "size"));
+                    RequestedSizes.Add(size);
+                    int total = TotalItems < 0 ? path.EndsWith("/goods") ? 20 : 1 : TotalItems;
+                    int start = (page - 1) * size;
+                    var rows = Enumerable.Range(start + 1, Math.Max(0, Math.Min(size, total - start))).Select(index => new Dictionary<string, object> {
                         ["id"] = "00000000-0000-4000-8000-" + index.ToString("D12"), ["code"] = "T" + index, ["name"] = marker, ["status"] = "使用" }).ToArray();
-                    body = serializer.Serialize(new { items = rows, page = 1, size = 20, total = rows.Length, totalPages = 1 });
+                    body = serializer.Serialize(new { items = rows, page, size, total, totalPages = (total + size - 1) / size });
                 }
                 else return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"code\":\"NOT_FOUND\",\"message\":\"fixture optional metadata unavailable\"}", Encoding.UTF8, "application/json") };
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };

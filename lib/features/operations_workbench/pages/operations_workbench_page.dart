@@ -52,7 +52,6 @@ import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -126,6 +125,11 @@ class _OperationsWorkbenchPageState
     with
         UtenRefreshParticipant<OperationsWorkbenchPage>,
         ScopedPagedReadViewMixin<OperationsWorkbenchPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   OperationsWorkbenchData? _data;
   Map<String, Object?>? _acceptedQuery;
   Map<String, int>? _categoryCounts;
@@ -133,11 +137,9 @@ class _OperationsWorkbenchPageState
   String? _error;
   bool _loading = true;
   bool _backgroundRefresh = false;
-  int _page = 1;
   int _requestId = 0;
   int _readerGeneration = 0;
   int _paginationRevision = 0;
-  List<int> _retainedPages = const [];
   Map<int, List<OperationsWorkbenchTask>> _refreshedPages = const {};
   String _keyword = '';
 
@@ -153,7 +155,6 @@ class _OperationsWorkbenchPageState
     _acceptedCategoryScope = null;
     _masterNames = null;
     _selectedIds.clear();
-    _retainedPages = const [];
     _refreshedPages = const {};
     _loading = false;
     _backgroundRefresh = false;
@@ -404,7 +405,6 @@ class _OperationsWorkbenchPageState
     trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _readerGeneration++;
     _paginationRevision++;
-    _retainedPages = const [];
     _refreshedPages = const {};
     _requestId++;
     _data = null;
@@ -414,7 +414,6 @@ class _OperationsWorkbenchPageState
     _error = null;
     _loading = false;
     _backgroundRefresh = false;
-    _page = 1;
     _keyword = '';
     _exception = null;
     _columnFilters.clear();
@@ -472,27 +471,24 @@ class _OperationsWorkbenchPageState
 
   Future<void> _load({
     int? page,
-    int size = 50,
+    int size = 100,
     bool background = false,
     bool useCache = false,
-    bool preferPrepared = false,
   }) => trackRefresh(
     _loadRows(
       page: page,
       size: size,
       background: background,
       useCache: useCache,
-      preferPrepared: preferPrepared,
     ),
     replaceKey: 'rows',
   );
 
   Future<void> _loadRows({
     int? page,
-    int size = 50,
+    int size = 100,
     bool background = false,
     bool useCache = false,
-    bool preferPrepared = false,
   }) async {
     if (!mounted) return;
     final requestId = ++_requestId;
@@ -512,7 +508,6 @@ class _OperationsWorkbenchPageState
     final ascending = _sortAscending;
     final filters = Map<String, String?>.of(_columnFilters);
     final listing = _shouldLoad && !draft;
-    if (background) invalidateScopedPageReads();
     bool current() =>
         mounted && requestId == _requestId && mapEquals(query, _queryIdentity);
     setState(() {
@@ -554,34 +549,20 @@ class _OperationsWorkbenchPageState
           ),
         );
       }
-      Future<OperationsWorkbenchData> fetchNetwork(int requestedPage) {
+      Future<OperationsWorkbenchData> fetchNetwork(
+        int requestedPage, {
+        int? batchSize,
+      }) {
         if (!listing && repository is OperationsWorkbenchOverviewGateway) {
           return (repository as OperationsWorkbenchOverviewGateway)
               .loadOverview(department: department, keyword: keyword);
         }
-        if (preferPrepared &&
-            !background &&
-            requestedPage == 1 &&
-            repository is OperationsWorkbenchRepository &&
-            seg != null &&
-            !seg.history &&
-            !draft &&
-            keyword.isEmpty &&
-            exception == null &&
-            sort == null &&
-            filters.values.every((value) => value == null)) {
-          return repository.load(
-            department: department,
-            size: size,
-            status: seg.code,
-            preferPrepared: true,
-          );
-        }
+
         return repository.load(
           department: department,
           page: requestedPage,
           // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
-          size: listing ? size : 1,
+          size: listing ? (batchSize ?? size) : 1,
           keyword: keyword,
           status: seg == null || draft
               ? null
@@ -603,14 +584,19 @@ class _OperationsWorkbenchPageState
       }
 
       Future<OperationsWorkbenchData> fetchPage(int page) async {
-        if (background || !listing) return fetchNetwork(page);
+        if (!listing) return fetchNetwork(1);
         final cached = await readScopedPage<OperationsWorkbenchTask>(
           page,
+          idOf: (row) => row.taskId,
           query: [repository, query, size],
           currentQuery: () => [_repository, _queryIdentity, size],
-          useCache: useCache,
+          useCache: useCache && !background,
           fetchPage: (page) async =>
               (await fetchNetwork(page)).toPagedReadSnapshot(),
+          fetchPageSized: (page, batchSize) async => (await fetchNetwork(
+            page,
+            batchSize: batchSize,
+          )).toPagedReadSnapshot(),
         );
         return (cached
                 as PagedReadSnapshot<
@@ -620,32 +606,7 @@ class _OperationsWorkbenchPageState
             .snapshot;
       }
 
-      final requestedPage = page ?? _tableRows.visiblePage ?? _page;
-      final pages = _backgroundRefresh && _retainedPages.isNotEmpty
-          ? _retainedPages.toList()
-          : [requestedPage];
-      pages.sort();
-      final window = <int, OperationsWorkbenchData>{};
-      OperationsWorkbenchData? latest;
-      for (final number in pages) {
-        if (!current()) return;
-        if (latest != null && number > latest.totalPages && number != 1) {
-          continue;
-        }
-        final result = await fetchPage(number);
-        if (!current()) return;
-        window[number] = result;
-        latest = result;
-      }
-      if (latest == null) return;
-      final lastPage = latest.totalPages < 1 ? 1 : latest.totalPages;
-      final targetPage = requestedPage.clamp(1, lastPage);
-      if (!window.containsKey(targetPage)) {
-        if (!current()) return;
-        window[targetPage] = await fetchPage(targetPage);
-        if (!current()) return;
-      }
-      final next = window[targetPage]!;
+      final next = await fetchPage(1);
       if (!mounted ||
           requestId != _requestId ||
           !mapEquals(query, _queryIdentity)) {
@@ -657,12 +618,8 @@ class _OperationsWorkbenchPageState
         if (!draft) {
           _data = next;
           _acceptedQuery = query;
-          _page = next.page;
           if (_backgroundRefresh) {
-            _refreshedPages = Map.unmodifiable({
-              for (final entry in window.entries)
-                if (entry.key <= lastPage) entry.key: entry.value.items,
-            });
+            _refreshedPages = Map.unmodifiable({1: next.items});
           }
         }
         _loading = false;
@@ -686,6 +643,7 @@ class _OperationsWorkbenchPageState
         }
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           requestId != _requestId ||
           !mapEquals(query, _queryIdentity)) {
@@ -717,7 +675,6 @@ class _OperationsWorkbenchPageState
     setState(() {
       _seg = seg;
       _exception = null;
-      _page = 1;
       // 进入历史段重新按默认近一个月加载；非历史段不消费时间门控，回 all() 占位。
       _historyTime = seg.history
           ? UtenHistoryTimeValue.lastMonth()
@@ -730,7 +687,7 @@ class _OperationsWorkbenchPageState
       _sortAscending = true;
     });
     if (!seg.history || !_historyTime.isNone) {
-      _load(page: 1, preferPrepared: !seg.history);
+      _load(page: 1);
     }
   }
 
@@ -746,7 +703,6 @@ class _OperationsWorkbenchPageState
     if (_exception == code) return;
     setState(() {
       _exception = code;
-      _page = 1;
       _selectedIds.clear();
     });
     _load(page: 1);
@@ -756,7 +712,6 @@ class _OperationsWorkbenchPageState
     if (value == _historyTime) return;
     setState(() {
       _historyTime = value;
-      _page = 1;
       _selectedIds.clear();
     });
     _load(page: 1);
@@ -1248,37 +1203,17 @@ class _OperationsWorkbenchPageState
       OperationsWorkbenchDepartment.subcontract =>
         RouteName.operationsSubcontractWorkbench,
     };
-    final repository = _repository;
-    if ((_seg == null || !_loading) &&
-        repository is OperationsWorkbenchRepository &&
-        locationAllowedFor(
-          ref.watch(currentPermissionsProvider),
-          ref.watch(isSuperAdminProvider),
-          location,
-        )) {
-      ref
-          .watch(operationsWorkbenchPreparationProvider)
-          .prepare(
-            [repository, widget.department],
-            [
-              for (final stage in _stages)
-                () => repository.prepareWorkingPage(
-                  widget.department,
-                  stage.code,
-                ),
-            ],
-            canPrepare: () =>
-                mounted &&
-                (_seg == null || !_loading) &&
-                TickerMode.valuesOf(context).enabled &&
-                (ModalRoute.of(context)?.isCurrent ?? true),
-          );
-    }
-    ref.onPageResume(location, () async {
+
+    Future<void> visibleReadReturn() async {
       await _load(background: true);
       // _load owns its visible error; let the scheduler keep failed data dirty.
       if (_error != null) throw StateError(_error!);
-    });
+    }
+
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
+    ref.onPageResume(location, visibleReadReturn);
     ref.listen<
       int
     >(connectionRecoveryProvider.select((state) => state.recoveryEpoch), (
@@ -1458,7 +1393,6 @@ class _OperationsWorkbenchPageState
                       ),
                       paginationRevision: _paginationRevision,
                       refreshedPages: _refreshedPages,
-                      onRetainedPagesChanged: (pages) => _retainedPages = pages,
                       items: data.items,
                       selectedIds: _selectedIds,
                       selectable: tableSelectable,
@@ -1470,10 +1404,6 @@ class _OperationsWorkbenchPageState
                       onOpenTask: _openAction,
                       canRequestClosure: _canRequestClosure,
                       onRequestClosure: _requestClosure,
-                      onPageChanged: (page) {
-                        setState(() => _page = page);
-                        return _load(page: page, useCache: true);
-                      },
                       facets: _facetsByColumn(data),
                       nullCounts: _nullCountsByColumn(data),
                       filters: _columnFilterValues(),
@@ -1561,7 +1491,6 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.paginationScope,
     required this.paginationRevision,
     required this.refreshedPages,
-    required this.onRetainedPagesChanged,
     required this.items,
     required this.selectedIds,
     required this.selectable,
@@ -1573,7 +1502,6 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.onOpenTask,
     this.canRequestClosure,
     this.onRequestClosure,
-    required this.onPageChanged,
     this.facets = const {},
     this.nullCounts = const {},
     this.filters = const {},
@@ -1595,7 +1523,6 @@ class _DesktopTaskTable extends StatelessWidget {
   final Object paginationScope;
   final int paginationRevision;
   final Map<int, List<OperationsWorkbenchTask>> refreshedPages;
-  final ValueChanged<List<int>> onRetainedPagesChanged;
   final List<OperationsWorkbenchTask> items;
   final Set<String> selectedIds;
   final bool selectable;
@@ -1607,7 +1534,6 @@ class _DesktopTaskTable extends StatelessWidget {
   final ValueChanged<OperationsWorkbenchTask> onOpenTask;
   final bool Function(OperationsWorkbenchTask)? canRequestClosure;
   final ValueChanged<OperationsWorkbenchTask>? onRequestClosure;
-  final Future<void> Function(int) onPageChanged;
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
@@ -1638,7 +1564,6 @@ class _DesktopTaskTable extends StatelessWidget {
       rowsController: rowsController,
       paginationRevision: paginationRevision,
       refreshedPages: refreshedPages,
-      onRetainedPagesChanged: onRetainedPagesChanged,
       paginationScope: paginationScope,
       tableKey:
           'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
@@ -1955,7 +1880,6 @@ class _DesktopTaskTable extends StatelessWidget {
       emptyMessage: '当前筛选下没有任务',
       currentPage: data.page,
       totalPages: data.totalPages,
-      onPageChange: onPageChanged,
     );
   }
 }

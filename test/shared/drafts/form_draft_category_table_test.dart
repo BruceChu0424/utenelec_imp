@@ -11,6 +11,8 @@ import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
 class _ReferenceApi extends ApiClient {
   _ReferenceApi({this.authorized = true}) : super(Dio());
@@ -75,6 +77,209 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets(
+    'complete draft wrapper tree keeps hidden formal matches, context and selection with local input',
+    (tester) async {
+      var folded = true;
+      var selected = <String>{'P/C/G'};
+      late StateSetter update;
+      final drafts = _Drafts([_draft('local', remark: '原本机输入')]);
+      const records = [
+        _Record('P', 'P'),
+        _Record('P/C', 'P/C'),
+        _Record('P/C/G', 'P/C/G'),
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (_, change) {
+                  update = change;
+                  return FormDraftCategoryTable<_Record>(
+                    scope: _scope,
+                    table: MasterDataTableView<_Record>(
+                      items: records,
+                      unfilteredRows: (all) =>
+                          folded ? all.take(1).toList() : all,
+                      filterContextRows: (all, matched) => all
+                          .where(
+                            (row) => matched.any(
+                              (match) =>
+                                  match.id == row.id ||
+                                  match.id.startsWith('${row.id}/'),
+                            ),
+                          )
+                          .toList(),
+                      columns: [
+                        MasterColumnDef(
+                          key: 'billNo',
+                          label: '单号',
+                          width: 300,
+                          value: (row) => row.number,
+                          filterFromRows: true,
+                        ),
+                      ],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      selectable: true,
+                      idOf: (row) => row.id,
+                      selectedIds: selected,
+                      onSelectedIdsChanged: (next) =>
+                          change(() => selected = next),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('P/C/G'), findsNothing);
+      expect(find.text('未提交草稿'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-billNo')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('P/C/G (1)'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'P/C/G',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('P'), findsOneWidget);
+      expect(find.text('P/C'), findsOneWidget);
+      expect(find.text('P/C/G'), findsOneWidget);
+      expect(selected, {'P/C/G'});
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-billNo')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('所有'));
+      await tester.pumpAndSettle();
+      expect(find.text('P/C/G'), findsNothing);
+      update(() => folded = false);
+      await tester.pumpAndSettle();
+      expect(find.text('P/C/G'), findsOneWidget);
+      expect(selected, {'P/C/G'});
+      expect(
+        drafts.current.single.data['text'],
+        containsPair('remark', '原本机输入'),
+      );
+      expect(drafts.deleted, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'complete draft wrapper owner retires private formal DTOs and accepts an independent empty proof without deleting journal input',
+    (tester) async {
+      final source = PagedReadWindowSession<_Record>(isCurrent: () => true);
+      final nextSource = PagedReadWindowSession<_Record>(isCurrent: () => true);
+      final sourceRecords = <_Record>[
+        const _Record('private', 'PRIVATE-FORMAL'),
+      ];
+      var response = source.bindResult(
+        PagedResult(
+          items: sourceRecords,
+          page: 1,
+          size: 100,
+          total: 1,
+          totalPages: 1,
+        ),
+      );
+      final rows = MasterDataTableRowsController<_Record>();
+      final drafts = _Drafts([_draft('local', remark: '原本机输入')]);
+      late StateSetter update;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (_, change) {
+                  update = change;
+                  return FormDraftCategoryTable<_Record>(
+                    scope: _scope,
+                    table: MasterDataTableView<_Record>(
+                      items: response.items,
+                      refreshedPages: {1: response.items},
+                      rowsController: rows,
+                      paginationScope: 'same-business-scope',
+                      paginationRevision: response,
+                      columns: [
+                        MasterColumnDef(
+                          key: 'billNo',
+                          label: '单号',
+                          width: 300,
+                          value: (row) => row.number,
+                        ),
+                      ],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      idOf: (row) => row.id,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(rows.items.single.id, 'private');
+      expect(find.text('PRIVATE-FORMAL'), findsOneWidget);
+      final projected = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      final refreshedProof = readWindowBindingOf(projected.refreshedPages[1]!)!;
+      expect(readWindowBindingOf(projected.items)!.isCurrent, isTrue);
+      expect(refreshedProof.isCurrent, isTrue);
+      source.invalidate();
+      expect(refreshedProof.isCurrent, isFalse);
+      update(() {});
+      await tester.pumpAndSettle();
+      expect(rows.items, isEmpty);
+      expect(find.text('PRIVATE-FORMAL'), findsNothing);
+      expect(
+        drafts.current.single.data['text'],
+        containsPair('remark', '原本机输入'),
+      );
+      expect(drafts.deleted, isEmpty);
+      update(() {
+        response = nextSource.bindResult(
+          const PagedResult<_Record>(
+            items: [],
+            page: 1,
+            size: 100,
+            total: 0,
+            totalPages: 0,
+          ),
+        );
+      });
+      await tester.pumpAndSettle();
+      expect(rows.items, isEmpty);
+      expect(find.text('未提交草稿'), findsOneWidget);
+      expect(drafts.current, hasLength(1));
+      expect(drafts.deleted, isEmpty);
+      expect(readWindowBindingOf(const <_Record>[]), isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'clear forwards both local and formal selections without a custom owner clear',
     (tester) async {
@@ -157,8 +362,6 @@ void main() {
                   requiredLeadingColumnKeys: const ['custom'],
                   temporaryLeadingColumnKeys: const ['total'],
                   preserveQueryOnReturn: true,
-                  maxRetainedPages: 3,
-                  maxRetainedRows: 3000,
                   dataCellVerticalPadding: 5,
                   columns: [
                     MasterColumnDef(
@@ -210,8 +413,6 @@ void main() {
       expect(wrapped.requiredLeadingColumnKeys, ['custom']);
       expect(wrapped.temporaryLeadingColumnKeys, ['total']);
       expect(wrapped.preserveQueryOnReturn, isTrue);
-      expect(wrapped.maxRetainedPages, 3);
-      expect(wrapped.maxRetainedRows, 3000);
       expect(wrapped.dataCellVerticalPadding, 5);
       expect(
         money.aiSensitive && money.emphasized && !money.exportable,
@@ -440,11 +641,10 @@ void main() {
     },
   );
 
-  testWidgets('draft wrapper forwards background window and retry feedback', (
+  testWidgets('draft wrapper forwards complete snapshot and retry feedback', (
     tester,
   ) async {
     var retries = 0;
-    final retained = <List<int>>[];
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -464,17 +664,19 @@ void main() {
                     value: (row) => row.number,
                   ),
                 ],
-                items: const [_Record('second', 'NEW-SECOND')],
+                items: const [
+                  _Record('first', 'NEW-FIRST'),
+                  _Record('second', 'NEW-SECOND'),
+                ],
                 refreshedPages: const {
-                  1: [_Record('first', 'NEW-FIRST')],
-                  2: [_Record('second', 'NEW-SECOND')],
+                  1: [
+                    _Record('first', 'NEW-FIRST'),
+                    _Record('second', 'NEW-SECOND'),
+                  ],
                 },
-                onRetainedPagesChanged: retained.add,
                 isRefreshing: true,
                 refreshError: 'offline',
                 onRetry: () => retries++,
-                currentPage: 2,
-                totalPages: 2,
                 onPageChange: (_) async {},
                 idOf: (row) => row.id,
                 facets: const {},
@@ -493,12 +695,14 @@ void main() {
     );
     expect(table.isRefreshing, isTrue);
     expect(table.refreshError, 'offline');
-    expect(table.refreshedPages.keys, [1, 2]);
-    expect(table.refreshedPages[1]!.single.record!.id, 'first');
+    expect(table.refreshedPages.keys, [1]);
+    expect(table.refreshedPages[1]!.map((row) => row.record!.id), [
+      'first',
+      'second',
+    ]);
     expect(table.unpagedItems.where((row) => row.isLocal), hasLength(1));
     table.onRetry!();
     expect(retries, 1);
-    expect(retained, isNotEmpty);
     expect(tester.takeException(), isNull);
   });
 
@@ -720,7 +924,7 @@ void main() {
   );
 
   testWidgets(
-    'continuous pages keep typed business rows and live local drafts',
+    'complete local snapshot keeps typed business rows and local drafts without page requests',
     (tester) async {
       final drafts = _Drafts([_draft('local')]);
       final rows = MasterDataTableRowsController<_Record>();
@@ -746,9 +950,10 @@ void main() {
                         value: (r) => r.number,
                       ),
                     ],
-                    items: page == 1
-                        ? const [_Record('one', 'XD-1')]
-                        : const [_Record('two', 'XD-2')],
+                    items: const [
+                      _Record('one', 'XD-1'),
+                      _Record('two', 'XD-2'),
+                    ],
                     rowsController: rows,
                     selectable: true,
                     idOf: (r) => r.id,
@@ -763,7 +968,6 @@ void main() {
                       );
                     },
                     currentPage: page,
-                    totalPages: 2,
                     paginationScope: 'same-query',
                     onPageChange: (next) => update(() => page = next),
                   ),
@@ -776,7 +980,11 @@ void main() {
       await tester.pumpAndSettle();
       await rows.loadNextPage();
       await tester.pumpAndSettle();
-      expect(page, 2);
+      expect(
+        page,
+        1,
+        reason: 'A complete snapshot never invokes the old page callback.',
+      );
       expect(rows.items.map((row) => row.id), ['one', 'two']);
       expect(find.text('未提交草稿'), findsOneWidget);
       final table = tester.widget<MasterDataTableView<_Union>>(

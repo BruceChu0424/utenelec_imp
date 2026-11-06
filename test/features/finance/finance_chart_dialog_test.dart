@@ -1,3 +1,4 @@
+import '../../support/versioned_summary_test_response.dart';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -394,7 +395,9 @@ class _ChartApi extends ApiClient {
     if (path == '/finance/chart/1001/metadata') {
       return {'code': '1001', 'name': accountName, 'version': metadataWrites};
     }
-    if (path == '/finance/chart/imports') return {'items': <Object>[]};
+    if (path == '/finance/chart/imports/summaries') {
+      return versionedSummaryTestResponse([], query);
+    }
     if (path == '/finance/chart/options') {
       return {
         'currencies': [

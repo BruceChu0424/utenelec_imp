@@ -29,6 +29,7 @@ INSTALLED_INSTALLER = Path(
 )
 SOURCE_BUNDLE_ROOT = Path("/usr/local/share/uten-imp-backup-installer-source")
 SOURCE_BUNDLE_RELATIVE_FILES = (
+    "deploy/updater/release_guard.py",
     "deploy/postgres/backup/existing_host_installer.py",
     "deploy/postgres/backup/locked_job.py",
     "deploy/postgres/backup/pgbackrest_repo2.py",
@@ -49,7 +50,7 @@ SOURCE_BUNDLE_RELATIVE_FILES = (
     "deploy/systemd/uten-pgbackup-alert-drain.timer.example",
 )
 REVIEWED_INSTALLER_SHA256 = (
-    "512b7c7132c2016d1557723b90bef520349b5cbd7875af296d6d0554b9ade727"
+    "3a18bcac6a66e17ea3e1e3055e4087d8a01f3bb152a1c4c2a327dd2113274fb6"
 )
 INSTALLER_MODE = 0o400
 SOURCE_DIRECTORY_MODE = 0o500

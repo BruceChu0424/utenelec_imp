@@ -16,7 +16,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   test(
-    'batch pagination and refresh retain scope; stale active pages cannot replace history',
+    'complete batches retain scope on refresh and retire an active continuation after history is chosen',
     () async {
       final repo = _Repository();
       final container = ProviderContainer(
@@ -32,37 +32,37 @@ void main() {
         fireImmediately: true,
       );
       addTearDown(subscription.close);
-      await container.read(payrollBatchListProvider.future);
-      expect(repo.requests.last, ('ACTIVE', 1));
-      await container.read(payrollBatchListProvider.notifier).nextPage();
-      expect(repo.requests.last, ('ACTIVE', 2));
+      final initial = await container.read(payrollBatchListProvider.future);
+      expect(initial.items, hasLength(2));
+      expect(initial.totalPages, 1);
+      expect(repo.requests, [('ACTIVE', 1), ('ACTIVE', 2)]);
       await container.read(payrollBatchListProvider.notifier).refresh();
-      expect(repo.requests.last, ('ACTIVE', 1));
+      expect(repo.requests.last, ('ACTIVE', 2));
       repo.pendingActivePage = Completer();
-      final oldPage = container
-          .read(payrollBatchListProvider.notifier)
-          .nextPage();
+      final old = container.read(payrollBatchListProvider.notifier).refresh();
       await Future<void>.delayed(Duration.zero);
       container.read(payrollBatchScopeProvider.notifier).state =
           PayrollBatchScope.history;
       final history = await container.read(payrollBatchListProvider.future);
-      expect(repo.requests.last, ('HISTORY', 1));
-      expect(history.items.single.status, PayrollBatchStatus.published);
+      expect(history.items, hasLength(2));
+      expect(
+        history.items.every(
+          (batch) => batch.status == PayrollBatchStatus.published,
+        ),
+        true,
+      );
       repo.pendingActivePage!.complete(_page('ACTIVE', 2));
-      await oldPage;
+      await old;
       expect(
         container
             .read(payrollBatchListProvider)
             .requireValue
             .items
-            .single
-            .status,
-        PayrollBatchStatus.published,
+            .every((batch) => batch.status == PayrollBatchStatus.published),
+        true,
       );
-      await container.read(payrollBatchListProvider.notifier).nextPage();
-      expect(repo.requests.last, ('HISTORY', 2));
       await container.read(payrollBatchListProvider.notifier).refresh();
-      expect(repo.requests.last, ('HISTORY', 1));
+      expect(repo.requests.last, ('HISTORY', 2));
     },
   );
 
@@ -91,15 +91,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(repo.requests.last, ('ACTIVE', 1));
-      expect(find.text('发布工资条'), findsOneWidget);
-      await tester.enterText(find.byType(TextFormField), '2');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
       expect(repo.requests.last, ('ACTIVE', 2));
+      expect(find.text('发布工资条'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
-      expect(repo.requests.last, ('HISTORY', 1));
+      expect(repo.requests.last, ('HISTORY', 2));
       expect(find.text('发布工资条'), findsNothing);
       expect(find.text('已发布'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -128,11 +128,11 @@ class _Repository extends Fake implements PayrollRepository {
 
   @override
   Future<PayrollBatch> getBatch(String id) async =>
-      _batch(id.startsWith('HISTORY') ? 'HISTORY' : 'ACTIVE');
+      _batch(id.startsWith('HISTORY') ? 'HISTORY' : 'ACTIVE', id: id);
 }
 
-PayrollBatch _batch(String scope) => PayrollBatch(
-  id: '$scope-batch',
+PayrollBatch _batch(String scope, {String? id}) => PayrollBatch(
+  id: id ?? '$scope-batch',
   year: 2026,
   month: 10,
   status: scope == 'HISTORY'
@@ -144,7 +144,7 @@ PayrollBatch _batch(String scope) => PayrollBatch(
   netIncome: 90,
 );
 PagedResult<PayrollBatch> _page(String scope, int page) => PagedResult(
-  items: [_batch(scope)],
+  items: [_batch(scope, id: '$scope-batch-$page')],
   page: page,
   size: 1,
   total: 2,

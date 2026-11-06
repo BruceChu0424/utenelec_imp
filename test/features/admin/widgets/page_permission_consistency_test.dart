@@ -127,8 +127,8 @@ class _Repository implements PagePermissionDelegationRepository {
     bool ascending = true,
   }) async => PagePermissionStaffPage(
     surfaceKey: surfaceKey,
-    departmentId: 'department',
-    departmentName: '运营部门',
+    departmentId: departmentId,
+    departmentName: departmentId == null ? null : '运营部门',
     items: const [
       PagePermissionStaffSummary(
         employeeId: 'employee',

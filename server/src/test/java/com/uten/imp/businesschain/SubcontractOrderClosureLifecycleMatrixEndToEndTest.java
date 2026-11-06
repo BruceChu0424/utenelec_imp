@@ -375,7 +375,8 @@ class SubcontractOrderClosureLifecycleMatrixEndToEndTest {
         harness.loginAs(f.reviewer());
         assertThatThrownBy(()->claims.claim("PROCUREMENT_FINANCE_APPROVE",legacy.caseId().toString())).isInstanceOf(ApiException.class);
         assertThat(approvalProjection.canCurrentActorReviewPending("SUBCONTRACT",f.order())).isFalse();
-        assertThat(approvalProjection.pendingOrderIds("SUBCONTRACT")).doesNotContain(f.order());
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT'"
+                + " AND order_id=? AND request_type='ORDER' AND status='PENDING'",Long.class,f.order())).isZero();
         UUID claimId=UUID.randomUUID();
         db.update("INSERT INTO task_claims(id,target_type,target_key,claimed_by,lease_until) SELECT ?,'PROCUREMENT_FINANCE_APPROVE',?,employee_id,now()+interval '30 minutes' FROM users WHERE id=?",
                 claimId,legacy.caseId().toString(),f.reviewer());

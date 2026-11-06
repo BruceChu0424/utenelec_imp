@@ -244,6 +244,9 @@ class InsightHealthResult {
   final WarehouseInsightOverview overview;
   final PagedResult<InsightHealthRow> rows;
 
+  InsightHealthResult withPage(PagedResult<InsightHealthRow> combined) =>
+      InsightHealthResult(rows: combined, overview: overview);
+
   factory InsightHealthResult.fromJson(Map<String, dynamic> j) {
     final overview = j['overview'];
     return InsightHealthResult(
@@ -574,6 +577,14 @@ class InsightWeightAlertsResult {
   final PagedResult<InsightWeightAlertRow> rows;
   final List<InsightCounterpartSummary> supplierSummary;
   final List<InsightCounterpartSummary> workshopSummary;
+
+  InsightWeightAlertsResult withPage(
+    PagedResult<InsightWeightAlertRow> combined,
+  ) => InsightWeightAlertsResult(
+    rows: combined,
+    supplierSummary: supplierSummary,
+    workshopSummary: workshopSummary,
+  );
 
   factory InsightWeightAlertsResult.fromJson(Map<String, dynamic> j) =>
       InsightWeightAlertsResult(

@@ -607,7 +607,7 @@ void main() {
   });
 
   testWidgets(
-    'ten thousand matches read one business page and all bounded category metadata pages',
+    'ten thousand matches form one complete local list with bounded category metadata',
     (tester) async {
       final repository = _FakeClientRepository();
       await _pumpPicker(
@@ -629,14 +629,26 @@ void main() {
       await tester.enterText(_searchEditable(), '大范围');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      expect(repository.searchPages, [1, 2, 3]);
+      expect(repository.searchPages, List.generate(100, (index) => index + 1));
       expect(repository.contextPages, [1, 2]);
       final table = tester.widget<MasterDataTableView<ClientListItem>>(
         find.byType(MasterDataTableView<ClientListItem>),
       );
-      expect(table.items, hasLength(100));
+      expect(table.items, hasLength(10000));
       expect(table.currentPage, 1);
-      expect(table.totalPages, 100);
+      expect(table.totalPages, 1);
+      final calls = repository.searchPages.length;
+      final scroll = find.descendant(
+        of: find.byType(MasterDataTableView<ClientListItem>),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
+        ),
+      );
+      await tester.drag(scroll.first, const Offset(0, -1500));
+      await tester.pumpAndSettle();
+      expect(repository.searchPages.length, calls);
       final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
         find.byType(UtenCategoryTreeView<ProductCategoryNode>),
       );
@@ -646,7 +658,7 @@ void main() {
 
   for (final versioned in [true, false]) {
     testWidgets(
-      'master picker refetches ${versioned ? 'versioned' : 'unversioned'} category content on each business page',
+      'master picker refetches ${versioned ? 'versioned' : 'unversioned'} category content on explicit fresh search',
       (tester) async {
         final repository = _FakeClientRepository(
           scopeVersion: versioned ? 'fixture-v1' : null,
@@ -671,25 +683,22 @@ void main() {
         await tester.pump(const Duration(milliseconds: 301));
         await tester.pumpAndSettle();
         final table = find.byType(MasterDataTableView<ClientListItem>);
-        await Future<void>.sync(
-          () => tester
-              .widget<MasterDataTableView<ClientListItem>>(table)
-              .onPageChange!(2),
-        );
+        await tester.showKeyboard(_searchEditable());
+        await tester.testTextInput.receiveAction(TextInputAction.search);
         await tester.pumpAndSettle();
-        expect(repository.searchPages, [1, 2, 3, 4]);
+        expect(repository.searchPages, [
+          ...List.generate(100, (i) => i + 1),
+          ...List.generate(100, (i) => i + 1),
+        ]);
         expect(
           tester.widget<MasterDataTableView<ClientListItem>>(table).currentPage,
-          2,
+          1,
         );
         expect(repository.contextPages, [1, 2, 1, 2]);
         if (versioned) {
           repository.scopeVersion = 'fixture-v2';
-          await Future<void>.sync(
-            () => tester
-                .widget<MasterDataTableView<ClientListItem>>(table)
-                .onPageChange!(3),
-          );
+          await tester.showKeyboard(_searchEditable());
+          await tester.testTextInput.receiveAction(TextInputAction.search);
           await tester.pumpAndSettle();
           expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
           expect(table, findsNothing);
@@ -699,7 +708,7 @@ void main() {
   }
 
   testWidgets(
-    'same-role same-query page refreshes changed category content and includes actual row locations',
+    'same-role explicit fresh search updates metadata and includes every actual row location',
     (tester) async {
       final repository = _FakeClientRepository()
         ..contextCategoryIdsOverride = ['domestic'];
@@ -723,19 +732,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
       repository.contextCategoryIdsOverride = ['overseas'];
-      final table = find.byType(MasterDataTableView<ClientListItem>);
-      await Future<void>.sync(
-        () => tester
-            .widget<MasterDataTableView<ClientListItem>>(table)
-            .onPageChange!(2),
-      );
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pumpAndSettle();
-      expect(repository.searchPages, [1, 2]);
+      expect(repository.searchPages, [1, 2, 1, 2]);
       expect(repository.contextPages, [1, 1]);
       final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
         find.byType(UtenCategoryTreeView<ProductCategoryNode>),
       );
-      expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
+      expect(tree.visibleFilterIds, {'domestic', 'overseas', 'southeast-asia'});
       expect(find.text('远洋电器'), findsOneWidget);
       expect(
         tester.widget<TextField>(_searchTextField()).controller?.text,
@@ -760,7 +765,7 @@ void main() {
         await tester.enterText(_searchEditable(), '大范围');
         await tester.pump(const Duration(milliseconds: 301));
         await tester.pumpAndSettle();
-        expect(repository.searchPages, [1]);
+        expect(repository.searchPages, List.generate(100, (i) => i + 1));
         expect(repository.contextPages, [1, 2]);
         expect(find.text('账号、权限或服务器已变化，请关闭后重新选择'), findsOneWidget);
         expect(find.byType(MasterDataTableView<ClientListItem>), findsNothing);

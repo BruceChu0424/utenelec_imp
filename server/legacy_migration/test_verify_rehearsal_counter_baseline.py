@@ -65,6 +65,55 @@ class CounterBaselineTests(unittest.TestCase):
                 proof[key] = 'b' * 64 if key == 'source_ids_sha256' else proof[key] + 1
                 with self.assertRaises(verifier.VerificationError): verifier.validate_counter_baseline(actual, expected)
 
+    def test_v22_adds_both_exact_return_families_without_reinterpreting_old_counter_runs(self):
+        old = sources()
+        returns = {kind: {'rows': index, 'source_file': verifier.counter_source_file(kind, table),
+                         'target_table': table, 'file_sha256': 'b' * 64, 'source_ids_sha256': 'c' * 64}
+                   for index, (kind, table) in enumerate(verifier.RETURN_QUANTITY_SOURCES, 1)}
+        self.assertIs(verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v21', 1049, 1049), old)
+        self.assertIs(verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v21', 1057, 1057), old)
+        # Committed Main through1090 has no Task return-counter proof protocol;1091 legacy adoption and1092 direct-MAKE still do not supply it.
+        self.assertIs(verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v21', 1059, 1059), old)
+        with self.assertRaises(verifier.VerificationError):
+            verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v22', 1057, 1057)
+        with self.assertRaises(verifier.VerificationError):
+            verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v22', 1059, 1059)
+        with self.assertRaises(verifier.VerificationError):
+            verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v22', 1060, 1060)
+        for incomplete in range(1061, 1093):
+            with self.subTest(incomplete_schema=incomplete):
+                with self.assertRaises(verifier.VerificationError):
+                    verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v22', incomplete, incomplete)
+        merged = verifier.return_quantity_protocol_sources(old, returns, 'bootstrap-v22', 1093, 1093)
+        self.assertEqual(set(merged), set(old) | set(returns))
+        self.assertEqual(verifier.validate_counter_baseline(baseline(merged), merged)['source_proof_rows'], 9)
+        query = verifier.counter_baseline_sql(RUN, merged)
+        self.assertIn('public.purchase_return_items', query)
+        self.assertIn('public.subcontract_material_return_items', query)
+        self.assertIn('subcontract_swithdraw_i.csv', query)
+        self.assertNotIn('public.purchase_return_items', verifier.counter_baseline_sql(RUN, old))
+        for mapping, actual, expected_returns in [('bootstrap-v21', 1093, returns), ('bootstrap-v22', 1049, returns),
+                ('bootstrap-v22', 1093, None), ('bootstrap-v22', 1093, {})]:
+            with self.subTest(mapping=mapping, actual=actual, returns=expected_returns):
+                with self.assertRaises(verifier.VerificationError):
+                    verifier.return_quantity_protocol_sources(old, expected_returns, mapping, actual, actual)
+        changed = deepcopy(merged); actual = baseline(changed)
+        actual['families']['PURCHASE_RETURN_ITEM']['changed_original_projections'] = 1
+        with self.assertRaises(verifier.VerificationError): verifier.validate_counter_baseline(actual, changed)
+
+    def test_return_inventory_binds_the_real_csv_names_and_every_original_id(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); records = {}
+            for kind, table in verifier.RETURN_QUANTITY_SOURCES:
+                name = verifier.counter_source_file(kind, table)
+                (root / name).write_text('legacy_id|qty\n9|1.2345\n7|0.0010\n', encoding='utf-8')
+                records[name] = {'rows': 2, 'sha256': 'b' * 64}
+            inventory = verifier.return_quantity_source_inventory(root, records)
+            self.assertEqual(inventory['SUBCONTRACT_MATERIAL_RETURN_ITEM']['source_file'], 'subcontract_swithdraw_i.csv')
+            self.assertEqual(inventory['PURCHASE_RETURN_ITEM']['source_ids_sha256'], hashlib.sha256(b'7\n9\n').hexdigest())
+            (root / 'purchase_return_items.csv').write_text('legacy_id\n7\n7\n', encoding='utf-8')
+            with self.assertRaises(verifier.VerificationError): verifier.return_quantity_source_inventory(root, records)
+
     def test_v908_mapping14_is_required_in_same_full_fact_snapshot(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Fixture(Path(temporary)); expected = fixture.expected(); expected['counter_sources'] = sources()

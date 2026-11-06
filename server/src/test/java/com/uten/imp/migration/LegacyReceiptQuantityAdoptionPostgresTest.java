@@ -78,18 +78,24 @@ class LegacyReceiptQuantityAdoptionPostgresTest {
             ObjectNode original=source(db,family+"_ITEM");UUID id=register(db,run,family+"_ITEM",original);
             ObjectNode payload=projection(db,family+"_ITEM",original);payload.put("id",id.toString());payload.put("legacy_import_run_id",run.toString());
             String table=family.toLowerCase()+"_receipt_items";
+            long originalRows=count(db,table);
+            String originalProof=proofSnapshot(run,id);
             ObjectNode forged=payload.deepCopy();forged.put("id",UUID.randomUUID().toString());
-            assertTrue(rejected(current,()->insert(db,table,forged)).getMessage().contains("exact source proof in this transaction"));
+            rejectedWithReason(()->insert(db,table,forged),"legacy receipt row has no exact source proof in this transaction");
             ObjectNode changed=payload.deepCopy();changed.put("qty",99);
-            assertTrue(rejected(current,()->insert(db,table,changed)).getMessage().contains("original source projection"));
+            rejectedWithReason(()->insert(db,table,changed),"legacy receipt does not match its original source projection");
             ObjectNode changedWeight=payload.deepCopy();changedWeight.put("weight",999);
-            assertTrue(rejected(current,()->insert(db,table,changedWeight)).getMessage().contains("original source projection"));
+            rejectedWithReason(()->insert(db,table,changedWeight),"legacy receipt does not match its original source projection");
             ObjectNode invented=payload.deepCopy();invented.put(family.equals("PURCHASE")?"charged_base_qty":"adopted_base_qty",1);
-            assertTrue(rejected(current,()->insert(db,table,invented)).getMessage().contains("invented derived values"));
+            rejectedWithReason(()->insert(db,table,invented),"verified historical quantities cannot carry new adoption, gift or precision facts");
             ObjectNode policy=payload.deepCopy();policy.put("quantity_adoption_version",1);
-            assertTrue(rejected(current,()->insert(db,table,policy)).getMessage().contains("invented derived values"));
+            rejectedWithReason(()->insert(db,table,policy),"verified historical receipts require initial version two and adopted weight version one");
             ObjectNode missingVersion=payload.deepCopy();missingVersion.putNull("quantity_adoption_version");
-            assertTrue(rejected(current,()->insert(db,table,missingVersion)).getMessage().contains("invented derived values"));
+            rejectedWithReason(()->insert(db,table,missingVersion),"verified historical receipts require initial version two and adopted weight version one");
+            ObjectNode newPolicy=payload.deepCopy();newPolicy.putObject("quantity_precision_policy");
+            rejectedWithReason(()->insert(db,table,newPolicy),"verified historical quantities cannot carry new adoption, gift or precision facts");
+            assertEquals(originalRows,count(db,table),"Every rejected insert must leave the full item inventory unchanged");
+            assertEquals(originalProof,proofSnapshot(run,id),"The complete original source-proof row must stay byte-exact");
         }
     }
 
@@ -98,9 +104,24 @@ class LegacyReceiptQuantityAdoptionPostgresTest {
         importRow(db,run,"PURCHASE_HEADER",source(db,"PURCHASE_HEADER"));
         ObjectNode original=source(db,"PURCHASE_ITEM");UUID id=register(db,run,"PURCHASE_ITEM",original);
         ObjectNode payload=projection(db,"PURCHASE_ITEM",original);payload.put("id",id.toString());payload.put("legacy_import_run_id",run.toString());
+        String originalProof=proofSnapshot(run,id);
+        Long issued=db.queryForObject("SELECT issued_txid FROM legacy_procurement_receipt_import_sources WHERE run_id=? AND target_id=?",Long.class,run,id);
         db.execute("SET CONSTRAINTS ALL IMMEDIATE");current.connection.commit();
-        assertTrue(rejected(current,()->insert(db,"purchase_receipt_items",payload)).getMessage().contains("exact source proof in this transaction"));
+        assertNotEquals(issued,db.queryForObject("SELECT txid_current()",Long.class));
+        rejectedWithReason(()->insert(db,"purchase_receipt_items",payload),"legacy source evidence requires the active bootstrap lock, run and source file");
         assertEquals(0,db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE id=?",Integer.class,id));
+        // Use the actual fixture capability entrance to reacquire the legitimate
+        // dedicated-role/bootstrap lock and reviewed metadata, without issuing a new row proof.
+        UUID freshContext=context(db);
+        assertNotEquals(run,freshContext);
+        db.queryForObject("SELECT set_config('uten.bootstrap_run_id',?,true)",String.class,run.toString());
+        assertDoesNotThrow(()->db.queryForList("SELECT fn_require_legacy_bootstrap(?,?)",run,"purchase_receipt_items.csv"));
+        assertEquals(originalProof,proofSnapshot(run,id));
+        // Authorization is now valid; this must fail specifically because the
+        // original proof/target belongs to the already committed transaction.
+        rejectedWithReason(()->insert(db,"purchase_receipt_items",payload),"legacy receipt row has no exact source proof in this transaction");
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE id=?",Integer.class,id));
+        assertEquals(originalProof,proofSnapshot(run,id),"Re-entering a legal bootstrap context cannot reissue or rewrite the old proof");
     }
 
     @Test void nativeQuantityStillNeedsItsRealUnitAndCurrentExactChoice() throws Exception {
@@ -131,5 +152,17 @@ class LegacyReceiptQuantityAdoptionPostgresTest {
         UUID chosen=UUID.randomUUID();db.update(sql,chosen,receipt,goods,unit,operands,operands,adopted);
         assertEquals(adopted,db.queryForObject("SELECT charged_base_qty FROM purchase_receipt_items WHERE id=?",BigDecimal.class,chosen));
         assertEquals(24,db.queryForObject("SELECT (quantity_precision_policy->'choices'->'quantity.to-base'->>'scale')::integer FROM purchase_receipt_items WHERE id=?",Integer.class,chosen));
+    }
+
+    private void rejectedWithReason(Runnable operation,String exactReason) throws Exception {
+        var rejected=rejected(current,operation);
+        var cause=assertInstanceOf(org.postgresql.util.PSQLException.class,rejected.getMostSpecificCause());
+        assertEquals("23514",cause.getSQLState(),cause::getMessage);
+        assertNotNull(cause.getServerErrorMessage());
+        assertEquals(exactReason,cause.getServerErrorMessage().getMessage());
+    }
+
+    private String proofSnapshot(UUID run,UUID target) {
+        return current.db.queryForObject("SELECT to_jsonb(proof)::text FROM legacy_procurement_receipt_import_sources proof WHERE run_id=? AND target_id=?",String.class,run,target);
     }
 }

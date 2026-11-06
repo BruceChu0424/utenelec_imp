@@ -387,6 +387,8 @@ class _FinanceAccountFlowPageState
 
   @override
   Widget build(BuildContext context) {
+    _reportRead.bindView(context, onResume: () => _load());
+
     final theme = Theme.of(context);
     final title = _title;
     // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。

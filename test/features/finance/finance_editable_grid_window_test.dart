@@ -23,21 +23,28 @@ class _Row extends EditableGridRow {
 
 void main() {
   testWidgets(
-    'two thousand owned rows mount only thirty and keep exact controllers through pages and window disposal',
+    'two thousand owned rows stay complete and exact while only visible editors mount',
     (t) async {
       final all = UtenEditableGridController<_Row>()
         ..addRows([for (var i = 0; i < 2000; i++) _Row(i)]);
       await _pump(t, all);
-      expect(_view(t).controller.length, 30);
+      expect(_view(t).controller.length, 2000);
+      expect(identical(_view(t).controller, all), true);
+      expect(find.byType(UtenInput).evaluate().length, lessThan(100));
+      expect(find.byType(UtenPagination), findsNothing);
       expect(identical(_view(t).controller[0], all[0]), isTrue);
       all[0].text.text = '12345678901234.123456789012345678901234';
-      t.widget<UtenPagination>(find.byType(UtenPagination)).onPageChanged!(67);
+      final scroll = t
+          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView))
+          .firstWhere((widget) => widget.controller != null)
+          .controller!;
+      scroll.jumpTo(scroll.position.maxScrollExtent);
       await t.pumpAndSettle();
-      expect(_view(t).controller.length, 20);
-      expect(identical(_view(t).controller.rows.last, all.rows.last), isTrue);
+      expect(_view(t).controller.length, 2000);
+      expect(identical(_view(t).controller.rows.last, all.rows.last), true);
       expect(all[0].disposed, 0);
       all.rows.last.text.text = '1.';
-      t.widget<UtenPagination>(find.byType(UtenPagination)).onPageChanged!(1);
+      scroll.jumpTo(0);
       await t.pumpAndSettle();
       expect(all[0].text.text, '12345678901234.123456789012345678901234');
       expect(all.rows.last.text.text, '1.');
@@ -58,10 +65,8 @@ void main() {
         ..addRows([for (var i = 0; i < 60; i++) _Row(i)]);
       var next = 60;
       await _pump(t, all, editable: true, create: () => _Row(next++));
-      t.widget<UtenPagination>(find.byType(UtenPagination)).onPageChanged!(2);
-      await t.pumpAndSettle();
       final removed = all.rows.last;
-      _view(t).onDeleteRow!(removed, 29);
+      _view(t).onDeleteRow!(removed, 59);
       await t.pumpAndSettle();
       expect(all.length, 59);
       expect(removed.disposed, 1);

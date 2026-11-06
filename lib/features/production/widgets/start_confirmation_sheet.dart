@@ -38,6 +38,8 @@ import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_repository.dart';
 import '../repositories/workshop_material_choice_repository.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/paging/read_view_activity.dart';
 
 /// 能在本表里直接开工的两条路线 (分批生产要先拆批, 在任务列表里办)。
 const _startRoutes = ['CONTINUOUS', 'FULL_KIT'];
@@ -183,8 +185,8 @@ class StartConfirmationSheet extends ConsumerStatefulWidget {
       _StartConfirmationSheetState();
 }
 
-class _StartConfirmationSheetState
-    extends ConsumerState<StartConfirmationSheet> {
+class _StartConfirmationSheetState extends ConsumerState<StartConfirmationSheet>
+    with ReadViewActivityMixin<StartConfirmationSheet> {
   final _grid = UtenEditableGridController<_StartRow>();
 
   /// 本次打开表格的请求号前缀: 同一张表里同样的内容重试用同一个请求号,
@@ -192,6 +194,14 @@ class _StartConfirmationSheetState
   final String _nonce = const Uuid().v4();
 
   bool _loading = true;
+  int _readGeneration = 0;
+  bool Function()? _acceptedReadOwner;
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_acceptedReadOwner?.call() == true && !_loading) return;
+    await _load();
+  }
+
   String? _loadError;
 
   /// 本次勾选里不用确认、直接一起开工的工单 (含服务端说已不用确认的行)。
@@ -215,6 +225,13 @@ class _StartConfirmationSheetState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _readGeneration++;
+      setState(() {
+        _loading = false;
+        _loadError = '读取身份已变化，请重新读取';
+      });
+    });
     _load();
   }
 
@@ -225,23 +242,47 @@ class _StartConfirmationSheetState
   }
 
   Future<void> _load() async {
+    if (_busy) return;
+    if (!_grid.isEmpty && _acceptedReadOwner?.call() == false) {
+      setState(() {
+        _loading = false;
+        _loadError = '读取身份已变化，原输入已保留，请关闭后重新打开确认表';
+      });
+      return;
+    }
+    final owner = captureReadOwner(ref);
+    final request = ++_readGeneration;
+    bool current() => mounted && owner() && request == _readGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final pending = await ref
-          .read(workshopMaterialChoiceRepositoryProvider)
-          .pending(widget.tasks.map((task) => task.segmentId).toList());
-      if (!mounted) return;
+      final pending = await readViewActivity.runRead(
+        current,
+        () => ref
+            .read(workshopMaterialChoiceRepositoryProvider)
+            .pending(
+              widget.tasks.map((task) => task.segmentId).toList(),
+              isCurrent: current,
+            ),
+      );
+      if (!current()) return;
+      _acceptedReadOwner = owner;
       _applyPending(pending);
-      setState(() => _loading = false);
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadError = productionErrorMessage(error, fallback: '开工确认表没有读出来，请重试');
-      });
+      if (current() && !isRetiredViewRead(error)) {
+        setState(() {
+          _loadError = productionErrorMessage(
+            error,
+            fallback: '开工确认表没有读出来，请重试',
+          );
+        });
+      }
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -524,7 +565,12 @@ class _StartConfirmationSheetState
   }
 
   Future<void> _submit({required bool startNow}) async {
-    if (_busy || _loading) return;
+    if (_busy ||
+        _loading ||
+        _loadError != null ||
+        _acceptedReadOwner?.call() != true) {
+      return;
+    }
     final rows = startNow ? _rows : _drawRows;
     final missing = _missingOf(rows);
     if (missing != null) {

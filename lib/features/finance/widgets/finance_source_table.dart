@@ -45,7 +45,6 @@ Widget financeSourceTable({
   onPageChange: onPage,
   showPaginationControls: onPage != null,
   paginationScope: scope,
-  maxRetainedRows: rows.length > 1000 ? rows.length : 1000,
   toolbarActions: actions,
   showColumnChooser: showColumnChooser,
   virtualized: true,

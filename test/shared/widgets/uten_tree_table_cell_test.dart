@@ -4,6 +4,123 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 void main() {
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'narrow display prefix preserves tree actions on $platform at $scale',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          try {
+            var toggles = 0;
+            const toggle = Key('narrow-prefix-toggle');
+            const badge = Key('narrow-prefix-badge');
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: ThemeData(platform: platform),
+                home: Scaffold(
+                  body: MediaQuery(
+                    data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                    child: Builder(
+                      builder: (context) => Align(
+                        alignment: Alignment.topLeft,
+                        child: SizedBox(
+                          width:
+                              UtenTreeTableCell.toggleExtentOf(context) +
+                              4 +
+                              33.9,
+                          child: IntrinsicHeight(
+                            child: UtenTreeTableCell(
+                              depth: 0,
+                              sequence: 'P1',
+                              sequenceInline: true,
+                              title: '测试产品',
+                              titleBadge: const Text('顶层', key: badge),
+                              titleBadgeLabel: '顶层',
+                              titleBadgeCanShrink: true,
+                              hasChildren: true,
+                              toggleKey: toggle,
+                              onToggle: () => toggles++,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            expect(
+              find.bySemanticsLabel(RegExp('测试产品，顶层，级联号 P1')),
+              findsOneWidget,
+            );
+            final box = tester.renderObject<RenderBox>(find.byKey(badge));
+            final painted = Rect.fromPoints(
+              box.localToGlobal(Offset.zero),
+              box.localToGlobal(box.size.bottomRight(Offset.zero)),
+            );
+            final cell = tester.getRect(find.byType(UtenTreeTableCell));
+            expect(painted.right, lessThanOrEqualTo(cell.right));
+            final originalToggle = tester.getSize(find.byKey(toggle));
+            await tester.tap(find.byKey(toggle));
+            await tester.pump();
+            expect(toggles, 1);
+            expect(tester.getSize(find.byKey(toggle)), originalToggle);
+            expect(tester.takeException(), isNull);
+          } finally {
+            semantics.dispose();
+          }
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'an interactive title badge keeps its hit target and keyboard action',
+    (tester) async {
+      final focus = FocusNode();
+      addTearDown(focus.dispose);
+      var retries = 0;
+      const retry = Key('tree-title-retry');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: UtenTreeTableCell(
+                depth: 0,
+                sequence: '',
+                sequenceInline: true,
+                title: '可重试的组件',
+                titleBadge: IconButton(
+                  key: retry,
+                  focusNode: focus,
+                  tooltip: '重试读取下级',
+                  onPressed: () => retries++,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final target = tester.getRect(find.byKey(retry));
+      expect(target.width, greaterThanOrEqualTo(40));
+      expect(target.height, greaterThanOrEqualTo(40));
+      await tester.tap(find.byKey(retry));
+      await tester.pump();
+      focus.requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(retries, 2);
+      expect(tester.getRect(find.byKey(retry)).size, target.size);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'Ctrl dispatches only the peer toggle and ordinary click keeps its action',
     (tester) async {

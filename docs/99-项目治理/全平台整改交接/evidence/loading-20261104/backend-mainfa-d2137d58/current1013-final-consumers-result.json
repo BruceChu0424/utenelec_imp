@@ -1,0 +1,31 @@
+{
+  "atUtc": "2026-11-06T01:53:54.980389+00:00",
+  "scope": "Actual pure consumers of saved owned PG history and exact source metadata/TSV. No database/host operation.",
+  "label": "current1013-final-consumers",
+  "rows": 1013,
+  "identity": {
+    "successfulMigrationCount": 1013,
+    "headVersion": 1074,
+    "canonicalHistorySha256": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+    "signedProjectionSha256": "95f91eacfed0db0dd7e2069228f9358616614f265fe603bcfcebdbe3c88182ac"
+  },
+  "rawRowsUnchanged": true,
+  "sourceDrift": [],
+  "canonicalSignedTsvSha256": "c4de2df1d2150a1167680cf3f37703df8a8271e71a2f6b8113f7712cdef12ed0",
+  "allThreeValidatorsEqual": true,
+  "rawAliasAndDescriptionNegativesRejected": true,
+  "windowsExistingPreverifiedProtocol": true,
+  "inputs": {
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server\\build\\loading-validation\\main-fa-final\\golden-current-installed-history-raw.json": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server\\build\\loading-validation\\main-fa-final\\source-metadata-snapshot-1013.json": "275884071498753e5314c71435c3c2cfcc1c99f50a523d52daeb1a62aac794f9",
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server\\build\\loading-validation\\main-fa-final\\canonical-source-checksums.tsv": "3b41577abb65c05a9595808cc4125f254a99e1305cb17986860fdb65f99dde5c"
+  },
+  "source": {
+    "deploy/updater/release_guard.py": "96d446cd510f85c8086f6dfa32145983a2b3d0e5ea1f984e4e2076c7f6950684",
+    "deploy/updater/runtime_boot_verifier.py": "1f5faf63c9576ef074cedeb13ffc8e9b9f17a9daa3e8f0ce0f4b9c235caa2b0f",
+    "deploy/updater/release_updater.py": "6a616ed8fcc604ebe589f010f186d99209a7f3f9dea6a20cd299c7a23e14349c",
+    "deploy/postgres/backup/pgbackrest_repo2.py": "07b01530c3bff4289a3e8269c6a8bbfcc100bd4e0635f48a007c0c69f6cafe04",
+    "deploy/postgres/backup/pgbackrest_health.py": "80f16e0c0f77ca72767106e6a526120a937bcb5132f4199b34d8b6ee346ae412",
+    "deploy/postgres/backup/backup_acceptance.py": "3f3a581bf9dd2d2a735b84d12da731c42bc4853366341a0c8ec9ea5cc100ae94"
+  }
+}

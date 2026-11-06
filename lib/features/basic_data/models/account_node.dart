@@ -1,3 +1,4 @@
+import '../../../shared/models/paged_result.dart';
 // 账户主档模型（对应后端 AccountListItem / AccountDetail / AccountFacets）。
 //
 // 扁平主档（无分类树），业务字段：编号/名称/银行账号/account_type(7 类)/币种/期初/累计收/累计付/
@@ -452,6 +453,15 @@ class AccountStatementPage {
   final int size;
   final int total;
   final int totalPages;
+
+  AccountStatementPage withPage(PagedResult<AccountStatementRow> combined) =>
+      AccountStatementPage(
+        rows: combined.items,
+        page: combined.page,
+        size: combined.size,
+        total: combined.total,
+        totalPages: combined.totalPages,
+      );
 
   factory AccountStatementPage.fromJson(Map<String, dynamic> json) =>
       AccountStatementPage(

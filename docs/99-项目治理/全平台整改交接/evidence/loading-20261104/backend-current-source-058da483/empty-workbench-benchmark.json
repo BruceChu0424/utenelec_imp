@@ -1,0 +1,14 @@
+{
+  "database" : "isolated PostgreSQL postgres:16-alpine",
+  "fixtureSource" : "owned-full-migration-template",
+  "schemaVersion" : "1062",
+  "scope" : "PURCHASE / COMPLETED / all dates / no column filters / empty business database",
+  "comparison" : "Former six equivalent row/summary/status/exception/pending/facet SQL reads reconstructed from the same current authorized projection versus the new single SQL; same connected JDBC session; two warmups and nine alternating trials",
+  "legacySqlPerRequest" : 6,
+  "optimizedSqlPerRequest" : 1,
+  "legacyMedianMs" : 356.3419,
+  "optimizedMedianMs" : 55.5748,
+  "medianSpeedup" : 6.4119331063719525,
+  "legacySamplesMs" : [ 356.3419, 414.042, 374.774, 321.3784, 319.5366, 394.041, 363.1699, 301.226, 30.0732 ],
+  "optimizedSamplesMs" : [ 67.5706, 73.7502, 61.3749, 53.1869, 51.5061, 55.5748, 102.9277, 5.6705, 6.647 ]
+}

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Uten.Legacy.Core;
+using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Desktop.Features.Units
 {
@@ -31,6 +32,37 @@ namespace Uten.Legacy.Desktop.Features.Units
                     throw new FormatException("历史响应的后续游标无效。");
                 return page;
             }, ct);
+        }
+        /// <summary>Collect one immutable history cursor range before exposing any rows.</summary>
+        public async Task<UnitReadSnapshot<UnitRecordHistoryPage>> CompleteRecordsAsync(UnitHistoryQuery query, CancellationToken ct)
+        {
+            if (query == null) throw new ArgumentNullException(nameof(query));
+            DemandRead(); var owner = new UnitReadOwner(session);
+            var rows = new List<UnitRecordRevision>(); long? cursor = query.Cursor; long textBytes = 0;
+            string firstPath = null;
+            do
+            {
+                ct.ThrowIfCancellationRequested(); Require(owner);
+                var batch = new UnitHistoryQuery(query.RecordId, cursor, query.Action, query.ActorId,
+                    query.ActorKeyword, query.Keyword, query.DateFrom, query.DateTo, 100, query.SourceType, query.SummaryKeyword);
+                var result = await RecordsAsync(batch, ct).ConfigureAwait(false);
+                Require(owner); ct.ThrowIfCancellationRequested();
+                if (firstPath == null) firstPath = result.RequestPath;
+                foreach (var row in result.Value.Entries)
+                {
+                    long bytes = 128;
+                    foreach (var value in new[] { row.RecordId, row.RecordLabel, row.RecordCode, row.RecordName,
+                        row.Action, row.ActorId, row.ActorName, row.RecordedAt, row.ExpectedHead, row.EntityType,
+                        row.SourceType, row.Summary, row.BlockedReason }) bytes += (long)(value?.Length ?? 0) * 2;
+                    if (rows.Count >= CompletePagedSnapshot.MaximumRows || bytes > CompletePagedSnapshot.MaximumTextBytes - textBytes)
+                        throw new ApiException("SNAPSHOT_TOO_LARGE", "完整历史超出安全读取范围，请缩小筛选后重试；不会显示截断结果。");
+                    rows.Add(row); textBytes += bytes;
+                }
+                cursor = result.Value.NextCursor;
+            } while (cursor.HasValue);
+            Require(owner); ct.ThrowIfCancellationRequested();
+            return new UnitReadSnapshot<UnitRecordHistoryPage>(
+                new UnitRecordHistoryPage { Entries = rows.AsReadOnly(), NextCursor = null }, owner, firstPath);
         }
         public Task<UnitReadSnapshot<UnitRecordRevision>> DetailAsync(long id, CancellationToken ct)
         {

@@ -1,0 +1,111 @@
+{
+  "createdAtUtc": "2026-11-05T21:36:54.374313+00:00",
+  "mode": "independent_read_only_source_peer_no_runtime",
+  "mainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "reviewSha256": "50139cb6eea297fae69c5c36a2d0e374676334294a1c152b5a09bf7dcf7671ca",
+  "resolverSha256": "71fe498e1bec7882abe23ab87a2887f1a0a9da382e780eb442cf7070d9b61d7e",
+  "entries": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "sha256": {
+        "baseGitBlob": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e",
+        "baseRecorded": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e",
+        "taskPhysical": "226509822b059ba63952fc4a8fa27418f81cbaffda5b57232ea29272e6ff092c",
+        "mainPhysical": "fa0f2b4867615c8a250fb2b551c21cab12a06216c4d596bb29738a0d77c831cb",
+        "staged": "c9ad85c18a417e451a4500596ae2c45288cd8f0cc09b55fa7944325e6d12c68c"
+      },
+      "taskReviewMatch": true,
+      "mainReviewMatch": true,
+      "stagedReviewMatch": true,
+      "verified": [
+        "CompletePagedSnapshot remains sole collector, snapshots checked for owner revision and request epoch.",
+        "currentRows and displayed items remain allRows; column projection takes all accepted row IDs.",
+        "No pager/page state restored; authoritative totalElements from first snapshot is used by Main print/export output-scope UI.",
+        "Original Main selection-aware output capability, pending journal and permission guards are preserved."
+      ]
+    },
+    {
+      "path": "clients/windows_legacy/progress/history.jsonl",
+      "sha256": {
+        "baseGitBlob": "def25a0a8ab32ff4c42f2d55f207a1b5680a8ae27f49cae9b263342a19e46794",
+        "baseRecorded": "def25a0a8ab32ff4c42f2d55f207a1b5680a8ae27f49cae9b263342a19e46794",
+        "taskPhysical": "c1cbe6caee958f54ded7cc1e259db2697aaf48cf1f79815de6f5fd129793efbb",
+        "mainPhysical": "a15ca96fdb4e981a12e25f843fe86b4b26c17830ef5c023ccb43c4485eed6892",
+        "staged": "2b57880225d6377e90a39c126947ed951d23b81d7e90c95f89490205e54d62b1"
+      },
+      "taskReviewMatch": true,
+      "mainReviewMatch": true,
+      "stagedReviewMatch": true,
+      "verified": {
+        "mainPhysicalLines": 419,
+        "stagedLines": 423,
+        "mainRawPrefixPreserved": true,
+        "appendedTaskEvents": 4
+      }
+    },
+    {
+      "path": "clients/windows_legacy/progress/work-items.json",
+      "sha256": {
+        "baseGitBlob": "d5b9ea0af723b6d1e505e96cef5bf15a2bfe664bced02e71b3f6a29cee6e022e",
+        "baseRecorded": "d5b9ea0af723b6d1e505e96cef5bf15a2bfe664bced02e71b3f6a29cee6e022e",
+        "taskPhysical": "2b5150dcab10d0d0769240ec98d53f2df246f9370a375e41ec8c5411bf556ad1",
+        "mainPhysical": "3dacd3214af0b3ffbe7acef137528479909f1ea427d5cf659e57893637e9b6eb",
+        "staged": "9f3fa1894cd4becd79025c5839816c3acd2e5766989960d5cee9d6a94ed5a86c"
+      },
+      "taskReviewMatch": true,
+      "mainReviewMatch": true,
+      "stagedReviewMatch": true,
+      "verified": {
+        "tasks": 372,
+        "sameTaskOrder": true,
+        "sameTopMetadata": true,
+        "nonAppendFieldDiffs": [],
+        "appendOnlyDelta": [
+          {
+            "id": "W7-BIZ-025",
+            "fields": [
+              "notes",
+              "lastUpdated",
+              "evidence"
+            ],
+            "mainNotesPrefix": true,
+            "mainEvidencePrefix": true
+          },
+          {
+            "id": "W7-BIZ-034",
+            "fields": [
+              "notes",
+              "lastUpdated",
+              "evidence"
+            ],
+            "mainNotesPrefix": true,
+            "mainEvidencePrefix": true
+          },
+          {
+            "id": "W7-BIZ-037",
+            "fields": [
+              "notes",
+              "lastUpdated",
+              "evidence"
+            ],
+            "mainNotesPrefix": true,
+            "mainEvidencePrefix": true
+          }
+        ]
+      }
+    }
+  ],
+  "allEntryActions": {
+    "adopt_main": 27,
+    "reviewed_semantic_merge": 3,
+    "clean_merge": 1,
+    "regenerate_on_owning_tree": 25
+  },
+  "confirmedBlockingIssues": [],
+  "limitations": [
+    "Resolver was read, not executed. No Main/Candidate/contract/metadata writes or runtime tests by peer.",
+    "Generated ownership fingerprints still require owning-tree canonical generation after all current source freezes.",
+    "Physical CRLF Main source SHA differs from git LF blobs for .cs/history; physical review hashes match and normalized content matches.",
+    "WPF native x86/x64 and full ERP/Win7 target UAT are separate evidence, not established by this static review."
+  ]
+}

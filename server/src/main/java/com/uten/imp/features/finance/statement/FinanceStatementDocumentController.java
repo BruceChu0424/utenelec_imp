@@ -35,6 +35,8 @@ public class FinanceStatementDocumentController {
     @PostMapping("/reviews/query") public Map<String,Object> reviews(@RequestBody Context context,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.reviews(context,page,size);}
     @GetMapping("/reviews/{id}") public Map<String,Object> review(@PathVariable UUID id){var result=service.review(id);
         detailViewAudit.record("view_finance_statement_review_detail","finance_statement_document_reviews",id,null,null,"结算单复核");return result;}
+    @GetMapping("/reviews/{id}/summary") public Map<String,Object> reviewSummary(@PathVariable UUID id){var result=service.reviewSummary(id);
+        detailViewAudit.record("view_finance_statement_review_detail","finance_statement_document_reviews",id,null,null,"结算单复核");return result;}
     @GetMapping("/reviews/{id}/original-table")public com.uten.imp.features.finance.report.ReportTableResponse originalTable(@PathVariable UUID id,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size){return service.originalTable(id,page,size);}
     @PostMapping("/reviews/{id}/decision")public Map<String,Object> decision(@PathVariable UUID id,@RequestBody Decision input){return service.decideReview(id,input);}
     @PostMapping(value="/reviews/{id}/counterpart",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)

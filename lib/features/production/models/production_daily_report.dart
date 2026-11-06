@@ -54,6 +54,53 @@ double? _asDouble(dynamic v) {
 /// 「不良数」列的说明(编辑表与详情表共用)。
 const productionDailyReportDefectInfo = '只记录，不影响良品数和库存；用来算实产单耗和不良率';
 
+/// Explicit lightweight read contract; a null quantity is an unknown legacy
+/// value, while decimal text is kept intact rather than rewritten as binary.
+class ProductionDailyReportDraftClaim {
+  const ProductionDailyReportDraftClaim({
+    required this.executionSegmentId,
+    required this.qtyExact,
+    required this.actualSurplus,
+  });
+  final String? executionSegmentId;
+  final String? qtyExact;
+  final bool actualSurplus;
+  double? get qty => _asDouble(qtyExact);
+  factory ProductionDailyReportDraftClaim.fromJson(Map<String, dynamic> json) {
+    final segment = json['executionSegmentId'];
+    final qty = json['qty'];
+    final surplus = json['actualSurplus'];
+    if (!json.containsKey('executionSegmentId') ||
+        !json.containsKey('qty') ||
+        !json.containsKey('actualSurplus') ||
+        (segment != null && segment is! String) ||
+        surplus is! bool ||
+        (qty != null &&
+            (qty is! String || double.tryParse(qty)?.isFinite != true))) {
+      throw const FormatException('报工草稿摘要字段异常');
+    }
+    return ProductionDailyReportDraftClaim(
+      executionSegmentId: segment as String?,
+      qtyExact: qty as String?,
+      actualSurplus: surplus,
+    );
+  }
+}
+
+List<ProductionDailyReportDraftClaim>? _draftClaims(Map<String, dynamic> json) {
+  if (json['draftClaimsVersion'] is! int || json['draftClaimsVersion'] != 1) {
+    return null;
+  }
+  final rows = json['draftClaims'];
+  if (rows is! List) throw const FormatException('报工草稿摘要缺失');
+  return List.unmodifiable(
+    rows.map((row) {
+      if (row is! Map<String, dynamic>) throw const FormatException('报工草稿摘要异常');
+      return ProductionDailyReportDraftClaim.fromJson(row);
+    }),
+  );
+}
+
 /// 生产日报列表行（GET /production/daily-reports → DailyReportListItem）。
 class ProductionDailyReportListItem {
   const ProductionDailyReportListItem({
@@ -70,6 +117,10 @@ class ProductionDailyReportListItem {
     this.closed = false,
     this.canceled = false,
     this.legacyId,
+    this.draftClaimsVersion,
+    this.draftClaims,
+    this.rowVersion,
+    this.draftClaimsFingerprint,
   });
 
   final String id;
@@ -88,6 +139,14 @@ class ProductionDailyReportListItem {
   final bool closed;
   final bool canceled;
   final int? legacyId;
+  final int? draftClaimsVersion;
+
+  /// Exact server BIGINT text; JavaScript must not round a version proof.
+  final String? rowVersion;
+  final String? draftClaimsFingerprint;
+
+  /// null means explicitly unsupported/unknown; version1 must contain a real list.
+  final List<ProductionDailyReportDraftClaim>? draftClaims;
 
   factory ProductionDailyReportListItem.fromJson(Map<String, dynamic> json) =>
       ProductionDailyReportListItem(
@@ -104,6 +163,16 @@ class ProductionDailyReportListItem {
         closed: (json['closed'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         legacyId: _asInt(json['legacyId']),
+        draftClaimsVersion: json['draftClaimsVersion'] is int
+            ? json['draftClaimsVersion'] as int
+            : null,
+        draftClaims: _draftClaims(json),
+        rowVersion: json['rowVersion'] is String
+            ? json['rowVersion'] as String
+            : null,
+        draftClaimsFingerprint: json['draftClaimsFingerprint'] is String
+            ? json['draftClaimsFingerprint'] as String
+            : null,
       );
 }
 

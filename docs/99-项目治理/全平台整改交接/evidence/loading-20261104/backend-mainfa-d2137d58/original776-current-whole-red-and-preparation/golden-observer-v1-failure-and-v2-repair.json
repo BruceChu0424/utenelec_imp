@@ -1,0 +1,13 @@
+{
+  "atUtc": "2026-11-06T01:50:56.798039+00:00",
+  "originalObserverActualExitCode": 1,
+  "originalState": "golden-capture-original-v1-state.json",
+  "originalLog": "golden-capture.log",
+  "originalScriptSha256": "4b543528716a23580faf242ebf48a70c79b1dee2fc53479b0cb438bf27e3ce5a",
+  "originalLogSha256": "45d4d99f7e61250fa0266f20133c7056ea6981f84453ff959947c5b654a1a312",
+  "failure": "JSONDecodeError when jsonb_agg was SQL NULL on an owned ordinary fixture whose history was still empty during actual migration. No complete history accepted.",
+  "v2Change": "Skip only empty/NULL aggregate as incomplete; unchanged BEGIN READ ONLY/ROLLBACK, exact1013 count/head1074/all script-version-checksum-description guards and no TEMPLATE/company connection.",
+  "v2ScriptSha256": "54ef6097d28e11a92c4f680a60176b77f2727a4a2c629db91c3ccfd4361bc027",
+  "businessTestsAffected": false,
+  "frozen7411SourceChanged": false
+}

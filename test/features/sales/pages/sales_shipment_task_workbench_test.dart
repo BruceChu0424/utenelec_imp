@@ -1,4 +1,5 @@
 import '../../../support/table_read_status.dart';
+import '../../../support/pump_until.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -16,8 +17,6 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
-import 'package:uten_imp/features/sales/providers/sales_shipment_task_reads.dart';
-import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -27,45 +26,36 @@ import '../../../helpers/badge_summary_fixture.dart';
 
 late SharedPreferences _preferences;
 final _permissionStateProvider = StateProvider<Set<String>>((ref) => {});
-final _prepareShipmentProvider = FutureProvider.autoDispose<void>(
-  (ref) => prepareFinanceShipmentFirstPage(ref),
-  dependencies: [salesRepositoryProvider],
-);
-
-Widget _preparedShipmentPage(ValueNotifier<bool> show) =>
+Widget _deferredShipmentPage(ValueNotifier<bool> show) =>
     ValueListenableBuilder<bool>(
       valueListenable: show,
       builder: (_, visible, _) => visible
           ? const FinanceSalesShipmentAuditPage()
-          : Consumer(
-              builder: (_, ref, _) {
-                ref.watch(_prepareShipmentProvider);
-                return const SizedBox.shrink();
-              },
-            ),
+          : const SizedBox.shrink(),
     );
 
 void main() {
   testWidgets(
-    'finance parent preparation is adopted once; explicit refresh stays fresh',
+    'unselected finance entry sends no queue read; selected entry and explicit refresh stay fresh',
     (tester) async {
       final api = _ShipmentTaskApi();
       final show = ValueNotifier(false);
       addTearDown(show.dispose);
       await _pump(
         tester,
-        page: _preparedShipmentPage(show),
+        page: _deferredShipmentPage(show),
         permission: Perm.salesShipmentFinanceView,
         api: api,
         size: const Size(1440, 900),
       );
-      expect(api.shipmentQueries, hasLength(1));
+      expect(api.shipmentQueries, isEmpty);
       show.value = true;
       await tester.pumpAndSettle();
       expect(find.text('XS202608310001'), findsOneWidget);
       expect(api.shipmentQueries, hasLength(1));
       api.billNo = 'FRESH-AFTER-REFRESH';
-      await Future<void>.sync(
+      await _driveRefresh(
+        tester,
         tester
             .widget<UtenRefreshButton>(find.byType(UtenRefreshButton).first)
             .onRefresh,
@@ -77,46 +67,54 @@ void main() {
     },
   );
 
-  testWidgets('finance page adopts an in-flight parent preparation', (
-    tester,
-  ) async {
-    final pending = Completer<void>();
-    final api = _ShipmentTaskApi()..pendingRead = pending;
-    final show = ValueNotifier(false);
-    addTearDown(show.dispose);
-    await _pump(
-      tester,
-      page: _preparedShipmentPage(show),
-      permission: Perm.salesShipmentFinanceView,
-      api: api,
-      size: const Size(1440, 900),
-    );
-    expect(api.shipmentQueries, hasLength(1));
-    show.value = true;
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(api.shipmentQueries, hasLength(1));
-    pending.complete();
-    await tester.pumpAndSettle();
-    expect(find.text('XS202608310001'), findsOneWidget);
-    expect(api.shipmentQueries, hasLength(1));
-    expect(api.writes, isEmpty);
-  });
+  testWidgets(
+    'selected finance entry owns its in-flight read without hidden parent HTTP',
+    (tester) async {
+      final pending = Completer<void>();
+      final api = _ShipmentTaskApi()..pendingRead = pending;
+      final show = ValueNotifier(false);
+      addTearDown(show.dispose);
+      await _pump(
+        tester,
+        page: _deferredShipmentPage(show),
+        permission: Perm.salesShipmentFinanceView,
+        api: api,
+        size: const Size(1440, 900),
+      );
+      expect(api.shipmentQueries, isEmpty);
+      show.value = true;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(api.shipmentQueries, hasLength(1));
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('XS202608310001'), findsOneWidget);
+      expect(api.shipmentQueries, hasLength(1));
+      expect(api.writes, isEmpty);
+    },
+  );
 
   testWidgets(
-    'finance preparation does not read a queue without its view permission',
+    'finance entry does not read a queue without its view permission',
     (tester) async {
       final api = _ShipmentTaskApi();
       final show = ValueNotifier(false);
       addTearDown(show.dispose);
       await _pump(
         tester,
-        page: _preparedShipmentPage(show),
+        page: _deferredShipmentPage(show),
         permission: Perm.clientView,
         api: api,
         size: const Size(1440, 900),
       );
       expect(api.shipmentQueries, isEmpty);
+      show.value = true;
+      await tester.pumpAndSettle();
+      expect(
+        api.shipmentQueries,
+        isEmpty,
+        reason: 'selecting the page cannot bypass its real view permission',
+      );
       expect(api.writes, isEmpty);
     },
   );
@@ -174,7 +172,7 @@ void main() {
       final refresh = tester.widget<UtenRefreshButton>(
         find.byType(UtenRefreshButton).first,
       );
-      await Future<void>.sync(refresh.onRefresh);
+      await _driveRefresh(tester, refresh.onRefresh);
       await tester.pumpAndSettle();
       expect(find.text('XS202608310001'), findsNothing);
       await expectTableReadFailureDetails(tester, '服务器已撤销查看权');
@@ -427,6 +425,32 @@ void main() {
     );
     expect(find.text('暂无待财务审核的出货单'), findsOneWidget);
   });
+}
+
+Future<void> _driveRefresh(
+  WidgetTester tester,
+  FutureOr<void> Function() refresh,
+) async {
+  var finished = false;
+  Object? failure;
+  StackTrace? failureStack;
+  final pending = Future<void>.sync(refresh).then<void>(
+    (_) => finished = true,
+    onError: (Object error, StackTrace stack) {
+      failure = error;
+      failureStack = stack;
+      finished = true;
+    },
+  );
+  await pumpUntil(
+    tester,
+    () => finished,
+    reason:
+        'The actual refresh did not finish while the UI event loop advanced.',
+    timeout: const Duration(seconds: 5),
+  );
+  await pending;
+  if (failure != null) Error.throwWithStackTrace(failure!, failureStack!);
 }
 
 Future<void> _pump(

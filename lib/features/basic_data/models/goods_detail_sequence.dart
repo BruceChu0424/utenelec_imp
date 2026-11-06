@@ -1,7 +1,7 @@
 /// UUID order from the source table, frozen when opening a detail page.
 /// Codes/names are display values and never identify a record.
 class GoodsDetailSequence {
-  GoodsDetailSequence(Iterable<String> ids, {this.label = '当前页结果'})
+  GoodsDetailSequence(Iterable<String> ids, {this.label = '当前筛选结果'})
     : ids = List.unmodifiable(ids.where((id) => id.isNotEmpty).toSet());
 
   final List<String> ids;

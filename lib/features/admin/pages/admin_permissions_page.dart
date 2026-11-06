@@ -1,6 +1,7 @@
 import '../../../shared/history/record_history_action.dart';
 import 'dart:async';
 import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/history/record_history_area.dart';
 // AdminPermissionsPage - 账号支持与权限管理。
 //
@@ -14,6 +15,7 @@ import '../../../shared/history/record_history_area.dart';
 // 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -26,7 +28,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -270,7 +271,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   }
 }
 
-/// 按员工：账号列表（搜索/状态筛选/加载更多）+ 详情面板（主从布局）。
+/// 按员工：完整账号列表（搜索/状态筛选）+ 详情面板（主从布局）。
 class _EmployeePermTab extends ConsumerStatefulWidget {
   const _EmployeePermTab({
     super.key,
@@ -295,17 +296,16 @@ class _EmployeePermTab extends ConsumerStatefulWidget {
   final String? initialEmployeeId;
 }
 
-class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
+class _EmployeePermTabState extends ConsumerState<_EmployeePermTab>
+    with ReadViewActivityMixin<_EmployeePermTab> {
+  @override
+  Future<void> onReadViewResumed() => _reload();
   static const _statusKeys = ['active', 'locked', 'disabled'];
 
   String _search = '';
   String? _statusFilter; // null = 全部
   final List<AdminUserSummary> _items = [];
-  int _page = 1;
-  int _totalPages = 1;
   bool _loading = true;
-  bool _loadingMore = false;
-  bool _automaticLoadFailed = false;
   String? _error;
   int _requestEpoch = 0;
   int? _activeQueryEpoch;
@@ -344,7 +344,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     ++_requestEpoch;
     setState(() {
       _loading = true;
-      _loadingMore = false;
       _error = null;
     });
   }
@@ -387,25 +386,31 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     setState(() {
       _loading = true;
-      _loadingMore = false;
-      _automaticLoadFailed = false;
       _error = null;
     });
-    _page = 1;
     _activeQueryEpoch = requestEpoch;
     _activeQuery = _search;
+    bool current() =>
+        mounted &&
+        requestEpoch == _requestEpoch &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary;
     try {
-      final r = await PagedReadIntent.scopedRead(
-        () =>
-            mounted &&
-            requestEpoch == _requestEpoch &&
-            ref.read(sensitiveReadBoundaryProvider) == boundary,
-        () => ref
-            .read(adminRepositoryProvider)
-            .listUsers(
-              search: _search.isEmpty ? null : _search,
-              status: _statusFilter,
+      final r = await readViewActivity.runRead(
+        current,
+        () => PagedReadIntent.scopedRead(current, () {
+          final repository = ref.read(adminRepositoryProvider);
+          final search = _search, status = _statusFilter;
+          return loadCompletePagedResult<AdminUserSummary>(
+            isCurrent: current,
+            idOf: (user) => user.id,
+            loadPage: (page, size) => repository.listUsers(
+              page: page,
+              size: size,
+              search: search.isEmpty ? null : search,
+              status: status,
             ),
+          );
+        }),
       );
       if (!mounted ||
           requestEpoch != _requestEpoch ||
@@ -423,7 +428,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         _items
           ..clear()
           ..addAll(r.items);
-        _totalPages = r.totalPages;
         _loading = false;
         if (selected != null &&
             _selected?.id == selected.id &&
@@ -438,6 +442,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         unawaited(_refreshSelected(selected, requestEpoch, boundary));
       }
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           requestEpoch != _requestEpoch ||
           ref.read(sensitiveReadBoundaryProvider) != boundary) {
@@ -447,7 +452,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           requestEpoch != _requestEpoch ||
           ref.read(sensitiveReadBoundaryProvider) != boundary) {
@@ -503,67 +509,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       // An optional label refresh must not turn a valid search page into an error.
     } catch (_) {
       // The detail panel retains its own authoritative error/reload boundary.
-    }
-  }
-
-  Future<void> _loadMore({bool automatic = false}) async {
-    if (_loading ||
-        _loadingMore ||
-        _page >= _totalPages ||
-        (automatic && _automaticLoadFailed)) {
-      return;
-    }
-    final requestEpoch = _requestEpoch;
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
-    final nextPage = _page + 1;
-    setState(() {
-      _loadingMore = true;
-      _automaticLoadFailed = false;
-    });
-    _activeQueryEpoch = requestEpoch;
-    _activeQuery = _search;
-    try {
-      final r = await PagedReadIntent.scopedRead(
-        () =>
-            mounted &&
-            requestEpoch == _requestEpoch &&
-            ref.read(sensitiveReadBoundaryProvider) == boundary,
-        () => ref
-            .read(adminRepositoryProvider)
-            .listUsers(
-              page: nextPage,
-              search: _search.isEmpty ? null : _search,
-              status: _statusFilter,
-            ),
-      );
-      if (!mounted ||
-          requestEpoch != _requestEpoch ||
-          ref.read(sensitiveReadBoundaryProvider) != boundary) {
-        return;
-      }
-      setState(() {
-        _items.addAll(r.items);
-        _page = nextPage;
-        _totalPages = r.totalPages;
-        _loadingMore = false;
-      });
-    } catch (_) {
-      if (!mounted ||
-          requestEpoch != _requestEpoch ||
-          ref.read(sensitiveReadBoundaryProvider) != boundary) {
-        return;
-      }
-      setState(() {
-        _loadingMore = false;
-        // Preserve the visible manual action as the retry surface; repeated
-        // near-edge movement must not spin on the same failed page.
-        _automaticLoadFailed = true;
-      });
-    } finally {
-      if (_activeQueryEpoch == requestEpoch) {
-        _activeQueryEpoch = null;
-        _activeQuery = null;
-      }
     }
   }
 
@@ -740,7 +685,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ),
         UtenSectionHeader(
           title: '已选 ${_batchUsers.length} 名员工',
-          info: '选择会跨搜索和加载更多保留；“全选 / 取消全选”仅作用于当前已加载的可授权员工。',
+          info: '切换搜索会保留已选员工；“全选 / 取消全选”仅作用于当前查询的可授权员工。',
         ),
         Wrap(
           spacing: 8,
@@ -931,120 +876,86 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         message: '暂无匹配的员工账号',
       );
     }
-    final list = UtenLoadMoreBoundary(
-      enabled:
-          !_loading &&
-          !_loadingMore &&
-          _error == null &&
-          !_automaticLoadFailed &&
-          _page < _totalPages,
-      scope: (
-        ref.watch(sensitiveReadBoundaryProvider),
-        _search,
-        _statusFilter,
-        _requestEpoch,
+    final list = ListView.builder(
+      key: const ValueKey('admin-account-list-scroll'),
+      // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
+      padding: EdgeInsets.only(
+        bottom: UtenCapsuleNavScope.occlusionOf(context),
       ),
-      onLoadMore: () => _loadMore(automatic: true),
-      child: ListView.builder(
-        key: const ValueKey('admin-account-list-scroll'),
-        // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
-        padding: EdgeInsets.only(
-          bottom: UtenCapsuleNavScope.occlusionOf(context),
-        ),
-        itemCount: visible.length + 1,
-        itemBuilder: (context, i) {
-          if (i == visible.length) {
-            if (_page < _totalPages) {
-              return Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Center(
-                  child: _loadingMore
-                      ? const CircularProgressIndicator()
-                      : FilledButton.tonal(
-                          onPressed: _loadMore,
-                          child: const Text('加载更多'),
-                        ),
+      itemCount: visible.length,
+      itemBuilder: (context, i) {
+        final u = visible[i];
+        return UtenCard(
+          margin: const EdgeInsets.only(bottom: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          onTap: _batchBusy
+              ? null
+              : () => _multiSelection ? _toggleBatchUser(u) : _onUserTap(u),
+          // 选中卡片换全站选中底色 + 主色描边：否则右侧详情换了人，左列看
+          // 不出当前是谁（2026-10-27 用户口径「选中要有颜色变化」）。
+          selected: _multiSelection
+              ? _batchUsers.containsKey(u.id)
+              : u.id == _selected?.id,
+          child: Row(
+            children: [
+              if (_multiSelection)
+                Checkbox(
+                  key: ValueKey('permission-select-user-${u.id}'),
+                  value: _batchUsers.containsKey(u.id),
+                  visualDensity: VisualDensity.compact,
+                  onChanged: _canSelectUser(u) && !_batchBusy
+                      ? (_) => _toggleBatchUser(u)
+                      : null,
+                )
+              else
+                CircleAvatar(
+                  radius: 14,
+                  child: Text(
+                    (u.employeeName ?? u.loginAccount)
+                        .substring(0, 1)
+                        .toUpperCase(),
+                    style: const TextStyle(fontSize: 14),
+                  ),
                 ),
-              );
-            }
-            return const SizedBox(height: UtenSpacing.s24);
-          }
-          final u = visible[i];
-          return UtenCard(
-            margin: const EdgeInsets.only(bottom: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            onTap: _batchBusy
-                ? null
-                : () => _multiSelection ? _toggleBatchUser(u) : _onUserTap(u),
-            // 选中卡片换全站选中底色 + 主色描边：否则右侧详情换了人，左列看
-            // 不出当前是谁（2026-10-27 用户口径「选中要有颜色变化」）。
-            selected: _multiSelection
-                ? _batchUsers.containsKey(u.id)
-                : u.id == _selected?.id,
-            child: Row(
-              children: [
-                if (_multiSelection)
-                  Checkbox(
-                    key: ValueKey('permission-select-user-${u.id}'),
-                    value: _batchUsers.containsKey(u.id),
-                    visualDensity: VisualDensity.compact,
-                    onChanged: _canSelectUser(u) && !_batchBusy
-                        ? (_) => _toggleBatchUser(u)
-                        : null,
-                  )
-                else
-                  CircleAvatar(
-                    radius: 14,
-                    child: Text(
-                      (u.employeeName ?? u.loginAccount)
-                          .substring(0, 1)
-                          .toUpperCase(),
-                      style: const TextStyle(fontSize: 14),
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      formatEmployeeDisplayName(
+                        u.employeeName ?? u.loginAccount,
+                        u.employeeCode,
+                      ),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        formatEmployeeDisplayName(
-                          u.employeeName ?? u.loginAccount,
-                          u.employeeCode,
-                        ),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      [
+                        if (u.departmentName?.trim().isNotEmpty == true)
+                          u.departmentName!.trim(),
+                        u.loginAccount,
+                      ].join(' · '),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w400,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        [
-                          if (u.departmentName?.trim().isNotEmpty == true)
-                            u.departmentName!.trim(),
-                          u.loginAccount,
-                        ].join(' · '),
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w400,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                AccountStatusBadge(status: u.status),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              AccountStatusBadge(status: u.status),
+            ],
+          ),
+        );
+      },
     );
     if (!_loading && _error == null) return list;
     return Column(

@@ -16,6 +16,8 @@ import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/pages/finance_application_settings_page.dart';
@@ -37,7 +39,107 @@ final _settingsIdentity = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'settings-owner'),
 );
 
+class _SettingsReadEpoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+  void advance() => state++;
+}
+
 void main() {
+  for (final outcome in ['success', 'error', 'cancel']) {
+    testWidgets(
+      'epoch-only retirement releases pending settings $outcome and explicit retry reads current rows without writes',
+      (tester) async {
+        final old = Completer<Map<String, dynamic>>();
+        final api = _Api()
+          ..seedRole = true
+          ..settingsReadGate = old;
+        final harness = await _mount(
+          tester,
+          api,
+          MemoryFormDraftStorage(),
+          settle: false,
+          isolatedReadEpoch: true,
+        );
+        for (var frame = 0; frame < 20 && api.settingsReads == 0; frame++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(api.settingsReads, 1);
+        // Sending the request can precede the frame that presents its overlay.
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+        (harness.container.read(exportContextEpochProvider.notifier)
+                as _SettingsReadEpoch)
+            .advance();
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlayCard), findsNothing);
+        final refresh = find.widgetWithText(UtenButton, '刷新');
+        expect(tester.widget<UtenButton>(refresh).onPressed, isNotNull);
+        expect(find.text('匿名审批人员'), findsNothing);
+        expect(api.writes, isEmpty);
+        expect(api.commits, 0);
+        if (outcome == 'success') {
+          old.complete(api.snapshot());
+        } else {
+          old.completeError(
+            outcome == 'cancel'
+                ? const UiWorkCancelled()
+                : ApiException('NETWORK', '旧读取断网'),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlayCard), findsNothing);
+        expect(find.text('匿名审批人员'), findsNothing);
+        api.settingsReadGate = null;
+        api._roles = [
+          {...api.roles.first, 'employeeName': '当前重新读取人员'},
+        ];
+        await tester.tap(refresh);
+        await tester.pumpAndSettle();
+        expect(find.text('当前重新读取人员'), findsOneWidget);
+        expect(api.settingsReads, 2);
+        expect(api.writes, isEmpty);
+        expect(api.cancellations, isEmpty);
+        expect(harness.container.read(formDraftsProvider), isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        harness.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'one failed settings prerequisite ends waiting while another is held, retains accepted summary, and retries without old publication',
+    (tester) async {
+      final api = _Api()..seedRole = true;
+      final harness = await _mount(tester, api, MemoryFormDraftStorage());
+      expect(find.text('匿名审批人员'), findsOneWidget);
+      final oldReferences = Completer<Map<String, dynamic>>();
+      api.referencesReadGate = oldReferences;
+      api.settingsReadFailure = ApiException('NETWORK', '设置读取断网');
+      await tester.tap(find.widgetWithText(UtenButton, '刷新'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlayCard), findsNothing);
+      expect(find.text('匿名审批人员'), findsOneWidget);
+      expect(oldReferences.isCompleted, isFalse);
+      expect(api.writes, isEmpty);
+      api.settingsReadFailure = null;
+      api.referencesReadGate = null;
+      api._roles = [
+        {...api.roles.first, 'employeeName': '重试后当前人员'},
+      ];
+      await tester.tap(find.widgetWithText(UtenButton, '刷新'));
+      await tester.pumpAndSettle();
+      expect(find.text('重试后当前人员'), findsOneWidget);
+      oldReferences.complete(api.snapshot());
+      await tester.pumpAndSettle();
+      expect(find.text('重试后当前人员'), findsOneWidget);
+      expect(api.writes, isEmpty);
+      expect(api.commits, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      harness.dispose();
+    },
+  );
   for (final action in ['settings', 'role', 'remove']) {
     testWidgets(
       '$action original command survives hard reopen and lost cancellation, then requires current CAS and explicit new save',
@@ -508,6 +610,8 @@ Future<_Harness> _mount(
   double width = 1280,
   double scale = 1,
   bool? capture,
+  bool settle = true,
+  bool isolatedReadEpoch = false,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
@@ -516,6 +620,8 @@ Future<_Harness> _mount(
   final prefs = await SharedPreferences.getInstance();
   final container = ProviderContainer(
     overrides: [
+      if (isolatedReadEpoch)
+        exportContextEpochProvider.overrideWith(_SettingsReadEpoch.new),
       apiClientProvider.overrideWithValue(api),
       apiBaseUrlProvider.overrideWithValue('https://settings.test/api'),
       sessionProvider.overrideWith(_Session.new),
@@ -562,7 +668,7 @@ Future<_Harness> _mount(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
   return _Harness(container, router, boundary);
 }
 
@@ -577,6 +683,9 @@ class _Api extends ApiClient {
   bool seedRole = false, unwrittenFirst = false, loseCancelFirst = false;
   int version = 7, commits = 0;
   Completer<void>? gate, cancelGate;
+  Completer<Map<String, dynamic>>? settingsReadGate, referencesReadGate;
+  Object? settingsReadFailure;
+  int settingsReads = 0;
   final writes = <Map<String, dynamic>>[];
   final writeMethods = <(String, String)>[];
   final cancellations = <Map<String, dynamic>>[];
@@ -614,6 +723,17 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/settings')) {
+      settingsReads++;
+      final failure = settingsReadFailure;
+      if (failure != null) throw failure;
+      final pending = settingsReadGate;
+      if (pending != null) return pending.future;
+    }
+    if (path.endsWith('/references')) {
+      final pending = referencesReadGate;
+      if (pending != null) return pending.future;
+    }
     if (path.contains('/operations/')) {
       final receipt = receipts[path.split('/').last];
       if (!receiptFound || receipt == null) return {'found': false};

@@ -1,0 +1,74 @@
+{
+  "head": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "mainNotModified": true,
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+      "resolution": "Preserved complete latest-main delivery columns/CTEs/conversion and changed only verified full physical row classifier expression inside conflict.",
+      "sha256": "ff7714803501f88e76e3e2a34be143d35c99b6a65e532e9d8713097a7a60ac69",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 88
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRootSupplyService.java",
+      "resolution": "Preserved complete latest-main delivery columns/CTEs/conversion and changed only verified full physical row classifier expression inside conflict.",
+      "sha256": "eb7f9f4f60d898b32a1f2c962751cf52414dc9d8d9e17d05b4b63536d48486a9",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 11
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+      "resolution": "Preserved complete latest-main delivery columns/CTEs/conversion and changed only verified full physical row classifier expression inside conflict.",
+      "sha256": "9a769d3ee7919e2d7e9603d1cf739af5e554cd3533b6aec62d220fb98ca49876",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 8
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "resolution": "Both UUID columns already explicitly declared by CREATE TABLE. Removed duplicate ALTERs; retained all latest-main fixture fields and route assertions.",
+      "sha256": "6019dc7e556f6f7f34ba3c4dc71b97df8cf653ab8af6f82c5d93060f477a98d6"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java",
+      "resolution": "Single latest-main evidence mock/injection; retained stronger actual raw digits/KG/new owner+row evidence assertions, no unused second mock.",
+      "sha256": "767160d14d5e7809493aeddd9705efaa80a4acf82d94baedf976f830a65f50ba"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "resolution": "Automatic merge semantic audit: latest-main entire body plus only verified full-physical-row classifier substitutions.",
+      "replacementCount": 25,
+      "equalsExpectedLatestMainPlusOnlyReadOptimization": true,
+      "sha256": "3bd39e8a26d3453ed791224795f4c9a2f9fbcff83b1ec3cc64ccee6656ca472e",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 25
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java",
+      "resolution": "Automatic merge semantic audit: latest-main entire body plus only verified full-physical-row classifier substitutions.",
+      "replacementCount": 6,
+      "equalsExpectedLatestMainPlusOnlyReadOptimization": true,
+      "sha256": "9b237bbc72a06d7e77d64ed903e7f1570d6332921db38f372fc15d72ba2800c0",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 6
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderRevisionService.java",
+      "resolution": "Automatic merge semantic audit: latest-main entire body plus only verified full-physical-row classifier substitutions.",
+      "replacementCount": 2,
+      "equalsExpectedLatestMainPlusOnlyReadOptimization": true,
+      "sha256": "b08b49c0853215eaf785a066c287b3e92e08845ab870976a5c8a713dc8c0c3b2",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 2
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java",
+      "resolution": "Automatic merge semantic audit: latest-main entire body plus only verified full-physical-row classifier substitutions.",
+      "replacementCount": 1,
+      "equalsExpectedLatestMainPlusOnlyReadOptimization": false,
+      "sha256": "62b8413d968d28235bd4101c3b35056111e773125c62053445f2fbecb6b9b9d7",
+      "additionalRetainedTaskSemantic": "Authorized finance completed-history read-only stage filter from loading task; existing overall access predicate and all new delivery behavior preserved.",
+      "verifiedFullFilePreservesLatestMainBeyondDeclaredTaskDelta": true,
+      "fullPhysicalClassifierChanges": 1
+    }
+  ]
+}

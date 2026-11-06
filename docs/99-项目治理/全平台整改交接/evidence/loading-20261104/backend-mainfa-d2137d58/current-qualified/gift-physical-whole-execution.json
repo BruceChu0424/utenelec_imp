@@ -1,0 +1,27 @@
+{
+  "label": "gift-physical-whole",
+  "state": "completed",
+  "startedAtUtc": "2026-11-06T02:27:02.1672930Z",
+  "completedAtUtc": "2026-11-06T02:31:15.4897979Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29",
+  "upstreamMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-fa-final",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.exportFlywayChecksums=true",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-fa-gift-qualified/gift-physical-whole-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-fa-gift-qualified/gift-physical-whole-measurements",
+    "-Dtest=GiftPhysicalConservationEndToEndTest",
+    "surefire:test"
+  ],
+  "selection": "GiftPhysicalConservationEndToEndTest",
+  "wrapperPid": 34148,
+  "log": "build\\loading-validation\\main-fa-gift-qualified\\gift-physical-whole.log",
+  "environment": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_RUN_DB_TESTS": "true"
+  }
+}

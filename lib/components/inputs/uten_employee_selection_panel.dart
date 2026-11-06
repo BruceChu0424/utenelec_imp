@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../shared/paging/paged_read_intent.dart';
+import '../../shared/paging/read_view_activity.dart';
+import '../../shared/paging/complete_paged_snapshot.dart';
+import '../../shared/models/paged_result.dart';
 import '../feedback/uten_busy_overlay.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../shared/models/department_node.dart';
@@ -152,7 +155,11 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
 }
 
 class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
-    with EmployeePickerAccessState<UtenEmployeeSelectionPanel> {
+    with
+        EmployeePickerAccessState<UtenEmployeeSelectionPanel>,
+        ReadViewActivityMixin<UtenEmployeeSelectionPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   static const _allDepartments = UtenEmployeeDepartmentDirectory.allDepartments;
   final _searchController = TextEditingController();
   late final Map<String, UtenEmployeePickerItem> _selected;
@@ -165,9 +172,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
   String _department = _allDepartments;
   String _query = '';
   bool _loading = true;
-  bool _loadingMore = false;
   bool _actionBusy = false;
-  int _page = 0, _totalPages = 0;
   Object? _error;
   Object? _moreError;
   int? _activeRequest;
@@ -349,21 +354,15 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
     });
   }
 
-  Future<void> _load({bool more = false}) async {
+  Future<void> _load() async {
     if (_invalidated) return;
-    if (!more && _isQueryPending(_query)) return;
-    if (more &&
-        (_loading ||
-            _loadingMore ||
-            _moreError != null ||
-            _page >= _totalPages)) {
-      return;
-    }
+    if (_isQueryPending(_query)) return;
     final ticket = pickerAccess.capture();
     final request = ++_request;
     final query = _query;
     final department = _department;
-    final page = more ? _page + 1 : 1;
+    final organization = List<DepartmentNode>.unmodifiable(_organization);
+    List<UtenEmployeePickerItem>? acceptedPrefix;
     _activeRequest = request;
     _activeQuery = query;
     _activeDepartment = department;
@@ -375,49 +374,65 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         query == _query &&
         department == _department;
     setState(() {
-      _loading = !more;
-      _loadingMore = more;
+      _loading = true;
       _error = null;
       _moreError = null;
     });
     try {
       final paged = widget.pagedLoader;
-      final response = await PagedReadIntent.scopedRead(current, () async {
-        if (paged != null) {
-          return paged(
-            UtenEmployeePickerQuery(
-              keyword: query.isEmpty ? null : query,
-              page: page,
-              organization: _organization.isEmpty ? null : _organization,
-              departmentScopeKey: department,
-              departmentId: department.startsWith('department:')
-                  ? department.substring('department:'.length)
-                  : null,
-            ),
+      final response = await readViewActivity.runRead(
+        current,
+        () => PagedReadIntent.scopedRead(current, () async {
+          if (paged != null) {
+            final complete =
+                await loadCompletePagedResult<UtenEmployeePickerItem>(
+                  isCurrent: current,
+                  idOf: (item) => item.id,
+                  allowUnknownTotal: true,
+                  onBatch: (rows, _, _) => acceptedPrefix = rows,
+                  loadPage: (page, size) async {
+                    final response = await paged(
+                      UtenEmployeePickerQuery(
+                        keyword: query.isEmpty ? null : query,
+                        page: page,
+                        organization: organization.isEmpty
+                            ? null
+                            : organization,
+                        departmentScopeKey: department,
+                        departmentId: department.startsWith('department:')
+                            ? department.substring('department:'.length)
+                            : null,
+                      ),
+                    );
+                    return PagedResult(
+                      items: response.items,
+                      page: response.page,
+                      size: size,
+                      total: response.total ?? -1,
+                      totalPages: response.totalPages,
+                    );
+                  },
+                );
+            return UtenEmployeePickerPage(
+              items: complete.items,
+              page: 1,
+              totalPages: complete.totalPages,
+              total: complete.total,
+            );
+          }
+          return UtenEmployeePickerPage(
+            items: await widget.loader!(query.isEmpty ? null : query),
+            page: 1,
+            totalPages: 1,
           );
-        }
-        return UtenEmployeePickerPage(
-          items: await widget.loader!(query.isEmpty ? null : query),
-          page: 1,
-          totalPages: 1,
-        );
-      });
+        }),
+      );
       if (!current()) return;
-      if (response.page != page ||
-          response.totalPages < 0 ||
-          (paged != null &&
-              ((response.items.isEmpty && response.totalPages > 0) ||
-                  (response.items.isNotEmpty && response.totalPages < page) ||
-                  (page > 1 && response.totalPages < page)))) {
-        throw ApiException('INVALID_PAGINATION', '人员候选分页已变化，请重新读取');
-      }
       final result = response.items;
       final directory = _directory;
       final byId = <String, UtenEmployeePickerItem>{
         // A department-name search must also find its already-authorized
         // people when the business endpoint searches only names/codes.
-        if (more)
-          for (final item in _items) item.id: item,
         if (query.isNotEmpty && paged == null)
           for (final item in _baseline)
             if (_matchesDepartment(item, query, directory)) item.id: item,
@@ -451,15 +466,13 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         }
         _items = candidates;
         if (query.isEmpty && paged == null) _baseline = _items;
-        _page = response.page;
-        _totalPages = response.totalPages;
         for (final item in _items) {
           if (_selected.containsKey(item.id)) _selected[item.id] = item;
         }
         _loading = false;
-        _loadingMore = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           !ticket.isCurrent ||
           _invalidated ||
@@ -479,14 +492,14 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
                   'SESSION_CHANGED',
                   'SESSION_STATE_UNAVAILABLE',
                 }.contains(error.code));
-        if (more && !denied) {
+        if (!denied && acceptedPrefix?.isNotEmpty == true) {
+          _items = acceptedPrefix!;
           _moreError = error;
         } else {
           _error = error;
           _moreError = null;
         }
         _loading = false;
-        _loadingMore = false;
       });
     } finally {
       if (_activeRequest == request) {
@@ -504,11 +517,6 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
 
   Future<void> _retryLoad({bool organization = false}) async {
     if (_actionBusy) return;
-    final invalidPage =
-        _moreError is FormatException ||
-        (_moreError is ApiException &&
-            (_moreError! as ApiException).code == 'INVALID_PAGINATION');
-    final continuePage = _moreError != null && !invalidPage;
     setState(() {
       _actionBusy = true;
       if (!organization) _moreError = null;
@@ -517,7 +525,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       if (organization) {
         await _loadOrganization();
       } else {
-        await _load(more: continuePage);
+        await _load();
       }
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -820,19 +828,12 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
           ),
       ],
       items: items,
-      loadingMore: _loadingMore,
       refreshError: _moreError == null
           ? null
           : _moreError is ApiException
           ? (_moreError! as ApiException).message
-          : '人员续页加载失败，请重试',
+          : '人员列表未读取完整，请重试',
       onRetry: _retryLoad,
-      onLoadMore:
-          widget.pagedLoader != null &&
-              _moreError == null &&
-              _page < _totalPages
-          ? () => _load(more: true)
-          : null,
       rowKeyOf: (item) => item.id,
       rowWidgetKeyOf: (item) => ValueKey('employee-picker-item-${item.id}'),
       rowForegroundColor: (item) => item.enabled ? null : theme.disabledColor,

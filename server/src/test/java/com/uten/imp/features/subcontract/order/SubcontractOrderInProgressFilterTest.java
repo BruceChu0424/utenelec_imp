@@ -46,16 +46,9 @@ class SubcontractOrderInProgressFilterTest {
         verifyInProgress(Set.of(UUID.randomUUID()), Set.of(UUID.randomUUID()));
     }
 
-    @Test
-    void noFinanceCasesStillIncludesExecutingOrdersWithoutAnEmptyInClause() {
-        verifyInProgress(Set.of(), Set.of());
-    }
-
     private void verifyInProgress(Set<UUID> pending, Set<UUID> rejected) {
         when(repository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
-        when(approvals.pendingOrderIds("SUBCONTRACT")).thenReturn(pending);
-        when(approvals.rejectedOrderIds("SUBCONTRACT")).thenReturn(rejected);
         when(approvals.latestForOrders(eq("SUBCONTRACT"), any())).thenReturn(Map.of());
         var scope = new OwnerVisibility.OwnerScope(false, Set.of(UUID.randomUUID()));
         when(access.scope()).thenReturn(scope);
@@ -97,23 +90,25 @@ class SubcontractOrderInProgressFilterTest {
         when(cb.equal(status, (short) 1)).thenReturn(approved);
         when(cb.isFalse(closed)).thenReturn(unclosed);
         when(cb.and(approved, unclosed)).thenReturn(executing);
-        Set<UUID> financeIds = new java.util.HashSet<>(pending);
-        financeIds.addAll(rejected);
-        if (financeIds.isEmpty()) {
-            when(cb.disjunction()).thenReturn(finance);
-        } else {
-            Predicate financeReviewable = mock(Predicate.class);
-            Predicate belongsToFinance = mock(Predicate.class);
-            when(status.in((short) 0, (short) 1)).thenReturn(financeReviewable);
-            when(id.in(financeIds)).thenReturn(belongsToFinance);
-            when(cb.and(financeReviewable, belongsToFinance)).thenReturn(finance);
-        }
+        Predicate financeReviewable = mock(Predicate.class);
+        Predicate pendingCase = mock(Predicate.class), rejectedCase = mock(Predicate.class);
+        Predicate belongsToFinance = mock(Predicate.class);
+        when(status.in((short) 0, (short) 1)).thenReturn(financeReviewable);
+        when(cb.or(pendingCase,rejectedCase)).thenReturn(belongsToFinance);
+        when(cb.and(financeReviewable,belongsToFinance)).thenReturn(finance);
         when(cb.or(finance, executing)).thenReturn(progress);
-
-        specification.getValue().toPredicate(root, null, cb);
+        var query=mock(jakarta.persistence.criteria.CriteriaQuery.class);
+        try (var qualifiers=org.mockito.Mockito.mockStatic(
+                com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.class)) {
+            qualifiers.when(()->com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.pending(
+                    root.get("id"),query,cb,"SUBCONTRACT")).thenReturn(pendingCase);
+            qualifiers.when(()->com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.latestRejected(
+                    root.get("id"),query,cb,"SUBCONTRACT")).thenReturn(rejectedCase);
+            specification.getValue().toPredicate(root, query, cb);
+        }
         verify(cb).or(finance, executing);
         verify(cb).and(new Predicate[]{nativeOnly, active, readable, progress});
-        if (financeIds.isEmpty()) verify(id, never()).in(org.mockito.ArgumentMatchers.anyCollection());
-        else verify(status).in((short) 0, (short) 1);
+        verify(id, never()).in(org.mockito.ArgumentMatchers.anyCollection());
+        verify(status).in((short) 0, (short) 1);
     }
 }

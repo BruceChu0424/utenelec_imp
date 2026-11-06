@@ -43,6 +43,28 @@ final class WarehouseOutboundTaskCenterSql {
 
     record Plan(String cte, Map<String, Object> parameters, String orderBy) {
         String countSql() { return cte + " SELECT COUNT(*) FROM filtered"; }
+        /** One source evaluation for exact count and both independently filtered facets. */
+        String metadataSql() {
+            return cte + """
+                 , metadata_context AS MATERIALIZED (
+                   SELECT status,bill_no FROM physical_rows WHERE context_match
+                 )
+                 SELECT 'TOTAL'::text AS bucket,NULL::text AS value,COUNT(*) AS task_count FROM metadata_context
+                 WHERE (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
+                   AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
+                 UNION ALL
+                 SELECT 'STATUS',status,COUNT(*) FROM metadata_context
+                 WHERE (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
+                 GROUP BY status
+                 UNION ALL
+                 SELECT 'BILL',bill_no,task_count FROM (
+                   SELECT bill_no,COUNT(*) AS task_count FROM metadata_context
+                   WHERE (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
+                     AND NULLIF(bill_no,'') IS NOT NULL
+                   GROUP BY bill_no ORDER BY bill_no LIMIT 500
+                 ) bills ORDER BY bucket,value
+                 """;
+        }
         String rowsSql() {
             return cte + " " + projection() + fromFiltered() + orderBy + " LIMIT :limit OFFSET :offset";
         }
@@ -230,8 +252,8 @@ final class WarehouseOutboundTaskCenterSql {
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                        COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
-                FROM (SELECT * FROM sales_shipments archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_shipments',archive_origin.id)) s
-                LEFT JOIN (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_shipment_items',archive_origin.id)) item ON item.shipment_id=s.id AND NOT item.is_deleted
+                FROM (SELECT * FROM sales_shipments archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipments',to_jsonb(archive_origin))) s
+                LEFT JOIN (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipment_items',to_jsonb(archive_origin))) item ON item.shipment_id=s.id AND NOT item.is_deleted
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -271,14 +293,14 @@ final class WarehouseOutboundTaskCenterSql {
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                        COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
-                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue
+                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
                 LEFT JOIN LATERAL (
                   SELECT COUNT(plan_item.id)::int AS plan_line_count
-                  FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) item
+                  FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item
                   LEFT JOIN subcontract_material_plan_items plan_item ON plan_item.id=item.plan_item_id
                   WHERE item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
                 ) lines ON TRUE
-                LEFT JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) item ON item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
+                LEFT JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item ON item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -332,8 +354,8 @@ final class WarehouseOutboundTaskCenterSql {
                 + "COALESCE(item.id::text,'empty'),item.id,item.line_no,COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),"
                 + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight\n"
                 + """
-                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) d
-                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item ON item.doc_id=d.id AND NOT item.is_deleted
+                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) d
+                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.doc_id=d.id AND NOT item.is_deleted
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -382,7 +404,7 @@ final class WarehouseOutboundTaskCenterSql {
                        material.specification,material.color_name,material.unit_name,material.quantity,NULL::numeric
                 FROM production_material_discovery_requests request
                 JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id
                 LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 LEFT JOIN employees worker ON worker.id=segment.responsible_employee_id
                 LEFT JOIN LATERAL (
@@ -414,9 +436,9 @@ final class WarehouseOutboundTaskCenterSql {
                   SELECT 1 FROM production_material_discovery_lines linked
                   JOIN production_planning_package_document_items mapping
                     ON mapping.demand_id=linked.demand_id AND mapping.document_type='DRAW'
-                  JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
+                  JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id
                     AND document.doc_type='DRAW' AND NOT document.is_deleted
-                  JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) document_item ON document_item.id=mapping.document_item_id
+                  JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) document_item ON document_item.id=mapping.document_item_id
                     AND document_item.doc_id=document.id AND NOT document_item.is_deleted
                   WHERE linked.request_id=request.id
                     AND (material.item_id IS NULL OR linked.id=material.item_id)

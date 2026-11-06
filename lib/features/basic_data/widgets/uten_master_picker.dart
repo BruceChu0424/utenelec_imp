@@ -1,3 +1,7 @@
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'dart:async';
 import '../../../shared/paging/paged_read_intent.dart';
@@ -142,6 +146,9 @@ class _MasterPickerSheet<TItem> extends ConsumerStatefulWidget {
 class _MasterPickerSheetState<TItem>
     extends ConsumerState<_MasterPickerSheet<TItem>>
     with ScopedPagedReadViewMixin<_MasterPickerSheet<TItem>> {
+  @override
+  Future<void> onReadViewResumed() => _reloadCurrentPage();
+
   @override
   void scopedPagedReadOwnerChanged() {
     _retireReader();
@@ -317,6 +324,19 @@ class _MasterPickerSheetState<TItem>
   }
 
   Future<void> _reloadCategory({bool useCache = false}) async {
+    final query = freezePagedReadQuery(_pagingQuery());
+    try {
+      await readViewActivity.runRead(
+        () => _currentReader && samePagedReadQuery(query, _pagingQuery()),
+        () => _reloadCategoryRows(useCache: useCache),
+        slot: '_reloadCategory-pipeline',
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error)) rethrow;
+    }
+  }
+
+  Future<void> _reloadCategoryRows({bool useCache = false}) async {
     if (!_currentReader) return;
     final categoryId = _selectedCategoryId;
     final requestVersion = ++_requestVersion;
@@ -351,12 +371,22 @@ class _MasterPickerSheetState<TItem>
       if (!_acceptScope(r.readScopeVersion)) return;
       setState(() {
         _items = r.items;
+        if (_picked != null) {
+          _picked =
+              r.items
+                  .where(
+                    (row) => _spec.idOf(row) == _spec.idOf(_picked as TItem),
+                  )
+                  .firstOrNull ??
+              _picked;
+        }
         _page = r.page;
         _confirmedPage = r.page;
         _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '加载${_spec.noun}失败，请稍后重试';
@@ -396,10 +426,16 @@ class _MasterPickerSheetState<TItem>
     int? totalCategories, totalMatches;
     String? contextScope;
     while (page <= totalPages) {
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        throw const UiWorkCancelled();
+      }
       final context = await PagedReadIntent.scopedRead(
         () => !_stale(version, query, requestedPage),
         () => _spec.searchContext(query, page),
       );
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        throw const UiWorkCancelled();
+      }
       if (_stale(version, query, requestedPage)) {
         throw StateError('选择器读取已过期');
       }
@@ -428,6 +464,19 @@ class _MasterPickerSheetState<TItem>
   }
 
   Future<void> _reloadGlobalSearch({bool useCache = false}) async {
+    final query = freezePagedReadQuery(_pagingQuery());
+    try {
+      await readViewActivity.runRead(
+        () => _currentReader && samePagedReadQuery(query, _pagingQuery()),
+        () => _reloadGlobalSearchRows(useCache: useCache),
+        slot: '_reloadGlobalSearch-pipeline',
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error)) rethrow;
+    }
+  }
+
+  Future<void> _reloadGlobalSearchRows({bool useCache = false}) async {
     if (!_currentReader) return;
     final query = _globalQuery;
     final requestedPage = _page;
@@ -480,6 +529,15 @@ class _MasterPickerSheetState<TItem>
         _page = result.page;
         _confirmedPage = result.page;
         _items = result.items;
+        if (_picked != null) {
+          _picked =
+              result.items
+                  .where(
+                    (row) => _spec.idOf(row) == _spec.idOf(_picked as TItem),
+                  )
+                  .firstOrNull ??
+              _picked;
+        }
         _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
@@ -489,6 +547,11 @@ class _MasterPickerSheetState<TItem>
         );
       }
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
+      if (pagedReadAccessDenied(caughtError)) {
+        _retireReader();
+        return;
+      }
       if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '搜索${_spec.noun}失败，请稍后重试';
@@ -518,7 +581,10 @@ class _MasterPickerSheetState<TItem>
         requestedPage,
         result.readScopeVersion,
       );
-      if (_stale(version, query, requestedPage)) return;
+      if (_stale(version, query, requestedPage) ||
+          !(PagedReadIntent.currentActivity?.call() ?? true)) {
+        return;
+      }
       final resolution = resolveHierarchySearch(
         roots: widget.tree,
         query: query,
@@ -533,6 +599,11 @@ class _MasterPickerSheetState<TItem>
         _searchLocationError = null;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
+      if (pagedReadAccessDenied(error)) {
+        _retireReader();
+        return;
+      }
       if (_stale(version, query, requestedPage)) return;
       setState(() {
         _searchLocationLoading = false;
@@ -659,9 +730,17 @@ class _MasterPickerSheetState<TItem>
           pagination: UtenPickerPageControls(controller: _pickerRows),
           selectedCount: picked == null ? 0 : 1,
           selectedLabel: picked == null ? null : _spec.labelOf(picked),
-          onConfirm: () {
-            if (_currentReader) Navigator.of(context).pop(_picked);
-          },
+          onConfirm: _loading || _error != null
+              ? null
+              : () {
+                  if (!_currentReader ||
+                      _loading ||
+                      _error != null ||
+                      _picked == null) {
+                    return;
+                  }
+                  Navigator.of(context).pop(_picked);
+                },
         ),
       ],
     );

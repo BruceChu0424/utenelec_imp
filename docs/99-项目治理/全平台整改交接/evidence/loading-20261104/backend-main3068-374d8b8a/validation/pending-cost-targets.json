@@ -1,0 +1,7 @@
+{
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "label": "final-extra",
+  "classes": ["CostDocumentExportTest", "GoodsCostDocumentMapperTest", "ShelfLabelQueryPostgresTest", "SalesShipmentFinanceReleaseRateEndToEndTest"],
+  "reason": "Coverage audit: actual Java consumer of the new shared cost-identities contract and both Excel/PDF exact fee/BOM selections; ShelfLabelSql new rack/level/status predicates need real physical5001goods/warehouse/color/disabled/selection/complete-page SQL coverage beyond mock/string checks; Main BomDelivery/SalesShipmentDelivery/SalesDeliveryOrderClaim guards changed, so the typed BigDecimal shipment release/receivable E2E4 needs a current native run despite unchanged typed fixture. Existing compiled current tests only; source remains unchanged.",
+  "execution": "After serialQueue6807 naturally finishes, run this four-class whole selection on the same frozen target, then add this group to required-targets and re-seal the full65-class union. Preserve the initial61-class acceptance before replacement. Do not archive/finalCAS until this closes."
+}

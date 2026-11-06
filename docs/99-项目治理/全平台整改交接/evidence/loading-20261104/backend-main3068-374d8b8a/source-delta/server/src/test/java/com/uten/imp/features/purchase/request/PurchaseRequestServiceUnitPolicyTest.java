@@ -1,0 +1,293 @@
+package com.uten.imp.features.purchase.request;
+
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
+import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
+import com.uten.imp.features.purchase.common.PurchaseRequestQuantities;
+import com.uten.imp.features.purchase.request.dto.RequestItemLine;
+import com.uten.imp.features.purchase.request.dto.RequestSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.ImportedDocumentFixture;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.Query;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class PurchaseRequestServiceUnitPolicyTest {
+
+    @Test
+    void createPersistsTheUnitResolvedByTheSharedPolicy() {
+        Fixture fixture = new Fixture();
+        UUID goodsId = UUID.randomUUID();
+        UUID baseUnitId = UUID.randomUUID();
+        RequestItemLine line = new RequestItemLine();
+        line.setGoodsId(goodsId);
+        line.setQty(new BigDecimal("12"));
+        RequestSaveRequest request = new RequestSaveRequest();
+        request.setBillDate(LocalDate.of(2026, 7, 31));
+        request.setItems(List.of(line));
+        when(fixture.docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST))
+                .thenReturn("SQ260731001");
+        when(fixture.currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        when(fixture.lineUnitPolicy.normalizeAndValidate(goodsId, null, null, 1))
+                .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
+                        baseUnitId, BigDecimal.ONE));
+        stubMasterSnapshot(fixture.em, goodsId);
+        when(fixture.requestRepo.save(any(PurchaseRequest.class))).thenAnswer(invocation ->
+                ImportedDocumentFixture.forService(fixture.service)
+                        .document("purchase_requests", invocation.getArgument(0, PurchaseRequest.class)));
+        when(fixture.itemRepo.save(any(PurchaseRequestItem.class))).thenAnswer(invocation ->
+                ImportedDocumentFixture.forService(fixture.service)
+                        .document("purchase_request_items", invocation.getArgument(0, PurchaseRequestItem.class)));
+
+        fixture.service.create(request);
+
+        ArgumentCaptor<PurchaseRequestItem> itemCaptor =
+                ArgumentCaptor.forClass(PurchaseRequestItem.class);
+        verify(fixture.itemRepo).save(itemCaptor.capture());
+        assertEquals(baseUnitId, itemCaptor.getValue().getUnitId());
+        assertEquals(
+                0,
+                BigDecimal.ONE.compareTo(itemCaptor.getValue().getUnitRate()));
+        assertEquals("G-TEST", itemCaptor.getValue().getGoodsCodeSnapshot());
+        assertEquals("测试货品", itemCaptor.getValue().getGoodsNameSnapshot());
+        assertEquals("MASTER_AT_SAVE", itemCaptor.getValue().getGoodsSnapshotSource());
+        assertNull(itemCaptor.getValue().getGoodsSnapshotLockedAt());
+    }
+
+    @Test
+    void approveNormalizesPersistedDraftItemsBeforeChangingStatus() {
+        Fixture fixture = new Fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID baseUnitId = UUID.randomUUID();
+        PurchaseRequest request = new PurchaseRequest();
+        request.setId(requestId);
+        request.setStatus((short) 0);
+        PurchaseRequestItem item = new PurchaseRequestItem();
+        item.setRequestId(requestId);
+        item.setLineNo(1);
+        item.setGoodsId(goodsId);
+        item.setQty(BigDecimal.ONE);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
+        when(fixture.em.find(
+                PurchaseRequest.class,
+                requestId,
+                LockModeType.PESSIMISTIC_WRITE)).thenReturn(request);
+        when(fixture.requestRepo.findById(requestId))
+                .thenReturn(java.util.Optional.of(request));
+        when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
+                .thenReturn(List.of(item));
+
+        when(fixture.lineUnitPolicy.normalizeAndValidate(goodsId, null, null, 1))
+                .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
+                        baseUnitId, BigDecimal.ONE));
+        when(fixture.currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        stubMasterSnapshot(fixture.em, goodsId);
+
+        fixture.service.approve(requestId);
+
+        assertEquals(baseUnitId, item.getUnitId());
+        assertEquals(0, BigDecimal.ONE.compareTo(item.getUnitRate()));
+        assertEquals("MASTER_AT_APPROVAL", item.getGoodsSnapshotSource());
+        assertNotNull(item.getGoodsSnapshotLockedAt());
+        assertEquals((short) 1, request.getStatus());
+        verify(fixture.itemRepo).saveAll(List.of(item));
+        verify(fixture.requestRepo).save(request);
+    }
+
+    // ---- V477 分解前数量修正：守卫契约 ----
+
+    @Test
+    void adjustItemQtyRejectsOrderedOrPendingOccupiedLines() {
+        Fixture fixture = new Fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        PurchaseRequest request = new PurchaseRequest();
+        request.setId(requestId);
+        request.setStatus((short) 1);
+        PurchaseRequestItem item = new PurchaseRequestItem();
+        item.setId(itemId);
+        item.setRequestId(requestId);
+        item.setQty(new BigDecimal("10"));
+        item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
+        item.setOrderedQty(new BigDecimal("4"));
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
+        when(fixture.requestRepo.findById(requestId))
+                .thenReturn(java.util.Optional.of(request));
+        when(fixture.itemRepo.findById(itemId))
+                .thenReturn(java.util.Optional.of(item));
+
+        ApiException ordered = assertThrows(
+                ApiException.class,
+                () -> fixture.service.adjustItemQty(
+                        requestId, itemId, new BigDecimal("6"), 0L));
+        assertTrue(ordered.getMessage().contains("已生成订货单"));
+
+        item.setOrderedQty(null);
+        Query pendingQuery = stubPendingPhysicalQuantity(fixture.em, new BigDecimal("2"));
+        ApiException pending = assertThrows(
+                ApiException.class,
+                () -> fixture.service.adjustItemQty(
+                        requestId, itemId, new BigDecimal("6"), 0L));
+        assertTrue(pending.getMessage().contains("待财务审核"));
+        verify(pendingQuery).setParameter("itemId", itemId);
+        verify(pendingQuery).getSingleResult();
+        assertEquals(0, new BigDecimal("10").compareTo(item.getQty()));
+        assertEquals(0L, item.getRowVersion());
+    }
+
+    @Test
+    void adjustItemQtyUpdatesCleanLineAndReturnsRefreshedDetail() {
+        Fixture fixture = new Fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        PurchaseRequest request = new PurchaseRequest();
+        request.setId(requestId);
+        request.setStatus((short) 1);
+        PurchaseRequestItem item = new PurchaseRequestItem();
+        item.setId(itemId);
+        item.setRequestId(requestId);
+        item.setQty(new BigDecimal("10"));
+        item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_requests", request);
+        ImportedDocumentFixture.forService(fixture.service)
+                .document("purchase_request_items", item);
+        when(fixture.requestRepo.findById(requestId))
+                .thenReturn(java.util.Optional.of(request));
+        when(fixture.itemRepo.findById(itemId))
+                .thenReturn(java.util.Optional.of(item));
+        Query pendingQuery = stubPendingPhysicalQuantity(fixture.em, BigDecimal.ZERO);
+        when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
+                .thenReturn(List.of(item));
+
+        Query available = mock(Query.class);
+        when(available.setParameter(anyString(), any())).thenReturn(available);
+        when(available.getSingleResult()).thenReturn(Boolean.TRUE);
+        when(fixture.em.createNativeQuery(contains("fn_purchase_request_qty_correction_available"))).thenReturn(available);
+        Query minimum = mock(Query.class);
+        when(minimum.setParameter(anyString(), any())).thenReturn(minimum);
+        when(minimum.getSingleResult()).thenReturn(BigDecimal.ZERO);
+        when(fixture.em.createNativeQuery(contains("fn_purchase_request_qty_source_minimum"))).thenReturn(minimum);
+        Query prepared = mock(Query.class);
+        when(prepared.setParameter(anyString(), any())).thenReturn(prepared);
+        when(prepared.executeUpdate()).thenReturn(1);
+        when(fixture.em.createNativeQuery(contains("INSERT INTO purchase_request_qty_revisions"))).thenReturn(prepared);
+
+        Query changed = mock(Query.class);
+        when(changed.setParameter(anyString(), any())).thenReturn(changed);
+        when(changed.getResultList()).thenAnswer(invocation -> {
+            item.setQty(new BigDecimal("12.5")); item.setRowVersion(1L);
+            return List.of(1L);
+        });
+        when(fixture.em.createNativeQuery(contains("UPDATE purchase_request_items SET qty")))
+                .thenReturn(changed);
+        Query detailRows = mock(Query.class);
+        when(detailRows.setParameter(anyString(), any())).thenReturn(detailRows);
+        when(detailRows.getResultList()).thenReturn(java.util.Collections.singletonList(
+                new Object[]{itemId,BigDecimal.ZERO,1L,BigDecimal.ZERO}));
+        when(fixture.em.createNativeQuery(contains("SELECT i.id, pending.pending_qty")))
+                .thenReturn(detailRows);
+        var detail = fixture.service.adjustItemQty(
+                requestId, itemId, new BigDecimal("12.5"), 0L);
+
+        assertNotNull(detail);
+        assertEquals(0, new BigDecimal("12.5").compareTo(item.getQty()));
+        assertEquals(0, new BigDecimal("12.5").compareTo(
+                detail.getItems().getFirst().getQty()));
+        verify(pendingQuery).setParameter("itemId", itemId);
+        verify(pendingQuery).getSingleResult();
+    }
+
+    private static Query stubPendingPhysicalQuantity(EntityManager em, BigDecimal quantity) {
+        Query query = mock(Query.class);
+        String sql = """
+                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
+                %s WHERE i.id=:itemId AND NOT i.is_deleted
+                """.formatted(PurchaseRequestQuantities.pendingJoin("i"));
+        when(em.createNativeQuery(sql)).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(quantity);
+        return query;
+    }
+
+    private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
+        Query pending = mock(Query.class);
+        when(em.createNativeQuery(contains("SELECT i.id, pending.pending_qty"))).thenReturn(pending);
+        when(pending.setParameter(anyString(), any())).thenReturn(pending);
+        when(pending.getResultList()).thenReturn(List.of());
+    }
+
+    private static final class Fixture {
+        private final PurchaseRequestRepository requestRepo =
+                mock(PurchaseRequestRepository.class);
+        private final PurchaseRequestItemRepository itemRepo =
+                mock(PurchaseRequestItemRepository.class);
+        private final TxSessionVars tx = mock(TxSessionVars.class);
+        private final SecurityContextCurrentUser currentUser =
+                mock(SecurityContextCurrentUser.class);
+        private final EmployeeNameResolver nameResolver =
+                mock(EmployeeNameResolver.class);
+        private final DocNumberService docNumberService =
+                mock(DocNumberService.class);
+        private final EntityManager em = mock(EntityManager.class);
+        private final ProductionSupplySourceGuard sourceGuard =
+                mock(ProductionSupplySourceGuard.class);
+        private final PurchaseLineUnitPolicy lineUnitPolicy =
+                mock(PurchaseLineUnitPolicy.class);
+        private final PurchaseRequestService service = new PurchaseRequestService(
+                requestRepo,
+                itemRepo,
+                tx,
+                currentUser,
+                nameResolver,
+                docNumberService,
+                em,
+                sourceGuard,
+                lineUnitPolicy,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.application.port.OrganizationReferencePort.class));
+        {
+            ImportedDocumentFixture.forService(service);
+            var locks = mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class);
+            var guard = mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard.class);
+            when(locks.orderInputs(anyString(), any(), org.mockito.ArgumentMatchers.anyCollection(),
+                    org.mockito.ArgumentMatchers.anyCollection(), any())).thenReturn(guard);
+            org.springframework.test.util.ReflectionTestUtils.setField(service, "mutationLocks", locks);
+        }
+    }
+}

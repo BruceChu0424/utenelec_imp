@@ -1,0 +1,1818 @@
+{
+  "sourceAggregateSha256": "0d49fabceb36b97e6c871ab47762231f59bf4533e1bbdb46deab690c75377bbb",
+  "completeInputInventoryAggregateSha256": "37195a9255368b61933f8c657439f5206211e96334b236d5b025455041bc5bd3",
+  "primaryFiles": 7000,
+  "completeInputPaths": 7354,
+  "upstreamMainHead": "f6e0d8532e6e11239243b4fb2149fb90410395ba",
+  "candidateHead": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "freshCompiledMain": 3204,
+  "freshCompiledTests": 2561,
+  "migrationCount": 1003,
+  "maximumMigrationVersion": 1064,
+  "legacyMinSchema": 1061,
+  "mappingVersion": "bootstrap-v22",
+  "requiredJavaClasses": 47,
+  "uniqueJavaTests": 289,
+  "javaFailed": 0,
+  "javaErrors": 0,
+  "javaSkipped": 0,
+  "allRequiredJavaGreen": true,
+  "receipts": [
+    {
+      "group": "A",
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-receipt/seal.json",
+      "sha256": "ac45b4a0a815ca2b70abad93ea36300fbd478fd74d1b35f51a8573b2c84458c1",
+      "classes": 28,
+      "tests": 212
+    },
+    {
+      "group": "B",
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-B-receipt/seal.json",
+      "sha256": "5f649c44e762162e4a3fd283780620bf10f7e65f95e20b3705381adc8382e80b",
+      "classes": 19,
+      "tests": 77
+    }
+  ],
+  "caseLedger": [
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "adminWriteEndpointsDeclareStepUpOrReasonedExemption",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "businessCodeNeverReadsTheAuditLog",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "controllersDoNotDependDirectlyOnRepositories",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "endpointsReturningPlaintextCredentialsDeclareStepUp",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "expenseClaimNeverReachesTheSharedAiPlatform",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "featureDependencyGraphDoesNotGrow",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "foundationPackagesDoNotDependOnBusinessFeatures",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "highRiskAuthorizationWritesRequireStepUp",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "moneyRoundingOnlyLivesInMoneyPolicy",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "privateMethodsDoNotCarryTransactional",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "aRealDraftOnPageElevenIsNotTruncatedOrExpandedIntoDetails",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "committedChildRemovalBetweenHeaderAndProjectionDoesNotMixSnapshots",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "differentHundredIdBodiesShareOnlyTheSameStableCompleteReportProofAndDetectRawChildChanges",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "noViewOrForeignOwnerCannotReadClaimsAndReadAllUsesTheExistingScope",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "nullableExactSurplusAndCurrentDeletedStatusFollowTheOriginalReadContract",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "onlyDeletedMatchingItemsCannotSelectAHeaderEvenWhenItHasOtherLiveRows",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "productionOwnerGrantRevocationAndAbaRetireTheOriginalHttpPublicationProof",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "selectedBodiesAuthorizeEmptyAndForeignInputsAndRejectOversizedScopes",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest",
+      "case": "taskSelectionPrecedesHeaderCountAndReadsOnlyLightColumnsWithNoUnrelatedDrafts",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "exactClosedMakeAddsBackOnlyTheAlreadyAttributedPartOfThePrivateTotal",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "fullyDeliveredAndAlreadyAttributedQuantityLeavesNoNewAdmission",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[10]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[11]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[1]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[2]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[3]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[4]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[5]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[6]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[7]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[8]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[9]",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "originalFourPlaceQuantitiesAreAddedWithoutRoundingOrAChangedSourceTotal",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "restoredOriginalMakeKeepsItsExactProofAndOnlyTheUnrestoredHandoffCredits",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "unknownCurrentCapacityDoesNotBecomeANewRightFromHistoricalShipments",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceDocumentPartyReferenceHttpPostgresTest",
+      "case": "authorizedFinanceNamesRemainVisibleWithoutMasterAccessWhileOtherDocumentsStayScoped",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "actualIqcCreditUsesTypedPendingSourceAndReviewedPrecisionWithoutInventingPositiveAp",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "actualIqcOffsetBetweenTwoFrozenAccountsMovesNoCashAndReversesBothOriginalDebtSides",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "historicalNativeCorrespondenceAddsReviewedEvidenceToOneRealEntryWithoutReplayingAnyAmount",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "realEnabledCutoverCreatesNoPayableUntilIndependentConfirmedFileAndReversesInDependencyOrder",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "reviewedCurrencyPartyMappingAndLaterChangeKeepTwoOriginalDebtsAndCashInTheirOwnAccounts",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest",
+      "case": "subcontractOwnedMaterialCostAndOriginalApMarkerFollowTheRealFinancialConfirmationWithoutRepricingStock",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderAttributionPostgresTest",
+      "case": "selectedOrderCannotBecomeAnotherOrderNullFifoOrDowngradedContract",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "case": "closedFulfilledOrder735CanRetainActualPrepayment1000AndUnapplied265",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "case": "orderBoundPrepaymentChangesThisBatchOnlyAfterActualOffset",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "case": "shipmentBatchCompanyFeeKeepsGrossSettlementAndRejectsUnrelatedOrderSource",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "case": "shipmentBatchPartial400Then600ReplaysAndReversesExactBalance",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "changedBomCannotSilentlyReplaceTheApprovedPhysicalFrontier",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "componentStockAndCommercialRootArePostedOnceAndPhysicalHandoverCannotBeDirectlyReversed",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "nonzeroComponentCostsMapOnceToTheCommercialParentAndKeepLateCostPendingUntilRealPropagation",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "periodicGoodsRemainInDeliveryConfigurationAndOnlyExplicitFrontiersShipThem",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "publicBOMLaserFlow",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "requiredProcessingCannotBeAcknowledgedByWarehouseOrOmittedFromFullSelection",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "case": "shortageAndIncompleteSelectionRollBackEveryComponentAndCommercialFact",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest",
+      "case": "wholeFrontierIsReallyManufacturedAndQualifiedBeforeItsPrivateStockShipsWithoutParentAssembly",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "case": "partialManufactureAndPhysicalChildProcessingThenTwoKitShipmentsRefreshOnlyTheTrueRemainder",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "case": "restoredOriginalMakeReceiptKeepsItsPrivateBudgetWhenItIsReissuedAndActuallyShipped",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "case": "sameProductKeepsAssembledWholeAndChildrenOrdersIndependentInOneAnalysisAndShipment",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "case": "mixedOriginalClaimAndPublicRemainderDoNotDebitThePublicPartAsOrderReservation",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "case": "rootOutputOrderReservationIsClaimedOnceAndConsumedOnlyByItsRealProcessedShipment",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "case": "roundedPhysicalClaimConsumesOnlyItsFrozenMarginalOrderCreditAndCannotUseAnotherWarehouse",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "case": "customerFrontierIncludesPeriodicGoodsOnlyThroughTransparentDeliveryAncestors",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "case": "qualifiedPrivateComponentShipsWithoutBorrowingPublicAndDirectReversalCannotInventReturnedStock",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "case": "returnedPrivateProcessingLotCanBeIssuedAgainAndShipsItsOriginalKitOnlyOnce",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "case": "splitAssemblyForwardsDepthTwoPrivateSupplyAndShipsOnlyItsActualChildren",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "case": "unprocessedWarehouseCustodyReturnsToTheExactPrivateReceiptAfterWorkerCancelsStart",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest",
+      "case": "reviewedOrdinaryToBomRevisionReleasesOriginalStockAndShipsOnlyTheNewPhysicalFrontier",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest",
+      "case": "cancelledUnprocessedBoxCustodyAllowsItsReceiptToReverseInRowUnits",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest",
+      "case": "reportedOrShippedBoxKeepsItsOriginalReceiptAndCannotInventReturnedStock",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest",
+      "case": "actualWarehouseAndAssignedWorkerCanFinishWithoutSalesOrGoodsPickerAndRevokedWritesStayBlocked",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "baseCurrencyReleaseIsAlwaysOneAndRejectsAnyOtherRate",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "financeAuditInfoCarriesTheActionsTheCurrentUserCanTakeNow",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "financeFillsTheRecognitionRateAtReleaseAndTheWarehousePostsReceivablesWithIt",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "standardPaymentMethodsAreSeededWhenNoConfirmedLegacyMethodExists",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "businessReferencesKeepTheOriginalResourceRevocationDomains",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "dedicatedEmployeeCandidateReadsKeepAProfileWithoutMatchingAdjacentCommands",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "deliveryProcessingReadsUseTaskScopesWithoutGoodsPickerRightsOrCommandClassification",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "onlyExplicitBrowseMetadataUsesTheStaffPublicationProtocolIncludingBooleanAliases",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "pagedDirectoriesKeepTheirOriginalReadProfileAndDoNotClassifyCommands",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "physicalReadsHaveFixedProfilesWithoutMatchingCommandsOrUnrelatedWarehouseApis",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "processingAndReceiptReadPathsCannotFenceAMutationWithTheSameUrl",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "case": "actualJdbcCancellationRollsBackLocalJitOnTheSameReusableConnection",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "case": "applicationFailureAndDatabaseAbortDoNotPolluteTheNextWriteOrRead",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest",
+      "case": "nestedReadsRestoreOriginalOnAndOffWithoutChangingConnectionOrIsolation",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.web.ExactBodyReadRoutesTest",
+      "case": "processingCommandsNeverInheritAReadOnlyBodyExemption",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.web.ExactBodyReadRoutesTest",
+      "case": "salesDeliveryPreviewIsOnlyTheExactReadPost",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.common.web.ProductionDraftClaimsReadRoutesTest",
+      "case": "onlyTheExactControlledReadBodyGetsTheOriginalReportOwnerPublicationProfile",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "guessingAnOriginalPayableUuidDoesNotBypassItsExistingReadPermission",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalPayrollHrFinanceManagementPathPaysOnceConfirmsAndReversesOnlyActualPayment",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalTravelPathHasThreeDistinctStepsNoCashAndFrozenSignaturesAndDurableReplay",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[1]",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[2]",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receipt.ReceiptSourcePermissionContractTest",
+      "case": "createOnlyMayPrepareSourcesButCannotUpdateAnExistingReceipt",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receipt.ReceiptSourcePermissionContractTest",
+      "case": "editOnlyMayReadItsOrderAndBatchSourcesButCannotCreateANewReceipt",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receipt.ReceiptSourcePermissionContractTest",
+      "case": "fullFinanceDoesNotNeedAnAdditionalSalesViewForItsAuthorizedReceiptSources",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receipt.ReceiptSourcePermissionContractTest",
+      "case": "salesViewAloneDoesNotGrantFinancialSourcePreparationOrWrites",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivableFilterAdapterTest",
+      "case": "absentRangePreservesTheExistingOwnerAndDatePredicates",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivableFilterAdapterTest",
+      "case": "invalidRangeCannotSilentlyBroadenAnAuthorizedQuery",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "freeShipmentCannotHideAnActiveArOrPositiveGoodsValue",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "onlyActualTargetAdvanceApplicationCountsAsPaidAndItIsNotAddedTwice",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "pendingShipmentWithArCannotMasqueradeAsAReadyDebt",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "physicalBatchPartialCashLeavesItsOwnBalanceWithoutOrderOrBankNetSubstitution",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "recognizedGoodsMustMatchTheImmutableShipmentValue",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "reversedAndFreeShipmentsKeepTheirDifferentAuthoritativeStates",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "shippedWithoutArCannotMasqueradeAsPendingShipment",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "twoMissingCurrencyIdsDoNotEstablishASameCurrencyDebt",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "unpostedShipmentHasKnownGoodsValueButNoInventedFormalReceiptOrBalance",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "unverifiedBankPostingOrDuplicateArCannotBePresentedAsConfirmedMoney",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "weakOuterTransactionDoesNotReadOrClaimAnyBatchAmount",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "wrongCurrencyOrBrokenBalanceConservationRemainsUnknownInsteadOfZero",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.finance.receivables.ShipmentReceivablePositionAdapterTest",
+      "case": "wrongLedgerCustomerCannotLeakAnotherPartysMoneyThroughAnOtherwiseMatchingShipmentId",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.master.FinancePartyReferenceLabelsAdapterTest",
+      "case": "absentLabelsStayUnknownAndEmptyInputDoesNotQuery",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.master.FinancePartyReferenceLabelsAdapterTest",
+      "case": "boundedClientsSelectOnlyStoredLabelsAndRetainHiddenHistoricalIdentity",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.master.FinancePartyReferenceLabelsAdapterTest",
+      "case": "overTwoHundredOrNullReferencesFailBeforeAnyRead",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.master.FinancePartyReferenceLabelsAdapterTest",
+      "case": "supplierUsesSameFiniteContractWithoutPiiOrMasterStatusGate",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchEmptyPageLatencyPostgresTest",
+      "case": "compareSixReadQueriesWithOneSharedProjectionOnAnEmptyBusinessDatabase",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "broadMetadataKeepsOnlyItsOriginalOwnFilterExclusionAcrossDepartments",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "continuationReadsHaveExactRowsAndCountWithoutAnyMetadataDisplayOracleCalls",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "dateAndColumnFiltersKeepExclusiveFacetsAndExactQuantities",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "differenceHeaderFiltersWholeResultWithExactDecimalsAndExcludesUnknownOrGroupedFacts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "emptySelectedCategoryKeepsFullCountsAndEvaluatesEachSourceOnlyOnce",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "emptySourceReturnsMetadataAndNeverEvaluatesAProbeRow",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "laterAndOutOfRangePagesStillReturnTheirMetadata",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "operationsQuantityQueriesUseVisibleSingleMaterialValuesWithoutTreatingGroupedLinesOrDiscoveryAsNumbers",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "pageOnlyDetailsStayBoundedWhileBroadCategoryTotalsRetainGrowingHistory",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "typedWorkbenchDatesUseChineseInstantsAndLocalCalendarRangesWithoutChangingExactDateFacets",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest",
+      "case": "warehouseDocumentFacetsRespectIssuedAndNeedDateRanges",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadTest",
+      "case": "countsAndNullBucketsRetainIntegersBeyondJavascriptPrecision",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadTest",
+      "case": "invalidMetadataFailsRatherThanPublishingInventedZeroCounts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "cursorExportReads1001RealRequestItemsInOneSnapshotAndLeavesLateCommitsForANewExport",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "freeStockIsSuggestedOnceByNeedDateWithoutBecomingAReservation",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "itemGoodsSearchFindsEveryRealLineAndRanksNamesBeforeCodesBeforePaging",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "nonEmptyPostgresProjectionMapsHibernateInstantToUtc",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "pendingExportIncludesRowsBeyondTheCurrentPageAndRetainsExactQuantityUnits",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "purchaseOrderHistoryKeepsEveryItemQuantitySupplierAndIndependentColumnSearch",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "subcontractItemsKeepIndependentQuantitiesStagesAndDocumentFiltering",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "case": "warehouseUnionExecutesAgainstTheFullSchemaWithoutMakingUnrequestedDemandsActionable",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionAndBatchCapabilitiesUseSeparateViewAndEditPermissions",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionMetadataIsMaskedWhenTheExactDocumentPermissionIsMissing",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "anEmptyPurchaseExportDoesNotRunBadgesFacetsOrSummary",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "columnTextSearchesRemainBoundAndIndependentFromExactFacetValues",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "continuationResponseExplicitlyOmitsMetadataWhileKeepingExactTotalAndCapabilities",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "controllerReadPermissionsMatchFlutterAnyPermissionGuards",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "differenceHeaderUsesExactBoundComparisonsAndKeepsUnknownFactsUnknown",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayOnlyDetailsMoveAfterThePageUnlessTheyControlGlobalSelection",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayStageAndOrderCapabilityAreReadFromTheRowAndSurviveActionCopy",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "exceptionFilterAndOptionsAreEvaluatedByTheDatabaseNotTheCurrentPage",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "inProgressCountOnlyCountsTheThreeFinanceStages",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "legacyPurchaseExportRejects501RowsRatherThanPublishingTheFirst500",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "maliciousFacetValuesStayBoundAndExcludedFacetsKeepTheOtherParameterIdentities",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "openAnyStatusSentinelFiltersByOpenQuantity",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "pendingCardCountIgnoresTheActiveStatusCardFilter",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountEndpointGuardsPurchaseReadPermissions",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountUsesRequestLineDecompositionProjection",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseEntryUsesOneAggregateWithoutRowsTableFacetsOrDerivedJoins",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseExportStreamsEveryAuthorizedSourceRowWithoutTableMetadataQueries",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseRowsUseTaskStatusAsDisplayStage",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "requestAndApplicationRowsExposeTheirApprovedPhysicalStageDifference",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportRejectsTheDifferentPendingDrawProjectionBeforeReadingAnyFacts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportUsesTheSameTerminalStatusAndBoundTableFiltersAsItsHistoryList",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractOrderStagesFollowTheDrawModelAndStatusCountsStayOnTaskStatus",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractPendingCountLeavesDrawableTasksToTheDrawSegmentAndPurchaseStaysUntouched",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountEndpointRequiresStockDocumentView",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountIsZeroOutsideTheWarehouseOrganizationScope",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountUsesTheFulfillmentProjectionAndOpenQuantity",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseEntryDoesNotReadRowsWithoutWarehouseTaskAccess",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseListAndStatusBreakdownRequireTheSameExplicitRequest",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseRowsSortByPlanNumberAndCarryDocNoFacets",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseSortOnlyColumnsAreWhitelistedAndNeverBecomeFilters",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseUnknownMaterialRequestsHaveTheirOwnStatusAndCountOnceWithoutInventingQuantity",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "decisionOnlyCountKeepsAffectedItemRowsWithoutCountingOtherGoodsOfTheSameOrder",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "decisionOnlyUserGetsOnlyWritableCasesWithoutInvalidEmptyInClause",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "importedOrdersAndImportedPlanSourcesStayOutOfTheNativeTaskPool",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "inProgressCountsEachItemAcrossFinanceStagesAndKeepsFulfilledRowsUntilTheOrderCloses",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "reworkAndInProgressExcludeReadOnlyOwnersWhileRequestsRemainAnAuthorizedPublicPool",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "case": "twoApplicationItemsCountAsTwoPendingTasksAndViewOnlyUsersStillHaveNone",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "actualImportedSourceReceiptsKeepTheirImmutableFactsAndNeverWakeNativeAnalyses",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "finishedInboundBatchCombinesApprovedDocumentsWithoutAdmittingDraftOrReversedRows",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "finishedInboundKeepsStatusNullColorSameMainAndReopenedCompletion",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "mixedResolvedReportUsesTheSameReceiptContractAndRejectsPartialReversedOrForeignType",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "mixedStockInBatchUsesEachApprovedReceiptAndDeduplicatesSharedAnalysis",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "partialIqcUsesOnlyActuallyStockedSelectedRowsOfTheApprovedReceipt",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "purchaseAndSubcontractKeepApprovalReverseAndLegacyDimensions",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "case": "unrelatedHistoryIsExcludedBeforeExpensivePredicatesWithRepeatedExplainEvidence",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportDraftClaimsJsonTest",
+      "case": "existingConstructorAndDefaultJsonHaveNoOptionalClaimFields",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportDraftClaimsJsonTest",
+      "case": "selectedHeaderVersionsStayExactTextBeyondTheJavascriptIntegerBoundary",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportDraftClaimsJsonTest",
+      "case": "versionOneCarriesExactDecimalTextAndExplicitNulls",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "directCandidateKeepsCapacityFactsInOriginalDecimalText",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "existingReportSlicesExposeOriginalBatchAndSliceQuantities",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "materialCapacityAndUsageBasisKeepOriginalDecimalsAndMissingFactsStayNull",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "physicalBatchAndDestinationGroupsExposeExactTotalsAndOwnershipShares",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "reportContextKeepsQuantityDefectAndSixPlaceRateAndCannotTrustIncomingCompanions",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.DailyReportExactQuantityJsonTest",
+      "case": "sourceDefaultsAndSupplementResponsesEmitExactOriginals",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "aFreshKeyOnAnAlreadyApprovedReportIsAConflictSoTheClientKnowsToRefresh",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "anApproveKeyAlreadyBoundToACreateCommandFailsClosed",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "anApproveKeyPointedAtAnotherReportFailsClosed",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "approvalV2VersionIsMandatoryAndLegacyHashBytesRemainUnchanged",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "approveWithoutAnIdempotencyKeyIsRejectedBeforeAnythingIsLocked",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalHashCoversDefectsOnlyWhenReported",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalHashCoversMaterialUsageWithoutMovingLegacyRequests",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalHashCoversOutputAllocations",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalHashDistinguishesRecoveryAuthorization",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalHashNormalizesNumbersAndExcludesRetryAndReadableSnapshots",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "canonicalWorkerRelationIsReadEvenWhenNoSingleWorkerMirrorExists",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "completedSiblingOrderDoesNotBlockTheExactOpenSalesSource",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "createPersistsOrderedWorkersAndMirrorsTheFirstWorkerToLegacyHeader",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "createRejectsWhenAnyParticipantIsOutsideTheActiveProductionTree",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "defectsAreOnlyRecordedWithGoodOutputOfAWorkshopTask",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "fullFailReplacementReportCanReleaseItsLotAndReverse",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "fullFailSourceReportCanReverseWithoutASecondContributionRollback",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "missingWorkerRelationIsAnExplicitDataErrorInsteadOfRuntimeHeaderFallback",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "outdatedSingleWorkerFingerprintIsRejectedWithoutRewritingItsStoredCommand",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "sameActorKeyAndHashReplaysBoundReportWithoutCreatingAnother",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "sameActorKeyAndReportReplaysTheApprovedDetailWithoutRedoingTheChain",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "sameActorKeyWithDifferentHashFailsClosed",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "sameApprovalKeyWithAnotherReviewedVersionDoesNotReplay",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "staleOrMissingExpectedVersionIsRejected",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "staleReviewedVersionRejectsBeforeCommandAndBusinessWrites",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "staleSingleDestinationShapeIsRejectedAtSaveEntries",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "v2NeverUpgradesANullLegacyReceiptToReviewedVersionZero",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "v2ReplayUsesPersistedReviewAndPrecedesCurrentVersionOrStatus",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest",
+      "case": "workerIdsAreDeduplicatedInOrderAndDriveTheCanonicalHash",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportControllerBatchFilterTest",
+      "case": "invalidOrOversizedBatchFailsClosed",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.dailyreport.ProductionDailyReportControllerBatchFilterTest",
+      "case": "singularAndCsvIdsAreMergedInStableDeduplicatedOrder",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQuantityExactJsonTest",
+      "case": "remainingCapacityCompanionKeepsEverySignificantDigitAndDoesNotTrustIncomingCompanions",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQuantityExactJsonTest",
+      "case": "unknownCapacityRemainsExplicitNullRatherThanZero",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQueryUsesExactStateAndLiteralProductFilter",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fixedSupplementUsesProvenSharedMaterialAndOnlyOffersRealQualityRecovery",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "historySegmentIncludesCancelledAndReversedWithinTheDateGate",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparingAndInProgressFiltersExecuteWithAndWithoutKeyword",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "reportInspectionSplitsFullyReportedSegmentsOutOfInProgress",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "superAdminSeesAllWorkshopsOnReadSide",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.OrderListEmployeeProjectionTest",
+      "case": "emptySalesPageDoesNotAttemptScalarOrWriteResolution",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.OrderListEmployeeProjectionTest",
+      "case": "financeReviewerGetsOnlyVisibleOrderMoneyWithoutCustomerGlobalAdvanceAuthority",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.OrderListEmployeeProjectionTest",
+      "case": "purchaseListPassesThroughApprovalSnapshotsWithoutLookingUpEmployees",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.OrderListEmployeeProjectionTest",
+      "case": "salesResolvesOnlyTheReturnedPageAndKeepsItsOrderNullIdsAndMasking",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.OrderListEmployeeProjectionTest",
+      "case": "subcontractListPassesThroughApprovalSnapshotsWithoutLookingUpEmployees",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesFinanceSnapshotIsolationContractTest",
+      "case": "eachReviewDecisionAndBatchOwnsOneRepeatableReadTransactionWithoutIndependentInnerWrites",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesFinanceSnapshotIsolationContractTest",
+      "case": "incompleteTransactionAuthorityReturnsUnknownForTheWholeBatchWithoutReadingOrInventingZero",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest",
+      "case": "currencyIdFiltersByEqualOnCurrencyColumn",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest",
+      "case": "financeHistoryKeepsProcessedTerminalAndLegacyRecordsWithoutReadingPendingDrafts",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOrderMoneySnapshotTest",
+      "case": "ordinaryWarehousePaperAllowlistNeverReturnsTheEmbeddedFinancialPositionOrHashesItIntoPaper",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOrderMoneySnapshotTest",
+      "case": "releasedFinancialReviewReadsItsFrozenOrderFactsWithoutRecomputingCurrentMoney",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "case": "linkedDraftIgnoresForgedClientLocalAmount",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "case": "newSalesShipmentCannotBypassOrderPolicyWithUnlinkedLine",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "case": "noRateOrdersCanOpenDraftsWithoutMergingAcrossOwners",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "case": "unauthorizedKeyedBatchIsRejectedBeforeReadingPhysicalSourceCapacity",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "debtQuerySurvivesTheExistingHistoryAndHeaderAdaptersWithoutChangingTheirContracts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "eachPublicConsumerOwnsTheRepeatableReadSnapshotRequiredByTheFinancePort",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "financeReadWithoutCommercialPriceGetsOnlyTheBoundedVisibleShipmentProjection",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "oldNotPostedReleaseEvidenceNeverReplacesTheCurrentDebt",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "warehouseCannotProbeDebtThroughEitherTheListOrItsFacetCounts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.ShipmentReceivablePositionConsumerTest",
+      "case": "warehouseOperationalAccessDoesNotQueryOrSerializeFinancialFacts",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskPageMetadataPostgresTest",
+      "case": "historicalGrowthEvaluatesOneCandidateRelationInsteadOfThreeWithoutDroppingFacetBuckets",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskPageMetadataPostgresTest",
+      "case": "inboundAndOutboundKeepStatusAndBillOwnFilterExclusionsAcrossViews",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.migration.FinancialSubversionAuditPolicyForwardPostgresTest",
+      "case": "futureInsertAndUpdateKeepOneMetadataTrailWithoutPrivateNamesOrSourceContent",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.migration.FinancialSubversionAuditPolicyForwardPostgresTest",
+      "case": "immutableOriginalStillRejectsOverwriteAfterAuditNormalization",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.migration.FinancialSubversionAuditPolicyForwardPostgresTest",
+      "case": "upgradePreservesEveryFinancialSubversionRowAuditAndBusinessGuard",
+      "status": "passed",
+      "receipt": "A"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "allFiveProductionLegacySqlEntrypointsKeepOriginalFactsWithoutNewAdoptions",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "evenTrustedBootstrapNeedsTheExactRowProofAndCannotAttachANewPrecisionPolicy",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "exactSourceTamperingAndIndependentAdoptionUpdatesRemainRejected",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "realRuntimeSessionCannotForgeLegacyContextAndNativeVersionTwoStillWorks",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "replayedSourceProofFromAnEarlierTransactionCannotAuthorizeAnInsert",
+      "status": "passed",
+      "receipt": "B"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "verifiedHistoricalUnknownUnitAndRateStayUnknownInsteadOfBecomingOneOrAComputedBase",
+      "status": "passed",
+      "receipt": "B"
+    }
+  ],
+  "growth": [
+    {
+      "scenario": "warehouse-metadata",
+      "history": 10000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/warehouse-metadata-history-10000.json",
+      "sha256": "0e5ba584a54b7b5760cb1b7c98f10892ca859d4ca54f615d885be9d911020779"
+    },
+    {
+      "scenario": "warehouse-metadata",
+      "history": 100000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/warehouse-metadata-history-100000.json",
+      "sha256": "a0e828ba080a88248ed7ddd284c727e8fbdc2d385e4e10fb3dd9e5490f7b513c"
+    },
+    {
+      "scenario": "warehouse-metadata",
+      "history": 1000000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/warehouse-metadata-history-1000000.json",
+      "sha256": "ffb248ef77f85871f3a15fd55e46e70d4289cc891632067227a7caa589844013"
+    },
+    {
+      "scenario": "workbench-page-detail",
+      "history": 10000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/workbench-page-detail-history-10000.json",
+      "sha256": "51c5c41d2fd224d41af283d94f458e753e8ba9f9727801ec037d5dd77045b1a8"
+    },
+    {
+      "scenario": "workbench-page-detail",
+      "history": 100000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/workbench-page-detail-history-100000.json",
+      "sha256": "bf0c8d0ad8106726c694870140e69782b1614aea44d12043ee14ba26c80ff367"
+    },
+    {
+      "scenario": "workbench-page-detail",
+      "history": 1000000,
+      "path": "server/build/loading-validation/main-f6e-metadata/metadata-A-growth/workbench-page-detail-history-1000000.json",
+      "sha256": "ff4eebe27d04fab1e07911de1093b10c9f627cd72ae2de537f51da393fcfd88e"
+    }
+  ],
+  "growthScope": "Six disposable structural fixtures, fixed active50/history10k100k1m, three warm observations; exact broad statistics remain N and this is not a production SLA.",
+  "legacyCoveragePath": "server/build/loading-validation/main-f6e-metadata/legacy-qualified-case-coverage.json",
+  "legacyCaveat": "Private PostgreSQL18 whole run passed. Focused67 native run remains exit1/66pass1launcher CreateProcessError; exact original CLI case rerun passed with the established executable launcher. Qualified85 case coverage is not a whole85-green run or full684 discovery green.",
+  "historical377": "Original058da source result remains historical and separate. No addition of old143/348/55/195/377 or diagnostic matrix counts to this current Java ledger.",
+  "performanceScopeNotes": "server/build/loading-validation/main-f6e-metadata/performance-scope-notes.json",
+  "companyDbWritten": false,
+  "mainWrittenByBackend": false,
+  "published": false
+}

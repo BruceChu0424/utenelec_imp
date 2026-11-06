@@ -78,6 +78,25 @@ class MaterialTraceSource {
 }
 
 class MaterialTraceResult {
+  MaterialTraceResult._({
+    required this.page,
+    required this.subject,
+    required this.sources,
+    required this.coverageNotes,
+    required this.sourceTotal,
+    required this.sourcesTruncated,
+  });
+
+  MaterialTraceResult withPage(PagedResult<GoodsProductionTraceRow> combined) =>
+      MaterialTraceResult._(
+        page: combined,
+        subject: subject,
+        sources: sources,
+        coverageNotes: coverageNotes,
+        sourceTotal: sourceTotal,
+        sourcesTruncated: sourcesTruncated,
+      );
+
   MaterialTraceResult.fromJson(Map<String, dynamic> json)
     : page = PagedResult.fromJson(json, GoodsProductionTraceRow.fromJson),
       subject = json['subject'] is Map

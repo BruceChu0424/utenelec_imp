@@ -1,3 +1,4 @@
+import '../../../../shared/models/paged_result.dart';
 import '../../models/finance_legacy_balance.dart';
 
 String? _decimalText(Object? value) {
@@ -333,6 +334,16 @@ class FinancePayablesResult {
   final int size;
   final int total;
   final int totalPages;
+
+  FinancePayablesResult withPage(PagedResult<FinancePayableItem> combined) =>
+      FinancePayablesResult(
+        summary: summary,
+        items: combined.items,
+        page: combined.page,
+        size: combined.size,
+        total: combined.total,
+        totalPages: combined.totalPages,
+      );
 
   factory FinancePayablesResult.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List? ?? const <Object?>[];

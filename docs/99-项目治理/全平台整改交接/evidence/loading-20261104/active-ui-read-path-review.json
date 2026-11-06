@@ -1,0 +1,647 @@
+{
+  "root": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "reviewedAtUtc": "2026-11-05T16:09:25.333891+00:00",
+  "mode": "read-only, no Dart/Java edits or runtime tools by this review",
+  "checks": [
+    {
+      "id": "financeApplications",
+      "source": {
+        "path": "lib/features/finance/pages/finance_applications_page.dart",
+        "sha256": "9a54c9de1918acf9985989b4426f742a9453a652f1a50c39d8a33f779db06da0",
+        "anchors": [
+          {
+            "textAnchor": "String _queue = 'mine'",
+            "lines": [
+              100
+            ]
+          },
+          {
+            "textAnchor": "final result = await readScopedPage",
+            "lines": [
+              156
+            ]
+          },
+          {
+            "textAnchor": "'size': 100",
+            "lines": [
+              168
+            ]
+          },
+          {
+            "textAnchor": "financeApplicationCatalogProvider",
+            "lines": [
+              33,
+              119,
+              268
+            ]
+          }
+        ]
+      },
+      "conclusion": "Default mine; queue/search/page100 is one complete scoped read. Catalog is separately watched; create availability keeps its own contract.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "financeApplicationStatuses",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationService.java",
+        "sha256": "24317ebbb01f49de4169ec63a878aa58c448f366c2dee3f9876236a47c84771c",
+        "anchors": [
+          {
+            "textAnchor": "public Map<String,Object> list",
+            "lines": [
+              160
+            ]
+          },
+          {
+            "textAnchor": "case \"mine\"",
+            "lines": [
+              165
+            ]
+          },
+          {
+            "textAnchor": "case \"payment\"",
+            "lines": [
+              165
+            ]
+          }
+        ]
+      },
+      "conclusion": "mine/pending/payment select only the existing operational statuses; ARCHIVED/CONFIRMED belong to history. No frontend ALL-to-history guess.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "procurementQueue",
+      "source": {
+        "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+        "sha256": "82acd7d332e19b9ba7e400eb925fa6f7306032fc80cff463e3e9d410461b323b",
+        "anchors": [
+          {
+            "textAnchor": "String _status = 'PENDING'",
+            "lines": [
+              104
+            ]
+          },
+          {
+            "textAnchor": "repo.approvalTasks(",
+            "lines": [
+              380
+            ]
+          },
+          {
+            "textAnchor": "size: 100",
+            "lines": [
+              382
+            ]
+          },
+          {
+            "textAnchor": "unawaited(_loadBillNoFacets())",
+            "lines": [
+              422
+            ]
+          }
+        ]
+      },
+      "conclusion": "Default PENDING; current status is sent before SQL pagination. Optional facet refresh is unawaited and cannot hold row publication. Claim/review detail reads occur only after an explicit decision/open.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "quoteQueue",
+      "source": {
+        "path": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+        "sha256": "e40c02972d094709d0aa9cf17b2b9d58a7da8b383acfcd224b11d0b8b9197bad",
+        "anchors": [
+          {
+            "textAnchor": "orElse: () => SalesQuoteFinanceState.pending",
+            "lines": [
+              97
+            ]
+          },
+          {
+            "textAnchor": "unawaited(_loadReturnedCount",
+            "lines": [
+              171
+            ]
+          },
+          {
+            "textAnchor": "final result = await readScopedPage",
+            "lines": [
+              174
+            ]
+          },
+          {
+            "textAnchor": "size: 100",
+            "lines": [
+              184
+            ]
+          }
+        ]
+      },
+      "conclusion": "Default pending; returned is still revision work. Returned count runs independently, not history scanning before rows.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "orderConfirmation",
+      "source": {
+        "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+        "sha256": "fc3470747a647be9584af43479d6111dcb7bdc10fcf5714654f58182d137c5e6",
+        "anchors": [
+          {
+            "textAnchor": "unawaited(_loadHistoryCounts",
+            "lines": [
+              289
+            ]
+          },
+          {
+            "textAnchor": "final cachedPage = await readScopedPage",
+            "lines": [
+              292
+            ]
+          },
+          {
+            "textAnchor": "repo.pending(",
+            "lines": [
+              300,
+              407
+            ]
+          },
+          {
+            "textAnchor": "_rejectedCount = rejected.total",
+            "lines": [
+              411
+            ]
+          }
+        ]
+      },
+      "conclusion": "Current pending/returned/confirmed distinction remains; returned count is a separate size1 scoped shared read and never awaited before list display.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "shipmentQueue",
+      "source": {
+        "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+        "sha256": "332e5244552887424da5173a8c70e84d492a1d9da4d708a6f603fd6e18ed66db",
+        "anchors": [
+          {
+            "textAnchor": "_financeAudit = _isFinance && !widget.historyOnly ? 0 : 1",
+            "lines": [
+              208
+            ]
+          },
+          {
+            "textAnchor": "ensureLoaded().whenComplete",
+            "lines": [
+              222
+            ]
+          },
+          {
+            "textAnchor": "unawaited(_loadBillNoFacets())",
+            "lines": [
+              283
+            ]
+          },
+          {
+            "textAnchor": "financeHistory: _isFinance && _financeAudit == 1",
+            "lines": [
+              303,
+              391
+            ]
+          }
+        ]
+      },
+      "conclusion": "Finance default0, historical mode explicit; display names/facets are unawaited. No initial per-row financeAuditInfo/detail loop; those belong to explicit review actions.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "shipmentFilter",
+      "source": {
+        "path": "lib/features/sales/providers/sales_shipment_task_reads.dart",
+        "sha256": "922860397e12058e00843948755c49ca9f759f1e7d530d14a632d582721abfb0",
+        "anchors": [
+          {
+            "textAnchor": "status: finance && financeAudit != 0",
+            "lines": [
+              18
+            ]
+          },
+          {
+            "textAnchor": "financeAudit: financeHistory ? null",
+            "lines": [
+              19
+            ]
+          },
+          {
+            "textAnchor": "stage: financeHistory",
+            "lines": [
+              20
+            ]
+          },
+          {
+            "textAnchor": "SalesWarehouseWorkStatus.pendingPick",
+            "lines": [
+              23
+            ]
+          }
+        ]
+      },
+      "conclusion": "Working shipment read uses draft+financeAudit0+pendingPick. FINANCE_HISTORY is sent only for explicit history.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "preparationJobs",
+      "source": {
+        "path": "lib/features/finance/providers/finance_audit_preparation_provider.dart",
+        "sha256": "628f58ef1f5d96e6eaf37ad6d684660e140088f9fefdebb54fd9f1c541414aae",
+        "anchors": [
+          {
+            "textAnchor": "Each group schedules only its current working queues",
+            "lines": [
+              164
+            ]
+          },
+          {
+            "textAnchor": "SalesQuoteFinanceState.pending",
+            "lines": [
+              143,
+              144
+            ]
+          },
+          {
+            "textAnchor": "SalesQuoteFinanceState.returned",
+            "lines": [
+              152
+            ]
+          },
+          {
+            "textAnchor": "status: 'PENDING_FINANCE'",
+            "lines": [
+              208
+            ]
+          },
+          {
+            "textAnchor": "ProcurementIqcRejectionFilter(status: 'ACTIVE')",
+            "lines": [
+              232
+            ]
+          }
+        ]
+      },
+      "conclusion": "Only current selected-group pending/returned/active queues are prepared; completed history is absent. Failed speculation is not a create-eligibility proof.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "salesNames",
+      "source": {
+        "path": "lib/features/sales/providers/master_name_provider.dart",
+        "sha256": "114219bf4e83c7b2b1a3455b43003d9228352bac92156a5da030fe0be59c5343",
+        "anchors": [
+          {
+            "textAnchor": "Future<void> ensureLoaded() => ensureCommonLoaded()",
+            "lines": [
+              18
+            ]
+          }
+        ]
+      },
+      "conclusion": "Common dictionary warmup is not a global customer/goods/employee directory.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "commonNames",
+      "source": {
+        "path": "lib/shared/providers/master_name_provider.dart",
+        "sha256": "5be5a6836d3529375e589c5c760444a88a4825392e2f65ce654782808adf5fae",
+        "anchors": [
+          {
+            "textAnchor": "Future<void> ensureCommonLoaded()",
+            "lines": [
+              366
+            ]
+          },
+          {
+            "textAnchor": "ensureWarehousesLoaded()",
+            "lines": [
+              339,
+              357,
+              367
+            ]
+          },
+          {
+            "textAnchor": "ApiEndpoints.currenciesDict",
+            "lines": [
+              368,
+              394
+            ]
+          },
+          {
+            "textAnchor": "ApiEndpoints.colorsDict",
+            "lines": [
+              370,
+              650
+            ]
+          },
+          {
+            "textAnchor": "ApiEndpoints.unitsDict",
+            "lines": [
+              374
+            ]
+          },
+          {
+            "textAnchor": "Future<void> loadGoodsNames(",
+            "lines": [
+              380
+            ]
+          },
+          {
+            "textAnchor": "Future<void> loadEmployeeNames(",
+            "lines": [
+              549
+            ]
+          }
+        ]
+      },
+      "conclusion": "Common warmup is warehouse/currency/color/unit; business names are resolved for referenced IDs. Caller unawaited warmup is not evidence that rows wait for it.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "financeNames",
+      "source": {
+        "path": "lib/features/finance/providers/finance_name_provider.dart",
+        "sha256": "39bd2248efbf746abb0e2e93d57ed108f0a76112e810ff7f297f53b434b61109",
+        "anchors": [
+          {
+            "textAnchor": "Future<void> _ensureLoaded()",
+            "lines": [
+              195
+            ]
+          },
+          {
+            "textAnchor": "_loadAccounts()",
+            "lines": [
+              196,
+              280,
+              350
+            ]
+          },
+          {
+            "textAnchor": "_loadCurrencyReferences()",
+            "lines": [
+              197,
+              254
+            ]
+          },
+          {
+            "textAnchor": "_partyReferences.load(kind, ids",
+            "lines": [
+              161
+            ]
+          }
+        ]
+      },
+      "conclusion": "Base finance name load is accounts and currency references; parties use requested IDs. Do not reintroduce an all-party catalog for empty queues.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "payablesLedger",
+      "source": {
+        "path": "lib/features/finance/payables/pages/finance_payables_page.dart",
+        "sha256": "d3e1274ecde93683e6c3ad19447f00a6640c6311024564b720f9c22a473d50b1",
+        "anchors": [
+          {
+            "textAnchor": "String? _status;",
+            "lines": [
+              88
+            ]
+          },
+          {
+            "textAnchor": "DateTime? _dateFrom = recentMonthStart()",
+            "lines": [
+              91
+            ]
+          },
+          {
+            "textAnchor": "_PayablesWorkspaceView.payables",
+            "lines": [
+              100,
+              177,
+              193,
+              824,
+              839,
+              853,
+              862,
+              887,
+              896,
+              966
+            ]
+          },
+          {
+            "textAnchor": "ensureLoaded();",
+            "lines": [
+              176
+            ]
+          },
+          {
+            "textAnchor": "_payablesFilter",
+            "lines": [
+              199,
+              245,
+              1047,
+              1048,
+              1060,
+              1061
+            ]
+          }
+        ]
+      },
+      "conclusion": "This workspace is a financial ledger, not an operational task queue. Default all statuses within the recent-month accounting view is a necessary business difference; positive-payment eligibility remains server-derived.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "auditRefresh",
+      "source": {
+        "path": "lib/features/finance/pages/finance_audit_center_page.dart",
+        "sha256": "2be9ef15d8150388cdb03375bf36fa368cb08cd531832ad5bc2f5262ef05accc",
+        "anchors": [
+          {
+            "textAnchor": "Future<void> _refresh()",
+            "lines": [
+              98
+            ]
+          },
+          {
+            "textAnchor": "await Future.wait([",
+            "lines": [
+              109
+            ]
+          },
+          {
+            "textAnchor": "refreshBadges(ref)",
+            "lines": [
+              110
+            ]
+          },
+          {
+            "textAnchor": "completion.future",
+            "lines": [
+              111
+            ]
+          }
+        ]
+      },
+      "conclusion": "Explicit/return refresh busy awaits global badges and the selected child completion. Initial row loading does not await this global refresh. No measured latency attribution here; do not remove required badge behavior based on a code-only suspicion.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "workshopDraftCaller",
+      "source": {
+        "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+        "sha256": "032c226db4a43872a700d324f821b9bf1673e6251c156dc63776615111cb844d",
+        "anchors": [
+          {
+            "textAnchor": "unawaited(_loadDraftReportState(generation))",
+            "lines": [
+              1254,
+              1330
+            ]
+          },
+          {
+            "textAnchor": "Future<void> _loadDraftReportState",
+            "lines": [
+              1352
+            ]
+          },
+          {
+            "textAnchor": "_draftReportQty[task.segmentId]",
+            "lines": [
+              1391
+            ]
+          },
+          {
+            "textAnchor": "_reportDraftsBySegment[task.segmentId]",
+            "lines": [
+              1421,
+              1463
+            ]
+          },
+          {
+            "textAnchor": "task.segmentId).toList",
+            "lines": [
+              539
+            ]
+          }
+        ]
+      },
+      "conclusion": "Confirmed remaining waste: the draft reader runs even when the complete accepted task set is empty and still reads all authorized status0 report headers; it is not constrained to visible-task segment identities.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "workshopDraftReader",
+      "source": {
+        "path": "lib/features/production/repositories/production_daily_report_draft_snapshot.dart",
+        "sha256": "b05a5b3eb9a6ce6b24b97f1f1525609bdcf1f802ab854d5e29aadd37dc743e43",
+        "anchors": [
+          {
+            "textAnchor": "loadCompletePagedResult",
+            "lines": [
+              25
+            ]
+          },
+          {
+            "textAnchor": "ProductionDailyReportFilter(status: 0)",
+            "lines": [
+              31
+            ]
+          },
+          {
+            "textAnchor": "includeDraftClaims: true",
+            "lines": [
+              32
+            ]
+          },
+          {
+            "textAnchor": "draft.draftClaimsVersion == 1",
+            "lines": [
+              38
+            ]
+          },
+          {
+            "textAnchor": "repository.detail(draft.id)",
+            "lines": [
+              43
+            ]
+          }
+        ]
+      },
+      "conclusion": "Version1 eliminates N+1 full details, but current query scope is still every authorized draft. Unknown versions explicitly retain legacy detail/status fallback. Full-query validation is not proof of minimal scope.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    },
+    {
+      "id": "reportListScope",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/production/dailyreport/dto/DailyReportQueryFilter.java",
+        "sha256": "bc5b4024f2b82d5649b5807f20eaca353822b9d69385261dbc135d35cd74378b",
+        "anchors": [
+          {
+            "textAnchor": "UUID warehouseId",
+            "lines": [
+              19
+            ]
+          },
+          {
+            "textAnchor": "UUID departmentId",
+            "lines": [
+              20
+            ]
+          },
+          {
+            "textAnchor": "UUID workerId",
+            "lines": [
+              21
+            ]
+          },
+          {
+            "textAnchor": "Short status",
+            "lines": [
+              22
+            ]
+          },
+          {
+            "textAnchor": "LocalDate dateFrom",
+            "lines": [
+              23
+            ]
+          }
+        ]
+      },
+      "conclusion": "No current executionSegmentId(s) filter exists on the report list. The similarly named reportable-plan-lines source chooser is a different authority and must not be substituted.",
+      "evidenceType": "current code/call-chain review",
+      "siteUat": false
+    }
+  ],
+  "confirmedScopeRemedy": {
+    "taskIds": "all segmentId values in the current fully accepted task query, not only the first batch",
+    "empty": "Complete accepted task set empty can require zero draft requests. No report:view must remain failclosed/unknown, never a fabricated checked-empty quota.",
+    "serverPredicate": "original report ACL/origin/filter spec AND EXISTS report item matching the requested current task segment IDs, before count and page",
+    "multiSegment": "Keep all claims of every matching header, preserving a report linked to multiple current segments. Do not replace with report department/worker or invent parent/source-segment identities.",
+    "transport": "Current GET list has no segment scope. Large UUID sets require an explicit bounded read body contract, normalized scope and duplicate-header/version handling; no long comma URL, no truncation."
+  },
+  "limits": [
+    "No timing/SLA inferred from this source review. Scroll zero-HTTP does not establish first-display latency.",
+    "New scope/body implementation and actual UI/server measurements are pending separate work; current41 whole source stays frozen.",
+    "Site/company UAT, deployment and production activation are not claimed."
+  ]
+}

@@ -259,11 +259,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     });
   }
 
-  Future<void> _load(
-    int page, {
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
@@ -329,7 +325,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.progress(
-          preferPrepared: preferPrepared,
           page: target,
           size: pageSize,
           origin: pageOrigin,
@@ -386,7 +381,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           : const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) {
-      _load(1, preferPrepared: true);
+      _load(1);
     }
   }
 

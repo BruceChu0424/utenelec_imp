@@ -90,7 +90,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     with
         DraftBulkDeleteMixin<StockDocListPage>,
         UtenRefreshParticipant<StockDocListPage> {
-  final _list = PagedListController<StockDocListItem>();
+  final _list = PagedListController<StockDocListItem>(idOf: (row) => row.id);
   final _tableRows = MasterDataTableRowsController<StockDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
@@ -220,7 +220,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<StockDocListItem>> _fetch([int? requestedPage]) {
+  Future<PagedResult<StockDocListItem>> _fetch([
+    int? requestedPage,
+    int batchSize = 100,
+  ]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     final sort = _list.sortKey == 'total' ? null : _list.sortKey;
@@ -228,6 +231,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         .read(stockDocRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: batchSize,
           filter: StockDocFilter(
             origin: stockDocHeaderOrigin(
               _statusHeader,
@@ -353,6 +357,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -579,11 +584,18 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () {
+    FutureOr<void> visibleReadReturn() {
       final rows = _reload(null, true);
       _loadBadge();
       return _list.revalidate(rows);
-    }, refreshKeys: [widget.docType.refreshKey]);
+    }
+
+    _list.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(
+      _myLocation!,
+      visibleReadReturn,
+      refreshKeys: [widget.docType.refreshKey],
+    );
     final seg = _seg;
     return Scaffold(
       appBar: UtenAppBar(
@@ -798,7 +810,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             totalPages: _list.totalPages,
                             paginationRevision: _list.paginationRevision,
                             refreshedPages: _list.refreshedPages,
-                            onRetainedPagesChanged: _list.retainPages,
                             paginationScope: (
                               widget.docType,
                               _list.normalizedKeyword,

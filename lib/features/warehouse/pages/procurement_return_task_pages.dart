@@ -60,6 +60,11 @@ enum _ReturnSeg { pending, history }
 class _ProcurementReturnTasksPageState
     extends ConsumerState<ProcurementReturnTasksPage>
     with ScopedPagedReadViewMixin<ProcurementReturnTasksPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   PagedResult<ProcurementArrivalException>? _result;
   Object? _acceptedQuery;
   bool _loading = false;
@@ -136,6 +141,7 @@ class _ProcurementReturnTasksPageState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         if (nativeReadAccessDenied(error)) {
@@ -146,7 +152,8 @@ class _ProcurementReturnTasksPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _error = '待退供应商任务加载失败，请检查网络后重试';
@@ -289,7 +296,11 @@ class _ProcurementReturnTasksPageState
     // 返回即刷新：从本页 push 进详情办结退回后返回，重拉当前页（行内 onOpen
     // 是无返回值 push，此前返回后行状态停在旧值，要手动刷新）。
     _myLocation ??= currentLocationOr(context, _defaultBack);
-    ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
+    Future<void> visibleReadReturn() => _load(_result?.page ?? 1);
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     final result = _result;
     return Scaffold(
       appBar: UtenAppBar(

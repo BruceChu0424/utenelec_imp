@@ -2,6 +2,7 @@ package com.uten.imp.features.archive;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.ProcurementArchiveEligibilityPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,14 +42,17 @@ public class BusinessArchiveEligibilityService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final ProcurementArchiveEligibilityPort financeFacts;
     private final int settledMonths;
 
     public BusinessArchiveEligibilityService(
             JdbcTemplate jdbc,
             ObjectMapper mapper,
+            ProcurementArchiveEligibilityPort financeFacts,
             @Value("${uten.archive.eligibility.settled-months:24}") int settledMonths) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.financeFacts = financeFacts;
         this.settledMonths = Math.max(1, settledMonths);
     }
 
@@ -56,20 +60,23 @@ public class BusinessArchiveEligibilityService {
             UUID objectId, String billNo, boolean eligible,
             List<String> blockedReasons, LocalDate finalSettledOn) {}
 
-    /** 扫描已审已结案采购订单并整行重算资格登记；返回本次评估结果（按单号升序，有界）。 */
+    /** 未评估/最久未评估优先，有界轮转；已登记对象重开后也要重新核对资格。 */
     @Transactional
     public List<Evaluation> evaluatePurchaseOrders(int limit) {
         int bounded = Math.max(1, Math.min(limit, 1_000));
         LocalDate cutoff = LocalDate.now().minusMonths(settledMonths);
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 WITH candidates AS (
-                    SELECT o.id, o.bill_no, o.bill_date
+                    SELECT o.id, o.bill_no, o.bill_date, o.status, o.is_closed, o.is_deleted
                     FROM purchase_orders o
-                    WHERE o.status = 1 AND o.is_closed AND NOT o.is_deleted
-                    ORDER BY o.bill_date, o.id
+                    LEFT JOIN business_archive_eligibility evaluated
+                      ON evaluated.object_family = 'PURCHASE_ORDER' AND evaluated.object_id = o.id
+                    WHERE (o.status = 1 AND o.is_closed AND NOT o.is_deleted)
+                       OR evaluated.object_id IS NOT NULL
+                    ORDER BY evaluated.evaluated_at ASC NULLS FIRST, o.bill_date, o.id
                     LIMIT ?
                 )
-                SELECT c.id, c.bill_no,
+                SELECT c.id, c.bill_no, c.status, c.is_closed, c.is_deleted,
                        COALESCE(f.open_quality_cases, 0) AS open_quality_cases,
                        COALESCE(f.draft_receipts, 0) AS draft_receipts,
                        COALESCE(f.draft_returns, 0) AS draft_returns,
@@ -134,6 +141,8 @@ public class BusinessArchiveEligibilityService {
                 ) f
                 """, bounded);
 
+        Map<UUID, ProcurementArchiveEligibilityPort.Facts> financial = financeFacts.purchaseOrderFacts(
+                rows.stream().map(row -> (UUID) row.get("id")).toList());
         List<Evaluation> evaluations = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             UUID orderId = (UUID) row.get("id");
@@ -150,6 +159,11 @@ public class BusinessArchiveEligibilityService {
                             : LocalDate.parse(String.valueOf(row.get("final_settled_on"))));
 
             List<String> reasons = new ArrayList<>();
+            if (((Number) row.get("status")).intValue() != 1
+                    || !Boolean.TRUE.equals(row.get("is_closed"))
+                    || Boolean.TRUE.equals(row.get("is_deleted"))) {
+                reasons.add("NOT_CLOSED_OR_APPROVED");
+            }
             if (openQuality > 0) reasons.add("OPEN_QUALITY_CASES");
             if (draftReceipts > 0) reasons.add("DRAFT_RECEIPTS");
             if (draftReturns > 0) reasons.add("DRAFT_RETURNS");
@@ -161,6 +175,7 @@ public class BusinessArchiveEligibilityService {
             if (ledgerRows > 0 && finalSettled == null && unsettled == 0) {
                 reasons.add("SETTLED_DATE_MISSING");
             }
+            addFinanceBlockers(reasons, financial.get(orderId));
             boolean eligible = reasons.isEmpty();
 
             Map<String, Object> facts = new LinkedHashMap<>();
@@ -171,14 +186,15 @@ public class BusinessArchiveEligibilityService {
             facts.put("ledgerRows", ledgerRows);
             facts.put("unsettledLedgerRows", unsettled);
             facts.put("settledCutoff", cutoff.toString());
+            if (financial.containsKey(orderId)) facts.put("financeReferences", financial.get(orderId));
 
             jdbc.update("""
                     INSERT INTO business_archive_eligibility(
                         object_family, object_id, evaluated_at, eligible,
                         blocked_reasons, final_settled_on, facts)
-                    VALUES (?, ?, now(), ?, CAST(? AS jsonb), ?, CAST(? AS jsonb))
+                    VALUES (?, ?, statement_timestamp(), ?, CAST(? AS jsonb), ?, CAST(? AS jsonb))
                     ON CONFLICT (object_family, object_id) DO UPDATE SET
-                        evaluated_at = now(),
+                        evaluated_at = EXCLUDED.evaluated_at,
                         eligible = EXCLUDED.eligible,
                         blocked_reasons = EXCLUDED.blocked_reasons,
                         final_settled_on = EXCLUDED.final_settled_on,
@@ -205,15 +221,30 @@ public class BusinessArchiveEligibilityService {
         String payloadText = assemblePayload(orderId);
         String digest = sha256(payloadText);
         Map<String, Object> counts = lineCounts(orderId);
+        String attachmentRefs = attachmentRefsJson(orderId);
+        String countsJson = toJson(counts);
 
-        String existingDigest = jdbc.query("""
-                SELECT payload_sha256 FROM business_archive_packages
+        // The payload checksum keeps its existing contract. The complete copy
+        // also includes separately stored attachment identities and line counts.
+        List<Map<String, Object>> existing = jdbc.queryForList("""
+                SELECT payload::text AS payload, payload_sha256,
+                       attachment_refs = CAST(? AS jsonb) AS attachments_match,
+                       line_counts = CAST(? AS jsonb) AS counts_match
+                FROM business_archive_packages
                 WHERE object_family = ? AND object_id = ? AND status = 'VERIFIED'
                 ORDER BY package_version DESC LIMIT 1
-                """, (rs, n) -> rs.getString(1), FAMILY_PURCHASE_ORDER, orderId)
-                .stream().findFirst().orElse(null);
-        if (digest.equals(existingDigest)) {
-            return new PackageOutcome(orderId, "UNCHANGED", digest, counts);
+                """, attachmentRefs, countsJson, FAMILY_PURCHASE_ORDER, orderId);
+        if (!existing.isEmpty()) {
+            Map<String, Object> previous = existing.get(0);
+            String previousDigest = String.valueOf(previous.get("payload_sha256"));
+            if (!previousDigest.equals(sha256(String.valueOf(previous.get("payload"))))) {
+                throw new IllegalStateException("已存归档包载荷与摘要不一致: " + orderId);
+            }
+            if (digest.equals(previousDigest)
+                    && Boolean.TRUE.equals(previous.get("attachments_match"))
+                    && Boolean.TRUE.equals(previous.get("counts_match"))) {
+                return new PackageOutcome(orderId, "UNCHANGED", digest, counts);
+            }
         }
         jdbc.update("UPDATE business_archive_packages SET status = 'SUPERSEDED' "
                 + "WHERE object_family = ? AND object_id = ? AND status = 'VERIFIED'",
@@ -231,13 +262,18 @@ public class BusinessArchiveEligibilityService {
                 VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, CAST(? AS jsonb), CAST(? AS jsonb), NULL)
                 """,
                 FAMILY_PURCHASE_ORDER, orderId, nextVersion, POLICY_VERSION,
-                payloadText, digest, attachmentRefsJson(orderId), toJson(counts));
-        // 复制校验：落库字节回读后重新摘要，必须与随行摘要一致。
-        String stored = jdbc.queryForObject("""
-                SELECT payload::text FROM business_archive_packages
+                payloadText, digest, attachmentRefs, countsJson);
+        // 回读校验整份副本，不能把附件/行数未成功复制的包标成成功。
+        Map<String, Object> stored = jdbc.queryForMap("""
+                SELECT payload::text AS payload,
+                       attachment_refs = CAST(? AS jsonb) AS attachments_match,
+                       line_counts = CAST(? AS jsonb) AS counts_match
+                FROM business_archive_packages
                 WHERE object_family = ? AND object_id = ? AND package_version = ?
-                """, String.class, FAMILY_PURCHASE_ORDER, orderId, nextVersion);
-        if (!digest.equals(sha256(stored))) {
+                """, attachmentRefs, countsJson, FAMILY_PURCHASE_ORDER, orderId, nextVersion);
+        if (!digest.equals(sha256(String.valueOf(stored.get("payload"))))
+                || !Boolean.TRUE.equals(stored.get("attachments_match"))
+                || !Boolean.TRUE.equals(stored.get("counts_match"))) {
             throw new IllegalStateException("归档包落库字节与摘要不一致: " + orderId);
         }
         return new PackageOutcome(orderId, "PACKAGED", digest, counts);
@@ -286,6 +322,7 @@ public class BusinessArchiveEligibilityService {
                                    WHERE ti.order_item_id IN (SELECT oi.id FROM purchase_order_items oi WHERE oi.order_id = o.id))))) AS final_settled_on
                 FROM purchase_orders o WHERE o.id = ?
                 """, orderId);
+        Map<UUID, ProcurementArchiveEligibilityPort.Facts> financial = financeFacts.purchaseOrderFacts(List.of(orderId));
         LocalDate cutoff = LocalDate.now().minusMonths(settledMonths);
         List<Evaluation> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
@@ -312,9 +349,19 @@ public class BusinessArchiveEligibilityService {
             if (ledgerRows > 0 && finalSettled == null && ((Number) row.get("unsettled_rows")).longValue() == 0) {
                 reasons.add("SETTLED_DATE_MISSING");
             }
+            addFinanceBlockers(reasons, financial.get(orderId));
             result.add(new Evaluation(orderId, billNo, reasons.isEmpty(), reasons, finalSettled));
         }
         return result;
+    }
+
+    private static void addFinanceBlockers(List<String> reasons, ProcurementArchiveEligibilityPort.Facts facts) {
+        if (facts == null) return;
+        if (facts.pendingRecognition() > 0) reasons.add("PENDING_PAYABLE_RECOGNITION");
+        if (facts.unsettledPayables() > 0) reasons.add("UNSETTLED_RECOGNIZED_PAYABLES");
+        // The v1 package does not contain the new recognition/journal object family.
+        // Even a reversed/settled reference is retained evidence, never an implicit ready package.
+        if (facts.references() > 0) reasons.add("UNPACKAGED_FINANCE_REFERENCES");
     }
 
     /** 单事务一致快照内组装完整对象族（服务端组装, 与业务读侧同一事实表）。 */

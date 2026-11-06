@@ -1,3 +1,4 @@
+import { CmsContinuousTable } from './CmsContinuousTable';
 import Image from 'next/image';
 import type { CmsSnapshot, CmsRow } from '@/lib/cms-apply';
 
@@ -48,12 +49,12 @@ function fields(snapshot:CmsSnapshot):Map<string,string>{
   return result;
 }
 function DifferenceTable({rows}:{rows:{key:string;before:string;after:string}[]}) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
+  return <div className="overflow-x-auto"><CmsContinuousTable rowCount={rows.length} className="w-full min-w-[560px] text-left text-sm">
     <thead><tr className="border-b border-border text-muted-foreground"><th className="p-3">变更字段</th><th className="p-3">保存草稿时</th><th className="p-3">此版本</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.key} className="border-b border-border align-top"><th className="max-w-64 break-words p-3 font-medium">{row.key}</th>
       <td className="max-w-md whitespace-pre-wrap break-words p-3 text-muted-foreground">{row.before}</td>
       <td className="max-w-md whitespace-pre-wrap break-words p-3">{row.after}</td></tr>)}</tbody>
-  </table></div>;
+  </CmsContinuousTable></div>;
 }
 export function CmsRevisionPreview({before,after}:{before:CmsSnapshot;after:CmsSnapshot}) {
   const record=after.record??before.record,content=locale(record);

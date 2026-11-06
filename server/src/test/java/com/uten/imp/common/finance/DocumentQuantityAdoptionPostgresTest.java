@@ -23,7 +23,7 @@ class DocumentQuantityAdoptionPostgresTest {
         MigratedProjectionSchema.createCurrentTables(db,"purchase_receipt_items","purchase_return_items","purchase_returns","subcontract_material_return_items","subcontract_receipt_items","purchase_order_items","business_numeric_input_evidence","document_unapprovals");
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_precision_snapshot",
                 "fn_financial_amount_is_exact","fn_document_quantity_to_base","fn_document_return_quantity_slice",
-                "fn_unapproval_source_item","fn_unapproval_frozen_fields","fn_guard_document_quantity_adoption","fn_document_material_return_base","fn_validate_receipt_weight_adoption");
+                "fn_unapproval_source_item","fn_unapproval_frozen_fields","fn_accept_verified_legacy_quantity_adoption","fn_guard_document_quantity_adoption","fn_document_material_return_base","fn_validate_receipt_weight_adoption");
         for(String table:new String[]{"purchase_receipt_items","purchase_return_items","subcontract_material_return_items","subcontract_receipt_items","purchase_order_items"})
             db.execute("CREATE TRIGGER quantity_adoption BEFORE INSERT OR UPDATE ON "+table+" FOR EACH ROW EXECUTE FUNCTION fn_guard_document_quantity_adoption()");
         for(String table:new String[]{"purchase_receipt_items","subcontract_receipt_items"})
@@ -93,6 +93,25 @@ class DocumentQuantityAdoptionPostgresTest {
         assertThat(db.queryForObject("SELECT quantity_source_proof->>'kind' FROM purchase_return_items WHERE id=?",String.class,item)).isEqualTo("SOURCE_RECEIPT");
         assertThat(db.queryForObject("SELECT charged_base_qty FROM purchase_return_items WHERE id=?",BigDecimal.class,item)).isEqualByComparingTo(".012345678901234567890123");
         assertThatThrownBy(()->db.update("UPDATE purchase_return_items SET charged_base_qty=.03 WHERE id=?",item)).isInstanceOf(RuntimeException.class);
+    }
+    @Test void draftCopiesUseThisActionsChoiceRatherThanTheSourcesFrozenAdoption() {
+        for(String table:new String[]{"purchase_receipt_items","purchase_return_items"}) {
+            UUID original=UUID.randomUUID(),successor=UUID.randomUUID(),unit=UUID.randomUUID();
+            tx.executeWithoutResult(status->{choice("24","DOWN");
+                db.update("INSERT INTO "+table+"(id,unit_id,qty,gift_qty,unit_rate,quantity_semantics,charged_base_qty,gift_base_qty) VALUES(?,?,.1,.2,.123456789012345678901239,'CHARGED_PLUS_GIFT_V1',.012345678901234567890123,.024691357802469135780248)",original,unit);
+            });
+            String originalPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM "+table+" WHERE id=?",String.class,original);
+            var generated=DocumentQuantityDraftInputs.chargedAndGift();
+            tx.executeWithoutResult(status->{choice("24","HALF_UP");
+                db.update("INSERT INTO "+table+"(id,unit_id,qty,gift_qty,unit_rate,quantity_semantics,charged_base_qty,gift_base_qty) SELECT ?,source.unit_id,source.qty,source.gift_qty,source.unit_rate,source.quantity_semantics,"+
+                        generated.get("charged_base_qty")+","+generated.get("gift_base_qty")+" FROM "+table+" source WHERE source.id=?",successor,original);
+            });
+            assertThat(db.queryForObject("SELECT charged_base_qty FROM "+table+" WHERE id=?",BigDecimal.class,original)).isEqualByComparingTo(".012345678901234567890123");
+            assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM "+table+" WHERE id=?",String.class,original)).isEqualTo(originalPolicy);
+            assertThat(db.queryForObject("SELECT charged_base_qty FROM "+table+" WHERE id=?",BigDecimal.class,successor)).isEqualByComparingTo(".012345678901234567890124");
+            assertThat(db.queryForObject("SELECT gift_base_qty FROM "+table+" WHERE id=?",BigDecimal.class,successor)).isEqualByComparingTo(".024691357802469135780248");
+            assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'rounding' FROM "+table+" WHERE id=?",String.class,successor)).isEqualTo("HALF_UP");
+        }
     }
     @Test void receiptWeightMustMatchSameActionOriginalKilogramsAndFrozenChoice(){
         UUID document=UUID.randomUUID(),item=UUID.randomUUID(),unit=UUID.randomUUID();

@@ -40,8 +40,6 @@ void main() {
       await _pump(tester, repository);
       MasterDataTableView<AiUsageAuditRecord> table() =>
           tester.widget(find.byKey(const Key('ai-records-table')));
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
       await tester.tap(
         find
             .byKey(const ValueKey('master-column-filter-question'))
@@ -103,108 +101,80 @@ void main() {
     },
   );
   testWidgets(
-    'record pages prepare ahead, reuse both directions and preserve exact event fields',
+    'records load the complete query once and preserve exact event fields',
     (tester) async {
       final repository = _Repository()
         ..pages = {
-          for (var page = 0; page < 3; page++)
-            page: {
-              ..._data(question: '第$page页问题', total: 41),
-              'records': [
-                {
-                  'id': 'event-$page',
-                  'userId': 'employee-$page',
-                  'name': '员工$page',
-                  'code': 'E$page',
-                  'question': '第$page页问题',
-                  'intent': 'inventory_lookup',
-                  'kind': 'ERP_CHAT',
-                  'status': 'SUCCEEDED',
-                  'createdAt': '2026-10-26T01:02:03.123456Z',
-                  'inputTokens': 9007199254740991,
-                  'outputTokens': null,
-                  'calls': 2,
-                  'providerNames': ['服务$page'],
-                  'models': ['模型$page'],
-                  'costs': [
-                    {
-                      'basis': 'ACTUAL',
-                      'currency': 'EUR',
-                      'amount': '999999999999.000000001',
-                    },
-                  ],
-                },
-              ],
-            },
+          for (var page = 0; page < 3; page++) page: _auditBatch(page),
         };
       await _pump(tester, repository);
-      MasterDataTableView<AiUsageAuditRecord> table() =>
-          tester.widget(find.byKey(const Key('ai-records-table')));
-      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
-      expect(table().currentPage, 1);
-      expect(table().items.single.id, 'event-0');
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
-      expect(table().currentPage, 2);
-      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
-      final second = table().items.single;
-      expect(second.id, 'event-1');
+      final table = tester.widget<MasterDataTableView<AiUsageAuditRecord>>(
+        find.byKey(const Key('ai-records-table')),
+      );
+      expect(repository.reads.map((q) => q['page']), [0, 1, 2]);
+      expect(repository.reads.every((q) => q['size'] == 100), isTrue);
+      expect(table.items, hasLength(201));
+      final second = table.items[100];
+      expect(second.id, 'event-100');
       expect(second.inputTokens, 9007199254740991);
       expect(second.outputTokens, isNull);
       expect(second.createdAt, '2026-10-26T01:02:03.123456Z');
       expect(second.metrics.costs.single.amount, '999999999999.000000001');
-      expect(second.providerNames, ['服务1']);
-      await table().onPageChange!(1);
+      expect(second.providerNames, ['服务100']);
+      await tester.drag(
+        find.byKey(const Key('ai-records-list')),
+        const Offset(0, -2500),
+      );
       await tester.pumpAndSettle();
-      expect(table().items.single.id, 'event-0');
-      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
+      expect(repository.reads, hasLength(3));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       await tester.tap(find.byTooltip('刷新记录'));
       await tester.pumpAndSettle();
-      expect(
-        repository.reads.where((query) => query['page'] == 0),
-        hasLength(2),
-      );
+      expect(repository.reads.map((q) => q['page']), [0, 1, 2, 0, 1, 2]);
     },
   );
 
   testWidgets(
-    'record foreground adopts prefetch while retaining the accepted page indicator',
+    'one complete read waits for the final batch without publishing an incomplete query',
     (tester) async {
       final second = Completer<Map<String, dynamic>>();
       final repository = _Repository()
-        ..pendingReads.add(Future.value(_data(question: '第一页', total: 21)))
+        ..pendingReads.add(Future.value(_auditBatch(0, total: 101)))
         ..pendingReads.add(second.future);
       addTearDown(() {
-        if (!second.isCompleted) second.complete(_data(total: 21));
+        if (!second.isCompleted) second.complete(_auditBatch(1, total: 101));
       });
-      await _pump(tester, repository);
-      MasterDataTableView<AiUsageAuditRecord> table() =>
-          tester.widget(find.byKey(const Key('ai-records-table')));
-      expect(repository.reads.map((query) => query['page']), [0, 1]);
-      expect(table().currentPage, 1);
-      expect(table().loadingMore, isFalse);
-      final navigation = table().onPageChange!(2);
-      await tester.pump();
-      expect(table().currentPage, 1);
-      expect(table().loadingMore, isTrue);
+      await _pump(tester, repository, waitComplete: false);
+      expect(repository.reads.map((q) => q['page']), [0, 1]);
+      expect(find.byKey(const Key('ai-records-table')), findsNothing);
+      expect(find.byKey(const ValueKey('ai-records-skeleton')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 100));
       expect(repository.reads, hasLength(2));
-      second.complete(_data(question: '第二页', total: 21));
-      await navigation;
+      second.complete(_auditBatch(1, total: 101));
       await tester.pumpAndSettle();
-      expect(table().currentPage, 2);
-      expect(table().items.single.question, '第二页');
+      expect(
+        tester
+            .widget<MasterDataTableView<AiUsageAuditRecord>>(
+              find.byKey(const Key('ai-records-table')),
+            )
+            .items,
+        hasLength(101),
+      );
       expect(repository.reads, hasLength(2));
     },
   );
 
   testWidgets(
-    'record prefetch rejection clears records, users and billing providers without reread',
+    'a later batch rejection clears records, users and billing without reread',
     (tester) async {
       final rejected = Completer<Map<String, dynamic>>();
       final repository = _Repository()
-        ..pendingReads.add(Future.value(_data(total: 21)))
+        ..pendingReads.add(Future.value(_auditBatch(0, total: 101)))
         ..pendingReads.add(rejected.future);
-      await _pump(tester, repository);
+      await _pump(tester, repository, waitComplete: false);
       rejected.completeError(
         ApiException('FORBIDDEN', '记录读取权限已撤销', httpStatus: 403),
       );
@@ -421,7 +391,7 @@ void main() {
         'subcontract_order_status': l10n.aiAuditPurposeSubcontract,
         'unknown_internal_code': l10n.aiAuditKindChat,
       };
-      final repository = _Repository()..data = _data();
+      final repository = _Repository()..data = _data(total: cases.length);
       repository.data['records'] = [
         for (final entry in cases.entries)
           {
@@ -474,36 +444,22 @@ void main() {
   );
 
   testWidgets(
-    'paging and filter changes use the selected scope and reset to page zero',
+    'complete reads and filter changes keep the selected scope and restart at page zero',
     (tester) async {
       final repository = _Repository()
-        ..data = _data(total: 41)
         ..pages = {
-          for (var page = 0; page < 3; page++)
-            page: {
-              ..._data(total: 41),
-              'records': [
-                {
-                  ...((_data()['records'] as List).single
-                      as Map<String, dynamic>),
-                  'id': 'paging-job-$page',
-                },
-              ],
-            },
+          for (var page = 0; page < 3; page++) page: _auditBatch(page),
         };
       await _pump(tester, repository);
-      final next = find.byKey(const ValueKey('master-table-page-next'));
-      await tester.ensureVisible(next);
-      await tester.tap(next);
-      await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<AiUsageAuditRecord>>(
         find.byKey(const Key('ai-records-table')),
       );
-      expect(table.rowsController!.pagination.value?.currentPage, 2);
+      expect(table.rowsController!.items, hasLength(201));
       expect(
-        repository.reads.where((query) => query['page'] == 1),
-        hasLength(1),
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
       );
+      expect(repository.reads.map((q) => q['page']), [0, 1, 2]);
       await _select(tester, '时间', '近 7 天');
       expect(repository.reads.last['days'], 7);
       expect(
@@ -857,6 +813,7 @@ void main() {
     await _pump(tester, repository, width: 390, height: 1100, screenshot: true);
     await capture(tester, 'usage-records-390');
     await _openBilling(tester);
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.widgetWithText(FilledButton, '保存计费设置'));
     await tester.pumpAndSettle();
     await capture(tester, 'usage-records-billing-390');
@@ -935,6 +892,7 @@ Future<_Harness> _pump(
   double width = 1000,
   double height = 1200,
   bool screenshot = false,
+  bool waitComplete = true,
   Locale locale = const Locale('zh'),
   _Providers? providers,
 }) async {
@@ -981,7 +939,13 @@ Future<_Harness> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (waitComplete) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
   return _Harness(container);
 }
 
@@ -1103,22 +1067,58 @@ Map<String, dynamic> _data({
     },
   ],
   'records': [
-    {
-      'id': 'job-1',
-      'name': '示例员工',
-      'code': 'E001',
-      'question': question,
-      'status': 'SUCCEEDED',
-      'kind': 'ERP_CHAT',
-      'createdAt': '2026-10-03T12:00:00Z',
-      'calls': 1,
-      'inputTokens': null,
-      'outputTokens': null,
-      'costs': <Map<String, dynamic>>[],
-      'unknownCostCalls': 1,
-    },
+    for (var index = 0; index < total; index++)
+      {
+        'id': 'job-${index + 1}',
+        'name': '示例员工',
+        'code': 'E001',
+        'question': question,
+        'status': 'SUCCEEDED',
+        'kind': 'ERP_CHAT',
+        'createdAt': '2026-10-03T12:00:00Z',
+        'calls': 1,
+        'inputTokens': null,
+        'outputTokens': null,
+        'costs': <Map<String, dynamic>>[],
+        'unknownCostCalls': 1,
+      },
   ],
   'total': total,
+};
+
+Map<String, dynamic> _auditBatch(int page, {int total = 201}) => {
+  ..._data(),
+  'total': total,
+  'records': [
+    for (
+      var index = page * 100;
+      index < (page + 1) * 100 && index < total;
+      index++
+    )
+      {
+        'id': 'event-$index',
+        'userId': 'employee-$index',
+        'name': '员工$index',
+        'code': 'E$index',
+        'question': '问题$index',
+        'intent': 'inventory_lookup',
+        'kind': 'ERP_CHAT',
+        'status': 'SUCCEEDED',
+        'createdAt': '2026-10-26T01:02:03.123456Z',
+        'inputTokens': 9007199254740991,
+        'outputTokens': null,
+        'calls': 2,
+        'providerNames': ['服务$index'],
+        'models': ['模型$index'],
+        'costs': [
+          {
+            'basis': 'ACTUAL',
+            'currency': 'EUR',
+            'amount': '999999999999.000000001',
+          },
+        ],
+      },
+  ],
 };
 
 class _HeaderRepository extends _Repository

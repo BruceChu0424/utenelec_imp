@@ -32,6 +32,76 @@ const _batchRoute = '/warehouse/subcontract-outbound/batch';
 const _batchLocation = '$_batchRoute?issueIds=issue-1,issue-2,issue-3';
 
 void main() {
+  for (final legacyNumericWeight in [false, true]) {
+    testWidgets(
+      'unknown出仓${legacyNumericWeight ? '旧numeric' : '新精确string'}重量跨恢复不改冻结JSON或幂等键',
+      (tester) async {
+        final api = _LostAtomicApi(afterCommit: false);
+        final harness = await _pump(
+          tester,
+          api,
+          selectedItemIds: ['issue-item-1', 'issue-item-2', 'issue-item-3'],
+        );
+        _table(tester).rows.first.draft.weight.weight.text.text =
+            legacyNumericWeight ? '1500g' : '99999999999999.9999kg';
+        await _confirm(tester);
+        var saved = harness.container.read(formDraftsProvider).single;
+        expect(saved.hasUnknownSubmission, isTrue);
+        expect(api.atomicRequests, hasLength(1));
+        await _leave(tester, harness.router);
+        saved = harness.container.read(formDraftsProvider).single;
+        if (legacyNumericWeight) {
+          // Build a persisted command from the previous numeric wire contract.
+          // Restoration must preserve it, rather than upgrading an unknown POST.
+          final previous =
+              jsonDecode(jsonEncode(saved.toJson())) as Map<String, dynamic>;
+          final data = previous['data'] as Map;
+          final command = (data['atomicCommands'] as Map)['issue-1'] as Map;
+          final item =
+              ((command['document'] as Map)['items'] as List).single as Map;
+          item['weight'] = 1.5;
+          saved = await harness.container
+              .read(formDraftsProvider.notifier)
+              .save(
+                FormDraft.fromJson(previous),
+                expectedRevision: saved.revision,
+              );
+        }
+        final frozen = (saved.data['atomicCommands'] as Map)['issue-1'] as Map;
+        final originalJson = jsonEncode(frozen);
+        final originalKey = frozen['idempotencyKey'];
+        final item =
+            ((frozen['document'] as Map)['items'] as List).single as Map;
+        expect(
+          item['weight'],
+          legacyNumericWeight ? 1.5 : '99999999999999.9999',
+        );
+        api.atomicRequests.clear();
+        unawaited(harness.router.push(saved.resumeLocation));
+        await tester.pumpAndSettle();
+        expect(api.atomicRequests, isEmpty, reason: '恢复和回执查询不重发');
+        final restored = harness.container.read(formDraftsProvider).single;
+        expect(restored.hasUnknownSubmission, isTrue);
+        expect(
+          jsonEncode((restored.data['atomicCommands'] as Map)['issue-1']),
+          originalJson,
+        );
+        await tester.tap(find.text('核实处理结果').first);
+        await tester.pumpAndSettle();
+        expect(api.atomicRequests, isEmpty);
+        await tester.tap(find.text('按原内容重试').first);
+        await tester.pumpAndSettle();
+        expect(api.atomicRequests, hasLength(1));
+        expect(api.atomicRequests.single.$1, 'issue-1');
+        expect(api.atomicRequests.single.$2['idempotencyKey'], originalKey);
+        expect(jsonEncode(api.atomicRequests.single.$2), originalJson);
+        expect(api.updates, isEmpty);
+        expect(api.approvals, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final status in [409, 403, 404]) {
     testWidgets('相邻未提交来源$status不阻断未知原操作，脱敏恢复原键并保存再次打开', (tester) async {
       final api = _RecoveryReadApi(afterCommit: false);

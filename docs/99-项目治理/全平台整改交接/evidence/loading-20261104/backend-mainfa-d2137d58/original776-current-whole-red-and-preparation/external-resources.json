@@ -1,0 +1,1186 @@
+[
+  {
+    "sourcePath": "assets/fonts/OFL.txt",
+    "compiledPath": "server/target-loading-main-fa-final/classes/fonts/OFL.txt"
+  },
+  {
+    "sourcePath": "contracts/windows-engine-safety/v1.json",
+    "compiledPath": "server/target-loading-main-fa-final/classes/contracts/windows-engine-safety/v1.json"
+  },
+  {
+    "sourcePath": "contracts/windows-payload-binding/v1.json",
+    "compiledPath": "server/target-loading-main-fa-final/classes/contracts/windows-payload-binding/v1.json"
+  },
+  {
+    "sourcePath": "docs/00-\u9879\u76ee\u51c6\u5219/13-\u9002\u8001\u5316UX\u57fa\u7ebf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/00-\u9879\u76ee\u51c6\u5219/13-\u9002\u8001\u5316UX\u57fa\u7ebf.md"
+  },
+  {
+    "sourcePath": "docs/00-\u9879\u76ee\u51c6\u5219/14-\u5fbd\u7ae0\u4e0e\u8ba1\u6570\u53e3\u5f84.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/00-\u9879\u76ee\u51c6\u5219/14-\u5fbd\u7ae0\u4e0e\u8ba1\u6570\u53e3\u5f84.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/AI\u5de5\u4f5c\u52a9\u624b\u4f7f\u7528\u8bf4\u660e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/AI\u5de5\u4f5c\u52a9\u624b\u4f7f\u7528\u8bf4\u660e.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/App\u5916\u58f3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/App\u5916\u58f3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/HR\u4efb\u52a1\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/HR\u4efb\u52a1\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ea7\u6210\u54c1\u5f85\u70b9\u6536\u4efb\u52a1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ea7\u6210\u54c1\u5f85\u70b9\u6536\u4efb\u52a1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4eba\u4e8b\u82b1\u540d\u518c\u6838\u5bf9\u4e0e\u5458\u5de5\u8d44\u6599\u66f4\u6b63\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4eba\u4e8b\u82b1\u540d\u518c\u6838\u5bf9\u4e0e\u5458\u5de5\u8d44\u6599\u66f4\u6b63\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u5230\u8d27\u767b\u8bb0\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u5230\u8d27\u767b\u8bb0\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u5355\u636e\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u5355\u636e\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u59d4\u5916\u51fa\u4ed3\u5de5\u4f5c\u53f0\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u59d4\u5916\u51fa\u4ed3\u5de5\u4f5c\u53f0\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u5b9e\u7269\u5355\u636e\u5386\u53f2\u4e13\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u5b9e\u7269\u5355\u636e\u5386\u53f2\u4e13\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u7ba1\u7406\u67a2\u7ebd\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u7ba1\u7406\u67a2\u7ebd\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u4ed3\u5e93\u8d44\u6599\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u4ed3\u5e93\u8d44\u6599\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5165\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5165\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5165\u804c\u6d41\u7a0b\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5165\u804c\u6d41\u7a0b\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u516c\u53f8\u8d44\u6599\u5e93.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u516c\u53f8\u8d44\u6599\u5e93.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u51fa\u5165\u5e93\u8bb0\u5f55\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u51fa\u5165\u5e93\u8bb0\u5f55\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u51fa\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u51fa\u5e93\u4efb\u52a1\u4e2d\u5fc3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5206\u6790\u5173\u8054\u8ba2\u5355\u8d27\u54c1\u6e05\u5355\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5206\u6790\u5173\u8054\u8ba2\u5355\u8d27\u54c1\u6e05\u5355\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5217\u8868\u5206\u7c7b\u4e0e\u72b6\u6001\u5448\u73b0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5217\u8868\u5206\u7c7b\u4e0e\u72b6\u6001\u5448\u73b0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5373\u65f6\u5e93\u5b58\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5373\u65f6\u5e93\u5b58\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5404\u90e8\u95e8\u7533\u8bf7\u6d41\u7a0b.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5404\u90e8\u95e8\u7533\u8bf7\u6d41\u7a0b.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5458\u5de5\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5458\u5de5\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5458\u5de5\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5458\u5de5\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5458\u5de5\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5458\u5de5\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u54c1\u8d28\u4efb\u52a1\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u54c1\u8d28\u4efb\u52a1\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u54c1\u8d28\u68c0\u6d4b\u8bb0\u5f55\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u54c1\u8d28\u68c0\u6d4b\u8bb0\u5f55\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u54c1\u8d28\u90e8\u68c0\u67e5\u7ed3\u679c\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u54c1\u8d28\u90e8\u68c0\u67e5\u7ed3\u679c\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u57fa\u7840\u8d44\u6599\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u57fa\u7840\u8d44\u6599\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u59d4\u5916\u4e13\u5c5e\u5de5\u4f5c\u53f0\u4e0e\u9875\u9762\u6743\u9650.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u59d4\u5916\u4e13\u5c5e\u5de5\u4f5c\u53f0\u4e0e\u9875\u9762\u6743\u9650.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u59d4\u5916\u53d1\u6599\u5355\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u59d4\u5916\u53d1\u6599\u5355\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u59d4\u5916\u56de\u5382\u77ed\u4ea4\u5224\u5b9a\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u59d4\u5916\u56de\u5382\u77ed\u4ea4\u5224\u5b9a\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u59d4\u5916\u7533\u8bf7\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u59d4\u5916\u7533\u8bf7\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u59d4\u5916\u9886\u6599\u6279\u91cf\u51fa\u4ed3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u59d4\u5916\u9886\u6599\u6279\u91cf\u51fa\u4ed3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5b98\u7f51\u7ba1\u7406\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5b98\u7f51\u7ba1\u7406\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5b98\u7f51\u8be2\u76d8\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5b98\u7f51\u8be2\u76d8\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5ba1\u6279\u53ea\u8bfb\u68c0\u67e5.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5ba1\u6279\u53ea\u8bfb\u68c0\u67e5.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5ba2\u6237\u7aef\u8f6f\u4ef6\u66f4\u65b0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5ba2\u6237\u7aef\u8f6f\u4ef6\u66f4\u65b0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5ba2\u6237\u96f6\u661f\u53d1\u8d27\u4e0e\u51fa\u8d27\u8d22\u52a1\u5ba1\u6838.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5ba2\u6237\u96f6\u661f\u53d1\u8d27\u4e0e\u51fa\u8d27\u8d22\u52a1\u5ba1\u6838.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u4f5c\u53f0\u9996\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u4f5c\u53f0\u9996\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u7a0b\u7814\u53d1\u90e8\u4efb\u52a1\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u7a0b\u7814\u53d1\u90e8\u4efb\u52a1\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u7a0b\u9996\u6b21\u57fa\u672c\u5355\u4f4d\u6838\u5bf9.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u7a0b\u9996\u6b21\u57fa\u672c\u5355\u4f4d\u6838\u5bf9.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u8d44\u6761\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u8d44\u6761\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u8d44\u6761\u5ba1\u6838\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u8d44\u6761\u5ba1\u6838\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u8d44\u6761\u751f\u6210\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u8d44\u6761\u751f\u6210\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5de5\u8d44\u6761\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5de5\u8d44\u6761\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5e73\u53f0\u8bbe\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5e73\u53f0\u8bbe\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5e93\u5b58\u5206\u6790\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5e93\u5b58\u5206\u6790\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5e93\u5b58\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5e93\u5b58\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5e93\u5b58\u76d8\u70b9\u5ba1\u6838\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5e93\u5b58\u76d8\u70b9\u5ba1\u6838\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5e93\u5b58\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5e93\u5b58\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5efa\u8bae\u7bb1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5efa\u8bae\u7bb1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u5f85\u68c0\u5904\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u5f85\u68c0\u5904\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u6211\u7684\u6743\u9650\u4e0e\u7533\u8bf7\u5f00\u901a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u6211\u7684\u6743\u9650\u4e0e\u7533\u8bf7\u5f00\u901a.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u6211\u7684\u7533\u8bf7\u4e0e\u5ba1\u6279\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u6211\u7684\u7533\u8bf7\u4e0e\u5ba1\u6279\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u6211\u7684\u8f66\u95f4\u4efb\u52a1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u6211\u7684\u8f66\u95f4\u4efb\u52a1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u6211\u7684\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u6211\u7684\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u62a5\u9500\u4e1a\u52a1\u8bbe\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u62a5\u9500\u4e1a\u52a1\u8bbe\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u62a5\u9500\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u62a5\u9500\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u62a5\u9500\u5ba1\u6279\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u62a5\u9500\u5ba1\u6279\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u62a5\u9500\u5ba1\u6279\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u62a5\u9500\u5ba1\u6279\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u62a5\u9500\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u62a5\u9500\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u65b0\u5efa\u62a5\u9500\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u65b0\u5efa\u62a5\u9500\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u670d\u52a1\u5668\u5b58\u50a8\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u670d\u52a1\u5668\u5b58\u50a8\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u670d\u52a1\u5668\u66f4\u65b0\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u670d\u52a1\u5668\u66f4\u65b0\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u670d\u52a1\u5668\u72b6\u6001\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u670d\u52a1\u5668\u72b6\u6001\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u7269\u6599\u53cd\u67e5\u4ea7\u6210\u54c1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u7269\u6599\u53cd\u67e5\u4ea7\u6210\u54c1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u7269\u6599\u8ffd\u6eaf\u4e2d\u5fc3\u8bbe\u8ba1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u7269\u6599\u8ffd\u6eaf\u4e2d\u5fc3\u8bbe\u8ba1.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u5c65\u7ea6\u4efb\u52a1\u5de5\u4f5c\u53f0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u5c65\u7ea6\u4efb\u52a1\u5de5\u4f5c\u53f0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u6210\u54c1\u8d28\u68c0\u4efb\u52a1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u6210\u54c1\u8d28\u68c0\u4efb\u52a1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u6267\u884c\u5206\u6bb5\u4e0e\u62a5\u5de5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u6267\u884c\u5206\u6bb5\u4e0e\u62a5\u5de5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u7269\u6599\u5206\u6790\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u7269\u6599\u5206\u6790\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u8865\u4ea7\u7269\u6599\u5f85\u529e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u8865\u4ea7\u7269\u6599\u5f85\u529e.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u8ba1\u5212\u5355\u4e00\u952e\u751f\u6210\u4e0e\u5168\u94fe\u8def\u6eaf\u6e90\u8bbe\u8ba1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u8ba1\u5212\u5355\u4e00\u952e\u751f\u6210\u4e0e\u5168\u94fe\u8def\u6eaf\u6e90\u8bbe\u8ba1.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u8ba2\u5355\u6392\u4ea7\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u8ba2\u5355\u6392\u4ea7\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u8c03\u5ea6\u5de5\u4f5c\u53f0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u8c03\u5ea6\u5de5\u4f5c\u53f0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u8d85\u4ea7\u4e0e\u8ffd\u52a0\u5904\u7406\u8bf4\u660e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u8d85\u4ea7\u4e0e\u8ffd\u52a0\u5904\u7406\u8bf4\u660e.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u9000\u6599\u6279\u91cf\u6536\u6599\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u9000\u6599\u6279\u91cf\u6536\u6599\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u751f\u4ea7\u9886\u6599\u4efb\u52a1\u4e2d\u5fc3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u751f\u4ea7\u9886\u6599\u4efb\u52a1\u4e2d\u5fc3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u77ed\u4fe1\u63a5\u5165\u8bbe\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u77ed\u4fe1\u63a5\u5165\u8bbe\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u79bb\u804c\u6d41\u7a0b\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u79bb\u804c\u6d41\u7a0b\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u79f0\u91cd\u8ba1\u6570\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u79f0\u91cd\u8ba1\u6570\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8ba2\u8d27\u5355\u516c\u5171\u8868\u5934\u89c4\u8303.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8ba2\u8d27\u5355\u516c\u5171\u8868\u5934\u89c4\u8303.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8bbe\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8bbe\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8bbf\u5ba2\u9884\u7ea6\u7cfb\u7edf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8bbf\u5ba2\u9884\u7ea6\u7cfb\u7edf.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d22\u52a1\u4e1a\u52a1\u5ba1\u6838\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d22\u52a1\u4e1a\u52a1\u5ba1\u6838\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d22\u52a1\u62a5\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d22\u52a1\u62a5\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d27\u54c1\u4ef7\u683c\u5206\u6790\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d27\u54c1\u4ef7\u683c\u5206\u6790\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d27\u54c1\u6210\u672c\u5de5\u4f5c\u53f0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d27\u54c1\u6210\u672c\u5de5\u4f5c\u53f0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d27\u54c1\u64cd\u4f5c\u5386\u53f2.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d27\u54c1\u64cd\u4f5c\u5386\u53f2.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d27\u54c1\u8d44\u6599\u8be6\u60c5\u4e0e\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d27\u54c1\u8d44\u6599\u8be6\u60c5\u4e0e\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d27\u67b6\u76ee\u89c6\u5316\u6e05\u5355\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d27\u67b6\u76ee\u89c6\u5316\u6e05\u5355\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d44\u4ea7\u4e0e\u5f85\u644a\u7ba1\u7406\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d44\u4ea7\u4e0e\u5f85\u644a\u7ba1\u7406\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d44\u4ea7\u53ca\u5f85\u644a\u91cd\u65b0\u63d0\u4ea4\u5bf9\u7167.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d44\u4ea7\u53ca\u5f85\u644a\u91cd\u65b0\u63d0\u4ea4\u5bf9\u7167.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8d85\u9650\u4ea7\u51fa\u5904\u7f6e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8d85\u9650\u4ea7\u51fa\u5904\u7f6e.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u53d1\u6599\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u53d1\u6599\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u7528\u91cf\u4e0e\u7ed3\u7b97\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u7528\u91cf\u4e0e\u7ed3\u7b97\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u76d8\u70b9\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u76d8\u70b9\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u8bbe\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u8bbe\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f66\u95f4\u5185\u6599\u4ed3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u8f6f\u4ef6\u4e0b\u8f7d\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u8f6f\u4ef6\u4e0b\u8f7d\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u901a\u77e5\u5217\u8868\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u901a\u77e5\u5217\u8868\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u901a\u77e5\u53d1\u5e03\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u901a\u77e5\u53d1\u5e03\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u901a\u77e5\u8be6\u60c5\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u901a\u77e5\u8be6\u60c5\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u90e8\u95e8\u7ba1\u7406\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u90e8\u95e8\u7ba1\u7406\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u91c7\u8d2d\u59d4\u5916IQC\u5408\u683c\u5f85\u5165\u5e93\u4efb\u52a1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u91c7\u8d2d\u59d4\u5916IQC\u5408\u683c\u5f85\u5165\u5e93\u4efb\u52a1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u91c7\u8d2d\u59d4\u5916\u5e94\u4ed8\u7ed3\u7b97\u5de5\u4f5c\u53f0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u91c7\u8d2d\u59d4\u5916\u5e94\u4ed8\u7ed3\u7b97\u5de5\u4f5c\u53f0.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u91c7\u8d2d\u8ba2\u8d27\u5355\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u91c7\u8d2d\u8ba2\u8d27\u5355\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u91cd\u65b0\u63d0\u4ea4\u5ba1\u6279\u5dee\u5f02\u5c55\u793a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u91cd\u65b0\u63d0\u4ea4\u5ba1\u6279\u5dee\u5f02\u5c55\u793a.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u94b1\u6d41\u5355\u636e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u94b1\u6d41\u5355\u636e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u4efb\u52a1\u4e2d\u5fc3\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u4efb\u52a1\u4e2d\u5fc3\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u51fa\u8d27\u4ed3\u5e93\u4f5c\u4e1a\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u51fa\u8d27\u4ed3\u5e93\u4f5c\u4e1a\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u51fa\u8d27\u6279\u91cf\u51fa\u5e93\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u51fa\u8d27\u6279\u91cf\u51fa\u5e93\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u62a5\u4ef7\u5355\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u62a5\u4ef7\u5355\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u62a5\u4ef7\u8d22\u52a1\u6838\u4ef7\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u62a5\u4ef7\u8d22\u52a1\u6838\u4ef7\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u7f3a\u8d27\u4ef2\u88c1\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u7f3a\u8d27\u4ef2\u88c1\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u8ba2\u5355\u751f\u4ea7\u8fdb\u5ea6.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u8ba2\u5355\u751f\u4ea7\u8fdb\u5ea6.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u8ba2\u5355\u8d22\u52a1\u5ba1\u6838\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u8ba2\u5355\u8d22\u52a1\u5ba1\u6838\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u8ba2\u8d27\u5355\u7f16\u8f91\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u8ba2\u8d27\u5355\u7f16\u8f91\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u8d1f\u8d23\u4eba\u8ba2\u5355\u5ba1\u6838\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u8d1f\u8d23\u4eba\u8ba2\u5355\u5ba1\u6838\u9875.md"
+  },
+  {
+    "sourcePath": "docs/03-\u9875\u9762/\u9500\u552e\u9000\u8d27\u8d28\u68c0\u51bb\u7ed3\u5904\u7f6e\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/03-\u9875\u9762/\u9500\u552e\u9000\u8d27\u8d28\u68c0\u51bb\u7ed3\u5904\u7f6e\u9875.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/00-\u4e1a\u52a1\u672f\u8bed\u4e0e\u72b6\u6001\u603b\u8868.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/00-\u4e1a\u52a1\u672f\u8bed\u4e0e\u72b6\u6001\u603b\u8868.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/01-\u9500\u552e\u8ba2\u8d27\u5230\u53d1\u8d27\u5168\u94fe\u8def-SOP.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/01-\u9500\u552e\u8ba2\u8d27\u5230\u53d1\u8d27\u5168\u94fe\u8def-SOP.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/04-\u751f\u4ea7\u8ba2\u5355\u6392\u4ea7\u4e0e\u6267\u884c\u5168\u94fe\u8def\u9700\u6c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/04-\u751f\u4ea7\u8ba2\u5355\u6392\u4ea7\u4e0e\u6267\u884c\u5168\u94fe\u8def\u9700\u6c42.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/05-\u9500\u552e\u73b0\u8d27\u9884\u7559\u751f\u547d\u5468\u671f\u4e0e\u7a00\u7f3a\u4ef2\u88c1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/05-\u9500\u552e\u73b0\u8d27\u9884\u7559\u751f\u547d\u5468\u671f\u4e0e\u7a00\u7f3a\u4ef2\u88c1.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/06-\u9500\u552e\u9000\u8d27\u8d28\u68c0\u51bb\u7ed3\u4e0e\u5904\u7f6e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/06-\u9500\u552e\u9000\u8d27\u8d28\u68c0\u51bb\u7ed3\u4e0e\u5904\u7f6e.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/08-\u59d4\u5916\u5168\u94fe\u8def-\u8ba2\u8d27\u51fa\u4ed3\u56de\u4ed3\u91cd\u8bbe\u8ba1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/08-\u59d4\u5916\u5168\u94fe\u8def-\u8ba2\u8d27\u51fa\u4ed3\u56de\u4ed3\u91cd\u8bbe\u8ba1.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/09-\u7269\u6599\u8c03\u5165\u4e0e\u5b50\u5c42\u7ea7\u4f9b\u7ed9\u603b\u7eb2.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/09-\u7269\u6599\u8c03\u5165\u4e0e\u5b50\u5c42\u7ea7\u4f9b\u7ed9\u603b\u7eb2.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u5ba2\u6237\u73b0\u91d1\u9000\u6b3e\u5de5\u4f5c\u5305\u65b9\u6848.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u5ba2\u6237\u73b0\u91d1\u9000\u6b3e\u5de5\u4f5c\u5305\u65b9\u6848.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u8d22\u52a1\u539f\u59cb\u91d1\u989d\u4e0e\u7cbe\u786e\u5206\u644a\u53e3\u5f84.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u8d22\u52a1\u539f\u59cb\u91d1\u989d\u4e0e\u7cbe\u786e\u5206\u644a\u53e3\u5f84.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u9500\u552e\u8d44\u91d1\u5e93\u5b58\u573a\u666f\u77e9\u9635\u4e0e\u538b\u529b\u9a8c\u6536.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/2026-09-07-\u9500\u552e\u8d44\u91d1\u5e93\u5b58\u573a\u666f\u77e9\u9635\u4e0e\u538b\u529b\u9a8c\u6536.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u5458\u5de5\u62a5\u9500\u5168\u94fe\u8def-SOP.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u5458\u5de5\u62a5\u9500\u5168\u94fe\u8def-SOP.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u5458\u5de5\u62a5\u9500\u5408\u89c4\u4f9d\u636e\u4e0e\u51ed\u8bc1\u6e05\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u5458\u5de5\u62a5\u9500\u5408\u89c4\u4f9d\u636e\u4e0e\u51ed\u8bc1\u6e05\u5355.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u6211\u7684\u7533\u8bf7\u4e0e\u5ba1\u6279\u6743\u9650\u914d\u7f6e\u6307\u5357.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u6211\u7684\u7533\u8bf7\u4e0e\u5ba1\u6279\u6743\u9650\u914d\u7f6e\u6307\u5357.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u7269\u6599\u5206\u6790\u64a4\u56de\u4e0e\u8c03\u62e8\u9a8c\u8bc1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u7269\u6599\u5206\u6790\u64a4\u56de\u4e0e\u8c03\u62e8\u9a8c\u8bc1.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u54c1\u8d28\u6062\u590d\u4e0e\u53cd\u5411\u7ea6\u675f.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u54c1\u8d28\u6062\u590d\u4e0e\u53cd\u5411\u7ea6\u675f.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u8ba1\u91cf\u4e0e\u6765\u6e90\u5b88\u6052.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u8ba1\u91cf\u4e0e\u6765\u6e90\u5b88\u6052.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u9500\u552e\u5907\u6ce8\u4f20\u9012.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u751f\u4ea7\u9500\u552e\u5907\u6ce8\u4f20\u9012.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u8ba2\u5355\u4ea4\u4ed8\u4e0e\u5206\u6b21\u6536\u6b3e\u64cd\u4f5c\u6838\u5bf9.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u8ba2\u5355\u4ea4\u4ed8\u4e0e\u5206\u6b21\u6536\u6b3e\u64cd\u4f5c\u6838\u5bf9.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u8f66\u95f4\u4efb\u52a1\u8def\u7ebf\u4e0e\u4f9b\u6599\u573a\u666f\u77e9\u9635.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u8f66\u95f4\u4efb\u52a1\u8def\u7ebf\u4e0e\u4f9b\u6599\u573a\u666f\u77e9\u9635.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u8f66\u95f4\u5185\u6599\u4ed3\u4e0a\u7ebf\u4e0e\u4f7f\u7528\u8bf4\u660e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u8f66\u95f4\u5185\u6599\u4ed3\u4e0a\u7ebf\u4e0e\u4f7f\u7528\u8bf4\u660e.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u91c7\u8d2d\u59d4\u5916\u9000\u8d27\u6210\u672c\u4e0e\u5546\u4e1a\u8d37\u9879\u5bf9\u8d26.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u91c7\u8d2d\u59d4\u5916\u9000\u8d27\u6210\u672c\u4e0e\u5546\u4e1a\u8d37\u9879\u5bf9\u8d26.md"
+  },
+  {
+    "sourcePath": "docs/07-\u4e1a\u52a1\u94fe\u8def/\u91c7\u8d2d\u7533\u8bf7\u5206\u89e3\u524d\u6570\u91cf\u4fee\u6b63.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/07-\u4e1a\u52a1\u94fe\u8def/\u91c7\u8d2d\u7533\u8bf7\u5206\u89e3\u524d\u6570\u91cf\u4fee\u6b63.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-010-\u7ec4\u7ec7\u5c97\u4f4d\u6a21\u578b\u4e0e\u7edf\u4e00\u90e8\u95e8\u9009\u62e9\u5668.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-010-\u7ec4\u7ec7\u5c97\u4f4d\u6a21\u578b\u4e0e\u7edf\u4e00\u90e8\u95e8\u9009\u62e9\u5668.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-011-\u5de5\u4f5c\u53f0\u90e8\u95e8\u5206\u533a\u4e0e\u52a8\u6001\u6743\u9650\u914d\u7f6e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-011-\u5de5\u4f5c\u53f0\u90e8\u95e8\u5206\u533a\u4e0e\u52a8\u6001\u6743\u9650\u914d\u7f6e.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-012-\u62a5\u8868\u52a0\u5bc6\u5bfc\u51fa\u4e0e\u5217\u6392\u5e8f\u4e0e\u884c\u8df3\u6e90\u5934.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-012-\u62a5\u8868\u52a0\u5bc6\u5bfc\u51fa\u4e0e\u5217\u6392\u5e8f\u4e0e\u884c\u8df3\u6e90\u5934.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-018-\u8d44\u4ea7\u4e0e\u5f85\u644a\u4e13\u4e1a\u5b50\u8d26\u53ca\u4e0d\u53ef\u53d8\u8fc7\u8d26.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-018-\u8d44\u4ea7\u4e0e\u5f85\u644a\u4e13\u4e1a\u5b50\u8d26\u53ca\u4e0d\u53ef\u53d8\u8fc7\u8d26.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-019-\u8ba1\u5212\u9700\u6c42\u5206\u89e3\u4e0e\u91c7\u8d2d\u59d4\u5916\u8d22\u52a1\u5ba1\u6279.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-019-\u8ba1\u5212\u9700\u6c42\u5206\u89e3\u4e0e\u91c7\u8d2d\u59d4\u5916\u8d22\u52a1\u5ba1\u6279.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-020-\u5165\u804c\u5de5\u53f7\u5c97\u4f4d\u4e0e\u7ba1\u7406\u4e2d\u5fc3\u7528\u4eba\u8bed\u4e49.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-020-\u5165\u804c\u5de5\u53f7\u5c97\u4f4d\u4e0e\u7ba1\u7406\u4e2d\u5fc3\u7528\u4eba\u8bed\u4e49.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-021-\u4eba\u4e8b\u57df\u5b8c\u5584-\u8f6c\u6b63\u8f66\u8f86\u591a\u8054\u7cfb\u65b9\u5f0f\u4e0e\u4efb\u52a1\u8f6f\u8ba4\u9886.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-021-\u4eba\u4e8b\u57df\u5b8c\u5584-\u8f6c\u6b63\u8f66\u8f86\u591a\u8054\u7cfb\u65b9\u5f0f\u4e0e\u4efb\u52a1\u8f6f\u8ba4\u9886.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-023-\u7edf\u4e00\u4efb\u52a1\u5e76\u53d1\u63a7\u5236\u4e0e\u8ba4\u9886.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-023-\u7edf\u4e00\u4efb\u52a1\u5e76\u53d1\u63a7\u5236\u4e0e\u8ba4\u9886.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-024-\u4e09\u67b6\u6784\u7f3a\u53e3\u95ed\u5408-\u9000\u8d27\u5904\u7f6e-\u59d4\u5916\u5b88\u6052-IQC.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-024-\u4e09\u67b6\u6784\u7f3a\u53e3\u95ed\u5408-\u9000\u8d27\u5904\u7f6e-\u59d4\u5916\u5b88\u6052-IQC.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-025-\u901a\u77e5\u5e86\u5178\u4e92\u52a8\u4e0e\u81ea\u52a8\u53d1\u5e03.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-025-\u901a\u77e5\u5e86\u5178\u4e92\u52a8\u4e0e\u81ea\u52a8\u53d1\u5e03.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-026-\u767b\u5f55\u5e86\u5178\u5f39\u7a97\u4e0e\u4eca\u65e5\u5361\u7247\u4e0e\u795d\u798f\u5feb\u6377\u53d1\u5e03\u4e0e\u8d26\u53f7\u9501\u5b9a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-026-\u767b\u5f55\u5e86\u5178\u5f39\u7a97\u4e0e\u4eca\u65e5\u5361\u7247\u4e0e\u795d\u798f\u5feb\u6377\u53d1\u5e03\u4e0e\u8d26\u53f7\u9501\u5b9a.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-027-\u8d22\u52a1\u5ba1\u6279\u6539\u4e3a\u6743\u9650\u6388\u6743\u7684\u5ba1\u6838\u7ec4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-027-\u8d22\u52a1\u5ba1\u6279\u6539\u4e3a\u6743\u9650\u6388\u6743\u7684\u5ba1\u6838\u7ec4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-028-\u8ba1\u5212\u90e8\u81ea\u5e95\u5411\u4e0a\u6574\u6811\u786e\u8ba4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-028-\u8ba1\u5212\u90e8\u81ea\u5e95\u5411\u4e0a\u6574\u6811\u786e\u8ba4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-029-\u751f\u4ea7\u8ba1\u5212\u524d\u9700\u6c42\u4e0e\u7269\u6599\u5206\u6790\u91cd\u6784.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-029-\u751f\u4ea7\u8ba1\u5212\u524d\u9700\u6c42\u4e0e\u7269\u6599\u5206\u6790\u91cd\u6784.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-030-\u9500\u552e\u5f85\u6536\u8ba1\u5212\u4e0e\u6b63\u5f0f\u5e94\u6536\u5206\u5c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-030-\u9500\u552e\u5f85\u6536\u8ba1\u5212\u4e0e\u6b63\u5f0f\u5e94\u6536\u5206\u5c42.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-032-\u5bfc\u51fa\u6587\u4ef6\u53ef\u9009\u5bc6\u7801\u4fdd\u62a4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-032-\u5bfc\u51fa\u6587\u4ef6\u53ef\u9009\u5bc6\u7801\u4fdd\u62a4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-033-\u751f\u4ea7\u7269\u6599\u8282\u70b9\u4efb\u52a1\u5316\u4e0e\u81ea\u5e95\u5411\u4e0a\u5907\u6599.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-033-\u751f\u4ea7\u7269\u6599\u8282\u70b9\u4efb\u52a1\u5316\u4e0e\u81ea\u5e95\u5411\u4e0a\u5907\u6599.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-034-\u5206\u7c7b\u9a71\u52a8\u4e1a\u52a1\u7f16\u53f7\u4e0eUUID\u5173\u8054.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-034-\u5206\u7c7b\u9a71\u52a8\u4e1a\u52a1\u7f16\u53f7\u4e0eUUID\u5173\u8054.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-035-\u6536\u4ed8\u6b3e\u7c7b\u522b\u5206\u7c7b\u9875\u4e0e\u8d22\u52a1\u5f15\u7528\u4e00\u81f4\u6027.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-035-\u6536\u4ed8\u6b3e\u7c7b\u522b\u5206\u7c7b\u9875\u4e0e\u8d22\u52a1\u5f15\u7528\u4e00\u81f4\u6027.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-036-\u5168\u5c40\u4e1a\u52a1\u6807\u8bc6\u4e0e\u5355\u636e\u53f7\u547d\u540d\u7a7a\u95f4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-036-\u5168\u5c40\u4e1a\u52a1\u6807\u8bc6\u4e0e\u5355\u636e\u53f7\u547d\u540d\u7a7a\u95f4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-038-\u6765\u6e90\u5355\u53f7\u53ef\u8bfb\u5316\u4e0e\u8ba2\u8d27\u4ed3\u5e93\u540e\u79fb.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-038-\u6765\u6e90\u5355\u53f7\u53ef\u8bfb\u5316\u4e0e\u8ba2\u8d27\u4ed3\u5e93\u540e\u79fb.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-039-\u8ba1\u5212\u524d\u7269\u6599\u5206\u6790\u5907\u6599\u5e93\u5b58\u7ed1\u5b9a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-039-\u8ba1\u5212\u524d\u7269\u6599\u5206\u6790\u5907\u6599\u5e93\u5b58\u7ed1\u5b9a.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-040-\u9500\u552e\u5f00\u5355\u4f53\u9a8c\u4e0e\u8d22\u52a1\u5ba1\u6838\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-040-\u9500\u552e\u5f00\u5355\u4f53\u9a8c\u4e0e\u8d22\u52a1\u5ba1\u6838\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-041-\u5feb\u9012\u5f0f\u5168\u94fe\u8def\u8fdb\u5ea6\u8ffd\u8e2a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-041-\u5feb\u9012\u5f0f\u5168\u94fe\u8def\u8fdb\u5ea6\u8ffd\u8e2a.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-042-\u59d4\u5916\u5168\u94fe\u8def\u91cd\u8bbe\u8ba1-\u8ba2\u8d27\u51fa\u4ed3\u56de\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-042-\u59d4\u5916\u5168\u94fe\u8def\u91cd\u8bbe\u8ba1-\u8ba2\u8d27\u51fa\u4ed3\u56de\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-043-\u5408\u683c\u5230\u8d27\u7cbe\u786e\u5f52\u5c5e\u4e0e\u8de8\u5206\u6790\u501f\u6599\u8fb9\u754c.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-043-\u5408\u683c\u5230\u8d27\u7cbe\u786e\u5f52\u5c5e\u4e0e\u8de8\u5206\u6790\u501f\u6599\u8fb9\u754c.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-046-\u751f\u4ea7\u9886\u6599\u4ed3\u5e93\u70b9\u6536\u62a5\u5de5\u5f52\u5c5e\u4e0e\u672a\u6765\u8ba1\u4ef6\u8fb9\u754c.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-046-\u751f\u4ea7\u9886\u6599\u4ed3\u5e93\u70b9\u6536\u62a5\u5de5\u5f52\u5c5e\u4e0e\u672a\u6765\u8ba1\u4ef6\u8fb9\u754c.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-047-\u91c7\u8d2d\u59d4\u5916\u5e94\u4ed8\u6708\u7ed3\u4e0e\u8d85\u8017\u8d23\u4efb\u5206\u5c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-047-\u91c7\u8d2d\u59d4\u5916\u5e94\u4ed8\u6708\u7ed3\u4e0e\u8d85\u8017\u8d23\u4efb\u5206\u5c42.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-048-\u5ba2\u6237\u9884\u6536\u4e0e\u9500\u552e\u8ba2\u5355\u8d44\u91d1\u4e8b\u5b9e\u5206\u5c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-048-\u5ba2\u6237\u9884\u6536\u4e0e\u9500\u552e\u8ba2\u5355\u8d44\u91d1\u4e8b\u5b9e\u5206\u5c42.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-049-\u8de8\u7269\u6599\u5206\u6790\u8ba9\u6599\u4e0e\u540e\u7eed\u4f9b\u7ed9\u4f18\u5148\u8865\u9f50.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-049-\u8de8\u7269\u6599\u5206\u6790\u8ba9\u6599\u4e0e\u540e\u7eed\u4f9b\u7ed9\u4f18\u5148\u8865\u9f50.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-050-\u5ba2\u6237\u8bbf\u95ee\u4e0e\u4eba\u5458\u6570\u636e\u4ea4\u63a5\u5206\u5c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-050-\u5ba2\u6237\u8bbf\u95ee\u4e0e\u4eba\u5458\u6570\u636e\u4ea4\u63a5\u5206\u5c42.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-051-\u8d26\u6237\u4f59\u989d\u6838\u5bf9\u4e0e\u6d41\u6c34\u53ef\u8ffd\u6eaf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-051-\u8d26\u6237\u4f59\u989d\u6838\u5bf9\u4e0e\u6d41\u6c34\u53ef\u8ffd\u6eaf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-052-\u5173\u952e\u4e1a\u52a1\u4e8b\u4ef6\u5f3a\u63d0\u9192\u4e0e\u9a73\u56de\u4fee\u8ba2\u95ed\u73af.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-052-\u5173\u952e\u4e1a\u52a1\u4e8b\u4ef6\u5f3a\u63d0\u9192\u4e0e\u9a73\u56de\u4fee\u8ba2\u95ed\u73af.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-053-\u591a\u5e01\u79cd\u6536\u6b3e\u6bdb\u989d\u51c0\u989d\u4e0e\u8ffd\u52a0\u5f0f\u8d26\u6237\u6d41\u6c34.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-053-\u591a\u5e01\u79cd\u6536\u6b3e\u6bdb\u989d\u51c0\u989d\u4e0e\u8ffd\u52a0\u5f0f\u8d26\u6237\u6d41\u6c34.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-054-\u751f\u4ea7\u62a5\u5de5\u8d28\u91cf\u653e\u884c\u4e0e\u5408\u683c\u5165\u5e93.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-054-\u751f\u4ea7\u62a5\u5de5\u8d28\u91cf\u653e\u884c\u4e0e\u5408\u683c\u5165\u5e93.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-055-\u5373\u65f6\u5e93\u5b58\u53f0\u8d26\u91d1\u989d\u4e0e\u8d27\u54c1\u6210\u672c\u5b8c\u6574\u6027.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-055-\u5373\u65f6\u5e93\u5b58\u53f0\u8d26\u91d1\u989d\u4e0e\u8d27\u54c1\u6210\u672c\u5b8c\u6574\u6027.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-056-\u8ba1\u5212\u524d\u751f\u4ea7\u9700\u6c42\u4e0e\u516c\u5171\u5b89\u5168\u5e93\u5b58\u8865\u5e93\u5206\u8d26.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-056-\u8ba1\u5212\u524d\u751f\u4ea7\u9700\u6c42\u4e0e\u516c\u5171\u5b89\u5168\u5e93\u5b58\u8865\u5e93\u5206\u8d26.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-057-\u4e0b\u7ebf\u751f\u4ea7BOM\u7b56\u7565\u4e0e\u8ba1\u5212\u7ea7\u4f8b\u5916\u653e\u884c.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-057-\u4e0b\u7ebf\u751f\u4ea7BOM\u7b56\u7565\u4e0e\u8ba1\u5212\u7ea7\u4f8b\u5916\u653e\u884c.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-058-\u751f\u4ea7\u6210\u54c1\u4ed3\u5e93\u9001\u68c0\u767b\u8bb0\u4e0e\u5e93\u4f4d\u5feb\u7167.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-058-\u751f\u4ea7\u6210\u54c1\u4ed3\u5e93\u9001\u68c0\u767b\u8bb0\u4e0e\u5e93\u4f4d\u5feb\u7167.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-059-\u59d4\u5916\u76ee\u6807\u4ef6\u51fa\u4ed3\u4e0e\u524d\u7f6e\u81ea\u5236\u51c6\u5907.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-059-\u59d4\u5916\u76ee\u6807\u4ef6\u51fa\u4ed3\u4e0e\u524d\u7f6e\u81ea\u5236\u51c6\u5907.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-062-\u59d4\u5916\u5148\u81ea\u5236\u540e\u901a\u77e5\u4e0e\u5206\u6279\u901a\u77e5.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-062-\u59d4\u5916\u5148\u81ea\u5236\u540e\u901a\u77e5\u4e0e\u5206\u6279\u901a\u77e5.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-063-\u90e8\u95e8\u5b9a\u5411\u5ba1\u6838\u5f85\u529e\u5f39\u7a97\u4e0e\u901a\u77e5\u529e\u7ed3\u64a4\u56de.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-063-\u90e8\u95e8\u5b9a\u5411\u5ba1\u6838\u5f85\u529e\u5f39\u7a97\u4e0e\u901a\u77e5\u529e\u7ed3\u64a4\u56de.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-064-\u76f4\u4e0b\u5355\u9500\u552e\u5f0f\u4f9b\u8d27\u6d41\u73b0\u8d27\u76f4\u53d1\u7f3a\u53e3\u624d\u751f\u4ea7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-064-\u76f4\u4e0b\u5355\u9500\u552e\u5f0f\u4f9b\u8d27\u6d41\u73b0\u8d27\u76f4\u53d1\u7f3a\u53e3\u624d\u751f\u4ea7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-065-\u5907\u6599\u4e0b\u8fbe\u540c\u6279\u5408\u5e76\u91c7\u8d2d\u59d4\u5916\u7533\u8bf7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-065-\u5907\u6599\u4e0b\u8fbe\u540c\u6279\u5408\u5e76\u91c7\u8d2d\u59d4\u5916\u7533\u8bf7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-066-\u5206\u7c7b\u5206\u6bb5\u7edf\u4e00\u4e0e\u5386\u53f2\u8bb0\u5f55\u65f6\u95f4\u95e8\u63a7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-066-\u5206\u7c7b\u5206\u6bb5\u7edf\u4e00\u4e0e\u5386\u53f2\u8bb0\u5f55\u65f6\u95f4\u95e8\u63a7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-068-\u91c7\u8d2d\u59d4\u5916\u8ba2\u8d27\u5355\u884c\u7ea7\u5546\u4e1a\u6761\u6b3e\u4e0e\u5b66\u4e60\u6a21\u5f0f.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-068-\u91c7\u8d2d\u59d4\u5916\u8ba2\u8d27\u5355\u884c\u7ea7\u5546\u4e1a\u6761\u6b3e\u4e0e\u5b66\u4e60\u6a21\u5f0f.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-069-\u8ba2\u8d27\u884c\u591a\u6765\u6e90\u951a\u5b9a\u4e0e\u540c\u8d27\u54c1\u5408\u5e76.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-069-\u8ba2\u8d27\u884c\u591a\u6765\u6e90\u951a\u5b9a\u4e0e\u540c\u8d27\u54c1\u5408\u5e76.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-070-\u7269\u6599\u5206\u6790\u5206\u6876\u8be6\u60c5\u9875\u4e0e\u4e09\u5904\u5b66\u4e60\u8bb0\u5fc6\u53ca\u8d85\u91cf\u4e0b\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-070-\u7269\u6599\u5206\u6790\u5206\u6876\u8be6\u60c5\u9875\u4e0e\u4e09\u5904\u5b66\u4e60\u8bb0\u5fc6\u53ca\u8d85\u91cf\u4e0b\u5355.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-071-\u4e0b\u8fbe\u8f66\u95f4\u539f\u5b50\u5316\u4e0e\u8ba1\u5212\u4fa7\u9f50\u5957\u5224\u65ad\u4e0b\u7ebf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-071-\u4e0b\u8fbe\u8f66\u95f4\u539f\u5b50\u5316\u4e0e\u8ba1\u5212\u4fa7\u9f50\u5957\u5224\u65ad\u4e0b\u7ebf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-072-\u59d4\u5916\u6536\u655b\u4e0e\u91c7\u8d2d\u59d4\u5916\u8ba2\u8d27\u6279\u51c6\u540e\u6539\u91cf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-072-\u59d4\u5916\u6536\u655b\u4e0e\u91c7\u8d2d\u59d4\u5916\u8ba2\u8d27\u6279\u51c6\u540e\u6539\u91cf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-073-\u672c\u6279\u7269\u6599\u5c65\u7ea6\u4e0e\u540c\u4e3b\u4ed3\u5206\u4ed3\u9886\u6599.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-073-\u672c\u6279\u7269\u6599\u5c65\u7ea6\u4e0e\u540c\u4e3b\u4ed3\u5206\u4ed3\u9886\u6599.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-075-\u5408\u683c\u6765\u6e90\u8ddf\u968f\u5b9e\u9645\u5165\u5e93\u4ed3\u4e0e\u8f66\u95f4\u901a\u77e5.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-075-\u5408\u683c\u6765\u6e90\u8ddf\u968f\u5b9e\u9645\u5165\u5e93\u4ed3\u4e0e\u8f66\u95f4\u901a\u77e5.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-076-\u751f\u4ea7\u6210\u54c1\u54c1\u8d28\u68c0\u67e5\u5355\u805a\u5408\u5c42.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-076-\u751f\u4ea7\u6210\u54c1\u54c1\u8d28\u68c0\u67e5\u5355\u805a\u5408\u5c42.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-077-\u8f66\u95f4\u660e\u786e\u63d0\u4ea4\u9886\u6599\u540e\u8fdb\u5165\u4ed3\u5e93\u4efb\u52a1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-077-\u8f66\u95f4\u660e\u786e\u63d0\u4ea4\u9886\u6599\u540e\u8fdb\u5165\u4ed3\u5e93\u4efb\u52a1.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-078-\u5b8c\u6574\u5b50\u6279\u751f\u4ea7\u4e0e\u5b9e\u9645\u7528\u6599\u4f59\u6599\u9000\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-078-\u5b8c\u6574\u5b50\u6279\u751f\u4ea7\u4e0e\u5b9e\u9645\u7528\u6599\u4f59\u6599\u9000\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-079-\u54c1\u8d28\u653e\u884c\u9010\u884c\u5b9e\u9645\u5165\u5e93\u4ed3\u4e0e\u59d4\u5916\u6210\u672c\u6765\u6e90.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-079-\u54c1\u8d28\u653e\u884c\u9010\u884c\u5b9e\u9645\u5165\u5e93\u4ed3\u4e0e\u59d4\u5916\u6210\u672c\u6765\u6e90.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-080-\u8de8\u8def\u7ebf\u5728\u9014\u8c03\u5165\u4e0e\u5b50\u5c42\u6309\u8ba1\u5212\u4ea7\u51fa\u5c55\u5f00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-080-\u8de8\u8def\u7ebf\u5728\u9014\u8c03\u5165\u4e0e\u5b50\u5c42\u6309\u8ba1\u5212\u4ea7\u51fa\u5c55\u5f00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-081-\u4e0b\u5c42\u4e00\u952e\u529e\u9f50\u4e0e\u7269\u6599\u8868\u8eab\u4efd\u5217\u7edf\u4e00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-081-\u4e0b\u5c42\u4e00\u952e\u529e\u9f50\u4e0e\u7269\u6599\u8868\u8eab\u4efd\u5217\u7edf\u4e00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-082-\u51fa\u8d27\u8d22\u5ba1\u9000\u56de\u94fe\u8def\u95ed\u73af.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-082-\u51fa\u8d27\u8d22\u5ba1\u9000\u56de\u94fe\u8def\u95ed\u73af.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-083-\u5ba2\u6237\u4f9b\u5e94\u5546\u8d44\u6599\u5b50\u8868\u4e0e\u8be6\u60c5\u6574\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-083-\u5ba2\u6237\u4f9b\u5e94\u5546\u8d44\u6599\u5b50\u8868\u4e0e\u8be6\u60c5\u6574\u9875.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-084-\u51fa\u8d27\u4ed3\u5e93\u4e00\u6b65\u786e\u8ba4\u51fa\u5e93.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-084-\u51fa\u8d27\u4ed3\u5e93\u4e00\u6b65\u786e\u8ba4\u51fa\u5e93.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-085-\u59d4\u5916\u5355\u4e00\u5b50\u4ef6\u76f4\u63a5\u53d1\u6599\u51fa\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-085-\u59d4\u5916\u5355\u4e00\u5b50\u4ef6\u76f4\u63a5\u53d1\u6599\u51fa\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-086-\u62a5\u5de5\u540c\u9875\u767b\u8bb0\u5b9e\u9645\u7528\u6599\u4e0e\u6536\u5c3e\u4f59\u6599\u9000\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-086-\u62a5\u5de5\u540c\u9875\u767b\u8bb0\u5b9e\u9645\u7528\u6599\u4e0e\u6536\u5c3e\u4f59\u6599\u9000\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-087-\u8f66\u95f4\u5185\u90e8\u76f4\u9001\u4e0e\u7ebf\u8fb9\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-087-\u8f66\u95f4\u5185\u90e8\u76f4\u9001\u4e0e\u7ebf\u8fb9\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-088-\u5f85\u6392\u4ea7\u6263\u9664\u5206\u6790\u627f\u63a5\u91cf\u4e0e\u5173\u8054\u8ba2\u5355\u53ea\u8bfb\u6e05\u5355\u9875.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-088-\u5f85\u6392\u4ea7\u6263\u9664\u5206\u6790\u627f\u63a5\u91cf\u4e0e\u5173\u8054\u8ba2\u5355\u53ea\u8bfb\u6e05\u5355\u9875.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-089-\u8f66\u95f4\u76f4\u9001v2\u6301\u7eed\u751f\u4ea7\u4e0e\u7ebf\u8fb9\u4ed3\u81ea\u52a8\u914d\u7f6e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-089-\u8f66\u95f4\u76f4\u9001v2\u6301\u7eed\u751f\u4ea7\u4e0e\u7ebf\u8fb9\u4ed3\u81ea\u52a8\u914d\u7f6e.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-090-\u5230\u8d27\u5148\u5165\u5e93\u540e\u8d28\u68c0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-090-\u5230\u8d27\u5148\u5165\u5e93\u540e\u8d28\u68c0.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-091-\u5f00\u5de5\u8def\u7ebf\u786e\u8ba4\u4e0e\u5230\u8d27\u8fdb\u5c55\u901a\u77e5.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-091-\u5f00\u5de5\u8def\u7ebf\u786e\u8ba4\u4e0e\u5230\u8d27\u8fdb\u5c55\u901a\u77e5.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-092-\u76f4\u9001\u8d44\u683c\u6309sourcing\u6536\u7d27.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-092-\u76f4\u9001\u8d44\u683c\u6309sourcing\u6536\u7d27.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-093-\u8f66\u95f4\u5148\u786e\u8ba4\u8def\u7ebf\u4e0e\u540c\u4efb\u52a1\u6301\u7eed\u8865\u6599.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-093-\u8f66\u95f4\u5148\u786e\u8ba4\u8def\u7ebf\u4e0e\u540c\u4efb\u52a1\u6301\u7eed\u8865\u6599.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-094-\u62a5\u9500\u94fe\u8def\u5b8c\u6574\u5316.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-094-\u62a5\u9500\u94fe\u8def\u5b8c\u6574\u5316.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-095-\u8f66\u95f4\u8def\u7ebf\u5f00\u5de5\u524d\u968f\u65f6\u53ef\u6362\u4e0e\u9010\u79cd\u7269\u6599\u4e8b\u5b9e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-095-\u8f66\u95f4\u8def\u7ebf\u5f00\u5de5\u524d\u968f\u65f6\u53ef\u6362\u4e0e\u9010\u79cd\u7269\u6599\u4e8b\u5b9e.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-096-\u8f66\u95f4\u4efb\u52a1\u4e09\u6761\u8def\u7ebf\u901a\u7528\u4e0e\u8def\u7ebf\u8bb0\u5fc6\u6279\u91cf\u8bbe\u8def\u7ebf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-096-\u8f66\u95f4\u4efb\u52a1\u4e09\u6761\u8def\u7ebf\u901a\u7528\u4e0e\u8def\u7ebf\u8bb0\u5fc6\u6279\u91cf\u8bbe\u8def\u7ebf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-097-\u51fa\u8d27\u653e\u884c\u8bb0\u8d26\u6c47\u7387\u7531\u8d22\u52a1\u786e\u8ba4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-097-\u51fa\u8d27\u653e\u884c\u8bb0\u8d26\u6c47\u7387\u7531\u8d22\u52a1\u786e\u8ba4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-098-\u59d4\u5916\u5141\u8bb8\u635f\u8017\u4e0e\u56de\u5382\u77ed\u4ea4\u5224\u5b9a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-098-\u59d4\u5916\u5141\u8bb8\u635f\u8017\u4e0e\u56de\u5382\u77ed\u4ea4\u5224\u5b9a.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-099-\u8ba1\u5212\u91cf\u5355\u4e00\u5165\u53e3\u4e0e\u5b50\u5c42\u6309\u8ba1\u5212\u4ea7\u51fa\u5c55\u5f00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-099-\u8ba1\u5212\u91cf\u5355\u4e00\u5165\u53e3\u4e0e\u5b50\u5c42\u6309\u8ba1\u5212\u4ea7\u51fa\u5c55\u5f00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-100-\u8fdb\u884c\u4e2d\u9ec4\u8272\u6570\u91cf\u5fbd\u7ae0\u4e0e\u4e09\u5f62\u6001\u8ba1\u6570\u53e3\u5f84.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-100-\u8fdb\u884c\u4e2d\u9ec4\u8272\u6570\u91cf\u5fbd\u7ae0\u4e0e\u4e09\u5f62\u6001\u8ba1\u6570\u53e3\u5f84.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-101-\u59d4\u5916\u5355\u4e00\u5b50\u5c42\u7ea7\u6309\u5230\u8d27\u89e3\u9501\u4e0e\u5bb9\u5dee\u81ea\u52a8\u7ed3\u6848.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-101-\u59d4\u5916\u5355\u4e00\u5b50\u5c42\u7ea7\u6309\u5230\u8d27\u89e3\u9501\u4e0e\u5bb9\u5dee\u81ea\u52a8\u7ed3\u6848.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-102-\u7269\u6599\u5206\u6790\u4e00\u5f20\u8868\u76f4\u63a5\u4e0b\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-102-\u7269\u6599\u5206\u6790\u4e00\u5f20\u8868\u76f4\u63a5\u4e0b\u5355.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-103-\u59d4\u5916\u4e24\u6761\u8def\u7ebf\u540c\u4f4d\u9501\u5b9a\u4e0e\u5355\u4e00\u5b50\u4ef6\u6309\u5230\u8d27\u89e3\u9501.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-103-\u59d4\u5916\u4e24\u6761\u8def\u7ebf\u540c\u4f4d\u9501\u5b9a\u4e0e\u5355\u4e00\u5b50\u4ef6\u6309\u5230\u8d27\u89e3\u9501.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-104-\u8ffd\u52a0\u81ea\u5236\u5e76\u5165\u672a\u5f00\u5de5\u7684\u751f\u4ea7\u8ba1\u5212.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-104-\u8ffd\u52a0\u81ea\u5236\u5e76\u5165\u672a\u5f00\u5de5\u7684\u751f\u4ea7\u8ba1\u5212.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-111-\u4e3b\u6863\u5220\u9664\u5f15\u7528\u4fdd\u62a4\u4e0e\u6279\u91cf\u539f\u5b50\u547d\u4ee4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-111-\u4e3b\u6863\u5220\u9664\u5f15\u7528\u4fdd\u62a4\u4e0e\u6279\u91cf\u539f\u5b50\u547d\u4ee4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-112-\u91d1\u989d\u53e3\u5f84\u7edf\u4e00\u4e0e\u8d44\u91d1\u8fc7\u8d26\u5355\u4e00\u5165\u53e3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-112-\u91d1\u989d\u53e3\u5f84\u7edf\u4e00\u4e0e\u8d44\u91d1\u8fc7\u8d26\u5355\u4e00\u5165\u53e3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-113-\u59d4\u5916\u5b50\u4ef6\u7cbe\u786e\u5e93\u5b58\u5f52\u5c5e\u4ea4\u63a5.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-113-\u59d4\u5916\u5b50\u4ef6\u7cbe\u786e\u5e93\u5b58\u5f52\u5c5e\u4ea4\u63a5.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-114-\u59d4\u5916\u635f\u8017\u72ec\u7acb\u7ed3\u6e05\u4e0d\u6539\u8ba2\u8d27\u91cf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-114-\u59d4\u5916\u635f\u8017\u72ec\u7acb\u7ed3\u6e05\u4e0d\u6539\u8ba2\u8d27\u91cf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-115-\u4ed3\u5e93\u8d1f\u8d23\u4eba\u4e0e\u4ed3\u5e93\u901a\u77e5\u6309\u4ed3\u5206\u53d1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-115-\u4ed3\u5e93\u8d1f\u8d23\u4eba\u4e0e\u4ed3\u5e93\u901a\u77e5\u6309\u4ed3\u5206\u53d1.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-116-\u7269\u6599\u5206\u6790\u4e0b\u8fbe\u9884\u89c8\u53ea\u8bfb\u6295\u5f71.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-116-\u7269\u6599\u5206\u6790\u4e0b\u8fbe\u9884\u89c8\u53ea\u8bfb\u6295\u5f71.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-117-\u4e0b\u5355\u540e\u67e5\u5b50\u5c42\u7269\u6599\u4e0e\u8f66\u95f4\u50ac\u8ba1\u5212.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-117-\u4e0b\u5355\u540e\u67e5\u5b50\u5c42\u7269\u6599\u4e0e\u8f66\u95f4\u50ac\u8ba1\u5212.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-118-\u81ea\u5236\u5b9e\u9645\u4ea7\u51fa\u5206\u8d26\u4e0e\u516c\u5171\u8d85\u4ea7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-118-\u81ea\u5236\u5b9e\u9645\u4ea7\u51fa\u5206\u8d26\u4e0e\u516c\u5171\u8d85\u4ea7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-119-\u5e95\u5c42\u81ea\u5236\u5b9e\u9645\u9886\u6599\u4e0eBOM\u7d2f\u8ba1\u5b66\u4e60.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-119-\u5e95\u5c42\u81ea\u5236\u5b9e\u9645\u9886\u6599\u4e0eBOM\u7d2f\u8ba1\u5b66\u4e60.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-120-\u7269\u6599\u6c47\u603b\u529e\u7406\u4e0e\u5171\u4eab\u5236\u9020\u6765\u6e90.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-120-\u7269\u6599\u6c47\u603b\u529e\u7406\u4e0e\u5171\u4eab\u5236\u9020\u6765\u6e90.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-121-\u8de8\u6a21\u5757\u65b0\u5efa\u8868\u5355\u8349\u7a3f\u6062\u590d.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-121-\u8de8\u6a21\u5757\u65b0\u5efa\u8868\u5355\u8349\u7a3f\u6062\u590d.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-127-\u76f4\u9001\u8d44\u683c\u5355\u4e00\u4e8b\u5b9e\u6e90\u3001\u4e0d\u53ef\u8f6c\u539f\u56e0\u4e0e\u62a5\u5de5\u81ea\u52a8\u5206\u6d41.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-127-\u76f4\u9001\u8d44\u683c\u5355\u4e00\u4e8b\u5b9e\u6e90\u3001\u4e0d\u53ef\u8f6c\u539f\u56e0\u4e0e\u62a5\u5de5\u81ea\u52a8\u5206\u6d41.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-128-\u5f80\u6765\u4f59\u989d\u6309\u5355\u636e\u5e01\u79cd\u663e\u793a\u4e0e\u4fe1\u7528\u53e3\u5f84\u7edf\u4e00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-128-\u5f80\u6765\u4f59\u989d\u6309\u5355\u636e\u5e01\u79cd\u663e\u793a\u4e0e\u4fe1\u7528\u53e3\u5f84\u7edf\u4e00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-129-BOM\u8bbe\u8ba1\u4f7f\u7528\u6570\u91cf\u4e0e\u771f\u5b9e\u4f7f\u7528\u6570\u91cf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-129-BOM\u8bbe\u8ba1\u4f7f\u7528\u6570\u91cf\u4e0e\u771f\u5b9e\u4f7f\u7528\u6570\u91cf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-130-\u624b\u5de5\u9700\u6c42\u5355\u591a\u8d27\u54c1\u4e0e\u65b0\u5efa\u7269\u6599\u5206\u6790\u9875\u8868\u683c\u5316.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-130-\u624b\u5de5\u9700\u6c42\u5355\u591a\u8d27\u54c1\u4e0e\u65b0\u5efa\u7269\u6599\u5206\u6790\u9875\u8868\u683c\u5316.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-131-\u8f66\u95f4\u6574\u6279\u9886\u6599\u4e0e\u76d8\u70b9\u8ba1\u8017.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-131-\u8f66\u95f4\u6574\u6279\u9886\u6599\u4e0e\u76d8\u70b9\u8ba1\u8017.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-134-\u9500\u552e\u5ba2\u6237\u6587\u4ef6AI\u8bc6\u522b\u5bfc\u5165\u4e0e\u4e3b\u6863\u5b66\u4e60\u53ca\u62a5\u4ef7\u8d22\u52a1\u6838\u4ef7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-134-\u9500\u552e\u5ba2\u6237\u6587\u4ef6AI\u8bc6\u522b\u5bfc\u5165\u4e0e\u4e3b\u6863\u5b66\u4e60\u53ca\u62a5\u4ef7\u8d22\u52a1\u6838\u4ef7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-135-\u4ed3\u5e93\u91cd\u91cf\u8d26\u4e0e\u5355\u91cd\u81ea\u5b66\u4e60.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-135-\u4ed3\u5e93\u91cd\u91cf\u8d26\u4e0e\u5355\u91cd\u81ea\u5b66\u4e60.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-136-\u4e1a\u52a1\u6269\u5c55\u5217\u4e0e\u5ba2\u6237\u62a5\u4ef7\u6a21\u677f\u5b66\u4e60.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-136-\u4e1a\u52a1\u6269\u5c55\u5217\u4e0e\u5ba2\u6237\u62a5\u4ef7\u6a21\u677f\u5b66\u4e60.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-137-\u5168\u5e73\u53f0\u53ef\u6269\u5c55\u8868\u683c\u4e0e\u7edf\u4e00\u6295\u5f71.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-137-\u5168\u5e73\u53f0\u53ef\u6269\u5c55\u8868\u683c\u4e0e\u7edf\u4e00\u6295\u5f71.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-138-\u8d27\u54c1\u6210\u672c\u5355\u4e0e\u5b9e\u9645\u6210\u672c\u5de5\u4f5c\u53f0.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-138-\u8d27\u54c1\u6210\u672c\u5355\u4e0e\u5b9e\u9645\u6210\u672c\u5de5\u4f5c\u53f0.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-139-\u9500\u552e\u62a5\u4ef7\u8bae\u4ef7\u5ba2\u6237\u786e\u8ba4\u4e0e\u8d27\u54c1\u62a5\u4ef7\u5386\u53f2.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-139-\u9500\u552e\u62a5\u4ef7\u8bae\u4ef7\u5ba2\u6237\u786e\u8ba4\u4e0e\u8d27\u54c1\u62a5\u4ef7\u5386\u53f2.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-143-\u59d4\u5916\u6309\u5de5\u5e8f\u9886\u76f4\u5c5e\u7269\u6599\u4e0e\u5206\u6279\u56de\u5382.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-143-\u59d4\u5916\u6309\u5de5\u5e8f\u9886\u76f4\u5c5e\u7269\u6599\u4e0e\u5206\u6279\u56de\u5382.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-144-\u91c7\u8d2d\u5141\u8bb8\u8d85\u6536\u6bd4\u4f8b\u4e0e\u8d85\u51fa\u90e8\u5206\u8d22\u52a1\u5ba1\u6279.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-144-\u91c7\u8d2d\u5141\u8bb8\u8d85\u6536\u6bd4\u4f8b\u4e0e\u8d85\u51fa\u90e8\u5206\u8d22\u52a1\u5ba1\u6279.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-145-\u4ed3\u5e93\u4e3b\u6863\u5355\u4e3b\u4ed3\u4e0e\u7981\u7528\u4e0d\u53ef\u9009.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-145-\u4ed3\u5e93\u4e3b\u6863\u5355\u4e3b\u4ed3\u4e0e\u7981\u7528\u4e0d\u53ef\u9009.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-146-\u4e0d\u826f\u54c1\u4ed3\u4e1a\u52a1\u89c4\u5219\u4e0e\u53ef\u7528\u91cf\u5355\u4e00\u53e3\u5f84.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-146-\u4e0d\u826f\u54c1\u4ed3\u4e1a\u52a1\u89c4\u5219\u4e0e\u53ef\u7528\u91cf\u5355\u4e00\u53e3\u5f84.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-147-\u8f66\u95f4\u5185\u6599\u4ed3\u5f00\u901a\u5355\u4e00\u771f\u6e90\u4e0e\u53d1\u6599\u6765\u6e90\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-147-\u8f66\u95f4\u5185\u6599\u4ed3\u5f00\u901a\u5355\u4e00\u771f\u6e90\u4e0e\u53d1\u6599\u6765\u6e90\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-148-\u4ea7\u6210\u54c1\u5b9e\u7269\u4ea4\u63a5\u6279\u540c\u53bb\u5411\u5408\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-148-\u4ea7\u6210\u54c1\u5b9e\u7269\u4ea4\u63a5\u6279\u540c\u53bb\u5411\u5408\u5355.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-149-\u4ed3\u5e93\u6570\u636e\u8303\u56f4\u670d\u52a1\u7aef\u5f3a\u5236.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-149-\u4ed3\u5e93\u6570\u636e\u8303\u56f4\u670d\u52a1\u7aef\u5f3a\u5236.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-151-\u8868\u5355\u8349\u7a3f\u56de\u5230\u521d\u59cb\u503c\u5355\u91cd\u53c2\u6570\u7ed3\u6784\u5316\u5951\u7ea6\u4e0e\u5165\u5e93\u767b\u8bb0\u5355\u6279\u5408\u4e00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-151-\u8868\u5355\u8349\u7a3f\u56de\u5230\u521d\u59cb\u503c\u5355\u91cd\u53c2\u6570\u7ed3\u6784\u5316\u5951\u7ea6\u4e0e\u5165\u5e93\u767b\u8bb0\u5355\u6279\u5408\u4e00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-154-\u8bc1\u4ef6\u53f7\u95ee\u9898\u4e0d\u963b\u585e\u5f00\u53f7\u4e0e\u8bc1\u4ef6\u6838\u5bf9\u4efb\u52a1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-154-\u8bc1\u4ef6\u53f7\u95ee\u9898\u4e0d\u963b\u585e\u5f00\u53f7\u4e0e\u8bc1\u4ef6\u6838\u5bf9\u4efb\u52a1.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-156-\u59d4\u5916\u7533\u8bf7\u7269\u6599\u9f50\u5957\u624d\u89e3\u9501\u4e0b\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-156-\u59d4\u5916\u7533\u8bf7\u7269\u6599\u9f50\u5957\u624d\u89e3\u9501\u4e0b\u5355.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-160-\u5458\u5de5\u8bc1\u4ef6\u6279\u91cf\u6838\u5bf9\u66f4\u6b63.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-160-\u5458\u5de5\u8bc1\u4ef6\u6279\u91cf\u6838\u5bf9\u66f4\u6b63.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-161-\u8868\u683c\u884c\u9ad8\u7edf\u4e00\u8bfb\u8868\u5355\u884c\u57fa\u51c6\u4e0e\u683c\u5185\u7ec4\u4ef6\u89c4\u8303.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-161-\u8868\u683c\u884c\u9ad8\u7edf\u4e00\u8bfb\u8868\u5355\u884c\u57fa\u51c6\u4e0e\u683c\u5185\u7ec4\u4ef6\u89c4\u8303.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-162-\u9875\u9762\u6743\u9650\u62bd\u5c49\u4e0e\u6743\u9650\u9762\u5c42\u7ea7.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-162-\u9875\u9762\u6743\u9650\u62bd\u5c49\u4e0e\u6743\u9650\u9762\u5c42\u7ea7.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-165-\u8f66\u95f4\u5230\u8d27\u901a\u77e5\u4ea7\u80fd\u6c34\u4f4d\u4e0e\u8f66\u95f4\u8d1f\u8d23\u4eba\u53d7\u4f17.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-165-\u8f66\u95f4\u5230\u8d27\u901a\u77e5\u4ea7\u80fd\u6c34\u4f4d\u4e0e\u8f66\u95f4\u8d1f\u8d23\u4eba\u53d7\u4f17.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-166-\u4e2d\u592e\u63d0\u9192\u5f39\u7a97\u5206\u7ea7\u4f53\u7cfb.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-166-\u4e2d\u592e\u63d0\u9192\u5f39\u7a97\u5206\u7ea7\u4f53\u7cfb.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-167-\u5b9e\u9645\u8d85\u9650\u62a5\u5de5\u4e0e\u672c\u6279\u4ea7\u51fa\u5904\u7f6e.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-167-\u5b9e\u9645\u8d85\u9650\u62a5\u5de5\u4e0e\u672c\u6279\u4ea7\u51fa\u5904\u7f6e.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-168-\u5e38\u7528\u6a21\u5757\u6743\u9650\u5206\u7ec4.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-168-\u5e38\u7528\u6a21\u5757\u6743\u9650\u5206\u7ec4.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-169-\u72b6\u6001\u8272\u6df1\u8272\u5b9e\u5e95\u4e0e\u9010\u9875\u72ec\u7acb\u914d\u8272.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-169-\u72b6\u6001\u8272\u6df1\u8272\u5b9e\u5e95\u4e0e\u9010\u9875\u72ec\u7acb\u914d\u8272.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-170-\u5168\u5458\u57fa\u7840\u5305\u9489\u6b7b\u62a4\u680f.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-170-\u5168\u5458\u57fa\u7840\u5305\u9489\u6b7b\u62a4\u680f.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-171-\u59d4\u5916\u4efb\u52a1\u4e2d\u5fc3\u9886\u6599\u5e76\u5165\u5f85\u5904\u7406\u5206\u7c7b.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-171-\u59d4\u5916\u4efb\u52a1\u4e2d\u5fc3\u9886\u6599\u5e76\u5165\u5f85\u5904\u7406\u5206\u7c7b.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-172-\u4e2a\u4eba\u901a\u77e5\u5f39\u7a97\u5f00\u5173.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-172-\u4e2a\u4eba\u901a\u77e5\u5f39\u7a97\u5f00\u5173.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-173-\u4f1a\u8bdd\u72b6\u6001\u8bed\u4e49\u76f8\u7b49\u4e0e\u8eab\u4efd\u6805\u680f\u53bb\u5bf9\u8c61\u6307\u7eb9.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-173-\u4f1a\u8bdd\u72b6\u6001\u8bed\u4e49\u76f8\u7b49\u4e0e\u8eab\u4efd\u6805\u680f\u53bb\u5bf9\u8c61\u6307\u7eb9.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-174-\u8f66\u95f4\u5185\u6d41\u8f6c\u514d\u9884\u5f00\u901a\u5185\u6599\u4ed3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-174-\u8f66\u95f4\u5185\u6d41\u8f6c\u514d\u9884\u5f00\u901a\u5185\u6599\u4ed3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-175-\u516c\u53f8\u5e73\u53f0\u54c1\u724c\u4e0e\u914d\u7f6e\u4e2d\u5fc3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-175-\u516c\u53f8\u5e73\u53f0\u54c1\u724c\u4e0e\u914d\u7f6e\u4e2d\u5fc3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-176-\u751f\u4ea7\u65e5\u62a5\u4fdd\u5b58\u5b9e\u8017\u4e0e\u5ba1\u6838\u4f59\u6599\u5904\u7406.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-176-\u751f\u4ea7\u65e5\u62a5\u4fdd\u5b58\u5b9e\u8017\u4e0e\u5ba1\u6838\u4f59\u6599\u5904\u7406.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-177-\u53cd\u5ba1\u4fdd\u7559\u539f\u59cb\u5ba1\u6838\u4e8b\u5b9e\u5e76\u6062\u590d\u540e\u7eed\u8349\u7a3f.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-177-\u53cd\u5ba1\u4fdd\u7559\u539f\u59cb\u5ba1\u6838\u4e8b\u5b9e\u5e76\u6062\u590d\u540e\u7eed\u8349\u7a3f.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-178-\u5ba1\u6279\u9000\u56de\u4fdd\u7559\u6765\u6e90\u4e0e\u7b5b\u9009\u53ef\u6062\u590d.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-178-\u5ba1\u6279\u9000\u56de\u4fdd\u7559\u6765\u6e90\u4e0e\u7b5b\u9009\u53ef\u6062\u590d.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-179-\u8d27\u54c1\u4ef7\u683c\u5206\u6790\u4e0e\u53ef\u8ffd\u6eaf\u5efa\u8bae.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-179-\u8d27\u54c1\u4ef7\u683c\u5206\u6790\u4e0e\u53ef\u8ffd\u6eaf\u5efa\u8bae.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-180-\u8fdb\u884c\u4e2d\u4e0e\u5386\u53f2\u5355\u636e\u6309\u771f\u5b9e\u4e1a\u52a1\u751f\u547d\u5468\u671f\u5206\u6d41.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-180-\u8fdb\u884c\u4e2d\u4e0e\u5386\u53f2\u5355\u636e\u6309\u771f\u5b9e\u4e1a\u52a1\u751f\u547d\u5468\u671f\u5206\u6d41.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-181-\u64cd\u4f5c\u8d44\u683c\u7edf\u4e00\u4f7f\u7528\u6709\u6548\u6743\u9650\u4e0e\u51c6\u786e\u5931\u8d25\u63d0\u793a.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-181-\u64cd\u4f5c\u8d44\u683c\u7edf\u4e00\u4f7f\u7528\u6709\u6548\u6743\u9650\u4e0e\u51c6\u786e\u5931\u8d25\u63d0\u793a.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-182-\u8d27\u54c1\u64cd\u4f5c\u5386\u53f2\u4e0e\u53ef\u63a7\u64a4\u56de.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-182-\u8d27\u54c1\u64cd\u4f5c\u5386\u53f2\u4e0e\u53ef\u63a7\u64a4\u56de.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-183-\u672c\u5730\u4e1a\u52a1\u670d\u52a1\u4e0e\u53d7\u63a7\u8fdc\u7a0b\u5165\u53e3.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-183-\u672c\u5730\u4e1a\u52a1\u670d\u52a1\u4e0e\u53d7\u63a7\u8fdc\u7a0b\u5165\u53e3.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-184-\u4e1a\u52a1\u5f85\u529e\u6309\u771f\u5b9e\u64cd\u4f5c\u8d44\u683c\u4e0e\u8d23\u4efb\u8303\u56f4\u8ba1\u7b97.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-184-\u4e1a\u52a1\u5f85\u529e\u6309\u771f\u5b9e\u64cd\u4f5c\u8d44\u683c\u4e0e\u8d23\u4efb\u8303\u56f4\u8ba1\u7b97.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-185-\u7ec4\u88c5\u7f16\u8f91\u8349\u7a3f\u4e0e\u5171\u4eab\u7ec4\u4ef6\u540c\u6b65.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-185-\u7ec4\u88c5\u7f16\u8f91\u8349\u7a3f\u4e0e\u5171\u4eab\u7ec4\u4ef6\u540c\u6b65.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-186-\u539f\u6750\u6599\u884c\u60c5\u624b\u52a8\u5173\u8054\u4e0e\u79bb\u7ebf\u9884\u6d4b.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-186-\u539f\u6750\u6599\u884c\u60c5\u624b\u52a8\u5173\u8054\u4e0e\u79bb\u7ebf\u9884\u6d4b.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-187-\u6743\u9650\u6a21\u677f\u4f5c\u4e3a\u53ef\u9884\u89c8\u7684\u6388\u6743\u5feb\u7167.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-187-\u6743\u9650\u6a21\u677f\u4f5c\u4e3a\u53ef\u9884\u89c8\u7684\u6388\u6743\u5feb\u7167.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-188-BOM\u7c98\u8d34\u6309\u65e2\u6709\u8fb9\u590d\u5236\u4e0e\u505c\u7528\u8d27\u54c1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-188-BOM\u7c98\u8d34\u6309\u65e2\u6709\u8fb9\u590d\u5236\u4e0e\u505c\u7528\u8d27\u54c1.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-189-\u57fa\u7840\u8d44\u6599\u5bf9\u8c61\u5386\u53f2\u4e0e\u53d7\u63a7\u7248\u672c\u6062\u590d.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-189-\u57fa\u7840\u8d44\u6599\u5bf9\u8c61\u5386\u53f2\u4e0e\u53d7\u63a7\u7248\u672c\u6062\u590d.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-190-\u57fa\u672c\u5355\u4f4d\u65e5\u5e38\u5b57\u6bb5\u7b80\u5316.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-190-\u57fa\u672c\u5355\u4f4d\u65e5\u5e38\u5b57\u6bb5\u7b80\u5316.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-191-\u7981\u7528\u8d27\u54c1\u81ea\u52a8\u9000\u51fa\u5f53\u524d\u7ec4\u88c5\u6e05\u5355.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-191-\u7981\u7528\u8d27\u54c1\u81ea\u52a8\u9000\u51fa\u5f53\u524d\u7ec4\u88c5\u6e05\u5355.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-192-\u4e1a\u52a1\u6570\u636e\u6e05\u7a7a\u529f\u80fd\u6c38\u4e45\u5220\u9664.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-192-\u4e1a\u52a1\u6570\u636e\u6e05\u7a7a\u529f\u80fd\u6c38\u4e45\u5220\u9664.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-193-\u91c7\u8d2d\u59d4\u5916\u63d0\u524d\u7ed3\u675f\u4e0e\u4f59\u91cf\u91cd\u5efa\u8d22\u5ba1.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-193-\u91c7\u8d2d\u59d4\u5916\u63d0\u524d\u7ed3\u675f\u4e0e\u4f59\u91cf\u91cd\u5efa\u8d22\u5ba1.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-194-\u516c\u53f8\u8d44\u6599\u5e93\u4e0e\u76ee\u5f55\u6388\u6743.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-194-\u516c\u53f8\u8d44\u6599\u5e93\u4e0e\u76ee\u5f55\u6388\u6743.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-195-\u91c7\u8d2d\u59d4\u5916\u76f4\u63a5\u53d6\u6d88\u672a\u6536\u4f59\u91cf.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-195-\u91c7\u8d2d\u59d4\u5916\u76f4\u63a5\u53d6\u6d88\u672a\u6536\u4f59\u91cf.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-196-\u8d85\u7ea7\u7ba1\u7406\u5458\u6743\u9650\u53ef\u88ab\u4e2a\u4eba\u6536\u56de\u4e0e\u5916\u7f51\u6388\u6743\u653e\u5f00.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-196-\u8d85\u7ea7\u7ba1\u7406\u5458\u6743\u9650\u53ef\u88ab\u4e2a\u4eba\u6536\u56de\u4e0e\u5916\u7f51\u6388\u6743\u653e\u5f00.md"
+  },
+  {
+    "sourcePath": "docs/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-197-BOM\u884c\u4e0e\u8d27\u54c1\u4e3b\u6863\u65e2\u6709\u5f15\u7528\u4e0d\u6309\u65b0\u9009\u91cd\u6821\u9a8c.md",
+    "compiledPath": "server/target-loading-main-fa-final/classes/ai-knowledge/99-\u51b3\u7b56\u8bb0\u5f55-ADR/ADR-197-BOM\u884c\u4e0e\u8d27\u54c1\u4e3b\u6863\u65e2\u6709\u5f15\u7528\u4e0d\u6309\u65b0\u9009\u91cd\u6821\u9a8c.md"
+  }
+]

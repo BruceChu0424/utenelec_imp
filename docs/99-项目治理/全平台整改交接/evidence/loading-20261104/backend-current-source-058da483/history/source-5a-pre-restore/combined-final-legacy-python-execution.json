@@ -1,0 +1,14 @@
+{
+  "startedAtUtc": "2026-11-05T10:23:00.3593135Z",
+  "endedAtUtc": "2026-11-05T10:24:32.8668482Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "5a1bcea10e4c1ed74510b497a8ecc02aa98cfebe96f48818f6c0d9df20eae500",
+  "suites": [
+    "test_verify_rehearsal_counter_baseline",
+    "test_bootstrap_target_inventory",
+    "test_compose_bootstrap",
+    "test_verify_rehearsal_result"
+  ],
+  "log": "server/build/loading-validation/combined-final-legacy-python-tests.log"
+}

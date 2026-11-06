@@ -573,9 +573,10 @@ void main() {
     await tester.pumpAndSettle();
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
     expect(table.currentPage, 1);
-    expect(table.totalPages, 8);
-    // A neighbour may finish during the reload, but the settled page and its
-    // rendered continuous window must both retain the located copy first.
+    expect(table.totalPages, 1);
+    expect(table.items, hasLength(158));
+    expect(table.items.map((item) => item.id).toSet(), hasLength(158));
+    // The entire refreshed snapshot retains the copy at its actual code order.
     expect(table.rowsController, isNotNull);
     expect(table.rowsController!.items.first.id, 'copy-1');
     expect(table.items.first.id, 'copy-1');
@@ -593,7 +594,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('粘贴跨过分页边界后自动进入新末页并显示副本', (tester) async {
+  testWidgets('粘贴后保留完整分类结果并定位新副本', (tester) async {
     final goods = _GoodsRepository(targetCount: 20);
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom, withClipboard: true);
@@ -609,26 +610,34 @@ void main() {
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
-    expect(table.currentPage, 2);
-    expect(table.totalPages, 2);
-    expect(table.items.single.id, 'copy-1');
+    expect(table.currentPage, 1);
+    expect(table.totalPages, 1);
+    expect(table.items, hasLength(21));
+    expect(table.items.last.id, 'copy-1');
     // The row menu completion must not clear the new selection after paste.
     expect(table.selectedIds, {'copy-1'});
+    expect(goods.mainPageRequests.skip(beforePasteRequests), isNotEmpty);
     expect(
       goods.mainPageRequests.skip(beforePasteRequests),
       contains((
         categoryId: 'target-category',
-        page: 2,
+        page: 1,
         sort: 'code',
         order: 'asc',
       )),
-      reason: '定位副本读取目标页，允许随后准备相邻页',
+    );
+    expect(
+      goods.mainPageRequests
+          .skip(beforePasteRequests)
+          .every((request) => request.page == 1),
+      isTrue,
+      reason: '这些完整结果均不足100行；刷新从首批完成，不再定位或准备邻页',
     );
     expect(find.text('测试插座(1)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('批量粘贴后进入末页并自动滚动到超出视口的最后副本', (tester) async {
+  testWidgets('批量粘贴后完整结果自动定位超出视口的最后副本', (tester) async {
     final goods = _GoodsRepository(targetCount: 35);
     final bom = _BomRepository();
     await _pumpPage(
@@ -653,8 +662,9 @@ void main() {
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
     expect(goods.created, hasLength(5));
-    expect(table.currentPage, 2);
-    expect(table.items, hasLength(20));
+    expect(table.currentPage, 1);
+    expect(table.totalPages, 1);
+    expect(table.items, hasLength(40));
     expect(table.items.last.id, 'copy-5');
     expect(table.selectedIds, {
       'copy-1',
@@ -663,15 +673,22 @@ void main() {
       'copy-4',
       'copy-5',
     });
+    expect(goods.mainPageRequests.skip(beforePasteRequests), isNotEmpty);
     expect(
       goods.mainPageRequests.skip(beforePasteRequests),
       contains((
         categoryId: 'target-category',
-        page: 2,
+        page: 1,
         sort: 'code',
         order: 'asc',
       )),
-      reason: '定位副本读取目标页，允许随后准备相邻页',
+    );
+    expect(
+      goods.mainPageRequests
+          .skip(beforePasteRequests)
+          .every((request) => request.page == 1),
+      isTrue,
+      reason: '这些完整结果均不足100行；刷新从首批完成，不再定位或准备邻页',
     );
     // No tester drag/ensureVisible: the product must scroll its own viewport.
     expect(find.text('测试插座(5)').hitTestable(), findsOneWidget);
@@ -679,7 +696,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('跨页批量粘贴默认选中所有成功副本且不包含原右键行', (tester) async {
+  testWidgets('完整分类结果默认选中所有成功副本且不包含原右键行', (tester) async {
     final goods = _GoodsRepository(targetCount: 39);
     await _pumpPage(tester, goods, _BomRepository(), withClipboard: true);
     await tester.tap(find.text('新分类'));
@@ -695,10 +712,42 @@ void main() {
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
-    expect(table.currentPage, 3);
-    expect(table.items.map((item) => item.id), ['copy-2', 'copy-3']);
+    expect(table.currentPage, 1);
+    expect(table.totalPages, 1);
+    expect(table.items, hasLength(42));
+    expect(table.items.map((item) => item.id).toSet(), hasLength(42));
+    expect(table.items.skip(39).map((item) => item.id), [
+      'copy-1',
+      'copy-2',
+      'copy-3',
+    ]);
     expect(table.selectedIds, {'copy-1', 'copy-2', 'copy-3'});
     expect(find.text('测试插座(3)').hitTestable(), findsOneWidget);
+    final beforeScrollReads = goods.mainPageRequests.length;
+    final position = tester
+        .stateList<ScrollableState>(
+          find.descendant(of: _table, matching: find.byType(Scrollable)),
+        )
+        .firstWhere(
+          (state) =>
+              state.position.axis == Axis.vertical &&
+              state.position.hasContentDimensions &&
+              state.position.maxScrollExtent > 0,
+        )
+        .position;
+    position.jumpTo(0);
+    await tester.pumpAndSettle();
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(goods.mainPageRequests, hasLength(beforeScrollReads));
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).items,
+      hasLength(42),
+    );
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
+      {'copy-1', 'copy-2', 'copy-3'},
+    );
     expect(tester.takeException(), isNull);
   });
 

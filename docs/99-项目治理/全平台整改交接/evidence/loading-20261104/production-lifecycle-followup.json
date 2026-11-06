@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "scope": "Bounded production READ ONLY followup; no jobs executed or configuration/data changes. Statements 5 seconds, locks 500ms.",
+  "flyway": {
+    "head": "999",
+    "checksum": 1197342261,
+    "success": true
+  },
+  "exactSmallTableCounts": {
+    "eligibilityFalse": 50,
+    "eligibilityTrue": 150,
+    "packageVerifiedRows": 140,
+    "outboxDelivered": 2022,
+    "outboxTiered": 0,
+    "outboxEligibleAtDefault90Days": 0,
+    "outboxColdRows": 0
+  },
+  "runEvidence": {
+    "latestFourTasks": "SUCCESS",
+    "eachTaskSuccessesInLast14Days": 7,
+    "limits": "Schedulers catch some per-object errors. Task SUCCESS alone is not proof that each object packaged or the platform meets a latency SLA."
+  },
+  "audit": {
+    "purgeMode": "PERMANENT_RETAIN",
+    "savedHotMonths": 6,
+    "savedArchiveMonths": 30,
+    "hotAttachedMonthlyPartitions": [
+      "202610",
+      "202611",
+      "202612",
+      "202701",
+      "202702"
+    ],
+    "archiveAttachedPartitionsObserved": 0
+  },
+  "lifecycleEnvironmentOverrides": {},
+  "configurationLimit": "Packaged or external application configuration may override defaults; this is not a Spring actuator effective-property dump.",
+  "oldCatalogCounts": "Prior 200/120/1916 were planner estimates. Do not relabel them as exact or infer growth from the difference to this followup.",
+  "logs": [
+    {
+      "path": "build/loading-validation/production-lifecycle-readonly.sql",
+      "sha256": "1399df8a81436f01dc5c991b0507b3ce4e357fc0f0bd31edb1be80bc6cbc6dee",
+      "modifiedUtc": "2026-11-05T07:09:28.845291+00:00"
+    },
+    {
+      "path": "build/loading-validation/production-lifecycle-readonly.log",
+      "sha256": "c455749b947b9786e1ada24348dac83a297d728cdd3ff83beefc34cf5c45ed45",
+      "modifiedUtc": "2026-11-05T07:09:37.262534+00:00"
+    },
+    {
+      "path": "build/loading-validation/production-lifecycle-config-readonly.log",
+      "sha256": "f8cf4b250d85aa9ac9c09cc565e903e8daac773125c94ee8f04751288f039648",
+      "modifiedUtc": "2026-11-05T07:11:13.422959+00:00"
+    },
+    {
+      "path": "build/loading-validation/production-lifecycle-defaults-readonly.log",
+      "sha256": "ff5a08664d84c6c6577c3023b168ffc1481a3895c23f94c689319ee3dc197fbd",
+      "modifiedUtc": "2026-11-05T07:18:07.357332+00:00"
+    }
+  ],
+  "installedAnnotationDefaults": {
+    "uten.archive.eligibility.enabled": "true",
+    "uten.archive.eligibility.scan-limit": "200",
+    "uten.archive.eligibility.package-limit": "20",
+    "uten.archive.eligibility.settled-months": "24",
+    "uten.outbox.payload-tiering.enabled": "true",
+    "uten.outbox.payload-tiering.min-age-days": "90",
+    "uten.outbox.payload-tiering.batch-size": "500",
+    "uten.outbox.payload-tiering.max-rows-per-run": "5000"
+  },
+  "allowlistedEnvironmentJsonCommandOverrides": {}
+}

@@ -55,6 +55,7 @@ MasterColumnDef<R> outboundWeightColumn<R>({
     paramsListenable: params,
     qtyBaseOf: (entry) => entry.qtyBase,
     qtyListenableOf: (entry) => entry.qtyListenable,
+    exactKgOf: (entry) => entry.exactKgTextIn(params),
     baseUnitNameOf: baseUnitNameOf,
     enabledOf: (entry) => enabledByEntry[entry] ?? true,
     // 可改数量的行 (领料本次出库/材料申请领料数量): 数量空着时按称重推算。
@@ -62,6 +63,7 @@ MasterColumnDef<R> outboundWeightColumn<R>({
       qtyControllerOf: (entry) => entry.qtyController!,
       unitRateOf: (entry) => entry.unitRate,
       unitRateTextOf: (entry) => entry.unitRateExact,
+      maxScaleOf: (entry) => entry.quantityMaxScale,
       enabledOf: (entry) =>
           entry.qtyController != null &&
           entry.unitRate != null &&

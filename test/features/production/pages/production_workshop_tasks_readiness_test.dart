@@ -1,3 +1,4 @@
+import '../../../support/production_daily_report_fixture.dart';
 // 我的车间任务「等待物料」段默认排序（2026-09-26 用户口径「越接近可开工越靠上」）
 // 与状态列整格底色（同口径 B7）的回归。
 //
@@ -27,6 +28,7 @@ void main() {
     final api = _preparingApi();
     final container = ProviderContainer(
       overrides: [
+        emptyServerReportDraftsFixture(),
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.productionExecutionView,
@@ -87,6 +89,7 @@ void main() {
       addTearDown(pageContext.dispose);
       final container = ProviderContainer(
         overrides: [
+          emptyServerReportDraftsFixture(),
           apiClientProvider.overrideWithValue(_preparingApi()),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,

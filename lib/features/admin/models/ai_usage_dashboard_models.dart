@@ -95,7 +95,7 @@ class AiUsageSeriesPoint {
   final int okCalls;
 }
 
-/// 人员行(窗口内有用量的用户 ∪ 有 limits 行的用户, 上限 500)。
+/// 完整统计窗口的人员行：有用量的用户与限额配置用户的并集。
 class AiUsagePerson {
   const AiUsagePerson({
     required this.userId,
@@ -196,6 +196,17 @@ class AiUsageDashboard {
   final int disabledCount;
   final List<AiUsageSeriesPoint> series;
   final List<AiUsagePerson> people;
+
+  AiUsageDashboard withPeople(List<AiUsagePerson> rows) => AiUsageDashboard(
+    window: window,
+    todayTokens: todayTokens,
+    dailyTokenBudget: dailyTokenBudget,
+    todayCalls: todayCalls,
+    activeUsersToday: activeUsersToday,
+    disabledCount: disabledCount,
+    series: series,
+    people: rows,
+  );
 }
 
 /// 按用途/按服务商的一行分布。

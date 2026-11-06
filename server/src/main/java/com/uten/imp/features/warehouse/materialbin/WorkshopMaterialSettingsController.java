@@ -36,6 +36,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/workshop-material/settings")
 public class WorkshopMaterialSettingsController {
+    @org.springframework.beans.factory.annotation.Autowired private WorkshopPendingSummaryService summaries;
+
 
     private final WorkshopMaterialSettingsService settings;
 
@@ -79,5 +81,16 @@ public class WorkshopMaterialSettingsController {
     @PreAuthorize("hasAuthority('workshop_material:setup')")
     public SettingsView update(@PathVariable UUID workshopId, @jakarta.validation.Valid @RequestBody SettingsRequest request) {
         return settings.update(workshopId, request);
+    }
+
+    @GetMapping("/in-progress-pending/summaries")
+    @PreAuthorize("hasAuthority('workshop_material:setup')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<WorkshopPendingSummaryService.ProductSummary> summaries(@RequestParam List<UUID> workshopIds,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return summaries.summaries(workshopIds,page,size,readSnapshotRevision);
+    }
+    @GetMapping("/in-progress-pending/products/{productId}")
+    @PreAuthorize("hasAuthority('workshop_material:setup')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Snapshot<WorkshopMaterialDtos.PendingProduct> product(@PathVariable UUID productId,@RequestParam List<UUID> workshopIds,@RequestParam(defaultValue="1000") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return summaries.product(workshopIds,productId,size,readSnapshotRevision);
     }
 }

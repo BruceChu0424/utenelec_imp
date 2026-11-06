@@ -1,5 +1,8 @@
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/models/paged_result.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -98,16 +101,17 @@ class _Manager extends ConsumerStatefulWidget {
   ConsumerState<_Manager> createState() => _ManagerState();
 }
 
-class _ManagerState extends ConsumerState<_Manager> {
+class _ManagerState extends ConsumerState<_Manager>
+    with ReadViewActivityMixin<_Manager> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final int _epoch;
   late final ApiClient _api;
   List<Map<String, dynamic>> _rows = [], _recent = [];
   Map<String, dynamic>? _preview, _pendingApply;
   bool _busy = false, _changed = false, _unknown = false;
   String? _error;
-  int _page = 1;
   final Map<String, String> _filters = {};
-  bool _more = false;
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -130,33 +134,51 @@ class _ManagerState extends ConsumerState<_Manager> {
       _error = null;
     });
     try {
-      final value = await _api.get(
-        '$_base/${widget.mode == 'note'
-            ? 'notes'
-            : widget.mode == 'group'
-            ? 'groups'
-            : 'entries'}',
-        query: {
-          'period': widget.period,
-          if (widget.mode == 'assignment') 'page': _page,
-          if (widget.mode == 'assignment') 'size': 50,
-        },
-      );
-      final recent = widget.mode == 'note'
-          ? await _api.get(
-              '$_base/note-imports',
-              query: {'period': widget.period},
-            )
-          : <String, dynamic>{};
+      final loaded = await readViewActivity.runRead(() => _current, () async {
+        final Map<String, dynamic> value;
+        if (widget.mode == 'assignment') {
+          final complete = await loadCompletePagedResult<Map<String, dynamic>>(
+            isCurrent: () => _current,
+            idOf: (row) => row['entryId'],
+            loadPage: (page, size) async {
+              final value = await _api.get(
+                '$_base/entries',
+                query: {'period': widget.period, 'page': page, 'size': size},
+              );
+              return PagedResult.fromJson({
+                ...value,
+                'items': value['rows'] ?? const <Map<String, dynamic>>[],
+              }, (row) => row);
+            },
+          );
+          value = {'rows': complete.items};
+        } else {
+          value = await _api.get(
+            '$_base/${widget.mode == 'note'
+                ? 'notes'
+                : widget.mode == 'group'
+                ? 'groups'
+                : 'entries'}',
+            query: {'period': widget.period},
+          );
+        }
+        final recent = widget.mode == 'note'
+            ? await _api.get(
+                '$_base/note-imports',
+                query: {'period': widget.period},
+              )
+            : <String, dynamic>{};
+        return (value: value, recent: recent);
+      });
       if (!_current) return;
       setState(() {
-        _rows = _items(value[widget.mode == 'assignment' ? 'rows' : 'items']);
-        _recent = _items(recent['items']);
-        _more =
-            (_rows.length == 50) &&
-            ((_page < ((value['totalPages'] as num?)?.toInt() ?? _page + 1)));
+        _rows = _items(
+          loaded.value[widget.mode == 'assignment' ? 'rows' : 'items'],
+        );
+        _recent = _items(loaded.recent['items']);
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (_current) {
         setState(() => _error = humanErrorMessage(error) ?? '资料未读取完成');
       }
@@ -392,27 +414,6 @@ class _ManagerState extends ConsumerState<_Manager> {
                       onPressed: _busy || _unknown ? null : _pick,
                       child: const Text('导入备注/差异原因'),
                     ),
-                  if (widget.mode == 'assignment') ...[
-                    UtenButton(
-                      onPressed: _busy || _page <= 1
-                          ? null
-                          : () {
-                              _page--;
-                              _load();
-                            },
-                      child: const Text('上一页'),
-                    ),
-                    Text('第$_page页'),
-                    UtenButton(
-                      onPressed: _busy || !_more
-                          ? null
-                          : () {
-                              _page++;
-                              _load();
-                            },
-                      child: const Text('下一页'),
-                    ),
-                  ],
                 ],
               ),
             ),

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-05T12:21:09.541109+00:00",
+  "root": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "base": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "stage": "NEW renderer and entry build before final retained-view activity followup",
+  "rendererResult": "Real release JavaScript/CanvasKit Chrome36000 rows/8wheel samples/132distinct built/stable header/0placeholder/0scroll network/0browser exceptions; screenshot visually reviewed",
+  "fixtureOnly": true,
+  "companyUat": false,
+  "formalPackages": false,
+  "ownedProcessesStopped": true,
+  "actualArtifacts": {
+    "web-continuous-receipt.json": "1c00b31b15085ae9d648e4a26acf052a204682886d1391c8cad5458db193706a",
+    "web-continuous-table.png": "2f9d043fd01298d8b8acef72287f8fa30f24eed267a3f9845b7347af07a88f32",
+    "cleanup.json": "6b0dac44ba5e3687fcdb4dcfc4ba29a8bf9e30bdec56a20b89104dc50ebe64c6",
+    "web-current-entry-build.log": "abb749aa3ea3d31f75b312896605c4a1a63ca7e3bf79f9e3457c0d6ea2f1af78",
+    "web-current-entry-execution.json": "9e69b4dd8a123974c4d21cbd6493817da134bfbcd94b85e3fcbab1261edece54",
+    "web-current-probe-build.log": "b24c99166e1d4ef730ffb2712d48672730526fc5af03f07beadb85a6e69f6034",
+    "web-current-probe-execution.json": "308d8f3533f851a1d0b5f1e128fd35095900bd6ecf051dde7a4faaa4a77cbf81"
+  },
+  "renderInputs": [
+    {
+      "path": "tool/loading_web_probe.dart",
+      "sha256": "35aeaf777c385e10e11a7598f6239dee097e496d4e98c2628fadaf4ae8678ca8"
+    },
+    {
+      "path": "tool/loading_web_probe_driver.mjs",
+      "sha256": "f757429610a781ca624bc93723599503ec0f8f501a5ea27142a5eb3bd172e5ac"
+    },
+    {
+      "path": "tool/loading_web_probe_server.mjs",
+      "sha256": "fee1edb7e0ea56345810d2d0fc122ae50d7671d012e78fea225749ff4c01a47a"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256": "9ce73843e51dd3cc6feff8aa6c0e1eb992f780d8c5e935cb2a979ad308981853"
+    },
+    {
+      "path": "lib/components/layout/uten_ancestor_row_window.dart",
+      "sha256": "73dd2e5c5420055e87a584b958d47eda0d7b1b1aaa36e6e73688cd3682f0d210"
+    },
+    {
+      "path": "lib/core/theme/light_theme.dart",
+      "sha256": "c5ee4a3f47fcfc289caa9ff29c6007110c681f40c0c78ac0cff584e54ec4ada4"
+    }
+  ],
+  "interpretation": "This proves local rendering and old entry compilation at its stated source stage. It does not prove the later shared read-activity correction; current source compile/visibility regression evidence must remain separate."
+}

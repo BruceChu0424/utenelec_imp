@@ -1,3 +1,4 @@
+import '../models/paged_result.dart';
 import '../models/progress_timeline_event.dart';
 import '../business_columns/business_column.dart';
 import '../delivery/order_delivery_plan.dart';
@@ -162,6 +163,16 @@ class SalesOrderFinancePendingPage {
   final int size;
   final int total;
   final int totalPages;
+
+  SalesOrderFinancePendingPage withPage(
+    PagedResult<SalesOrderFinancePendingItem> combined,
+  ) => SalesOrderFinancePendingPage(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory SalesOrderFinancePendingPage.fromJson(Map<String, dynamic> json) {
     final nested = json['data'];

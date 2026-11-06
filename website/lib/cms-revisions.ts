@@ -70,8 +70,9 @@ export class CmsRevisionService {
     if(JSON.stringify(input.payload).length>512_000)throw new FormValidationError('草稿内容过大');
     const id=type==='setting'?String(input.entityId||form.get('settingKey')||''):input.entityId||randomUUID();
     if(!id||id.length>100)throw new FormValidationError('内容标识无效');
-    return this.db.$transaction(async tx=>{
-      await assertCurrentActor(tx,actor,permission);
+    const payload=JSON.stringify(input.payload),title=input.title.trim().slice(0,200)||`${type} ${id}`;
+    const prepare=async(tx:CmsTx,currentActor:AdminSession)=>{
+      await assertCurrentActor(tx,currentActor,permission);
       const before=await readCmsSnapshot(tx,type,id);
       if(input.entityId&&type!=='setting'&&!before.record)throw new FormValidationError('内容不存在或已删除');
       const hash=cmsSnapshotHash(before);
@@ -85,16 +86,42 @@ export class CmsRevisionService {
         } else if(!expectedHash)throw new FormValidationError('缺少编辑页面基准，请刷新后重试');
       }
       const after=await prepareCmsSnapshot(tx,type,id,input.operation,input.payload,before);
-      await assertCurrentActor(tx,actor,permission);
-      const title=input.title.trim().slice(0,200)||`${type} ${id}`;
+      await assertCurrentActor(tx,currentActor,permission);
+      return {before,hash,after};
+    };
+    const pendingDelete=(tx:CmsTx,hash:string)=>input.operation==='DELETE'?tx.cmsRevision.findFirst({
+      where:{entityType:type,entityId:id,operation:'DELETE',createdBy:actorId(actor),baseHash:hash,status:'DRAFT',payload,title},
+      orderBy:[{createdAt:'asc'},{id:'asc'}],select:{id:true},
+    }):Promise.resolve(null);
+    try{return await this.db.$transaction(async tx=>{
+      const {before,hash,after}=await prepare(tx,actor);
+      // A lost HTTP response may be retried by the browser. Reuse only this
+      // actor's identical pending deletion after every original live guard.
+      // Serializable predicate reads prevent concurrent "none found" writers
+      // from both committing, without changing historical/UPSERT revisions.
+      const existing=await pendingDelete(tx,hash);
+      if(existing)return {revisionId:existing.id,entityId:id};
       const revision=await tx.cmsRevision.create({data:{entityType:type,entityId:id,operation:input.operation,title,
-        payload:JSON.stringify(input.payload),beforeState:JSON.stringify(before),afterState:JSON.stringify(after),
+        payload,beforeState:JSON.stringify(before),afterState:JSON.stringify(after),
         baseHash:hash,baseVersion:typeof before.record?.rowVersion==='number'?before.record.rowVersion:null,
         createdBy:actorId(actor),status:'DRAFT'}});
       await tx.cmsAuditEvent.create({data:{actorId:actorId(actor),action:'DRAFT_CREATED',entityType:type,entityId:id,
         revisionId:revision.id,summary:`保存草稿：${title}`}});
       return {revisionId:revision.id,entityId:id};
-    },{timeout:20_000,isolationLevel:'Serializable'});
+    },{timeout:20_000,isolationLevel:'Serializable'});}catch(error){
+      const code=(error as {code?:string}|null)?.code;
+      if(input.operation!=='DELETE'||!['P2034','P1008','P2028'].includes(code||''))throw error;
+      // Resolve a concurrent transaction's committed fact with a fresh read.
+      // This never retries a write or bypasses changed scope/snapshot guards.
+      const currentActor=await this.authorize(permission);
+      if(actorId(currentActor)!==actorId(actor))throw error;
+      const existing=await this.db.$transaction(async tx=>{
+        const {hash}=await prepare(tx,currentActor);
+        return pendingDelete(tx,hash);
+      },{timeout:20_000,isolationLevel:'Serializable'});
+      if(!existing)throw error;
+      return {revisionId:existing.id,entityId:id};
+    }
   }
 
   async publish(revisionId:string):Promise<CmsRevision> {

@@ -131,14 +131,14 @@ extension _MasterDataTableAi<T> on _MasterDataTableViewState<T> {
         ),
     ]..sort((a, b) => b.count.compareTo(a.count));
     return AiTableSnapshot(
-      totalRows: _serverPaged ? null : rows.length,
+      totalRows: rows.length,
       visibleRows: rows.length,
       selectedRows: widget.selectable ? widget.selectedIds.length : null,
       columns: columns,
       rows: sample,
       legend: legend.take(AiSnapshotLimits.legend).toList(),
       flaggedCells: flagged.take(AiSnapshotLimits.flagged).toList(),
-      truncated: rows.length > AiSnapshotLimits.rows || _serverPaged,
+      truncated: rows.length > AiSnapshotLimits.rows,
     );
   }
 

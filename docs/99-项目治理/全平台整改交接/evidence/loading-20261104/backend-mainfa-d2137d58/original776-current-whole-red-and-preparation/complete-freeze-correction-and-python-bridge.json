@@ -1,0 +1,35 @@
+{
+  "atUtc": "2026-11-06T01:00:53.926744+00:00",
+  "priorManifestPreserved": true,
+  "priorSource": "3c4971d02f38b69f411a9ad760776cfb51419d2d48e942def026101e337d6300",
+  "completeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "added": {
+    "path": "docs/03-页面/各部门申请流程.md",
+    "sha256": "8a29db9f1ee6f1e0f14333f713ec156904a93cb6341a50b44d1bc361e6ec56c7"
+  },
+  "changedMainKnowledgeMarkdown": [
+    {
+      "path": "docs/03-页面/我的申请与审批中心.md",
+      "priorSha256": "b65c9679dfd3d83d28bbb39f02afbb8b4baebbedfc10cbddcafbec63b258c5be",
+      "currentAndExactMainSha256": "4f5284f4cc3f51b7698dce9f61d0a6117daafe6162941098e5d6568e910819a5"
+    },
+    {
+      "path": "docs/07-业务链路/我的申请与审批权限配置指南.md",
+      "priorSha256": "11fe341c8e73d13e890af7d53847c98e6f850132eb4702a77be29a6ada1b2d5c",
+      "currentAndExactMainSha256": "b84be91b279d7412c29c17f15a6aa6c5b5e707695c0851d678349ad4d507bb65"
+    },
+    {
+      "path": "docs/99-决策记录-ADR/ADR-112-金额口径统一与资金过账单一入口.md",
+      "priorSha256": "7fe57de7283bf470a65ced1f12f30946ecc85f0487b2d157c55bbd92caefecab",
+      "currentAndExactMainSha256": "5b5a80c9cc9a6ac6bd0934192182cd5b890529e5c1616b560e918c48a4a60815"
+    }
+  ],
+  "allOther7407InputsByteExact": true,
+  "productionJavaChanges": 0,
+  "testJavaChanges": 0,
+  "python81NativeSource": "3c4971d02f38b69f411a9ad760776cfb51419d2d48e942def026101e337d6300",
+  "python81QualifiedOnCompleteSource": true,
+  "pythonBasis": "Only four Maven knowledge Markdown resources added/rebound; all six Python modules, their source/CLI/import/version fixtures/Guard and every non-Markdown input are raw-byte identical. Python verification operates on migration/code/contracts, not Maven knowledge Markdown. Original invocation remains old native clock.",
+  "pythonExecutionSha256": "53ccb25f7bd8a15effee48f09ce67834df13910e756f30f3418cf8e0f30809eb",
+  "completeInputPaths": 7411
+}

@@ -1,3 +1,5 @@
+import '../../../../shared/models/paged_result.dart';
+
 BigInt? financeDecimalUnits(String? raw, {int scale = 4}) {
   final value = raw?.trim();
   if (value == null || value.isEmpty || scale < 0) return null;
@@ -364,6 +366,16 @@ class SubcontractLossClaimPageResult {
   final int size;
   final int total;
   final int totalPages;
+
+  SubcontractLossClaimPageResult withPage(
+    PagedResult<SubcontractLossClaimSummary> combined,
+  ) => SubcontractLossClaimPageResult(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory SubcontractLossClaimPageResult.fromJson(Map<String, dynamic> json) =>
       SubcontractLossClaimPageResult(

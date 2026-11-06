@@ -41,6 +41,14 @@ public class VisitorController {
                 com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
+    @GetMapping("/active-at")
+    public java.util.Map<String, Boolean> activeAt(
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(
+                    iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME)
+            java.time.OffsetDateTime plannedVisitAt) {
+        return java.util.Map.of("exists", service.hasActiveApplicationAt(plannedVisitAt));
+    }
+
     @GetMapping("/{id}")
     public VisitorDetail detail(@PathVariable UUID id) {
         VisitorDetail result = service.getDetail(id);

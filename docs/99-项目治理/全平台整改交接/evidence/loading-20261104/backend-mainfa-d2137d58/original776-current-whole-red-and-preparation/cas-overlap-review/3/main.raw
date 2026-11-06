@@ -1,0 +1,1050 @@
+package com.uten.imp.features.sales.report;
+import com.uten.imp.common.util.NativeValueConverters;
+
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.report.ReportReadPlan;
+import com.uten.imp.common.report.ReportExportCursor;
+import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
+import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
+import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.BiFunction;
+
+/**
+ * 销售报表查询（销售管理 / 销售报表）。
+ *
+ * <p>三类入口（与采购 PurchaseReportService 同型，本类为销售包内独立实现）：
+ * <ol>
+ *   <li>{@link #detail}/{@link #summary} 8 张报表：订货/出货/退货/其它出货 各明细/汇总。
+ *       <b>服务端 JOIN 出"显示就绪"行</b>（客户/仓库/货品/颜色/类别/人员名/总监均已解析），
+ *       支持日期/客户/仓库/状态/关键字过滤 + 关键列 facet 表头筛选 + 分页。**报价无报表**（不在 docType 内）。</li>
+ *   <li>{@link #monthly} 月度汇总（sales_monthly_mv 上卷，保留）。**迁末已刷新**（migrate_sales.sql 调 refresh_sales_monthly_mv）。</li>
+ *   <li>{@link #pending} 待交货订货汇总（sales_order_pending_v，保留）。</li>
+ * </ol>
+ *
+ * <p>明细表：一行=单里一样货品（同单号重复）；汇总表：一行=一整张单（单号唯一）。
+ *
+ * <p>人员名：历史单据 {@code *_legacy_id} 保留，但 {@code employees.legacy_id} 尚未录入 → 暂显空；
+ * current UUID 优先关联员工；仅 UUID 为空时按 legacy_id 回退，避免双命中重复报表行。
+ *
+ * <p>总监：LEFT JOIN {@code client_director_v}（视图，client_categories 上溯 level=0 根 name）。
+ *
+ * <p>结帐方式：{@code payment_style_id} 原值（INT），按 {@link SalesSettlementStyle} 字典渲染。
+ *
+ * <p>_null 参数类型坑_：可选过滤用 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY）。
+ */
+@Service
+@RequiredArgsConstructor
+public class SalesReportService {
+
+    private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+    public static final String DOC_ORDER = "ORDER";
+    public static final String DOC_SHIPMENT = "SHIPMENT";
+    public static final String DOC_OTHER_SHIPMENT = "OTHER_SHIPMENT";
+    public static final String DOC_RETURN = "RETURN";
+
+    private static final String DEAL_EXPR =
+            "CASE WHEN COALESCE(i.discount,0) > 0 AND COALESCE(i.discount,0) < 1 THEN i.amount_local * i.discount ELSE i.amount_local END";
+
+    // Keep one customer row, but only add quantities when every contributing line has the same unit identity.
+    private static final String SUMMARY_UNIT_PROOF = "COUNT(DISTINCT x.unit_id)=1 AND COUNT(x.unit_id)=COUNT(x.qty)";
+    private static final String SUMMARY_QUANTITY = "CASE WHEN "+SUMMARY_UNIT_PROOF+" THEN SUM(x.qty) END ";
+    private static final String SUMMARY_UNIT_NAME = "CASE WHEN "+SUMMARY_UNIT_PROOF+" THEN MAX(summary_unit.name) END ";
+    private static final String LINE_SUMMARY_UNIT = "CASE WHEN COUNT(DISTINCT unit_id)=1 AND COUNT(unit_id)=COUNT(*) "
+            +"THEN MIN(unit_id::text)::uuid END AS unit_id ";
+
+    private final EntityManager em;
+    private final SystemSettingsService settings;
+    private final com.uten.imp.features.sales.order.SalesPriceMasker priceMasker;
+    private final SalesDocumentAccessPolicy accessPolicy;
+
+    /** 订货报表价格列（SOP §三8 脱敏键集合：明细金额族）。 */
+    private static final List<String> ORDER_PRICE_KEYS =
+            List.of("totalAmount", "billedLocalAmount", "billedLocalTotal", "machiningPrice", "price", "discount", "amount");
+
+    /** Expressions were checked against each detail SELECT; snapshots stay snapshots, never today's master name. */
+    private static Map<String,String> detailHeaderExpressions(String kind) {
+        Map<String,String> fields=new LinkedHashMap<>(Map.ofEntries(
+                Map.entry("billNo","i.bill_no"),Map.entry("billDate","i.bill_date"),Map.entry("clientName","c.name"),
+                Map.entry("region","c.region"),Map.entry("series","g.series"),Map.entry("goodsName","i.goods_name_snapshot"),
+                Map.entry("goodsCode","i.goods_code_snapshot"),Map.entry("colorName","col.name"),Map.entry("model","g.model"),
+                Map.entry("spec","g.spec"),Map.entry("qty","i.qty"),Map.entry("price","i.price"),Map.entry("discount","i.discount"),
+                Map.entry("amount","i.amount_local"),Map.entry("remark","i.remark")));
+        switch(kind) {
+            case "ORDER"->fields.putAll(Map.ofEntries(
+                    Map.entry("billNo","o.bill_no"),Map.entry("currencyCode",com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")),
+                    Map.entry("contractNo","o.contract_no"),Map.entry("totalAmount","o.total_original"),
+                    Map.entry("billedLocalTotal","billed_order.amount"),Map.entry("clientOrderNo","i.client_no"),
+                    Map.entry("circumference","i.circumference"),Map.entry("machiningPrice","i.machining_price"),
+                    Map.entry("amount","i.amount_original"),Map.entry("billedLocalAmount","billed_item.amount"),
+                    Map.entry("inboundQty","i.inbound_qty"),Map.entry("shippedQty","i.shipped_qty"),
+                    Map.entry("pendingQty","(i.qty-i.shipped_qty+i.returned_qty-i.flag_qty)"),
+                    Map.entry("stockQty","COALESCE(sb.stock_qty,0)"),Map.entry("inNo","i.in_no"),Map.entry("outNo","i.out_no")));
+            case "SHIPMENT"->fields.put("dealAmount",DEAL_EXPR);
+            case "RETURN"->fields.putAll(Map.of("sellerName","em_sel.full_name","director","d.director","dealAmount",DEAL_EXPR));
+            case "OTHER"->fields.putAll(Map.ofEntries(
+                    Map.entry("director","d.director"),Map.entry("warehouseName","wh.name"),Map.entry("categoryName","cc.name"),
+                    Map.entry("parcelCount","o.parcel_count"),Map.entry("senderName","em_snd.full_name"),Map.entry("shipAddr","o.ship_addr"),
+                    Map.entry("totalAmount","o.total_local"),Map.entry("customerModel","i.client_model"),Map.entry("cartonCount","i.carton_count"),
+                    Map.entry("parcelQty","i.parcel_qty"),Map.entry("weight","i.weight"),Map.entry("circumference","i.circumference"),
+                    Map.entry("materialPrice","i.material_price"),Map.entry("dieCastPrice","i.die_cast_price"),Map.entry("machiningPrice","i.machining_price"),
+                    Map.entry("returnedQty","i.returned_qty"),Map.entry("returnedAmount","i.returned_amount"),
+                    Map.entry("actualAmount","(i.amount_local-COALESCE(i.returned_amount,0))")));
+            default->throw new IllegalArgumentException("Unknown sales report detail source");
+        }
+        return Map.copyOf(fields);
+    }
+    /** All four summaries have already grouped by client/currency/unit before this outer predicate. */
+    private static Map<String,String> summaryHeaderExpressions() {
+        Map<String,String> fields=new LinkedHashMap<>();
+        for(String key:List.of("clientName","region","currencyCode","categoryName","docCount","totalQty","totalAmount","billedLocalTotal","dealAmount","actualAmount"))
+            fields.put(key,"t.\""+key+"\"");
+        return Map.copyOf(fields);
+    }
+
+    /** 价格脱敏：无 sales_order:price:view 时把订货明细报表的价格列置 null（导出同口径——导出走本方法分页累积）。 */
+    private ReportTableResponse maskOrderPricesIfNeeded(ReportTableResponse r) {
+        if (priceMasker.canView()) return r;
+        for (Map<String, Object> row : r.rows()) {
+            for (String k : ORDER_PRICE_KEYS) {
+                if (row.containsKey(k)) row.put(k, null);
+                if (row.containsKey(k + "Exact")) row.put(k + "Exact", null);
+            }
+        }
+        return new ReportTableResponse(r.columns(), r.rows(), r.facets(), r.page(), r.size(),
+                r.total(), r.totalPages(), r.totals().stream()
+                        .filter(total -> !ORDER_PRICE_KEYS.contains(total.key())).toList()).withColumnSearchKeys(r.columnSearchKeys());
+    }
+
+    // ======================== 通用执行器（与采购同型） ========================
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                       WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order) {
+        return executeRead(columns, dataSelect, fromJoin, mainWhere, orderBy, specs, activeFacets,
+                page, size, sort, order, java.util.Set.of());
+    }
+
+    private ReportTableResponse execute(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            WhereBuilder where,String orderBy,List<FacetSpec> specs,Map<String,String> filters,int page,int size,
+            String sort,String order,Map<String,String> expressions) {
+        return executeRead(columns,dataSelect,fromJoin,where,orderBy,specs,filters,page,size,sort,order,java.util.Set.of(),expressions);
+    }
+
+    private ReportTableResponse executeRead(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                             WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                             Map<String,String> activeFacets, int page, int size,
+                                             String sort, String order, java.util.Set<String> protectedPriceKeys) {
+        return executeRead(columns,dataSelect,fromJoin,mainWhere,orderBy,specs,activeFacets,page,size,sort,order,protectedPriceKeys,Map.of());
+    }
+    private ReportTableResponse executeRead(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            WhereBuilder mainWhere,String orderBy,List<FacetSpec> specs,Map<String,String> activeFacets,int page,int size,
+            String sort,String order,java.util.Set<String> protectedPriceKeys,Map<String,String> expressions) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
+        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(activeFacets,protectedPriceKeys::contains);
+        Map<String,String> types=new LinkedHashMap<>(),allowed=new LinkedHashMap<>(expressions);
+        for(var column:columns)types.put(column.key(),column.type());
+        protectedPriceKeys.forEach(allowed::remove);
+        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(mainWhere,activeFacets,types,allowed,
+                Map.of("billDate",com.uten.imp.common.util.JpaColumnSearch.Kind.DATE));
+
+        List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
+        if (activeFacets != null) {
+            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
+                FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
+                if (spec != null && !protectedPriceKeys.contains(spec.key())
+                        && e.getValue() != null && !e.getValue().isBlank()) {
+                    facetClauses.add(facetClause(spec, e.getValue()));
+                }
+            }
+        }
+        WhereBuilder.Built full = mainWhere.build(facetClauses);
+        WhereBuilder.Built baseB = mainWhere.build(null);
+
+        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
+        var sortKeys = new java.util.HashSet<String>();
+        for (ReportColumn c : columns) if (!protectedPriceKeys.contains(c.key())) sortKeys.add(c.key());
+        boolean explicitSort=sort!=null&&sortKeys.contains(sort);
+        String resolved=ReportSort.resolveOrderBy(sort,order,orderBy,sortKeys);
+        String effectiveOrderBy = explicitSort?resolved:mainWhere.orderBy(resolved);
+
+        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
+                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
+        full.params().forEach(dataQ::setParameter);
+        if(!explicitSort)mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
+        dataQ.setParameter("__limit", safeSize);
+        dataQ.setParameter("__offset", offset);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
+        List<Map<String, Object>> items = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i], columns.get(i)));
+            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
+            items.add(m);
+        }
+
+        long total = ReportReadPlan.UNKNOWN_TOTAL;
+        if (ReportReadPlan.current().includeCount()) {
+            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+            full.params().forEach(countQ::setParameter);
+            total = ((Number) countQ.getSingleResult()).longValue();
+        }
+        int totalPages = ReportReadPlan.totalPages(total, safeSize);
+
+        Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
+        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
+            if (protectedPriceKeys.contains(spec.key())) continue;
+            var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
+                    + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
+            baseB.params().forEach(fq::setParameter);
+            @SuppressWarnings("unchecked")
+            List<Object[]> frs = fq.getResultList();
+            List<ReportFacet> buckets = new ArrayList<>();
+            for (Object[] fr : frs) {
+                Object v = fr[0];
+                String val = (v == null) ? ReportTableResponse.NULL_FACET : Objects.toString(v);
+                String lbl = (v == null) ? "(空)" : (fr[1] == null ? null : fr[1].toString());
+                if ("style".equals(spec.filterType()) && v != null) {
+                    lbl = SalesSettlementStyle.label(toInt(v));
+                }
+                long cnt = ((Number) fr[2]).longValue();
+                buckets.add(new ReportFacet(val, lbl, cnt));
+            }
+            facets.put(spec.key(), buckets);
+        }
+
+        // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
+        // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
+        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
+        List<com.uten.imp.common.report.ReportTotal> totals =
+                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
+                        em, dataSelect, fromJoin, full.sql(), full.params(),
+                        reportTotalSpecs(columns.stream().filter(c -> !protectedPriceKeys.contains(c.key())).toList(), columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
+
+        totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
+        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals).withColumnSearchKeys(searchKeys);
+    }
+
+    /**
+     * 把列定义里 {@code totaled(...)} 声明的合计翻译成聚合规格。
+     *
+     * <p>{@code emitted} = 实际下发给前端的列（脱敏后）——被 priceMasked 拿掉的金额列不在其中，
+     * 合计自然也不会出现，无需另写门控。{@code projected} = dataSelect 真正投影的列，
+     * 用来确认分组列（单位名/币种名）确实在派生表里。
+     *
+     * <p><b>声明了分组列却没投影时整项丢弃</b>，绝不退回「不分组」——那等于跨单位/跨币种相加。
+     */
+    private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
+            List<ReportColumn> emitted, List<ReportColumn> projected) {
+        java.util.Set<String> present = new java.util.HashSet<>();
+        for (ReportColumn c : projected) present.add(c.key());
+        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
+        for (ReportColumn c : emitted) {
+            String label = c.totalLabel();
+            if (label == null || label.isBlank()) continue;
+            String g = c.totalGroupKey();
+            if (g != null && !present.contains(g)) continue;
+            String identity=c.totalGroupIdentityKey();
+            if(identity!=null&&!present.contains(identity))identity=null;
+            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                    c.key(), label, c.type(), g,identity));
+        }
+        return specs;
+    }
+
+    private static int toInt(Object v) {
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(Objects.toString(v)); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private static Object norm(Object v, ReportColumn col) {
+        if (v == null) return null;
+        if ("style".equals(col.type())) return SalesSettlementStyle.label(toInt(v));
+        if (v instanceof java.sql.Date d) return d.toLocalDate().toString();
+        if (v instanceof java.sql.Timestamp t) return t.toLocalDateTime().toLocalDate().toString();
+        if (v instanceof BigDecimal || v instanceof Boolean || v instanceof Number) return v;
+        if (v instanceof UUID u) return u.toString();
+        return v.toString();
+    }
+
+    private static WhereBuilder.Clause facetClause(FacetSpec spec, String value) {
+        String p = "facet_" + spec.key();
+        if (ReportTableResponse.NULL_FACET.equals(value)) {
+            return new WhereBuilder.Clause("(" + spec.filterExpr() + ") IS NULL", null, null);
+        }
+        return switch (spec.filterType()) {
+            case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
+            case "int", "style" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, ReportQueryKit.parseRequiredInt(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
+            default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
+        };
+    }
+
+    // ======================== 主过滤（公共） ========================
+
+    private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID clientId, UUID warehouseId,
+                                            Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
+                                            String billNoCol, String dateCol) {
+        w.containsLiteral(billNo, billNoCol, "billNo");
+        if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        // 默认口径（草稿不进报表）2026-09-16 收敛到 ReportQueryKit.addApprovedByDefault。
+        ReportQueryKit.addApprovedByDefault(w, status);
+        if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
+        if (kw != null && !kw.isBlank()) {
+            w.search(kw, parameter -> "(" + billNoCol + " ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR c.name ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_name_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_code_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id=i.goods_id AND gg.model ILIKE " + parameter + " ESCAPE '\\'))",
+                    billNoCol, "c.name", "i.goods_name_snapshot", "i.goods_code_snapshot");
+        }
+    }
+
+    /** 汇总关键字：客户名 / 单号 模糊匹配（汇总表按客户聚合，搜客户为主）。 */
+    private static void addSummaryKw(WhereBuilder w, String kw, String billNoCol) {
+        w.search(kw, billNoCol, "c.name");
+    }
+
+    private void addOwnerReadFilter(WhereBuilder where, String ownerColumn, String parameterName) {
+        var scope = accessPolicy.nativeReadScope(ownerColumn, parameterName);
+        where.add(scope.predicate(), scope.parameterName(), scope.owners());
+    }
+
+    // ======================== 明细报表（按 docType 派发） ========================
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse detail(String docType, String billNo, UUID clientId, UUID warehouseId, Short status,
+                                      LocalDate dateFrom, LocalDate dateTo, String kw,
+                                      Map<String, String> facets, int page, int size, String sort, String order) {
+        return detail(docType, billNo, clientId, null, warehouseId, status,
+                dateFrom, dateTo, kw, facets, page, size, sort, order);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse detail(String docType, String billNo, UUID clientId, UUID currencyId,
+                                      UUID warehouseId, Short status, LocalDate dateFrom,
+                                      LocalDate dateTo, String kw, Map<String, String> facets,
+                                      int page, int size, String sort, String order) {
+        String dt = normalizeDocType(docType);
+        return switch (dt) {
+            case DOC_ORDER -> orderDetail(billNo, clientId, currencyId, status,
+                    dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_SHIPMENT -> shipmentDetail(billNo, clientId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_RETURN -> returnDetail(billNo, clientId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_OTHER_SHIPMENT -> otherShipmentDetail(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            default -> throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + dt);
+        };
+    }
+
+    // ----- 销售订货明细 -----
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse orderDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
+                                           LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
+        return orderDetail(billNo, clientId, null, status, dateFrom, dateTo,
+                kw, facets, page, size, sort, order);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse orderDetail(String billNo, UUID clientId, UUID currencyId,
+                                           Short status, LocalDate dateFrom, LocalDate dateTo,
+                                           String kw, Map<String, String> facets, int page,
+                                           int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("clientName", "客户", 160), ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.text("region", "区域", 100),
+                ReportColumn.text("contractNo", "合同编号", 130), ReportColumn.money("totalAmount", "原币总额").withUnitKey("currencyCode"),
+                ReportColumn.money("billedLocalTotal", "已出货人民币总额").withUnitLabel("元"),
+                ReportColumn.bool("closed", "是否完成"), ReportColumn.bool("approved", "是否审核"),
+                // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
+                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100), ReportColumn.text("clientOrderNo", "客户订单号", 120),
+                ReportColumn.text("spec", "规格", 140),
+                ReportColumn.number("circumference", "围数").withUnitLabel("围"), ReportColumn.money("machiningPrice", "机加价").withUnitKey("currencyCode"),
+                ReportColumn.money("price", "单价").withUnitKey("currencyCode"), ReportColumn.number("discount", "折扣"),
+                ReportColumn.money("amount", "原币金额").withUnitKey("currencyCode").totaled("合计金额", "currencyCode","__currencyId"),
+                ReportColumn.money("billedLocalAmount", "已出货人民币金额").withUnitLabel("元").totaled("合计已出货人民币金额"),
+                ReportColumn.number("inboundQty", "进仓数量").withUnitKey("__unitName"),
+                ReportColumn.number("shippedQty", "发货数量").withUnitKey("__unitName"), ReportColumn.number("pendingQty", "未发数量").withUnitKey("__unitName"),
+                ReportColumn.number("stockQty", "库存数量").withUnitKey("__stockUnitName"), ReportColumn.text("inNo", "成品进仓单号", 140),
+                ReportColumn.text("outNo", "销售出货单号", 140),
+                ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""),
+                ReportColumn.text("__unitName", ""), ReportColumn.text("__stockUnitName", ""),
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售订货单编辑页
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName",
+                       """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency") + """
+                       AS "currencyCode", c.region AS "region",
+                       o.contract_no AS "contractNo", o.total_original AS "totalAmount",
+                       billed_order.amount AS "billedLocalTotal",
+                       o.is_closed AS "closed", (o.status = 1) AS "approved",
+                       g.series AS "series", i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", g.model AS "model",
+                       i.client_no AS "clientOrderNo", g.spec AS "spec",
+                       i.circumference AS "circumference", i.machining_price AS "machiningPrice",
+                       i.price AS "price", i.discount AS "discount", i.amount_original AS "amount",
+                       billed_item.amount AS "billedLocalAmount",
+                       i.inbound_qty AS "inboundQty", i.shipped_qty AS "shippedQty",
+                       (i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) AS "pendingQty",
+                       COALESCE(sb.stock_qty, 0) AS "stockQty", i.in_no AS "inNo", i.out_no AS "outNo",
+                       i.remark AS "remark", o.id AS "__srcId", un.name AS "__unitName", stock_unit.name AS "__stockUnitName",
+                       o.currency_id AS "__currencyId", i.id AS "__lineId"
+                """;
+        String fromJoin = """
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN currencies currency ON currency.id = o.currency_id
+                LEFT JOIN LATERAL (
+                """ + SalesOrderBilledAmounts.forItem("i.id", "o.currency_id") + """
+                ) billed_item ON TRUE
+                LEFT JOIN LATERAL (
+                """ + SalesOrderBilledAmounts.forOrder("o.id", "o.currency_id") + """
+                ) billed_order ON TRUE
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
+                LEFT JOIN units stock_unit ON stock_unit.id = g.unit_id
+                LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
+        addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
+        if (currencyId != null) {
+            w.add("o.currency_id=:currencyId", "currencyId", currencyId);
+        }
+        List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "o.bill_no AS v, o.bill_no AS lbl", "o.bill_no", "o.bill_no", "text"),
+                facetClient(),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
+                new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"));
+        var protectedKeys = priceMasker.canView() ? java.util.Set.<String>of() : java.util.Set.copyOf(ORDER_PRICE_KEYS);
+        ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, w,
+                "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, protectedKeys, detailHeaderExpressions("ORDER"));
+        return maskOrderPricesIfNeeded(r); // Rows, decimal text and totals share the same price permission.
+    }
+
+    // ----- 销售出货明细 -----
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse shipmentDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
+                                              LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.date("billDate", "开单日期"), ReportColumn.text("clientName", "客户", 160),
+                ReportColumn.text("region", "区域", 100),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80), ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
+                ReportColumn.money("price", "单价").withUnitKey("__currencyName"), ReportColumn.number("discount", "折扣"),
+                ReportColumn.money("amount", "金额").withUnitLabel("元"), ReportColumn.money("dealAmount", "成交金额").withUnitLabel("元"),
+                ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""),
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售出货单编辑页
+        String dataSelect = """
+                SELECT i.bill_date AS "billDate", c.name AS "clientName", c.region AS "region",
+                       o.payment_style_id AS "settlementStyle", (o.status = 1) AS "approved",
+                       g.series AS "series", i.goods_name_snapshot AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       i.qty AS "qty", i.price AS "price",
+                       i.discount AS "discount", i.amount_local AS "amount",
+                       """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\", "
+                + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
+                + " AS \"__currencyName\", unit.name AS \"__unitName\", i.id AS \"__lineId\"";
+        String fromJoin = """
+                FROM sales_shipment_items i
+                JOIN sales_shipments o ON o.id = i.shipment_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN currencies currency ON currency.id = o.currency_id
+                LEFT JOIN units unit ON unit.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
+        addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                facetClient(),
+                new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("SHIPMENT"));
+    }
+
+    // ----- 销售退货明细 -----
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse returnDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
+                                            LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("clientName", "客户", 160), ReportColumn.text("sellerName", "业务员", 100),
+                ReportColumn.text("region", "区域", 100), ReportColumn.text("director", "总监", 110),
+                ReportColumn.bool("approved", "是否审核"), ReportColumn.text("series", "系列", 90),
+                ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.number("qty", "数量").withUnitKey("__unitName"), ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
+                ReportColumn.money("amount", "金额").withUnitLabel("元"), ReportColumn.number("discount", "折扣"),
+                ReportColumn.money("dealAmount", "成交金额").withUnitLabel("元"), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""),
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳销售退货单编辑页
+        String dataSelect = """
+                SELECT i.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName",
+                       em_sel.full_name AS "sellerName", c.region AS "region", d.director AS "director",
+                       (o.status = 1) AS "approved", g.series AS "series",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", i.qty AS "qty", i.price AS "price", i.amount_local AS "amount",
+                       i.discount AS "discount",
+                       """ + DEAL_EXPR + " AS \"dealAmount\", i.remark AS \"remark\", o.id AS \"__srcId\", "
+                + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
+                + " AS \"__currencyName\", unit.name AS \"__unitName\", i.id AS \"__lineId\"";
+        String fromJoin = """
+                FROM sales_return_items i
+                JOIN sales_returns o ON o.id = i.return_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN client_director_v d ON d.client_id = o.client_id
+                LEFT JOIN employees em_sel ON em_sel.id = o.seller_id
+                    OR (o.seller_id IS NULL AND em_sel.legacy_id = o.seller_legacy_id)
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN currencies currency ON currency.id = o.currency_id
+                LEFT JOIN units unit ON unit.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
+        addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
+                facetClient(),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("RETURN"));
+    }
+
+    // ----- 其它出货明细 -----
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse otherShipmentDetail(String billNo, UUID clientId, UUID warehouseId, Short status,
+                                                   LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                   Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("clientName", "客户", 160), ReportColumn.text("director", "总监", 110),
+                ReportColumn.text("region", "区域", 100), ReportColumn.text("warehouseName", "仓库", 120),
+                ReportColumn.text("categoryName", "单类", 100), ReportColumn.number("parcelCount", "总件数").withUnitLabel("件"),
+                ReportColumn.text("senderName", "送货人", 100), ReportColumn.text("shipAddr", "送货地址", 160),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.money("totalAmount", "总额").withUnitLabel("元"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("model", "型号", 100), ReportColumn.text("customerModel", "客户型号", 100),
+                ReportColumn.text("spec", "规格", 140),
+                ReportColumn.number("cartonCount", "箱数").withUnitLabel("箱"),
+                ReportColumn.number("parcelQty", "把/箱").withUnitLabel("把/箱"), ReportColumn.number("weight", "重量").withUnitLabel("千克"),
+                ReportColumn.number("circumference", "围").withUnitLabel("围"), ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
+                ReportColumn.money("materialPrice", "材料价").withUnitKey("__currencyName"), ReportColumn.money("dieCastPrice", "压铸价").withUnitKey("__currencyName"),
+                ReportColumn.money("machiningPrice", "机加价").withUnitKey("__currencyName"), ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
+                ReportColumn.money("amount", "金额").withUnitLabel("元"), ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
+                ReportColumn.money("returnedAmount", "退货金额").withUnitLabel("元"), ReportColumn.number("discount", "折扣"),
+                ReportColumn.money("actualAmount", "实际金额").withUnitLabel("元"),
+                ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""),
+                ReportColumn.text("__currencyName", ""), ReportColumn.text("__unitName", ""), ReportColumn.text("__lineId", ""));  // 隐藏：行点击跳其它出货单编辑页
+        String dataSelect = """
+                SELECT i.bill_no AS "billNo", i.bill_date AS "billDate", c.name AS "clientName", d.director AS "director",
+                       c.region AS "region", wh.name AS "warehouseName", cc.name AS "categoryName",
+                       o.parcel_count AS "parcelCount", em_snd.full_name AS "senderName", o.ship_addr AS "shipAddr",
+                       o.payment_style_id AS "settlementStyle", o.total_local AS "totalAmount",
+                       (o.status = 1) AS "approved", g.series AS "series", i.goods_name_snapshot AS "goodsName",
+                       i.goods_code_snapshot AS "goodsCode", col.name AS "colorName", g.model AS "model",
+                       i.client_model AS "customerModel", g.spec AS "spec",
+                       i.carton_count AS "cartonCount", i.parcel_qty AS "parcelQty",
+                       i.weight AS "weight", i.circumference AS "circumference", i.qty AS "qty",
+                       i.material_price AS "materialPrice", i.die_cast_price AS "dieCastPrice",
+                       i.machining_price AS "machiningPrice", i.price AS "price", i.amount_local AS "amount",
+                       i.returned_qty AS "returnedQty", i.returned_amount AS "returnedAmount", i.discount AS "discount",
+                       (i.amount_local - COALESCE(i.returned_amount,0)) AS "actualAmount",
+                       i.remark AS "remark", o.id AS "__srcId",
+                       """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency") + """
+                       AS "__currencyName", unit.name AS "__unitName", i.id AS "__lineId"
+                """;
+        String fromJoin = """
+                FROM sales_other_shipment_items i
+                JOIN sales_other_shipments o ON o.id = i.shipment_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN client_director_v d ON d.client_id = o.client_id
+                LEFT JOIN client_categories cc ON cc.id = c.category_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_snd ON em_snd.id = o.sender_id
+                    OR (o.sender_id IS NULL AND em_snd.legacy_id = o.sender_legacy_id)
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN currencies currency ON currency.id = o.currency_id
+                LEFT JOIN units unit ON unit.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
+        addCommonDocFilters(w, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
+                new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
+                facetClient(), facetWarehouse("warehouseName"),
+                new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("OTHER"));
+    }
+
+    // ======================== 汇总报表（按 docType 派发；一行一客户） ========================
+    //
+    // 口径：日期范围内按客户聚合 —— 每个客户一行，单据数/数量/金额全部加总（无单号/开单日期等
+    // 单行字段）。行点击钻取该客户本期明细（前端调 detail 端点 + clientId），故行带隐藏 __clientId。
+    // 实现：内层子查询按 client_id GROUP BY 聚合（过滤条件下推到子查询），外层派生表 t 走通用
+    // execute（COUNT(*)=客户数、列排序按别名、facet 走 t."__clientId"）。
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse summary(String docType, String billNo, UUID clientId, UUID warehouseId, Short status,
+                                       LocalDate dateFrom, LocalDate dateTo, String kw,
+                                       Map<String, String> facets, int page, int size, String sort, String order) {
+        String dt = normalizeDocType(docType);
+        return switch (dt) {
+            case DOC_ORDER -> orderSummary(billNo, clientId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_SHIPMENT -> shipmentSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_RETURN -> returnSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            case DOC_OTHER_SHIPMENT -> otherShipmentSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
+            default -> throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + dt);
+        };
+    }
+
+    /** 客户汇总子查询过滤（下推到聚合子查询内；别名 o=单头、c=客户）。 */
+    private static WhereBuilder summaryInnerWhere(String billNo, UUID clientId, UUID warehouseId,
+                                                  Short status, LocalDate dateFrom, LocalDate dateTo, String kw) {
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
+        w.containsLiteral(billNo, "o.bill_no", "billNo");
+        if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        ReportQueryKit.addApprovedByDefault(w, status);
+        if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
+        addSummaryKw(w, kw, "o.bill_no");
+        return w;
+    }
+
+    /** 汇总外层 facet（客户列）：值=客户 UUID，label=客户名；空客户走 __null__ 档。 */
+    private static FacetSpec facetClientSummary() {
+        return new FacetSpec("clientName",
+                "CAST(t.\"__clientId\" AS text) AS v, t.\"clientName\" AS lbl",
+                "t.\"__clientId\", t.\"clientName\"", "t.\"__clientId\"", "uuid");
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse orderSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
+                                            LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("clientName", "客户", 200), ReportColumn.text("region", "区域", 100),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.text("categoryName", "单类", 110),
+                ReportColumn.number("docCount", "单据数").withUnitLabel("张").totaled("合计单据数"),
+                ReportColumn.number("totalQty", "数量合计").withUnitKey("__unitName"),
+                ReportColumn.money("totalAmount", "订货原币总额").withUnitKey("currencyCode").totaled("合计订货总额", "currencyCode","__currencyId"),
+                ReportColumn.money("billedLocalTotal", "已出货人民币总额").withUnitLabel("元").totaled("合计已出货人民币总额"),
+                ReportColumn.text("__clientId", ""),
+                ReportColumn.text("__currencyId", ""), ReportColumn.text("__unitName", ""));  // 隐藏：下钻必须同时限定客户与币种
+        String dataSelect = """
+                SELECT t."clientName", t."region", t."currencyCode", t."categoryName",
+                       t."docCount", t."totalQty", t."totalAmount", t."billedLocalTotal",
+                       t."__clientId", t."__currencyId", t."__unitName"
+                """;
+        WhereBuilder innerW = summaryInnerWhere(billNo, clientId, null, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
+        WhereBuilder.Built inner = innerW.build(null);
+        String fromJoin = """
+                FROM (
+                  SELECT o.client_id AS "__clientId", o.currency_id AS "__currencyId",
+                         COALESCE(MAX(c.name), '(未指定客户)') AS "clientName",
+                         MAX(c.region) AS "region", MAX(""" + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency") + """
+                         ) AS "currencyCode",
+                         MAX(cc.name) AS "categoryName",
+                         COUNT(o.id) AS "docCount",
+                         """ + SUMMARY_QUANTITY + """
+                         AS "totalQty", CASE WHEN COUNT(*) FILTER(WHERE x.amount IS NULL)>0
+                             THEN NULL ELSE SUM(x.amount) END AS "totalAmount",
+                         CASE WHEN COUNT(*) FILTER (WHERE billed.amount IS NULL)>0 THEN NULL
+                              ELSE SUM(billed.amount) END AS "billedLocalTotal",
+                         """ + SUMMARY_UNIT_NAME + """
+                         AS "__unitName"
+                  FROM sales_orders o
+                  LEFT JOIN clients c ON c.id = o.client_id
+                  LEFT JOIN client_categories cc ON cc.id = c.category_id
+                  LEFT JOIN currencies currency ON currency.id = o.currency_id
+                  LEFT JOIN LATERAL (
+                  """ + SalesOrderBilledAmounts.forOrder("o.id", "o.currency_id") + """
+                  ) billed ON TRUE
+                  LEFT JOIN (SELECT order_id, SUM(qty) AS qty,
+                             """ + LINE_SUMMARY_UNIT + """
+                             , CASE WHEN COUNT(*) FILTER(WHERE amount_original IS NULL)>0
+                                    THEN NULL ELSE SUM(amount_original) END AS amount
+                             FROM sales_order_items WHERE COALESCE(is_deleted,false)=false GROUP BY order_id) x
+                    ON x.order_id = o.id
+                  LEFT JOIN units summary_unit ON summary_unit.id=x.unit_id
+                  """ + " " + inner.sql() + " " + """
+                  GROUP BY o.client_id, o.currency_id
+                ) t
+                """;
+        WhereBuilder outer = new WhereBuilder("WHERE 1=1");
+        // 内层参数直接挂到外层（参数名同源，execute 统一 setParameter）。
+        inner.params().forEach((k, v) -> outer.add("1=1", k, v));
+        var protectedKeys = priceMasker.canView() ? java.util.Set.<String>of() : java.util.Set.copyOf(ORDER_PRICE_KEYS);
+        String stableOrder = protectedKeys.isEmpty()
+                ? "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\", t.\"__currencyId\""
+                : "\"clientName\", t.\"__clientId\", t.\"__currencyId\"";
+        ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, outer, stableOrder,
+                List.of(facetClientSummary()), facets, page, size, sort, order, protectedKeys, summaryHeaderExpressions());
+        return maskOrderPricesIfNeeded(r);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse shipmentSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
+                                               LocalDate dateFrom, LocalDate dateTo, String kw,
+                                               Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("clientName", "客户", 200), ReportColumn.text("region", "区域", 100),
+                ReportColumn.text("categoryName", "单类", 110), ReportColumn.number("docCount", "单据数").withUnitLabel("张"),
+                ReportColumn.number("totalQty", "数量合计").withUnitKey("__unitName"), ReportColumn.money("totalAmount", "金额合计").withUnitLabel("元"),
+                ReportColumn.money("dealAmount", "成交金额合计").withUnitLabel("元"),
+                ReportColumn.text("__clientId", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击钻取该客户明细
+        String dataSelect = """
+                SELECT t."clientName", t."region", t."categoryName", t."docCount", t."totalQty", t."totalAmount",
+                       t."dealAmount", t."__clientId", t."__unitName"
+                """;
+        WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
+        WhereBuilder.Built inner = innerW.build(null);
+        String fromJoin = """
+                FROM (
+                  SELECT o.client_id AS "__clientId",
+                         COALESCE(MAX(c.name), '(未指定客户)') AS "clientName",
+                         MAX(c.region) AS "region", MAX(cc.name) AS "categoryName",
+                         COUNT(o.id) AS "docCount",
+                         """ + SUMMARY_QUANTITY + """
+                         AS "totalQty", COALESCE(SUM(x.amount), 0) AS "totalAmount",
+                         COALESCE(SUM(x.deal), 0) AS "dealAmount",
+                         """ + SUMMARY_UNIT_NAME + """
+                         AS "__unitName"
+                  FROM sales_shipments o
+                  LEFT JOIN clients c ON c.id = o.client_id
+                  LEFT JOIN client_categories cc ON cc.id = c.category_id
+                  LEFT JOIN (SELECT shipment_id, SUM(qty) AS qty,
+                                    """ + LINE_SUMMARY_UNIT + """
+                                    , SUM(amount_local) AS amount,
+                                    SUM(CASE WHEN COALESCE(discount,0) > 0 AND COALESCE(discount,0) < 1
+                                             THEN amount_local * discount ELSE amount_local END) AS deal
+                             FROM sales_shipment_items WHERE COALESCE(is_deleted,false)=false GROUP BY shipment_id) x
+                    ON x.shipment_id = o.id
+                  LEFT JOIN units summary_unit ON summary_unit.id=x.unit_id
+                  """ + " " + inner.sql() + " " + """
+                  GROUP BY o.client_id
+                ) t
+                """;
+        WhereBuilder outer = new WhereBuilder("WHERE 1=1");
+        inner.params().forEach((k, v) -> outer.add("1=1", k, v));
+        return execute(cols, dataSelect, fromJoin, outer, "\"dealAmount\" DESC, \"clientName\", t.\"__clientId\"",
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse returnSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
+                                             LocalDate dateFrom, LocalDate dateTo, String kw,
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("clientName", "客户", 200), ReportColumn.text("region", "区域", 100),
+                ReportColumn.number("docCount", "单据数").withUnitLabel("张"), ReportColumn.number("totalQty", "数量合计").withUnitKey("__unitName"),
+                ReportColumn.money("totalAmount", "退货金额合计").withUnitLabel("元"), ReportColumn.money("dealAmount", "成交金额合计").withUnitLabel("元"),
+                ReportColumn.text("__clientId", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击钻取该客户明细
+        String dataSelect = """
+                SELECT t."clientName", t."region", t."docCount", t."totalQty", t."totalAmount", t."dealAmount",
+                       t."__clientId", t."__unitName"
+                """;
+        WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
+        WhereBuilder.Built inner = innerW.build(null);
+        String fromJoin = """
+                FROM (
+                  SELECT o.client_id AS "__clientId",
+                         COALESCE(MAX(c.name), '(未指定客户)') AS "clientName",
+                         MAX(c.region) AS "region",
+                         COUNT(o.id) AS "docCount",
+                         """ + SUMMARY_QUANTITY + """
+                         AS "totalQty", COALESCE(SUM(x.amount), 0) AS "totalAmount",
+                         COALESCE(SUM(x.deal), 0) AS "dealAmount",
+                         """ + SUMMARY_UNIT_NAME + """
+                         AS "__unitName"
+                  FROM sales_returns o
+                  LEFT JOIN clients c ON c.id = o.client_id
+                  LEFT JOIN (SELECT return_id, SUM(qty) AS qty,
+                                    """ + LINE_SUMMARY_UNIT + """
+                                    , SUM(amount_local) AS amount,
+                                    SUM(CASE WHEN COALESCE(discount,0) > 0 AND COALESCE(discount,0) < 1
+                                             THEN amount_local * discount ELSE amount_local END) AS deal
+                             FROM sales_return_items WHERE COALESCE(is_deleted,false)=false GROUP BY return_id) x
+                    ON x.return_id = o.id
+                  LEFT JOIN units summary_unit ON summary_unit.id=x.unit_id
+                  """ + " " + inner.sql() + " " + """
+                  GROUP BY o.client_id
+                ) t
+                """;
+        WhereBuilder outer = new WhereBuilder("WHERE 1=1");
+        inner.params().forEach((k, v) -> outer.add("1=1", k, v));
+        return execute(cols, dataSelect, fromJoin, outer, "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\"",
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public ReportTableResponse otherShipmentSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
+                                                    LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                    Map<String, String> facets, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("clientName", "客户", 200), ReportColumn.text("region", "区域", 100),
+                ReportColumn.text("categoryName", "单类", 110), ReportColumn.number("docCount", "单据数").withUnitLabel("张"),
+                ReportColumn.number("totalQty", "数量合计").withUnitKey("__unitName"), ReportColumn.money("totalAmount", "金额合计").withUnitLabel("元"),
+                ReportColumn.money("actualAmount", "实际金额合计").withUnitLabel("元"),
+                ReportColumn.text("__clientId", ""), ReportColumn.text("__unitName", ""));  // 隐藏：行点击钻取该客户明细
+        String dataSelect = """
+                SELECT t."clientName", t."region", t."categoryName", t."docCount", t."totalQty", t."totalAmount",
+                       t."actualAmount", t."__clientId", t."__unitName"
+                """;
+        WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
+        WhereBuilder.Built inner = innerW.build(null);
+        String fromJoin = """
+                FROM (
+                  SELECT o.client_id AS "__clientId",
+                         COALESCE(MAX(c.name), '(未指定客户)') AS "clientName",
+                         MAX(c.region) AS "region", MAX(cc.name) AS "categoryName",
+                         COUNT(o.id) AS "docCount",
+                         """ + SUMMARY_QUANTITY + """
+                         AS "totalQty", COALESCE(SUM(x.amount), 0) AS "totalAmount",
+                         COALESCE(SUM(x.actual), 0) AS "actualAmount",
+                         """ + SUMMARY_UNIT_NAME + """
+                         AS "__unitName"
+                  FROM sales_other_shipments o
+                  LEFT JOIN clients c ON c.id = o.client_id
+                  LEFT JOIN client_categories cc ON cc.id = c.category_id
+                  LEFT JOIN (SELECT shipment_id, SUM(qty) AS qty,
+                                    """ + LINE_SUMMARY_UNIT + """
+                                    , SUM(amount_local) AS amount,
+                                    SUM(amount_local - COALESCE(returned_amount,0)) AS actual
+                             FROM sales_other_shipment_items WHERE COALESCE(is_deleted,false)=false GROUP BY shipment_id) x
+                    ON x.shipment_id = o.id
+                  LEFT JOIN units summary_unit ON summary_unit.id=x.unit_id
+                  """ + " " + inner.sql() + " " + """
+                  GROUP BY o.client_id
+                ) t
+                """;
+        WhereBuilder outer = new WhereBuilder("WHERE 1=1");
+        inner.params().forEach((k, v) -> outer.add("1=1", k, v));
+        return execute(cols, dataSelect, fromJoin, outer, "\"actualAmount\" DESC, \"clientName\", t.\"__clientId\"",
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
+    }
+
+    // ======================== facet 复用 ========================
+
+    private static FacetSpec facetClient() {
+        return new FacetSpec("clientName", "CAST(c.id AS text) AS v, c.name AS lbl", "c.id, c.name", "o.client_id", "uuid");
+    }
+
+    private static FacetSpec facetWarehouse(String key) {
+        return new FacetSpec(key, "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid");
+    }
+
+    // ======================== 导出（加密 Excel） ========================
+
+    /**
+     * 导出某报表全量（不分页，循环 size=500 累积全部行），返回 ExportColumn + 行 Map。
+     * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致
+     * （{docType}/{detail|summary}，docType 大写）：ORDER/detail 等 8 个。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:export')")
+    public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        String billNo = p == null ? null : p.get("billNo");
+        UUID clientId = ReportQueryKit.parseUuid(p == null ? null : p.get("clientId"));
+        UUID currencyId = ReportQueryKit.parseUuid(p == null ? null : p.get("currencyId"));
+        UUID warehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("warehouseId"));
+        Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = ReportQueryKit.parseDate(p == null ? null : p.get("dateTo"));
+        String kw = p == null ? null : p.get("keyword");
+        Map<String, String> facets = ReportQueryKit.facetsOf(p);
+        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "ORDER/detail"           -> (pg, sz) -> detail(DOC_ORDER, billNo, clientId, currencyId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "ORDER/summary"          -> (pg, sz) -> summary(DOC_ORDER, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "SHIPMENT/detail"        -> (pg, sz) -> detail(DOC_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "SHIPMENT/summary"       -> (pg, sz) -> summary(DOC_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "RETURN/detail"          -> (pg, sz) -> detail(DOC_RETURN, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "RETURN/summary"         -> (pg, sz) -> summary(DOC_RETURN, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "OTHER_SHIPMENT/detail"  -> (pg, sz) -> detail(DOC_OTHER_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "OTHER_SHIPMENT/summary" -> (pg, sz) -> summary(DOC_OTHER_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
+        };
+        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+                ReportTableResponse::total,
+                r -> r.columns() == null ? null : r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
+                ReportTableResponse::rows);
+    }
+
+    // ======================== 保留：月度汇总（MV）+ 待交货（视图） ========================
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public List<MonthlySummaryRow> monthly(String docType, UUID clientId, UUID goodsId,
+                                           LocalDate dateFrom, LocalDate dateTo, int limit) {
+        String dt = docType == null ? null : docType.trim().toUpperCase();
+        if (dt != null && !java.util.Set.of("QUOTE", DOC_ORDER, DOC_SHIPMENT,
+                DOC_OTHER_SHIPMENT, DOC_RETURN).contains(dt)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "销售月报类型不正确：" + docType);
+        }
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
+        var ownerScope = accessPolicy.scope();
+        // 物化视图把空归属存成 NIL 哨兵；哨兵不会出现在可见归属人集合里，
+        // 所以无归属行只对全量范围可见(与单据列表同一口径，permissions-10)。
+        var scopedOwners = accessPolicy.nativeReadScope(
+                "owner_employee_id", "salesOwners", ownerScope);
+        var q = em.createNativeQuery("""
+                SELECT doc_type, ym, goods_id, client_id, currency_id,
+                       SUM(qty_sum) AS qty,
+                       SUM(CASE WHEN doc_type = 'ORDER' THEN amt_original ELSE amt_local END) AS amt,
+                       SUM(line_cnt) AS lines
+                FROM sales_monthly_mv
+                WHERE (CAST(:docType AS text) IS NULL OR doc_type = :docType)
+                  AND (CAST(:from AS date) IS NULL OR ym >= :from)
+                  AND (CAST(:to AS date) IS NULL OR ym <= :to)
+                  AND (CAST(:clientId AS uuid) IS NULL OR client_id = :clientId)
+                  AND (CAST(:goodsId AS uuid) IS NULL OR goods_id = :goodsId)
+                  """ + "AND " + scopedOwners.predicate() + " " + """
+                GROUP BY doc_type, ym, goods_id, client_id, currency_id
+                ORDER BY amt DESC NULLS LAST
+                LIMIT :limit
+                """);
+        scopedOwners.bind(q);
+        q.setParameter("docType", dt);
+        q.setParameter("from", dateFrom);
+        q.setParameter("to", dateTo);
+        q.setParameter("clientId", clientId);
+        q.setParameter("goodsId", goodsId);
+        q.setParameter("limit", safeLimit);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        return rows.stream().map(r -> new MonthlySummaryRow(
+                (String) r[0],
+                NativeValueConverters.toLocalDate(r[1]),
+                (UUID) r[2],
+                NIL.equals(r[3]) ? null : (UUID) r[3],
+                NIL.equals(r[4]) ? null : (UUID) r[4],
+                (BigDecimal) r[5],
+                (BigDecimal) r[6],
+                ((Number) r[7]).longValue()
+        )).toList();
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
+    public List<PendingRow> pending(UUID clientId, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
+        var ownerScope = accessPolicy.scope();
+        SalesDocumentAccessPolicy.NativeReadScope scopedOwners = ownerScope.seeAll()
+                ? null
+                : accessPolicy.nativeReadScope(
+                        "o.owner_employee_id", "salesOwners", ownerScope);
+        String ownerPredicate = scopedOwners == null
+                ? "" : " AND " + scopedOwners.predicate();
+        String sql = """
+                SELECT i.goods_id, i.color_id, o.client_id, o.currency_id,
+                       SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) AS pending_qty,
+                       SUM(CASE WHEN i.qty > 0
+                           THEN i.amount_original
+                               * (i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) / i.qty
+                           ELSE 0 END) AS pending_amt
+                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) i
+                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o ON o.id = i.order_id
+                WHERE COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """ + ownerPredicate
+                + (clientId == null ? "" : " AND o.client_id = :clientId") + " " + """
+                GROUP BY i.goods_id, i.color_id, o.client_id, o.currency_id
+                HAVING SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) > 0
+                """;
+        sql += " ORDER BY pending_qty DESC LIMIT :limit";
+        var q = em.createNativeQuery(sql);
+        if (scopedOwners != null) {
+            scopedOwners.bind(q);
+        }
+        if (clientId != null) q.setParameter("clientId", clientId);
+        q.setParameter("limit", safeLimit);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：待交金额同口径置 null
+        return rows.stream().map(r -> new PendingRow(
+                (UUID) r[0],
+                r[1] == null ? null : (UUID) r[1],
+                r[2] == null ? null : (UUID) r[2],
+                r[3] == null ? null : (UUID) r[3],
+                (BigDecimal) r[4],
+                mask ? null : (BigDecimal) r[5]
+        )).toList();
+    }
+
+    // ======================== 内部结构 ========================
+
+    private static String normalizeDocType(String docType) {
+        if (docType == null) throw new ApiException(ErrorCode.BUSINESS, "请先选择报表类型");
+        String dt = docType.trim().toUpperCase();
+        if (dt.equals("QUOTE")) throw new ApiException(ErrorCode.BUSINESS, "销售报价无报表");
+        if (!java.util.Set.of(DOC_ORDER, DOC_SHIPMENT, DOC_OTHER_SHIPMENT, DOC_RETURN).contains(dt)) {
+            throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + docType);
+        }
+        return dt;
+    }
+}

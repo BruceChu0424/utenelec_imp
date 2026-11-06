@@ -28,7 +28,6 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
-import '../providers/finance_iqc_prepared_page_provider.dart';
 import '../../../shared/paging/scoped_category_read.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -39,6 +38,7 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
     this.source,
     this.repository,
     this.embedded = false,
+    this.historyOnly = false,
     this.externalHeader,
     this.refreshTick = 0,
     this.refreshCompletion,
@@ -50,6 +50,7 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
   /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
   /// （外层提供标题/刷新/容器）。
   final bool embedded;
+  final bool historyOnly;
 
   /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
   /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
@@ -67,6 +68,11 @@ class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
 class _ProcurementIqcRejectionListPageState
     extends ConsumerState<ProcurementIqcRejectionListPage>
     with ScopedPagedReadViewMixin<ProcurementIqcRejectionListPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   final _tableRows =
       MasterDataTableRowsController<ProcurementIqcRejectionCase>();
   PagedResult<ProcurementIqcRejectionCase>? _result;
@@ -128,6 +134,12 @@ class _ProcurementIqcRejectionListPageState
   @override
   void initState() {
     super.initState();
+    if (widget.historyOnly) {
+      _status = 'TERMINAL';
+      _statusSelected = true;
+    } else if (widget.embedded && widget.source == 'finance') {
+      _statusSelected = true;
+    }
     Future<void>.microtask(() async {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
@@ -165,7 +177,6 @@ class _ProcurementIqcRejectionListPageState
   Future<void> _load(
     int page, {
     bool useCache = false,
-    bool preferPrepared = false,
     bool forceCounts = false,
   }) async {
     final requestId = ++_requestId;
@@ -197,7 +208,9 @@ class _ProcurementIqcRejectionListPageState
         keyword: _keyword,
         columnSearch: headers.searches,
       );
-      unawaited(_loadCounts(countFilter, current, force: forceCounts));
+      if (!widget.historyOnly) {
+        unawaited(_loadCounts(countFilter, current, force: forceCounts));
+      }
       final result = _statusSelected
           ? await readScopedPage<ProcurementIqcRejectionCase>(
               page,
@@ -214,14 +227,7 @@ class _ProcurementIqcRejectionListPageState
                   sort: filter.sort,
                   ascending: filter.ascending,
                 );
-                if (page != 1) return repository.list(pageFilter);
-                return ref
-                    .read(financeIqcPreparedPageProvider)
-                    .read(
-                      financeIqcReadKey(repository, pageFilter),
-                      () => repository.list(pageFilter),
-                      preferPrepared: preferPrepared,
-                    );
+                return repository.list(pageFilter);
               },
             )
           : const PagedResult<ProcurementIqcRejectionCase>(
@@ -239,6 +245,7 @@ class _ProcurementIqcRejectionListPageState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       setState(() {
         if (nativeReadAccessDenied(error)) {
@@ -252,7 +259,8 @@ class _ProcurementIqcRejectionListPageState
         _loading = false;
         _error = error.message;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!current()) return;
       setState(() {
         _loading = false;
@@ -311,12 +319,25 @@ class _ProcurementIqcRejectionListPageState
   }
 
   void _changeStatus(String? value) {
+    const completed = {
+      'TERMINAL',
+      'CREDIT_CONFIRMED',
+      'CLOSED_NO_CREDIT',
+      'REVERSED',
+    };
+    if (widget.historyOnly && !completed.contains(value ?? 'TERMINAL')) return;
+    if (widget.embedded &&
+        widget.source == 'finance' &&
+        !widget.historyOnly &&
+        completed.contains(value)) {
+      return;
+    }
     if (_status == value && _statusSelected) return;
     setState(() {
       _status = value ?? (_historyStatus ? 'TERMINAL' : 'ACTIVE');
       _statusSelected = true;
     });
-    _load(1, preferPrepared: !_historyStatus);
+    _load(1);
   }
 
   /// 表头筛选回调：来源只在表头筛选（receiptType/status 参数均已在），
@@ -357,13 +378,14 @@ class _ProcurementIqcRejectionListPageState
     // （通知深链/收藏直达）返回后行状态停留在旧值，要手动刷新。
     if (!widget.embedded) {
       _myLocation ??= currentLocationOr(context, _defaultBackPath);
-      ref.onPageResume(
-        _myLocation!,
-        () => _load(
-          _tableRows.visiblePage ?? _result?.page ?? 1,
-          forceCounts: true,
-        ),
+      Future<void> visibleReadReturn() => _load(
+        _tableRows.visiblePage ?? _result?.page ?? 1,
+        forceCounts: true,
       );
+      _activityReturnRead = () async {
+        await Future<void>.sync(visibleReadReturn);
+      };
+      ref.onPageResume(_myLocation!, visibleReadReturn);
     }
     final body = SafeArea(child: _buildContent());
     if (widget.embedded) return body;
@@ -482,41 +504,46 @@ class _ProcurementIqcRejectionListPageState
     return UtenFilterToolbar<String?>(
       segmentsKey: const Key('iqc-rejection-status-segments'),
       segments: [
-        const UtenFilterSegment(value: 'ACTIVE', label: '待办与进行中'),
-        UtenFilterSegment(
-          value: 'PENDING_RETURN',
-          label: '待退回',
-          count: (counts?.actionablePendingReturn ?? 0) > 0
-              ? counts?.actionablePendingReturn
-              : counts?.pendingReturn,
-          countForm: (counts?.actionablePendingReturn ?? 0) > 0
-              ? UtenSegmentCountForm.actionable
-              : UtenSegmentCountForm.browsing,
-        ),
+        if (!widget.historyOnly)
+          const UtenFilterSegment(value: 'ACTIVE', label: '待办与进行中'),
+        if (!widget.historyOnly)
+          UtenFilterSegment(
+            value: 'PENDING_RETURN',
+            label: '待退回',
+            count: (counts?.actionablePendingReturn ?? 0) > 0
+                ? counts?.actionablePendingReturn
+                : counts?.pendingReturn,
+            countForm: (counts?.actionablePendingReturn ?? 0) > 0
+                ? UtenSegmentCountForm.actionable
+                : UtenSegmentCountForm.browsing,
+          ),
         // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数。退回登记完、贷项
         // 还没落地的两段是「已经在办、球在财务手上、还没完」→ 黄色在办徽章
         // (ADR-100); 分段计数一律不进任何累加注册表。
-        UtenFilterSegment(
-          value: 'RETURN_RECORDED',
-          label: '已退回待财务',
-          count: (counts?.actionableReturnRecorded ?? 0) > 0
-              ? counts?.actionableReturnRecorded
-              : counts?.returnRecorded,
-          countForm: (counts?.actionableReturnRecorded ?? 0) > 0
-              ? UtenSegmentCountForm.actionable
-              : UtenSegmentCountForm.browsing,
-        ),
-        UtenFilterSegment(
-          value: 'FINANCE_EXCEPTION',
-          label: '财务异常',
-          count: (counts?.actionableFinanceException ?? 0) > 0
-              ? counts?.actionableFinanceException
-              : counts?.financeException,
-          countForm: (counts?.actionableFinanceException ?? 0) > 0
-              ? UtenSegmentCountForm.actionable
-              : UtenSegmentCountForm.browsing,
-        ),
-        const UtenFilterSegment(value: 'TERMINAL', label: '历史单据'),
+        if (!widget.historyOnly)
+          UtenFilterSegment(
+            value: 'RETURN_RECORDED',
+            label: '已退回待财务',
+            count: (counts?.actionableReturnRecorded ?? 0) > 0
+                ? counts?.actionableReturnRecorded
+                : counts?.returnRecorded,
+            countForm: (counts?.actionableReturnRecorded ?? 0) > 0
+                ? UtenSegmentCountForm.actionable
+                : UtenSegmentCountForm.browsing,
+          ),
+        if (!widget.historyOnly)
+          UtenFilterSegment(
+            value: 'FINANCE_EXCEPTION',
+            label: '财务异常',
+            count: (counts?.actionableFinanceException ?? 0) > 0
+                ? counts?.actionableFinanceException
+                : counts?.financeException,
+            countForm: (counts?.actionableFinanceException ?? 0) > 0
+                ? UtenSegmentCountForm.actionable
+                : UtenSegmentCountForm.browsing,
+          ),
+        if (widget.historyOnly || !widget.embedded)
+          const UtenFilterSegment(value: 'TERMINAL', label: '历史单据'),
       ],
       selected: _statusSelected
           ? {_historyStatus ? 'TERMINAL' : _status}
@@ -565,28 +592,34 @@ class _ProcurementIqcRejectionListPageState
       items: result.items,
       // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端
       // 固定枚举桶；count=0 表示不强调计数。状态仍与主工作阶段同源。
-      facets: const {
-        'receiptType': [
+      facets: {
+        'receiptType': const [
           MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购'),
           MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外'),
         ],
         'status': [
-          MasterFacetBucket(
-            value: 'PENDING_RETURN',
-            count: 0,
-            label: '待登记实物退回',
-          ),
-          MasterFacetBucket(
-            value: 'RETURN_RECORDED',
-            count: 0,
-            label: '已退回 / 待财务',
-          ),
-          MasterFacetBucket(
-            value: 'FINANCE_EXCEPTION',
-            count: 0,
-            label: '财务投影异常',
-          ),
-          MasterFacetBucket(value: 'TERMINAL', count: 0, label: '终态'),
+          if (!widget.historyOnly)
+            const MasterFacetBucket(
+              value: 'PENDING_RETURN',
+              count: 0,
+              label: '待登记实物退回',
+            ),
+          if (!widget.historyOnly)
+            const MasterFacetBucket(
+              value: 'RETURN_RECORDED',
+              count: 0,
+              label: '已退回 / 待财务',
+            ),
+          if (!widget.historyOnly)
+            const MasterFacetBucket(
+              value: 'FINANCE_EXCEPTION',
+              count: 0,
+              label: '财务投影异常',
+            ),
+          if (widget.historyOnly ||
+              !widget.embedded ||
+              widget.source != 'finance')
+            const MasterFacetBucket(value: 'TERMINAL', count: 0, label: '终态'),
         ],
       },
       nullCounts: const {},

@@ -1,0 +1,26 @@
+{
+  "label": "final-extra",
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T22:16:11.4167199Z",
+  "completedAtUtc": "2026-11-05T22:30:39.5296035Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-3068-output-fixed",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-3068-output-fixed/final-extra-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-3068-output-fixed/final-extra-measurements",
+    "-Dtest=CostDocumentExportTest,GoodsCostDocumentMapperTest,ShelfLabelQueryPostgresTest,SalesShipmentFinanceReleaseRateEndToEndTest",
+    "surefire:test"
+  ],
+  "selection": "CostDocumentExportTest,GoodsCostDocumentMapperTest,ShelfLabelQueryPostgresTest,SalesShipmentFinanceReleaseRateEndToEndTest",
+  "wrapperPid": 47376,
+  "log": "build\\loading-validation\\main-3068-output-fixed\\final-extra.log",
+  "environment": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_RUN_DB_TESTS": "true"
+  }
+}

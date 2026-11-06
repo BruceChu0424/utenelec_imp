@@ -2,17 +2,21 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/network/data_write_revision.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'paged_query_identity.dart';
+import 'shared_read_provider_owner.dart';
 
 /// Small authoritative category snapshots, keyed by the complete business scope.
 /// No row-derived totals, parent-badge arithmetic, persistence, or business writes.
 /// The owning provider retires pending reads and snapshots on every reader/write
 /// boundary. Failures never poison a later retry.
 class ScopedCategoryRead {
+  ScopedCategoryRead({this.isOwnerCurrent});
+  final bool Function()? isOwnerCurrent;
   final _entries = <(Type, PagedReadQueryKey), _CategoryReadEntry>{};
   bool _disposed = false;
+  bool get _owned => !_disposed && (isOwnerCurrent?.call() ?? true);
 
   Future<T> read<T>({
     required Object query,
@@ -20,7 +24,7 @@ class ScopedCategoryRead {
     bool force = false,
     Duration maximumAge = const Duration(seconds: 15),
   }) {
-    if (_disposed) return Future.error(StateError('Category reader retired'));
+    if (!_owned) return Future.error(StateError('Category reader retired'));
     final key = (T, PagedReadQueryKey(query));
     final previous = _entries[key];
     if (!force &&
@@ -32,11 +36,13 @@ class ScopedCategoryRead {
     final completion = Completer<T>();
     final entry = _CategoryReadEntry(completion.future);
     _entries[key] = entry;
-    Future.sync(fetch).then(
+    Future.sync(
+      () => AuthenticatedRequestScope.sharedRead(() => _owned, fetch),
+    ).then(
       (value) {
         entry.complete = true;
         entry.age.reset();
-        if (_disposed) {
+        if (!_owned) {
           completion.completeError(StateError('Category reader retired'));
         } else {
           completion.complete(value);
@@ -64,9 +70,8 @@ class _CategoryReadEntry {
 }
 
 final scopedCategoryReadProvider = Provider<ScopedCategoryRead>((ref) {
-  ref.watch(exportContextEpochProvider);
-  ref.watch(dataWriteRevisionProvider);
-  final reader = ScopedCategoryRead();
+  final ownerCurrent = captureSharedReadProviderOwner(ref);
+  final reader = ScopedCategoryRead(isOwnerCurrent: ownerCurrent);
   ref.onDispose(reader.dispose);
   return reader;
 }, dependencies: [exportContextEpochProvider]);

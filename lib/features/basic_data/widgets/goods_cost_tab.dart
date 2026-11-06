@@ -1,3 +1,4 @@
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -88,7 +89,17 @@ class GoodsCostTab extends ConsumerStatefulWidget {
 }
 
 class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
-    with AutomaticKeepAliveClientMixin, FormDraftMixin {
+    with
+        AutomaticKeepAliveClientMixin,
+        FormDraftMixin,
+        ReadViewActivityMixin<GoodsCostTab> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_tab == 2 && formDraftIdentityIsCurrent && _capability.canRead) {
+      await _loadVersions();
+    }
+  }
+
   static const _tableKey = 'master.goods.cost.items.simple';
   final _controllers = <String, TextEditingController>{};
   final _materialExpansion = UtenDefaultCollapsedTreeState();
@@ -404,6 +415,48 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     'priceCells': <Object>[],
     'extraFields': <String, String>{},
   };
+  bool Function() _costReadCurrent(
+    GoodsCostRepository repository,
+    String goods,
+  ) {
+    final boundary = ref.read(sensitiveReadBoundaryProvider),
+        epoch = ref.read(exportContextEpochProvider);
+    return () =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        _capability.canRead &&
+        widget.detail.id == goods &&
+        identical(repository, _repository) &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        epoch == ref.read(exportContextEpochProvider);
+  }
+
+  Future<List<Map<String, dynamic>>> _readLatestVersionDefault() async {
+    final repository = _repository, goods = widget.detail.id;
+    final latest = await repository.latestVersionForDefaultRead(
+      goods,
+      isCurrent: _costReadCurrent(repository, goods),
+    );
+    return latest == null ? [] : [latest];
+  }
+
+  Future<List<Map<String, dynamic>>> _readTemplateSummaries(
+    String? clientId, {
+    bool Function()? isCurrent,
+  }) {
+    final repository = _repository,
+        goods = widget.detail.id,
+        current = _costReadCurrent(repository, goods);
+    return repository.completeTemplatesForRead(
+      goods,
+      clientId,
+      isCurrent: () =>
+          current() &&
+          clientId == costText(_input['clientId']) &&
+          (isCurrent?.call() ?? true),
+    );
+  }
+
   Future<void> _boot() async {
     if (!mounted || _booting || !formDraftIdentityIsCurrent) return;
     startFormDraftIdentityGuard();
@@ -419,7 +472,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     try {
       _input = _freshInput();
       _inputLookupRevision = -1;
-      final versions = await _repository.list(widget.detail.id);
+      final versions = await _readLatestVersionDefault();
       if (!formDraftIdentityIsCurrent) return;
       _versions = versions;
       var localDraftsLoaded = false;
@@ -500,8 +553,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     try {
       final result = await Future.wait<Object>([
         ref.read(currencyRepositoryProvider).dict(),
-        _repository.templates(widget.detail.id, clientId),
-      ]);
+        _readTemplateSummaries(
+          clientId,
+          isCurrent: () => templateRequest == _templateRequest,
+        ),
+      ], eagerError: true);
       if (!mounted) return;
       setState(() {
         _currencies = result[0] as List<CurrencyListItem>;
@@ -731,7 +787,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     if (!mounted) return sheet;
     setState(() => _adopt(sheet));
     await saveFormDraftNow();
-    _versions = await _repository.list(widget.detail.id);
+    _versions = await _readLatestVersionDefault();
     widget.onSaved?.call();
     return sheet;
   }
@@ -783,7 +839,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       if (!mounted) return;
       setState(() => _adopt(confirmed));
       await completeFormDraft();
-      _versions = await _repository.list(widget.detail.id);
+      _versions = await _readLatestVersionDefault();
       widget.onSaved?.call();
     });
   }
@@ -839,7 +895,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       if (!mounted) return;
       await resetFormDraftAfterSubmission(prepare: () async => _adopt(copied));
       if (mounted) setState(() => _tab = 0);
-      _versions = await _repository.list(widget.detail.id);
+      _versions = await _readLatestVersionDefault();
     });
   }
 
@@ -1411,22 +1467,31 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     }
   }
 
-  Future<void> _loadVersions([int page = 1]) async {
+  Future<void> _loadVersions() async {
     final scope = _versionScope,
         repository = _repository,
         goods = widget.detail.id,
         query = _versionQuery;
     final request = ++_versionRequest;
     if (!formDraftIdentityIsCurrent || !_capability.canRead) return;
+    bool current() =>
+        mounted &&
+        request == _versionRequest &&
+        scope == _versionScope &&
+        formDraftIdentityIsCurrent &&
+        _capability.canRead;
     setState(() {
       _versionLoading = true;
       _versionError = null;
     });
     try {
-      final result = await repository.versions(
-        goods,
-        page: page,
-        columnQuery: query,
+      final result = await readViewActivity.runRead(
+        current,
+        () => repository.completeVersionsForRead(
+          goods,
+          isCurrent: current,
+          columnQuery: query,
+        ),
       );
       if (!mounted ||
           request != _versionRequest ||
@@ -1440,6 +1505,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         _versionLoading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           request != _versionRequest ||
           scope != _versionScope ||
@@ -1607,15 +1673,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
           setState(() => _versionQuery = _versionQuery.sorted(key, ascending));
           unawaited(_loadVersions());
         },
-        currentPage: page?.page ?? 1,
-        totalPages: page?.totalPages ?? 1,
         paginationScope: (
           _versionScope,
           page?.readScopeVersion,
           _versionRetirement,
         ),
         paginationRevision: page,
-        onPageChange: _loadVersions,
         isLoading: _versionLoading && page == null,
         loadingMore: _versionLoading && page != null,
         error: _versionError,

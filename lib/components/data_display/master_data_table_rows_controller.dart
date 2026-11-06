@@ -9,10 +9,10 @@ class MasterDataPagination {
   final bool busy;
 }
 
-/// The rows currently available in a table, including pages appended by scrolling.
+/// The complete authorized rows currently available in a table.
 ///
 /// Hosts use this snapshot for selection and batch actions instead of looking up
-/// selected IDs in only the most recent server page. It does not own selection,
+/// selected IDs in an internal transport batch. It does not own selection,
 /// fetch data, or notify during a widget build.
 class MasterDataTableRowsController<T> {
   MasterDataTableRowsController();

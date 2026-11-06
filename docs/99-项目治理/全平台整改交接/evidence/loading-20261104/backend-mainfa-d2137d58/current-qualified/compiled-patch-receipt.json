@@ -1,0 +1,16 @@
+{
+  "source": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29",
+  "originalFullCompileSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "originalFullCompileNativeExitCode": 0,
+  "currentSingleTestJavacActualExitCode": 0,
+  "allClassFilesChecked": 10175,
+  "allProductionAndOtherTestsClassBytesExact": true,
+  "onlyClassDelta": [
+    {
+      "path": "server/target-loading-main-fa-final/test-classes/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.class",
+      "beforeSha256": "eb4c67ca14ed3354a9d10181bf91f5828d5a99846245be6dd74e2a154f02a2fb",
+      "afterSha256": "1b5686fa1c4364acd480e2ca9ce52deaff70ba4882506108498469b1c6f89451"
+    }
+  ],
+  "targetReuseDoesNotRelabelOriginalFullCompile": true
+}

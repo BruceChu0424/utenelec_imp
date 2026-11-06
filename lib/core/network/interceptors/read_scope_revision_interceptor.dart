@@ -57,7 +57,7 @@ class ReadScopeRevisionInterceptor extends Interceptor {
         // Cost sheets include frozen-customer visibility in their proof. Actual
         // costs keep the goods authority; never compare these distinct proofs.
         (RegExp(
-              r'^/(?:api/)?master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates|/export)?$',
+              r'^/(?:api/)?master/goods/cost-sheets(?:/versions(?:/summary)?|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates(?:/summary|/[0-9a-fA-F-]{36})?|/export)?$',
             ).hasMatch(options.path)
             ? 'master_goods_cost'
             : null) ??

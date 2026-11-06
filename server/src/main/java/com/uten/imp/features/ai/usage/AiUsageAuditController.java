@@ -43,8 +43,15 @@ public class AiUsageAuditController {
 
     /** AI 用量看板(ADR-164): 窗口序列 + 按人聚合 + 今日 KPI。 */
     @GetMapping("/usage-dashboard")
-    public AiUsageDtos.Dashboard dashboard(@RequestParam(defaultValue="day") String window) {
-        access.require(); return dashboard.dashboard(window);
+    public AiUsageDtos.Dashboard dashboard(@RequestParam(defaultValue="day") String window,
+            @RequestParam(defaultValue="true") boolean includePeople) {
+        access.require(); return includePeople ? dashboard.dashboard(window) : dashboard.dashboard(window, false);
+    }
+    @GetMapping("/usage-dashboard/people")
+    public com.uten.imp.common.web.PageResponse<AiUsageDtos.DashboardPerson> people(
+            @RequestParam(defaultValue="day") String window,
+            @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="100") int size) {
+        access.require(); return dashboard.peoplePage(window, page, size);
     }
     /** 人员明细: 同窗口的个人序列、用途/服务商分布与最近使用。 */
     @GetMapping("/usage-people/{userId}")

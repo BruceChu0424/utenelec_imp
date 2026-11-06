@@ -1,0 +1,295 @@
+{
+  "root": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "mode": "read-only static peer review; no SQL/Java change or Maven execution",
+  "checks": [
+    {
+      "id": "wideCandidate",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageRead.java",
+        "sha256": "0e4ec6acc97fb00d0db608677740b903c2ccde7512b27a91e5cdefd645e3135f",
+        "anchors": [
+          {
+            "textAnchor": "WITH candidates AS MATERIALIZED",
+            "lines": [
+              68
+            ]
+          },
+          {
+            "textAnchor": "selected_rows AS MATERIALIZED",
+            "lines": [
+              69,
+              130
+            ]
+          },
+          {
+            "textAnchor": "FROM candidates WHERE %s GROUP BY 1",
+            "lines": [
+              81
+            ]
+          },
+          {
+            "textAnchor": "pending_count AS",
+            "lines": [
+              91
+            ]
+          },
+          {
+            "textAnchor": "facetValuesSql",
+            "lines": [
+              60,
+              62,
+              144
+            ]
+          }
+        ]
+      },
+      "finding": "Candidate materialization is shared by selected rows and independent status/exception/pending/facet summaries. Selected status/date/table filters are not common predicates under the current contract."
+    },
+    {
+      "id": "hardBase",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+        "sha256": "480b1719176a8b4924129825d97bfc1150086a98d0b14f50d5895280fa0ad9f9",
+        "anchors": [
+          {
+            "textAnchor": "String baseFilter =",
+            "lines": [
+              449
+            ]
+          },
+          {
+            "textAnchor": "warehouseScope.predicate",
+            "lines": [
+              317,
+              454,
+              734,
+              872
+            ]
+          },
+          {
+            "textAnchor": "sourceView = enrichTableRows",
+            "lines": [
+              424
+            ]
+          },
+          {
+            "textAnchor": "String statusFilter =",
+            "lines": [
+              433
+            ]
+          },
+          {
+            "textAnchor": "String dateFilter =",
+            "lines": [
+              443
+            ]
+          }
+        ]
+      },
+      "finding": "Department, normalized keyword and exact authorized warehouse scope are true common predicates; they may be applied at the equivalent source boundary before wide enrichment. Do not silently infer a new active-only metadata contract from requested WAITING_ORDER."
+    },
+    {
+      "id": "warehouseAggregation",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+        "sha256": "480b1719176a8b4924129825d97bfc1150086a98d0b14f50d5895280fa0ad9f9",
+        "anchors": [
+          {
+            "textAnchor": "static final String WAREHOUSE_DOCUMENT_ROWS",
+            "lines": [
+              132
+            ]
+          },
+          {
+            "textAnchor": "COUNT(*) FILTER (WHERE request.fulfilled_qty > 0)",
+            "lines": []
+          },
+          {
+            "textAnchor": "COUNT(DISTINCT v.goods_id)",
+            "lines": [
+              140,
+              142,
+              144,
+              146,
+              148,
+              150,
+              152,
+              154,
+              157,
+              159,
+              161,
+              163,
+              165,
+              183
+            ]
+          },
+          {
+            "textAnchor": "GROUP BY v.department,draw_doc.id",
+            "lines": [
+              231
+            ]
+          },
+          {
+            "textAnchor": "MATERIALS_TO_DEFINE",
+            "lines": [
+              238,
+              869,
+              882,
+              887
+            ]
+          }
+        ]
+      },
+      "counterexamples": [
+        "Removing open_qty=0 lines before grouping changes a draw with an already-issued line and untouched open line from PARTIAL to READY_TO_PICK.",
+        "Pre-filtering goods/color child rows changes full-document goods_count and quantities. Qualify the full group, then aggregate its complete required rows.",
+        "Warehouse scope may target the actual draw header warehouse, but preserve null-warehouse MATERIAL_DISCOVERY scope semantics."
+      ]
+    },
+    {
+      "id": "workshopHardAndDerived",
+      "source": {
+        "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+        "sha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+        "anchors": [
+          {
+            "textAnchor": "private String workshopTaskPredicate",
+            "lines": [
+              339
+            ]
+          },
+          {
+            "textAnchor": "task.segment_status IN",
+            "lines": [
+              346,
+              370,
+              698,
+              743,
+              745,
+              750,
+              753,
+              1201,
+              1247,
+              1251,
+              1301,
+              1307,
+              1389,
+              1390,
+              1394,
+              1398,
+              1408,
+              1415
+            ]
+          },
+          {
+            "textAnchor": "task.workshop_department_id = :workshopId",
+            "lines": [
+              354,
+              1546
+            ]
+          },
+          {
+            "textAnchor": "case \"READY_TO_START\"",
+            "lines": [
+              369,
+              1398
+            ]
+          },
+          {
+            "textAnchor": "case \"IN_PROGRESS\"",
+            "lines": [
+              378
+            ]
+          },
+          {
+            "textAnchor": "case \"REPORT_INSPECTION\"",
+            "lines": [
+              381
+            ]
+          },
+          {
+            "textAnchor": "String actionScope=",
+            "lines": [
+              832
+            ]
+          }
+        ]
+      },
+      "finding": "Exact active raw lifecycle union, selected workshop and segment code plus the original read-assignment scope are candidates for equivalent base pushdown. Read-all must not be replaced with narrower action-assignment eligibility.",
+      "counterexamples": [
+        "remaining_qty includes approved FQC recovery; planned-reported alone is not equivalent for IN_PROGRESS/REPORT_INSPECTION.",
+        "READY_TO_START depends on discovery, real issue, zero-material and unresolved-bin conditions; raw READY cannot replace it.",
+        "Plan history end-date is not interchangeable with report date or generic updated_at."
+      ]
+    },
+    {
+      "id": "existingIndex",
+      "source": {
+        "path": "server/src/main/resources/db/migration/V470__production_execution_root_workbenches.sql",
+        "sha256": "7d5cdeb8ca917f1f9871490bf706416c0442d66bd874769c78d9e844494d0326",
+        "anchors": [
+          {
+            "textAnchor": "idx_production_execution_workbench_open",
+            "lines": [
+              177
+            ]
+          },
+          {
+            "textAnchor": "workshop_department_id, plan_end_date",
+            "lines": [
+              179
+            ]
+          },
+          {
+            "textAnchor": "status NOT IN",
+            "lines": [
+              183,
+              293,
+              362,
+              538,
+              545,
+              548,
+              551
+            ]
+          },
+          {
+            "textAnchor": "idx_production_execution_workbench_history",
+            "lines": [
+              185
+            ]
+          }
+        ]
+      },
+      "finding": "An active partial segment index exists, leading workshop_department_id. Static existence is not proof the current expanded view/parameterized predicate uses it; require migrated-view EXPLAIN and actual rows/buffers/spill."
+    },
+    {
+      "id": "remainingAuthority",
+      "source": {
+        "path": "server/src/main/resources/db/migration/V696__actual_output_workbench_progress.sql",
+        "sha256": "24764f9a70c6d5512a1abbc398d8fab50c8f92e3e5f7328a3e78477d357deae6",
+        "anchors": [
+          {
+            "textAnchor": "COALESCE(progress.gross_reported_qty",
+            "lines": [
+              94
+            ]
+          },
+          {
+            "textAnchor": "COALESCE(recovery.available_qty",
+            "lines": [
+              95
+            ]
+          },
+          {
+            "textAnchor": "segment.status AS segment_status",
+            "lines": [
+              96
+            ]
+          }
+        ]
+      },
+      "finding": "Static original projection shows raw segment status and recovery-augmented remaining quantity. Confirm the fully migrated definition before relying on pushdown equivalence."
+    }
+  ],
+  "runtimeProof": "Actual backend growth measurements belong to root/backend evidence; no timing is independently claimed here."
+}

@@ -25,6 +25,10 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -108,7 +112,10 @@ class SalesManagerReviewPage extends ConsumerStatefulWidget {
 class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     with
         FormDraftMixin<SalesManagerReviewPage>,
-        ReviewTaskDraftMixin<SalesManagerReviewPage> {
+        ReviewTaskDraftMixin<SalesManagerReviewPage>,
+        ReadViewActivityMixin<SalesManagerReviewPage> {
+  @override
+  Future<void> onReadViewResumed() => _reload();
   List<SalesManagerReviewTask> _batchTasks = [];
   TaskClaimSession? _batchClaim;
   final _batchRemark = TextEditingController();
@@ -246,7 +253,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     }
   }
 
-  Future<void> _reload({int page = 1, bool clear = false}) async {
+  Future<void> _reload({bool clear = false}) async {
     if (!mounted) return;
     final generation = ++_generation;
     final identity = ref.read(sessionProvider);
@@ -261,6 +268,8 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         ref.read(authenticatedScopeProvider) == scope &&
         setEquals(permissions, ref.read(currentPermissionsProvider));
     final kind = _kind, state = _state;
+    final keyword = _search.text.trim();
+    final filters = Map<String, String?>.unmodifiable(_filters);
     setState(() {
       _loading = true;
       _error = null;
@@ -271,22 +280,30 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
       }
     });
     try {
-      final json = await ref
-          .read(apiClientProvider)
-          .get(
-            '/sales/manager-review',
-            query: {
-              'kind': kind,
-              'state': state,
-              'keyword': _search.text.trim(),
-              'page': page,
-              'size': 30,
-              ..._filters,
-            },
-          );
-      final result = await PagedResult.fromJsonResponsive(
-        json,
-        SalesManagerReviewTask.fromJson,
+      final api = ref.read(apiClientProvider);
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<SalesManagerReviewTask>(
+          isCurrent: current,
+          idOf: (row) => (row.kind, row.id),
+          loadPage: (batch, size) async {
+            final json = await api.get(
+              '/sales/manager-review',
+              query: {
+                'kind': kind,
+                'state': state,
+                'keyword': keyword,
+                'page': batch,
+                'size': size,
+                ...filters,
+              },
+            );
+            return PagedResult.fromJsonResponsive(
+              json,
+              SalesManagerReviewTask.fromJson,
+            );
+          },
+        ),
       );
       if (!current() ||
           !(_allowed('quote', 'view') || _allowed('order', 'view'))) {
@@ -313,8 +330,16 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         }
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (current()) {
-        setState(() => _error = humanErrorMessage(error) ?? '读取审核队列失败，请重试');
+        setState(() {
+          _error = humanErrorMessage(error) ?? '读取审核队列失败，请重试';
+          if (pagedReadAccessDenied(error)) {
+            _result = null;
+            _selected.clear();
+            _taskCache.clear();
+          }
+        });
       }
     } finally {
       if (mounted && generation == _generation) {
@@ -327,7 +352,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     if (_buttonReading || _busy) return;
     setState(() => _buttonReading = true);
     try {
-      await _reload(page: _result?.page ?? 1);
+      await _reload();
     } finally {
       if (mounted) setState(() => _buttonReading = false);
     }
@@ -344,7 +369,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
       }
       _tableRevision++;
       refreshBadges(ref);
-      await _reload(page: _result?.page ?? 1);
+      await _reload();
     }
   }
 
@@ -765,11 +790,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                           _allowed('quote', 'view'),
                           _allowed('order', 'view'),
                         ),
-                        currentPage: _result?.page ?? 1,
-                        totalPages: _result?.totalPages ?? 1,
-                        onPageChange: _busy
-                            ? null
-                            : (page) => _reload(page: page),
                         emptyMessage: '当前分类没有需要处理的单据',
                         tableKey: 'sales_manager_review_all.2',
                       ),

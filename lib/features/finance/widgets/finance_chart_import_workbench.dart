@@ -1,3 +1,5 @@
+import '../shared/finance_complete_summary_read.dart';
+import 'finance_summary_scope_field.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,6 +57,8 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
   Map<String, dynamic>? _upload, _preview, _pending, _retired;
   String? _previewId, _error;
   List<Map<String, dynamic>> _recent = [];
+  FinanceSummaryScope _recentScope = FinanceSummaryScope.active;
+  int _recentRead = 0;
   int _epoch = 0;
   bool get _canRead =>
       ref.read(authenticatedScopeProvider) != null &&
@@ -238,25 +242,60 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
     },
   );
   Future<void> _loadRecent() async {
-    if (!_current || _busy) {
-      return;
-    }
-    setState(() => _busy = true);
+    if (!_current || _busy) return;
+    final generation = ++_recentRead, range = _recentScope;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
       final value = await _wait(
         '正在读取原导入批次',
-        (api, _) => api.get('/finance/chart/imports'),
+        (api, scope) => readCompleteFinanceSummaries(
+          isCurrent: () =>
+              _current &&
+              scope.isCurrent &&
+              generation == _recentRead &&
+              range == _recentScope,
+          idOf: (row) => row['importId'],
+          loadPage: (page, size, revision) => api.get(
+            '/finance/chart/imports/summaries',
+            query: {
+              'scope': range.name,
+              'page': page,
+              'size': size,
+              'readSnapshotRevision': ?revision,
+            },
+          ),
+        ),
       );
-      if (value != null && _current) {
-        setState(() => _recent = _maps(value.result['items']));
+      if (value != null &&
+          _current &&
+          generation == _recentRead &&
+          range == _recentScope) {
+        setState(() => _recent = value.result);
       }
     } catch (error) {
       _showError(error);
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      if (mounted && generation == _recentRead) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _changeRecentScope(FinanceSummaryScope value) async {
+    if (!_current ||
+        _busy ||
+        _financialPending ||
+        _upload != null ||
+        _previewId != null ||
+        value == _recentScope) {
+      return;
+    }
+    setState(() {
+      _recentScope = value;
+      _recent = [];
+    });
+    await _loadRecent();
   }
 
   Map<String, dynamic> _checkedPreview(Map<String, dynamic> value, String id) {
@@ -778,6 +817,15 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
                               color: Theme.of(context).colorScheme.error,
                             ),
                           ),
+                        ),
+                      if (_previewId == null && _upload == null)
+                        FinanceSummaryScopeField(
+                          key: const Key('finance-chart-import-record-scope'),
+                          value: _recentScope,
+                          enabled: !_busy && !_financialPending,
+                          info:
+                              '未确认且未停止的原预览保留在待办理；已确认和已停止批次在历史查看，原请求恢复仍按原ID或原文件校验核实。',
+                          onChanged: _changeRecentScope,
                         ),
                       if (_previewId == null &&
                           _upload == null &&

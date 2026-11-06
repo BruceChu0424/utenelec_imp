@@ -1,0 +1,299 @@
+package com.uten.imp.features.visitor;
+
+import com.uten.imp.features.notice.HrNoticeService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
+import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import java.sql.Connection;
+import java.time.OffsetDateTime;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.*;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+/** Real production repository locks and services against an isolated PostgreSQL schema. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+class VisitorAdmissionConcurrencyPostgresTest {
+    private static final PostgreSQLContainer DB = new PostgreSQLContainer("postgres:16-alpine");
+    private static EntityManagerFactory emf;
+    private static TransactionTemplate transactions;
+    private static JdbcTemplate jdbc;
+    private static VisitorApplicationRepository applications;
+    private static VisitorAccountRepository accounts;
+    private static VisitorApprovalStepRepository steps;
+
+    private VisitorGateService gate;
+    private VisitorHrApprovalService approvals;
+    private VisitorHostConfirmService host;
+    private VisitorApplicationService columnQueries;
+    private SecurityContextCurrentUser columnCurrent;
+    private VisitorApplicationMapper columnMapper;
+    private UUID accountId;
+    private UUID applicationId;
+    private final UUID employeeId = UUID.randomUUID();
+
+    @BeforeAll
+    static void start() {
+        DB.start();
+        var dataSource = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
+        jdbc = new JdbcTemplate(dataSource);
+        var factory = new LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        factory.setPackagesToScan("com.uten.imp.features.visitor");
+        var properties = new Properties();
+        properties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+        properties.setProperty("hibernate.jdbc.time_zone", "UTC");
+        factory.setJpaProperties(properties);
+        factory.afterPropertiesSet();
+        emf = factory.getObject();
+        transactions = new TransactionTemplate(new JpaTransactionManager(emf));
+        transactions.setTimeout(15);
+        var repositoryFactory = new JpaRepositoryFactory(SharedEntityManagerCreator.createSharedEntityManager(emf));
+        applications = repositoryFactory.getRepository(VisitorApplicationRepository.class);
+        accounts = repositoryFactory.getRepository(VisitorAccountRepository.class);
+        steps = repositoryFactory.getRepository(VisitorApprovalStepRepository.class);
+    }
+
+    @AfterAll
+    static void stop() {
+        if (emf != null) emf.close();
+        DB.stop();
+    }
+
+    @BeforeEach
+    void seed() {
+        var tx = mock(TxSessionVars.class);
+        when(tx.hmac(anyString())).thenReturn("a".repeat(64));
+        var current = mock(SecurityContextCurrentUser.class);
+        columnCurrent = current;
+        UUID actor = UUID.randomUUID();
+        when(current.id()).thenReturn(Optional.of(actor));
+        when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employeeId, "test", Set.of("visitor:approve", "visitor:host_confirm", "visitor:check_in"), false, true, false)));
+        var mapper = mock(VisitorApplicationMapper.class);
+        columnMapper = mapper;
+        when(mapper.hostInfo(any())).thenReturn(new String[]{"Host", "Department"});
+        // 2026-09-10：HrNoticeService 与业务同事务且不再吞异常，裸 null 依赖会让
+        // 申请/审批因 NPE 回滚；本测试只验证准入并发，通知用 mock 隔离。
+        var hrNotice = mock(HrNoticeService.class);
+        var service = new VisitorApplicationService(applications, steps, accounts,
+                mock(EmployeeRepository.class), mapper, tx, hrNotice, current,
+                mock(VisitorHostEligibility.class));
+        columnQueries = service;
+        var guard = new VisitorGuard(current);
+        gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper(),
+                mock(AuditService.class), mock(UserAccountRepository.class), mock(EmployeeRepository.class));
+        approvals = new VisitorHrApprovalService(applications, service, gate, guard, tx, hrNotice);
+        host = new VisitorHostConfirmService(applications, service, current, tx, hrNotice);
+        transactions.executeWithoutResult(status -> {
+            var account = new VisitorAccount();
+            account.setPhoneEnc("test-phone"); account.setPhoneHash(UUID.randomUUID().toString());
+            account.setName("Visitor"); account.setVisitorNo(UUID.randomUUID().toString());
+            accounts.saveAndFlush(account); accountId = account.getId();
+            var app = new VisitorApplication();
+            app.setVisitorAccountId(accountId); app.setVisitorName("Visitor"); app.setVisitPurpose("meeting");
+            app.setPlannedVisitAt(OffsetDateTime.now().plusHours(1)); app.setHostEmployeeId(employeeId);
+            applications.saveAndFlush(app); applicationId = app.getId();
+        });
+    }
+
+    @Test
+    void minuteConflictIsOwnerScopedHalfOpenAndDoesNotLoadTheActiveDirectory() {
+        when(columnCurrent.id()).thenReturn(Optional.of(accountId));
+        OffsetDateTime minute = OffsetDateTime.parse("2026-11-04T00:00:00+08:00");
+        transactions.executeWithoutResult(ignored -> {
+            for (String terminal : java.util.List.of("rejected", "cancelled")) {
+                var row = columnApplication(accountId, "terminal", minute.toString());
+                row.setStatus(terminal); applications.saveAndFlush(row);
+            }
+            var deleted = columnApplication(accountId, "deleted", minute.toString());
+            deleted.setDeleted(true); applications.saveAndFlush(deleted);
+            applications.saveAndFlush(columnApplication(UUID.randomUUID(), "other visitor", minute.toString()));
+            applications.saveAndFlush(columnApplication(accountId, "previous minute", minute.minusNanos(1000).toString()));
+            applications.saveAndFlush(columnApplication(accountId, "next minute", minute.plusMinutes(1).toString()));
+        });
+        Boolean initialConflict = transactions.execute(ignored -> columnQueries.hasActiveApplicationAt(minute));
+        assertThat(initialConflict).isFalse();
+        for (String active : java.util.List.of("pending", "hostReviewing", "approved", "checkedIn")) {
+            UUID id = transactions.execute(ignored -> {
+                var row = columnApplication(accountId, active, minute.plusSeconds(59).toString());
+                row.setStatus(active); return applications.saveAndFlush(row).getId();
+            });
+            Boolean conflict = transactions.execute(ignored -> columnQueries.hasActiveApplicationAt(
+                    minute.plusSeconds(23).withOffsetSameInstant(java.time.ZoneOffset.UTC)));
+            assertThat(conflict).isTrue();
+            transactions.executeWithoutResult(ignored -> applications.deleteById(id));
+        }
+        verifyNoInteractions(columnMapper);
+    }
+
+    @Test
+    void minuteConflictRequiresAnAuthenticatedVisitorAndAValidMinute() {
+        assertThatThrownBy(() -> columnQueries.hasActiveApplicationAt(null)).isInstanceOf(ApiException.class);
+        when(columnCurrent.id()).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> columnQueries.hasActiveApplicationAt(OffsetDateTime.now())).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void typedHeadersKeepTheOwnerAndChineseDayBeforePagination() {
+        UUID matching = transactions.execute(ignored -> {
+            VisitorApplication row = columnApplication(accountId, "50%_literal", "2026-10-27T16:30:00Z");
+            UUID id = applications.saveAndFlush(row).getId();
+            applications.saveAndFlush(columnApplication(accountId, "50X_literal", "2026-10-27T16:30:00Z"));
+            applications.saveAndFlush(columnApplication(accountId, "50%_literal", "2026-10-27T15:59:59Z"));
+            applications.saveAndFlush(columnApplication(UUID.randomUUID(), "50%_literal", "2026-10-27T16:30:00Z"));
+            return id;
+        });
+        when(columnCurrent.id()).thenReturn(Optional.of(accountId));
+        when(columnMapper.toListItems(any())).thenReturn(java.util.List.of());
+        var page = transactions.execute(ignored -> columnQueries.listMine("pending", 1, 1,
+                java.util.Map.of("visitorName", "50%", "plannedVisitAt", "2026-10-28"), "plannedVisitAt", "asc"));
+        assertThat(page.getTotal()).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.List<VisitorApplication>> captured = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        verify(columnMapper).toListItems(captured.capture());
+        assertThat(captured.getValue()).extracting(VisitorApplication::getId).containsExactly(matching);
+    }
+
+    @Test
+    void blacklistHeadersKeepBlockedStatusAndUseExactPhoneHashBeforePagination() {
+        UUID blocked = transactions.execute(ignored -> {
+            var account = new VisitorAccount();
+            account.setPhoneEnc("test-phone"); account.setPhoneHash("a".repeat(64));
+            account.setName("精确号码黑名单"); account.setVisitorNo(UUID.randomUUID().toString());
+            account.setStatus("blocked");
+            account.setBlockedAt(OffsetDateTime.parse("2026-10-27T16:30:00Z"));
+            return accounts.saveAndFlush(account).getId();
+        });
+        var page = transactions.execute(ignored -> gate.blacklistPage(1, 1,
+                java.util.Map.of("phone", "13800138000", "name", "精确号码", "blockedAt", "2026-10-28"),
+                "blockedAt", "desc"));
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getItems()).extracting(item -> item.id()).containsExactly(blocked);
+    }
+
+    private VisitorApplication columnApplication(UUID visitor, String name, String plannedAt) {
+        var row = new VisitorApplication();
+        row.setVisitorAccountId(visitor); row.setVisitorName(name); row.setVisitPurpose("header test");
+        row.setPlannedVisitAt(OffsetDateTime.parse(plannedAt));
+        return row;
+    }
+
+    @Test
+    void laterApprovalAndHostConfirmationCannotRewriteTheWinningApproval() throws Exception {
+        for (boolean hostConfirmation : new boolean[]{false, true}) {
+            jdbc.update("UPDATE visitor_applications SET status='pending' WHERE id=?", applicationId);
+            try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
+                Future<?> first = executor.submit(() -> inTransaction(() -> approve()));
+                assertBlocked(first);
+                Future<?> later = executor.submit(() -> inTransaction(() -> hostConfirmation
+                        ? host.hostConfirm(applicationId, new HostConfirmRequest(true, "late host"))
+                        : approvals.handleAction(applicationId, new VisitorApproveRequest("reject", "late review", "late"))));
+                assertBlocked(later);
+                blocker.commit();
+                first.get(10, TimeUnit.SECONDS);
+                assertBusinessRejection(later);
+            }
+            assertThat(state()).isEqualTo("approved");
+        }
+    }
+
+    @Test
+    void delayedApprovalCannotReviveAnAlreadyCheckedInApplication() throws Exception {
+        inTransaction(this::approve);
+        try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
+            Future<?> first = executor.submit(() -> inTransaction(() -> gate.checkIn(applicationId)));
+            assertBlocked(first);
+            Future<?> lateApproval = executor.submit(() -> inTransaction(this::approve));
+            assertBlocked(lateApproval);
+            blocker.commit();
+            first.get(10, TimeUnit.SECONDS);
+            assertBusinessRejection(lateApproval);
+        }
+        assertThat(state()).isEqualTo("checkedIn");
+        assertThat(jdbc.queryForObject("SELECT check_in_at IS NOT NULL FROM visitor_applications WHERE id=?", Boolean.class, applicationId)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM visitor_approval_steps WHERE application_id=? AND action='checkIn'", Long.class, applicationId)).isEqualTo(1);
+    }
+
+    @Test
+    void blacklistWinsAgainstWaitingAdmissionWithoutChangingTheApplicationHistory() throws Exception {
+        inTransaction(this::approve);
+        try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
+            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId, "并发测试拉黑")));
+            assertBlocked(blacklist);
+            Future<?> admission = executor.submit(() -> inTransaction(() -> gate.checkIn(applicationId)));
+            assertBlocked(admission);
+            blocker.commit();
+            blacklist.get(10, TimeUnit.SECONDS);
+            Object result = admission.get(10, TimeUnit.SECONDS);
+            assertThat(((com.uten.imp.features.visitor.dto.VisitorScanDto.VisitorVerifyResponse) result).reason()).isEqualTo("blocked");
+        }
+        assertThat(state()).isEqualTo("approved");
+        assertThat(jdbc.queryForObject("SELECT check_in_at IS NULL FROM visitor_applications WHERE id=?", Boolean.class, applicationId)).isTrue();
+    }
+
+    @Test
+    void admissionWinningBeforeBlacklistKeepsItsOriginalCheckedInEvidence() throws Exception {
+        inTransaction(this::approve);
+        try (var executor = Executors.newFixedThreadPool(2); Connection blocker = lockAccount()) {
+            Future<?> admission = executor.submit(() -> inTransaction(() -> gate.checkIn(applicationId)));
+            assertBlocked(admission);
+            Future<?> blacklist = executor.submit(() -> transactions.executeWithoutResult(s -> gate.blacklist(accountId, "并发测试拉黑")));
+            assertBlocked(blacklist);
+            blocker.commit();
+            admission.get(10, TimeUnit.SECONDS);
+            blacklist.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(state()).isEqualTo("checkedIn");
+        assertThat(jdbc.queryForObject("SELECT status FROM visitor_accounts WHERE id=?", String.class, accountId)).isEqualTo("blocked");
+    }
+
+    private Object approve() { return approvals.handleAction(applicationId, new VisitorApproveRequest("approve", null, null)); }
+    private <T> T inTransaction(Callable<T> action) { return transactions.execute(status -> {
+        try { return action.call(); } catch (RuntimeException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException(e); }
+    }); }
+    private Connection lockAccount() throws Exception {
+        Connection connection = jdbc.getDataSource().getConnection();
+        connection.setAutoCommit(false);
+        try (var statement = connection.prepareStatement("SELECT id FROM visitor_accounts WHERE id=? FOR UPDATE")) {
+            statement.setObject(1, accountId); statement.executeQuery();
+        }
+        return connection;
+    }
+    private static void assertBlocked(Future<?> future) {
+        assertThatThrownBy(() -> future.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+    }
+    private static void assertBusinessRejection(Future<?> future) {
+        assertThatThrownBy(() -> future.get(10, TimeUnit.SECONDS)).isInstanceOf(ExecutionException.class)
+                .hasCauseInstanceOf(ApiException.class);
+    }
+    private String state() { return jdbc.queryForObject("SELECT status FROM visitor_applications WHERE id=?", String.class, applicationId); }
+}

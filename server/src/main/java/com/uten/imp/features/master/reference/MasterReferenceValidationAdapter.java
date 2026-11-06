@@ -61,6 +61,15 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     @Override
+    public GoodsReadScopeFacts goodsReadScopeFacts() {
+        if(!goodsOwnerScopeEnabled)return new GoodsReadScopeFacts(false,true,List.of());
+        var scope=ownerVisibility.evaluate("goods","goods:view:all");
+        if(scope==null)throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.PRIMARY_UNAVAILABLE,"货品读取范围不可用");
+        return new GoodsReadScopeFacts(true,scope.seeAll(),scope.visibleOwners().stream().sorted().toList());
+    }
+
+    @Override
     public boolean canViewGoods(UUID goodsId) {
         if (goodsId == null) return false;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""

@@ -1,0 +1,95 @@
+{
+  "state": "passed under captured41 current source; aggregate historical invocation remains RED due separate scopes",
+  "sources": [
+    {
+      "path": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+      "sha256": "72415d69b643e0aa1e4e3c2071628f08838d6b11baf19c12e9b90f2a3c8f8b21"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_context_picker.dart",
+      "sha256": "fcbe69c84262c95c68ea543f4b0ff46519743fefd862e2925828805e373b5f8e"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "sha256": "89581c1085e8c4c503cebefad6c76c4108507b30d0e57a03a57317ae5da0f669"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+      "sha256": "b6c2b0765500c846be45575332b6bd2472dd406c93ceb09559740501bc5b9979"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "sha256": "7b8f95eb5ef585d0d343c9e6eda3df5c27360893d3658221f3b9ed160cdd767c"
+    }
+  ],
+  "targets": [
+    "test/features/finance/finance_auxiliary_dialog_test.dart",
+    "test/features/finance/finance_open_item_classification_dialog_test.dart",
+    "test/features/finance/finance_classification_correction_dialog_test.dart",
+    "test/features/finance/finance_procurement_confirmation_dialog_test.dart",
+    "test/features/finance/finance_statement_document_dialog_test.dart",
+    "test/features/finance/finance_report_header_query_test.dart",
+    "test/features/finance/finance_complete_source_dialogs_test.dart"
+  ],
+  "newWholeCaseDeclarations": 11,
+  "preservedDifferences": [
+    "statement editor profiles seed is explicit latest revision prefill:page1/size1, not a displayed list",
+    "classification dirty return refreshes references only; allocation/reference input/expected revision preserved; unknown write not refreshed or replayed",
+    "independent cash/offset reference sets collected independently by paymentLineId/receiptLineId and offsetId; original source head retained",
+    "original table immutable document ordinal keys are presentation-only; raw original rows/decimal text/document metadata/export/print authority preserved",
+    "reviews/query is existing explicitly read-only POST endpoint; same body/scope for each bounded batch; no write retry added"
+  ],
+  "execution": "all-activity-manual-final-whole-execution.json",
+  "newCasesPassed": 11,
+  "commandPreservationProof": "finance-leaf-command-preservation.json",
+  "wholeInvocationState": "actual RED:632passed/56failed/0skip; six completed own-family files accepted with original invocation identity and source provenance",
+  "createdAtUtc": "2026-11-05T14:38:50.794742+00:00",
+  "sourceApplicability": "All five product source SHA equal captured41 manifest; all included whole-family tests passed. SourceAdded/Removed/Drift/metadata all0. Root/C09 later Workshop changes are outside these five product files.",
+  "commandPreservationSha256": "c12e00de45500eac7c5be133a2b2ac302dd7b47e4dfe6ac671bab706396eb064",
+  "updatedAtUtc": "2026-11-05T16:21:52.383912+00:00",
+  "selectedWholeFiles": [
+    {
+      "path": "test/features/finance/finance_auxiliary_dialog_test.dart",
+      "passed": 3,
+      "failed": 0,
+      "executedTestSha256": "64dd7e0a71768b45e43cddb03e1676a525d065ae6a504bdd392209a92d210729"
+    },
+    {
+      "path": "test/features/finance/finance_open_item_classification_dialog_test.dart",
+      "passed": 5,
+      "failed": 0,
+      "executedTestSha256": "4b02ac7568ddfb85f9e4858f59cdb1afdea69d17ddfab1e05b5d57fc47044004"
+    },
+    {
+      "path": "test/features/finance/finance_classification_correction_dialog_test.dart",
+      "passed": 9,
+      "failed": 0,
+      "executedTestSha256": "7e991a5978ca395d89e761a6eb5b7ac408a5dc9e6a50baead58c07b565ab0e9e"
+    },
+    {
+      "path": "test/features/finance/finance_procurement_confirmation_dialog_test.dart",
+      "passed": 3,
+      "failed": 0,
+      "executedTestSha256": "8147a3fd8edcb6fc56a4224ba71dbe9a827f497c71decd5f8b81fa0b9352edae"
+    },
+    {
+      "path": "test/features/finance/finance_statement_document_dialog_test.dart",
+      "passed": 13,
+      "failed": 0,
+      "executedTestSha256": "5a0a1fcc86e63bdaf74d1b44415bfbfdb70d34af46279131befbf5762b53b5b2"
+    },
+    {
+      "path": "test/features/finance/finance_report_header_query_test.dart",
+      "passed": 19,
+      "failed": 0,
+      "executedTestSha256": "6e806ce89806ac717c6cf29028c2efca4775d7f8efbce23f4fde11ba305b22c0"
+    },
+    {
+      "path": "test/features/finance/finance_complete_source_dialogs_test.dart",
+      "passed": 11,
+      "failed": 0,
+      "executedTestSha256": "2eeb532398dd95f9d83ab1a84ddd282b806ed32653b37e785d1c4cdd32173e6d"
+    }
+  ],
+  "membershipBoundary": "Only current directory row-tap/edit navigation uses accepted object identity. Aux/Material index during existing responsive decoding and test O(1) predicates; bag, cross-query selection, confirmation, quick-create and pending writes unchanged."
+}

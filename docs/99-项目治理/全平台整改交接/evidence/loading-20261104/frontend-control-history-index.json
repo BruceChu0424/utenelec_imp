@@ -1,0 +1,326 @@
+{
+  "atUtc": "2026-11-05T22:25:29.295498+00:00",
+  "scope": "Completed diagnostic rounds with exact source labels; no aggregate current-green or final Main claim.",
+  "archive": "frontend-control-history-20261105T222518Z.zip",
+  "archiveSha256": "49cf0550b62ebe6a5ff48a948d5c623b45e25b56687f820befe92433c18517b4",
+  "archiveBytes": 5878433,
+  "crcVerified": true,
+  "allMemberSha256Verified": true,
+  "members": [
+    {
+      "path": "build/loading-validation/candidate-3068-canonical/receipt.json",
+      "bytes": 1780,
+      "sha256": "218b35f490258a99f84e2d56c7e3364333ebaab0c49b02d08a413357bc86c3a2"
+    },
+    {
+      "path": "build/loading-validation/final-integrate-deploy-preimage-review/fixture-receipt.json",
+      "bytes": 9226,
+      "sha256": "eb596673638ba01dbfd92e5a29d87c3ac3cbd48bd2e41aea94e94e1f4fb62c27"
+    },
+    {
+      "path": "build/loading-validation/final-integrate-effective-baseline-independent-peer.json",
+      "bytes": 4335,
+      "sha256": "50695181632798a904b87062f4e8caa20a4d2bfafbc0a5bf83628582302cb71d"
+    },
+    {
+      "path": "build/loading-validation/main-deps-deploy-inventory-review/fixture-receipt.json",
+      "bytes": 2934,
+      "sha256": "95dbdfc12734b6cf1ec6ca2de1ca669e57bec25f70ffdeaab5a8bb8a0c2f0e84"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-scoped-strict-execution.json",
+      "bytes": 1644,
+      "sha256": "6d085a93b2ba79a034862f39666cdd2f650e1ed821ea8ac0ee9814e733c1b5c7"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-scoped-strict-inputs.json",
+      "bytes": 679483,
+      "sha256": "c15420cfd5b0641b58e85b979d18f0cb32cc94673b0c4c95c9dd9f9329ecb94e"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-scoped-strict-scoped-dart.log",
+      "bytes": 431,
+      "sha256": "9be57604afba3bcf8dd1d4bd3cc68cb30e8fc706e714928b72475c079038ff22"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-tree-whole-execution.json",
+      "bytes": 741,
+      "sha256": "a612322865e2d64f869d717cc713534902f19e5cff8fdb8562c6fe125a13c38a"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-tree-whole-inputs.json",
+      "bytes": 680144,
+      "sha256": "508c4a10d1d677f90772500eceb4494e99466e2c329aaabc3d20961c6a22cc52"
+    },
+    {
+      "path": "build/loading-validation/main3068-intrinsic-tree-whole.jsonl",
+      "bytes": 1716,
+      "sha256": "1ceb5ed7b78886929b6138d613ad0bffe6377dcfa5e8d16c238f7658d9db14e5"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-first-case-diagnostic.json",
+      "bytes": 34054,
+      "sha256": "9f2607a17fbb60da0c08d7dcf1ab36699c91fc51b84f59f86505f0d7fe288dd1"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled-acceptance-state.json",
+      "bytes": 1070,
+      "sha256": "ac2d8484a6c85f9a50d51c1ee5667a673ccc3cc99ef745f6a5fc6d87a8ef3b09"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled-case-ledger.json",
+      "bytes": 4692,
+      "sha256": "a9e40bebe49068934824f4870c69ec146db52e3d894e57af91cbc6d3c556d62c"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled-execution.json",
+      "bytes": 767,
+      "sha256": "955c483f886fd2ede149666baefe4855e5c957a17904b0199cf5bf2347ca9d84"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled-inputs.json",
+      "bytes": 682516,
+      "sha256": "268ad8716ebf143305926eb4ca7fa58b816b3e71ecb9ffef92b15a68171cc1bb"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled-owned-stop.json",
+      "bytes": 1287,
+      "sha256": "b11bb8a28e7d12593c6f45179ad48f00abafd890109a3328652e9d93dbf66cf5"
+    },
+    {
+      "path": "build/loading-validation/main3068-material-fourteen-controlled.jsonl",
+      "bytes": 269197331,
+      "sha256": "d0ffc0657b793fcbb85dcc4ca77339984e4a6d9309581e9d5386788e8d0e61b4"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-first-material-control-case-ledger.json",
+      "bytes": 1124,
+      "sha256": "534fa6384a8e6c2b22a36378ed0ad0b0408f509944f821069d215841dcbf6d2d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-first-material-control-execution.json",
+      "bytes": 772,
+      "sha256": "4d489f5b1d5df21c1a4b5ea234530cc5a9c4fe173e3c53154621d62982325575"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-first-material-control-inputs.json",
+      "bytes": 680288,
+      "sha256": "fa1089f53d90632aa9c22f1953e6ad063e0d37e1358a64a98b1a2623f6c14a6d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-first-material-control.jsonl",
+      "bytes": 1613,
+      "sha256": "aa4834250b3f455f3124ffd44a57e2aacd258372e823ecb237711b28cec975d8"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-material-fourteen-case-ledger.json",
+      "bytes": 7846,
+      "sha256": "f06b5b479cb1d55a33db2c9496ad3484d5ec4b4a6c020024b4ab9ba90292aa0e"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-material-fourteen-execution.json",
+      "bytes": 767,
+      "sha256": "2c72244f2454a26cd1002eeb7ab1bca46cd5b227a273533b2b0fa318abb87ef4"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-material-fourteen-inputs.json",
+      "bytes": 682516,
+      "sha256": "164308a42bb9ee5a218e30c6bf99c06682fd39eb325f7178d5c61c8d07b73f8d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-material-fourteen-live-failures.json",
+      "bytes": 15521,
+      "sha256": "bd5d158fe48ef5829be5d22ece65d41e5bd7dd449d555dae00c6d2c42bec6718"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-material-fourteen.jsonl",
+      "bytes": 36621,
+      "sha256": "59b289a1b64962c4bcf6dc34298fa6d933b01460e7d1cae5fefcd44479ca257d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-output-expense-whole-case-ledger.json",
+      "bytes": 3750,
+      "sha256": "a54ba97feefdff75d625aefc078ef9e237ffdfb0b94f5d227dfb6162ed296135"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-output-expense-whole-execution.json",
+      "bytes": 840,
+      "sha256": "c83af733a5755919b9c5bc1cbe03bb1039e020650c25ad32033ecad8c4ac4684"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-output-expense-whole-inputs.json",
+      "bytes": 680232,
+      "sha256": "26b75d6a925ada556069c186be412c3d6921f83504034465e46f52e43b0a59a6"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-output-expense-whole.jsonl",
+      "bytes": 9344,
+      "sha256": "edc314687ab4dd52233c79a13b15841ae634ca519072f2d04bb8556c57cfc385"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-scoped-strict-execution.json",
+      "bytes": 1646,
+      "sha256": "a735939386627a4b8fcb3392ca36a99137e2ea7c88c0a0132ae0366ee435f34b"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-scoped-strict-inputs.json",
+      "bytes": 679483,
+      "sha256": "ef72a9992427b3a191ed1b97cc9f92f7d3a5ef15c111903a8d610657b74e3e1d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-scoped-strict-scoped-dart.log",
+      "bytes": 250,
+      "sha256": "3306d1d91f01622da0f4c68bc3912b5b67647de016bf1d869a44cb0895a1dc1b"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-tree-whole-case-ledger.json",
+      "bytes": 5590,
+      "sha256": "f8ca749347a6b31b19cf840e0b26c0e8989ffb97f13c97c0b7bf1b751aa2422e"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-tree-whole-execution.json",
+      "bytes": 742,
+      "sha256": "000b4f92a6fc2128d4689f753d291e68a6176b19e5428f8716e2b6d0c8eb3796"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-tree-whole-inputs.json",
+      "bytes": 680144,
+      "sha256": "07bdfdee77d9df30d4878f0f623156a5c5d04d96b0f4b0a04bbde7f8efb5c01d"
+    },
+    {
+      "path": "build/loading-validation/main3068-parentdata-tree-whole.jsonl",
+      "bytes": 13928,
+      "sha256": "5e968706705872370627383acd145e26344362e3cdb406b98d09254f17a204be"
+    },
+    {
+      "path": "build/loading-validation/main3068-shared-repairs-whole-case-ledger.json",
+      "bytes": 25393,
+      "sha256": "758f48614f90bb1b70be045f91ec981107b0c95076bfbc35eaaf77b1a9b80917"
+    },
+    {
+      "path": "build/loading-validation/main3068-shared-repairs-whole-execution.json",
+      "bytes": 1219,
+      "sha256": "1557490f9970933792fa1994171e038e968ef4eb9353df8a123ff55fc4f36c72"
+    },
+    {
+      "path": "build/loading-validation/main3068-shared-repairs-whole-inputs.json",
+      "bytes": 680622,
+      "sha256": "21f44be221268898aa53b4bc9b5650baf1a17da9165b393c6cf6eb34bc27ae4a"
+    },
+    {
+      "path": "build/loading-validation/main3068-shared-repairs-whole.jsonl",
+      "bytes": 75660,
+      "sha256": "a2f34789aa1302ca87414d5b40e8592a3853cc268b3d71489856bc6ec38e0cd9"
+    },
+    {
+      "path": "build/loading-validation/main3068-sharedfront-strict-all-dart.log",
+      "bytes": 1493,
+      "sha256": "e72b607eb95a40b60a1fcf69bd46b945abc3623331d0337fd22f1401a7e3c4ca"
+    },
+    {
+      "path": "build/loading-validation/main3068-sharedfront-strict-execution.json",
+      "bytes": 1394,
+      "sha256": "f48206c40feca4030759e3c6dc914e70196b1106b7b42cf1b94968ae85f0e1ca"
+    },
+    {
+      "path": "build/loading-validation/main3068-sharedfront-strict-inputs.json",
+      "bytes": 679483,
+      "sha256": "308cd96d99ce2bf143449b6479c82b5201104a595b4ab814727342581f3f6452"
+    },
+    {
+      "path": "build/loading-validation/material-controlled-fourteen-targets.json",
+      "bytes": 2742,
+      "sha256": "29c3c916917af2dd64b17e0e7e72645199bcb90276f5b4394722f18f86ddfeab"
+    },
+    {
+      "path": "build/loading-validation/root-3068-parentdata-freeze.json",
+      "bytes": 684024,
+      "sha256": "a5003ba7e7d21a038f2b4085f672c6684a4d37ed929f39a263fe4a2cf7bb6788"
+    },
+    {
+      "path": "build/loading-validation/root-3068-sharedfront-first-freeze.json",
+      "bytes": 684024,
+      "sha256": "f05ed7c579227c79cb71a3f27472c148157578dc0931c2e38741e9a4c0e57a2f"
+    },
+    {
+      "path": "build/loading-validation/root-3068-sharedfront-intrinsic-freeze.json",
+      "bytes": 684024,
+      "sha256": "d4434e5f7d694e88e081b94739b41fbab540a6306c7cce3f1da1967c69cb79fc"
+    }
+  ],
+  "runs": [
+    {
+      "label": "main3068-sharedfront-strict",
+      "actualExitCode": 3,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-shared-repairs-whole",
+      "actualExitCode": 1,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-material-fourteen-controlled",
+      "actualExitCode": 1,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "INCOMPLETE after one complete failed body and owned cascade stop; raw runner errors retained"
+    },
+    {
+      "label": "main3068-intrinsic-scoped-strict",
+      "actualExitCode": 3,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-intrinsic-tree-whole",
+      "actualExitCode": 1,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-parentdata-scoped-strict",
+      "actualExitCode": 0,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-parentdata-tree-whole",
+      "actualExitCode": 0,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-parentdata-first-material-control",
+      "actualExitCode": 0,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-parentdata-output-expense-whole",
+      "actualExitCode": 0,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    },
+    {
+      "label": "main3068-parentdata-material-fourteen",
+      "actualExitCode": 1,
+      "sourceDrift": [],
+      "metadataDrift": [],
+      "acceptance": "Exact completed invocation only, not an overall current-source acceptance"
+    }
+  ],
+  "mainIntegrated": false,
+  "formalDistribution": false,
+  "companyUat": false
+}

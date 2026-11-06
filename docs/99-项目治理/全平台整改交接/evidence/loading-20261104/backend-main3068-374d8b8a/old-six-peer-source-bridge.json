@@ -1,0 +1,43 @@
+{
+  "priorPeerSha256": "c6cc92a3d3c03b8715d0583648506e7af595f39d0d8ef7bdd7e2ce1e56ffb499",
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java",
+      "sameMainBlob": true,
+      "sameTaskBlob": true,
+      "sameBaseBlob": true
+    }
+  ],
+  "sourceTripletsExact": true,
+  "runtimeClaim": false
+}

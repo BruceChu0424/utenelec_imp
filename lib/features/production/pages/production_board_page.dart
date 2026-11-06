@@ -59,7 +59,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -80,7 +79,6 @@ import '../models/production_material_analysis.dart';
 import '../providers/production_pending_provider.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_execution_group_count_provider.dart';
-import '../providers/production_page_preparation.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
@@ -107,9 +105,6 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 顶栏刷新与返回刷新共同推进；当前草稿/待排产/进行中/历史面板接收此代际。
   int _refreshRevision = 0;
   final _refreshController = UtenRefreshController();
-  Object? _preparationInputs;
-  bool _preparationPaused = false;
-
   @override
   void dispose() {
     _refreshController.dispose();
@@ -152,25 +147,6 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     // null/0 一律不渲染。
     final pendingCount = ref.watch(productionPendingCountProvider).count;
     final ongoingCount = ref.watch(productionExecutionGroupCountProvider);
-    final preparationInputs = (_keyword, _refreshRevision);
-    if (_preparationInputs != null && _preparationInputs != preparationInputs) {
-      _preparationPaused = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _preparationInputs == preparationInputs) {
-          setState(() => _preparationPaused = false);
-        }
-      });
-    }
-    _preparationInputs = preparationInputs;
-    if (segment != 'history' && segment != 'drafts') {
-      prepareProductionBoardPages(
-        ref,
-        context,
-        keyword: _keyword,
-        refreshRevision: _refreshRevision,
-        canPrepare: () => !_preparationPaused,
-      );
-    }
     return UtenRefreshScope(
       controller: _refreshController,
       child: Scaffold(
@@ -608,6 +584,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
     with
         UtenRefreshParticipant<_PendingPanel>,
         ScopedPagedReadViewMixin<_PendingPanel> {
+  @override
+  Future<void> onReadViewResumed() => _loadPage();
+
   final _navigation = PageNavigationSession();
 
   @override
@@ -675,7 +654,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) trackRefresh(_load(preferPrepared: true));
+      if (mounted) trackRefresh(_load());
     });
   }
 
@@ -739,16 +718,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
     return _load();
   }
 
-  Future<void> _load({bool useCache = false, bool preferPrepared = false}) =>
-      trackRefresh(
-        _loadPage(useCache: useCache, preferPrepared: preferPrepared),
-        replaceKey: 'rows',
-      );
+  Future<void> _load({bool useCache = false}) =>
+      trackRefresh(_loadPage(useCache: useCache), replaceKey: 'rows');
 
-  Future<void> _loadPage({
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _loadPage({bool useCache = false}) async {
     final requestVersion = ++_requestVersion;
     final kw = widget.keyword;
     final filters = Map<String, String?>.of(_filters);
@@ -776,6 +749,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
       // 表头桶不控制列表就绪；空列表也应在主请求返回时立即显示。
       final rows = readScopedPage<SchedulePendingRow>(
         requestedPage,
+        idOf: (row) => row.orderItemId,
         query: readQuery,
         currentQuery: () => [
           ref.read(productionPlanRepositoryProvider),
@@ -786,8 +760,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
           _pageSize,
         ],
         useCache: useCache,
-        fetchPage: (page) => repo.readSchedulePending(
-          preparedRead: ref.read(productionSchedulePreparedPageProvider),
+        fetchPage: (page) => repo.schedulePending(
           page: page,
           size: _pageSize,
           keyword: kw,
@@ -795,7 +768,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
           order: sort == null ? null : (ascending ? 'asc' : 'desc'),
           status: filters['status'],
           billNo: filters['orderBillNo'],
-          preferPrepared: preferPrepared,
         ),
       );
       unawaited(_loadFacets(repo, kw, current));
@@ -820,6 +792,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
         _loading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!current()) return;
       setState(() {
         _error = productionErrorMessage(e, fallback: '加载待排产列表失败');
@@ -1354,6 +1327,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     with
         UtenRefreshParticipant<_PlanPanel>,
         ScopedPagedReadViewMixin<_PlanPanel> {
+  @override
+  Future<void> onReadViewResumed() => _loadPage();
+
   final _navigation = PageNavigationSession();
 
   @override
@@ -1390,8 +1366,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     _error = scopedPagedReadRejection?.message;
   });
 
-  int _pageNo = 1;
-  int _pageSize = 20;
+  static const int _pageSize = 100;
 
   String? _workshop; // null=全部车间
   DateTime? _from = recentMonthStart(); // 开单日期范围（历史模式由 forced 覆盖）
@@ -1452,7 +1427,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
 
   /// 筛选/排序/每页条数变化：回到第一页重新加载。
   Future<void> _reload() {
-    _pageNo = 1;
     return _load();
   }
 
@@ -1481,11 +1455,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
         widget.forcedDateFrom ?? (_from == null ? null : _fmtDate(_from!));
     final to = widget.forcedDateTo ?? (_to == null ? null : _fmtDate(_to!));
     final closed = widget.closed;
-    final size = _pageSize;
+    const size = _pageSize;
     try {
       // 汇总和车间选项独立发布，不让它们阻塞计划列表和空态。
       final rows = readScopedPage<PlanProgressRow>(
-        _pageNo,
+        1,
+        idOf: (row) => row.planId,
         query: (repo, closed, sort, size, kw, ws, from, to),
         currentQuery: () => (
           ref.read(productionPlanRepositoryProvider),
@@ -1522,15 +1497,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
       unawaited(_loadWorkshops(repo, current));
       final page = await rows;
       if (!current()) return;
-      // 服务端已把越界页码回退到最后一页；与本地页码不一致时对齐（如过滤后总数变少）
-      if (page.page != _pageNo) {
-        _pageNo = page.page;
-      }
       setState(() {
         _page = page;
         _loading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!current()) return;
       setState(() {
         _error = productionErrorMessage(e, fallback: '加载生产进度失败');
@@ -1817,13 +1789,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     );
   }
 
-  /// 右栏：总览条 + 卡片列表 + 底部分页条。
+  /// 右栏：权威总览与完整结果的本地卡片列表。
   Widget _listPane(ThemeData theme) {
     return Column(
       children: [
         _summaryCard(theme),
         Expanded(child: _list(theme)),
-        _pager(theme),
       ],
     );
   }
@@ -1853,75 +1824,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  /// 底部分页条：总数 + 每页条数 + 翻页。
-  Widget _pager(ThemeData theme) {
-    final p = _page;
-    final total = p?.total ?? 0;
-    final pages = p?.totalPages ?? 0;
-    final pageSize = UtenDropdownScrollScope(
-      nativeDropdown: true,
-      child: DropdownButton<int>(
-        value: _pageSize,
-        underline: const SizedBox.shrink(),
-        items: const [
-          DropdownMenuItem(value: 20, child: Text('20 条/页')),
-          DropdownMenuItem(value: 50, child: Text('50 条/页')),
-          DropdownMenuItem(value: 100, child: Text('100 条/页')),
-        ],
-        onChanged: (v) {
-          if (v == null || v == _pageSize) return;
-          _pageSize = v;
-          _reload();
-        },
-      ),
-    );
-    final pageControls = UtenPagination(
-      currentPage: _pageNo,
-      totalPages: pages,
-      busy: _loading,
-      onPageChanged: (target) {
-        _pageNo = target;
-        _load(useCache: true);
-      },
-    );
-    return LayoutBuilder(
-      builder: (_, constraints) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-        child: constraints.maxWidth < 600
-            ? Column(
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        '共 $total 张',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Spacer(),
-                      pageSize,
-                    ],
-                  ),
-                  pageControls,
-                ],
-              )
-            : Row(
-                children: [
-                  Text(
-                    '共 $total 张',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  pageSize,
-                  pageControls,
-                ],
-              ),
       ),
     );
   }
@@ -1963,9 +1865,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     }
     return Stack(
       children: [
-        ListView(
+        ListView.builder(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-          children: [for (final r in rows) _planCard(theme, r)],
+          itemCount: rows.length,
+          itemBuilder: (_, index) => _planCard(theme, rows[index]),
         ),
         if (_loading)
           const Align(
@@ -1988,6 +1891,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
         ? null
         : '${r.planBeginDate?.substring(0, 10) ?? '？'} ~ ${r.planEndDate?.substring(0, 10) ?? '？'}';
     return Card(
+      key: ValueKey('production-progress-plan-${r.planId}'),
       margin: const EdgeInsets.only(top: UtenSpacing.s8),
       color: overdue
           ? theme.colorScheme.error.withValues(alpha: 0.10)

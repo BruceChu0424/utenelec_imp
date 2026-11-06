@@ -32,9 +32,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/permissions.dart';
-import '../providers/finance_arrival_prepared_page_provider.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../../shared/models/procurement_inbound.dart';
@@ -47,6 +47,7 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
   const FinanceArrivalExceptionTasksPage({
     super.key,
     this.embedded = false,
+    this.historyOnly = false,
     this.refreshTick = 0,
     this.refreshCompletion,
     this.externalHeader,
@@ -55,6 +56,7 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
   /// 嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容容器
   /// （外层提供标题/刷新/容器）。
   final bool embedded;
+  final bool historyOnly;
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
@@ -70,7 +72,13 @@ class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceArrivalExceptionTasksPageState
-    extends ConsumerState<FinanceArrivalExceptionTasksPage> {
+    extends ConsumerState<FinanceArrivalExceptionTasksPage>
+    with ScopedPagedReadViewMixin<FinanceArrivalExceptionTasksPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   PagedResult<ProcurementArrivalException>? _result;
   Object? _acceptedQuery;
   bool _loading = false;
@@ -84,6 +92,7 @@ class _FinanceArrivalExceptionTasksPageState
   @override
   void initState() {
     super.initState();
+    if (widget.historyOnly) _status = 'PROCESSED';
     listenReadOwner(ref, () {
       setState(() {
         ++_requestVersion;
@@ -100,14 +109,14 @@ class _FinanceArrivalExceptionTasksPageState
                 ref
                     .read(currentPermissionsProvider)
                     .contains(Perm.financeOrderApprovalView))) {
-          _load(1, preferPrepared: true);
+          _load(1);
         }
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
-      _load(1, preferPrepared: true).whenComplete(() {
+      _load(1).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -137,7 +146,7 @@ class _FinanceArrivalExceptionTasksPageState
     super.dispose();
   }
 
-  Future<void> _load(int page, {bool preferPrepared = false}) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final requestVersion = ++_requestVersion;
     final owner = captureReadOwner(ref);
     bool current() => mounted && requestVersion == _requestVersion && owner();
@@ -149,15 +158,16 @@ class _FinanceArrivalExceptionTasksPageState
     });
     try {
       final repo = ref.read(procurementInboundRepositoryProvider);
-      final result = page == 1
-          ? await ref
-                .read(financeArrivalPreparedPageProvider)
-                .read(
-                  financeArrivalReadKey(repo, page: page, status: query),
-                  () => repo.financeTasks(page: page, status: query),
-                  preferPrepared: preferPrepared,
-                )
-          : await repo.financeTasks(page: page, status: query);
+      final result = await readScopedPage<ProcurementArrivalException>(
+        page,
+        idOf: (row) => row.id,
+        query: (repo, query),
+        currentQuery: () =>
+            (ref.read(procurementInboundRepositoryProvider), _status),
+        useCache: useCache,
+        fetchPage: (target) =>
+            repo.financeTasks(page: target, size: 100, status: query),
+      );
       if (!current()) return;
       setState(() {
         _result = result;
@@ -165,6 +175,7 @@ class _FinanceArrivalExceptionTasksPageState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       setState(() {
         if (nativeReadAccessDenied(error)) {
@@ -174,7 +185,8 @@ class _FinanceArrivalExceptionTasksPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!current()) return;
       setState(() {
         _error = '超量到货任务加载失败，请检查网络后重试';
@@ -189,7 +201,11 @@ class _FinanceArrivalExceptionTasksPageState
     // 返回重拉当前页；嵌入形态由业务审核中心的 refreshTick 驱动，不重复注册。
     if (!widget.embedded) {
       _myLocation ??= currentLocationOr(context, RouteName.finance);
-      ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
+      Future<void> visibleReadReturn() => _load(_result?.page ?? 1);
+      _activityReturnRead = () async {
+        await Future<void>.sync(visibleReadReturn);
+      };
+      ref.onPageResume(_myLocation!, visibleReadReturn);
     }
     final result = _result;
     final body = SafeArea(child: _buildList(result));
@@ -224,15 +240,17 @@ class _FinanceArrivalExceptionTasksPageState
       UtenFilterToolbar<String>(
         segmentsKey: const Key('finance-arrival-task-status'),
         segments: [
-          UtenFilterSegment(
-            value: 'PENDING_FINANCE',
-            label: '待审批',
-            count: ref.watch(
-              badgeFactOrNullProvider(BadgeFact.financeArrivalException),
+          if (!widget.historyOnly)
+            UtenFilterSegment(
+              value: 'PENDING_FINANCE',
+              label: '待审批',
+              count: ref.watch(
+                badgeFactOrNullProvider(BadgeFact.financeArrivalException),
+              ),
+              countForm: UtenSegmentCountForm.actionable,
             ),
-            countForm: UtenSegmentCountForm.actionable,
-          ),
-          const UtenFilterSegment(value: 'PROCESSED', label: '已处理'),
+          if (widget.historyOnly || !widget.embedded)
+            const UtenFilterSegment(value: 'PROCESSED', label: '历史单据'),
         ],
         selected: {_status},
         onSelectionChanged: (value) {
@@ -334,7 +352,7 @@ class _FinanceArrivalExceptionTasksPageState
               page: result.page,
               totalPages: result.totalPages,
               loading: _loading,
-              onPage: _load,
+              onPage: (page) => _load(page, useCache: true),
             ),
           ],
           const SizedBox(height: UtenSpacing.s24),

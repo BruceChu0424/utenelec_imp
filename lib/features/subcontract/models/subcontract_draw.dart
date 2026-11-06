@@ -205,6 +205,16 @@ class SubcontractDrawTaskList {
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
 
+  SubcontractDrawTaskList withPage(
+    PagedResult<SubcontractDrawTaskRow> combined,
+  ) => SubcontractDrawTaskList(
+    page: combined,
+    statusCounts: statusCounts,
+    canSubmitDraw: canSubmitDraw,
+    facets: facets,
+    nullCounts: nullCounts,
+  );
+
   factory SubcontractDrawTaskList.fromJson(Map<String, dynamic> json) {
     final page = json['page'];
     if (page is! Map) {

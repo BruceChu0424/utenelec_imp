@@ -1,0 +1,27 @@
+{
+  "createdAtUtc": "2026-11-05T12:13:55.826535+00:00",
+  "kind": "EXPLICIT_TEST_FIXTURE_ONLY_SOURCE_APPLICABILITY",
+  "previousInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "currentInputSha256": "5fcd0a4e6fa40ea4cf783f62ea123d329413d03998ed6dcb866309dd0a6db089",
+  "sharedProductionSourceSha256": "2011dcac14293aca55c0b93089b21fcd4d869457786dfa86488ca11d7ba18d81",
+  "sourceFiles": 6955,
+  "changedFiles": [
+    "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java"
+  ],
+  "added": [],
+  "missing": [],
+  "allProductionAndLegacyFilesByteEqual": true,
+  "allOtherTestJavaAndTestResourcesByteEqual": true,
+  "directReferencesToChangedFixtureOutsideItself": [],
+  "originalFinanceFixtureBodyAndAssertionsBytePreservedByExactInversion": true,
+  "fixtureConfigurationBoundary": "The new datasource/scan staging configuration is nested @TestConfiguration imported explicitly by FinanceApplicationsPostgresTest only; it is not a production component or imported by another test source.",
+  "acceptedPreviousEvidence": {
+    "capacity": "All20 passed cases have identical production/test/resource inputs.",
+    "integration-f4-first": "Only82 passed cases belonging to15 unchanged classes are applicable. The raw whole16-class run remains RED with its original exit1; the entire old Finance class is excluded."
+  },
+  "excludedAffectedClasses": [
+    "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest"
+  ],
+  "mandatoryNewRuntimeEvidence": "Full current FinanceApplicationsPostgresTest must independently complete actual exit0, every testcase passed and0skip, against the real1039 ->1040 ->current upgraded business DB with mapped-schema validation and all-worker/scan-journal routing proofs.",
+  "forbiddenTransfers": "This proof is restricted to the immediately prior f4 snapshot with exactly one test fixture changed. It does not adopt0c/0d/f619/5a results or pretend differing aggregate hashes are equal."
+}

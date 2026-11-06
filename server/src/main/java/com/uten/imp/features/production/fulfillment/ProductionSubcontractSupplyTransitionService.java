@@ -55,7 +55,7 @@ public class ProductionSubcontractSupplyTransitionService
                                        peg.allocated_qty,
                                        peg.consumed_qty,
                                        peg.released_qty
-                                FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
+                                FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) item
                                 JOIN production_material_supply_pegs peg
                                   ON peg.supply_type =
                                     'SUBCONTRACT_APPLICATION_ITEM'
@@ -116,7 +116,7 @@ public class ProductionSubcontractSupplyTransitionService
                                        src.alloc_qty *
                                            COALESCE(item.unit_rate, 1),
                                        item.deliver_date
-                                FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
+                                FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
                                 JOIN subcontract_order_item_sources src
                                   ON src.order_item_id = item.id
                                 WHERE item.order_id = :orderId
@@ -301,7 +301,7 @@ public class ProductionSubcontractSupplyTransitionService
                                 FROM
                                   production_material_subcontract_peg_transfers
                                     transfer
-                                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
+                                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
                                   ON item.id = transfer.order_item_id
                                 JOIN production_material_supply_pegs source
                                   ON source.id = transfer.from_peg_id
@@ -381,7 +381,7 @@ public class ProductionSubcontractSupplyTransitionService
         List<UUID> warehouses = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT warehouse_id
-                                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) subcontract_receipts
+                                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) subcontract_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
                                 """)
@@ -404,7 +404,7 @@ public class ProductionSubcontractSupplyTransitionService
         lockReceiptDimensions(receiptId, warehouseId);
         em.createNativeQuery("""
                         SELECT demand.id
-                        FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                        FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type =
                                 'SUBCONTRACT_ORDER_ITEM'
@@ -482,7 +482,7 @@ public class ProductionSubcontractSupplyTransitionService
                                 WITH receipt_segments AS (
                                     SELECT DISTINCT
                                         demand.execution_segment_id
-                                    FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                                    FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
                                     JOIN production_material_supply_pegs peg
                                       ON peg.supply_type =
                                             'SUBCONTRACT_ORDER_ITEM'
@@ -501,7 +501,7 @@ public class ProductionSubcontractSupplyTransitionService
                                 dimensions AS (
                                     SELECT receipt_item.goods_id,
                                            receipt_item.color_id
-                                    FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipt_items',archive_origin.id)) receipt_item
+                                    FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
                                     WHERE receipt_item.receipt_id = :receiptId
                                       AND receipt_item.is_deleted = FALSE
                                     UNION ALL
@@ -532,7 +532,7 @@ public class ProductionSubcontractSupplyTransitionService
         List<UUID> receipts = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT id
-                                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) subcontract_receipts
+                                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) subcontract_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
                                   AND status = 1

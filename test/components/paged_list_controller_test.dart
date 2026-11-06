@@ -9,16 +9,248 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/paged_list_controller.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 
-PagedResult<String> _page(List<String> items, {int total = 0}) => PagedResult(
+PagedResult<String> _page(List<String> items, {int? total}) => PagedResult(
   items: items,
   page: 1,
   size: items.length,
-  total: total,
+  total: total ?? items.length,
   totalPages: 1,
 );
 
 void main() {
+  for (final failure in [false, true]) {
+    test(
+      'retired owner late result never clears a newer owner; failure=$failure',
+      () async {
+        final c = PagedListController<String>();
+        addTearDown(c.dispose);
+        var oldOwnerActive = true;
+        await c.load(
+          1,
+          fetch: () async => _page(['private A']),
+          isCurrent: () => true,
+          ownerIsCurrent: () => oldOwnerActive,
+        );
+        final gate = Completer<PagedResult<String>>();
+        final old = c.load(
+          1,
+          silent: true,
+          fetch: () => gate.future,
+          isCurrent: () => true,
+          ownerIsCurrent: () => oldOwnerActive,
+        );
+        oldOwnerActive = false;
+        await c.load(
+          1,
+          fetch: () async => _page(['new B']),
+          isCurrent: () => true,
+          ownerIsCurrent: () => true,
+        );
+        final accepted = c.page;
+        if (failure) {
+          gate.completeError(ApiException('FORBIDDEN', 'retired A denied'));
+        } else {
+          gate.complete(_page(['retired A']));
+        }
+        await old;
+        expect(c.page, same(accepted));
+        expect(c.page!.items, ['new B']);
+        expect(readWindowBindingOf(c.page!.items)!.isCurrent, isTrue);
+        expect(c.loading, isFalse);
+        expect(c.refreshing, isFalse);
+        expect(c.error, isNull);
+        expect(c.refreshError, isNull);
+      },
+    );
+  }
+
+  for (final failure in [false, true]) {
+    test(
+      'owner-only retirement clears accepted data and flags, late failure=$failure',
+      () async {
+        final c = PagedListController<String>();
+        addTearDown(c.dispose);
+        var active = true;
+        await c.load(
+          1,
+          fetch: () async => _page(['private accepted']),
+          isCurrent: () => true,
+          ownerIsCurrent: () => active,
+        );
+        final binding = readWindowBindingOf(c.page!.items)!;
+        final gate = Completer<PagedResult<String>>();
+        final pending = c.load(
+          1,
+          silent: true,
+          fetch: () => gate.future,
+          isCurrent: () => true,
+          ownerIsCurrent: () => active,
+        );
+        expect(c.refreshing, isTrue);
+        active = false;
+        if (failure) {
+          gate.completeError(ApiException('FORBIDDEN', 'retired owner denied'));
+        } else {
+          gate.complete(_page(['private late']));
+        }
+        await pending;
+        expect(c.page, isNull);
+        expect(binding.isCurrent, isFalse);
+        expect(c.loading, isFalse);
+        expect(c.refreshing, isFalse);
+        expect(c.refreshedPages, isEmpty);
+        expect(c.error, isNull);
+        expect(c.refreshError, isNull);
+        await c.load(
+          1,
+          fetch: () async => _page(['new owner']),
+          isCurrent: () => true,
+          ownerIsCurrent: () => true,
+        );
+        expect(c.page!.items, ['new owner']);
+        expect(c.error, isNull);
+      },
+    );
+  }
+
+  for (final fails in [false, true]) {
+    test(
+      'persistent owner preserves data/session across request generations; fails=$fails',
+      () async {
+        final c = PagedListController<String>();
+        addTearDown(c.dispose);
+        var generation = 0;
+        final first = ++generation;
+        await c.load(
+          1,
+          fetch: () async => _page(['accepted']),
+          isCurrent: () => generation == first,
+          ownerIsCurrent: () => true,
+        );
+        final accepted = c.page!;
+        final binding = readWindowBindingOf(accepted.items)!;
+        final revision = c.paginationRevision;
+        final gate = Completer<PagedResult<String>>();
+        final second = ++generation;
+        final pending = c.load(
+          1,
+          silent: true,
+          fetch: () => gate.future,
+          isCurrent: () => generation == second,
+          ownerIsCurrent: () => true,
+        );
+        expect(c.page, same(accepted));
+        expect(c.loading, isFalse);
+        expect(c.refreshing, isTrue);
+        expect(binding.isCurrent, isTrue);
+        if (fails) {
+          gate.completeError(ApiException('NETWORK', 'offline'));
+        } else {
+          gate.complete(_page(['fresh']));
+        }
+        await pending;
+        expect(c.paginationRevision, revision);
+        expect(
+          readWindowBindingOf(c.page!.items)!.sameSession(binding),
+          isTrue,
+        );
+        expect(c.page!.items, fails ? ['accepted'] : ['fresh']);
+        expect(c.refreshError, fails ? 'offline' : isNull);
+        expect(c.error, isNull);
+        expect(c.loading, isFalse);
+        expect(c.refreshing, isFalse);
+        final third = ++generation;
+        await c.load(
+          1,
+          silent: true,
+          fetch: () async => _page(['retry']),
+          isCurrent: () => generation == third,
+          ownerIsCurrent: () => true,
+        );
+        expect(c.page!.items, ['retry']);
+        expect(
+          readWindowBindingOf(c.page!.items)!.sameSession(binding),
+          isTrue,
+        );
+      },
+    );
+  }
+  test(
+    'persistent owner ABA retires accepted data before assigning a new owner',
+    () async {
+      final c = PagedListController<String>();
+      addTearDown(c.dispose);
+      var ownerEpoch = 0, generation = 0;
+      Future<void> read(
+        Future<PagedResult<String>> Function() fetch, {
+        bool silent = false,
+      }) {
+        final epoch = ownerEpoch, request = ++generation;
+        return c.load(
+          1,
+          silent: silent,
+          fetch: fetch,
+          isCurrent: () => generation == request,
+          ownerIsCurrent: () => ownerEpoch == epoch,
+        );
+      }
+
+      await read(() async => _page(['private A']));
+      final original = readWindowBindingOf(c.page!.items)!;
+      final oldGate = Completer<PagedResult<String>>();
+      final old = read(() => oldGate.future, silent: true);
+      ownerEpoch++;
+      final middleGate = Completer<PagedResult<String>>();
+      final middle = read(() => middleGate.future, silent: true);
+      expect(c.page, isNull);
+      expect(original.isCurrent, isFalse);
+      expect(c.loading, isTrue);
+      expect(c.refreshing, isFalse);
+      ownerEpoch++;
+      await read(() async => _page(['new A']), silent: true);
+      final current = readWindowBindingOf(c.page!.items)!;
+      expect(current.sameSession(original), isFalse);
+      oldGate.completeError(ApiException('FORBIDDEN', 'old A denied'));
+      middleGate.complete(_page(['old B']));
+      await Future.wait([old, middle]);
+      expect(c.page!.items, ['new A']);
+      expect(current.isCurrent, isTrue);
+      expect(c.error, isNull);
+      expect(c.refreshError, isNull);
+    },
+  );
+  test(
+    'persistent owner admission rejects an inactive source before transport',
+    () async {
+      final c = PagedListController<String>();
+      addTearDown(c.dispose);
+      var requests = 0;
+      var active = true;
+      await c.load(
+        1,
+        fetch: () async => _page(['private accepted']),
+        isCurrent: () => true,
+        ownerIsCurrent: () => active,
+      );
+      active = false;
+      await c.load(
+        1,
+        fetch: () async {
+          requests++;
+          return _page(['private']);
+        },
+        isCurrent: () => true,
+        ownerIsCurrent: () => false,
+      );
+      expect(requests, 0);
+      expect(c.page, isNull);
+      expect(c.loading, isFalse);
+      expect(c.refreshing, isFalse);
+    },
+  );
+
   test('最新请求胜出：旧慢请求的响应不回写', () async {
     final c = PagedListController<String>();
     var notifyCount = 0;
@@ -35,7 +267,7 @@ void main() {
     await slow;
 
     expect(c.page?.items, const ['new']);
-    expect(c.pageNum, 2);
+    expect(c.pageNum, 1);
     expect(c.loading, isFalse);
     expect(notifyCount, greaterThan(0));
     c.dispose();

@@ -166,6 +166,7 @@ class SubcontractDocItem {
     this.unitId,
     this.unitRate,
     this.unitRateText,
+    this.unitRateIsRecorded = true,
     this.qty,
     this.qtyText,
     this.price,
@@ -229,6 +230,8 @@ class SubcontractDocItem {
   final String? unitId;
   final double? unitRate;
   final String? unitRateText;
+  final bool unitRateIsRecorded;
+  String? get recordedUnitRateText => unitRateIsRecorded ? unitRateText : null;
   final double? qty;
   final String? qtyText;
   final double? price;
@@ -345,6 +348,9 @@ class SubcontractDocItem {
     unitId: json['unitId'] as String?,
     unitRate: double.tryParse(json['unitRate']?.toString() ?? ''),
     unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    unitRateIsRecorded:
+        json['unitRateIsRecorded'] != false &&
+        recordedDocumentDecimal(json, 'unitRate') != null,
     qty: double.tryParse(json['qty']?.toString() ?? ''),
     qtyText: recordedDocumentDecimal(json, 'qty'),
     price: (json['price'] as num?)?.toDouble(),

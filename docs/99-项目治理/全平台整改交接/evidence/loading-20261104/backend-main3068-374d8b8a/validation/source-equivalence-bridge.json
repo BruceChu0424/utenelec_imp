@@ -1,0 +1,1475 @@
+{
+  "oldSource": "0d49fabceb36b97e6c871ab47762231f59bf4533e1bbdb46deab690c75377bbb",
+  "oldCompleteSource": "37195a9255368b61933f8c657439f5206211e96334b236d5b025455041bc5bd3",
+  "currentSource": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "currentMain": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "producerBridge": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageRead.java",
+      "priorAndCurrentSha256": "1781a242deef01c64fa2398534da24f6ef51068343f5dba259b0993828d9c7ad",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportService.java",
+      "priorAndCurrentSha256": "0925667f369b295cb357a6caeb37ce8b1dd531af09cd2525f9ff4dfc0fdb2128",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java",
+      "priorAndCurrentSha256": "dcf1812eaf9d6bb871b527cdc299886f9e2149dd1b9fe85932cc10f38344dc2c",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/util/InteractiveTaskReadScope.java",
+      "priorAndCurrentSha256": "8b09218e84d4964caafd62d23079f8771b8e3f8353d0cbb6bde2863ffc634572",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "priorAndCurrentSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
+      "priorAndCurrentSha256": "06b6d7260c601e3e0bf0d4b36a18ea89f360bc585de28509f3a9a9b60048651d",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
+      "priorAndCurrentSha256": "61cb8964603fd31d20a38c48546c53390191eb57855192f568b3e0d177a41edd",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DailyReportDraftClaimsPostgresTest.java",
+      "priorAndCurrentSha256": "efa59f9ec56ef43e03f257404fcce3a96876d422e60fcaaad930cd303837703f",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageReadPostgresTest.java",
+      "priorAndCurrentSha256": "d1ad5a998a4ff75ff765accaf7eaa23468caaa6ddbdf6e8a318fd2348b3049cd",
+      "exactByteEquivalent": true
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java",
+      "priorAndCurrentSha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847",
+      "exactByteEquivalent": true
+    }
+  ],
+  "prior47ClassSourceInventory": [
+    {
+      "class": "ArchitectureBoundaryTest",
+      "path": "server/src/test/java/com/uten/imp/architecture/ArchitectureBoundaryTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "97e4829a8b8bdca710b5cf31f311a5f378008c68baa6d56c6e71331b2012113b",
+      "currentSha256": "97e4829a8b8bdca710b5cf31f311a5f378008c68baa6d56c6e71331b2012113b"
+    },
+    {
+      "class": "DailyReportDraftClaimsJsonTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportDraftClaimsJsonTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "aa78c1b2db445395b8b86c017b2991c60e6d88fe73e67372e85c290ce2211357",
+      "currentSha256": "aa78c1b2db445395b8b86c017b2991c60e6d88fe73e67372e85c290ce2211357"
+    },
+    {
+      "class": "ProductionExecutionWorkbenchQuantityExactJsonTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQuantityExactJsonTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "83233c32ad5e28446ab3ec24b71e283e60b42750e836147423ac3a3129771df5",
+      "currentSha256": "83233c32ad5e28446ab3ec24b71e283e60b42750e836147423ac3a3129771df5"
+    },
+    {
+      "class": "ProductionDraftClaimsReadRoutesTest",
+      "path": "server/src/test/java/com/uten/imp/common/web/ProductionDraftClaimsReadRoutesTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "8f9776ae9c519c1122ddd2a69dd2d1e4344d84ee413e3ab5352696163d80e6bb",
+      "currentSha256": "8f9776ae9c519c1122ddd2a69dd2d1e4344d84ee413e3ab5352696163d80e6bb"
+    },
+    {
+      "class": "ExactBodyReadRoutesTest",
+      "path": "server/src/test/java/com/uten/imp/common/web/ExactBodyReadRoutesTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "1507924771c78d55d217d0fb04f28723de9255094c7e0e2932abb4e28939ee2b",
+      "currentSha256": "1507924771c78d55d217d0fb04f28723de9255094c7e0e2932abb4e28939ee2b"
+    },
+    {
+      "class": "NativeTaskReadScopeInterceptorTest",
+      "path": "server/src/test/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptorTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "4ab98d2608ca1d9af19d648278427b7a063d5f9f376368fe841946c2add6f3ce",
+      "currentSha256": "4ab98d2608ca1d9af19d648278427b7a063d5f9f376368fe841946c2add6f3ce"
+    },
+    {
+      "class": "DailyReportExactQuantityJsonTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportExactQuantityJsonTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "dacd749ec823ac121de40b69c08d74a448f61228bccc3d382f09fdf0d6dc6b4b",
+      "currentSha256": "dacd749ec823ac121de40b69c08d74a448f61228bccc3d382f09fdf0d6dc6b4b"
+    },
+    {
+      "class": "ProductionDailyReportControllerBatchFilterTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportControllerBatchFilterTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "061aafcb63a44c4ab09fefef70accae78672d502004057cccfd15b03a65d8e31",
+      "currentSha256": "061aafcb63a44c4ab09fefef70accae78672d502004057cccfd15b03a65d8e31"
+    },
+    {
+      "class": "ProductionDailyReportCommandTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportCommandTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "4a30774739d24b8105ecc944454598d1f67a1c794ac45897487be26785249903",
+      "currentSha256": "4a30774739d24b8105ecc944454598d1f67a1c794ac45897487be26785249903"
+    },
+    {
+      "class": "FulfillmentWorkbenchPageReadTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageReadTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "f7e81998ea7364e48064abc0fa2beb5d7d838c0918bdb5ccd273180f3b6086bf",
+      "currentSha256": "f7e81998ea7364e48064abc0fa2beb5d7d838c0918bdb5ccd273180f3b6086bf"
+    },
+    {
+      "class": "FulfillmentWorkbenchPageReadPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageReadPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "d1ad5a998a4ff75ff765accaf7eaa23468caaa6ddbdf6e8a318fd2348b3049cd",
+      "currentSha256": "d1ad5a998a4ff75ff765accaf7eaa23468caaa6ddbdf6e8a318fd2348b3049cd"
+    },
+    {
+      "class": "FulfillmentWorkbenchQueryServiceTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java",
+      "sourceByteEquivalent": false,
+      "oldSha256": "c1ff46bc358c19798a3836bdd13130612b71570e9ac60611ee16edc9044a57db",
+      "currentSha256": "8c9436fd65f4025f960e6bec951754b733e37b15c21e57183279787f15a98040"
+    },
+    {
+      "class": "FulfillmentWorkbenchEmptyPageLatencyPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchEmptyPageLatencyPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "8993bd716f7e16661ddc472058d7e4185dc6438e5e9365fd5d0b34dc99e43f48",
+      "currentSha256": "8993bd716f7e16661ddc472058d7e4185dc6438e5e9365fd5d0b34dc99e43f48"
+    },
+    {
+      "class": "FulfillmentWorkbenchTaskAudiencePostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchTaskAudiencePostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "28cc84b39b0ad8c94ecd0d14f20a9625859602db3c44dc2a7b5958dcab78e9c6",
+      "currentSha256": "28cc84b39b0ad8c94ecd0d14f20a9625859602db3c44dc2a7b5958dcab78e9c6"
+    },
+    {
+      "class": "FulfillmentWorkbenchProvisionalStockPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchProvisionalStockPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "ad1a6740e32f94595777f99a48e8dcae9f7cc25289a67fb6792e502c27c5cc82",
+      "currentSha256": "ad1a6740e32f94595777f99a48e8dcae9f7cc25289a67fb6792e502c27c5cc82"
+    },
+    {
+      "class": "WarehouseTaskPageMetadataPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskPageMetadataPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "9ee7be049ca094af5247d69398c296f166785ced031783de61fb7c655a13a6ce",
+      "currentSha256": "9ee7be049ca094af5247d69398c296f166785ced031783de61fb7c655a13a6ce"
+    },
+    {
+      "class": "InteractiveTaskReadScopePostgresTest",
+      "path": "server/src/test/java/com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847",
+      "currentSha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847"
+    },
+    {
+      "class": "ProductionExecutionWorkbenchQueryPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+      "currentSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b"
+    },
+    {
+      "class": "DirectMakeDeliveryClosedCreditPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "sourceByteEquivalent": false,
+      "oldSha256": "5b6699804358ec6281d25afed6f43d25821398df7ae408a41cd11f068534c752",
+      "currentSha256": "a266379079aa289832e77a5e77431ad0585e6253cf65b121f0d3e17c9ca83ea4"
+    },
+    {
+      "class": "FinancialSubversionAuditPolicyForwardPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/migration/FinancialSubversionAuditPolicyForwardPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "b8a823b3a5c75f711fdefaea5a8c554c4e749a8701e670e318d427b1e0dd6d14",
+      "currentSha256": "b8a823b3a5c75f711fdefaea5a8c554c4e749a8701e670e318d427b1e0dd6d14"
+    },
+    {
+      "class": "SalesShipmentOrderMoneySnapshotTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOrderMoneySnapshotTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "f01c39d02e0430b53e05fa2aa9e971d462c4e0eeaa6ebe07b624b088690ecae3",
+      "currentSha256": "f01c39d02e0430b53e05fa2aa9e971d462c4e0eeaa6ebe07b624b088690ecae3"
+    },
+    {
+      "class": "ShipmentReceivableFilterAdapterTest",
+      "path": "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivableFilterAdapterTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "ed85feb8b4f7ee4ca4d97ccd8222cc79db817a926dc07c51bf28d80abd8823db",
+      "currentSha256": "ed85feb8b4f7ee4ca4d97ccd8222cc79db817a926dc07c51bf28d80abd8823db"
+    },
+    {
+      "class": "ShipmentReceivablePositionAdapterTest",
+      "path": "server/src/test/java/com/uten/imp/features/finance/receivables/ShipmentReceivablePositionAdapterTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "1cb335941b19430c3af4a6ad3b4d39f02573f8a385eb2f49c5e870271646102d",
+      "currentSha256": "1cb335941b19430c3af4a6ad3b4d39f02573f8a385eb2f49c5e870271646102d"
+    },
+    {
+      "class": "ShipmentReceivablePositionConsumerTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/ShipmentReceivablePositionConsumerTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "1148705384258ac39ee09530b03af0dc07fee60445fc2ce91fa6484dbd8c40f9",
+      "currentSha256": "1148705384258ac39ee09530b03af0dc07fee60445fc2ce91fa6484dbd8c40f9"
+    },
+    {
+      "class": "SalesFinanceSnapshotIsolationContractTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationContractTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "36935b72c3f89d8de8f4886c55d0e59133942b5c17c335fcf27f0428c7ae9989",
+      "currentSha256": "36935b72c3f89d8de8f4886c55d0e59133942b5c17c335fcf27f0428c7ae9989"
+    },
+    {
+      "class": "ReceiptSourcePermissionContractTest",
+      "path": "server/src/test/java/com/uten/imp/features/finance/receipt/ReceiptSourcePermissionContractTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "31486c116ffa210c2905785bce08e20c1c542ff5d4f330e5ae02eac90f572a73",
+      "currentSha256": "31486c116ffa210c2905785bce08e20c1c542ff5d4f330e5ae02eac90f572a73"
+    },
+    {
+      "class": "FinancePartyReferenceLabelsAdapterTest",
+      "path": "server/src/test/java/com/uten/imp/features/master/FinancePartyReferenceLabelsAdapterTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "ba525ae5439631d3d1e6c6fd9f1a9bfcadc13d6572697c300bb8878c6b4702c6",
+      "currentSha256": "ba525ae5439631d3d1e6c6fd9f1a9bfcadc13d6572697c300bb8878c6b4702c6"
+    },
+    {
+      "class": "OrderListEmployeeProjectionTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/order/OrderListEmployeeProjectionTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "2bc5978fe5a1f87c50521e0dd47fe95e2282b929a8e2b2355a3cc33531e55ed5",
+      "currentSha256": "2bc5978fe5a1f87c50521e0dd47fe95e2282b929a8e2b2355a3cc33531e55ed5"
+    },
+    {
+      "class": "FinanceApplicationsPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce",
+      "currentSha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce"
+    },
+    {
+      "class": "LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/migration/LegacyQuantityAdoptionCompatibilityPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "a1f5f96f5dab69449deb2ab505abbbf21add2ef8efd1902a14cedc64a2732558",
+      "currentSha256": "a1f5f96f5dab69449deb2ab505abbbf21add2ef8efd1902a14cedc64a2732558"
+    },
+    {
+      "class": "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyWakeupQueryPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "2a25fd36e4c1bf93d2792128ffb22333a00c37a2047df5921d393e8d1c3b258b",
+      "currentSha256": "2a25fd36e4c1bf93d2792128ffb22333a00c37a2047df5921d393e8d1c3b258b"
+    },
+    {
+      "class": "SalesShipmentOwnerBoundaryTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "767160d14d5e7809493aeddd9705efaa80a4acf82d94baedf976f830a65f50ba",
+      "currentSha256": "767160d14d5e7809493aeddd9705efaa80a4acf82d94baedf976f830a65f50ba"
+    },
+    {
+      "class": "SalesBomDeliveryEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesBomDeliveryEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "bbcefcfe284647e06831aa063c4375357fd9d15edaa433cf993391282f1f6154",
+      "currentSha256": "bbcefcfe284647e06831aa063c4375357fd9d15edaa433cf993391282f1f6154"
+    },
+    {
+      "class": "SalesDeliveryMakeSourceEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMakeSourceEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "eb99ece60ee6b202ad4d47bdfc4ae027ee3c3aa51167df956d5e79cdf87478c2",
+      "currentSha256": "eb99ece60ee6b202ad4d47bdfc4ae027ee3c3aa51167df956d5e79cdf87478c2"
+    },
+    {
+      "class": "SalesDeliveryMixedScenarioEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "feec5490aca18d57490e5f3b98243476e70775ea8c7432fa3fd8276fecb381ca",
+      "currentSha256": "feec5490aca18d57490e5f3b98243476e70775ea8c7432fa3fd8276fecb381ca"
+    },
+    {
+      "class": "SalesDeliveryOrderClaimEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryOrderClaimEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "2c433b9278b6651e9b0040bfce6e31ab81848c259422a871799cde1da5f7a5c2",
+      "currentSha256": "2c433b9278b6651e9b0040bfce6e31ab81848c259422a871799cde1da5f7a5c2"
+    },
+    {
+      "class": "SalesDeliveryPrivateSourceEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryPrivateSourceEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "a1f0290ff9bfd02d0439d8f7831942eb37d8fbfa77767578ce46de3e25393eef",
+      "currentSha256": "a1f0290ff9bfd02d0439d8f7831942eb37d8fbfa77767578ce46de3e25393eef"
+    },
+    {
+      "class": "SalesDeliveryRevisionEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryRevisionEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "027f2213502c70154e95d7a61fa77a894c1a0db4fd2867870d0f1b2f6d26a059",
+      "currentSha256": "027f2213502c70154e95d7a61fa77a894c1a0db4fd2867870d0f1b2f6d26a059"
+    },
+    {
+      "class": "SalesDeliverySourceReverseUnitsEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliverySourceReverseUnitsEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "06bd499ba9eb985a25e4f5cfe2ed14395ea3421e23918c80f8be34a2d8c3dec3",
+      "currentSha256": "06bd499ba9eb985a25e4f5cfe2ed14395ea3421e23918c80f8be34a2d8c3dec3"
+    },
+    {
+      "class": "SalesDeliveryWarehouseScopeEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryWarehouseScopeEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "292e499cb6dcb9dd4b8462bfc14b3753d5fea96b7dcbd2e7b8e9b784398bf145",
+      "currentSha256": "292e499cb6dcb9dd4b8462bfc14b3753d5fea96b7dcbd2e7b8e9b784398bf145"
+    },
+    {
+      "class": "SalesShipmentFinanceReleaseRateEndToEndTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "38875fc327115559acbeb5b73797bd89547ae5973c119b4325293b5a8ef371e1",
+      "currentSha256": "38875fc327115559acbeb5b73797bd89547ae5973c119b4325293b5a8ef371e1"
+    },
+    {
+      "class": "SalesShipmentCurrencyFilterTest",
+      "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentCurrencyFilterTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "7faec12beec653281a89d8b3786e46263d2a636f7bedc40922c1ca5e325c2387",
+      "currentSha256": "7faec12beec653281a89d8b3786e46263d2a636f7bedc40922c1ca5e325c2387"
+    },
+    {
+      "class": "DailyReportDraftClaimsPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/DailyReportDraftClaimsPostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "efa59f9ec56ef43e03f257404fcce3a96876d422e60fcaaad930cd303837703f",
+      "currentSha256": "efa59f9ec56ef43e03f257404fcce3a96876d422e60fcaaad930cd303837703f"
+    },
+    {
+      "class": "ReceiptExplicitOrderAttributionPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderAttributionPostgresTest.java",
+      "sourceByteEquivalent": false,
+      "oldSha256": "dee70005f35c1ace3579bd817195f498d30148714f75d97b32750a323a86e57f",
+      "currentSha256": "b748a3da2153a078ebc06a9ff0469fde139de2dddca5c30df5c652c10b2b9a69"
+    },
+    {
+      "class": "ReceiptExplicitOrderLifecyclePostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderLifecyclePostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "14d4fde51c432cbb6ea5d007f1981990d732ceafa9ee9ddab9ebc3b0a64866fa",
+      "currentSha256": "14d4fde51c432cbb6ea5d007f1981990d732ceafa9ee9ddab9ebc3b0a64866fa"
+    },
+    {
+      "class": "FinanceDocumentPartyReferenceHttpPostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentPartyReferenceHttpPostgresTest.java",
+      "sourceByteEquivalent": false,
+      "oldSha256": "f3288b4a8a3b04f32bc60537b9a399d6896991c59c4b757267ed3b760a5316f8",
+      "currentSha256": "f892b6748dc1c3a6a94e1e072dd946e1b8e2ca988e1f01e9f1fa6e03528cf973"
+    },
+    {
+      "class": "ProcurementFirstPayablePostgresTest",
+      "path": "server/src/test/java/com/uten/imp/businesschain/ProcurementFirstPayablePostgresTest.java",
+      "sourceByteEquivalent": true,
+      "oldSha256": "f264cd25894a6455d8f88f85b9aa0ec9fce7f8f8c603ea19ab9acba08ac0916e",
+      "currentSha256": "f264cd25894a6455d8f88f85b9aa0ec9fce7f8f8c603ea19ab9acba08ac0916e"
+    }
+  ],
+  "delta": [
+    {
+      "path": "contracts/table-output-cost-identities.json",
+      "oldSha256": null,
+      "currentSha256": "63e8d996a50d5c578f9aee35e5503532eb6709394a563548cc1b1dcc97d30422",
+      "status": "added"
+    },
+    {
+      "path": "contracts/table-output-selection/v1.json",
+      "oldSha256": null,
+      "currentSha256": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6",
+      "status": "added"
+    },
+    {
+      "path": "server/legacy_migration/test_verify_rehearsal_counter_baseline.py",
+      "oldSha256": "44aeac756a6e6f310eeb65e79204340e2efde266e6fab428137a328708a7d576",
+      "currentSha256": "78dabbe69a496713e11336590a8cb8874a5ddeb6dd8ee4c7fb5f04a294345bd2",
+      "status": "changed"
+    },
+    {
+      "path": "server/legacy_migration/verify_rehearsal_result.py",
+      "oldSha256": "b0a502cae50e31626ac052c713670a7666d4a2c1bcfaca1693f58941b695b34c",
+      "currentSha256": "f034b02147466d7e2b8a791583209306858b4f85bb9d5f1b917ef7e4f00d68a6",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditController.java",
+      "oldSha256": "aaf910e3a9624d2f454140b0254567a893c6eeb6db1ad2d3745e98163cc781d7",
+      "currentSha256": "4571b03f619ba01c06ed6d7ec22ce844f59a5f5da600d85c38af00273a47e8d7",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/audit/AuditSessionTableExportService.java",
+      "oldSha256": "1e7150033caf257bbb6b49df49185e2f24784e589a673432f6214aab2bd217e9",
+      "currentSha256": "287344578c79bc6e35949d1e6ddaad78383e8700da519337bd49da6d1e55a308",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/delivery/BomDeliveryService.java",
+      "oldSha256": "3b4d936ba490035bf94357791b74502b90bcd4b9b4dc32c528f60743d1b4cd6d",
+      "currentSha256": "a4fb289e17248e156e1b755e4dfc8a7f4606cab1aa23a6a5a73cd41d864c1622",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/DocumentPageSink.java",
+      "oldSha256": "36d59fc773e038fbaaa6e7d0ed67ae154a42af16f86e4de7cd70f7a1581f8a02",
+      "currentSha256": "fdc1d3bdad2f3e593ad7b8c195d757f61836f9dfdb0f9146028604b38006a8e4",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportDocumentProjectionService.java",
+      "oldSha256": "11082367cede47bb77004c4275f43daf2d9d3547e8d03c3b67c5df00a4d63d13",
+      "currentSha256": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportPasswordRequest.java",
+      "oldSha256": "d3b6e45b1e451fb41cf6b49cf2f3b964bd45ddcecc872e61add0f3cca5b0c98c",
+      "currentSha256": "ff0347b7cbb9480620cba3aea4a695c8003ab610397e239d98bac74048a30525",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/ExportRowSelection.java",
+      "oldSha256": null,
+      "currentSha256": "2fdfa3de767cda53173a394c4c2ffb0c3dfec7fa1dda63161a1f402424f91132",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelection.java",
+      "oldSha256": null,
+      "currentSha256": "e4571e055835d88ae4fa3822bfc8df07e8d46f06b8e21a943c7ec43333679128",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionAspect.java",
+      "oldSha256": null,
+      "currentSha256": "d23a3aba1db1b99c214bf9dab0967c023c31e5fdf41e9c7e66f197d91bbc46ca",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSelectionRequest.java",
+      "oldSha256": null,
+      "currentSha256": "b77082b99629eef8a1754e7e81b08321e72b3c65f2d6b74a397867b74bd9dd25",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/MasterExportSource.java",
+      "oldSha256": "5cd4224c10b4f1aa0886d577ff6fa09d7460f9a19fb4d6391e73d3c79100da8f",
+      "currentSha256": "b477a91fab0e82309621d5e01c55ff1a7c6f432cd0a50ca115d94511c43c7577",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/OutputSelectionProtocol.java",
+      "oldSha256": null,
+      "currentSha256": "097c8e48c9cac999dc195558e1e82d82da6d9ee3cfe59b1057577b97530a2e7b",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/SelectedExportIds.java",
+      "oldSha256": null,
+      "currentSha256": "a8245d6671b6b644c601dd2ba0188ddb57aa23b1e1d9a2e74c4685ef3a36dfcb",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/TableColumnProjection.java",
+      "oldSha256": "c341e61ffa5e316f925558baa4d42dc8a2d6e6a56c2322c8c05625f4f86f3121",
+      "currentSha256": "1add9759138412fddd381fd33c39c672cebcdc93f8f6478952dc760cbe9271b5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/export/XlsxExportService.java",
+      "oldSha256": "9e2b8ae16e94ee5fe738374ca7bae19220c96f97e546e9e8250a59514944b50e",
+      "currentSha256": "d569906bd2f7747b00d02c54802d3362462f19721522ee76465257da26d66f66",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementReferencePrice.java",
+      "oldSha256": null,
+      "currentSha256": "5058a82f423e98a8415828446c2997d4fcd982db73c6842edabef21e0c1c1dda",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceChartReports.java",
+      "oldSha256": "a1515e8dfea82923bdd68d497f69e0137a75a17c9a3ab1fe70e76a32734d7f61",
+      "currentSha256": "4045fb27b81f199ff8457e958f36de1c0017d67181b3a624247b939f1fe23792",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptLedgerSourceAccess.java",
+      "oldSha256": "6ef9365dc4a62e928878c7fcc58aaf670bd9c01c80716034988437220a71c23a",
+      "currentSha256": "f825df09322953b64656000d6df5823b393969504a203ddc0cf7c00125d89ade",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/receivables/ReceiptOrderSourceAccess.java",
+      "oldSha256": "b8d3bd24a0d0b17f200bb3b8b943159cfa851f514e6fcc85332c49932408a325",
+      "currentSha256": "ba51c0ec486c9f31cca697d117da588f85e737ad841df1053daedb2a96b9ae1a",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
+      "oldSha256": "58c2fc3a18bea388329045367ce6b7d4ca5687bd04a0269f180b555fd9371756",
+      "currentSha256": "c43e1d49c8b67b7f49dad34dbda3505949179ae7a9f2b1336b745f7865fc43f0",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "oldSha256": "902d1b1ac4924c929b14448ac46e8b88ace3ba4eba81d61f75cba3b77cbf1604",
+      "currentSha256": "f42031bf4452990f2363649f21d17c21361a55edb661915a7986a3620509f8b5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/account/AccountController.java",
+      "oldSha256": "d27ffd408ca492c359dbf5661ce9090b396fd9b2415103cc93f915cd46a96ddc",
+      "currentSha256": "4515d24f6c5909121e5d12b939ecb5cff848a7b36a76f2e8b0b8fad59f3909ef",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/client/ClientController.java",
+      "oldSha256": "d8a91c93e4e92c8405c16f8ae6cf6aabbd97fb3caa41169b3ce42390052cb226",
+      "currentSha256": "c93901ace2ecd6965bcc2edf21b259e8263bbd413dd7af8527490b0fa8bf875d",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/color/ColorController.java",
+      "oldSha256": "f0db6950ac371da421da14f769d559e43e66fc4cf89a12dc667dc956847e6e43",
+      "currentSha256": "4abe837ba4d91e2c353b77ab4d89937c37eeed583329f30e03a359e37b26a134",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/currency/CurrencyController.java",
+      "oldSha256": "e1db4d81dcdbc8a7190cfdcb4ff0b4ef1794acb496d308b3431479320108ab4d",
+      "currentSha256": "88040c4cadf0ed36fb38f57791fc22b80264167ab01fe89a5518615c1e4aa15f",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/dto/ContactExportRequest.java",
+      "oldSha256": "dbd0bfe8dad18ea83b5cce8d446800824485b307a2ff7bb5d2876e6dec61b842",
+      "currentSha256": "71d490a2f191fab3ee24ae9850d6dffe2aa7d24e3de10d0ae9a25a7199513a95",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/export/MasterReportExportSource.java",
+      "oldSha256": "08bdf9aaa0e241a0893ad4570a7164742289867890b73a2ed505a987b2bd2d18",
+      "currentSha256": "fd7396cb452c9daeabf18fd9329a759ff59d45d14701dc891f86ba47e9009cfd",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomController.java",
+      "oldSha256": "2809e366a201ba48eee716dd4c51b7f4653568e20c9863736dd278e0ca461743",
+      "currentSha256": "010c9197d4d73f20590ef0f4d30020566c1c1cbc71684132ef47bed8f16f320e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomExportProjection.java",
+      "oldSha256": "f4118f96800920a27c0f1c6252ed3cd0005ed503e2a8b71d69fc8694a88fed47",
+      "currentSha256": "87ad7e1e161e3bfad1e031948c8a9c3da32e012e63d83d84c0e061ea8f1d6723",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsBomGraphLock.java",
+      "oldSha256": "7cf065eae09f96f395195fa406119b947b5782b245b2cee017246a724dc17170",
+      "currentSha256": "ecb513d5519dc7df6714b0b350462a95710d77b54002fdafab44cab3e7b7c83d",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java",
+      "oldSha256": "673fbcfeb4e603126c9335c8a94ede74272ee47603e79ff3b6f7c5945bae0fc0",
+      "currentSha256": "780971fcf3688b7720ae2a82fc54e75625d4cd4d7ce0c9e1246f75ccd6e9f1f5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/GoodsExportProjection.java",
+      "oldSha256": "645aaefc3798e8aa9041dc01caa8c07bb34c0f3f09766dca42a2bfc0cde7d7ef",
+      "currentSha256": "5c8aada3b4bebc7900ec0e6e9d7d6442313148f04ebd3aa95772814a4d773f8a",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsActualCostExportController.java",
+      "oldSha256": "d339d16990577700e9cb819f881203c6111f66dc15c69e667022e026d303b9f8",
+      "currentSha256": "b4c231592060e36429f78c0d4ff31a60aa778fa038a512e84439125057650343",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapper.java",
+      "oldSha256": "0c9d38d71fb44d6f457bd7296cc673b204b9ac041b755ed9e449819f6f7634d1",
+      "currentSha256": "7cb2746d535fcde931820854156104dc8e41f38c5e20961594467484cf0b3556",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostExportController.java",
+      "oldSha256": "a1e5bd88eaf2fc0e3813418d3ade8d0d1ab3eb1017c1f0c1a926e1f7e3cfb0e7",
+      "currentSha256": "0ea20fad444cc2d8e8b3cac570ca92d54ca52c9035909cb4201f06dcc333bf65",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportProblemRow.java",
+      "oldSha256": "74574a4e86be523546f5f1ab8f6d7b2ca9b63dd95a0ca95ff3fdfb0540a4a74f",
+      "currentSha256": "a233337ac2bc4de4376f386b5345de29467f3f9f9ff69749d7738e77f4787b21",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportReport.java",
+      "oldSha256": "10d1e858010640374c51bb9267467e0f24b21f845e42667821a752286c1d36cb",
+      "currentSha256": "9cafa6295a30a0d0932e9b7be950a562f8b6a06081abecfdc9d3d3dbe8b4794d",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportService.java",
+      "oldSha256": "d6935908f98a82e0ce8fde67785aff5b21e8ba81248bf1588cd0f51eab30f118",
+      "currentSha256": "4d04256730ac511a6c8edd5e3f8cffca0c316371ae67619340d940290f78a144",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterReferenceCatalog.java",
+      "oldSha256": "b71f095117746a995412ac6f84e42b53da71b1e9e69fcf34d0c3667a00d3935c",
+      "currentSha256": "c6a1dd53c27ce33177c982d93857719f6ede2bba78a1a75a37ef1ca6fd5269b3",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/mould/MouldController.java",
+      "oldSha256": "7274d5859110f21c57d1e75b9ff3a9f02b0232e0a1918fa7c658faf10143e4b4",
+      "currentSha256": "787b8922515eb522036d54f0f343e9afbb011ddb8128efd7d74536414c3a496f",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/mould/MouldRepository.java",
+      "oldSha256": "04d93ff4ffa2b182c8ff71d5e26a335a60c1d3d76c033b1d0c0f4617738916c3",
+      "currentSha256": "43fe63e582a0733b18c24af3e0169d66f98e192c38aa7c2f7a9a29ae465958c2",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodController.java",
+      "oldSha256": "05fde257ce3c81d1da93773b209cb9d7e21c66d02aac33e1ca42dc37dfead085",
+      "currentSha256": "1c76597467759b1dd1becfe51735a53a5706dfe1ea19fa957047063efaa407ab",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/supplier/SupplierController.java",
+      "oldSha256": "dde3eb334a1daef82d9f8dee3138d929e5b8cfdf83883bb16d94720f076a8111",
+      "currentSha256": "d4c22cf9e746f534bbe7150e9e2b13bd865977ea0070d1f4731d20eea7a9996c",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java",
+      "oldSha256": "03b5b5ac53e76fd14ad13ea1f2aa9527d62d216fc53d1089a452ccfe8f7adaa1",
+      "currentSha256": "eda9bbfed5c59e2acc35e0e2cc5e0b3f84d4a54e4fe709772a5619fbd11a9853",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseController.java",
+      "oldSha256": "566ce212f48e601b8e9b23b720fc026bbd7c9a86c1c5c2920a7ec8d3eda01880",
+      "currentSha256": "d01ded42946f38cb1cd9492dd42c74b26800d4bddd048b2abe727b3afdddf6cf",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/master/warehouse/WarehouseScopeService.java",
+      "oldSha256": "7cf0394a4b41c8b97b071d47a8b990151d97e0f76c07dfb76a4e2acb31acde4c",
+      "currentSha256": "b5e9e3b4e4abe790b125f2364efd7928c124dec5cbc77fc25bc6cb94ff0174f2",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchExportController.java",
+      "oldSha256": "6c5b84a3b06795d30acc8d85ae6d33a4e1991c0da93aa42a50484489c3d7d5d4",
+      "currentSha256": "28114e3263a467134170d9e2e80870d572da02672595346c240cb39e2212a913",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+      "oldSha256": "480b1719176a8b4924129825d97bfc1150086a98d0b14f50d5895280fa0ad9f9",
+      "currentSha256": "af8466e3a44fdb045567db424811240a44e4b0191f91a45373ddd02be5791802",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/DeliveryProcessingService.java",
+      "oldSha256": "3316b40adc607d8343a8aed7a260f65a159fb63ab04918d3db04c7d361d55751",
+      "currentSha256": "5449fab474f67dc2658b7fe6f90f272c4e25001ab3122b842225cc5886ea797c",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportService.java",
+      "oldSha256": "4b04788965ad7d29500014ebbe2feb00db3e1f596095f5259781eb5d0f8c3ef2",
+      "currentSha256": "d7bfc241caa1aedf91dab75356c8094e58862efbab8739f1fe1edba51584af42",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java",
+      "oldSha256": "eb83df784b1551953484f2357c40a279abcd5fdc63396987ecd9b1e77edaa955",
+      "currentSha256": "e37f6d391c81c4a40bcd70cd46e8ef278e5d5cb91aadefc68414b13f7366c565",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
+      "oldSha256": "a973cefc54151a9210fffeabd1dae8daea939e65cdc23d55cb3725fc5cd67444",
+      "currentSha256": "f0ec595e509b37b7066ef8ac1dd85b068e77318a10d0ee7cb090a03a7beb86fb",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryService.java",
+      "oldSha256": "8a803cc49af673a2d662fe318a918024142459f2fc233c906e474ee80fd32fe3",
+      "currentSha256": "6d18a786fdd66971d5dbd13af4d7d5ec82fe7616883f62d86fdd070905fb3e3e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportController.java",
+      "oldSha256": "34ad5f2a1667c295cb9356c6bc8263ccd226a24e15e015258b77d854467ea601",
+      "currentSha256": "d701e68cc6caeb8c4206df2b96856a1c20362e08ac5a3d8fe1b17b87804e43b1",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/report/WhereUsedExportService.java",
+      "oldSha256": "8d64ba4d3ef80ee96847e2ce244c6e37a1049c3182b86de7377d47d9b37da042",
+      "currentSha256": "298c89e2fc303d6a93675e16a833247fd532a788cf3a336629a298f8539b0661",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderItem.java",
+      "oldSha256": "a07582109b7d40f9031d6a24e79ce5bb6cca20afe9e1f98086a49a6f5d20ad20",
+      "currentSha256": "b1c0976e6f6fdf19f7834fa36719c2752412608407ba054be977c76550e9a7a9",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java",
+      "oldSha256": "7157c35b870fc86df41088ad950133eb941e7fb7a98187f1d9d86899988726cd",
+      "currentSha256": "d837c041e71821245573b3dff45fc710336d31322fa4c4b5ca222337ba4b4254",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java",
+      "oldSha256": "460000161d0bac1abc9d3a9d7055e10d0da5f1b1272e196ef5e4ba8f51564e56",
+      "currentSha256": "91a5eea63ab250f139d4606916c0f59a2af974d57c4d3369fbd5712c468ff440",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+      "oldSha256": "9dc492011bfec47c56c1239837d6bf89c950d3091f0e97981729e21d73d9c988",
+      "currentSha256": "e8a2a275220384e8bc14718911a643770d9c15c277729e4b75e94edbc84124fb",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportController.java",
+      "oldSha256": "ad8b34da5607a71f1a516edc4de345517e438ee1d2aba024110d29ec3093ac30",
+      "currentSha256": "7809f8c94f9d6edfeb7be04a951cba5c2fdd318f8c6842e02c71fea0ce2e3fcb",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportRequest.java",
+      "oldSha256": "9a2e11f2c6b4790f34be9bf4795e68138ae19994aaa07c56ea3512b40c5e7d7c",
+      "currentSha256": "ff05dd10dc2d115dbd01a233d9c0288045873db9d04528ea1f25cfc88ce650eb",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportService.java",
+      "oldSha256": "ea8316d9bb379291b593eb6479981a796772b09fb24a35c5dde2dbe43af8c30c",
+      "currentSha256": "663c2bd395a277d658a60b507e7b73080b4fb62b33ffe32d7da2c97227e3c29c",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderDeliveryController.java",
+      "oldSha256": "75d7ba20aa0b85ac14bce6d0042879d50d9aecf878238cd554b5909c2faedf20",
+      "currentSha256": "3e59c0c934284734039df434f6fd0e322078425bf322acfce36fdd6f43838743",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+      "oldSha256": "93e71b10101056c308f34106ecf878406c14532eeadb93ba262dc490b118799c",
+      "currentSha256": "a86cf6298dd1d6a2818202cf543a7d450fee5b322e946123e036f816d97c3c75",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java",
+      "oldSha256": "a22b8559952503513b58f42271d89c99638bfb7c890538f60719ef857e4bed88",
+      "currentSha256": "53a5413bd0e54849a4b908c76cbcf93a32f4cbbc5589c1be23375cf92539225a",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+      "oldSha256": "42a6592e659e3ab495e3e01b3faf816e23343c131030de534b1144529c3cccc2",
+      "currentSha256": "4ac01e7fe3cf57f02bcedbcbbc8996524606dc730f88ee7891c58866b28357ea",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentDeliveryService.java",
+      "oldSha256": "98fdd8ee3b2f366798575c275c553b1e84d72245aba1f1f5323586f5632eabb1",
+      "currentSha256": "14bd071b9f475185491df8b70c60c95b71b59946d4b373e74813f89e290c1acf",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/SalesDeliveryOrderClaimService.java",
+      "oldSha256": "0dfa131b6f896dafd14332314b1035c18a88785c5c023af8e000b8ed6952cbf3",
+      "currentSha256": "d633b0bb38b74cdefbc17c68b3ce8aa7436d3be26bfbe941ab92dcf20bcfe872",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/ShelfLabelSql.java",
+      "oldSha256": "271a463c9c69e0404f804e669de1093bc877c6746c1cb6a60cdc4a975d803b1b",
+      "currentSha256": "1143c97a82209534721fd241497ad1b34b865ad4c994b49fb660cb6163549793",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
+      "oldSha256": "048e9fd9dd8b906e5e29a91b535fb78788cc5df07e90ff3d2bba8a6bf950cf89",
+      "currentSha256": "090b2258084794d97e25bb7e7725fe4a2dde548c451fcbe068917811cae532f7",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+      "oldSha256": "001a2af98db281c5116eb92f004ca1bec6d6cc7fdc0a63059bd7ef254455600a",
+      "currentSha256": "859cfd4f89916175a4ea29ad67c8a2201f85730040658ee185982f243f92c58b",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportController.java",
+      "oldSha256": "53f10ace2f9d9489ae2f427f96aebfcaee9c7b21d2731a5e0bf714e2cb849b19",
+      "currentSha256": "ab8a4d266d0d91f70ac0bbd83c557547777f35f037d54f856611bc53345c29be",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+      "oldSha256": "befeb55874c3de0c94e289f9ff1366d249b40b6a5001edc11c1d2692cb1b6a49",
+      "currentSha256": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryValueWorkService.java",
+      "oldSha256": "a0d6e7c2ff1c12cfb6297a5a6e25638dcc4cb3d6c260a2d9a58cb4e1bd94a25b",
+      "currentSha256": "50fe009ef5e357d592fb914dbf5ec38b6ab2838cd94808313257aeaa49e1a9f1",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderItem.java",
+      "oldSha256": "390d57e214d5d1e56d26c85a8199ce3abd66266d8b3ac2a52149c8948bf0fd37",
+      "currentSha256": "c98aa0721278e393d127c6fc506ca8fab772861810fb0db45f4c31bc91fed4e8",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+      "oldSha256": "3a6b250b83351ba8e62bf79984c52e38d1aadc17215e827870896d2693b9ed6c",
+      "currentSha256": "e5cab5b8dae267fccefe795e26ba2af11e05e21dd6ddf87a680232ad1dd9acd0",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportController.java",
+      "oldSha256": "ed8b0cf876e5eba89b69a37ed5fb57a573527904fde97857ae3dd5e74986bc44",
+      "currentSha256": "b38cf2cfd7bc3faa00756f53c20ddf93fc21d89a57e50405185bfc5cc88cba9d",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+      "oldSha256": "dd9cb31dbfefbe6e46dc5354a7cfda3762a468e079144260c267ce1445821c85",
+      "currentSha256": "4c84166aa91db8326e8fb7fa28753a11f5ec68a719d88d8e81921acf9c6c2178",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
+      "oldSha256": "6255e1ede6d2ce766ca0245f3472eedcae9cbb4548963fe05357db8d1cdba315",
+      "currentSha256": "65d1cc9f21b92ccd23856fe8cead3391f508ae30e9536cc795129a54f8772022",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
+      "oldSha256": "0e9314139d10aa71d5501fcafce5dde2dc84a0af05729b2151c8bd0113e3b55b",
+      "currentSha256": "955fdcdfa9e0d836f25759b155d112927df9034ec154d1bee0e6c5d689c13a0e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+      "oldSha256": "fdf7bf6b8554f1b7dae1ae3b38deda88b1ee919ae8ab34a68b217e97101b8405",
+      "currentSha256": "d0a4079c3e5e68113f95b6b47fafea03e78d0aaa7c8a11eb0d35fda6cc4b52ac",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/resources/application.yml",
+      "oldSha256": "6f7c45908b6b91dd35b4bd0e46f5d1be4cfd68aaf2f4a193a87b3f8a33320650",
+      "currentSha256": "26f4412437d15ce115eef18a194f437bbf9ccbe860bcff31e11a8064153eaec2",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1060__keep_frozen_purchase_quantity_policy_on_derived_only_updates.sql",
+      "oldSha256": null,
+      "currentSha256": "f75b08e5ea3c50f06d688239f7dbd07c6afc3f649e333ab57900643360dd1c12",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1060__verified_legacy_quantity_adoption.sql",
+      "oldSha256": "8ac700039933f5dbec8c8c0974ae224ce712d31f135013536fbd6073c3d0b9a2",
+      "currentSha256": null,
+      "status": "removed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1061__financial_payment_style_reference_protocol.sql",
+      "oldSha256": null,
+      "currentSha256": "422e32ea29b9f601d4179b39136f3486fb1670d5ffdc18f786dd6970334947bb",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1061__legacy_return_quantity_source_proofs.sql",
+      "oldSha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486",
+      "currentSha256": null,
+      "status": "removed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1062__direct_make_closed_delivery_capacity_branches.sql",
+      "oldSha256": "76dea0c8f7980171e58adc5ce0c3919984ffc200e72cae13be4263d5d44904bf",
+      "currentSha256": null,
+      "status": "removed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1062__freeze_procurement_total_reference_price_policy.sql",
+      "oldSha256": null,
+      "currentSha256": "4711759419d8e231ad167950dd3f4c0b0fd60766220a6d449ef39805beb5d712",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1063__expense_payment_reversal_event_contract.sql",
+      "oldSha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2",
+      "currentSha256": null,
+      "status": "removed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1063__precision_and_claim_relevant_update_gates.sql",
+      "oldSha256": null,
+      "currentSha256": "7a1ff47a328411b2862195d2334488e49a7211f537f9f69bcedf12f7ef647813",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1064__execution_workbench_top_level_product_caliber.sql",
+      "oldSha256": "9b7003020f6b9a3af12f0ba86676490b32d5c776d23b6547c3de81453c4d630c",
+      "currentSha256": null,
+      "status": "removed"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1064__financial_application_high_risk_permissions.sql",
+      "oldSha256": null,
+      "currentSha256": "a94ba13e9a6d6ef055a28af9d9c7414fde21cda28cc4b21c8038ff5243900af4",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1065__reject_unproven_frozen_procurement_reference_price_updates.sql",
+      "oldSha256": null,
+      "currentSha256": "ef2824f2c2fd496eea312d75d9a33aba2355a8804ce7895dbf4158e91707ba0d",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1066__verified_legacy_quantity_adoption.sql",
+      "oldSha256": null,
+      "currentSha256": "8ac700039933f5dbec8c8c0974ae224ce712d31f135013536fbd6073c3d0b9a2",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1067__legacy_return_quantity_source_proofs.sql",
+      "oldSha256": null,
+      "currentSha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1068__direct_make_closed_delivery_capacity_branches.sql",
+      "oldSha256": null,
+      "currentSha256": "76dea0c8f7980171e58adc5ce0c3919984ffc200e72cae13be4263d5d44904bf",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1069__expense_payment_reversal_event_contract.sql",
+      "oldSha256": null,
+      "currentSha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2",
+      "status": "added"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1070__execution_workbench_top_level_product_caliber.sql",
+      "oldSha256": null,
+      "currentSha256": "9b7003020f6b9a3af12f0ba86676490b32d5c776d23b6547c3de81453c4d630c",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/audit/AuditSessionTableExportServiceTest.java",
+      "oldSha256": "12195e9e87e722a95872551bd608bd29a1dde4b4de2edc53cda92c749b04d5f9",
+      "currentSha256": "93474eab8d45735b04551218b742a1743de662258b3a987c9b98489103caa016",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "oldSha256": "5b6699804358ec6281d25afed6f43d25821398df7ae408a41cd11f068534c752",
+      "currentSha256": "a266379079aa289832e77a5e77431ad0585e6253cf65b121f0d3e17c9ca83ea4",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentPartyReferenceHttpPostgresTest.java",
+      "oldSha256": "f3288b4a8a3b04f32bc60537b9a399d6896991c59c4b757267ed3b760a5316f8",
+      "currentSha256": "f892b6748dc1c3a6a94e1e072dd946e1b8e2ca988e1f01e9f1fa6e03528cf973",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/GoodsBomWhereUsedReplacementEndToEndTest.java",
+      "oldSha256": "99f555101b39cf85baf1acedd76a35ff98d1ce9565453b9d9d1b8d6cbf5bf426",
+      "currentSha256": "a9429de5d300bd45110149ba62e7184a52b34ef412cbea1354ea5a009113757f",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/PreplanPrivateFutureTransferEndToEndTest.java",
+      "oldSha256": "3b830feb5f0a3633f7dbd0e18b36dab725899d98ec205c9acdb9b9bff4b20eb6",
+      "currentSha256": "084eee82b07e0fa88f244bc4fdd90295922de6362c7bbfaa99fcd794bd48b402",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java",
+      "oldSha256": "e3349173ae267fd9544d6992300285a8456d15efe478980e3a0182c76738314c",
+      "currentSha256": "7ad0099e7dff2cffa9c2012f813721358c1e58cbe545e43d106a7ea70a5eef17",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/ProductionMaterialIncrementEndToEndTest.java",
+      "oldSha256": "19e351a66ee916bae0a14874e0d5abc4a1232ce36aa7cf3b760d3fc51c61dd15",
+      "currentSha256": "ab62db57c0785c6d2285cf28b1fa5cc7a4bd92726ed6ea90027e6c7d15635c94",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/ReceiptExplicitOrderAttributionPostgresTest.java",
+      "oldSha256": "dee70005f35c1ace3579bd817195f498d30148714f75d97b32750a323a86e57f",
+      "currentSha256": "b748a3da2153a078ebc06a9ff0469fde139de2dddca5c30df5c652c10b2b9a69",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/ExportRowSelectionTest.java",
+      "oldSha256": null,
+      "currentSha256": "eab0b1fef34bc306a11e43f09f30d29dc909c97a523459e52d56b82155ae6c4a",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/MasterExportSelectionTest.java",
+      "oldSha256": null,
+      "currentSha256": "6af45063244ad8d4ec03b19bd764fed9ea6f0a9493d5527a0bff2ac47deaf6f1",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/OutputSelectionCapabilitiesTest.java",
+      "oldSha256": null,
+      "currentSha256": "0e3521c31b8d6d3b33352e1cd8d0ce76cdb0f28478f0bc4eba48054fece2cd29",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/SelectedDocumentProjectionTest.java",
+      "oldSha256": null,
+      "currentSha256": "e2479874d629895e05455530f0f10eb76a9f50f8e2ca8d20d632e04127c511f3",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/SelectedExportIdsTest.java",
+      "oldSha256": null,
+      "currentSha256": "5dd482cb46c61546185ca32335e047bf3d1ec7c81d89df96a9506c35050cbc3b",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/export/XlsxSelectedRowsStreamingTest.java",
+      "oldSha256": null,
+      "currentSha256": "22ce4aa70579388a849c02c2ef5e3877c03b9e509b5c0550c0c823b4315cbabd",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementCaseBookAllocationPostgresTest.java",
+      "oldSha256": "881b516fb2210cc7dc17b430d45223c0a0ee712a6bcd99e2347f158bacd982fd",
+      "currentSha256": "59354bc762aac6a7b0bbed0c0eb3e202ae8dfa321b23c8b66e5751fc47ce54c0",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementReferencePricePolicyPostgresTest.java",
+      "oldSha256": null,
+      "currentSha256": "5718df567d144cbdf9937f504bcfe2b2c7ea2ee3dd80aa9814eff22ab3294b0a",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementReferencePriceTest.java",
+      "oldSha256": null,
+      "currentSha256": "9aca240edb4c959fdd598dc97138fc49ab6927cc3e3fcfe33e7bac02c75c29ba",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementTotalAmountPostgresTest.java",
+      "oldSha256": "2bc60f874519d9c9de16a2ea9196150b2d2758854b90a7422208a16a1560e610",
+      "currentSha256": "57ace78de572dcb131fe990404a1e7027d3a5b1339636cad9772576ca519c6d5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/PurchaseQuantityPolicyGuardPostgresTest.java",
+      "oldSha256": null,
+      "currentSha256": "32137b1c206b5672d6714f0da9319bc8f4d351fc62f1d8a3fd169773b51cb312",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/CommercialReportLineIdentityTest.java",
+      "oldSha256": null,
+      "currentSha256": "8dfb3ef7d616efbd9d42969ee9f8fe3144fb3ae0c3c9727a5f40dca4332dbf8a",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/ReportExportSpecialSourcesPostgresTest.java",
+      "oldSha256": "87945b075c939004167c9f57532488c6cbcc7105f0c0f0369a4d24ccd74da9bd",
+      "currentSha256": "0472ab74509e25883128253a91ef274712420a288bfadf5b5dcf379a27fe7e97",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/StockFinanceReportLineIdentityTest.java",
+      "oldSha256": null,
+      "currentSha256": "9bde0b75452463e8a84f41f4fa383275756dc6cddc07d14295bb825d27916b85",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/web/OutputSelectionRequestBodyLimitMvcTest.java",
+      "oldSha256": null,
+      "currentSha256": "bef3ae3a33c9039ff85d7ef68137c9028ac503f5a97408b1e833e16f6ba01356",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/asset/application/FinanceAssetReviewRevisionPostgresTest.java",
+      "oldSha256": "226cfe17a66cdbdd77d5721d46124bac233ceb2acf836317e9a145434c107159",
+      "currentSha256": "ecfe49a295a48aec18ad0972a955c878bebfdc4aa87da7214c51021bbd963150",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinanceChartDirectoryExportTest.java",
+      "oldSha256": null,
+      "currentSha256": "f63f63d3f775af2cef47c4d74c6e96ea0ca1c8d65562d25f6ba67c83bf44bbcb",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/FinancialStatementSqlPostgresTest.java",
+      "oldSha256": "79a13a06c3854708dabce8a6abebbd88f5ce2b08e0cb52e625ca40def6933622",
+      "currentSha256": "347dc98afdf6a5b5119b7eb49e758c693f9da27df4e4933e82412c469f42034a",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/GlManufacturingBusinessCalendarPostgresTest.java",
+      "oldSha256": "f2b098c063a3f1b7c9ddf5feeb75c1ddafa916d9233587fd01bbc4355970f3d0",
+      "currentSha256": "1c781e6b095fd7e7db460237cbe606dc827af32ebc1ce5d4aecef73e0a03d7cd",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/gl/GlOperatingPlStreamingTest.java",
+      "oldSha256": "e533f355316b97cbe737a576ae7c398cd6c7c9c48694f7bf6f15eb5cac57d6bf",
+      "currentSha256": "c9d481ee4c5e055114b4a4e28e1919995dd929f22b2faffb34d62c70cf70b27e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/report/FinanceLegacyOpeningSummaryPostgresTest.java",
+      "oldSha256": "994d7e5c9af1d6fa3a31f1fdc2f2447eb770e27f45e798ee5b6317601a3d5d6b",
+      "currentSha256": "2613fc16088e9143cf909b36b1257426443ccab4e9661375d7f6d1d42c4fc391",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/report/FinanceReportPartyStatementTest.java",
+      "oldSha256": "25ce7a576c084e540671ba554b65edf20da30de1d777c1eb3bf5f0c62f2c01a0",
+      "currentSha256": "dd5b1c069d54b2e728eb00adddd3d1150855f6e103a1e88c1df5e1316edeb012",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/report/FinanceReportUnitsPostgresTest.java",
+      "oldSha256": "6631e648d815adaee8660e6dda38c2c9668a95e4a143d9e5990fa0f765a10b41",
+      "currentSha256": "fe7d80e12ebe597ba79713ec3f35e66765e6b72b3c7a0ffdbaec367118fc29d1",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/export/MasterExportSelectionAspectTest.java",
+      "oldSha256": null,
+      "currentSha256": "c1b76f94da9f7c4eb48d7cf56ff5ce2310a4731316af39891f35ad1055b1b318",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsBomExportProjectionTest.java",
+      "oldSha256": "e809cf1c139f58445fd862cb63afbb2307762a2e4a9b3ea2e998c97cf79a3ff8",
+      "currentSha256": "97d9a63f667b1b70d89020e8b07772592c996048b92b291bebc93a77f707f817",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/GoodsJsonSerializationContractTest.java",
+      "oldSha256": "34e27b7f92191c0d4a50c447e1451fb091dc4ec46713117f3b5d270ffdf305b2",
+      "currentSha256": "49f0a7a6e690845127a06f8f680f0ec9931a3abd60ef5714a0a0e477176179c6",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostDocumentMapperTest.java",
+      "oldSha256": "3bce988cc5cbf3e0fd9c76b6fb0d9e034518a14597de78084078615eaa032101",
+      "currentSha256": "5b1d900510df8549d9407f42c976a2acd91e2df4eb2a58425024469927e25094",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsCostSheetsPostgresTest.java",
+      "oldSha256": "8a297383069617ee1f3cab94f54d893963c3336d25186e12f20324e62705659c",
+      "currentSha256": "74294def8dd50700c089f5e6c34dd38c5598f18310d4d9df0f94d37fe80d1437",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryAccountPostgresTest.java",
+      "oldSha256": "e081d6106077fb5129cf3fd2441e38804e3c4720a5a7277e660226e33b9eee66",
+      "currentSha256": "213dedb798612cd12e035e2d153d4e10643e175664f6a6439813202c9776f8f0",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryPostgresTest.java",
+      "oldSha256": "d3c61aa1592bd0e2d94f69511dd1381cc414555de4d301fbce655a04c2e36fab",
+      "currentSha256": "c56351b63e907e90c11b6859050508625e2aa4ed085117ff2a993ebc3c8c4cb3",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportCellCorrectionsSafetyTest.java",
+      "oldSha256": "4b41d2c9358aa5386f3d721e5e200d3d948978ff5e80136e322d4e6130582d8d",
+      "currentSha256": "6b336ad306f8c9c62abd0ca2e75203518b9dbce286f40d115e4a12bd1df6f2fb",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportMouldReferenceTest.java",
+      "oldSha256": null,
+      "currentSha256": "788bd299cd8397d2487468a70d77e2ec66c6c6ae00490c550505882ece7fe621",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportPaperTest.java",
+      "oldSha256": "a1b99d6012bad0e2d19dc5b3b2fd2986dadb070afffb87423edc2ee5837c5593",
+      "currentSha256": "c0c7dd0b788d56883658b20f7e65092763c9274f146db164dff3a56bd2459df3",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryPostgresTest.java",
+      "oldSha256": "66ff84ebf7b2e4a48fbadfa303cb419237891a0dd9a1889206b7c72057935cdb",
+      "currentSha256": "86f4b47d4bd6e721d08e563ab8acff171db6924f389898828c903b5bee06bd6a",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/lifecycle/MasterReferenceCatalogCoverageTest.java",
+      "oldSha256": "ef0eccd67ffba614a5b1555abd78eb8e6f813e756c72d4ecafa13fdbc839a257",
+      "currentSha256": "e14acddedfe0443fbfa354e05555f935d754c86b18409aa5708e57c2c2302ab2",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/paymentstyle/FinancialPaymentStyleReferencePostgresTest.java",
+      "oldSha256": null,
+      "currentSha256": "8c598b6b81b836c656e77e8e83c4f14a15131579e02f12d226eb6ac4025713d4",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/paymentstyle/PaymentStyleHierarchyConcurrencyPostgresTest.java",
+      "oldSha256": "fc8e217edb5f99835076b5dcf08ea6c6342347217313b4982fc6b6e0230c3473",
+      "currentSha256": "3850ce9b6b171a3fbb71f7592e002d70ffbea45c1801a25b12bcc3cb7735e8ec",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/paymentstyle/PaymentStyleReferenceGuardMigrationContractTest.java",
+      "oldSha256": "09a2e830f5b21e048f05e50106f697e50a184afef36d88ed26295f718df25ee2",
+      "currentSha256": "44bddee4170464afdc6d7fda0fcbf273e9fe84ab471a8697f9e789f0e953c2a5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/master/platformcolumns/GoodsRelatedColumnAdapterPostgresTest.java",
+      "oldSha256": "99606a5abb08852af277ebe8a27c90e01564820c93b17225522e2874b1de0478",
+      "currentSha256": "ea8324855ca061f56a6c533d8333de49a553a5c44489288a5e7cdc037ab1a935",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java",
+      "oldSha256": "c1ff46bc358c19798a3836bdd13130612b71570e9ac60611ee16edc9044a57db",
+      "currentSha256": "8c9436fd65f4025f960e6bec951754b733e37b15c21e57183279787f15a98040",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisBomTreeHibernatePostgresTest.java",
+      "oldSha256": "f1aaa18d3e2c3d7d124c5ec99011f3f3e1d9cf8d95065374fd651ec49f756183",
+      "currentSha256": "3dd20e52abdefb52b2f1ba6e6ec77c4b898a958c420e2a4def3b91512fdcf69e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisUuidFallbackContractTest.java",
+      "oldSha256": "71dff68f0baf665fde049f26da7032aec6805b14f55aae29b0e57100d5ec9a58",
+      "currentSha256": "6a645663e33f0e08e97fcba73c9308c7c59de72eec0c631c18be67a4750f826e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportServiceTest.java",
+      "oldSha256": "609504611ec6f02ab17cb00da948dfe058360fa436f106dfa0be3634fed8156f",
+      "currentSha256": "d99ff6cda98ae2e7e6f92304f554b81060525852d94733559e2c88b0f5238b08",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/mrp/ProductionExecutionSegmentPostgresTest.java",
+      "oldSha256": "c026a362bb939e0caea8ff84fe447b8e4a6d62f263f6741bed989144f11a6034",
+      "currentSha256": "f6386d469ff1ccbe60f5902b9300778057d6ff8edb7605c84b63d0c96cd94fc0",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/ProductionWhereUsedQueryServiceTest.java",
+      "oldSha256": "efc825224e49d22667e5e47803bf9091aab2227755583fc9a25585dfd3bdc22c",
+      "currentSha256": "74c00379ef370e2fc10f8f1049b11cad60a2b7d0673ade3750a11187e22d6d9e",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportAndReplacementSecurityTest.java",
+      "oldSha256": "7514948dc8a41e476067b4373e47d36ffe3e72f3ea207ef934dc44b0b2cecc9f",
+      "currentSha256": "b3cfc254135d7ecd11316fd66a10dac26884a64e23b7be9f2a03fcc726231f66",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/report/WhereUsedExportServiceTest.java",
+      "oldSha256": "2ca797a5fed5245aa81b9fdb04d667a0f02fb25e249a7fb4d9be71ba8da2a82a",
+      "currentSha256": "1ebf69c263cf5edf27b0c53715f361877bcf4fb7abf201db0ea59775e5478847",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderTotalAmountTest.java",
+      "oldSha256": "140a728d3bff98a087e71d5f0fd4f1a1c5d528e0691d5071cc65adf5a88753a3",
+      "currentSha256": "3f662ee09d20c23a3f4a9ec2a09663647b879cb22cdc564f6165b475c45d9467",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/report/ProductionSubcontractLineIdentityTest.java",
+      "oldSha256": null,
+      "currentSha256": "f91b31ae50735dc6274987665be523a8309001ca175e6d094725095d67db6d68",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/reporting/export/MasterReportExportSourceTest.java",
+      "oldSha256": "7c44493c5b7f66cc88fce57138c5bc3c5112d0cb69316aafa99184ac037538ca",
+      "currentSha256": "45dc3a40594ac2e10ca7115f9f010e34fc7e207b744259c35061468ee80c2e39",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/reporting/export/ReportExportServiceTest.java",
+      "oldSha256": "93005b27c796c68c9fb361dc5f02ff2dc03e44264c7381feb760cc027370eff3",
+      "currentSha256": "916178a93ecf6e7ae066fdedb8d5d2db3711b33d7e79e3e879bb7672a182e794",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/sales/SalesDeliveryUpdateFootprintPostgresTest.java",
+      "oldSha256": "ca74bfc58e21f1a691a8cb6dbb44fffe20180e5e99cd53dced8aa678a5ef2e99",
+      "currentSha256": "27709ece60195b3eb310ef4a54dabfbe0aec6be10d2bff205da9137f0a467186",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderListSortTest.java",
+      "oldSha256": "49def9f0cd7fa509048911f2432308d1f4cebeca6547bcb381b2ef24a458d8b1",
+      "currentSha256": "2671863e4a2ee49abd76fdd4bd40957343669a356ab0bdf4bf0b741a8a8bb527",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/sales/ret/SalesReturnAmountAuthorityTest.java",
+      "oldSha256": "18a0e8b05e499a271dae35298ca4931f5cdb2606feed675b34574394c7d54e7c",
+      "currentSha256": "54fd5e05a85b80d8846766d9e8e6d187b3588f1b9ac6f669d4176f86f6623ed3",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/ShelfLabelOutputScopeTest.java",
+      "oldSha256": null,
+      "currentSha256": "738ef5f2163f014008b08647c30084101bc3d70193a10547fd1eef498ff753ba",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/allocation/StockOperableBalanceLockPostgresTest.java",
+      "oldSha256": "6ce0513a5f67bc1f31c2849069d4b542c166756eefceef4daccc15a92f1b2a70",
+      "currentSha256": "759a56671da9394d231e65e16c5f9f148d7b3c4e413b92f799cfc24b86ce8589",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/report/ShelfLabelExportPagingTest.java",
+      "oldSha256": "30ef4f2cc4920b00ed33acc307fcfeb4cdbf000785c998cad9199e991625a236",
+      "currentSha256": "d51958a5c504a69dfb8c3471fd82ab87552b3d9408e7240dc58a0438fbce2870",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/report/StockReportWarehouseInventoryScopeTest.java",
+      "oldSha256": "a7477332342977caddac9674f9dcab70614ebb06ca9c6aaf49a2066ee195d68f",
+      "currentSha256": "1e3b98a0f79d14d9150e8fb48e1dc9741f2fd9e58fe4b7e8b44fd826ce72b6b1",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/stock/valuation/InventoryValueWorkConcurrencyPostgresTest.java",
+      "oldSha256": "355e3e8ce73131f8261bb635dc0dab4145df7e901d4e124d8cdce23e9a971f01",
+      "currentSha256": "b2975c8593a7d39938827e4b5c5971d3cdd5a88693e396ea9e6d16933edef4d5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderTotalAmountTest.java",
+      "oldSha256": "3eb4f976b35902de1c81b9ba31f4075b08ca8b2c5f28e7924ffb884d59910afa",
+      "currentSha256": "cee644c6a17aab0184bf002a2b0a47e960d49ff18f8b851269f9a635f7b0efc5",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java",
+      "oldSha256": null,
+      "currentSha256": "81c9291eddbd5000540d85a7472a57da4f185b90c47738fb5898c624ff237980",
+      "status": "added"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/GoodsDisabledBomRetirementPostgresTest.java",
+      "oldSha256": "fdcf90fd3c8158eb3c73653997d744a22624ade89789f19e076ea76cedbdae66",
+      "currentSha256": "8a0b02d9dc2e7e7385d2dd70a92285cfa2cbdb132383bf7bf24c2eced1e3bda4",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/HotTableTriggerHygieneContractTest.java",
+      "oldSha256": "be8a2b777cece8aa4d8542844cf04d33e9d4f544dfe3394c7b6139753c8dd0f4",
+      "currentSha256": "13c89d8c9e9b2c699b6759663fa9f2769f4328d384048e588205d27d4705a25c",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/LegacyMigrationSafetyContractTest.java",
+      "oldSha256": "cb5690e6edbc0b3285f1ec8f56854061e02eef3e20027418997d83ca10e8653f",
+      "currentSha256": "255eca93bf586d47d820b05b043eef3f49e7438d201360aabb39a401250cada4",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/ProductionBomLearningPostgresTest.java",
+      "oldSha256": "9e99bd9f667820220735dd2e434f5409befbe685ea23f7c779ff3eefdc1096c6",
+      "currentSha256": "d6b70d85c5a2b622afa055401b0f6b4789d31a69c4e9c4e4b58cd7ac87c98ca2",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/WorkshopMaterialV740SchemaPostgresTest.java",
+      "oldSha256": "74bd8ed527c747a6b3d7ff7ee6fa4aaae6c7aca92d3c5602a8c2e092b8731a8b",
+      "currentSha256": "3578bd149705b78e7951ac1d30ad9247ec3aa6e52a5058205ed060e8e532c5f7",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/ops/BusinessDataResetSqlContractTest.java",
+      "oldSha256": "d2ac619a3cd78f7615ef5f58652074d702bf92776e1f623d9eba7cec6d1147db",
+      "currentSha256": "6e9c5110d60ffef125c9671aa1576732007970ac3a0b673e09b1ee140dd6e1a4",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/security/PermissionChainReachabilityContractTest.java",
+      "oldSha256": "650d77961d6fc83d5cdfa4d9a1a9c0e1eef5cb56fadcd866734e7ad55d456d46",
+      "currentSha256": "3e548ea28ff0dd814f56654019ed88a382a302d5aecc3f7b9992a4bc3f3c0e49",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/support/ProcurementReceiptFixtureSupport.java",
+      "oldSha256": "f1521c27c6d43c10c00e25e447a0ed3f144bb0401c7c76008827879e830c7257",
+      "currentSha256": "a4f4b84ff3b4a6781078175a2c3aedfedbe76a47620b7927c74bdfced5797c4b",
+      "status": "changed"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/testsupport/MigrationSqlResources.java",
+      "oldSha256": null,
+      "currentSha256": "708f3eb09fdc7ca022b13ab5bed137631050be2a1f5fe7b2115cd86a8b684c01",
+      "status": "added"
+    }
+  ],
+  "changed": 135,
+  "added": 40,
+  "removed": 5,
+  "limits": "Producer byte equivalence proves the reviewed optimization implementation is retained. Shared latest migrations/services/exports and input pathsets changed; this is not a whole runtime closure or current green rerun. Final-fast/final-pg provide current native evidence; old47/289 or old53/377 are never added. Current metadata6growth and draft HTTP/service samples rerun independently."
+}

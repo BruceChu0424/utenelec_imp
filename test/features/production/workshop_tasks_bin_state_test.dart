@@ -23,6 +23,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/production/models/production_execution_planning.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
+import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_discovery_request_repository.dart';
@@ -176,8 +177,9 @@ class _FakeChoiceRepository extends WorkshopMaterialChoiceRepository {
 
   @override
   Future<List<WorkshopMaterialPendingChoice>> pending(
-    List<String> segmentIds,
-  ) async => [
+    List<String> segmentIds, {
+    bool Function()? isCurrent,
+  }) async => [
     if (segmentIds.contains('segment-a'))
       const WorkshopMaterialPendingChoice(
         workshopDepartmentId: 'workshop-1',
@@ -218,8 +220,9 @@ class _FakeChoiceRepository extends WorkshopMaterialChoiceRepository {
 
   @override
   Future<WorkshopMaterialSegmentMaterials> segmentMaterials(
-    String segmentId,
-  ) async => const WorkshopMaterialSegmentMaterials(
+    String segmentId, {
+    bool Function()? isCurrent,
+  }) async => const WorkshopMaterialSegmentMaterials(
     rows: [
       WorkshopMaterialSegmentRow(
         id: 'row-pp',
@@ -353,6 +356,9 @@ Future<List<String>> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // This fixture exercises selected task/command repositories; reference
+        // enrichment is explicitly empty, rather than an unowned real HTTP GET.
+        productionWorkshopTreeProvider.overrideWith((ref) async => const []),
         localServerReachableProvider.overrideWith(
           (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
         ),

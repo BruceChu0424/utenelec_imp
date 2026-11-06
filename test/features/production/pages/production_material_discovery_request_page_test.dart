@@ -279,6 +279,34 @@ void _changeScope(WidgetTester tester, String change) {
 }
 
 void main() {
+  test(
+    'workshop suggestions keep optional raw KG quantity within their own 14/4 boundary',
+    () {
+      final row = DiscoveryRequestMaterialRow(
+        id: 'material',
+        task: _task('one'),
+      )..values.addAll(_plastic);
+      addTearDown(row.dispose);
+      expect(row.toRequest().containsKey('qty'), isFalse);
+      for (final raw in ['1.00001', '1.0000100', '100000000000000', '1e3']) {
+        row.qty.text = raw;
+        expect(row.toRequest, throwsFormatException, reason: raw);
+        expect(row.qty.text, raw);
+      }
+      for (final raw in [
+        '0.0001',
+        '12.7500',
+        '1.0000000',
+        '99999999999999.9999',
+      ]) {
+        row.qty.text = raw;
+        expect(row.toRequest()['qty'], raw);
+        expect(row.toRequest()['unitId'], 'kg');
+        expect(row.task.productUnitName, '个');
+      }
+    },
+  );
+
   for (final stage in ['workbench', 'memory']) {
     testWidgets(
       'unchanged permissions during $stage loading preserve the request',

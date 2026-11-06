@@ -1,0 +1,17 @@
+[
+  {
+    "contract": "unit-history-contracts",
+    "exit": 0,
+    "endedAt": "2026-11-05T10:49:50.8790774Z"
+  },
+  {
+    "contract": "continuous-list-contracts",
+    "exit": 0,
+    "endedAt": "2026-11-05T10:49:59.4907910Z"
+  },
+  {
+    "contract": "search-input-contracts",
+    "exit": 0,
+    "endedAt": "2026-11-05T10:50:17.9024259Z"
+  }
+]

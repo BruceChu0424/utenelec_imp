@@ -23,7 +23,7 @@ SELECT jsonb_build_object(
  'database_identity',jsonb_build_object(
    'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),
    'database_oid',(SELECT oid::text FROM pg_database WHERE datname=current_database())),
- 'schema_version',(SELECT max(version::int) FROM flyway_schema_history WHERE success),
+ 'schema_version',(SELECT CASE WHEN version ~ '^[0-9]+$' THEN version::numeric END FROM flyway_schema_history WHERE success ORDER BY string_to_array(version,'.')::numeric[] DESC LIMIT 1),
  'successful_migration_count',(SELECT count(*) FROM flyway_schema_history WHERE success),
  'failed_migration_count',(SELECT count(*) FROM flyway_schema_history WHERE NOT success),
  'applied_sql',(SELECT jsonb_agg(jsonb_build_object('script',script,'checksum',checksum) ORDER BY installed_rank) FROM flyway_schema_history WHERE success AND type='SQL'),
@@ -59,7 +59,11 @@ def validate_snapshot(snapshot, database, expected_schema, migrations):
     """Check actual metadata and native Flyway checksums, never relabel a schema."""
     if not re.fullmatch(r'uten_imp_rehearsal_[0-9]{8}_v[0-9]+', database):
         raise ValueError('An explicit fresh local rehearsal database is required')
-    if snapshot['database'] != database or snapshot['schema_version'] != expected_schema or snapshot['failed_migration_count'] != 0:
+    from verify_candidate import canonical_source_head
+    source_head = canonical_source_head(migrations)
+    if type(source_head) is not int or source_head != expected_schema:
+        raise ValueError('Finance seed integer schema differs from the complete semantic source head')
+    if type(snapshot['schema_version']) is not int or snapshot['database'] != database or snapshot['schema_version'] != expected_schema or snapshot['failed_migration_count'] != 0:
         raise ValueError('Actual database/schema identity differs')
     if not all(str(snapshot['database_identity'][key]).isdigit() for key in ('system_identifier','database_oid')):
         raise ValueError('Actual physical database identity is missing')

@@ -1,0 +1,11 @@
+{
+  "observedDuringRead" : "off",
+  "total" : 1,
+  "originalOnPublicMillis" : 476.7826,
+  "scope" : "Real public service, original fixture role and transaction, same SQL/parameters; isolated data only",
+  "equalPublicRowsAndTotals" : true,
+  "originalOffPublicMillis" : 133.6642,
+  "preservedOriginalOff" : true,
+  "rows" : 1,
+  "restoredOriginalOn" : true
+}

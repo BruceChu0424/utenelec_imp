@@ -18,6 +18,7 @@ import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
@@ -51,7 +52,10 @@ class DepartmentOrgChartDialog extends ConsumerStatefulWidget {
 }
 
 class _DepartmentOrgChartDialogState
-    extends ConsumerState<DepartmentOrgChartDialog> {
+    extends ConsumerState<DepartmentOrgChartDialog>
+    with ReadViewActivityMixin<DepartmentOrgChartDialog> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   DepartmentNode? _root;
   Map<String, List<EmployeeSummary>> _byDept = const {};
   final _expansion = UtenDefaultCollapsedTreeState();
@@ -90,24 +94,30 @@ class _DepartmentOrgChartDialogState
     });
     try {
       final repository = ref.read(employeeRepositoryProvider);
-      final scope = await _boundary!.api.captureRequestScope(
-        isCurrent: () => _current(version),
+      final loaded = await readViewActivity.runRead(
+        () => _current(version),
+        () async {
+          final scope = await _boundary!.api.captureRequestScope(
+            isCurrent: () => _current(version),
+          );
+          final tree = await scope.run(
+            () =>
+                ref.read(departmentRepositoryProvider).subtree(widget.node.id),
+          );
+          final snapshot = await scope.run(
+            () => loadDepartmentRosterSnapshot(
+              repository: repository,
+              departmentId: widget.node.id,
+              isCurrent: () => _current(version) && scope.isCurrent,
+            ),
+          );
+          await scope.verify();
+          return (tree: tree, snapshot: snapshot);
+        },
       );
-      final tree = await scope.run(
-        () => ref.read(departmentRepositoryProvider).subtree(widget.node.id),
-      );
-      if (!_current(version)) return;
-      final snapshot = await scope.run(
-        () => loadDepartmentRosterSnapshot(
-          repository: repository,
-          departmentId: widget.node.id,
-          isCurrent: () => _current(version) && scope.isCurrent,
-        ),
-      );
-      await scope.verify();
       if (!_current(version)) return;
       setState(() {
-        _root = tree.isEmpty ? widget.node : tree.first;
+        _root = loaded.tree.isEmpty ? widget.node : loaded.tree.first;
         final ids = <String>[];
         void collect(DepartmentNode node) {
           ids.add(node.id);
@@ -118,10 +128,11 @@ class _DepartmentOrgChartDialogState
 
         collect(_root!);
         _expansion.reconcile(ids);
-        _byDept = snapshot.byDepartment;
+        _byDept = loaded.snapshot.byDepartment;
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!_current(version)) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '加载架构图数据失败，请稍后重试';

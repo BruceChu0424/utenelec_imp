@@ -87,6 +87,7 @@ class ApprovalPolicyRepository {
       items: result.items,
       page: result.page,
       totalPages: result.totalPages,
+      total: result.total,
     );
   }
 }

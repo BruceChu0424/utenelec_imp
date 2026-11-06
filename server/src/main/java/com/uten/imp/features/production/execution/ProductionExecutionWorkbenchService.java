@@ -623,7 +623,7 @@ public class ProductionExecutionWorkbenchService {
                 FROM production_execution_segments segment
                 JOIN production_planning_packages package ON package.id = segment.package_id
                   AND package.status = 'CONFIRMED' AND NOT package.is_deleted
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id = segment.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id = segment.plan_id
                 WHERE segment.id = :segmentId AND NOT segment.is_deleted
                 """).setParameter("segmentId", segmentId));
         if (context.isEmpty() || context.getFirst()[0] == null) return java.util.Map.of();
@@ -788,6 +788,20 @@ public class ProductionExecutionWorkbenchService {
             String orderBy,
             String operatorRouteMemory,
             boolean planningFacts,boolean workshopReader) {
+        try(var readScope=com.uten.imp.common.util.InteractiveTaskReadScope.open(em)){
+            return readSegmentPage(predicate,binder,requestedPage,requestedSize,orderBy,
+                    operatorRouteMemory,planningFacts,workshopReader);
+        }
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> readSegmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory,
+            boolean planningFacts,boolean workshopReader) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -920,7 +934,7 @@ public class ProductionExecutionWorkbenchService {
                                document.bill_no AS document_no,
                                document.status::text AS status
                         FROM preplan_supply_actions action
-                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) document
+                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) document
                           ON document.id = action.external_document_id
                          AND document.is_deleted = FALSE
                         WHERE action.analysis_id = :rootId
@@ -940,10 +954,10 @@ public class ProductionExecutionWorkbenchService {
                           ON allocation.action_id = action.id
                         JOIN purchase_order_item_sources source
                           ON source.request_item_id = allocation.external_item_id
-                        JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_order_items',archive_origin.id)) item
+                        JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) item
                           ON item.id = source.order_item_id
                          AND item.is_deleted = FALSE
-                        JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_orders',archive_origin.id)) document
+                        JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) document
                           ON document.id = item.order_id
                          AND document.is_deleted = FALSE
                         WHERE action.analysis_id = :rootId
@@ -959,7 +973,7 @@ public class ProductionExecutionWorkbenchService {
                         SELECT 'SUBCONTRACT', 'SUBCONTRACT_APPLICATION',
                                document.id, document.bill_no, document.status::text
                         FROM preplan_supply_actions action
-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) document
+                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) document
                           ON document.id = action.external_document_id
                          AND document.is_deleted = FALSE
                         WHERE action.analysis_id = :rootId
@@ -979,10 +993,10 @@ public class ProductionExecutionWorkbenchService {
                           ON allocation.action_id = action.id
                         JOIN subcontract_order_item_sources source
                           ON source.application_item_id = allocation.external_item_id
-                        JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
+                        JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
                           ON item.id = source.order_item_id
                          AND item.is_deleted = FALSE
-                        JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document
+                        JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) document
                           ON document.id = item.order_id
                          AND document.is_deleted = FALSE
                         WHERE action.analysis_id = :rootId
@@ -1005,7 +1019,7 @@ public class ProductionExecutionWorkbenchService {
                        OR document.id IN (
                            WITH RECURSIVE analysis_root_plans(id) AS (
                                SELECT root.id
-                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) root
+                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) root
                                WHERE root.material_analysis_id = :rootId
                                  AND root.is_deleted = FALSE
                            ), analysis_plan_tree(id) AS (
@@ -1016,7 +1030,7 @@ public class ProductionExecutionWorkbenchService {
                                JOIN subplan_links link
                                  ON link.plan_id = parent_plan.id
                                 AND link.is_deleted = FALSE
-                               JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) child
+                               JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) child
                                  ON child.id = link.subplan_id
                                 AND child.is_deleted = FALSE
                            )
@@ -1026,7 +1040,7 @@ public class ProductionExecutionWorkbenchService {
             branches.add("""
                     SELECT 'MAKE', 'PRODUCTION_PLAN', document.id,
                            document.bill_no, document.status::text
-                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) document
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) document
                     %s
                     WHERE %s
                       AND document.is_deleted = FALSE
@@ -1103,7 +1117,13 @@ public class ProductionExecutionWorkbenchService {
                 """;
     }
 
-    /** Product identity is goods/color/unit, independent of planned quantities or segment count. */
+    /**
+     * Product identity is goods/color/unit, independent of planned quantities or segment count.
+     * 2026-11-04 用户口径（V1057 顶层产品）：两路事实源都只认顶层产品——段一路只取
+     * 锚定到根分析行的顶层计划段（PLAN 根全量，与 v_…_roots.root_progress_rollup 同
+     * 一先例）；分析行一路只取根分析行，锚点子件行（MAKE_COMPONENT）与挂父行的子层
+     * 行不再是「产品」，不进已完成/未完成统计。
+     */
     private static String rootProductCompletionSelect(String selectedRoots) {
         return """
                 WITH selected_roots AS MATERIALIZED (
@@ -1116,8 +1136,17 @@ public class ProductionExecutionWorkbenchService {
                     JOIN v_production_execution_workbench_segments task
                       ON task.root_type = root.root_type AND task.root_id = root.root_id
                     JOIN production_execution_segments segment ON segment.id = task.segment_id
+                    JOIN production_plans top_plan
+                      ON top_plan.id = task.plan_id AND top_plan.is_deleted = FALSE
+                    LEFT JOIN production_material_analysis_items top_item
+                      ON top_item.analysis_id = top_plan.material_analysis_id
+                     AND top_item.id = top_plan.material_analysis_item_id
+                     AND top_item.is_deleted = FALSE
+                     AND top_item.parent_analysis_material_id IS NULL
+                     AND top_item.source_type <> 'MAKE_COMPONENT'
                     WHERE task.segment_status NOT IN ('CANCELLED', 'REVERSED')
                       AND segment.product_goods_id IS NOT NULL
+                      AND (task.root_type = 'PLAN' OR top_item.id IS NOT NULL)
                     UNION ALL
                     SELECT root.root_type, root.root_id,
                            source.goods_id, source.color_id, source.unit_id,
@@ -1125,6 +1154,11 @@ public class ProductionExecutionWorkbenchService {
                     FROM selected_roots root
                     JOIN v_production_analysis_workbench_item_progress source
                       ON root.root_type = 'ANALYSIS' AND source.analysis_id = root.root_id
+                    JOIN production_material_analysis_items source_item
+                      ON source_item.id = source.analysis_item_id
+                     AND source_item.is_deleted = FALSE
+                     AND source_item.parent_analysis_material_id IS NULL
+                     AND source_item.source_type <> 'MAKE_COMPONENT'
                 ), product_completion_states AS (
                     SELECT root_type, root_id,
                            product_goods_id, product_color_id, product_unit_id,
@@ -1166,7 +1200,7 @@ public class ProductionExecutionWorkbenchService {
                        FALSE,
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
                          AND EXISTS (SELECT 1 FROM production_execution_segments start_segment
-                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) start_plan ON start_plan.id=start_segment.plan_id
+                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) start_plan ON start_plan.id=start_segment.plan_id
                            WHERE start_segment.id=task.segment_id
                              AND start_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                              AND start_segment.workshop_department_id IS NOT NULL
@@ -1217,7 +1251,7 @@ public class ProductionExecutionWorkbenchService {
                        (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
                          AND fn_can_change_execution_route(task.segment_id)),
                        EXISTS(SELECT 1 FROM production_execution_segments command_segment
-                         JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) command_plan ON command_plan.id=command_segment.plan_id
+                         JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) command_plan ON command_plan.id=command_segment.plan_id
                          JOIN production_planning_packages command_package ON command_package.id=command_segment.package_id
                          WHERE command_segment.id=task.segment_id AND NOT command_segment.is_deleted
                            AND command_plan.status=1 AND NOT command_plan.is_deleted
@@ -1244,7 +1278,7 @@ public class ProductionExecutionWorkbenchService {
                        task.planned_inbound_qty,rate_segment.allowed_overproduction_rate,
                        rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
                        fn_execution_overproduction_policy_applies(rate_segment.id),
-                       (SELECT actual_output_supplement_request_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans WHERE id=task.plan_id),
+                       (SELECT actual_output_supplement_request_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans WHERE id=task.plan_id),
                        -- 2026-10-06：原任务行上「已批准未续报承接」的固定追加量——它占住了公共超产
                        -- 额度，页面据此给出「回原批次续报」入口与待续报提示；无待续报为 0/null。
                        fn_actual_supplement_pending_qty(rate_segment.id, NULL),
@@ -1254,7 +1288,7 @@ public class ProductionExecutionWorkbenchService {
                             AND proof.id IS NOT NULL
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
-                                JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) report ON report.id=claim.report_id
+                                JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) report ON report.id=claim.report_id
                                 WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
                                   AND report.status IN(0,1)
                                   AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id))
@@ -1273,7 +1307,7 @@ public class ProductionExecutionWorkbenchService {
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
                          AND bin_material.state <> 'NEED_BIN'
                          AND EXISTS (SELECT 1 FROM production_execution_segments confirm_segment
-                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) confirm_plan ON confirm_plan.id=confirm_segment.plan_id
+                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) confirm_plan ON confirm_plan.id=confirm_segment.plan_id
                            JOIN production_planning_packages confirm_package ON confirm_package.id=confirm_segment.package_id
                            WHERE confirm_segment.id=task.segment_id
                              AND confirm_segment.workshop_department_id IS NOT NULL
@@ -1283,12 +1317,12 @@ public class ProductionExecutionWorkbenchService {
                              AND confirm_package.status='CONFIRMED' AND NOT confirm_package.is_deleted
                              AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL))),
                        COALESCE((SELECT SUM(disposition.qty) FROM production_over_limit_dispositions disposition
-                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) reported ON reported.id=disposition.report_id
+                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) reported ON reported.id=disposition.report_id
                          WHERE disposition.execution_segment_id=task.segment_id
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted),0),
                        (SELECT disposition.id FROM production_over_limit_dispositions disposition
-                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_reports',archive_origin.id)) reported ON reported.id=disposition.report_id
+                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) reported ON reported.id=disposition.report_id
                          WHERE disposition.execution_segment_id=task.segment_id
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted
@@ -1303,8 +1337,8 @@ public class ProductionExecutionWorkbenchService {
     private static String pendingDrawItemSql() {
         return """
                 SELECT 1 FROM production_planning_package_documents pending_mapping
-                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) pending_document ON pending_document.id=pending_mapping.document_id
-                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) pending_item ON pending_item.doc_id=pending_document.id
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) pending_document ON pending_document.id=pending_mapping.document_id
+                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) pending_item ON pending_item.doc_id=pending_document.id
                       AND NOT pending_item.is_deleted
                     JOIN warehouses pending_warehouse ON pending_warehouse.id=pending_document.warehouse_id
                     WHERE pending_mapping.execution_segment_id=task.segment_id
@@ -1316,13 +1350,13 @@ public class ProductionExecutionWorkbenchService {
     static String drawRequestedPredicate() {
         return """
                 EXISTS (SELECT 1 FROM production_planning_package_documents draw_mapping
-                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw_document ON draw_document.id=draw_mapping.document_id
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw_document ON draw_document.id=draw_mapping.document_id
                     WHERE draw_mapping.execution_segment_id=task.segment_id
                       AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
                       AND draw_document.status IN (0,1)
                 ) AND NOT EXISTS (
                     SELECT 1 FROM production_planning_package_documents draw_mapping
-                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw_document ON draw_document.id=draw_mapping.document_id
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw_document ON draw_document.id=draw_mapping.document_id
                     WHERE draw_mapping.execution_segment_id=task.segment_id
                       AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
                       AND draw_document.status IN (0,1)
@@ -1460,8 +1494,8 @@ public class ProductionExecutionWorkbenchService {
     private static final String ROOT_SEARCH_ANALYSIS_FROM = """
              FROM production_material_analysis_items search_item
              JOIN goods search_goods ON search_goods.id=search_item.goods_id
-             LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) search_order_item ON search_order_item.id=search_item.sales_order_item_id
-             LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) search_order ON search_order.id=search_order_item.order_id
+             LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) search_order_item ON search_order_item.id=search_item.sales_order_item_id
+             LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) search_order ON search_order.id=search_order_item.order_id
              WHERE root.root_type='ANALYSIS' AND search_item.analysis_id=root.root_id AND search_item.is_deleted=FALSE
             """;
 
@@ -1495,8 +1529,8 @@ public class ProductionExecutionWorkbenchService {
                     (SELECT string_agg(client.name,' ')
                      FROM v_production_execution_workbench_segments search_task
                      JOIN execution_segment_sales_allocations allocation ON allocation.execution_segment_id=search_task.segment_id
-                     JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_item ON sales_item.id=allocation.sales_order_item_id AND sales_item.is_deleted=FALSE
-                     JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) sales_order ON sales_order.id=sales_item.order_id AND sales_order.is_deleted=FALSE
+                     JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_item ON sales_item.id=allocation.sales_order_item_id AND sales_item.is_deleted=FALSE
+                     JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_order ON sales_order.id=sales_item.order_id AND sales_order.is_deleted=FALSE
                      JOIN clients client ON client.id=sales_order.client_id
                      WHERE search_task.root_type=root.root_type AND search_task.root_id=root.root_id)
                     """);

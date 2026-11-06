@@ -29,7 +29,9 @@ void main(List<String> arguments) {
   output.parent.createSync(recursive: true);
   output.writeAsStringSync(
     const JsonEncoder.withIndent('  ').convert({
-      'baseline': 'a667078df',
+      'baseline':
+          (Process.runSync('git', ['rev-parse', 'HEAD']).stdout as String)
+              .trim(),
       'interpretation':
           'AST dependency inventory, not proof of a defect or runtime acceptance',
       'methods': rows,

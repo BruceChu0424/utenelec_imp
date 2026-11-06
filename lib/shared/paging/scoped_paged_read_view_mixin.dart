@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,9 +8,12 @@ import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'scoped_paged_read.dart';
 import 'paged_query_identity.dart';
+import 'read_view_activity.dart';
 
-/// Lifecycle adapter for manual pagers. The shared reader owns cache and
-/// transport scheduling; the view continues to own loading, selection and its
+export 'read_view_activity.dart' show isRetiredViewRead;
+
+/// Lifecycle adapter for complete query lists. The shared reader owns bounded
+/// transport and the accepted result; the view owns loading, selection and its
 /// latest UI request. Query maps/lists are snapshotted before asynchronous work.
 mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     on ConsumerState<W> {
@@ -17,6 +22,11 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
   int _scopedOwner = 0;
   bool _scopedDisposed = false;
   ApiException? _scopedReadCause;
+  late final readViewActivity = ReadViewActivity(onResume: onReadViewResumed);
+
+  /// Existing PageResume callbacks get the first fresh attempt. Direct retained
+  /// panels may supply their complete load pipeline here as an idle fallback.
+  FutureOr<void> onReadViewResumed() {}
 
   /// Synchronous cause for the retirement hook. Keep the server's rejection
   /// visible even when that hook invalidates the caller's UI request token.
@@ -34,6 +44,12 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
   /// Existing native/inline owners may keep their own accepted-row retirement.
   /// Views without one override this to clear private rows and pending UI work.
   void scopedPagedReadOwnerChanged() {}
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    readViewActivity.bindView(context);
+  }
 
   @override
   void initState() {
@@ -64,22 +80,6 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
       TickerMode.valuesOf(context).enabled &&
       (ModalRoute.of(context)?.isCurrent ?? true);
 
-  /// Prepare a successor through an existing reader without accepting a page
-  /// or rebuilding the view. Completion does not guarantee a cached result.
-  Future<void> prepareScopedNext<R>(
-    int visiblePage, {
-    Object slot = 'page',
-    bool Function()? canPrepare,
-  }) {
-    if (!mounted || _scopedDisposed) return Future.value();
-    final entry = _scopedPageReads[(R, slot)];
-    if (entry is! _ScopedReadEntry<R>) return Future.value();
-    return entry.reader.prepareNext(
-      visiblePage,
-      canPrepare: () => _scopedViewActive && (canPrepare?.call() ?? true),
-    );
-  }
-
   /// [query] and [currentQuery] include every filter, sort, resource and the
   /// repository/source instance. Use maps/lists for nested collections; page
   /// number and the caller's single-page request generation are excluded.
@@ -90,6 +90,8 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     required Object query,
     required Object Function() currentQuery,
     required Future<PagedResult<R>> Function(int page) fetchPage,
+    Future<PagedResult<R>> Function(int page, int size)? fetchPageSized,
+    Object? Function(R row)? idOf,
     bool useCache = false,
     bool Function()? isCurrent,
     bool Function()? canPrefetch,
@@ -102,43 +104,51 @@ mixin ScopedPagedReadViewMixin<W extends ConsumerStatefulWidget>
     final owner = _scopedOwner;
     final epoch = ref.read(exportContextEpochProvider);
     final snapshot = freezePagedReadQuery(query);
-    bool current() =>
+    bool ownerCurrent() =>
         mounted &&
         !_scopedDisposed &&
         owner == _scopedOwner &&
         epoch == ref.read(exportContextEpochProvider) &&
-        samePagedReadQuery(snapshot, currentQuery()) &&
-        (isCurrent?.call() ?? true);
-    return entry.reader
-        .read(
-          page,
-          scope: [owner, epoch, snapshot],
-          fetchPage: fetchPage,
-          isCurrent: current,
-          useCache: useCache,
-          canPrefetch: () =>
-              current() && (canPrefetch?.call() ?? _scopedViewActive),
-          onPrefetchError: (error) {
-            if (!current()) return;
-            if (pagedReadAccessDenied(error)) {
+        samePagedReadQuery(snapshot, currentQuery());
+    bool current() => ownerCurrent() && (isCurrent?.call() ?? true);
+    return readViewActivity.runRead(
+      current,
+      () => entry.reader
+          .read(
+            page,
+            scope: [owner, epoch, snapshot],
+            fetchPage: fetchPage,
+            fetchPageSized: fetchPageSized,
+            idOf: idOf,
+            isCurrent: current,
+            isOwnerCurrent: ownerCurrent,
+            useCache: useCache,
+            canPrefetch: () =>
+                current() && (canPrefetch?.call() ?? _scopedViewActive),
+            onPrefetchError: (error) {
+              if (!current()) return;
+              if (pagedReadAccessDenied(error)) {
+                invalidateScopedPageReads();
+                _scopedOwnerChanged(error);
+              }
+              onPrefetchError?.call(error);
+            },
+          )
+          .onError((Object error, StackTrace stack) {
+            if (current() && pagedReadAccessDenied(error)) {
               invalidateScopedPageReads();
               _scopedOwnerChanged(error);
             }
-            onPrefetchError?.call(error);
-          },
-        )
-        .onError((Object error, StackTrace stack) {
-          if (current() && pagedReadAccessDenied(error)) {
-            invalidateScopedPageReads();
-            _scopedOwnerChanged(error);
-          }
-          Error.throwWithStackTrace(error, stack);
-        });
+            Error.throwWithStackTrace(error, stack);
+          }),
+      slot: key,
+    );
   }
 
   @override
   void dispose() {
     _scopedDisposed = true;
+    readViewActivity.dispose();
     _scopedOwnerSubscription?.close();
     for (final entry in _scopedPageReads.values) {
       entry.dispose();

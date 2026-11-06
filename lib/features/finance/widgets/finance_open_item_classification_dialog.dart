@@ -17,6 +17,10 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 
 const _categories = {
   'GOODS': '货款',
@@ -75,14 +79,17 @@ class _ClassificationDirectory extends ConsumerStatefulWidget {
 }
 
 class _ClassificationDirectoryState
-    extends ConsumerState<_ClassificationDirectory> {
+    extends ConsumerState<_ClassificationDirectory>
+    with ReadViewActivityMixin<_ClassificationDirectory> {
   late final ApiClient _api;
   late final int _epoch;
   List<Map<String, dynamic>> _items = [];
   Set<String> _selectedSources = {};
   bool _busy = false;
   String? _error;
-  int _page = 1, _pages = 0;
+  int _generation = 0;
+  @override
+  Future<void> onReadViewResumed() => _load();
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -92,49 +99,69 @@ class _ClassificationDirectoryState
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
-  Future<void> _load(int page) async {
-    if (!_current || _busy) return;
+  Future<void> _load() async {
+    if (!_current) return;
+    final generation = ++_generation;
+    bool current() => _current && generation == _generation;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await _api.get(
-        '/finance/open-item-classifications',
-        query: {
-          'direction': widget.receivable ? 'AR' : 'AP',
-          'page': '$page',
-          'size': '50',
-          if (widget.partyId != null) 'partyId': widget.partyId,
-          if (widget.currencyId != null) 'currencyId': widget.currencyId,
-        },
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) => row['ledgerId'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(
+                  '/finance/open-item-classifications',
+                  query: {
+                    'direction': widget.receivable ? 'AR' : 'AP',
+                    'page': '$page',
+                    'size': '$size',
+                    if (widget.partyId != null) 'partyId': widget.partyId,
+                    if (widget.currencyId != null)
+                      'currencyId': widget.currencyId,
+                  },
+                ),
+                (row) => Map<String, dynamic>.unmodifiable(row),
+              ),
+        ),
       );
-      if (_current) {
+      if (current()) setState(() => _items = result.items);
+    } catch (error) {
+      if (!isRetiredViewRead(error) && current()) {
         setState(() {
-          _items = _maps(result['items']);
-          _page = page;
-          _pages = (result['totalPages'] as num?)?.toInt() ?? 0;
+          _error = _message(error);
+          if (pagedReadAccessDenied(error)) {
+            _items = [];
+            _selectedSources = {};
+          }
         });
       }
-    } catch (error) {
-      if (_current) setState(() => _error = _message(error));
     } finally {
-      if (_current) setState(() => _busy = false);
+      if (current()) setState(() => _busy = false);
     }
   }
 
   Future<void> _edit(Map<String, dynamic> item) async {
-    if (!_current || _busy) return;
+    if (!_current ||
+        _busy ||
+        !_items.any((accepted) => identical(accepted, item))) {
+      return;
+    }
     await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (_) =>
           _ClassificationEditor(id: '${item['ledgerId']}', mode: 'sources'),
     );
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   @override
@@ -194,10 +221,7 @@ class _ClassificationDirectoryState
                   idOf: (row) => '${row['ledgerId']}',
                   busy: _busy,
                   error: _error,
-                  retry: () => _load(_page),
-                  page: _page,
-                  pages: _pages,
-                  onPage: _load,
+                  retry: () => _load(),
                   scope: (
                     _epoch,
                     widget.partyId,
@@ -224,7 +248,7 @@ class _ClassificationDirectoryState
                               context,
                               ledgerIds: _selectedSources.toList()..sort(),
                             );
-                            if (_current) await _load(_page);
+                            if (_current) await _load();
                           },
                     child: const Text('整图更正'),
                   ),
@@ -270,7 +294,8 @@ class _ClassificationLine extends EditableGridRow {
   }
 }
 
-class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
+class _ClassificationEditorState extends ConsumerState<_ClassificationEditor>
+    with ReadViewActivityMixin<_ClassificationEditor> {
   late final ApiClient _api;
   late final int _epoch;
   final _reference = TextEditingController();
@@ -279,6 +304,11 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
   final _grid = UtenEditableGridController<_ClassificationLine>();
   List<_ClassificationLine> get _lines => _grid.rows;
   bool _busy = false, _unknown = false, _dirty = false;
+  bool _readDenied = false;
+  int _readGeneration = 0;
+  @override
+  Future<void> onReadViewResumed() =>
+      _dirty || _unknown ? _refreshReferences() : _load();
   String? _error;
   bool get _current =>
       mounted &&
@@ -367,9 +397,24 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
       _busy = true;
       _error = null;
     });
+    final generation = ++_readGeneration;
+    bool current() => _current && generation == _readGeneration;
     try {
-      final result = await _api.get(_path);
-      if (!_current) return;
+      final result = await readViewActivity.runRead(current, () async {
+        final source = await _api.get(_path);
+        if (widget.mode != 'sources') return source;
+        final ar = _sourceDirection(source) == 'AR';
+        final cash = await _completeReferences('cash', ar, current);
+        final offsets = await _completeReferences('offsets', ar, current);
+        return {
+          ...source,
+          'cashReferences': cash,
+          'offsetReferences': offsets,
+          ar ? 'receipts' : 'payments': cash['items'],
+          'offsets': offsets['items'],
+        };
+      });
+      if (!current()) return;
       final saved = _maps(result['parts']);
       final sourceParts = _maps(result['sourceParts']);
       final categories = _sourceAmounts
@@ -407,9 +452,17 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
         _reference.text = '';
       });
     } catch (error) {
-      if (_current) setState(() => _error = _message(error));
+      if (!isRetiredViewRead(error) && current()) {
+        setState(() {
+          _error = _message(error);
+          if (pagedReadAccessDenied(error)) {
+            _readDenied = true;
+            _source = null;
+          }
+        });
+      }
     } finally {
-      if (_current) setState(() => _busy = false);
+      if (current()) setState(() => _busy = false);
     }
   }
 
@@ -506,39 +559,91 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
     if (_current) await _load();
   }
 
-  Map<String, dynamic> _references(String kind) => Map<String, dynamic>.from(
-    (_source?[kind == 'cash' ? 'cashReferences' : 'offsetReferences']
-            as Map?) ??
-        const {},
-  );
+  Future<Map<String, dynamic>> _completeReferences(
+    String kind,
+    bool ar,
+    bool Function() current,
+  ) async {
+    final result = await loadCompletePagedResult<Map<String, dynamic>>(
+      isCurrent: current,
+      idOf: (row) =>
+          row[kind == 'cash'
+              ? (ar ? 'receiptLineId' : 'paymentLineId')
+              : 'offsetId'],
+      loadPage: (page, size) async {
+        final raw = await _api.get(
+          '$_path/references',
+          query: {'kind': kind, 'page': '$page', 'size': '$size'},
+        );
+        return PagedReadSnapshot<Map<String, dynamic>, Map<String, dynamic>>(
+          page: await PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+            raw,
+            (row) => Map<String, dynamic>.unmodifiable(row),
+          ),
+          snapshot: raw,
+          rebuildSnapshot: (combined) => {
+            ...raw,
+            'items': combined.items,
+            'page': combined.page,
+            'size': combined.size,
+            'total': combined.total,
+            'totalPages': combined.totalPages,
+          },
+        );
+      },
+    );
+    return (result
+            as PagedReadSnapshot<Map<String, dynamic>, Map<String, dynamic>>)
+        .snapshot;
+  }
 
-  Future<void> _referencePage(String kind, int page) async {
-    if (!_current || _busy || _unknown || widget.mode != 'sources') return;
+  Future<void> _refreshReferences() async {
+    // Unsaved allocations, evidence, optimistic head and uncertain writes are
+    // local command state. A return only refreshes read-only reference lists.
+    if (!_current ||
+        _busy ||
+        _unknown ||
+        widget.mode != 'sources' ||
+        _source == null) {
+      return;
+    }
+    final generation = ++_readGeneration;
+    bool current() => _current && generation == _readGeneration;
+    final ar = _receivable;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await _api.get(
-        '$_path/references',
-        query: {'kind': kind, 'page': '$page', 'size': '50'},
+      final values = await readViewActivity.runRead(
+        current,
+        () async => [
+          await _completeReferences('cash', ar, current),
+          await _completeReferences('offsets', ar, current),
+        ],
       );
-      if (_current) {
+      if (!current()) return;
+      setState(
+        () => _source = {
+          ..._source!,
+          'cashReferences': values[0],
+          'offsetReferences': values[1],
+          ar ? 'receipts' : 'payments': values[0]['items'],
+          'offsets': values[1]['items'],
+        },
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error) && current()) {
         setState(() {
-          _source = {
-            ..._source!,
-            kind == 'cash' ? 'cashReferences' : 'offsetReferences': result,
-            kind == 'cash'
-                    ? (_receivable ? 'receipts' : 'payments')
-                    : 'offsets':
-                result['items'],
-          };
+          _error = _message(error);
+          if (pagedReadAccessDenied(error)) {
+            _readDenied = true;
+            _source = null;
+          }
         });
       }
-    } catch (error) {
-      if (_current) setState(() => _error = _message(error));
     } finally {
-      if (_current) setState(() => _busy = false);
+      if (current()) setState(() => _busy = false);
     }
   }
 
@@ -568,7 +673,8 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(exportContextEpochProvider) != _epoch ||
+    if (_readDenied ||
+        ref.watch(exportContextEpochProvider) != _epoch ||
         !identical(_api, ref.watch(apiClientProvider))) {
       return _lost(context);
     }
@@ -792,17 +898,6 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
                                             : 'payments'],
                                       ),
                                       busy: _busy,
-                                      page:
-                                          (_references('cash')['page'] as num?)
-                                              ?.toInt() ??
-                                          1,
-                                      pages:
-                                          (_references('cash')['totalPages']
-                                                  as num?)
-                                              ?.toInt() ??
-                                          0,
-                                      onPage: (page) =>
-                                          _referencePage('cash', page),
                                       idOf: (row) =>
                                           '${row[_receivable ? 'receiptLineId' : 'paymentLineId']}',
                                       canOpen: (_) => !_busy && !_unknown,
@@ -847,18 +942,6 @@ class _ClassificationEditorState extends ConsumerState<_ClassificationEditor> {
                                       ],
                                       rows: _maps(_source!['offsets']),
                                       busy: _busy,
-                                      page:
-                                          (_references('offsets')['page']
-                                                  as num?)
-                                              ?.toInt() ??
-                                          1,
-                                      pages:
-                                          (_references('offsets')['totalPages']
-                                                  as num?)
-                                              ?.toInt() ??
-                                          0,
-                                      onPage: (page) =>
-                                          _referencePage('offsets', page),
                                       idOf: (row) => '${row['offsetId']}',
                                       canOpen: (_) => !_busy && !_unknown,
                                       onOpen: (row) => _openChild(

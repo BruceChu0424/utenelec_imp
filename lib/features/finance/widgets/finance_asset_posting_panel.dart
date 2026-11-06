@@ -1,8 +1,12 @@
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
 import '../../../components/layout/uten_segment_row.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,9 +47,20 @@ class FinanceAssetPostingPanel extends ConsumerStatefulWidget {
 }
 
 class _FinanceAssetPostingPanelState
-    extends ConsumerState<FinanceAssetPostingPanel> {
+    extends ConsumerState<FinanceAssetPostingPanel>
+    with ReadViewActivityMixin<FinanceAssetPostingPanel> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_busy) {
+      _refreshAfterBusy = true;
+      return;
+    }
+    await Future.wait([_loadRuns(), _loadPeriods()]);
+  }
+
   final _periodController = TextEditingController(text: currentFinancePeriod());
   final _runsGuard = LatestRequestGuard();
+  final _runRows = UtenAncestorRowWindowController<AssetPostingRun>();
   final _periodsGuard = LatestRequestGuard();
   AssetPostingRunType _runType = AssetPostingRunType.depreciation;
   AssetPostingPreview? _preview;
@@ -147,15 +162,28 @@ class _FinanceAssetPostingPanelState
       _runsError = null;
     });
     try {
-      final result = await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .listPostingRuns();
+      final repository = ref.read(financeAssetWorkbenchRepositoryProvider);
+      bool active() => mounted && current() && _runsGuard.isCurrent(generation);
+      final result = await readViewActivity.runRead(
+        active,
+        () => PagedReadIntent.scopedRead(
+          active,
+          () => loadCompletePagedSnapshot<AssetPostingRun>(
+            isCurrent: active,
+            idOf: (run) => run.id,
+            loadPage: (page, size) =>
+                repository.listPostingRuns(page: page, size: size),
+          ),
+        ),
+        slot: 'posting-runs',
+      );
       if (!current() || !_runsGuard.isCurrent(generation)) return;
       setState(() {
-        _runs = result.items;
+        _runs = result;
         _runsLoading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!current() || !_runsGuard.isCurrent(generation)) return;
       setState(() {
         _runsLoading = false;
@@ -172,15 +200,23 @@ class _FinanceAssetPostingPanelState
       _periodsError = null;
     });
     try {
-      final result = await ref
-          .read(financeAssetWorkbenchRepositoryProvider)
-          .listPeriods();
+      bool active() =>
+          mounted && current() && _periodsGuard.isCurrent(generation);
+      final result = await readViewActivity.runRead(
+        active,
+        () => PagedReadIntent.scopedRead(
+          active,
+          () => ref.read(financeAssetWorkbenchRepositoryProvider).listPeriods(),
+        ),
+        slot: 'posting-periods',
+      );
       if (!current() || !_periodsGuard.isCurrent(generation)) return;
       setState(() {
         _periods = result;
         _periodsLoading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!current() || !_periodsGuard.isCurrent(generation)) return;
       setState(() {
         _periodsLoading = false;
@@ -836,62 +872,64 @@ class _FinanceAssetPostingPanelState
           ? _retry(_runsError!, _loadRuns)
           : _runs.isEmpty
           ? const UtenEmpty(message: '暂无过账批次')
-          : Column(
-              children: [
-                for (final run in _runs)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      run.runType == AssetPostingRunType.depreciation
-                          ? Icons.apartment_outlined
-                          : Icons.calendar_month_outlined,
-                    ),
-                    title: Text('${run.period} · ${run.runType.label}'),
-                    subtitle: Text(
-                      '${run.itemCount} 笔 · ¥ ${formatFinanceDecimal(run.totalAmount)}${run.voucherNo == null ? '' : ' · 凭证 ${run.voucherNo}'}',
-                    ),
-                    trailing: Wrap(
-                      spacing: UtenSpacing.s8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        financeAssetStatusBadge(run.status),
-                        if (widget.capabilities.canPost &&
-                            run.token?.isNotEmpty == true &&
-                            actionAllowed(run.allowedActions, 'SUBMIT'))
-                          UtenActionButton(
-                            key: Key('finance-asset-history-submit-${run.id}'),
-                            size: UtenActionButtonSize.small,
-                            onAction: () => _runHistoryAction(run, 'submit'),
-                            label: const Text('提交'),
-                          ),
-                        if (widget.capabilities.canApprove &&
-                            actionAllowed(run.allowedActions, 'APPROVE'))
-                          UtenActionButton(
-                            key: Key('finance-asset-history-approve-${run.id}'),
-                            size: UtenActionButtonSize.small,
-                            onAction: () => _runHistoryAction(run, 'approve'),
-                            label: const Text('审批'),
-                          ),
-                        if (_canPostRun(run))
-                          UtenActionButton(
-                            key: Key('finance-asset-history-post-${run.id}'),
-                            size: UtenActionButtonSize.small,
-                            onAction: () => _runHistoryAction(run, 'post'),
-                            label: const Text('过账'),
-                          ),
-                        if (widget.capabilities.canReverse &&
-                            actionAllowed(run.allowedActions, 'REVERSE'))
-                          UtenActionButton(
-                            key: Key('finance-asset-history-reverse-${run.id}'),
-                            type: UtenActionButtonType.danger,
-                            size: UtenActionButtonSize.small,
-                            onAction: () => _reverse(run),
-                            label: const Text('撤销入账'),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
+          : UtenAncestorRowWindow<AssetPostingRun>(
+              controller: _runRows,
+              rows: _runs,
+              expensiveRows: false,
+              deferRowMounts: false,
+              estimatedRowExtent: 72,
+              rowBuilder: (context, run, _) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  run.runType == AssetPostingRunType.depreciation
+                      ? Icons.apartment_outlined
+                      : Icons.calendar_month_outlined,
+                ),
+                title: Text('${run.period} · ${run.runType.label}'),
+                subtitle: Text(
+                  '${run.itemCount} 笔 · ¥ ${formatFinanceDecimal(run.totalAmount)}${run.voucherNo == null ? '' : ' · 凭证 ${run.voucherNo}'}',
+                ),
+                trailing: Wrap(
+                  spacing: UtenSpacing.s8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    financeAssetStatusBadge(run.status),
+                    if (widget.capabilities.canPost &&
+                        run.token?.isNotEmpty == true &&
+                        actionAllowed(run.allowedActions, 'SUBMIT'))
+                      UtenActionButton(
+                        key: Key('finance-asset-history-submit-${run.id}'),
+                        size: UtenActionButtonSize.small,
+                        onAction: () => _runHistoryAction(run, 'submit'),
+                        label: const Text('提交'),
+                      ),
+                    if (widget.capabilities.canApprove &&
+                        actionAllowed(run.allowedActions, 'APPROVE'))
+                      UtenActionButton(
+                        key: Key('finance-asset-history-approve-${run.id}'),
+                        size: UtenActionButtonSize.small,
+                        onAction: () => _runHistoryAction(run, 'approve'),
+                        label: const Text('审批'),
+                      ),
+                    if (_canPostRun(run))
+                      UtenActionButton(
+                        key: Key('finance-asset-history-post-${run.id}'),
+                        size: UtenActionButtonSize.small,
+                        onAction: () => _runHistoryAction(run, 'post'),
+                        label: const Text('过账'),
+                      ),
+                    if (widget.capabilities.canReverse &&
+                        actionAllowed(run.allowedActions, 'REVERSE'))
+                      UtenActionButton(
+                        key: Key('finance-asset-history-reverse-${run.id}'),
+                        type: UtenActionButtonType.danger,
+                        size: UtenActionButtonSize.small,
+                        onAction: () => _reverse(run),
+                        label: const Text('撤销入账'),
+                      ),
+                  ],
+                ),
+              ),
             ),
     );
   }

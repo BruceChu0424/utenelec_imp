@@ -168,9 +168,30 @@ class OutboundQuantityTextJsonTest {
 
     @Test
     void salesWarehouseReadModelPreservesAuthoritativeQuantityAlongsideLegacyNumber() throws Exception {
-        var line = mapper.readValue("{\"quantity\":" + MAXIMUM.toPlainString() + "}",
+        var rate = new BigDecimal("1234567890123.123456789012345678901234");
+        var kilograms = new BigDecimal("99999999999999.9999");
+        var line = mapper.readValue("{\"quantity\":" + MAXIMUM.toPlainString()
+                        + ",\"unitRate\":" + rate.toPlainString()
+                        + ",\"weightKg\":" + kilograms.toPlainString() + "}",
                 WarehouseSalesOutboundLine.class);
         assertEquals(MAXIMUM, line.quantity());
-        assertEquals(MAXIMUM.toPlainString(), mapper.valueToTree(line).path("quantityExact").textValue());
+        assertEquals(rate, line.unitRate());
+        assertEquals(kilograms, line.weightKg());
+        var json = mapper.valueToTree(line);
+        assertEquals(MAXIMUM.toPlainString(), json.path("quantityExact").textValue());
+        assertEquals(rate.toPlainString(), json.path("unitRateExact").textValue());
+        assertEquals(kilograms.toPlainString(), json.path("weightKgExact").textValue());
+        assertTrue(json.path("quantity").isNumber(), "legacy numeric quantity remains compatible");
+        assertTrue(json.path("unitRate").isNumber(), "legacy numeric rate remains compatible");
+        assertTrue(json.path("weightKg").isNumber(), "legacy numeric kg remains compatible");
+
+        var unknown = mapper.readValue("{\"quantity\":null,\"unitRate\":null,\"weightKg\":null}",
+                WarehouseSalesOutboundLine.class);
+        var missing = mapper.valueToTree(unknown);
+        assertTrue(missing.path("quantityExact").isNull());
+        assertTrue(missing.path("unitRateExact").isNull());
+        assertTrue(missing.path("weightKgExact").isNull());
+        assertTrue(missing.path("unitRate").isNull(), "missing source rate is never invented as1");
+        assertTrue(missing.path("weightKg").isNull(), "unknown measured kg is never invented as0");
     }
 }

@@ -171,6 +171,23 @@ class AuditLogPage extends PagedResult<AuditLogEntry> {
 
   final int snapshotId;
 
+  @override
+  AuditLogPage withRows(
+    List<AuditLogEntry> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => AuditLogPage(
+    items: freezePagedRows(rows),
+    page: page,
+    size: size ?? rows.length,
+    total: total ?? this.total,
+    totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+    snapshotId: snapshotId,
+    readScopeVersion: readScopeVersion,
+  );
+
   factory AuditLogPage.fromJson(Map<String, dynamic> json) {
     final page = PagedResult.fromJson(json, AuditLogEntry.fromJson);
     return AuditLogPage(
@@ -251,6 +268,21 @@ class AuditActorPage extends PagedResult<AuditActorOption> {
     required super.total,
     required super.totalPages,
   });
+
+  @override
+  AuditActorPage withRows(
+    List<AuditActorOption> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => AuditActorPage(
+    items: freezePagedRows(rows),
+    page: page,
+    size: size ?? rows.length,
+    total: total ?? this.total,
+    totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+  );
 
   factory AuditActorPage.fromJson(Map<String, dynamic> json) {
     final page = PagedResult.fromJson(json, AuditActorOption.fromJson);

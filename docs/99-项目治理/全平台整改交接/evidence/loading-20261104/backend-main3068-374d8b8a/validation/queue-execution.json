@@ -1,0 +1,10 @@
+{
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T21:28:15.6956512Z",
+  "completedAtUtc": "2026-11-05T22:16:09.9566769Z",
+  "actualExitCode": 0,
+  "wrapperPid": 56116,
+  "fastExitCode": 0,
+  "pgExitCode": 0,
+  "sealExitCode": 0
+}

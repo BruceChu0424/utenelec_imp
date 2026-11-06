@@ -1,3 +1,5 @@
+import '../../../support/production_daily_report_fixture.dart';
+import '../../../support/master_dictionary_fixture.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
@@ -46,6 +48,92 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 late SharedPreferences _preferences;
 
 void main() {
+  for (final empty in [false, true]) {
+    testWidgets(
+      'draft scope avoids work when tasks are known empty or report view is unavailable:empty=$empty',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final reads = <List<String>>[];
+        final router = _router();
+        addTearDown(router.dispose);
+        final ProductionExecutionWorkbenchRepository repository;
+        if (empty) {
+          final dio = Dio();
+          dio.interceptors.add(
+            InterceptorsWrapper(
+              onRequest: (request, handler) {
+                handler.resolve(
+                  Response<dynamic>(
+                    requestOptions: request,
+                    statusCode: 200,
+                    data: {
+                      'items': <Map<String, dynamic>>[],
+                      'page': 1,
+                      'size': 100,
+                      'total': 0,
+                      'totalPages': 0,
+                    },
+                  ),
+                );
+              },
+            ),
+          );
+          repository = ProductionExecutionWorkbenchRepository(ApiClient(dio));
+        } else {
+          repository = _repository(withWaitingRow: true);
+        }
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              emptyMasterDictionaryFixture(),
+              emptyServerReportDraftsFixture(onRead: (ids) => reads.add(ids)),
+              sharedPreferencesProvider.overrideWithValue(_preferences),
+              isSuperAdminProvider.overrideWithValue(false),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionExecutionView,
+                Perm.productionWorkshopTaskViewAll,
+                if (empty) ...{
+                  Perm.productionDailyReportView,
+                  Perm.productionDailyReportCreate,
+                },
+              }),
+              productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+                repository,
+              ),
+            ],
+            child: MaterialApp.router(
+              routerConfig: router,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await selectFilterSegment(tester, '开工准备');
+        await tester.pumpAndSettle();
+        expect(reads, isEmpty);
+        final table = tester
+            .widget<MasterDataTableView<ProductionExecutionWorkbenchSegment>>(
+              find.byType(
+                MasterDataTableView<ProductionExecutionWorkbenchSegment>,
+              ),
+            );
+        expect(table.error, isNull);
+        expect(table.isLoading, isFalse);
+        expect(table.items, empty ? isEmpty : isNotEmpty);
+        if (empty) {
+          expect(find.text('报工草稿读取失败，请刷新后核对已保存的报工'), findsNothing);
+        } else {
+          expect(find.text('当前无权核对报工草稿，待报额度尚未核对'), findsOneWidget);
+          expect(find.text('产品 A'), findsWidgets);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'foreign workshop detail remains read-only and retires on same-permission scope changes',
     (tester) async {
@@ -57,6 +145,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue({
@@ -124,6 +214,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue({
@@ -216,6 +308,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
@@ -268,6 +362,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue({
@@ -374,6 +470,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
@@ -466,6 +564,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
@@ -518,6 +618,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
@@ -578,6 +680,8 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              emptyServerReportDraftsFixture(),
+              emptyMasterDictionaryFixture(),
               sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue(const {
@@ -647,6 +751,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
@@ -698,6 +804,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -787,6 +895,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
@@ -854,6 +964,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
@@ -909,6 +1021,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -963,6 +1077,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -1010,6 +1126,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -1065,6 +1183,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
@@ -1131,6 +1251,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
@@ -1160,13 +1282,13 @@ void main() {
     expect(repository.calls, 2);
 
     repository.second.complete(_pageWithProduct('新筛选结果'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
     expect(find.text('新筛选结果'), findsOneWidget);
 
     repository.first.complete(_pageWithProduct('迟到旧结果'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
     expect(find.text('新筛选结果'), findsOneWidget);
     expect(find.text('迟到旧结果'), findsNothing);
     // 排空页面的筛选去抖计时器，避免「Timer is still pending」假红。
@@ -1184,6 +1306,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             // V541/V543 车间默认包：有车间任务 + 报工三码，没有 production_plan:view。
@@ -1254,6 +1378,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -1346,15 +1472,18 @@ void batchBusyOverlayTests() {
     _WorkshopLoadGate? loadGate,
     ProductionExecutionWorkbenchRepository? repository,
     _DiscoveryRequests? discoveryRequests,
+    ValueNotifier<bool>? workshopActive,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
+    final router = _router(workshopActive: workshopActive);
     addTearDown(router.dispose);
     final plans = _FakePlanRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
@@ -1386,12 +1515,15 @@ void batchBusyOverlayTests() {
   }
 
   testWidgets(
-    'workshop readiness projection sorts every replacement page and respects server sort mode',
+    'workshop readiness projection sorts the complete result and respects server sort mode',
     (tester) async {
-      final raw = <PagedResult<ProductionExecutionWorkbenchSegment>>[];
       await mountReady(
         tester,
-        repository: _repository(withWaitingRow: true, capturePage: raw.add),
+        repository: _repository(
+          withWaitingRow: true,
+          capturePage: (page) =>
+              page.items.sort((a, b) => b.segmentId.compareTo(a.segmentId)),
+        ),
       );
       final finder = find.byWidgetPredicate(
         (widget) =>
@@ -1399,41 +1531,23 @@ void batchBusyOverlayTests() {
       );
       MasterDataTableView<ProductionExecutionWorkbenchSegment> table() =>
           tester.widget(finder);
-      expect(readWindowBindingOf(table().items), isNotNull);
-      final source = raw.lastWhere(
-        (page) => readWindowBindingOf(page.items) != null,
-      );
-      final first = source.items.singleWhere(
-        (row) => row.segmentId == 'segment-a',
-      );
-      final waiting = source.items.singleWhere(
-        (row) => row.segmentId == 'segment-c',
-      );
-      final session =
-          PagedReadWindowSession<ProductionExecutionWorkbenchSegment>(
-            isCurrent: () => true,
-          );
-      addTearDown(session.invalidate);
-      session.bindResult(
-        source,
-        replacementPages: {
-          1: [waiting, first],
-        },
-      );
-      table().onSelectedIdsChanged!({});
-      await tester.pumpAndSettle();
-      final binding = readWindowBindingOf(table().items)!;
-      expect(binding.projectionKey, (
+      expect(table().items.map((row) => row.segmentId), [
+        'segment-a',
+        'segment-c',
+        'segment-b',
+      ]);
+      expect(readWindowBindingOf(table().items)!.projectionKey, (
         'workshop-preparing-readiness',
         true,
         null,
       ));
-      expect(binding.replacementPages![1]!.map((row) => row.segmentId), [
-        'segment-a',
-        'segment-c',
-      ]);
       table().onSortChange!('segment', true);
       await tester.pumpAndSettle();
+      expect(table().items.map((row) => row.segmentId), [
+        'segment-c',
+        'segment-b',
+        'segment-a',
+      ]);
       expect(readWindowBindingOf(table().items), isNotNull);
       expect(readWindowBindingOf(table().items)!.projectionKey, isNull);
       expect(tester.takeException(), isNull);
@@ -1555,12 +1669,21 @@ void batchBusyOverlayTests() {
     (tester) async {
       final loadGate = _WorkshopLoadGate();
       final requests = _DiscoveryRequests();
+      final workshopActive = ValueNotifier(true);
+      addTearDown(workshopActive.dispose);
+      var taskReads = 0;
       await mountReady(
         tester,
+        workshopActive: workshopActive,
         discoveryRequests: requests,
         repository: _repository(
           readyIssued: false,
           loadGate: loadGate,
+          onRequest: (request) {
+            if (request.path == '/production/workshop-tasks') {
+              taskReads++;
+            }
+          },
           aDiscovery: {
             'materialDiscoveryRequired': true,
             'canRequestMaterialDiscovery': true,
@@ -1595,8 +1718,21 @@ void batchBusyOverlayTests() {
       );
 
       loadGate.pending = Completer<void>();
+      final readsBeforeReturn = taskReads;
+      workshopActive.value = false;
+      await tester.pump();
       await tester.tap(find.byTooltip('返回').last);
       await pumpFrames(tester, 8);
+      expect(taskReads, readsBeforeReturn);
+      expect(
+        find.byKey(const Key('workshop-draw-review-refresh-busy')),
+        findsNothing,
+        reason:
+            'Hidden return waits must not put a root overlay on another page.',
+      );
+      workshopActive.value = true;
+      await pumpFrames(tester, 8);
+      expect(taskReads, readsBeforeReturn + 1);
       expect(
         find.byKey(const Key('workshop-draw-review-refresh-busy')),
         findsOneWidget,
@@ -1674,6 +1810,8 @@ void routeConfirmationTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
@@ -2355,6 +2493,8 @@ void materialUsageEntryTests() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue({
@@ -2405,6 +2545,8 @@ void materialUsageEntryTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              emptyServerReportDraftsFixture(),
+              emptyMasterDictionaryFixture(),
               sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue({
@@ -2514,6 +2656,8 @@ void materialUsageEntryTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              emptyServerReportDraftsFixture(),
+              emptyMasterDictionaryFixture(),
               sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue({
@@ -2592,6 +2736,8 @@ void reportSourceSelectionTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue({
             Perm.productionExecutionView,
@@ -2692,10 +2838,23 @@ MasterDataTableView<ProductionExecutionWorkbenchSegment> _workshopOutputTable(
   ),
 );
 
-GoRouter _router() => GoRouter(
+GoRouter _router({ValueNotifier<bool>? workshopActive}) => GoRouter(
   initialLocation: '/',
   routes: [
-    GoRoute(path: '/', builder: (_, _) => const ProductionWorkshopTasksPage()),
+    GoRoute(
+      path: '/',
+      builder: (_, _) {
+        const page = ProductionWorkshopTasksPage();
+        return workshopActive == null
+            ? page
+            : ValueListenableBuilder<bool>(
+                valueListenable: workshopActive,
+                child: page,
+                builder: (_, active, child) =>
+                    TickerMode(enabled: active, child: child!),
+              );
+      },
+    ),
     GoRoute(
       path: ProductionMaterialDiscoveryRequestPage.route,
       builder: (_, state) => ProductionMaterialDiscoveryRequestPage(
@@ -3388,6 +3547,8 @@ void discoveryMaterialTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              emptyServerReportDraftsFixture(),
+              emptyMasterDictionaryFixture(),
               sharedPreferencesProvider.overrideWithValue(_preferences),
               apiClientProvider.overrideWithValue(requests.api),
               isSuperAdminProvider.overrideWithValue(false),
@@ -3440,6 +3601,8 @@ void discoveryMaterialTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              emptyServerReportDraftsFixture(),
+              emptyMasterDictionaryFixture(),
               sharedPreferencesProvider.overrideWithValue(_preferences),
               apiClientProvider.overrideWithValue(requests.api),
               isSuperAdminProvider.overrideWithValue(false),

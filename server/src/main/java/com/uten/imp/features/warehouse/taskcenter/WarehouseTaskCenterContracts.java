@@ -75,10 +75,15 @@ public final class WarehouseTaskCenterContracts {
     public record StatusFacet(String value, String label, long count) {}
 
     public record Page(List<Row> items, int page, int size, long total, int totalPages,
-                       Map<String, List<StatusFacet>> facets) {
+                       Map<String, List<StatusFacet>> facets, boolean metadataIncluded) {
+        public Page(List<Row> items,int page,int size,long total,int totalPages,Map<String,List<StatusFacet>> facets) {
+            this(items,page,size,total,totalPages,facets,true);
+        }
         public Page {
             items = List.copyOf(items);
-            facets = Map.copyOf(facets);
+            if (!metadataIncluded && facets!=null)
+                throw new IllegalArgumentException("Omitted warehouse metadata must be null");
+            if (metadataIncluded) facets = Map.copyOf(facets);
         }
     }
 

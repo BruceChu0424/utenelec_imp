@@ -1,0 +1,770 @@
+{
+  "schemaVersion": 2,
+  "workstream": "C09 website CMS continuous complete scopes",
+  "status": "implemented-locally-validated-source-frozen",
+  "generatedAt": "2026-11-05T11:31:16.093140+00:00",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "head": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "integration": {
+    "mainWrittenByThisAgent": false,
+    "commitPushDeployOrPublishPerformed": false,
+    "oldBase": "0c23563d419ed262f517deb51524b718e4e2077d",
+    "combinedBase": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+    "websiteUpstreamConflict": false,
+    "provenance": "Original19CMS inputs plus5support inputs were SHA-identical old-to-combined. Initial12website conflict warning was missing preimage metadata; root verified no upstream website source change. Subsequent29paths below are the final reviewed C09 delta.",
+    "nextEnvGeneratedImports": "Restored only clean HEAD content via checkout filters; excluded from29source paths.",
+    "finalLineEndings": "Owned .prisma/.sql normalized to repository LF; no application JS/TS change after successful browser run. Frozen50contracts and migration-history verification passed after normalization."
+  },
+  "runtime": {
+    "nextInstalled": "16.4.2",
+    "nextLock": "16.4.2",
+    "nodeUsed": "24.22.1 via absolute Codex runtime path",
+    "systemNodeNotChanged": "22.12.0",
+    "dependencies": "Exact-lock npm ci --offline --ignore-scripts into private task prefix;421installed package versions checked with0mismatches. Private Prisma5.22SQLite+PostgreSQL clients. No source package/lock/global SDK/main/cache package changes.",
+    "docsRead": [
+      "next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md",
+      "next/dist/docs/01-app/01-getting-started/06-fetching-data.md",
+      "next/dist/docs/01-app/03-api-reference/01-directives/use-client.md",
+      "next/dist/docs/01-app/03-api-reference/01-directives/use-server.md",
+      "next/dist/docs/01-app/03-api-reference/02-components/link.md",
+      "next/dist/docs/01-app/03-api-reference/06-cli/next.md",
+      "next/dist/docs/01-app/02-guides/memory-usage.md",
+      "next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/useOffline.md"
+    ],
+    "dependencyProof": "build/loading-cms/physical-locked-dependencies.json",
+    "browser": "Google Chrome headless,1440x1000, software compositor(--disable-gpu), owned profile and loopback servers; synthetic unpublished data only.",
+    "frameworkOfflineReplay": false
+  },
+  "commonPlan": {
+    "loader": "One real count per ordinary scope;100-summary hydration batches, stable keyset cursor preserving original sort+id; exact cardinality/unique IDs, no empty probe, partial result rejected.",
+    "keyword": "Within the same authorized Serializable snapshot, compute only matching ordered IDs once, derive count from their length, hydrate SQL IN at most100. No cross-request cache/temp database write/global permission ID set. Public SEO/card pagination remains bounded through the existing function.",
+    "order": "CMS retains featured DESC, exact/prefix/contains rank ASC, sortOrder ASC,id ASC; all other original per-collection orders have immutable ID ties.",
+    "database": "Same-provider fresh Serializable transaction throughout all batches;15matching nonunique indexes in paired SQLite/PostgreSQL migrations, no DML or lifecycle writes. Product-variant and series association counts aggregate only the current batch IDs.",
+    "view": "Native stable server HTML tables; media keeps its native card grid. Complete directory metadata is read once. Rows/actions remain mounted, preserving focus/pending/unknown state; no visible paginator or row entrance animation. No new virtual/write-state architecture.",
+    "summary": "Only existing displayed captions/fields retained; original editable JSON and immutable revision snapshots remain in database; one deliberate thumbnail per product with complete variant count, not a truncated editor.",
+    "prefetch": "Reviewed10list pages and sharedAdminShell Next links prefetch=false; images stay native lazy/async. Asset image fetches while viewing are separate from list data requests.",
+    "busy": "Shared DeleteButton lazily mounts one original confirmation or one CmsBusyDialog for the actual awaited action; synchronous row+global in-flight fences. Read-route loading boundary uses shared brand overlay.",
+    "deleteIntent": "After original current authorization, source hash/version and full deletion qualification checks in the same Serializable transaction, reuse only exact actor/entity/DELETE/DRAFT/baseHash/payload/title. Concurrent serialization failure may resolve an already committed fact by fresh authorized read only; no write retry. UPSERT/history/different actor/payload/hash remain distinct."
+  },
+  "callers": [
+    {
+      "path": "website/app/admin/(protected)/products/page.tsx",
+      "sourceSha256": "1b6408559c0962ac8a5e10a2ea4771dd514134c018edc587a2e791dfafbd1b03",
+      "grant": "website:view",
+      "order": "featured desc/sortOrder asc/id asc; searched IDs retain exact/prefix/contains order",
+      "summary": "product minimal fields + one thumbnail + authoritative variant count; full series caption options",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/inquiries/page.tsx",
+      "sourceSha256": "7909ee9fb3dcc2a2004398117d7f46a3f2ce80db17f4fa65e9d524c6e083c7de",
+      "grant": "webinquiry:view",
+      "order": "createdAt desc/id asc",
+      "summary": "original receipt/contact/message; delivery state and ERP ID only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/media/page.tsx",
+      "sourceSha256": "26be4d5aa5c3469ae672d18c6cb6b9d017f8fe68bc21eb15834e15f33d763c31",
+      "grant": "website:media_manage",
+      "order": "legacy id asc; committed createdAt desc/publicPath asc",
+      "summary": "selected source only, original path/bytes; no PENDING/upload-store commands touched",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/releases/page.tsx",
+      "sourceSha256": "3fc767a6e72e789da9f5bb16da18217c94df104792d033e733f305460457fa22",
+      "grant": "website:view + original allowed entity types from edit/publish/rollback grants",
+      "order": "createdAt desc/id asc",
+      "summary": "title/type/status/operation/time only; no payload/beforeState/afterState",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/resources/page.tsx",
+      "sourceSha256": "5d5ce058edf4476e6d32b59c0998bd3b0dfa74c255d3c262b4ea2d6a99036fa3",
+      "grant": "website:media_manage",
+      "order": "updatedAt desc/id asc",
+      "summary": "title/locale/version/published/file originalName; no storageKey or bytes",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/cases/page.tsx",
+      "sourceSha256": "027095f7415bc71c6eac2d1a8b28f79f4dbfa0f2fb87a29ee4b8037a6842fbad",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "displayed title/location only; original edit/delete action by immutable ID",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/jobs/page.tsx",
+      "sourceSha256": "bfdadb9f938d0feee9b82f3d955c3b6b8fd3573beeb3a174c074df0dfc8705d8",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "title/department/location only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/news/page.tsx",
+      "sourceSha256": "c33da16a29d65a0ea1463b65db0311489cc09c1dbe7d109ad47a815fd8ec0fb1",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "publishedAt desc/id asc",
+      "summary": "title/category/date only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/series/page.tsx",
+      "sourceSha256": "cbdeaf247c9fec8c3bd4bef373163547f5562ec1cd9764522ba035faa2616718",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "code/slug/name/catalogRole/version/published and original relation counts",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    },
+    {
+      "path": "website/app/admin/(protected)/scenes/page.tsx",
+      "sourceSha256": "2e1e1f2213980c93290752706cdcc543db4b710e3e8144ad99a50eb8ca794d2f",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/createdAt asc/id asc",
+      "summary": "name/description/background/sort/published; config and detail body not copied",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false,
+      "readContract": "complete current authorized scope in one Serializable snapshot; ordinary keyset batches100; searched products one ordered matching-ID pass plus100 hydration",
+      "actualUiValidation": "Real product table at1/5000/10000and broad single-character10000; release detail during fault/success scenarios. Other collection presentation reviewed and production-compiled, source/database250-row contracts on both providers; not company UAT."
+    }
+  ],
+  "otherReviewed": [
+    {
+      "path": "website/components/admin/CmsRevisionPreview.tsx",
+      "decision": "Already complete immutable differences; shared native table, no command/body mutation"
+    }
+  ],
+  "qualificationFinding": {
+    "description": "Existing raw product other scope included NULL/unknown values while CMS hydration re-filtered exact other, dropping matches counted by SQL. CMS Prisma where now matches the existing canonical raw other scope.",
+    "tests": "250 records spread acrossNULL/other/legacy-other, hidden draft and exact last SKU on SQLite/PostgreSQL; original JSON preserved."
+  },
+  "validation": [
+    {
+      "scope": "all website TS, after generated next-env restored",
+      "status": "passed",
+      "exitCode": 0,
+      "log": "build-loading-cms-frozen-typecheck.log"
+    },
+    {
+      "scope": "whole website ESLint--max-warnings0",
+      "status": "passed",
+      "exitCode": 0,
+      "log": "build-loading-cms-final-eslint.log"
+    },
+    {
+      "scope": "clean SQLite migration history/schema diff after LF normalization",
+      "status": "passed",
+      "log": "build-loading-cms-frozen-migrations.log",
+      "marker": "PRISMA_MIGRATION_HISTORY_OK"
+    },
+    {
+      "scope": "6files/50latestjointcontracts; includes actualSQLite+PostgreSQL migrations/complete readers and PGconcurrent duplicate prevention",
+      "status": "passed",
+      "log": "build-loading-cms-frozen-contracts-final.log"
+    },
+    {
+      "scope": "same revision implementation on actualSQLite",
+      "status": "passed",
+      "log": "build-loading-cms-delete-sqlite-final.log",
+      "cases": 18
+    },
+    {
+      "scope": "targeted actualNext16.4.2production compilation",
+      "status": "passed-targeted-only",
+      "routes": "10actualCMSlists+login+release detail with original layouts/actions",
+      "manifest": "build/loading-cms/browser-production-isolated-profile/compiled-cms-routes.json",
+      "buildLog": "build/loading-cms/browser-production-isolated-profile/next-build.log",
+      "fullSiteBuildPassed": false
+    },
+    {
+      "scope": "actualChrome4complete-table reads+continuouswheel+full-range jumps+tail+pending/response faults/stale guard/success",
+      "status": "passed",
+      "log": "build-loading-cms-once-broad-production-browser.log",
+      "receipt": "build/loading-cms/browser-production-isolated-profile/cms-browser-receipt.json",
+      "companyUat": false
+    }
+  ],
+  "latestUniqueContractLedger": {
+    "uniqueCases": 50,
+    "sameJointGreenRound": true,
+    "log": "build-loading-cms-frozen-contracts-final.log",
+    "passed": 50,
+    "failed": 0,
+    "skipped": 0,
+    "files": 6,
+    "providers": "10CMSscope/source contracts and product search on real migrated SQLite+owned isolated PostgreSQL; revision service uses PostgreSQL in this round.",
+    "separateSQLiteRevisionService": {
+      "log": "build-loading-cms-delete-sqlite-final.log",
+      "cases": 18,
+      "passed": 18,
+      "sameUnchangedRevisionServiceSha256": "6c9cceded4b4d0e91a01364ad87d165c1da9bf4abadf3d1b3f6c84ac6c29f7fa"
+    },
+    "rule": "Latest50replace old47and intermediary23/50results; SQLite18are provider repetitions, not68unique tests."
+  },
+  "publicNecessaryDifferences": [
+    {
+      "path": "website/components/products/ProductExplorer.tsx",
+      "reason": "Public catalog cards keep SEO previous/next links and rel navigation; original public publication and verified-fact guards unchanged"
+    },
+    {
+      "path": "website/components/products/PublicResourceList.tsx",
+      "reason": "Public resource cards keep approved public-only24page/SEO navigation"
+    },
+    {
+      "path": "website/lib/catalog-query.ts",
+      "reason": "Public card query window/bounds retained; not an administrative business table"
+    },
+    {
+      "path": "website/app/admin/actions.ts",
+      "reason": "take2 proves exactly one website authority; it is an integrity guard, not a hidden business list"
+    },
+    {
+      "path": "website/lib/imp-portal.ts",
+      "reason": "Bounded server-to-server cursor protocol retains continuation and authorization, not visible CMS table pagination"
+    },
+    {
+      "path": "website/lib/inquiry-delivery.ts",
+      "reason": "Bounded delivery worker batch retains all durable pending work across runs, not user-visible list truncation"
+    },
+    {
+      "path": "website/app/admin/(protected)/products/page.tsx",
+      "reason": "take1variant is only the selected thumbnail; original total variant count and full edit form remain separate"
+    }
+  ],
+  "unverified": [
+    "Company production data/roles/device UAT has not run.",
+    "Full-siteproductionbuild remains unverified; actual12targetedroutes are verified.",
+    "Only products/list and release-detail workflows had real browser interaction; remaining9collection presentations (10collections/11sources total) have source/DB/provider/compiler evidence, not a10-page company walkthrough.",
+    "Native200182DOM10kand retained browser-cache heap still carry rendering cost; no universal first-load/frame-time SLA is asserted.",
+    "Migration sources are local only; no real-site database or server activation/deployment performed.",
+    "Public SEO/card pagination, explicit curated/publicvisitor limits, upload/publication/restore commands and editing forms keep their original contracts."
+  ],
+  "sourceSha256": {
+    "website/app/admin/(protected)/cases/page.tsx": "027095f7415bc71c6eac2d1a8b28f79f4dbfa0f2fb87a29ee4b8037a6842fbad",
+    "website/app/admin/(protected)/inquiries/page.tsx": "7909ee9fb3dcc2a2004398117d7f46a3f2ce80db17f4fa65e9d524c6e083c7de",
+    "website/app/admin/(protected)/jobs/page.tsx": "bfdadb9f938d0feee9b82f3d955c3b6b8fd3573beeb3a174c074df0dfc8705d8",
+    "website/app/admin/(protected)/loading.tsx": "45e1849dcbd814301ca4ea60638379cba3baca4c381020117f024640a08bacbe",
+    "website/app/admin/(protected)/media/page.tsx": "26be4d5aa5c3469ae672d18c6cb6b9d017f8fe68bc21eb15834e15f33d763c31",
+    "website/app/admin/(protected)/news/page.tsx": "c33da16a29d65a0ea1463b65db0311489cc09c1dbe7d109ad47a815fd8ec0fb1",
+    "website/app/admin/(protected)/products/page.tsx": "1b6408559c0962ac8a5e10a2ea4771dd514134c018edc587a2e791dfafbd1b03",
+    "website/app/admin/(protected)/releases/page.tsx": "3fc767a6e72e789da9f5bb16da18217c94df104792d033e733f305460457fa22",
+    "website/app/admin/(protected)/resources/page.tsx": "5d5ce058edf4476e6d32b59c0998bd3b0dfa74c255d3c262b4ea2d6a99036fa3",
+    "website/app/admin/(protected)/scenes/page.tsx": "2e1e1f2213980c93290752706cdcc543db4b710e3e8144ad99a50eb8ca794d2f",
+    "website/app/admin/(protected)/series/page.tsx": "cbdeaf247c9fec8c3bd4bef373163547f5562ec1cd9764522ba035faa2616718",
+    "website/components/admin/AdminHint.tsx": "eb2950938d2ea388773c11477a4767233220651e2d84a8ed482e3cc8c0cd3556",
+    "website/components/admin/AdminShell.tsx": "4997b576eb44a9db38e8f1b1436afc170b9d0219b09cd1f19a3c8db16a713749",
+    "website/components/admin/CmsBusyDialog.tsx": "eb3fe0ac3ae50d56e86b9c27c62c2e6a9931b6ab867fadb7a7f7e79492eb1eec",
+    "website/components/admin/CmsContinuousTable.tsx": "8d203ba57fe191ca000e50bb274375961059187a7c9a8ee0317824cf840f7e89",
+    "website/components/admin/CmsDeleteButton.tsx": "4c2a3dccd3c9e9cb95afd42ca6161f3b5dde60807a1b0748872675ada0e9f8b2",
+    "website/components/admin/CmsRevisionPreview.tsx": "ff729d96f858c6723d645ce94af9531eb7aa235013420d15e922b8d96a79fe40",
+    "website/components/admin/DeleteButton.tsx": "6e49f6c1953f97c6709e2d156bbf145b2d67fca46979130798321077fc6e3990",
+    "website/lib/cms-list-queries.ts": "41001d171ab98576eef94b8dd8e7f034cd410c1bbb93d14166612b0ed0f88b4a",
+    "website/lib/cms-read.ts": "73d644854678cf7e2b16f89002a8894e6b31ef1da9f46be6d31933a5c3c70b02",
+    "website/lib/cms-revisions.ts": "6c9cceded4b4d0e91a01364ad87d165c1da9bf4abadf3d1b3f6c84ac6c29f7fa",
+    "website/lib/product-search.ts": "c1f2412ecf39f2d3953bf1ff18bfdbdda217266dc2476070e4ce4c0829b69486",
+    "website/prisma/migrations/20261105000000_cms_continuous_read_indexes/migration.sql": "cf30d37eaa58a35d4d492b02cac1d0fc5732eca52793e11cabe44f59a9dbafa0",
+    "website/prisma/postgresql/migrations/20261105000000_cms_continuous_read_indexes/migration.sql": "cf30d37eaa58a35d4d492b02cac1d0fc5732eca52793e11cabe44f59a9dbafa0",
+    "website/prisma/postgresql/schema.prisma": "35535f1679dac4250658ca04b978777d1c89534f3d8f872878d2b1f0ae16fae1",
+    "website/prisma/schema.prisma": "8cb982844e452af0355d9bce7c704f389f97ebc8cad5fa52af6f260ddbf9475d",
+    "website/scripts/probe-cms-continuous.ts": "a4aa340cb347ee611a9b548b649958a3eb462cef7e794abaacab24356a4e5725",
+    "website/tests/cms-continuous-read.test.ts": "5b16131c715df99ff7ef7cffe21dc87f4455494b02414181cdf5cfc4b336594d",
+    "website/tests/cms-revisions.test.ts": "2a1fd4d0fae1efa9a1021ee8d7c959a3d6fd324f91a74e850a9c2df8afd4dcd3"
+  },
+  "qualifiedBugsFixed": [
+    {
+      "issue": "CMS other functionType SQL scope and ORM hydration disagreed onNULL/unrecognized legacy values",
+      "resolution": "Original canonical matching condition reused in hydration; full250-row dual-provider contract."
+    },
+    {
+      "issue": "Old30/40/200CMS visible pages/caps",
+      "resolution": "10actualcollection scopes/11sources drain complete summaries, preserve source filters/order; no hidden unreachable tail."
+    },
+    {
+      "issue": "Default Next header/reset/sidebar prefetch emitted a new product GET without a click",
+      "evidence": "build-loading-cms-prefetch-initial.log; single result scope still only one Product.findMany, extra GET was partial navigation prefetch",
+      "resolution": "prefetch=false across reviewed lists and sharedAdminShell; actual wheel/jump list/detail HTTP deltas0."
+    },
+    {
+      "issue": "Per100OFFSET/sort and unrestricted association aggregation made unfiltered10k expensive",
+      "resolution": "Stable cursor+original-order indexes and current-batch association counts."
+    },
+    {
+      "issue": "Broad single-character matching10k recomputed JSON/rank across100batches(52.025s)",
+      "resolution": "Matching ordered IDs computed once in the same snapshot;100-row hydration; count from identities; directsamefixture1.305s."
+    },
+    {
+      "issue": "Pre-headers response loss produced two actual POSTs and twoDELETEdrafts",
+      "evidence": "build/loading-cms/browser-production-isolated-profile/preheaders-duplicate-write-initial.json",
+      "resolution": "Exact validated pending deletion reuse plus Serializable concurrency; actual2POSTs now1original revision, original detail ID verified."
+    }
+  ],
+  "performance": {
+    "interpretation": "Synthetic local samples, not a platform SLA or production/company UAT. Use only latest4scope values for current UI; do not pick an older9sresult. GPUdisabled;10000profiles include retained prior documents/bfcache, so heap is not a per-page retained-heap guarantee.",
+    "latestBrowserMetrics": [
+      {
+        "count": 1,
+        "scope": "narrow",
+        "readyMs": 1262,
+        "startedAt": 1793877174114,
+        "profiled": false,
+        "wheelScrollY": 0,
+        "wheelFrameP95": null,
+        "loadingOverlayVisible": false,
+        "tailVisible": true,
+        "maxScrollY": 0,
+        "navigation": {
+          "name": "http://127.0.0.1:49738/admin/products?q=MODEL-0",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 1100.2000000029802,
+          "navigationId": 5203,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "http/1.1",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "gzip",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 2.400000002235174,
+          "domainLookupStart": 2.400000002235174,
+          "domainLookupEnd": 2.400000002235174,
+          "connectStart": 2.400000002235174,
+          "secureConnectionStart": 0,
+          "connectEnd": 2.400000002235174,
+          "requestStart": 5.100000001490116,
+          "responseStart": 768.7000000029802,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 768.7000000029802,
+          "responseEnd": 1018.4000000022352,
+          "transferSize": 9798,
+          "encodedBodySize": 9498,
+          "decodedBodySize": 31467,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 1058.5,
+          "domContentLoadedEventStart": 1058.6000000014901,
+          "domContentLoadedEventEnd": 1059.300000000745,
+          "domComplete": 1100.1000000014901,
+          "loadEventStart": 1100.2000000029802,
+          "loadEventEnd": 1100.2000000029802,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {}
+        },
+        "rows": 1,
+        "sameFirstRow": true,
+        "tableHeight": 109,
+        "domNodes": 198,
+        "scrollFrameP95": 18.399999998509884,
+        "heapBytes": 3474046,
+        "hasPaging": false,
+        "scrollListRequests": 0,
+        "scrollDetailRequests": 0
+      },
+      {
+        "count": 5000,
+        "scope": "series",
+        "readyMs": 10042,
+        "startedAt": 1793877178187,
+        "profiled": false,
+        "wheelScrollY": 2800,
+        "wheelFrameP95": 16.80000000000109,
+        "loadingOverlayVisible": false,
+        "tailVisible": true,
+        "maxScrollY": 344364,
+        "navigation": {
+          "name": "http://127.0.0.1:49738/admin/products?series=benchmark-first-half",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 6708.89999999851,
+          "navigationId": 8268,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "http/1.1",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "gzip",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.5999999977648258,
+          "domainLookupStart": 1.5999999977648258,
+          "domainLookupEnd": 1.5999999977648258,
+          "connectStart": 1.5999999977648258,
+          "secureConnectionStart": 0,
+          "connectEnd": 1.5999999977648258,
+          "requestStart": 79.39999999850988,
+          "responseStart": 165.80000000074506,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 165.80000000074506,
+          "responseEnd": 5758,
+          "transferSize": 259471,
+          "encodedBodySize": 259171,
+          "decodedBodySize": 13078507,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 6649.699999999255,
+          "domContentLoadedEventStart": 6649.800000000745,
+          "domContentLoadedEventEnd": 6650.699999999255,
+          "domComplete": 6700.099999997765,
+          "loadEventStart": 6708.800000000745,
+          "loadEventEnd": 6708.89999999851,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {}
+        },
+        "rows": 5000,
+        "sameFirstRow": true,
+        "tableHeight": 345040,
+        "domNodes": 100182,
+        "scrollFrameP95": 65.19999999925494,
+        "heapBytes": 56778397,
+        "hasPaging": false,
+        "scrollListRequests": 0,
+        "scrollDetailRequests": 0
+      },
+      {
+        "count": 10000,
+        "scope": "all",
+        "readyMs": 13826,
+        "startedAt": 1793877195747,
+        "profiled": true,
+        "wheelScrollY": 2800,
+        "wheelFrameP95": 33.400000000001455,
+        "loadingOverlayVisible": false,
+        "tailVisible": true,
+        "maxScrollY": 689364,
+        "navigation": {
+          "name": "http://127.0.0.1:49738/admin/products",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 13652.699999999255,
+          "navigationId": 3375,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "http/1.1",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "gzip",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.5,
+          "domainLookupStart": 1.5,
+          "domainLookupEnd": 1.5,
+          "connectStart": 1.5,
+          "secureConnectionStart": 0,
+          "connectEnd": 1.5,
+          "requestStart": 6.199999999254942,
+          "responseStart": 72.80000000074506,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 72.80000000074506,
+          "responseEnd": 10507.800000000745,
+          "transferSize": 506586,
+          "encodedBodySize": 506286,
+          "decodedBodySize": 26148418,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 13535.199999999255,
+          "domContentLoadedEventStart": 13535.199999999255,
+          "domContentLoadedEventEnd": 13536.39999999851,
+          "domComplete": 13636.10000000149,
+          "loadEventStart": 13652.60000000149,
+          "loadEventEnd": 13652.699999999255,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {}
+        },
+        "rows": 10000,
+        "sameFirstRow": true,
+        "tableHeight": 690040,
+        "domNodes": 200182,
+        "scrollFrameP95": 50.5,
+        "heapBytes": 161742277,
+        "hasPaging": false,
+        "scrollListRequests": 0,
+        "scrollDetailRequests": 0
+      },
+      {
+        "count": 10000,
+        "scope": "single-character",
+        "readyMs": 7827,
+        "startedAt": 1793877222328,
+        "profiled": true,
+        "wheelScrollY": 2800,
+        "wheelFrameP95": 16.80000000000109,
+        "loadingOverlayVisible": false,
+        "tailVisible": true,
+        "maxScrollY": 689364,
+        "navigation": {
+          "name": "http://127.0.0.1:49738/admin/products?q=%E8%BF%9E",
+          "entryType": "navigation",
+          "startTime": 0,
+          "duration": 7677.39999999851,
+          "navigationId": 2150,
+          "initiatorType": "navigation",
+          "deliveryType": "",
+          "nextHopProtocol": "http/1.1",
+          "renderBlockingStatus": "non-blocking",
+          "contentType": "text/html",
+          "contentEncoding": "gzip",
+          "workerStart": 0,
+          "workerRouterEvaluationStart": 0,
+          "workerCacheLookupStart": 0,
+          "workerMatchedSourceType": "",
+          "workerFinalSourceType": "",
+          "redirectStart": 0,
+          "redirectEnd": 0,
+          "fetchStart": 1.199999999254942,
+          "domainLookupStart": 1.199999999254942,
+          "domainLookupEnd": 1.199999999254942,
+          "connectStart": 1.199999999254942,
+          "secureConnectionStart": 0,
+          "connectEnd": 1.199999999254942,
+          "requestStart": 2.7999999970197678,
+          "responseStart": 49.899999998509884,
+          "firstInterimResponseStart": 0,
+          "finalResponseHeadersStart": 49.899999998509884,
+          "responseEnd": 6033.39999999851,
+          "transferSize": 506615,
+          "encodedBodySize": 506315,
+          "decodedBodySize": 26148448,
+          "responseStatus": 200,
+          "serverTiming": [],
+          "unloadEventStart": 0,
+          "unloadEventEnd": 0,
+          "domInteractive": 7555.79999999702,
+          "domContentLoadedEventStart": 7555.79999999702,
+          "domContentLoadedEventEnd": 7557,
+          "domComplete": 7663.699999999255,
+          "loadEventStart": 7677.29999999702,
+          "loadEventEnd": 7677.39999999851,
+          "type": "navigate",
+          "redirectCount": 0,
+          "activationStart": 0,
+          "criticalCHRestart": 0,
+          "notRestoredReasons": null,
+          "confidence": {}
+        },
+        "rows": 10000,
+        "sameFirstRow": true,
+        "tableHeight": 690040,
+        "domNodes": 200182,
+        "scrollFrameP95": 61.399999998509884,
+        "heapBytes": 267482397,
+        "hasPaging": false,
+        "scrollListRequests": 0,
+        "scrollDetailRequests": 0
+      }
+    ],
+    "databaseComparison": {
+      "offsetRankPer100": "build/loading-cms/broad-query-cost-before.json",
+      "keyWindow1000": "build/loading-cms/broad-query-window1000.json",
+      "chosenRankOnce": "build/loading-cms/broad-query-once.json",
+      "singleCharacter10kMs": [
+        52025,
+        2881,
+        1305
+      ],
+      "sampledPeakHeapIncreaseWindowVsOnceBytes": [
+        21375776,
+        20074920
+      ],
+      "decision": "One matching-ID pass is simpler and faster with comparable observed memory; temporary1000-key window/continuation CTE removed."
+    },
+    "requestCounts": "build/loading-cms/browser-production-isolated-profile/current-read-counts.json",
+    "countsCaveat": "Prisma operation counts are not native SQL statement counts; broad current scope records1rawranking,100summarybatches,100batch-onlyvariantcountoperations,0product.count."
+  },
+  "browserWriteBoundary": {
+    "confirmationSurvivedScroll": true,
+    "heldAction": {
+      "busyDialogs": 1,
+      "repeatedClicks": 20,
+      "postsBeforeFault": 1
+    },
+    "preheadersResponseLoss": {
+      "posts": 2,
+      "committedDrafts": 1,
+      "originalRevisionReused": true
+    },
+    "unknownResponse": {
+      "committedDrafts": 1,
+      "posts": 1,
+      "replays": 0,
+      "sourceSnapshotBodyPreserved": true,
+      "busyClosed": true,
+      "busyClosedMs": 3326
+    },
+    "staleObject": {
+      "posts": 1,
+      "createdRevisions": 0,
+      "busyClosed": true
+    },
+    "successfulCommand": {
+      "posts": 1,
+      "createdDrafts": 1,
+      "navigatedToOriginalReleaseDetail": true,
+      "busyClosed": true
+    },
+    "browserExceptions": [],
+    "unknownOperatorContract": "If no result can be confirmed after response-body loss, original inline warning remains and operator checks the revision state; no automatic application write replay. Transport retry is made safe by exact validated pending-intent reuse."
+  },
+  "diagnosticFailuresPreserved": [
+    {
+      "artifact": "build-loading-cms-combined-production-browser.log / build/loading-cms/browser-production/next-build-4g-failed.log",
+      "state": "4Goptimized-compilation OOM before page runtime; not page SLA"
+    },
+    {
+      "artifact": "build/loading-cms/browser-production/build-8g-timeout.json",
+      "state": "8Gwhole-site600scompilation incomplete; no full-site success claimed"
+    },
+    {
+      "artifact": "build/loading-cms/browser-production-targeted/next-build.log",
+      "state": "Official16.4.2Windows debug selector slash mismatch built no requested app routes; rejected as invalid"
+    },
+    {
+      "artifact": "build/loading-cms/browser-production-targeted-winpaths/route-discovery-before-after.json",
+      "state": "Task-only build preload fixes debug selection path separators; SDK/cache/runtime code/config unchanged;12realroutes asserted"
+    },
+    {
+      "artifact": "build/loading-cms/browser-production-physical/build-cpu-profile.json / build-trace-stack.json",
+      "state": "NFTfromPrisma runtime traversed real userprofile/.dartServer; child-only build USERPROFILE/LOCALAPPDATA/APPDATA isolation solved compilation without disabling tracing"
+    },
+    {
+      "artifact": "build/loading-cms/browser-production-isolated-profile/output-trace-boundary.json",
+      "state": "32actualtrace manifests/2340resolved dependencies;0inherited-user-profile dependencies"
+    },
+    {
+      "artifact": "build-loading-cms-isolated-env-type-initial.log",
+      "state": "Probe env object NODE_ENV type widened; fixed test tool type, production unchanged"
+    },
+    {
+      "artifact": "build-loading-cms-isolated-secret-initial.log",
+      "state": "Ephemeral unvalidatedrandomhex rejected by original strongsecret guard; fixture now pre-validates randomizedbase64url with unchangedvalidator"
+    },
+    {
+      "artifact": "build-loading-cms-tail-smooth-initial.log",
+      "state": "TestCSSOMscroll inheritedglobal smooth;driver now explicitinstant jumps plus realnativewheel; product CSS unchanged"
+    },
+    {
+      "artifact": "build-loading-cms-preheaders-duplicate-write-initial.log",
+      "state": "Real2POST/2draft defect; retained, then server pending-intent rootcause fixed and DB1reverified"
+    }
+  ],
+  "sourceFileCount": 29,
+  "priorReceipt": "D:/Projects/uten_imp_worktrees/platform-loading-20261104/docs/99-项目治理/全平台整改交接/evidence/loading-20261104/website-cms-continuous-review.json",
+  "cleanup": {
+    "ownedRuntimeProcessesRemaining": 0,
+    "databaseEvidence": [
+      {
+        "evidenceRoot": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104\\.local-artifacts\\website-imp\\postgresql-tests",
+        "trackedDatabases": 4,
+        "created": 4,
+        "dropped": 4,
+        "createdButNotDropped": []
+      },
+      {
+        "evidenceRoot": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\.local-artifacts\\website-imp\\postgresql-tests",
+        "trackedDatabases": 14,
+        "created": 14,
+        "dropped": 14,
+        "createdButNotDropped": []
+      }
+    ],
+    "container": {
+      "otherContainersTouched": false,
+      "containerId": "56556ce6f16983beff64022eccc2c1cb90b0c49f3e5831a7d278f139c81b5db0",
+      "removedWithOwnAnonymousVolume": true,
+      "name": "uten-loading-cms-pg-8ac5e22f",
+      "stopped": true,
+      "verifiedTaskLabel": "platform-loading-20261104",
+      "finishedAt": "2026-11-05T11:28:28.4364301Z",
+      "hostSecretFilePreserved": true
+    },
+    "artifacts": [
+      "build/loading-cms/database-cleanup-ledger.json",
+      "build/loading-cms/container-cleanup.json",
+      "build/loading-cms/remaining-owned-processes.json"
+    ],
+    "privateDependenciesAndLogsPreserved": true,
+    "mainOrOtherTaskProcessesTouched": false
+  },
+  "buildBoundary": {
+    "testOnlyBuildProfileIsolation": true,
+    "testOnlyWindowsDebugSelectorAdapter": true,
+    "runtimeProfileAndEngineUnmodified": true,
+    "actualRoutesVerified": 12,
+    "formalFullSiteBuildOrDeployment": false,
+    "traceProof": "build/loading-cms/browser-production-isolated-profile/output-trace-boundary.json",
+    "engineProof": "build/loading-cms/browser-production-isolated-profile/task-engine-paths.json"
+  }
+}

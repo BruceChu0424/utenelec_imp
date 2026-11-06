@@ -40,6 +40,11 @@ class ProductionOverproductionRateListPage extends ConsumerStatefulWidget {
 
 class _RateListState extends ConsumerState<ProductionOverproductionRateListPage>
     with ScopedPagedReadViewMixin<ProductionOverproductionRateListPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   PagedResult<ProductionOverproductionRateRequest>? _data;
   final _tableRows =
       MasterDataTableRowsController<ProductionOverproductionRateRequest>();
@@ -137,10 +142,12 @@ class _RateListState extends ConsumerState<ProductionOverproductionRateListPage>
         });
       }
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (mounted && request == _request) {
         setState(() => _error = error.message);
       }
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (mounted && request == _request) {
         setState(() => _error = '申请列表读取失败，请重试');
       }
@@ -151,9 +158,13 @@ class _RateListState extends ConsumerState<ProductionOverproductionRateListPage>
 
   @override
   Widget build(BuildContext context) {
+    Future<void> visibleReadReturn() => _load();
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(
       RouteName.productionOverproductionRateRequests,
-      () => _load(),
+      visibleReadReturn,
       refreshKeys: [productionOverproductionRateRefreshKey],
     );
     return Scaffold(

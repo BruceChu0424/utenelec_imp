@@ -25,6 +25,9 @@ import java.util.*;
 /** Group-level recognition of already posted opening entries. This service never writes GL. */
 @Service @RequiredArgsConstructor
 public class FinanceAssetOpeningGroupService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
     private final JdbcTemplate db;private final ObjectMapper json;private final TxSessionVars tx;
     private final FinanceAssetAuthorization auth;private final FinanceTemplateSourceService sources;
     private final FinanceAssetTemplateService metadata;
@@ -242,4 +245,19 @@ public class FinanceAssetOpeningGroupService {
     private static LocalDate date(Object v){return v instanceof java.sql.Date d?d.toLocalDate():LocalDate.parse(v.toString());}
     private static ApiException invalid(String m){return new ApiException(ErrorCode.VALIDATION_FAILED,m);}
     private static ApiException conflict(String m){return new ApiException(ErrorCode.CONFLICT,m);}
+
+    /** Full selected lifecycle range through bounded summary batches; original detail/write contracts are unchanged. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(String requestedScope,int page,int size,String revision) {
+        auth.require(FinanceAssetAuthorization.VIEW);
+        String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
+        String where="TRUE"+switch(scope) {
+            case "active" -> " AND (status IN ('SUBMITTED','REVOKE_PENDING'))";
+            case "history" -> " AND (status IN ('APPROVED','REVOKED'))";
+            default -> "";
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-asset-opening-groups","finance",Map.of("company",true),scope,page,size,1000,revision);
+        return summaryPages.page(request,()->{auth.require(FinanceAssetAuthorization.VIEW);},
+                ()->db.queryForObject("SELECT count(*) FROM finance_asset_opening_groups WHERE "+where,Long.class),
+                (readPage,readSize)->db.queryForList("SELECT id,as_of,source_voucher_id,status,row_version AS version,created_at,reason FROM finance_asset_opening_groups WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",readSize,Math.multiplyExact((long)readPage-1,readSize)));
+    }
 }

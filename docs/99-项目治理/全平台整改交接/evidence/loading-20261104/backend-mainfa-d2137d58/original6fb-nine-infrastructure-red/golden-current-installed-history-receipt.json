@@ -1,0 +1,32 @@
+{
+  "capturedAtUtc": "2026-11-06T00:02:29.890549+00:00",
+  "source": "c51925b87cb438f9134136cf2ad31b8d8dc40c38a6c7d0da9e7011e11ff4cb00",
+  "mainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "observedRunState": "running",
+  "containerId": "8ff8cb8e14091f0cf8de2c658e2fb99d9871818594a9c3741351cde44cdb667a",
+  "image": "postgres:16-alpine",
+  "testcontainersLabelVerified": true,
+  "database": "owned current-PG uten_imp fixture; never shared TEMPLATE/company",
+  "query": "BEGIN READ ONLY;\nSELECT jsonb_agg(jsonb_build_object('installedRank',installed_rank,'version',version,'description',description,'type',type,'script',script,'checksum',checksum,'success',success) ORDER BY installed_rank)::text FROM public.flyway_schema_history;\nROLLBACK;",
+  "transaction": "BEGIN READ ONLY/ROLLBACK",
+  "migrationCount": 1010,
+  "compoundCount": 14,
+  "integerHead": 1071,
+  "rawFirstNine": [
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09"
+  ],
+  "actualEveryVersionChecksumAndDescriptionMatchesAdmittedFilename": true,
+  "canonicalHistorySha256": "c642f433efedb8eac4d08781ebcfaba249f8d3f48e82d5dd3426638371fb0412",
+  "rawProjectionSha256": "7c6997df1d80247c517ad245213d0a8dd229cc8334f316fc480ba7fbd3d93ba5",
+  "rawAuditNormalized": false,
+  "companyDbWritten": false,
+  "mainWritten": false
+}

@@ -7,10 +7,35 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/material_reallocation_dialog.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 
 void main() {
+  test(
+    'complete candidate reader accepts covariant concrete candidate pages',
+    () async {
+      final repo = _PagedCandidatesRepository();
+      final reader = ScopedPagedRead<MaterialReallocationEndpointCandidate>(
+        idOf: (value) => '${value.analysisId}|${value.materialLineId}',
+      );
+      final result = await reader.read(
+        1,
+        scope: ['candidate'],
+        isCurrent: () => true,
+        fetchPage: (page) => repo.materialCrossReallocationCandidates(
+          sourceAnalysisId: 'source',
+          sourceMaterialLineId: 'line',
+          page: page,
+          size: 100,
+        ),
+      );
+      expect(result.items, hasLength(60));
+      expect(repo.pages, [1, 2, 3]);
+      reader.dispose();
+    },
+  );
+
   testWidgets(
-    'candidate entry prepares two hidden pages and scroll adopts them without replacing raw input',
+    'candidate entry reads the complete authorized query and scrolling keeps raw input without requests',
     (tester) async {
       final repository = _PagedCandidatesRepository();
       await _pumpLauncher(tester, repository, size: const Size(1200, 900));
@@ -19,9 +44,17 @@ void main() {
       final finder = find.byKey(
         const Key('cross-reallocation-candidates-list'),
       );
+      expect(
+        finder,
+        findsOneWidget,
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((value) => value.data ?? '')
+            .join(' | '),
+      );
       ListView list() => tester.widget<ListView>(finder);
       expect(repository.pages, [1, 2, 3]);
-      expect(list().childrenDelegate.estimatedChildCount, 41);
+      expect(list().childrenDelegate.estimatedChildCount, 60 * 2 - 1);
       await tester.enterText(
         find.byKey(const Key('cross-reallocation-qty')),
         '1.2345',
@@ -33,7 +66,7 @@ void main() {
       list().controller!.jumpTo(list().controller!.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(repository.pages, [1, 2, 3]);
-      expect(list().childrenDelegate.estimatedChildCount, 81);
+      expect(list().childrenDelegate.estimatedChildCount, 60 * 2 - 1);
       expect(_fieldText(tester, const Key('cross-reallocation-qty')), '1.2345');
       expect(
         _fieldText(tester, const Key('cross-reallocation-reason')),
@@ -599,7 +632,7 @@ class _PagedCandidatesRepository extends _FakeRepository {
           ),
       ],
       page: page,
-      size: size,
+      size: 20,
       total: 60,
       totalPages: 3,
     );

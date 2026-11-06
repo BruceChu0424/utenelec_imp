@@ -1,0 +1,135 @@
+{
+  "label": "final-extra",
+  "actualExitCode": 0,
+  "classes": 4,
+  "tests": 24,
+  "counts": {
+    "passed": 24,
+    "failed": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "baseCurrencyReleaseIsAlwaysOneAndRejectsAnyOtherRate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "financeFillsTheRecognitionRateAtReleaseAndTheWarehousePostsReceivablesWithIt",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "financeAuditInfoCarriesTheActionsTheCurrentUserCanTakeNow",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "case": "standardPaymentMethodsAreSeededWhenNoConfirmedLegacyMethodExists",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.CostDocumentExportTest",
+      "case": "legalLongExactAmountsAreNeverReplacedWithEllipses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.CostDocumentExportTest",
+      "case": "excelKeepsMultipleSheetsUnknownsExactSmallValuesAndLiteralCells",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.CostDocumentExportTest",
+      "case": "pdfHasEmbeddedReadableChinesePaginationAndRealPasswordProtection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "sourcesWithoutBillNumbersUseChineseLabelsFromTheFrozenSourceType",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "materialSelectionRetainsTheOriginalBomPathEvenWhenGoodsLabelsRepeat",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "frozenPricesQuantitiesAndAmountsAreDistinctAndClientLabelsDoNotBecomeAuthority",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "realScreenPriceSourceKeyCanBeTheOnlyExportedColumnAndPrefersTheFrozenBillNumber",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "selectedSameNameFeesUseFrozenIdentityAndBothFilesKeepExactAmount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "partialDownloadDoesNotClaimToBeTheWholeCostSheetOrIncludeUnselectedFees",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "feeIdentityUsesTheSameUtf16LengthsAndKeepsNullPathsDistinct",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "estimateLabelsFollowTheFrozenProductUnitAndDoNotImplyActualProductionAmounts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.costing.GoodsCostDocumentMapperTest",
+      "case": "feeViewProjectionDoesNotRemoveMaterialColumnsFromWholeDocument",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "rowsParseThreeSegmentsHideDisabledByDefaultAndSumAccountableBalances",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "rackFilterOnlyMatchesParsedRowsAndKeywordMatchesPlace",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "sameGoodsNeverMergeWarehousesOrColorsOrPretendUncoloredStockIsItsPrimaryColor",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "shelfWordsMatchAcrossNameSeriesAndPlaceWithoutTreatingWildcardsAsPatterns",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "layoutAggregatesRacksAndAppendsUnparsedBucketLast",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "warehouseScopeUsesSubtreePreferenceAndSubtreeBalances",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "exportPagesReadBeyondTheInteractiveCeilingWithoutLosingOrRepeatingAnyPhysicalDimension",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest",
+      "case": "owningWarehouseMasterChangesApplyImmediatelyAndInvalidMastersNeverFallBackToOldStockWarehouses",
+      "status": "passed"
+    }
+  ],
+  "green": true
+}

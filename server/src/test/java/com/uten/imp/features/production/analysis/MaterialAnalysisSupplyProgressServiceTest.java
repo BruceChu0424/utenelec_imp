@@ -623,7 +623,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
             assertThat(sql).contains("(SELECT * FROM " + table
                     + " archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
                     + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
-                    + " AND NOT fn_imported_business_document('" + table + "',archive_origin.id))");
+                    + " AND NOT fn_imported_business_document_row('" + table + "',to_jsonb(archive_origin)))");
         }
     }
 }

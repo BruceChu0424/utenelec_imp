@@ -59,4 +59,11 @@ public class FinanceChartController {
     @PostMapping("/{code}/create-target")
     @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit') and hasAuthority('payment_style:create')")
     public Map<String,Object> create(@PathVariable String code,@RequestBody JsonNode request){return service.createTargetCommand(code,request);}
+
+    @GetMapping("/imports/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(
+            @RequestParam(defaultValue="all") String scope,@RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="100") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return service.summaries(scope,page,size,readSnapshotRevision);
+    }
 }

@@ -2,9 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
-import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
-import 'package:uten_imp/shared/paging/prepared_page_read.dart';
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
@@ -30,55 +28,28 @@ class _Api extends ApiClient {
 
 void main() {
   test(
-    'a replacement sales list repository cannot adopt another instance preparation',
+    'a replacement sales list repository cannot adopt another instance selected response',
     () async {
       final api = _Api();
-      final prepared = PreparedPageRead<SalesDocListItem>();
-      addTearDown(prepared.dispose);
-      final old = SalesRepository(
-        api,
-        SalesDocType.shipment,
-        preparedLists: prepared,
-      );
-      await old.prepareList(filter: const SalesDocFilter(status: 0));
+      final old = SalesRepository(api, SalesDocType.shipment);
+      await old.list(filter: const SalesDocFilter(status: 0));
       api.billNo = 'NEW-SOURCE';
-      final next = SalesRepository(
-        api,
-        SalesDocType.shipment,
-        preparedLists: prepared,
-      );
-      final result = await next.list(
-        filter: const SalesDocFilter(status: 0),
-        preferPrepared: true,
-      );
+      final next = SalesRepository(api, SalesDocType.shipment);
+      final result = await next.list(filter: const SalesDocFilter(status: 0));
       expect(result.items.single.billNo, 'NEW-SOURCE');
       expect(api.reads, 2);
     },
   );
 
   test(
-    'a replacement progress repository cannot adopt another instance preparation',
+    'a replacement progress repository cannot adopt another instance selected response',
     () async {
       final api = _Api();
-      final prepared = PreparedPageRead<SalesOrderProgressRow>();
-      addTearDown(prepared.dispose);
-      final old = SalesRepository(
-        api,
-        SalesDocType.order,
-        preparedProgress: prepared,
-      );
-      await old.prepareProgress('DRAFT');
+      final old = SalesRepository(api, SalesDocType.order);
+      await old.progress(stage: 'DRAFT');
       api.billNo = 'NEW-SOURCE';
-      final next = SalesRepository(
-        api,
-        SalesDocType.order,
-        preparedProgress: prepared,
-      );
-      final result = await next.progress(
-        stage: 'DRAFT',
-        size: 50,
-        preferPrepared: true,
-      );
+      final next = SalesRepository(api, SalesDocType.order);
+      final result = await next.progress(stage: 'DRAFT', size: 50);
       expect(result.items.single.billNo, 'NEW-SOURCE');
       expect(api.reads, 2);
     },

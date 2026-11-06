@@ -380,19 +380,65 @@ void main() {
     testWidgets('${entry.$1}差异数表头条件发送服务端且打印导出沿用同一条件', (tester) async {
       final api = _Api();
       await _mount(tester, entry.$2, api);
-      api.pending.single.complete({
+      Map<String, dynamic> responsePage(int page) => {
         ..._report('差异数'),
         'columns': [
           {'key': 'differenceQty', 'label': '差异数', 'type': 'number'},
         ],
         'columnSearchKeys': ['differenceQty'],
         'rows': [
-          {'differenceQty': -2, 'differenceQtyExact': '-2.0000000001'},
+          for (var row = (page - 1) * 50; row < (page == 1 ? 50 : 51); row++)
+            {
+              '__lineId': 'difference-$row',
+              'differenceQty': -2,
+              'differenceQtyExact': '-2.0000000001',
+            },
         ],
+        'page': page,
         'total': 51,
         'totalPages': 2,
-      });
+      };
+      api.pending.single.complete(responsePage(1));
+      for (var frame = 0; frame < 20 && api.pending.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(api.pending, hasLength(2));
+      expect(api.queries.map((query) => query['page']), [1, 2]);
+      api.pending.last.complete(responsePage(2));
       await tester.pumpAndSettle();
+      final completeTableFinder = find.byType(
+        MasterDataTableView<Map<String, dynamic>>,
+      );
+      final complete = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        completeTableFinder,
+      );
+      expect(complete.items, hasLength(51));
+      expect(
+        complete.items.map(
+          (row) => (
+            row['__lineId'],
+            row['differenceQty'],
+            row['differenceQtyExact'],
+          ),
+        ),
+        [
+          for (var row = 0; row < 51; row++)
+            ('difference-$row', -2, '-2.0000000001'),
+        ],
+      );
+      expect(complete.currentPage, 1);
+      expect(complete.totalPages, 1);
+      final position = utenTestTableBodyController(
+        tester,
+        completeTableFinder,
+      ).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(position.pixels, greaterThan(0));
+      expect(api.queries, hasLength(2));
+      await tester.ensureVisible(find.text('差异数'));
+      await tester.pumpAndSettle();
+      expect(api.queries, hasLength(2));
       await tester.tap(find.text('差异数'));
       await tester.pumpAndSettle();
       await tester.enterText(

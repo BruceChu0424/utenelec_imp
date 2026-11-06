@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "observedAtUtc": "2026-11-05T03:47:51.280937+00:00",
+  "operations": "SSH pointer, artifact hashes and PostgreSQL catalog/statistics only; READ ONLY transaction with 5-second statements and 500-ms lock budget. No EXPLAIN ANALYZE, business values or runtime configuration changes on production.",
+  "deployment": {
+    "release": "v2.5.46",
+    "service": "active/running",
+    "jarSha256": "ca94be9e6710c686a122888698402d31fff56d77e821e23b605291ec9c637441",
+    "webMainSha256": "cf40332e0a9eb7e95d2b472740074bac1d78cba457dbdc2a927e7a881646c099",
+    "installedClientFingerprints": "not observed; do not infer from source or server release"
+  },
+  "database": {
+    "postgres": "16.15",
+    "databaseBytes": 5872376855,
+    "flywayRows": 925,
+    "flywayHead": "999",
+    "invalidIndexes": 0,
+    "notReadyIndexes": 0,
+    "pgStatStatementsInstalled": false,
+    "sharedPreloadLibraries": "",
+    "autovacuum": "on",
+    "approximateTableRows": {
+      "production_plan_costs": 1423466,
+      "stock_document_items": 622525,
+      "stock_movements": 561366,
+      "purchase_orders": 10306,
+      "sales_orders": 10836,
+      "stock_documents": 57380,
+      "subcontract_orders": 8,
+      "business_archive_eligibility": 200,
+      "business_archive_packages": 120,
+      "business_outbox": 1916
+    },
+    "rowCountLimit": "Rows from planner statistics, not exact scans; stale/unknown statistics do not prove a table is empty."
+  },
+  "notChanged": [
+    "service",
+    "database schema/data",
+    "statistics configuration",
+    "retention",
+    "backups",
+    "client packages"
+  ],
+  "initialReadCorrections": [
+    "Artifact files required the existing noninteractive sudo read privilege; direct unprivileged read was denied.",
+    "An initial shell heredoc trailer was forwarded as SQL after the read-only transaction had committed, causing a syntax error. A direct psql stdin invocation reran the same bounded catalog observation successfully. No modifying statement was executed."
+  ],
+  "logs": [
+    {
+      "path": "build/loading-validation/production-readonly-pointer.log",
+      "sha256": "321ceb63192dfbd5a4bf20265089c0895d61beb1ac0e1074a3458b7dead38b19"
+    },
+    {
+      "path": "build/loading-validation/production-readonly-artifacts.log",
+      "sha256": "eb4b329dae4e6d20d401dec9f6f53665fc13f0ebeaadbc57a114163859963d23"
+    },
+    {
+      "path": "build/loading-validation/production-readonly-db-metadata.log",
+      "sha256": "bd252c2685d513fabe305bcbaa897d027d5fb3b4bd1bb6028805b6261354cd89"
+    },
+    {
+      "path": "build/loading-validation/production-readonly-db-metadata-verified.log",
+      "sha256": "85d67999cfdefef11da2484b61ad3ad256e2b8d3e62d08e9f67a5211dd9512b2"
+    }
+  ],
+  "productionLatencyMeasured": false,
+  "localSourceEqualsProduction": false
+}

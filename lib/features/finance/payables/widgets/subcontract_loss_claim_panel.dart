@@ -45,6 +45,9 @@ class SubcontractLossClaimPanel extends ConsumerStatefulWidget {
 class _SubcontractLossClaimPanelState
     extends ConsumerState<SubcontractLossClaimPanel>
     with ScopedPagedReadViewMixin<SubcontractLossClaimPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _requests = LatestRequestGuard();
   SubcontractLossClaimPageResult? _result;
   final _tableRows =
@@ -117,6 +120,7 @@ class _SubcontractLossClaimPanelState
     try {
       final cachedPage = await readScopedPage<SubcontractLossClaimSummary>(
         page,
+        idOf:(row)=>row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -125,6 +129,7 @@ class _SubcontractLossClaimPanelState
             status: status,
             keyword: keyword,
             page: target,
+            size: 100,
             sort: sort,
             order: order,
             wasteBillNo: wasteBillNo,
@@ -141,6 +146,7 @@ class _SubcontractLossClaimPanelState
               totalPages: response.totalPages,
             ),
             snapshot: response,
+            rebuildSnapshot: response.withPage,
           );
         },
       );
@@ -159,8 +165,10 @@ class _SubcontractLossClaimPanelState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       _fail(generation, error.message);
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       _fail(generation, '服务暂不可用，请稍后重试');
     }
   }

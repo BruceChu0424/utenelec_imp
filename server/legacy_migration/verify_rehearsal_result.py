@@ -51,13 +51,25 @@ COUNTER_SOURCES = (
 )
 
 
-def counter_source_inventory(directory, records):
-    """These three loaders currently declare no exclusions: require every source ID."""
-    if not all(table + '.csv' in records for _, table in COUNTER_SOURCES):
+RETURN_QUANTITY_SOURCES = (
+    ('PURCHASE_RETURN_ITEM', 'purchase_return_items'),
+    ('SUBCONTRACT_MATERIAL_RETURN_ITEM', 'subcontract_material_return_items'),
+)
+COUNTER_SOURCE_FILES = {'SUBCONTRACT_MATERIAL_RETURN_ITEM': 'subcontract_swithdraw_i.csv'}
+RETURN_QUANTITY_SCHEMA = 1093
+
+
+def counter_source_file(kind, table):
+    return COUNTER_SOURCE_FILES.get(kind, table + '.csv')
+
+
+def _quantity_source_inventory(directory, records, families):
+    """A sealed family must retain every exact original source identity."""
+    if not all(counter_source_file(kind, table) in records for kind, table in families):
         return None
     result = {}
-    for kind, table in COUNTER_SOURCES:
-        name = table + '.csv'
+    for kind, table in families:
+        name = counter_source_file(kind, table)
         with (directory / name).open(encoding='utf-8-sig', newline='') as stream:
             rows = csv.DictReader(stream, delimiter='|')
             ids = [int(row['legacy_id']) for row in rows]
@@ -67,6 +79,29 @@ def counter_source_inventory(directory, records):
                         'file_sha256': records[name]['sha256'],
                         'source_ids_sha256': hashlib.sha256(''.join(str(value) + '\n' for value in sorted(ids)).encode()).hexdigest()}
     return result
+
+
+def counter_source_inventory(directory, records):
+    return _quantity_source_inventory(directory, records, COUNTER_SOURCES)
+
+
+def return_quantity_source_inventory(directory, records):
+    return _quantity_source_inventory(directory, records, RETURN_QUANTITY_SOURCES)
+
+
+def return_quantity_protocol_sources(counter_sources, return_sources, mapping_version, expected_schema, actual_schema):
+    mapping = re.fullmatch(r'bootstrap-v([1-9][0-9]*)', mapping_version or '')
+    current = mapping is not None and int(mapping[1]) >= 22
+    required = (expected_schema is not None and expected_schema >= RETURN_QUANTITY_SCHEMA) or (actual_schema is not None and actual_schema >= RETURN_QUANTITY_SCHEMA)
+    if required:
+        require(current, f'V{RETURN_QUANTITY_SCHEMA} historical return verification requires bootstrap-v22 or newer mapping')
+    if not current:
+        return counter_sources
+    require(actual_schema is not None and actual_schema >= RETURN_QUANTITY_SCHEMA, f'bootstrap-v22 requires the V{RETURN_QUANTITY_SCHEMA} actual target schema')
+    require(counter_sources is not None and return_sources is not None
+            and set(return_sources) == {kind for kind, _ in RETURN_QUANTITY_SOURCES},
+            'bootstrap-v22 requires both complete sealed historical return source inventories')
+    return {**counter_sources, **return_sources}
 
 
 def require(condition, message):
@@ -192,6 +227,7 @@ def load_inputs(directory, manifest_sha, frozen_commit, finance_seed_baseline=No
         'attachments': len(media), 'attachment_ids': media_ids,
         'topology_manifest_sha256': layer['sha256'], 'topology_summary_sha256': summaries[0]['sha256'],
         'counter_sources': counter_source_inventory(directory, records),
+        'return_quantity_sources': return_quantity_source_inventory(directory, records),
         'receipt_order_sources': receipt_reference_source_inventory(directory, records, provenance.get('extraInputs', {}), require=require),
         'receipt_fee_sources': receipt_fee_source_inventory(directory, records, require=require),
         'stock_movement_sources': stock_source_inventory(directory, records, provenance.get('extraInputs', {}), require=require),
@@ -268,7 +304,7 @@ def run_sql(run_id):
         "'manifest_sha256',export_manifest_sha256,'checksum_sha256',checksum_manifest_sha256," \
         "'frozen_commit',migration_repository_commit,'automated_checks',reconciliation_summary->'automatedCheckCount'," \
         "'mapping_version',mapping_version," \
-        "'actual_schema_version',(SELECT max(version::int) FROM flyway_schema_history WHERE success)," \
+        "'actual_schema_version',(SELECT max(version::numeric) FROM flyway_schema_history WHERE success)," \
         "'target_database',reconciliation_summary->>'targetDatabase'," \
         "'target_system_identifier',reconciliation_summary->>'targetSystemIdentifier'," \
         "'actual_database',current_database(),'actual_system_identifier',(SELECT system_identifier::text FROM pg_control_system())," \
@@ -301,8 +337,14 @@ def counter_baseline_sql(run_id, sources):
     """Aggregate only: never return historical quantities, source rows or descriptions."""
     branches = []
     routes = []
-    for kind, table in COUNTER_SOURCES:
+    known = dict((*COUNTER_SOURCES, *RETURN_QUANTITY_SOURCES))
+    require(sources and set(sources).issubset(known), 'Historical quantity proof source route is not registered')
+    for kind, table in (*COUNTER_SOURCES, *RETURN_QUANTITY_SOURCES):
+        if kind not in sources:
+            continue
         source = sources[kind]
+        require(source['target_table'] == table and source['source_file'] == counter_source_file(kind, table),
+                'Historical quantity source differs from its exact target/file route')
         name, file_sha = source['source_file'], sha(source['file_sha256'])
         routes.append("(source_kind='%s' AND target_table='%s' AND source_file='%s')" % (kind, table, name))
         branches.append("""SELECT '%s' AS kind,jsonb_build_object(
@@ -377,7 +419,7 @@ def facts_sql(run_id, admin_id, attachment_ids, counter_sources=None, receipt_or
       (SELECT 1 FROM goods_bom_items b WHERE NOT b.is_deleted AND b.goods_id=i.product_goods_id AND b.component_goods_id=i.material_goods_id)),
    'attachments',(SELECT count(*) FROM attachments WHERE owner_type='GOODS'),
    'matched_clean_attachments',(SELECT count(*) FROM attachments WHERE id IN (%s) AND owner_type='GOODS' AND lifecycle_state='CLEAN'),
-   'schema_version',(SELECT max(version::int) FROM flyway_schema_history WHERE success),
+   'schema_version',(SELECT max(version::numeric) FROM flyway_schema_history WHERE success),
    'failed_migrations',(SELECT count(*) FROM flyway_schema_history WHERE NOT success)),
  'bom_graph_sha256',(SELECT encode(digest(convert_to(coalesce(string_agg(b.legacy_id::text||':'||p.legacy_id::text||':'||c.legacy_id::text||':'||b.qty::text||chr(10),'' ORDER BY b.legacy_id),''),'UTF8'),'sha256'),'hex')
    FROM goods_bom_items b JOIN goods p ON p.id=b.goods_id JOIN goods c ON c.id=b.component_goods_id WHERE NOT b.is_deleted),
@@ -452,6 +494,8 @@ def verify_database(database, expected, original, run_id, expected_schema=None, 
     strict_counters = (strict_production_counters or expected_schema is None or expected_schema >= 908) and mapping is not None and int(mapping[1]) >= 14
     counter_sources = expected.get('counter_sources') if strict_counters else None
     require(not strict_counters or counter_sources is not None, 'V908 counter protocol requires all three sealed source inventories')
+    counter_sources = return_quantity_protocol_sources(counter_sources, expected.get('return_quantity_sources'),
+        initial_run['mapping_version'], expected_schema, announced_schema)
     strict_receipt_references = (strict_production_counters or expected_schema is None or expected_schema >= 909) and mapping is not None and int(mapping[1]) >= 15
     receipt_order_sources = expected.get('receipt_order_sources') if strict_receipt_references else None
     require(not strict_receipt_references or receipt_order_sources is not None, 'V909 receipt protocol requires both complete sealed source inventories and warehouse decisions')

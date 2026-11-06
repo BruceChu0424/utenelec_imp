@@ -754,13 +754,13 @@ class _AuditSessionOverview extends StatelessWidget {
         color: theme.colorScheme.primary,
       ),
       _SessionOverviewSpec(
-        label: '本页人工操作',
+        label: '当前结果人工操作',
         value: operations,
         icon: Icons.touch_app_outlined,
         color: theme.colorScheme.secondary,
       ),
       _SessionOverviewSpec(
-        label: '本页需核查会话',
+        label: '当前结果需核查会话',
         value: attentionSessions,
         icon: attentionSessions > 0
             ? Icons.warning_amber_rounded
@@ -822,15 +822,9 @@ class _SessionOverviewSpec {
 }
 
 class _AuditSessionListHeader extends StatelessWidget {
-  const _AuditSessionListHeader({
-    required this.total,
-    required this.currentPage,
-    required this.totalPages,
-  });
+  const _AuditSessionListHeader({required this.total});
 
   final int? total;
-  final int? currentPage;
-  final int? totalPages;
 
   @override
   Widget build(BuildContext context) {
@@ -845,12 +839,6 @@ class _AuditSessionListHeader extends StatelessWidget {
             ),
           ),
         ),
-        if (currentPage != null && totalPages != null)
-          UtenStatusBadge(
-            // 翻页位置是中性信息，不是「正在执行」——蓝档留给执行态（ADR-169）。
-            label: '第 $currentPage / ${math.max(totalPages!, 1)} 页',
-            type: UtenStatusBadgeType.neutral,
-          ),
       ],
     );
   }
@@ -1027,16 +1015,13 @@ class _AuditEventTable extends StatelessWidget {
     this.stickyHeaderPinned,
     required this.rowsController,
     required this.tableAnchorKey,
-    required this.firstRowKey,
-    required this.prependAnchorId,
+
     required this.paginationScope,
     required this.paginationRevision,
-    required this.currentPage,
-    required this.totalPages,
+
     required this.loadingMore,
     required this.error,
     required this.onRetry,
-    required this.onPageChange,
   });
 
   final List<AuditLogEntry> items;
@@ -1052,16 +1037,13 @@ class _AuditEventTable extends StatelessWidget {
   final void Function(String key, String? value) onFilterChanged;
   final MasterDataTableRowsController<AuditLogEntry> rowsController;
   final GlobalKey tableAnchorKey;
-  final GlobalKey firstRowKey;
-  final String? prependAnchorId;
+
   final Object paginationScope;
   final Object? paginationRevision;
-  final int currentPage;
-  final int totalPages;
+
   final bool loadingMore;
   final String? error;
   final VoidCallback onRetry;
-  final Future<void> Function(int) onPageChange;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -1087,20 +1069,11 @@ class _AuditEventTable extends StatelessWidget {
       embedded: true,
       expensiveRowMounts: false,
       rowsController: rowsController,
-      rowDecorationBuilder: (_, row, child) =>
-          row.id.toString() ==
-              (prependAnchorId ??
-                  rowsController.items.firstOrNull?.id.toString())
-          ? KeyedSubtree(key: firstRowKey, child: child)
-          : child,
       paginationScope: paginationScope,
       paginationRevision: paginationRevision,
-      currentPage: currentPage,
-      totalPages: totalPages,
       loadingMore: loadingMore,
       error: error,
       onRetry: onRetry,
-      onPageChange: onPageChange,
       stickyHeaderPinned: stickyHeaderPinned,
       columns: [
         MasterColumnDef(
@@ -1299,16 +1272,13 @@ class _AuditSessionTable extends StatelessWidget {
     this.stickyHeaderPinned,
     required this.rowsController,
     required this.tableAnchorKey,
-    required this.firstRowKey,
-    required this.prependAnchorId,
+
     required this.paginationScope,
     required this.paginationRevision,
-    required this.currentPage,
-    required this.totalPages,
+
     required this.loadingMore,
     required this.error,
     required this.onRetry,
-    required this.onPageChange,
   });
 
   final List<AuditSessionSummary> sessions;
@@ -1321,16 +1291,13 @@ class _AuditSessionTable extends StatelessWidget {
   final void Function(String?, bool) onSortChange;
   final MasterDataTableRowsController<AuditSessionSummary> rowsController;
   final GlobalKey tableAnchorKey;
-  final GlobalKey firstRowKey;
-  final String? prependAnchorId;
+
   final Object paginationScope;
   final Object? paginationRevision;
-  final int currentPage;
-  final int totalPages;
+
   final bool loadingMore;
   final String? error;
   final VoidCallback onRetry;
-  final Future<void> Function(int) onPageChange;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -1348,19 +1315,11 @@ class _AuditSessionTable extends StatelessWidget {
       embedded: true,
       expensiveRowMounts: false,
       rowsController: rowsController,
-      rowDecorationBuilder: (_, row, child) =>
-          row.sessionId ==
-              (prependAnchorId ?? rowsController.items.firstOrNull?.sessionId)
-          ? KeyedSubtree(key: firstRowKey, child: child)
-          : child,
       paginationScope: paginationScope,
       paginationRevision: paginationRevision,
-      currentPage: currentPage,
-      totalPages: totalPages,
       loadingMore: loadingMore,
       error: error,
       onRetry: onRetry,
-      onPageChange: onPageChange,
       stickyHeaderPinned: stickyHeaderPinned,
       columns: [
         const MasterColumnDef(

@@ -82,6 +82,11 @@ const _dispositionFacets = [
 class _QualityInspectionRecordsPageState
     extends ConsumerState<QualityInspectionRecordsPage>
     with ScopedPagedReadViewMixin<QualityInspectionRecordsPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   int get _refreshPage => _readingRows.visiblePage ?? (_data?.page ?? 1);
 
   final _readingRows = MasterDataTableRowsController<QualityInspectionRecord>();
@@ -219,6 +224,7 @@ class _QualityInspectionRecordsPageState
       final cached = await readScopedPage<QualityInspectionRecord>(
         requestedPage,
         slot: '_load',
+        idOf: (row) => row.recordId,
         query: [
           pageRepository,
           pageDomain,
@@ -262,6 +268,7 @@ class _QualityInspectionRecordsPageState
             effective: pageEffective,
             disposition: pageDisposition,
             page: target,
+            size: 100,
             sort: pageSort,
             order: pageOrder,
             sourceNo: pageSourceNo,
@@ -281,6 +288,7 @@ class _QualityInspectionRecordsPageState
               totalPages: snapshot.totalPages,
             ),
             snapshot: snapshot,
+            rebuildSnapshot: snapshot.withPage,
           );
         },
       );
@@ -300,6 +308,7 @@ class _QualityInspectionRecordsPageState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       setState(() {
         if (nativeReadAccessDenied(error)) {
@@ -309,7 +318,8 @@ class _QualityInspectionRecordsPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!current()) return;
       setState(() {
         _error = '检测记录加载失败，请检查网络后重试';
@@ -450,7 +460,9 @@ class _QualityInspectionRecordsPageState
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.qualityInspectionRecords, _load);
+    final visibleReadReturn = _load;
+    _activityReturnRead = () async { await Future<void>.sync(visibleReadReturn); };
+    ref.onPageResume(RouteName.qualityInspectionRecords, visibleReadReturn);
     final allowedDomains = _allowedDomains;
     return Scaffold(
       appBar: UtenAppBar(

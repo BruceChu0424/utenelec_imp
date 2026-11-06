@@ -46,6 +46,48 @@ Future<void> _fill(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'accepted policy directory projection retires after access rejection',
+    (tester) async {
+      final api = _Api()..directoryTotal = 101;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      for (
+        var attempt = 0;
+        attempt < 60 &&
+            tester
+                    .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+                    .items
+                    .length !=
+                101;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        hasLength(101),
+      );
+      api.failDirectoryPage = 2;
+      await tester.tap(find.text('查询').hitTestable());
+      await tester.pumpAndSettle();
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, '后批无权限');
+      expect(api.commands, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
   setUpAll(() async {
     if (Platform.environment['UTEN_FIN02_SCREENSHOTS'] != null) {
       await (FontLoader(
@@ -56,6 +98,109 @@ void main() {
       )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
     }
   });
+  testWidgets('policy directory accepts the real tail and scrolling is local', (
+    tester,
+  ) async {
+    final api = _Api()..directoryTotal = 101;
+    final container = await _mount(
+      tester,
+      api,
+      MemoryFormDraftStorage(),
+      directory: true,
+    );
+    final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    expect(table.items, hasLength(101));
+    expect(table.items.last['id'], 'policy-100');
+    expect(table.totalPages, 1);
+    expect(table.onPageChange, isNull);
+    expect(api.directoryReads.map((q) => q['size']), everyElement(100));
+    expect(
+      api.directoryReads
+          .map((q) => q['page'])
+          .toList()
+          .sublist(api.directoryReads.length - 2),
+      [1, 2],
+    );
+    final reads = api.directoryReads.length;
+    await tester.drag(finder, const Offset(0, -6000));
+    await tester.pumpAndSettle();
+    expect(find.text('实际规则货品100'), findsOneWidget);
+    expect(api.directoryReads, hasLength(reads));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    container.dispose();
+  });
+  testWidgets(
+    'policy continuation denial cannot publish partial approved sources',
+    (tester) async {
+      final api = _Api()
+        ..directoryTotal = 101
+        ..failDirectoryPage = 2;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, isNotEmpty);
+      expect(api.commands, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  testWidgets(
+    'source continuation denial preserves exact editor input without partial choices',
+    (tester) async {
+      final api = _Api()..failSourcePage = 2;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      await tester.tap(find.text('新增规则'));
+      await tester.pumpAndSettle();
+      await _fill(tester);
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('选择实际商品'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('选择实际商品').hitTestable());
+      await tester.pumpAndSettle();
+      final finder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<Map<String, dynamic>> &&
+            widget.tableKey == 'finance.subcontract.loss.sourceChoices',
+      );
+      expect(finder, findsOneWidget);
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, '后批无权限');
+      expect(api.sourceReads.any((query) => query['page'] == 2), isTrue);
+      expect(api.sourceReads.map((q) => q['size']), everyElement(100));
+      expect(api.commands, isEmpty);
+      Navigator.of(tester.element(finder)).pop();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<UtenInput>(_field('允许损耗率（%）')).controller!.text,
+        _exact,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
   testWidgets(
     'exact input and real UUID dimensions survive a hard reopen and unknown submits retry only the original body',
     (tester) async {
@@ -195,7 +340,7 @@ void main() {
     },
   );
   testWidgets(
-    'source picker pages actual records and retires private values after permission ABA',
+    'source picker collects every actual dimension and retires private values after permission ABA',
     (tester) async {
       final grants = StateProvider<Set<String>>(
         (ref) => {
@@ -219,18 +364,36 @@ void main() {
       final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
         find.byType(MasterDataTableView<Map<String, dynamic>>).last,
       );
-      expect(table.items, hasLength(50));
-      expect(table.totalPages, 400);
+      expect(table.items, hasLength(101));
+      expect(table.totalPages, 1);
+      expect(table.onPageChange, isNull);
+      expect(table.items.last['goodsId'], 'goods-100');
+      expect(api.sourceReads.map((q) => q['size']), everyElement(100));
+      expect(
+        api.sourceReads
+            .map((q) => q['page'])
+            .toList()
+            .sublist(api.sourceReads.length - 2),
+        [1, 2],
+      );
+      final reads = api.sourceReads.length;
+      await tester.drag(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+        const Offset(0, -6000),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('真实商品100'), findsOneWidget);
+      expect(api.sourceReads, hasLength(reads));
       table.onRowTap!(table.items.last);
       await tester.pumpAndSettle();
-      expect(find.textContaining('真实商品49'), findsOneWidget);
+      expect(find.textContaining('真实商品100'), findsOneWidget);
       final prior = container.read(grants);
       container.read(grants.notifier).state = {};
       await tester.pumpAndSettle();
-      expect(find.textContaining('真实商品49'), findsNothing);
+      expect(find.textContaining('真实商品100'), findsNothing);
       container.read(grants.notifier).state = prior;
       await tester.pumpAndSettle();
-      expect(find.textContaining('真实商品49'), findsNothing);
+      expect(find.textContaining('真实商品100'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       container.dispose();
@@ -286,6 +449,22 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       container.dispose();
     },
+  );
+}
+
+Future<void> _waitForReadError(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 60; attempt++) {
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    if (!table.isLoading && table.error != null) return;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(
+    tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).error,
+    isNotNull,
+    reason:
+        'The actual continuation rejection must finish and remain observable.',
   );
 }
 
@@ -364,6 +543,9 @@ class _Api extends ApiClient {
   bool unknown = false, receipt = false, records = false, wrongReceipt = false;
   Completer<Map<String, dynamic>>? gate;
   final commands = <Map<String, dynamic>>[];
+  int? directoryTotal, failDirectoryPage, failSourcePage;
+  final directoryReads = <Map<String, dynamic>>[],
+      sourceReads = <Map<String, dynamic>>[];
   @override
   Future<Map<String, dynamic>> post(
     String path, {
@@ -416,9 +598,19 @@ class _Api extends ApiClient {
       };
     }
     if (path.endsWith('/source-choices')) {
+      sourceReads.add(Map<String, dynamic>.from(query!));
+      final page = query['page'] as int, size = query['size'] as int;
+      if (page == failSourcePage) {
+        throw ApiException(
+          'FORBIDDEN',
+          '后批无权限',
+          httpStatus: 403,
+          hasResponseCode: true,
+        );
+      }
       return {
         'items': [
-          for (int i = 0; i < 50; i++)
+          for (var i = (page - 1) * size; i < page * size && i < 101; i++)
             {
               'goodsId': 'goods-$i',
               'colorId': null,
@@ -430,7 +622,50 @@ class _Api extends ApiClient {
               'actualSource': true,
             },
         ],
-        'totalPages': 400,
+        'page': page,
+        'size': size,
+        'total': 101,
+        'totalPages': (101 / size).ceil(),
+      };
+    }
+    if (path == '/finance/subcontract-loss-policies' &&
+        directoryTotal != null) {
+      directoryReads.add(Map<String, dynamic>.from(query!));
+      final page = query['page'] as int, size = query['size'] as int;
+      if (page == failDirectoryPage) {
+        throw ApiException(
+          'FORBIDDEN',
+          '后批无权限',
+          httpStatus: 403,
+          hasResponseCode: true,
+        );
+      }
+      return {
+        'items': [
+          for (
+            var i = (page - 1) * size;
+            i < page * size && i < directoryTotal!;
+            i++
+          )
+            {
+              'id': 'policy-$i',
+              'goodsId': 'goods-$i',
+              'unitId': 'unit-real',
+              'colorId': null,
+              'goodsCode': 'G-$i',
+              'goodsName': '实际规则货品$i',
+              'rate_percent_originalExact': _exact,
+              'ratePercentExact': '5',
+              'effective_from': '2026-10-01',
+              'status': 'SUBMITTED',
+              'enabled': true,
+              'revision': 0,
+            },
+        ],
+        'page': page,
+        'size': size,
+        'total': directoryTotal,
+        'totalPages': (directoryTotal! / size).ceil(),
       };
     }
     if (records) {

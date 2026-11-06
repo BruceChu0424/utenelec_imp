@@ -12,17 +12,17 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_quality_results_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dart';
+import 'package:uten_imp/features/sales/pages/sales_task_center_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_audit_center_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_records_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
-import 'package:uten_imp/shared/paging/prepared_page_read.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -41,8 +41,8 @@ class _Read {
 }
 
 class _Api extends ApiClient {
-  _Api({this.scheduleRows = 1, this.scheduleTotal = 1}) : super(Dio());
-  final int scheduleRows, scheduleTotal;
+  _Api({this.scheduleTotal = 1}) : super(Dio());
+  final int scheduleTotal;
   final reads = <_Read>[];
   final held = <String, Completer<void>>{};
   Completer<void>? counts;
@@ -150,7 +150,7 @@ class _Api extends ApiClient {
             (query?['size'] as int? ?? 100);
         return _page(
           List.generate(
-            scheduleRows,
+            (scheduleTotal - offset).clamp(0, query?['size'] as int? ?? 100),
             (i) => {
               'orderItemId': 'item-${offset + i}',
               'orderId': 'order-${offset + i}',
@@ -314,8 +314,41 @@ Future<void> _close(WidgetTester tester, _Api api) async {
 }
 
 void main() {
+  testWidgets('sales category entry makes no unselected business row HTTP', (
+    tester,
+  ) async {
+    final api = _Api();
+    await _mount(tester, api, const SalesTaskCenterPage(), {
+      Perm.salesOrderView,
+      Perm.salesShipmentView,
+    });
+    expect(api.reads.where((read) => read.path.startsWith('/sales/')), isEmpty);
+    expect(api.writes, isEmpty);
+    await _close(tester, api);
+  });
   testWidgets(
-    'warehouse parent prepares authorized sources before selection and adopts exact source once',
+    'finance audit category entry makes no unselected business row HTTP',
+    (tester) async {
+      final api = _Api();
+      await _mount(tester, api, const FinanceAuditCenterPage(), {
+        Perm.salesQuoteFinanceView,
+        Perm.salesOrderFinanceView,
+      });
+      expect(
+        api.reads.where(
+          (read) =>
+              read.path.startsWith('/sales/') ||
+              read.path.startsWith('/finance/'),
+        ),
+        isEmpty,
+      );
+      expect(api.writes, isEmpty);
+      await _close(tester, api);
+    },
+  );
+
+  testWidgets(
+    'warehouse parent sends zero unselected row reads and selected source completes once',
     (tester) async {
       final api = _Api();
       await _mount(tester, api, const WarehouseTaskCenterPage(), {
@@ -323,23 +356,7 @@ void main() {
       });
       const path = '/warehouse/task-center/outbound';
       expect(find.byType(WarehouseTaskRecordsView), findsNothing);
-      expect(api.requests(path).map((read) => read.kind).toSet(), {
-        'DRAW',
-        'OTHER',
-        'FINISHED',
-        'ALL',
-      });
-      expect(
-        api
-            .requests(path)
-            .every(
-              (read) =>
-                  read.query['view'] == 'ACTIVE' &&
-                  read.query['page'] == 1 &&
-                  read.query['size'] == 20,
-            ),
-        isTrue,
-      );
+      expect(api.requests(path), isEmpty);
       await tester.tap(find.text('出库'));
       await _frames(tester);
       await tester.tap(find.text('其它出库'));
@@ -353,7 +370,7 @@ void main() {
   );
 
   testWidgets(
-    'mixed history grants do not reintroduce history-only source through ALL preparation',
+    'mixed history grants produce no unselected source rows or ALL read',
     (tester) async {
       final api = _Api();
       await _mount(
@@ -363,7 +380,7 @@ void main() {
         {Perm.stockDocView, Perm.warehousePurchaseReceiptHistoryView},
       );
       final reads = api.requests('/warehouse/task-center/inbound');
-      expect(reads, isNotEmpty);
+      expect(reads, isEmpty);
       expect(reads.map((read) => read.kind), isNot(contains('PURCHASE')));
       expect(reads.map((read) => read.kind), isNot(contains('ALL')));
       expect(reads.every((read) => read.query['view'] == 'ACTIVE'), isTrue);
@@ -402,7 +419,7 @@ void main() {
   );
 
   testWidgets(
-    'quality status aggregate remains independent of prepared rows and source phases adopt once',
+    'quality status aggregate remains independent and only selected phases are read',
     (tester) async {
       final api = _Api()..counts = Completer<void>();
       await _mount(tester, api, const WarehouseQualityResultsPage(), {
@@ -435,32 +452,33 @@ void main() {
   );
 
   testWidgets(
-    'production prepares original 100-row schedule with full large metadata without awaiting facets',
+    'production selects complete100000 summary with bounded100 batches and no unselected group reads',
     (tester) async {
-      final api = _Api(scheduleRows: 100, scheduleTotal: 100000)
-        ..facets = Completer<void>();
+      final api = _Api(scheduleTotal: 100000)..facets = Completer<void>();
       await _mount(tester, api, const ProductionBoardPage(), {
         Perm.productionPlanView,
         Perm.productionExecutionOverview,
       });
-      expect(
-        api.requests('/production/schedule/pending').single.query['size'],
-        100,
-      );
-      expect(
-        api.requests('/production/execution-workbench').single.query['size'],
-        50,
-      );
+      expect(api.requests('/production/schedule/pending'), isEmpty);
+      expect(api.requests('/production/execution-workbench'), isEmpty);
       await tester.tap(find.text('待排产'));
-      await _frames(tester);
+      await tester.pumpAndSettle(const Duration(milliseconds: 1));
       final table = tester.widget<MasterDataTableView<SchedulePendingRow>>(
         find.byType(MasterDataTableView<SchedulePendingRow>),
       );
       final page = table.paginationRevision as PagedResult<SchedulePendingRow>;
-      expect(page.items, hasLength(100));
+      expect(page.items, hasLength(100000));
       expect(page.total, 100000);
-      expect(page.totalPages, 1000);
-      expect(table.rowsController!.items, hasLength(100));
+      expect(page.totalPages, 1);
+      expect(table.rowsController!.items, hasLength(100000));
+      expect(page.items.last.orderItemId, 'item-99999');
+      expect(api.requests('/production/schedule/pending'), hasLength(1000));
+      expect(
+        api
+            .requests('/production/schedule/pending')
+            .every((read) => read.query['size'] == 100),
+        isTrue,
+      );
       expect(api.facets!.isCompleted, isFalse);
       expect(table.isLoading, isFalse);
       expect(
@@ -479,24 +497,20 @@ void main() {
   );
 
   testWidgets(
-    'workshop prepares only three active stages and clicking adopts its precise page',
+    'workshop sends no unselected stage reads and only selected stage loads',
     (tester) async {
       final api = _Api();
       await _mount(tester, api, const ProductionWorkshopTasksPage(), {
         Perm.productionExecutionView,
       });
       const path = '/production/workshop-tasks';
-      expect(api.requests(path).map((read) => read.kind).toSet(), {
-        'PREPARING',
-        'IN_PROGRESS',
-        'REPORT_INSPECTION',
-      });
+      expect(api.requests(path), isEmpty);
       await tester.tap(find.text('开工准备'));
       await _frames(tester);
       expect(find.text('WORKSHOP-PREPARING'), findsOneWidget);
       expect(api.requests(path, kind: 'PREPARING'), hasLength(1));
       expect(
-        api.requests(path).every((read) => read.query['size'] == 50),
+        api.requests(path).every((read) => read.query['size'] == 100),
         isTrue,
       );
       expect(api.writes, isEmpty);
@@ -505,7 +519,7 @@ void main() {
   );
 
   testWidgets(
-    'materialbin review and period aggregate hand off once, explicit refresh rechecks period state',
+    'materialbin reads no unselected rows; chosen review and period aggregate refresh remain authoritative',
     (tester) async {
       final api = _Api();
       final container = await _mount(
@@ -518,8 +532,8 @@ void main() {
           Perm.stockCountWarehouseReview,
         },
       );
-      expect(api.requests('/stock/count-requests'), hasLength(1));
-      expect(api.requests('/workshop-material/task-status'), hasLength(1));
+      expect(api.requests('/stock/count-requests'), isEmpty);
+      expect(api.requests('/workshop-material/task-status'), isEmpty);
       await tester.tap(find.text('盘点审核'));
       await _frames(tester);
       expect(find.text('OLD-COUNT'), findsOneWidget);
@@ -625,33 +639,19 @@ void main() {
   );
 
   test(
-    'same-api same-lease repository replacement cannot consume old groups or workshop tasks',
+    'same-api repository replacement performs a new selected read without a shared preparation',
     () async {
       final api = _Api();
-      final groups = PreparedPageRead<ProductionExecutionWorkbenchGroup>();
-      final tasks = PreparedPageRead<ProductionExecutionWorkbenchSegment>();
       final first = ProductionExecutionWorkbenchRepository(api);
       final second = ProductionExecutionWorkbenchRepository(api);
-      await first.prepareGroups(preparedRead: groups);
-      await first.prepareWorkshopTasks(
-        status: 'PREPARING',
-        preparedRead: tasks,
-      );
+      await first.groups();
+      await first.workshopTasks(status: 'PREPARING');
       api.revision = 'NEW';
-      final next = await second.readGroups(
-        preferPrepared: true,
-        preparedRead: groups,
-      );
+      final next = await second.groups();
       expect(next.items.single.rootLabel, 'NEW-GROUP');
-      await second.readWorkshopTasks(
-        status: 'PREPARING',
-        preferPrepared: true,
-        preparedRead: tasks,
-      );
+      await second.workshopTasks(status: 'PREPARING');
       expect(api.requests('/production/execution-workbench'), hasLength(2));
       expect(api.requests('/production/workshop-tasks'), hasLength(2));
-      groups.dispose();
-      tasks.dispose();
     },
   );
 }

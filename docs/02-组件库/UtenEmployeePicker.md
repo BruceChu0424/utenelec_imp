@@ -1,5 +1,7 @@
 # UtenEmployeePicker · 通用员工选择器
 
+> 2026-11-04 当前合同：页面、右滑窗和弹窗都在同一授权/搜索/分类范围内读齐候选摘要，内部仍按服务端上限分批；完成后统一一页虚拟滚动，移除页码、滚动补读及邻页预取。搜索或范围变化退休旧读取，完整性失败允许从头重试，保留合法选择和确认/取消语义。外部访客原有至少2字/最多5名的隐私查询保持原限制。下文旧分页描述仅为历史背景，以本条及共享完整读取实现为准。
+
 > 源码：[`uten_employee_picker.dart`](../../lib/components/inputs/uten_employee_picker.dart)、
 > [`uten_employee_multi_picker.dart`](../../lib/components/inputs/uten_employee_multi_picker.dart)；
 > 部门树变体见 [UtenDepartmentEmployeePicker](UtenDepartmentEmployeePicker.md)；

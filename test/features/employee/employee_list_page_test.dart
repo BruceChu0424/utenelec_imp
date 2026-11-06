@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 // 员工列表页交互契约（2026-09-10 改版）：
 // 1) 顶部状态 FilterChip 已下线，状态筛选交给表头 autofilter（初始请求不再带 statuses 预筛）；
 // 2) 搜索框驻表格工具条（「全屏」按钮右侧）；
-// 3) 「加载更多」按钮下线：滚动临近底部自动请求下一页，末页后不再请求；
+// 3) 首次完整读取当前授权结果，滚动不请求数据；切页停止旧读，返页重新核对完整结果；
 // 4) 表头排序（工号等）→ 服务端带 sort/order 重查。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,8 +21,36 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 /// 固定两页（各 20 行）并记录请求参数的假仓库。
+class _NoNetworkApi extends ApiClient {
+  _NoNetworkApi() : super(Dio());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {};
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => [];
+}
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => null;
+}
+
 class _PagingEmployeeRepository extends Fake implements EmployeeRepository {
   final requestedPages = <int>[];
+  final versionedRequests = <(int, int)>[];
+  int pages = 2;
+  int version = 1;
+  Completer<PagedResult<EmployeeSummary>>? pendingSecond;
   String? lastSort;
   String? lastOrder;
   Set<String>? lastStatuses;
@@ -25,7 +58,7 @@ class _PagingEmployeeRepository extends Fake implements EmployeeRepository {
   EmployeeSummary _row(int n) => EmployeeSummary(
     id: 'e-$n',
     code: 'UT${n.toString().padLeft(4, '0')}',
-    fullName: '员工$n',
+    fullName: '${version == 1 ? '' : '新'}员工$n',
     departmentName: '生产部',
     positionName: '操作工',
     status: 'active',
@@ -44,21 +77,28 @@ class _PagingEmployeeRepository extends Fake implements EmployeeRepository {
     String? order,
   }) async {
     requestedPages.add(page);
+    versionedRequests.add((version, page));
     lastSort = sort;
     lastOrder = order;
     lastStatuses = statuses;
-    return PagedResult(
-      items: [for (var i = (page - 1) * 20 + 1; i <= page * 20; i++) _row(i)],
-      page: page,
-      size: size,
-      total: 40,
-      totalPages: 2,
-    );
+    if (page == 2 && pendingSecond != null) return pendingSecond!.future;
+    return result(page, size);
   }
+
+  PagedResult<EmployeeSummary> result(int page, int size) => PagedResult(
+    items: [for (var i = (page - 1) * 20 + 1; i <= page * 20; i++) _row(i)],
+    page: page,
+    size: size,
+    total: pages * 20,
+    totalPages: pages,
+  );
 }
 
 Widget _app(_PagingEmployeeRepository repo) => ProviderScope(
   overrides: [
+    apiClientProvider.overrideWithValue(_NoNetworkApi()),
+    sessionProvider.overrideWith(_Session.new),
+    sessionSnapshotProvider.overrideWith(_Snapshot.new),
     currentPermissionsProvider.overrideWithValue({Perm.employeeView}),
     employeeRepositoryProvider.overrideWithValue(repo),
   ],
@@ -70,6 +110,70 @@ Widget _app(_PagingEmployeeRepository repo) => ProviderScope(
 );
 
 void main() {
+  for (final returnBeforeReply in [false, true]) {
+    testWidgets(
+      'retained employee roster stops hidden reads and returns fresh ABA=$returnBeforeReply',
+      (tester) async {
+        final repo = _PagingEmployeeRepository()
+          ..pages = 3
+          ..pendingSecond = Completer<PagedResult<EmployeeSummary>>();
+        await tester.pumpWidget(_app(repo));
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.pump();
+        expect(repo.requestedPages, [1, 2]);
+        final navigator = tester.state<NavigatorState>(
+          find.byType(Navigator).first,
+        );
+        final covering = navigator.push<void>(
+          MaterialPageRoute(builder: (_) => const Scaffold(body: Text('另一页'))),
+        );
+        await tester.pumpAndSettle();
+        expect(repo.requestedPages, [1, 2]);
+        if (returnBeforeReply) {
+          navigator.pop();
+          await covering;
+          // Complete the return transition while the original fake transport
+          // is deliberately still held; its loading animation cannot settle.
+          await tester.pump(const Duration(milliseconds: 350));
+          await tester.pump();
+        }
+        final oldSecond = repo.result(2, 100);
+        final pending = repo.pendingSecond!;
+        repo.pendingSecond = null;
+        repo.version = 2;
+        pending.complete(oldSecond);
+        await tester.pumpAndSettle();
+        if (!returnBeforeReply) {
+          expect(
+            repo.requestedPages,
+            [1, 2],
+            reason:
+                'opaque cover must not drain page3 or publish a complete old roster',
+          );
+          navigator.pop();
+          await covering;
+          await tester.pumpAndSettle();
+        }
+        expect(repo.versionedRequests, [
+          (1, 1),
+          (1, 2),
+          (2, 1),
+          (2, 2),
+          (2, 3),
+        ]);
+        final table = tester.widget<MasterDataTableView<EmployeeSummary>>(
+          find.byKey(const Key('employee-list-table')),
+        );
+        expect(table.items, hasLength(60));
+        expect(
+          table.items.every((row) => row.fullName.startsWith('新员工')),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('初始加载不带状态预筛；无状态 FilterChip；搜索框在工具条', (tester) async {
     final repo = _PagingEmployeeRepository();
     await tester.pumpWidget(_app(repo));

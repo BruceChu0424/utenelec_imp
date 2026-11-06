@@ -1,15 +1,12 @@
-import 'dart:async';
-
-import '../../components/data_display/paged_read_cache.dart';
-import '../../components/data_display/paged_read_ahead_policy.dart';
 import '../../core/network/api_exception.dart';
 import '../models/paged_result.dart';
+import 'complete_paged_snapshot.dart';
+import 'paged_query_identity.dart';
 import 'paged_read_intent.dart';
 import 'paged_read_window_binding.dart';
-import 'paged_read_window_refresh.dart';
 
-/// Confirmed read rejection retires accepted private rows and cached reads.
-/// Network/parse failures keep the existing snapshot available for retry.
+/// Confirmed access rejection retires accepted private rows. Ordinary failures
+/// keep the last authorized snapshot available for an explicit retry.
 bool pagedReadAccessDenied(Object error) =>
     error is ApiException &&
     (error.httpStatus == 401 ||
@@ -20,14 +17,14 @@ bool pagedReadAccessDenied(Object error) =>
           'READ_SCOPE_CHANGED',
         }.contains(error.code));
 
-/// Keeps a complete typed response together with the real rows used for cache
-/// budgeting. Cached hits restore the same metadata and authority as its rows.
+/// A typed response and its row list remain one immutable, authorized result.
 class PagedReadSnapshot<RowT, SnapshotT> extends PagedResult<RowT>
-    implements PagedReadCacheRevision {
+    implements PagedResultRevision {
   PagedReadSnapshot({
     required PagedResult<RowT> page,
     required this.snapshot,
     Object? revision,
+    this.rebuildSnapshot,
   }) : pageCacheRevision = revision ?? page.readScopeVersion,
        super(
          items: page.items,
@@ -42,44 +39,83 @@ class PagedReadSnapshot<RowT, SnapshotT> extends PagedResult<RowT>
        );
 
   final SnapshotT snapshot;
-  @override
+  final SnapshotT Function(PagedResult<RowT> combined)? rebuildSnapshot;
   final Object? pageCacheRevision;
+  @override
+  Object? get snapshotRevision => pageCacheRevision;
+
+  @override
+  PagedReadSnapshot<RowT, SnapshotT> withRows(
+    List<RowT> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) {
+    var combined = super.withRows(
+      rows,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: totalPages,
+    );
+    final rebuild = rebuildSnapshot;
+    late final SnapshotT typed;
+    if (rebuild != null) {
+      typed = rebuild(combined);
+    } else if (snapshot is PagedResult<RowT>) {
+      final result = (snapshot as PagedResult<RowT>).withRows(
+        combined.items,
+        page: combined.page,
+        size: combined.size,
+        total: combined.total,
+        totalPages: combined.totalPages,
+      );
+      typed = result as SnapshotT;
+      combined = result;
+    } else if (identical(rows, items) ||
+        snapshot == null ||
+        snapshot is String ||
+        snapshot is num ||
+        snapshot is bool) {
+      typed = snapshot;
+    } else {
+      throw StateError(
+        'Typed complete results require rebuildSnapshot to retain all rows',
+      );
+    }
+    return PagedReadSnapshot(
+      page: combined,
+      snapshot: typed,
+      revision: pageCacheRevision,
+      rebuildSnapshot: rebuild,
+    );
+  }
 }
 
-/// Owns data reads for a manual pager without owning its UI loading/selection.
-/// [read] receives a complete immutable query and monotonic reader scope.
-/// The caller separately guards its latest UI request; [isCurrent] must remain
-/// valid across same-query page navigation so a foreground read can adopt an
-/// in-flight speculative page. No business commands are retried here.
+/// One complete result per query/owner. Internal batches are sequential and
+/// cancellable; there is no neighboring-page cache or scroll-triggered read.
 class ScopedPagedRead<T> {
-  ScopedPagedRead({int maximumPages = 12, int maximumRows = 5000})
-    : _cache = PagedReadCache<T>(
-        maximumPages: maximumPages,
-        maximumRows: maximumRows,
-      );
-
-  final PagedReadCache<T> _cache;
+  ScopedPagedRead({this.idOf});
+  final Object? Function(T row)? idOf;
+  Object? _scope;
   bool Function()? _ownerCurrent;
-  int _generation = 0;
-  int _foregroundRead = 0;
-  int? _acceptedForegroundPage;
-  _ForegroundPagedRead<T>? _foreground;
+  int _owner = 0;
+  int _request = 0;
   bool _disposed = false;
-  PagedReadWindowSession<T>? _window;
-  PagedResult<T>? _latestResult;
-  _WindowRefresh<T>? _windowRefresh;
+  PagedReadWindowSession<T>? _session;
+  PagedResult<T>? _accepted;
+  _CompleteFlight<T>? _flight;
 
   void invalidate() {
-    _generation++;
-    _foregroundRead++;
-    _acceptedForegroundPage = null;
-    _foreground = null;
+    _owner++;
+    _request++;
+    _session?.invalidate();
+    _session = null;
+    _scope = null;
     _ownerCurrent = null;
-    _cache.clear();
-    _window?.invalidate();
-    _window = null;
-    _latestResult = null;
-    _windowRefresh = null;
+    _accepted = null;
+    _flight = null;
   }
 
   void dispose() {
@@ -87,205 +123,87 @@ class ScopedPagedRead<T> {
     invalidate();
   }
 
-  /// Prepare two successors from the last accepted frozen source.
-  /// This publishes no UI data and never changes the foreground reading page.
-  Future<void> prepareNext(int visiblePage, {bool Function()? canPrepare}) {
-    if (PagedReadIntent.isBufferSeed) return Future.value();
-    final source = _foreground;
-    if (source == null ||
-        !source.isCurrent() ||
-        visiblePage < 1 ||
-        visiblePage >= source.page.totalPages) {
-      return Future.value();
-    }
-    return _cache.prefetchPages(
-      source.page,
-      PagedReadAheadPolicy.next(visiblePage),
-      fetch: source.fetch,
-      isCurrent: () =>
-          source.isCurrent() &&
-          (canPrepare?.call() ?? source.canPrefetch?.call() ?? true),
-      onError: source.onError,
-    );
-  }
-
-  Future<void> _prepareAround(
-    int visiblePage, {
-    required bool prepend,
-    required bool Function() canPrepare,
-  }) {
-    final source = _foreground;
-    if (source == null || !source.isCurrent() || visiblePage < 1) {
-      return Future.value();
-    }
-    return _cache.prefetchPages(
-      source.page,
-      PagedReadAheadPolicy.around(visiblePage, prepend: prepend),
-      fetch: source.fetch,
-      isCurrent: () => source.isCurrent() && canPrepare(),
-      onError: source.onError,
-    );
-  }
-
   Future<PagedResult<T>> read(
     int page, {
     required Object scope,
     required Future<PagedResult<T>> Function(int) fetchPage,
+    Future<PagedResult<T>> Function(int page, int size)? fetchPageSized,
+    Object? Function(T row)? idOf,
     required bool Function() isCurrent,
+    bool Function()? isOwnerCurrent,
     bool useCache = false,
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
     bool revalidateWindow = true,
-  }) async {
-    final bufferSeed = PagedReadIntent.isBufferSeed;
-    final readingPage = PagedReadIntent.readingPage;
-    if (_disposed || !isCurrent()) throw StateError('Paged read owner changed');
-    if (_ownerCurrent?.call() == false) invalidate();
-    if (_cache.bind(scope)) {
-      _generation++;
-      _acceptedForegroundPage = null;
-      _window?.invalidate();
-      _window = null;
-      _latestResult = null;
-      _windowRefresh = null;
+  }) {
+    final ownerCurrent = isOwnerCurrent ?? isCurrent;
+    if (_disposed || !isCurrent() || !ownerCurrent()) {
+      return Future.error(StateError('Paged read owner changed'));
     }
-    _ownerCurrent = isCurrent;
-    final session = _window ??= PagedReadWindowSession<T>(
-      isCurrent: () => !_disposed && (_ownerCurrent?.call() ?? false),
-    );
-    final fresh =
-        !bufferSeed &&
-        (!useCache || (readingPage ?? _acceptedForegroundPage) == page);
-    final explicit = PagedReadIntent.replaceWindow;
-    final plan = fresh && revalidateWindow && !explicit
-        ? session.capture()
-        : null;
-    final preserveWindow = plan != null && plan.visiblePage == page;
-    final previousRefresh = !fresh && !explicit ? _windowRefresh : null;
-    if (fresh || (explicit && _windowRefresh != null)) {
-      _cache.clear();
-      _generation++;
-      _acceptedForegroundPage = null;
-      _windowRefresh = null;
+    if (_ownerCurrent?.call() == false || !samePagedReadQuery(_scope, scope)) {
+      invalidate();
     }
-    final foregroundRead = bufferSeed ? _foregroundRead : ++_foregroundRead;
-    final generation = _generation;
-    bool current() => !_disposed && generation == _generation && isCurrent();
-    Future<PagedResult<T>> fetch(int target) async {
-      if (!current()) throw StateError('Paged read owner changed');
-      final result = await PagedReadIntent.scopedRead(
-        current,
-        () => fetchPage(target),
-      );
-      if (!current()) throw StateError('Paged read owner changed');
-      return result;
+    _scope = freezePagedReadQuery(scope);
+    _ownerCurrent = ownerCurrent;
+    final owner = _owner;
+    bool owned() =>
+        !_disposed && owner == _owner && (_ownerCurrent?.call() ?? false);
+    var session = _session ??= PagedReadWindowSession<T>(isCurrent: owned);
+    final active = _flight;
+    if (useCache && active != null && active.current()) return active.result;
+    if (useCache && _accepted != null && owned()) {
+      return Future.value(_accepted);
     }
 
-    late final PagedResult<T> result;
-    Map<int, List<T>>? replacement;
-    try {
-      if (preserveWindow) {
-        if (_latestResult != null) {
-          session.bindResult(_latestResult!, pending: true);
-        }
-        final transaction = _WindowRefresh<T>();
-        _windowRefresh = transaction;
-        transaction.result = refreshReadWindow<T>(
-          plan,
-          fetch: (target) => _cache.read(target, () => fetch(target)),
-          isCurrent: current,
-          retry: _cache.clear,
+    final request = ++_request;
+    final activity = PagedReadIntent.currentActivity;
+    bool baseCurrent() => owned() && request == _request && isCurrent();
+    bool current() => baseCurrent() && (activity?.call() ?? true);
+    if (_accepted case final accepted?) {
+      session.bindResult(accepted, pending: true);
+    }
+    late final _CompleteFlight<T> flight;
+    Future<PagedResult<T>> load() async {
+      try {
+        var result = await loadCompletePagedResult<T>(
+          loadPage: (batch, size) =>
+              fetchPageSized?.call(batch, size) ?? fetchPage(batch),
+          isCurrent: baseCurrent,
+          idOf: idOf ?? this.idOf,
         );
-        final window = await transaction.result;
-        if (identical(_windowRefresh, transaction)) _windowRefresh = null;
-        result = window.select(plan.visiblePage);
-        replacement = window.rows;
-      } else {
-        final previous = previousRefresh == null
-            ? null
-            : await previousRefresh.result;
-        result = await _cache.read(page, () => fetch(page));
-        if (previous != null) {
-          final combined = <int, List<T>>{
-            ...previous.rows,
-            result.page: result.items,
-          };
-          combined.removeWhere((key, _) => key > result.totalPages && key != 1);
-          if (combined.length > 5) {
-            final keys = combined.keys.toList()
-              ..sort(
-                (a, b) =>
-                    (a - result.page).abs().compareTo((b - result.page).abs()),
-              );
-            final keep = keys.take(5).toSet();
-            combined.removeWhere((key, _) => !keep.contains(key));
+        if (!current()) throw StateError('Paged read owner changed');
+        if (_accepted != null &&
+            _accepted!.readScopeVersion != result.readScopeVersion) {
+          session.invalidate();
+          session = _session = PagedReadWindowSession<T>(isCurrent: owned);
+        }
+        result = session.bindResult(result);
+        _accepted = result;
+        return result;
+      } catch (error) {
+        if (baseCurrent()) {
+          if (pagedReadAccessDenied(error)) {
+            invalidate();
+            onPrefetchError?.call(error);
+          } else {
+            session.fail();
           }
-          replacement = combined;
         }
+        rethrow;
+      } finally {
+        if (identical(_flight, flight)) _flight = null;
       }
-      if (current()) {
-        session.bindResult(
-          result,
-          replacementPages: replacement,
-          prepareAround: _prepareAround,
-        );
-        _latestResult = result;
-      }
-    } catch (error) {
-      if (current()) {
-        if (identical(_windowRefresh, previousRefresh) || preserveWindow) {
-          _windowRefresh = null;
-        }
-        if (preserveWindow || previousRefresh != null) _cache.clear();
-        session.fail(accessDenied: pagedReadAccessDenied(error));
-        if (pagedReadAccessDenied(error)) invalidate();
-      }
-      rethrow;
     }
-    if (!current()) throw StateError('Paged read owner changed');
-    if (!bufferSeed && foregroundRead == _foregroundRead) {
-      _acceptedForegroundPage = result.page;
-      PagedReadIntent.accepted(result.page);
-      void onError(Object error) {
-        if (pagedReadAccessDenied(error)) invalidate();
-        onPrefetchError?.call(error);
-      }
 
-      _foreground = _ForegroundPagedRead<T>(
-        result,
-        fetch,
-        current,
-        canPrefetch,
-        onError,
-      );
-      unawaited(
-        _cache.prefetchAdjacent(
-          result,
-          fetch: fetch,
-          isCurrent: () => current() && (canPrefetch?.call() ?? true),
-          onError: onError,
-        ),
-      );
-    }
-    return result;
+    flight = _CompleteFlight<T>(current);
+    _flight = flight;
+    flight.result = load();
+    return flight.result;
   }
 }
 
-class _ForegroundPagedRead<T> {
-  _ForegroundPagedRead(
-    this.page,
-    this.fetch,
-    this.isCurrent,
-    this.canPrefetch,
-    this.onError,
-  );
-  final PagedResult<T> page;
-  final Future<PagedResult<T>> Function(int) fetch;
-  final bool Function() isCurrent;
-  final bool Function()? canPrefetch;
-  final void Function(Object) onError;
-}
-
-class _WindowRefresh<T> {
-  late final Future<RefreshedReadWindow<T>> result;
+class _CompleteFlight<T> {
+  _CompleteFlight(this.current);
+  final bool Function() current;
+  late final Future<PagedResult<T>> result;
 }

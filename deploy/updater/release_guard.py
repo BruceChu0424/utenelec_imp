@@ -30,6 +30,93 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 KEY_ID_RE = re.compile(r"^SHA256:[A-Za-z0-9+/]+$")
 MIGRATION_FILE_RE = re.compile(r"^V(?P<version>[0-9]+(?:[._][0-9]+)*)__(?P<description>.+)\.sql$")
+def parse_flyway_version(value: str) -> tuple[int, ...]:
+    """Compatibility facade over the sole generated canonical wire contract."""
+    return _flyway_version_key(value)
+
+
+def flyway_version_from_filename(filename: str) -> str:
+    parts, _, _ = _flyway_script_parts(filename)
+    return ".".join(str(part) for part in parts)
+
+
+def flyway_raw_version_from_filename(filename: str) -> str:
+    """Preferred historical token, not a restriction on already observed rows."""
+    canonical = flyway_version_from_filename(filename)
+    return _FLYWAY_LEGACY_INTEGER_SCRIPTS.get(filename, canonical)
+
+
+def validate_flyway_history_version(raw_version: str, filename: str) -> tuple[int, ...]:
+    return _flyway_history_version_key(raw_version, filename)
+
+
+def flyway_history_description_from_filename(
+    filename: str, signed_description: str | None = None
+) -> str:
+    _, raw_description, live_description = _flyway_script_parts(filename)
+    if signed_description is not None and signed_description not in (
+        raw_description, live_description
+    ):
+        raise ReleaseGuardError("Signed Flyway description differs from its exact script")
+    return live_description
+
+
+def flyway_inventory_head(versions) -> int | str:
+    """Preserve Main integer heads and its explicit canonical dotted form."""
+    if isinstance(versions, (str, bytes)):
+        raise ReleaseGuardError("Flyway head requires an inventory")
+    try:
+        parts = [_flyway_version_key(version) for version in versions]
+    except TypeError as exc:
+        raise ReleaseGuardError("Flyway head requires an inventory") from exc
+    if not parts or len(parts) != len(set(parts)):
+        raise ReleaseGuardError("Flyway inventory is empty or duplicated")
+    return _flyway_head_identity(".".join(str(part) for part in max(parts)))
+
+
+def require_integer_flyway_head(versions) -> int:
+    """Only explicit legacy integer-schema callers use this narrower facade."""
+    head = flyway_inventory_head(versions)
+    if type(head) is not int:
+        raise ReleaseGuardError("This legacy receipt protocol requires an integer head")
+    return head
+
+
+def canonical_flyway_rows(raw: str, *, require_order: bool = False, history: bool = False):
+    """Validate a transient TSV view; never rewrite observed history/audit bytes."""
+    if type(raw) is not str or not raw or not raw.endswith("\n") or "\r" in raw or raw.startswith("\ufeff"):
+        raise ReleaseGuardError("Flyway inventory must be canonical nonempty LF text")
+    result = []
+    versions, files = set(), set()
+    previous = ()
+    for line in raw.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 3:
+            raise ReleaseGuardError("Flyway inventory requires three TSV fields")
+        version, filename, checksum_text = fields
+        script_key, _, _ = _flyway_script_parts(filename)
+        if history:
+            parts = _flyway_history_version_key(version, filename)
+            wire = _flyway_wire_version(version, filename)
+        else:
+            parts, wire = _flyway_version_key(version), version
+        if parts != script_key:
+            raise ReleaseGuardError("Flyway inventory filename/version mismatch")
+        try:
+            checksum = int(checksum_text)
+        except ValueError as exc:
+            raise ReleaseGuardError("Flyway checksum must be canonical int32") from exc
+        if str(checksum) != checksum_text or not -(2**31) <= checksum <= 2**31 - 1:
+            raise ReleaseGuardError("Flyway checksum must be canonical int32")
+        if parts in versions or filename in files:
+            raise ReleaseGuardError("Flyway inventory duplicates a version or filename")
+        if require_order and parts <= previous:
+            raise ReleaseGuardError("Flyway inventory is not in semantic order")
+        versions.add(parts); files.add(filename); previous = parts
+        result.append((wire, filename, checksum))
+    return sorted(result, key=lambda row: _flyway_version_key(row[0]))
+
+
 ALLOWED_PAYLOAD_ROOTS = frozenset({"server", "web", "sbom"})
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 MAX_CHANNEL_BYTES = 64 * 1024
@@ -1153,12 +1240,32 @@ def parser() -> argparse.ArgumentParser:
     flyway.add_argument("--signature", required=True, type=Path)
     flyway.add_argument("--allowed-signers", required=True, type=Path)
     flyway.add_argument("--expected-version", required=True)
+    rows = subcommands.add_parser(
+        "flyway-rows", help="validate/sort TSV identities, without signature authorization"
+    )
+    rows.add_argument("--summary", action="store_true")
+    rows.add_argument("--require-order", action="store_true")
+    rows.add_argument("--history", action="store_true",
+                      help="bind raw history tokens to scripts and emit canonical comparison rows")
     return result
 
 
 def main() -> int:
     args = parser().parse_args()
     try:
+        if args.command == "flyway-rows":
+            raw = sys.stdin.buffer.read(MAX_CHECKSUMS_BYTES + 1)
+            if len(raw) > MAX_CHECKSUMS_BYTES:
+                fail("Flyway inventory exceeds the input budget")
+            rows = canonical_flyway_rows(
+                raw.decode("utf-8"), require_order=args.require_order, history=args.history
+            )
+            if args.summary:
+                print(f"{len(rows)}\t{flyway_inventory_head(row[0] for row in rows)}")
+            else:
+                for version, filename, checksum in rows:
+                    print(f"{version}\t{filename}\t{checksum}")
+            return 0
         if args.command == "verified-flyway-checksums":
             require_privileged_restore_paths(
                 args.manifest, args.signature, args.allowed_signers
@@ -1202,7 +1309,7 @@ def main() -> int:
         else:
             fail(f"unsupported command: {args.command}")
         return 0
-    except (OSError, ReleaseGuardError) as exc:
+    except (OSError, ValueError, ReleaseGuardError) as exc:
         print(f"release guard error: {exc}", file=sys.stderr)
         return 2
 

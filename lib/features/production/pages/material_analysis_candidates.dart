@@ -129,7 +129,7 @@ abstract class _MaterialAnalysisCandidatesState
     });
   }
 
-  /// 桌面候选表使用与调度台一致的受控多选：表头可全选当前页，翻页后旧选择保留。
+  /// 桌面候选表使用与调度台一致的受控多选：表头选择当前完整结果，保留原分析项上限。
   /// 数量默认带入当前待排量，员工只需在表内「本次分析数量」列改例外数量。
   void _replaceCandidateIds(
     Set<String> nextIds,
@@ -486,10 +486,9 @@ abstract class _MaterialAnalysisCandidatesState
     ) => rows
         .where((line) => line.remainingQty == null || line.remainingQty! > 0)
         .toList(growable: false);
-    final lines = visibleLines(source);
-    projectReadWindowBinding(
+    final lines = projectReadWindowBinding(
       source,
-      lines,
+      visibleLines(source),
       project: visibleLines,
       projectionKey: (
         'sales-candidates-with-remaining-quantity',
@@ -988,7 +987,7 @@ abstract class _MaterialAnalysisCandidatesState
               }, childCount: lines.length * 2 - 1),
             ),
           if (page != null)
-            SliverToBoxAdapter(child: _compactCandidatePager(theme, page)),
+            SliverToBoxAdapter(child: _compactCandidateSummary(theme, page)),
           if (_sourceQtyControllers.isNotEmpty) ...[
             gap,
             SliverToBoxAdapter(child: _compactSelectedSourceSummary(theme)),
@@ -1437,14 +1436,12 @@ abstract class _MaterialAnalysisCandidatesState
     );
   }
 
-  Widget _compactCandidatePager(
+  Widget _compactCandidateSummary(
     ThemeData theme,
     MaterialAnalysisSalesCandidatePage page,
   ) {
-    final totalPages = page.totalPages > 0 ? page.totalPages : 1;
-    final currentPage = page.page.clamp(1, totalPages);
     return Container(
-      key: const Key('material-candidate-mobile-pagination'),
+      key: const Key('material-candidate-mobile-summary'),
       constraints: const BoxConstraints(minHeight: 64),
       margin: const EdgeInsets.only(top: UtenSpacing.s8),
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
@@ -1459,15 +1456,6 @@ abstract class _MaterialAnalysisCandidatesState
         spacing: UtenSpacing.s8,
         runSpacing: UtenSpacing.s4,
         children: [
-          UtenPagination(
-            currentPage: currentPage,
-            totalPages: totalPages,
-            busy: _loadingCandidates,
-            onPageChanged: (target) =>
-                _loadCandidates(page: target, useCache: true),
-            previousKey: const Key('material-candidate-prev-page'),
-            nextKey: const Key('material-candidate-next-page'),
-          ),
           Text(
             '共 ${page.total} 项',
             style: theme.textTheme.bodyMedium?.copyWith(

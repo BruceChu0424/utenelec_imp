@@ -83,14 +83,14 @@ def load_seed_baseline(path,expected_sha,*,require=_require,minimum_schema=914,m
     directory=Path(migration_directory) if migration_directory is not None else Path(__file__).resolve().parent.parent/'src/main/resources/db/migration'
     files={file.name:file for file in directory.glob('V*__*.sql')}
     require(set(files)=={item.get('file') for item in inventory} and len(files)==len(inventory),'Finance baseline SQL inventory differs from the frozen complete schema')
-    from verify_candidate import flyway_checksum
+    from verify_candidate import flyway_checksum, canonical_source_head
     checksums={item.get('script'):item.get('checksum') for item in data['applied_sql']}
     require(set(checksums)==set(files) and len(checksums)==len(data['applied_sql']),'Finance baseline native migration checksum inventory differs')
     for item in inventory:
         file=files[item['file']]
         require(file.is_file() and not file.is_symlink() and digest(file)==item.get('sha256')
                 and flyway_checksum(file.read_bytes())==checksums[file.name], 'Finance baseline actual SQL checksum/source bytes differ')
-    require(max(int(re.match(r'V([0-9]+)__',name).group(1)) for name in files)==schema,'Finance baseline highest SQL version differs from its actual captured schema')
+    require(canonical_source_head(files)==schema,'Finance baseline highest SQL version differs from its actual captured schema')
     return {'sha256':expected_sha,'path':str(path.resolve()),'data':data,
             'schema_version':schema,'database_identity':{'system_identifier':system,'database_oid':oid}}
 

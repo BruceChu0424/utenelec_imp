@@ -3,6 +3,7 @@
 // · 申请记录页分类栏新增「报销申请」段（红黄徽章 = 原 hub 卡同口径），
 //   选中后嵌入报销列表，不向业务申请接口发请求、不把 EXPENSE 当 kind 下发；
 // · 无 expenseApply 权限不显示该段；?kind=EXPENSE 直达报销视图。
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/applications/models/business_application.dart';
 import 'package:uten_imp/features/applications/pages/business_application_list_page.dart';
@@ -172,6 +174,10 @@ Future<GoRouter> _pump(
         path: '/expense/new',
         builder: (_, _) => const Scaffold(body: Center(child: Text('报销编辑'))),
       ),
+      GoRoute(
+        path: '/outside',
+        builder: (_, _) => const Scaffold(body: Text('其它页面')),
+      ),
     ],
   );
   addTearDown(router.dispose);
@@ -239,6 +245,52 @@ Finder expenseTables() => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets(
+    'return to the selected expense segment refreshes only its actual data source',
+    (tester) async {
+      final api = _Api();
+      final router = await _pump(
+        tester,
+        api,
+        '/applications/mine?kind=EXPENSE',
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(expenseTables().first),
+      );
+      final detach = attachPageResume(
+        router,
+        container.read(pageResumeProvider.notifier),
+      );
+      addTearDown(detach);
+      bumpPageResumeState(
+        container.read(pageResumeProvider.notifier),
+        '/applications/mine',
+      );
+      await tester.pumpAndSettle();
+      final before = api.queries
+          .where((query) => query.path == '/expense-claims/mine')
+          .length;
+      unawaited(router.push<void>('/outside'));
+      await tester.pumpAndSettle();
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(
+        api.queries.where(
+          (query) => query.path == '/business-applications/mine',
+        ),
+        isEmpty,
+      );
+      expect(
+        api.queries
+            .where((query) => query.path == '/expense-claims/mine')
+            .length,
+        greaterThan(before),
+      );
+      expect(expenseTables(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('hub keeps application records only, expense card removed', (
     tester,
   ) async {

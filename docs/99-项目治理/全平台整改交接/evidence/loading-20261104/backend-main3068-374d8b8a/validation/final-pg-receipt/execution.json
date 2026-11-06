@@ -1,0 +1,26 @@
+{
+  "label": "final-pg",
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T21:33:14.2516349Z",
+  "completedAtUtc": "2026-11-05T22:15:57.0080751Z",
+  "actualExitCode": 0,
+  "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-3068-output-fixed",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-3068-output-fixed/final-pg-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-3068-output-fixed/final-pg-measurements",
+    "-Dtest=MigratedSchemaBaselinePostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,PurchaseQuantityPolicyGuardPostgresTest,ProcurementReferencePricePolicyPostgresTest,ProcurementTotalAmountPostgresTest,ProcurementCaseBookAllocationPostgresTest,FinancialPaymentStyleReferencePostgresTest,PaymentStyleHierarchyConcurrencyPostgresTest,FinanceApplicationsPostgresTest,ProcurementFinanceReviewReadOnlyEndToEndTest,DirectMakeDeliveryClosedCreditPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,FulfillmentWorkbenchPageReadPostgresTest,FulfillmentWorkbenchEmptyPageLatencyPostgresTest,WarehouseTaskPageMetadataPostgresTest,InteractiveTaskReadScopePostgresTest,DailyReportDraftClaimsPostgresTest,FinanceDocumentPartyReferenceHttpPostgresTest,ReceiptExplicitOrderAttributionPostgresTest,ReceiptExplicitOrderLifecyclePostgresTest,ReportExportSpecialSourcesPostgresTest,PermissionChainReachabilityContractTest",
+    "surefire:test"
+  ],
+  "selection": "MigratedSchemaBaselinePostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,PurchaseQuantityPolicyGuardPostgresTest,ProcurementReferencePricePolicyPostgresTest,ProcurementTotalAmountPostgresTest,ProcurementCaseBookAllocationPostgresTest,FinancialPaymentStyleReferencePostgresTest,PaymentStyleHierarchyConcurrencyPostgresTest,FinanceApplicationsPostgresTest,ProcurementFinanceReviewReadOnlyEndToEndTest,DirectMakeDeliveryClosedCreditPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,FulfillmentWorkbenchPageReadPostgresTest,FulfillmentWorkbenchEmptyPageLatencyPostgresTest,WarehouseTaskPageMetadataPostgresTest,InteractiveTaskReadScopePostgresTest,DailyReportDraftClaimsPostgresTest,FinanceDocumentPartyReferenceHttpPostgresTest,ReceiptExplicitOrderAttributionPostgresTest,ReceiptExplicitOrderLifecyclePostgresTest,ReportExportSpecialSourcesPostgresTest,PermissionChainReachabilityContractTest",
+  "wrapperPid": 56116,
+  "log": "build\\loading-validation\\main-3068-output-fixed\\final-pg.log",
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g"
+  }
+}

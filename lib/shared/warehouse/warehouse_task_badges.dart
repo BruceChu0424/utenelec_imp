@@ -8,6 +8,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/api_endpoints.dart';
 import '../badges/badge_registry.dart';
 import '../badges/effective_badge_summary_provider.dart';
@@ -35,13 +36,20 @@ final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
         return (summary: BadgeSummary.empty, owner: owner, revision: revision);
       }
       // 全站汇总有变化(轮询、本端写操作后的补拉)就跟着重拉, 两份数字不会一新一旧。
-      ref.watch(badgeSummaryFetchRevisionProvider);
-      final json = await ref
-          .read(apiClientProvider)
-          .get(
-            ApiEndpoints.workbenchBadges,
-            query: {'scopeWarehouseId': warehouseId},
-          );
+      final fetchRevision = ref.watch(badgeSummaryFetchRevisionProvider);
+      final api = ref.watch(apiClientProvider);
+      final json = await AuthenticatedRequestScope.sharedRead(
+        () =>
+            ref.mounted &&
+            ref.read(sensitiveReadBoundaryProvider) == owner &&
+            ref.read(readScopeRevisionProvider) == revision &&
+            ref.read(badgeSummaryFetchRevisionProvider) == fetchRevision &&
+            identical(ref.read(apiClientProvider), api),
+        () => api.get(
+          ApiEndpoints.workbenchBadges,
+          query: {'scopeWarehouseId': warehouseId},
+        ),
+      );
       return (
         summary: BadgeSummary.fromJson(json),
         owner: owner,

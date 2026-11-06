@@ -20,9 +20,9 @@ import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_dialog.dart';
-import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/inputs/required_field_decoration.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
+import '../../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
@@ -35,6 +35,10 @@ import '../../../basic_data/widgets/periodic_bom_confirmation.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_labels.dart';
+import 'workshop_material_summary_table.dart';
+import '../../../../shared/paging/versioned_summary_read.dart';
+import '../../../../shared/paging/read_view_activity.dart';
+import '../../../../shared/auth/read_owner_fence.dart';
 
 class WmPrepRow extends EditableGridRow {
   WmPrepRow(this.source, {String? id})
@@ -128,17 +132,68 @@ class WmPrepTab extends ConsumerStatefulWidget {
   ConsumerState<WmPrepTab> createState() => _WmPrepTabState();
 }
 
-class _WmPrepTabState extends ConsumerState<WmPrepTab> {
+class _WmPrepTabState extends ConsumerState<WmPrepTab>
+    with ReadViewActivityMixin<WmPrepTab> {
   final _grid = UtenEditableGridController<WmPrepRow>();
-  final _deniedGrid = UtenEditableGridController<WmPrepRow>();
   bool _readDenied = false;
   final _nonce = const Uuid().v4();
   WmPreparation? _prep;
-  List<WmMaterialOption> _materials = const [];
   Set<WmPrepRow> _hidden = const {};
   bool _loading = true;
   // 服务端按「常做程度」截断行数(进度三数是独立聚合)；为真时在进度下提示截断。
-  bool _truncated = false;
+  VersionedSummarySnapshot<Map<String, dynamic>>? _summary;
+  final Map<String, List<WmMaterialOption>> _productMaterials = {};
+  bool _opening = false;
+  VersionedSummarySnapshot<WmMaterialOption>? _catalog;
+  Object? _catalogSummary;
+  String? _editorCatalogVersion;
+  bool _hasSubmittedWorkset = false;
+  int _readGeneration = 0;
+  bool Function()? _editorOwner;
+  String? _editorWorkshop;
+  String? _editorDataVersion;
+  String? _editorScopeVersion;
+
+  bool get _worksetOwnerCurrent =>
+      _editorOwner?.call() != false &&
+      (_editorWorkshop == null || _editorWorkshop == widget.workshopId);
+  bool get _worksetCurrent =>
+      _worksetOwnerCurrent &&
+      (_catalog == null ||
+          _editorCatalogVersion == null ||
+          _editorCatalogVersion ==
+              (_catalog!.dataVersion ?? _catalog!.revision)) &&
+      (_editorDataVersion == null ||
+          (_summary != null &&
+              _editorDataVersion ==
+                  (_summary!.dataVersion ?? _summary!.revision) &&
+              _editorScopeVersion == _summary!.readScopeVersion));
+
+  @override
+  Future<void> onReadViewResumed() => _load();
+
+  Future<void> _closeWorkset() async {
+    if (_busyTitle != null || _opening || _hasSubmittedWorkset) return;
+    if (_grid.rows.any((row) => row.dirty)) {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '重新选择编辑产品',
+        content: const Text('当前编辑明细含未保存输入。确定清除这些输入并重新选择产品？'),
+        confirmLabel: '清除并重新选择',
+      );
+      if (!mounted || confirmed != true) return;
+    }
+    setState(() {
+      _grid.replaceAll(const []);
+      _productMaterials.clear();
+      _editorOwner = null;
+      _editorWorkshop = null;
+      _editorDataVersion = null;
+      _editorScopeVersion = null;
+      _editorCatalogVersion = null;
+    });
+  }
+
   String? _error;
   String? _busyTitle;
 
@@ -148,47 +203,149 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _readGeneration++;
+      setState(() {
+        _summary = null;
+        _prep = null;
+        _readDenied = true;
+        _loading = false;
+        _opening = false;
+        _error = '读取身份已变化，请重新读取';
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
     _grid.dispose();
-    _deniedGrid.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final owner = captureReadOwner(ref);
+    final request = ++_readGeneration;
+    final workshop = widget.workshopId;
+    bool current() =>
+        mounted &&
+        owner() &&
+        request == _readGeneration &&
+        widget.workshopId == workshop;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final prep = await _repo.preparation(widget.workshopId);
-      if (!mounted) return;
+      final summary = await readViewActivity.runRead(
+        current,
+        () => _repo.preparationSummaries(workshop, isCurrent: current),
+      );
+      if (!mounted || !current()) return;
       setState(() {
-        _prep = prep;
+        _summary = summary;
+        _catalog = null;
+        _catalogSummary = null;
         _readDenied = false;
-        _materials = prep.materials;
-        _grid.replaceAll(wmPrepRowsOf(prep.rows));
-        _truncated =
-            prep.total > prep.rows.map((r) => r.productGoodsId).toSet().length;
-        _loading = false;
+        _prep = WmPreparation(
+          rows: const [],
+          total: summary.items.length,
+          chosen: summary.items
+              .where((r) => const ['CHOSEN', 'WEIGHED'].contains(r['status']))
+              .length,
+          weighed: summary.items.where((r) => r['status'] == 'WEIGHED').length,
+        );
       });
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _readDenied = _readDenied || nativeReadAccessDenied(e);
-          _error = e.message;
-        });
+    } catch (error) {
+      if (!mounted || !current()) return;
+      setState(() {
+        if (!isRetiredViewRead(error)) {
+          _readDenied = _readDenied || nativeReadAccessDenied(error);
+          _error = error is ApiException ? error.message : '加载上线准备清单失败，请重试';
+          if (_readDenied) {
+            _summary = null;
+            _prep = null;
+          }
+        }
+      });
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _loading = false);
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = '加载上线准备清单失败, 请重试';
-        });
+    }
+  }
+
+  Future<void> _openProduct(Map<String, dynamic> row) async {
+    final summary = _summary;
+    if (summary == null || _opening || _busyTitle != null || _readDenied) {
+      return;
+    }
+    if (!_worksetCurrent) {
+      context.appWarning('读取身份已变化，请重新打开上线准备后编辑；原输入尚未改写');
+      return;
+    }
+    final productId = row['productGoodsId'] as String;
+    if (_grid.rows.any((r) => r.source.productGoodsId == productId)) return;
+    final owner = captureReadOwner(ref);
+    final workshop = widget.workshopId;
+    final request = _readGeneration;
+    bool current() =>
+        mounted &&
+        owner() &&
+        request == _readGeneration &&
+        identical(_summary, summary) &&
+        widget.workshopId == workshop;
+    setState(() => _opening = true);
+    try {
+      final result = await readViewActivity.runRead(current, () async {
+        final rows = await _repo.preparationProduct(
+          workshop,
+          productId,
+          summary: summary,
+          isCurrent: current,
+        );
+        final options = identical(_catalogSummary, summary) && _catalog != null
+            ? _catalog!
+            : await _repo.preparationMaterialCatalog(
+                workshop,
+                isCurrent: current,
+              );
+        return (rows, options);
+      }, slot: 'product');
+      if (!mounted || !current()) return;
+      if (_grid.length + result.$1.length > 500) {
+        context.appWarning('一次最多编辑500行；请先保存当前修改后再打开其他产品');
+        return;
+      }
+      final catalogVersion = result.$2.dataVersion ?? result.$2.revision;
+      setState(() {
+        _catalog = result.$2;
+        _catalogSummary = summary;
+      });
+      if (_editorCatalogVersion != null &&
+          _editorCatalogVersion != catalogVersion) {
+        context.appWarning('颗粒目录已变化，原输入保留，请重新核对编辑产品');
+        return;
+      }
+      _editorCatalogVersion ??= catalogVersion;
+      _editorOwner ??= owner;
+      _editorWorkshop ??= workshop;
+      _editorDataVersion ??= summary.dataVersion ?? summary.revision;
+      _editorScopeVersion ??= summary.readScopeVersion;
+      setState(() {
+        _productMaterials[productId] = result.$2.items;
+        // Existing live row/controller objects are retained across opens.
+        _grid.addRows(wmPrepRowsOf(result.$1));
+      });
+    } catch (error) {
+      if (mounted && current() && !isRetiredViewRead(error)) {
+        context.appWarning(
+          error is ApiException ? error.message : '读取产品明细失败，请重试',
+        );
+      }
+    } finally {
+      if (mounted && request == _readGeneration) {
+        setState(() => _opening = false);
       }
     }
   }
@@ -218,22 +375,29 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     );
   }
 
-  Map<String, WmMaterialOption> get _materialByKey => {
-    for (final m in _materials) m.key: m,
+  Map<String, WmMaterialOption> _materialByKey(WmPrepRow row) => {
+    for (final m
+        in _productMaterials[row.source.productGoodsId] ??
+            const <WmMaterialOption>[])
+      m.key: m,
   };
 
   List<UtenDropdownItem> _materialItems(WmPrepRow row) {
     final items = [
-      for (final m in _materials)
+      for (final m
+          in _productMaterials[row.source.productGoodsId] ??
+              const <WmMaterialOption>[])
         UtenDropdownItem(value: m.key, label: m.displayName),
     ];
     final original = row.originalMaterialKey;
-    if (original != null && !_materialByKey.containsKey(original)) {
+    if (original != null && !_materialByKey(row).containsKey(original)) {
       items.insert(
         0,
         UtenDropdownItem(
           value: original,
           label: row.source.materialName ?? '原来选的料',
+          enabled: false,
+          visible: false,
         ),
       );
     }
@@ -288,10 +452,15 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       key: 'material',
       label: '颗粒',
       width: 200,
-      textOf: (r) => _materialByKey[r.material.value]?.displayName ?? '',
+      textOf: (r) =>
+          _materialByKey(r)[r.material.value]?.displayName ??
+          r.source.materialName ??
+          '',
       listenableOf: (r) => r.material,
       filterValueOf: (r) =>
-          _materialByKey[r.material.value]?.displayName ?? '(没选)',
+          _materialByKey(r)[r.material.value]?.displayName ??
+          r.source.materialName ??
+          '(没选)',
       cellBuilder: (_, r) => ValueListenableBuilder<String?>(
         valueListenable: r.material,
         builder: (context, value, _) => Row(
@@ -301,12 +470,21 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 key: Key('wm-prep-material-${r.id}'),
                 dense: true,
                 allowClear: false,
-                enabled: _busyTitle == null,
+                enabled: _busyTitle == null && _worksetCurrent,
                 value: value,
                 hintText: '颗粒',
                 items: _materialItems(r),
                 onChanged: (key) {
-                  for (final target in _targets(r)) {
+                  final targets = _targets(r);
+                  if (targets.any(
+                    (row) =>
+                        key != row.originalMaterialKey &&
+                        !_materialByKey(row).containsKey(key),
+                  )) {
+                    context.appWarning('所选产品的合法颗粒范围不同，请分别选择');
+                    return;
+                  }
+                  for (final target in targets) {
                     target.material.value = key;
                   }
                 },
@@ -344,7 +522,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 child: TextField(
                   key: Key('wm-prep-grams-${r.id}'),
                   controller: r.grams,
-                  enabled: _busyTitle == null,
+                  enabled: _busyTitle == null && _worksetCurrent,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -395,6 +573,9 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   ];
 
   Future<void> _save() async {
+    if (!_worksetCurrent || _readDenied || _opening || _busyTitle != null) {
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final dirtyProducts = {
       for (final r in _grid.rows)
@@ -459,16 +640,16 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       );
       if (ok != true || !mounted) return;
     }
-    final byKey = _materialByKey;
     final bodies = [
       for (final r in rows)
         <String, dynamic>{
           'productGoodsId': r.source.productGoodsId,
           'bomItemId': ?r.source.bomItemId,
           'materialGoodsId':
-              byKey[r.material.value]?.goodsId ?? r.source.materialGoodsId,
+              _materialByKey(r)[r.material.value]?.goodsId ??
+              r.source.materialGoodsId,
           'colorId':
-              byKey[r.material.value]?.colorId ??
+              _materialByKey(r)[r.material.value]?.colorId ??
               (r.material.value == r.originalMaterialKey
                   ? r.source.materialColorId
                   : null),
@@ -478,6 +659,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
         },
     ];
     setState(() => _busyTitle = '正在保存上线准备');
+    _hasSubmittedWorkset = true;
     try {
       List<String> warnings;
       while (true) {
@@ -515,6 +697,14 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
           '已保存 ${byProduct.length} 个产品, 请留意: ${warnings.take(5).join('; ')}',
         );
       }
+      _grid.replaceAll(const []);
+      _productMaterials.clear();
+      _editorOwner = null;
+      _editorWorkshop = null;
+      _editorDataVersion = null;
+      _editorScopeVersion = null;
+      _editorCatalogVersion = null;
+      _hasSubmittedWorkset = false;
       await _load();
     } on ApiException catch (e) {
       if (mounted) {
@@ -536,66 +726,72 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     final prep = _readDenied ? null : _prep;
     return Stack(
       children: [
-        SingleChildScrollView(
-          // 末尾留出右下悬浮按钮组的位置 (平台统一: 动作放右下悬浮组, ADR-147)。
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s8,
-            bottom: UtenFloatingActionGroup.scrollClearance,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (prep != null)
-                Text(
+        Column(
+          children: [
+            if (prep != null)
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s8),
+                child: Text(
                   l10n.wmGoLiveProgress(prep.total, prep.chosen, prep.weighed),
                   key: const Key('wm-prep-progress'),
                   style: theme.textTheme.titleSmall,
                 ),
-              if (_truncated)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s2),
-                  child: Text(
-                    '产品较多，按常做程度显示最常做的一部分；进度统计仍按全部产品计算。',
-                    key: const Key('wm-prep-truncated'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenEditableGrid<WmPrepRow>(
-                headerFilterScopeDescription: _truncated
-                    ? '筛选本次常做产品清单；进度统计仍按全部产品计算'
-                    : '筛选本次上线准备清单',
-                tableKey:
-                    'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
-                key: const Key('wm-prep-grid'),
-                controller: _readDenied ? _deniedGrid : _grid,
-                columns: _columns(l10n, theme),
-                emptyPlaceholder: _loading
-                    ? const SizedBox(
-                        height: 80,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    : _error != null
-                    ? UtenEmpty.error(
-                        message: _error,
-                        actionLabel: '重试',
-                        onAction: _load,
-                      )
-                    : const UtenEmpty(
-                        message: '没有要准备的产品',
-                        description: '近 12 个月这个车间没有做过、也没有归属它的产品',
-                      ),
-                showAddRow: false,
-                selectable: true,
-                showRowDelete: false,
-                showColumnSettings: false,
-                onRowsHiddenByFilter: (hidden) =>
-                    setState(() => _hidden = hidden),
               ),
-            ],
-          ),
+            Expanded(
+              child: WmProductSummaryTable(
+                key: const Key('wm-prep-summary'),
+                tableKey: 'workshop.material.preparation.complete-summary',
+                items: _readDenied ? const [] : _summary?.items ?? const [],
+                openedIds: {
+                  if (_worksetCurrent)
+                    for (final r in _grid.rows) r.source.productGoodsId,
+                },
+                onOpen: _openProduct,
+                onRetry: _load,
+                enabled: !_opening && _busyTitle == null && _worksetCurrent,
+                loading: _loading,
+                error: _error,
+              ),
+            ),
+            if (!_grid.isEmpty)
+              Row(
+                children: [
+                  const Text('已打开的编辑明细'),
+                  UtenFieldHintIcon(
+                    info: _worksetCurrent
+                        ? '保留完整产品组及原输入；保存只提交明确修改的产品，最多500行。'
+                        : '读取身份或数据版本已变化。原输入保留，须重新核对后才能保存。',
+                  ),
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    onPressed:
+                        _busyTitle == null && !_opening && !_hasSubmittedWorkset
+                        ? _closeWorkset
+                        : null,
+                    child: const Text('重新选择编辑产品'),
+                  ),
+                ],
+              ),
+            if (!_readDenied && _worksetOwnerCurrent && !_grid.isEmpty)
+              SizedBox(
+                height: 280,
+                child: UtenEditableGrid<WmPrepRow>(
+                  headerFilterScopeDescription: '筛选已打开的编辑明细；上方产品摘要为当前范围完整清单',
+                  tableKey:
+                      'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
+                  key: const Key('wm-prep-grid'),
+                  controller: _grid,
+                  columns: _columns(l10n, theme),
+                  showAddRow: false,
+                  selectable: true,
+                  showRowDelete: false,
+                  showColumnSettings: false,
+                  onRowsHiddenByFilter: (hidden) =>
+                      setState(() => _hidden = hidden),
+                ),
+              ),
+            const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+          ],
         ),
         PositionedDirectional(
           end: UtenSpacing.s16,
@@ -613,6 +809,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                       _busyTitle == null &&
                           !_loading &&
                           !_readDenied &&
+                          _worksetCurrent &&
+                          !_opening &&
                           _grid.selectedCount > 0
                       ? _fillFromGoodsWeight
                       : null,
@@ -628,6 +826,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                       _busyTitle == null &&
                           !_loading &&
                           !_readDenied &&
+                          _worksetCurrent &&
+                          !_opening &&
                           !_grid.isEmpty
                       ? _save
                       : null,
@@ -638,6 +838,10 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
           ),
         ),
         if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
+        if (_opening && _busyTitle == null)
+          const UtenBusyOverlay(title: '正在读取产品明细'),
+        if (_loading && !_opening && _busyTitle == null)
+          const UtenBusyOverlay(title: '正在读取上线准备'),
       ],
     );
   }

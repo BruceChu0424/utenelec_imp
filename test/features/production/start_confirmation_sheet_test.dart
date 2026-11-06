@@ -99,8 +99,9 @@ class _FakeChoiceRepository extends WorkshopMaterialChoiceRepository {
 
   @override
   Future<List<WorkshopMaterialPendingChoice>> pending(
-    List<String> segmentIds,
-  ) async => rows;
+    List<String> segmentIds, {
+    bool Function()? isCurrent,
+  }) async => rows;
 
   @override
   Future<void> choose({

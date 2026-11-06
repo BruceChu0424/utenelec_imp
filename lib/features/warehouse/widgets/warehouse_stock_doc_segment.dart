@@ -115,7 +115,7 @@ class _WarehouseStockDocSegmentState
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
-  final _list = PagedListController<StockDocListItem>();
+  final _list = PagedListController<StockDocListItem>(idOf: (row) => row.id);
   final _tableRows = MasterDataTableRowsController<StockDocListItem>();
   int _reloadGeneration = 0;
   bool _outboundBusy = false;
@@ -255,7 +255,10 @@ class _WarehouseStockDocSegmentState
         DocumentPermissionAction.create,
       );
 
-  Future<PagedResult<StockDocListItem>> _fetch([int? requestedPage]) {
+  Future<PagedResult<StockDocListItem>> _fetch([
+    int? requestedPage,
+    int batchSize = 100,
+  ]) {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     final showIssue = !seg.history && widget.docType == StockDocType.draw;
@@ -264,6 +267,7 @@ class _WarehouseStockDocSegmentState
         .read(stockDocRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: batchSize,
           filter: StockDocFilter(
             view: seg.history
                 ? WarehouseTaskView.history
@@ -392,6 +396,7 @@ class _WarehouseStockDocSegmentState
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -663,9 +668,11 @@ class _WarehouseStockDocSegmentState
     );
     // go_router 子页 replace/go 返回时 push Future 可能不完成；回到宿主必须
     // 独立复位导航忙状态。数据刷新仍由宿主/上方精准刷新处理，避免重复请求。
+    void visibleReadReturn() {}
+    _list.bindView(context, onResume: visibleReadReturn);
     ref.onPageResume(
       _hostLocation!,
-      () {},
+      visibleReadReturn,
       onReturn: () {
         if (!_outboundBusy) return;
         setState(() {
@@ -798,7 +805,6 @@ class _WarehouseStockDocSegmentState
                     rowsController: _tableRows,
                     paginationRevision: _list.paginationRevision,
                     refreshedPages: _list.refreshedPages,
-                    onRetainedPagesChanged: _list.retainPages,
                     tableKey:
                         'features.warehouse.widgets.warehouse_stock_doc_segment.WarehouseStockDocSegmentState.build.1',
                     // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

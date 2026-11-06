@@ -1,0 +1,1415 @@
+{
+  "label": "final-fast",
+  "actualExitCode": 0,
+  "classes": 39,
+  "tests": 280,
+  "counts": {
+    "passed": 280,
+    "failed": 0,
+    "error": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "businessCodeNeverReadsTheAuditLog",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "foundationPackagesDoNotDependOnBusinessFeatures",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "highRiskAuthorizationWritesRequireStepUp",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "endpointsReturningPlaintextCredentialsDeclareStepUp",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "featureDependencyGraphDoesNotGrow",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "controllersDoNotDependDirectlyOnRepositories",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "privateMethodsDoNotCarryTransactional",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "expenseClaimNeverReachesTheSharedAiPlatform",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "moneyRoundingOnlyLivesInMoneyPolicy",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "case": "adminWriteEndpointsDeclareStepUpOrReasonedExemption",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.audit.AuditSessionTableExportServiceTest",
+      "case": "exceedsConfiguredLimitOrDriftingSnapshotNeverSilentlyTruncates",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.audit.AuditSessionTableExportServiceTest",
+      "case": "exportUsesVisibleSessionSchemaAndFreezesOneSnapshotAcrossAllPages",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "exactDecimalSelectorDoesNotChooseTheNeighborRoundedToTheSameDouble",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "interruptionStopsSelectionAndDoesNotContaminateTheNextOperation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "fiftyThousandMembersRemainCompleteAcrossThousandRowPages",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "clientChangedFactsCannotReplaceCurrentServerValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "textIdentifiersNeverUseNumericCanonicalization",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "selectorsCannotProbeHiddenBusinessFieldsEvenWhenAnAuthorizedSourceContainsThem",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "extremeNumericExponentsRemainCompactAndNeverExpandIntoOutputValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "identitiesAndExactNumericFactsSelectServerRowsWithoutRewritingAnyCells",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "duplicatesInLaterAuthoritativePagesAndMissingFinalMemberAreRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "missingNullableCellsMatchOnlyAnExplicitNullSelector",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "emptyMalformedMixedSchemasAndDuplicateSelectorsFailClosed",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.ExportRowSelectionTest",
+      "case": "nullSelectionKeepsCompleteAuthoritativeSource",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "case": "absentRawSelectionDoesNotAddAnUnknownFieldToNativeCreationProof",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "case": "failedNestedScopeRestoresItsOriginalSelection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "case": "staleSelectionFailsBeforeMappingAndNeverFallsBackToAll",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "case": "fiftyThousandSelectedIdentitiesStayBelowThePostgresParameterLimitWithHibernatePadding",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.MasterExportSelectionTest",
+      "case": "repositoryReceivesOriginalPredicateAndSelectedIdentityIntersection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.OutputSelectionCapabilitiesTest",
+      "case": "serverVersionAndSharedJavaNativeHandshakeExamplesUseTheSameContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.OutputSelectionCapabilitiesTest",
+      "case": "realCapabilityResponseAdvertisesSelectionEvenWhenTaskStorageIsDisabled",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "synchronousProjectionContainsOnlySelectedTargetSectionWithExplicitScope",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "missingOrDuplicateSelectionPublishesNothingAndRestoresPreviousSink",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "realStreamingXlsxAndPdfKeepOnlyTheSecondarySelectedSectionIncludingFinalPage",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "interruptionAndUnknownOrAmbiguousTargetCannotExpandIntoAllSections",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedExportIdsTest",
+      "case": "malformedEmptyAndDuplicateSelectionsAreRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedExportIdsTest",
+      "case": "sameSourceFixtureIsConsumedByJavaAndNativeMutationContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedExportIdsTest",
+      "case": "absentMeansAllAndExplicitSelectionRetainsStableOrder",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedExportIdsTest",
+      "case": "fiftyThousandIdentitiesAreAcceptedWithoutTruncation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxSelectedRowsStreamingTest",
+      "case": "missingOrRepeatedMembersPublishNoArtifactAndCleanTemporaryFiles",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxSelectedRowsStreamingTest",
+      "case": "cancellationAfterAValidPagePublishesNothingCleansFilesAndAllowsAFreshOperation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.export.XlsxSelectedRowsStreamingTest",
+      "case": "streamedSourceBeyondFiveHundredExportsOnlyCrossPageSelectedRowsIncludingLast",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "exactPriceNeedsNoRoundingAndTheAgreedTotalRetainsAllItsDigits",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "internalPolicyIsNotAnEditableOrExportedEntityField",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "unitPriceModeDoesNotBorrowATotalPriceProof",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "newRepeatingPriceStillRequiresAnExplicitChoice",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "explicitChoiceIsFrozenAndAnotherReviewersChoiceCannotReplaceIt(int, String, String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "aDifferentValidRoundingIsNotAProofForTheStoredPrice",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "persistedProofIsLoadedOnceForTheTotalPricedRowsAndNeverTakenFromTheReviewSession",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "historicalNullProofKeepsTheOriginalTenPlaceDownContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.ProcurementReferencePriceTest",
+      "case": "missingPersistedRowsAreNotMisrepresentedAsHistoricalNullProofs",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "summaryGrainIsNotSplitByAHiddenPhysicalLine(String, String)[8]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[8]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.CommercialReportLineIdentityTest",
+      "case": "equalVisibleLinesRetainTheirPhysicalIdentityInListAndExport(String, String, String)[9]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "onlyExplicitBrowseMetadataUsesTheStaffPublicationProtocolIncludingBooleanAliases",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "deliveryProcessingReadsUseTaskScopesWithoutGoodsPickerRightsOrCommandClassification",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "dedicatedEmployeeCandidateReadsKeepAProfileWithoutMatchingAdjacentCommands",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "processingAndReceiptReadPathsCannotFenceAMutationWithTheSameUrl",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "pagedDirectoriesKeepTheirOriginalReadProfileAndDoNotClassifyCommands",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "businessReferencesKeepTheOriginalResourceRevocationDomains",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest",
+      "case": "physicalReadsHaveFixedProfilesWithoutMatchingCommandsOrUnrelatedWarehouseApis",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "headerSummariesStayAtTheirExistingHeaderGrain",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "stockDetailUsesItsPhysicalItemIdInTheActualListAndExport(String, String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "partyStreamsRetainActualEventIdAndEventVariantWithoutChangingBalanceWindows(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "partyStreamsRetainActualEventIdAndEventVariantWithoutChangingBalanceWindows(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[8]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.StockFinanceReportLineIdentityTest",
+      "case": "financeKeepsTheExistingPhysicalGrainEvenWhenItsPageIsNamedSummary(String, String, String, String)[9]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.web.ExactBodyReadRoutesTest",
+      "case": "processingCommandsNeverInheritAReadOnlyBodyExemption",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.web.ExactBodyReadRoutesTest",
+      "case": "salesDeliveryPreviewIsOnlyTheExactReadPost",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.web.OutputSelectionRequestBodyLimitMvcTest",
+      "case": "everyOriginalMasterExportReadsTheSameLargePrivateBodyWithoutWideningItsOtherEndpoints",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.web.OutputSelectionRequestBodyLimitMvcTest",
+      "case": "realJobEndpointAcceptsFiftyThousandIdentitiesAboveOneMiBWhileOrdinaryEndpointsRemainBounded",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.web.ProductionDraftClaimsReadRoutesTest",
+      "case": "onlyTheExactControlledReadBodyGetsTheOriginalReportOwnerPublicationProfile",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceChartDirectoryExportTest",
+      "case": "importTemplateRetainsItsOriginalNineFieldsWithoutDirectoryClassificationOrTargets",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceChartDirectoryExportTest",
+      "case": "directoryKeepsItsDisplaySchemaAndAppliesKeywordAndHeadersBeforePaging",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.gl.FinanceChartDirectoryExportTest",
+      "case": "directorySelectionUsesOnlyUniqueCodeAndNeverSuppliesOutputValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.export.MasterExportSelectionAspectTest",
+      "case": "realUnitControllerExportBindsSelectionAndCleansScopeOnFailure",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "presentColumnsAreNeitherDuplicatedNorReordered",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "partiallyPresentColumnsKeepUserLabelsAndOrder",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "overflowingSelectionFailsInsteadOfSilentlyDroppingRequiredColumns",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "requiredImportColumnsDoNotDiscardTheFrozenRowSelection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "systemIdentityHeaderCannotBeRenamedOutOfTheRoundTripContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "nullProjectionStaysNullSoBackendExportsItsDefaultColumnSet",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "malformedProjectionPassesThroughToTheSharedValidator",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.GoodsBomExportProjectionTest",
+      "case": "missingImportColumnsArePrependedInCanonicalOrder",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "allRecognizedReadOnlyUploadColumnsRemainVisibleForCellErrorsWithoutBecomingEditable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "systemIdentifiersAndNonEditableFieldsCannotBeCorrected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "everyModeKeepsRowsWithOtherBusinessInputWhenCodeAndNameAreBothEmpty",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "omittedOrChangedCellCorrectionsCannotBeCommittedUnderTheOriginalPlan",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "legacyCodeCorrectionsAndCellCodeCorrectionsUseOneCanonicalPlan",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "conflictingCodeChannelsAreRejectedBeforeAnyImport",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "normalRowsImportBeforeNameSourceAndPriceAreRepairedInTheRemainingRow",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "excelIdentityErrorsDoNotBecomeBlankNewGoodsIdentifiers",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "aRetainedMissingNameRowCanBeCorrectedAndCommittedWithoutReplayingOrInventingRows",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "correctedNamesContainingTotalMarkersDoNotRemoveOriginalDataRows",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "remainingProblemsShowTheEffectiveCorrectedCellsWithoutDiscardingOtherFileValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+      "case": "callerMutationOfNestedCorrectionMapsDoesNotChangeTheReviewedPlan",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "repeatedMouldCodesResolveOncePerDetectionAndCommitForLargeImports",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "invalidMouldRowsRemainVisibleWhileIndependentNormalRowsCanCommit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "blankMouldCodePreservesExistingReferenceAndInactiveEchoIsUnchanged",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "detectionCannotRetargetAfterDeletionRenamingStatusOrIdentityChanges",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "existingRelationshipReplacementRequiresReviewAndUsesIdentityEvenWhenNamesMatch",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "missingAmbiguousInactiveAndMismatchedMouldsRemainProblemRows",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportMouldReferenceTest",
+      "case": "codeOnlyImportShowsResolvedNameAndWritesTheFrozenUuid",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportPaperTest",
+      "case": "parse_readsTheExportedPaperColumn",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportPaperTest",
+      "case": "exportOnlyHeadersRemainReadOnlyAndKeepDistinctPreviewKeys",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportPaperTest",
+      "case": "commitPathWritesTheFieldOntoTheSaveRequest",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.goods.importing.GoodsImportPaperTest",
+      "case": "parse_keepsAnEmptyPaperCellEmpty",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.paymentstyle.PaymentStyleReferenceGuardMigrationContractTest",
+      "case": "referenceInventoryParsesCompactColumnsAndIgnoresSqlBodies",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.paymentstyle.PaymentStyleReferenceGuardMigrationContractTest",
+      "case": "legacyFinanceImportUsesTransactionLocalModeAndReconcilesBeforeCommit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.master.paymentstyle.PaymentStyleReferenceGuardMigrationContractTest",
+      "case": "migrationsGuardEveryRealUuidReferenceAndTheLegacyAccountReference",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseSortOnlyColumnsAreWhitelistedAndNeverBecomeFilters",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountEndpointRequiresStockDocumentView",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "columnTextSearchesRemainBoundAndIndependentFromExactFacetValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseExportStreamsEveryAuthorizedSourceRowWithoutTableMetadataQueries",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "controllerReadPermissionsMatchFlutterAnyPermissionGuards",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountEndpointGuardsPurchaseReadPermissions",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "exceptionFilterAndOptionsAreEvaluatedByTheDatabaseNotTheCurrentPage",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractPendingCountLeavesDrawableTasksToTheDrawSegmentAndPurchaseStaysUntouched",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "pendingCardCountIgnoresTheActiveStatusCardFilter",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayOnlyDetailsMoveAfterThePageUnlessTheyControlGlobalSelection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "maliciousFacetValuesStayBoundAndExcludedFacetsKeepTheOtherParameterIdentities",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "requestAndApplicationRowsExposeTheirApprovedPhysicalStageDifference",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "differenceHeaderUsesExactBoundComparisonsAndKeepsUnknownFactsUnknown",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountUsesTheFulfillmentProjectionAndOpenQuantity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseListAndStatusBreakdownRequireTheSameExplicitRequest",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "legacyPurchaseExportRejects501RowsRatherThanPublishingTheFirst500",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "anEmptyPurchaseExportDoesNotRunBadgesFacetsOrSummary",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountUsesRequestLineDecompositionProjection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseRowsUseTaskStatusAsDisplayStage",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportUsesTheSameTerminalStatusAndBoundTableFiltersAsItsHistoryList",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseRowsSortByPlanNumberAndCarryDocNoFacets",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "continuationResponseExplicitlyOmitsMetadataWhileKeepingExactTotalAndCapabilities",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseUnknownMaterialRequestsHaveTheirOwnStatusAndCountOnceWithoutInventingQuantity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportRejectsTheDifferentPendingDrawProjectionBeforeReadingAnyFacts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "inProgressCountOnlyCountsTheThreeFinanceStages",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractOrderStagesFollowTheDrawModelAndStatusCountsStayOnTaskStatus",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionMetadataIsMaskedWhenTheExactDocumentPermissionIsMissing",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountIsZeroOutsideTheWarehouseOrganizationScope",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseEntryUsesOneAggregateWithoutRowsTableFacetsOrDerivedJoins",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseEntryDoesNotReadRowsWithoutWarehouseTaskAccess",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayStageAndOrderCapabilityAreReadFromTheRowAndSurviveActionCopy",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "openAnyStatusSentinelFiltersByOpenQuantity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionAndBatchCapabilitiesUseSeparateViewAndEditPermissions",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+      "case": "streamsAllPagesUsingExactlyTheOriginalTaskScopeAndFilters",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+      "case": "selectedRowsUseSegmentIdentityWithoutChangingQuantityOrBusinessAuthority",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+      "case": "workbookPreservesExactQuantityUnitAndLiteralNames",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+      "case": "materialSummaryKeepsBinAndDiscoveryFactsInsteadOfClaimingThereIsNoMaterial",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionWorkshopTaskExportServiceTest",
+      "case": "needsBothExportAndTaskViewAndRejectsInvalidFilters",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "viewOrGenericProductionExportCannotWriteOrExportRelationshipEvidence",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "exportAndReplacementRequireTheirIndependentCompletePermissionPairs",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "conflictingOrEmptyPrivateSelectionsAreRejectedThroughMvcBeforeReadingTheSource",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "unsupportedFormatIsRejectedBeforeReadingData",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "privateBodyTransportsFiftyThousandSelectedProductsThroughMvcWithoutPuttingThemInTheUrl",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "pdfUsesTheSameAuthorizedSnapshotAndPasswordProtection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportAndReplacementSecurityTest",
+      "case": "legacyUrlSelectionStillBindsAndIsValidatedAsTheSameFilter",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "synchronousCompatibilityRefusesLargeResultsInsteadOfMaterializingOrTruncating",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "changedSelectedRowsFailBeforeProducingAFile",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "streamingFansEachPageIntoIndependentEvidenceAndCountsOnlyProducts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "customHeaderCriteriaRemainIdenticalAcrossAllDocumentPages",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "exportsAllFilteredPagesAndServerResolvedOperatorInsteadOfPhoneAccount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "incompleteOrChangedPageIsAnErrorAndNeverAValidDocument",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "oversizedExportStopsBeforeIdentityOrFurtherPageReads",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.report.WhereUsedExportServiceTest",
+      "case": "streamBridgeRequiresItsOwnPermissionPairAndWorkerSnapshotBeforeFacts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderTotalAmountTest",
+      "case": "maskedRowsDoNotLeakOriginalTotalOrExactText",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.purchase.order.PurchaseOrderTotalAmountTest",
+      "case": "financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "productionPhysicalPlanItemsRemainDistinctInListAndExportWithoutVisibleChanges",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "inOutAggregationPublishesOnlyItsExistingGroupIdentityWithoutChangingGrouping",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.report.ProductionSubcontractLineIdentityTest",
+      "case": "documentSummariesRetainTheirHeaderGrainWithoutPhysicalLineProjection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[8]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[9]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "everyOriginalExportOnlyAuthorityUsesItsOwnTypedSource(String)[10]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "selectedMouldTaskRetainsAllIdentitiesAndRestoresScopeOnSourceFailure",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "invalidOrCredentialFiltersAreRejectedBeforePersistenceWithoutExposingValues",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "accountAndCurrencyTasksKeepPrivateTermsAndOriginalDecimalHeaderPrecision",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "setsColumnTermsAndExactContactValuesDoNotFlattenOrRound",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.MasterReportExportSourceTest",
+      "case": "anotherFeatureExportDoesNotAuthorizeAClientExport",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "purchaseTasksKeepTheirIndependentReadAuthorityAndStrictFilterContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "taskArtifactsRecheckTheNativeOwnerGenerationAfterAMakerOrHandoverChange",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "aDataScopeChangeWithTheSameRoleStampsBlocksTheFileButKeepsTheOriginalTaskReadable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "precisionResumeRequiresAnExplicitChoiceAndDoesNotAcceptChangedAttempts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "lostPrecisionResumeAcknowledgementReturnsTheSameTaskOnlyForOriginalNonceAndPolicy",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "recentTasksCheckStampsOnceAndNeverListAnOldAuthorizationGeneration",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "queuedTasksNeverSilentlyChangeReaderAfterAnUpgrade",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "initializedPersistentStateEnablesCapabilityAndRestartDoesNotClearExistingArtifacts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "disabledStorageAndCredentialParametersNeverCreateAJob",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "subcontractTasksKeepIndependentOwnerAuthorityAndOnlyTheMatchingProgressOrHistoryProjection",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "unitReceiptCarriesTheExactPersistedRequestOnlyForItsCurrentOwnerAndScope",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "impersonationCannotCreateOrDownloadExportTasks",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "precisionReceiptIsPrivateAndCannotReturnRetiredPolicyLabels",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "aDifferentRequestCannotReuseTheSameIdentity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "nativeProjectionRoundTripKeepsSameJobIdempotencyAndStillRejectsChangedLayout",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "anotherUserCannotProbeTheTaskAndPermissionChangesCloseDownloadAuthorization",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "exportPermissionRetainsTheOriginalSixDomainContractWhileWhereUsedStillRequiresItsOwnView",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "sameIdentityAndConditionsRecoverTheOriginalTaskWithoutAnotherInsert",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.reporting.export.ReportExportServiceTest",
+      "case": "oldConsumersAndOtherReportDomainsKeepTheirExistingMetadataContract",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.order.SalesOrderListSortTest",
+      "case": "deliveryDateHeaderReachesTheRepositoryBeforePaginationInBothDirections",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "discountedOriginalAndLocalAmountsConserveEverySplitAndFinalRoundingRemainder",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "reversalKeepsTheSurvivingRoundingSliceAndOnlyAllowsBoundedRoundingDifferences",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "unsourcedAndDuplicateShipmentLinesAreRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "mismatchedClientCurrencyRateTaxAndSettlementCannotCreateACredit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "excessQuantityAndUnprovablePriorCreditsAreRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest",
+      "case": "clientPriceAndAmountDoNotAuthorTheCredit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.ShelfLabelExportPagingTest",
+      "case": "exportCarriesHeaderScopeIntoTheOwningPagedReader",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.ShelfLabelExportPagingTest",
+      "case": "completeShelfExportUsesThePagedAuthorityAndDoesNotRetainAllRowsInTheSinkMode",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.StockReportWarehouseInventoryScopeTest",
+      "case": "exportPreservesWarehouseScopeAndOwningWarehouseColumnAcrossPages(String, boolean)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.StockReportWarehouseInventoryScopeTest",
+      "case": "exportPreservesWarehouseScopeAndOwningWarehouseColumnAcrossPages(String, boolean)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.StockReportWarehouseInventoryScopeTest",
+      "case": "exportPreservesWarehouseScopeAndOwningWarehouseColumnAcrossPages(String, boolean)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.report.StockReportWarehouseInventoryScopeTest",
+      "case": "exportPreservesWarehouseScopeAndOwningWarehouseColumnAcrossPages(String, boolean)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelOutputScopeTest",
+      "case": "printAuthorityUsesAReadOnlyRepeatableReadSnapshot",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelOutputScopeTest",
+      "case": "printReadsBeyondFiveThousandWithoutDroppingPhysicalIdentities",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.stock.ShelfLabelOutputScopeTest",
+      "case": "headerFiltersRunBeforePaginationAndUnparsedLevelsCannotCauseCasts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.subcontract.order.SubcontractOrderTotalAmountTest",
+      "case": "maskedRowsDoNotLeakOriginalTotalOrExactText",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.subcontract.order.SubcontractOrderTotalAmountTest",
+      "case": "financeSubmissionAcceptsExactTotalAndRejectsReferencePriceProduct",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterOutputIdentityTest",
+      "case": "repeatedGoodsOnOneDocumentSelectTheOriginalPhysicalLine",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "inspectionConsiderationKeepsDeferredAlwaysGuardsWithoutRecheckingProjectionUpdates",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "deferredConstraintTriggersOnHotTablesOnlyFireForRelevantUpdates",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "frozenInventoryPrecisionIgnoresProjectionWritesButStillRejectsReplicaTampering",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "paymentStyleReferencesShareTheHierarchyLockAndHierarchyChangesStayExclusive",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "storageClaimForwardGatePreservesEveryInstalledTriggerMode",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "businessDocumentIdentifierIsReservedOnInsertAndGuardedPerColumnOnUpdate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "rebuiltGuardsKeepEnableAlways",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "subsumedPurchaseProvenanceTriggersStayMerged",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.HotTableTriggerHygieneContractTest",
+      "case": "storageClaimGuardQueuesBusinessChangesButNotMetadata",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "runtimeErpDoesNotExposeALegacyDatabaseMigrationChannel",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "hrImportsKeepIdentifierPiiAndAuditTriggersEnabled",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "bootstrapSqlNeverDisablesConstraintsOrUsesTruncate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapPersistsStructuralReconciliationAndFailsClosed",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapPreflightsOneExactOfflineExportBeforeDatabaseMutation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "hrKeyHandoffUsesPrivateUnpredictableTemporaryFiles",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "warehouseMasterAndEveryWarehouseReferenceComeOnlyFromTheReviewedCrosswalk",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "everyHistoricalGoodsStubHasAStableExplicitCode",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "currentUpgradeRehearsalsReplaceTheObsoleteFixedVersionCloneTest",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapLoadsUuidAuthoritiesBeforeGoods",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "productListImporterRequiresAnExplicitDatabasePasswordAndLocalCapability",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "destructiveBootstrapRequiresTheExactCurrentFlywayInventory",
+      "status": "passed"
+    }
+  ],
+  "green": true
+}

@@ -29,3 +29,5 @@ python3 -m unittest discover -s server/legacy_migration -p 'test_flyway_caller_v
 生成器同时按依赖顺序更新既有固定摘要：guard → boot verifier / migration authorization / updater；boot verifier 与 migration authorization → updater；migration authorization → phase 3 / phase 4；updater 与 retention manager → retention launcher。检查模式只核对，不写文件；缺失、重复、未解析的 pin 或生成边界，以及不属于源码根的文件或符号链接均拒绝。
 
 完整 updater 与 backup 单测仍按现有 CI 执行。新增端到端样例用临时目录、临时签署密钥和合成双 JAR 验证签名、清单、实时历史、备份投影与 append-only 前缀；真实 SQL 全清单由 `FlywayChecksumManifestExporterTest` 使用 Flyway 自身导出并校验。root 元数据用例与依赖真实 PostgreSQL/systemd 的用例保持原运行条件，不能将跳过项写成通过。
+
+既有Task安装链的 Guard → pgbackrest_repo2 / existing_host_installer → 独立launcher 固定源码摘要也由同一生成器按依赖顺序归集；不另建版本解析器，不安装或重建信任，仍要求Guard预先独立审核和引导。

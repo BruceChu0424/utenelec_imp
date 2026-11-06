@@ -141,13 +141,17 @@ class FulfillmentWorkbenchEmptyPageLatencyPostgresTest {
         String selectedFilter = ctes.get("selected_rows").split("WHERE", 2)[1];
         String facets = "WITH candidates AS MATERIALIZED (" + ctes.get("candidates") + " AND " + selectedFilter
                 + ") " + ctes.get("facet_rows");
-        return List.of(selected + page, selected + ctes.get("page_summary"), base + ctes.get("status_rows"),
-                base + ctes.get("exception_rows"), base + ctes.get("pending_count"), facets);
+        // This benchmark is explicitly PURCHASE / COMPLETED / no exception filter.
+        // Reconstruct the former three independent broad reads; do not borrow the new grouping.
+        return List.of(selected + page, selected + ctes.get("page_summary"),
+                base + " SELECT task_status AS status_key,COUNT(*) AS task_count FROM candidates GROUP BY 1",
+                base + " SELECT exception_code,COUNT(*) AS task_count FROM candidates WHERE task_status='COMPLETED' AND exception_code IS NOT NULL GROUP BY exception_code",
+                base + " SELECT COUNT(*) FILTER(WHERE open_line_count>0) AS task_count FROM candidates", facets);
     }
 
     private static Map<String, String> ctes(String sql) {
         var result = new LinkedHashMap<String, String>();
-        var pattern = Pattern.compile("\\s*(?:WITH|,)\\s+(\\w+)\\s+AS\\s+(?:MATERIALIZED\\s+)?\\(");
+        var pattern = Pattern.compile("\\s*(?:WITH|,)\\s+(\\w+)\\s+AS\\s+(?:(?:NOT )?MATERIALIZED\\s+)?\\(");
         int cursor = 0;
         while (cursor < sql.length()) {
             var match = pattern.matcher(sql).region(cursor, sql.length());
@@ -167,7 +171,7 @@ class FulfillmentWorkbenchEmptyPageLatencyPostgresTest {
             result.put(match.group(1), sql.substring(start, index - 1));
             cursor = index;
         }
-        assertEquals(11, result.size());
+        assertEquals(12, result.size());
         return result;
     }
 

@@ -83,6 +83,9 @@ class FinanceArApPage extends ConsumerStatefulWidget {
 
 class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
     with ScopedPagedReadViewMixin<FinanceArApPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   PagedResult<ArApLedgerItem>? _page;
   int _pageNum = 1;
   final _tableRows = MasterDataTableRowsController<ArApLedgerItem>();
@@ -210,11 +213,17 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
     try {
       final r = await readScopedPage<ArApLedgerItem>(
         page,
+        idOf:(row)=>row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
-        fetchPage: (target) =>
-            repo.list(page: target, filter: filter, sort: sort, order: order),
+        fetchPage: (target) => repo.list(
+          page: target,
+          size: 100,
+          filter: filter,
+          sort: sort,
+          order: order,
+        ),
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       unawaited(
@@ -236,12 +245,14 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载台账失败';

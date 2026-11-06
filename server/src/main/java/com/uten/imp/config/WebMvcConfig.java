@@ -66,11 +66,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(new ReportReadPlanInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/sales/reports/**", "/api/purchase/reports/**",
                         "/api/subcontract/reports/**", "/api/production/reports/**",
-                        "/api/stock/reports/**", "/api/finance/reports/**");
+                        "/api/stock/reports/**", "/api/finance/reports/**",
+                        "/api/finance/statement-documents/reviews/*/original-table");
         registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
                 .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
         registry.addInterceptor(new com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor(readScopes,currentUser))
-                .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**");
+                .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**",
+                        "/api/finance/asset-opening-groups/summaries","/api/finance/accounting-imports/summaries",
+                        "/api/finance/auxiliary-imports/summaries","/api/finance/chart/imports/summaries",
+                        "/api/finance/payable-statement-adjustments","/api/finance/statement-documents/reviews/*/summary",
+                        "/api/finance/statement-documents/reviews/*/original-table");
         registry.addInterceptor(new MasterReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/master/**");
         registry.addInterceptor(new com.uten.imp.common.report.PurchasePrintReadScopeInterceptor(readScopes,currentUser))

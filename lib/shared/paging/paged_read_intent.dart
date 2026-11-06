@@ -1,56 +1,85 @@
 import 'dart:async';
 
-/// A pager may prepare one page before an explicit destination without making
-/// that buffer the reader's new destination. Its read must not recursively
-/// predict another predecessor. The intent follows async callbacks only.
+/// The immutable query/reader fence retires its HTTP reads. This cancellation
+/// intent never applies to a business command or retries an uncertain write.
 abstract final class PagedReadIntent {
-  static final _bufferSeedKey = Object();
-  static final _readingPageKey = Object();
-  static final _acceptedPageKey = Object();
-  static final _replaceWindowKey = Object();
   static final _readCurrentKey = Object();
+  static final _activityKey = Object();
+  static final _bootstrapKey = Object();
 
-  static bool get isBufferSeed => Zone.current[_bufferSeedKey] == true;
-
-  static int? get readingPage => Zone.current[_readingPageKey] as int?;
-  static bool get replaceWindow => Zone.current[_replaceWindowKey] == true;
-
-  /// The same immutable query/reader fence used for publication also retires
-  /// its HTTP reads. It never applies to a business command or write retry.
   static bool Function()? get currentRead =>
       Zone.current[_readCurrentKey] as bool Function()?;
 
-  static R scopedRead<R>(bool Function() isCurrent, R Function() action) {
+  static List<PagedReadActivityFence> get _activities =>
+      Zone.current[_activityKey] as List<PagedReadActivityFence>? ?? const [];
+
+  /// Presentation retirement is separate from logical ownership: a received
+  /// access rejection still belongs to its current account/query/request.
+  static bool Function()? get currentActivity {
+    final activities = _activities;
+    return activities.isEmpty
+        ? null
+        : () => activities.every((activity) => activity.isCurrent());
+  }
+
+  static bool get allowsInactiveBootstrap =>
+      _activities.isNotEmpty &&
+      _activities.every(
+        (activity) => activity.isCurrent() || activity.allowInactiveBootstrap,
+      );
+
+  static bool Function()? get currentTransportActivity {
+    final activities = _activities;
+    final bootstrap = Zone.current[_bootstrapKey] == true;
+    return activities.isEmpty
+        ? null
+        : () => activities.every(
+            (activity) =>
+                activity.isCurrent() ||
+                bootstrap && activity.allowInactiveBootstrap,
+          );
+  }
+
+  /// A shared producer has its own auth/write/query lifetime. It must not borrow
+  /// the first foreground consumer's request or presentation retirement.
+  static R ownedRead<R>(bool Function() owner, R Function() action) => runZoned(
+    action,
+    zoneValues: {
+      _readCurrentKey: owner,
+      _activityKey: const <PagedReadActivityFence>[],
+      _bootstrapKey: false,
+    },
+  );
+
+  static R scopedRead<R>(
+    bool Function() isCurrent,
+    R Function() action, {
+    PagedReadActivityFence? activity,
+    bool? bootstrap,
+  }) {
     final parent = currentRead;
+    final activities = _activities;
     return runZoned(
       action,
       zoneValues: {
         _readCurrentKey: () => (parent?.call() ?? true) && isCurrent(),
+        _activityKey: activity == null
+            ? activities
+            : List<PagedReadActivityFence>.unmodifiable([
+                ...activities,
+                activity,
+              ]),
+        _bootstrapKey: bootstrap ?? Zone.current[_bootstrapKey] == true,
       },
     );
   }
+}
 
-  /// Separates a reader's visible page from the last fetched page. A completed
-  /// cache hit can acknowledge navigation even when every DTO is unchanged.
-  static R navigation<R>(
-    int readingPage,
-    R Function() read, {
-    void Function(int)? onAccepted,
-    bool replaceWindow = false,
-  }) => runZoned(
-    read,
-    zoneValues: {
-      _readingPageKey: readingPage,
-      _acceptedPageKey: onAccepted,
-      _replaceWindowKey: replaceWindow,
-    },
-  );
-
-  static void accepted(int page) {
-    final listener = Zone.current[_acceptedPageKey] as void Function(int)?;
-    if (!isBufferSeed) listener?.call(page);
-  }
-
-  static R bufferSeed<R>(R Function() read) =>
-      runZoned(read, zoneValues: {_bufferSeedKey: true});
+class PagedReadActivityFence {
+  const PagedReadActivityFence({
+    required this.isCurrent,
+    this.allowInactiveBootstrap = false,
+  });
+  final bool Function() isCurrent;
+  final bool allowInactiveBootstrap;
 }

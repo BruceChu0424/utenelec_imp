@@ -311,6 +311,12 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     _controller.clear();
     _appliedText = _inputText = '';
     widget.onInputChanged?.call('');
+    // A controlled host may already have dispatched this exact clear from its
+    // controller/input listener. Reuse Enter's real in-flight contract.
+    if (widget.isQueryPending?.call('') ?? false) {
+      setState(() {});
+      return;
+    }
     if (widget.onChanged != null) {
       widget.onChanged!('');
     } else {

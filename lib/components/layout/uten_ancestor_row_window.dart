@@ -19,6 +19,11 @@ class UtenAncestorRowWindowController<T extends Object> {
   /// Retain live presentation state such as a native text selection. This is
   /// deliberately separate from business selection and visited-row history.
   void retain(T row, bool retain) => _state?._retain(row, retain);
+
+  /// A host can resize this viewport without changing its source, screen or
+  /// scroll pixels. Reuse the existing presentation and scheduler checks.
+  void notifyViewportChanged() => _state?._onScroll();
+
   Future<bool> reveal(
     T row, {
     double alignment = .15,
@@ -217,6 +222,7 @@ class UtenAncestorRowWindow<T extends Object> extends StatefulWidget {
     this.viewportOnly = false,
     this.preserveRowAnchorOnSourceChange = true,
     this.expensiveRows = true,
+    this.deferRowMounts = true,
   });
 
   /// Even a modest editable table can contain hundreds of input Elements.
@@ -238,6 +244,11 @@ class UtenAncestorRowWindow<T extends Object> extends StatefulWidget {
   /// Leave enabled for editable or unclassified custom rows. Disable only for
   /// lightweight read-only rows to admit small batches and warm more content.
   final bool expensiveRows;
+
+  /// Continuous table browsing mounts only the visible virtualized rows, with
+  /// no placeholder/admission sequence during a scroll. Standalone heavy forms
+  /// retain their existing first-mount budget.
+  final bool deferRowMounts;
 
   @override
   State<UtenAncestorRowWindow<T>> createState() =>
@@ -289,6 +300,7 @@ class _UtenAncestorRowWindowState<T extends Object>
       _position != null &&
       _offsets.last > _windowViewportExtent;
   bool get _stageNewRows =>
+      widget.deferRowMounts &&
       widget.rows.length >= UtenAncestorRowWindow.minimumStagedRows;
   bool get _isMounting =>
       _presentationActive &&

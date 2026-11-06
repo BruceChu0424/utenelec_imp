@@ -52,11 +52,14 @@ public class WarehouseInboundTaskCenterQueryService {
     private final WorkshopMaterialScope materialScopes;
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public Page list(Filter filter) {
-        return list(filter,null);
-    }
+    public Page list(Filter filter) { return list(filter,null,true); }
 
-    private Page list(Filter filter,Identity identity) {
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Page list(Filter filter,boolean includeMetadata) { return list(filter,null,includeMetadata); }
+
+    private Page list(Filter filter,Identity identity) { return list(filter,identity,true); }
+
+    private Page list(Filter filter,Identity identity,boolean includeMetadata) {
         String source = normalize(filter.source(), "ALL");
         if (!SOURCES.contains(source)) throw invalid("入库来源不正确");
         String status = normalize(filter.status(), "");
@@ -76,10 +79,10 @@ public class WarehouseInboundTaskCenterQueryService {
         if (!rights.anyView() || !rights.sourceAllowed(source)) {
             throw new ApiException(ErrorCode.FORBIDDEN,"没有该入库来源的查看权限");
         }
-        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter, identity, source, status, actor, rights));
+        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter, identity, source, status, actor, rights,includeMetadata));
     }
 
-    private Page listScoped(Filter filter, Identity identity, String source, String status, AuthUser actor, Rights rights) {
+    private Page listScoped(Filter filter, Identity identity, String source, String status, AuthUser actor, Rights rights,boolean includeMetadata) {
         var scope = warehouseScopes.currentForRead(filter.scopeWarehouseId());
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
@@ -112,23 +115,28 @@ public class WarehouseInboundTaskCenterQueryService {
                         + " AND split_part(line_data->>'key','~',1)=:lineKey))";
             }
         }
-        Long total = jdbc.queryForObject(WarehouseInboundTaskCenterSql.count(base)+identityFilter,parameters,Long.class);
+        WarehouseTaskPageMetadata metadata = identity == null && includeMetadata
+                ? WarehouseTaskPageMetadata.from(jdbc.query(WarehouseInboundTaskCenterSql.metadata(base),parameters,
+                        (rs,index) -> new Object[]{rs.getString(1),rs.getString(2),rs.getLong(3)})) : null;
+        Long total = metadata == null
+                ? jdbc.queryForObject(WarehouseInboundTaskCenterSql.count(base)+identityFilter,parameters,Long.class)
+                : metadata.total();
         long count=total==null?0:total;
         long pages=count==0?0:(count+size-1)/size;
         int effectivePage=count==0?1:(int)Math.min(page,Math.min(Integer.MAX_VALUE,pages));
         parameters.addValue("offset",((long)effectivePage-1)*size);
-        List<Row> rows = jdbc.query(WarehouseInboundTaskCenterSql.rows(base,filter.sort(),filter.order(),identityFilter),parameters,
-                (rs,index) -> row(rs,rights));
+        List<Row> rows = count == 0 ? List.of()
+                : jdbc.query(WarehouseInboundTaskCenterSql.rows(base,filter.sort(),filter.order(),identityFilter),parameters,
+                        (rs,index) -> row(rs,rights));
         rows=physicalCommandRows(rows,rights,filter.scopeWarehouseId()==null);
         if(identity!=null) return new Page(rows,1,1,count,rows.isEmpty()?0:1,Map.of());
-        List<StatusFacet> facets = jdbc.query(WarehouseInboundTaskCenterSql.facets(base),parameters,(rs,index) -> {
-            String code=rs.getString(1);
-            Presentation presentation=presentation(code);
-            return new StatusFacet(code,presentation.label(),rs.getLong(2));
-        });
-        List<StatusFacet> billNos=jdbc.query(WarehouseInboundTaskCenterSql.billNoFacets(base),parameters,
-                (rs,index)->new StatusFacet(rs.getString(1),rs.getString(1),rs.getLong(2)));
-        return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),Map.of("status",facets,"billNo",billNos));
+        if(!includeMetadata) return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),null,false);
+        List<StatusFacet> facets = metadata.statuses().entrySet().stream().map(entry -> {
+            Presentation presentation=presentation(entry.getKey());
+            return new StatusFacet(entry.getKey(),presentation.label(),entry.getValue());
+        }).toList();
+        return new Page(rows,effectivePage,size,count,(int)Math.min(Integer.MAX_VALUE,pages),
+                Map.of("status",facets,"billNo",metadata.bills()));
     }
 
     /** Visible rows have a scope-checked physical read target even when the business document was reversed. */
@@ -195,7 +203,7 @@ public class WarehouseInboundTaskCenterQueryService {
                     SELECT item.id,item.line_no AS "lineNo",item.goods_code_snapshot AS "goodsCode",
                            item.goods_name_snapshot AS "goodsName",color.name AS "colorName",unit.name AS "unitName",
                            item.qty AS quantity,item.weight,item.place,item.count_qty AS "countedQty"
-                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) item LEFT JOIN colors color ON color.id=item.color_id
+                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id
                     WHERE item.doc_id=:id AND NOT item.is_deleted ORDER BY item.line_no,item.id
                     """;
@@ -205,7 +213,7 @@ public class WarehouseInboundTaskCenterQueryService {
                            color.name AS "colorName",unit.name AS "unitName",source.qty AS quantity,item.place_snapshot AS place,
                            lineage.document_nos AS "stockDocumentNos",lineage.document_ids AS "stockDocumentIds"
                     FROM production_finished_arrival_registration_items item
-                    JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) source ON source.id=item.source_report_item_id
+                    JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) source ON source.id=item.source_report_item_id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     LEFT JOIN units unit ON unit.id=goods.unit_id
                     LEFT JOIN LATERAL (
@@ -213,8 +221,8 @@ public class WarehouseInboundTaskCenterQueryService {
                                string_agg(DISTINCT document.id::text,',') AS document_ids
                         FROM production_fqc_inspection_sheet_items sheet_item
                         JOIN production_fqc_release_commands release ON release.inspection_id=sheet_item.inspection_id
-                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) released_item ON released_item.id=release.stock_document_item_id
-                        JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=released_item.doc_id AND NOT document.is_deleted
+                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) released_item ON released_item.id=release.stock_document_item_id
+                        JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=released_item.doc_id AND NOT document.is_deleted
                         WHERE sheet_item.registration_id=item.registration_id
                           AND release.source_report_item_id=item.source_report_item_id
                     ) lineage ON TRUE
@@ -223,7 +231,7 @@ public class WarehouseInboundTaskCenterQueryService {
             case "FINISHED_REGISTER" -> """
                     SELECT source.id,source.output_lot_id AS "lotId",goods.code AS "goodsCode",goods.name AS "goodsName",
                            color.name AS "colorName",source.qty AS quantity
-                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_daily_report_items',archive_origin.id)) source
+                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) source
                     JOIN v_production_report_items_pending_registration pending ON pending.report_item_id=source.id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     WHERE source.report_id=:id ORDER BY source.id

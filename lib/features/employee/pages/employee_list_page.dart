@@ -34,6 +34,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -53,7 +54,10 @@ class EmployeeListPage extends ConsumerStatefulWidget {
   ConsumerState<EmployeeListPage> createState() => _EmployeeListPageState();
 }
 
-class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
+class _EmployeeListPageState extends ConsumerState<EmployeeListPage>
+    with ReadViewActivityMixin<EmployeeListPage> {
+  @override
+  Future<void> onReadViewResumed() => _reload();
   String _search = '';
   bool _pendingSearch = false;
 
@@ -97,6 +101,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   Future<void> _reload() async {
     final request = ++_request;
     final search = _search;
+    bool current() => mounted && request == _request;
     setState(() {
       _loading = true;
       _error = null;
@@ -105,29 +110,34 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       _similar = const [];
     });
     try {
-      await loadEmployeeRoster(
-        repository: ref.read(employeeRepositoryProvider),
-        isCurrent: () => mounted && request == _request,
-        search: search.isEmpty ? null : search,
-        sort: _sortColumn,
-        order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-        onBatch: (items, total, hasMore) {
-          setState(() {
-            _items
-              ..clear()
-              ..addAll(items);
-            _total = total;
-            _loading = false;
-            _loadingMore = hasMore;
-          });
-        },
+      await readViewActivity.runRead(
+        current,
+        () => loadEmployeeRoster(
+          repository: ref.read(employeeRepositoryProvider),
+          isCurrent: current,
+          search: search.isEmpty ? null : search,
+          sort: _sortColumn,
+          order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          onBatch: (items, total, hasMore) {
+            setState(() {
+              _items
+                ..clear()
+                ..addAll(items);
+              _total = total;
+              _loading = false;
+              _loadingMore = hasMore;
+            });
+          },
+        ),
       );
       if (!mounted || request != _request) return;
       unawaited(_refreshSimilar(search, request));
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || request != _request) return;
       _failReload(e.message);
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || request != _request) return;
       _failReload(AppLocalizations.of(context).employeeOnboardLoadFailed);
     }
@@ -138,9 +148,13 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   Future<void> _refreshSimilar(String search, int request) async {
     if (search.isEmpty || _items.isNotEmpty) return;
     try {
-      final similar = await PagedReadIntent.scopedRead(
-        () => mounted && request == _request && _items.isEmpty,
-        () => ref.read(employeeRepositoryProvider).similar(search),
+      bool current() => mounted && request == _request && _items.isEmpty;
+      final similar = await readViewActivity.runRead(
+        current,
+        () => PagedReadIntent.scopedRead(
+          current,
+          () => ref.read(employeeRepositoryProvider).similar(search),
+        ),
       );
       if (!mounted || request != _request || _items.isNotEmpty) return;
       setState(() => _similar = similar);
@@ -361,7 +375,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         emptyMessage: _search.isEmpty
             ? l10n.employeeEmpty
             : '无符合「$_search」的员工', // TODO(l10n): 补 arb
-        // 滚动临近底部自动追加下一页（末尾转圈行）；是否还有更多由 _loadMore 守卫。
+        // 完整人员目录由现有 owner 分批读取；此状态仅呈现读取进度，滚动不再发请求。
         loadingMore: _loadingMore,
         // 搜索框：紧跟「全屏」按钮右侧（toolbarLeadingActions 左簇），限宽 260；
         // UtenSearchBar 自带 300ms 防抖 + 清除按钮 + 输入法组合保护，全屏路由里同款渲染。

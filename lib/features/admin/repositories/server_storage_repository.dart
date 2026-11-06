@@ -34,7 +34,7 @@ class DioServerStorageRepository implements ServerStorageRepository {
   }) async => ServerStorageResources.fromJson(
     await api.get(
       '$path/resources',
-      query: {'kind': kind, 'limit': 50, 'cursor': ?cursor},
+      query: {'kind': kind, 'limit': 100, 'cursor': ?cursor},
     ),
   );
 

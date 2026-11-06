@@ -101,8 +101,6 @@ void main() {
         multiple: true,
         initialSelection: [_employee(0)],
       );
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('uten-employee-picker-candidates')),
         findsNothing,
@@ -141,7 +139,7 @@ void main() {
       await tester.enterText(search, '人员');
       await tester.pump(const Duration(milliseconds: 310));
       await tester.pumpAndSettle();
-      expect(find.text('人员候选分页已变化，请重新读取'), findsOneWidget);
+      expect(find.text('分页信息异常，请刷新后重新读取完整结果'), findsOneWidget);
       expect(tester.widget<TextField>(search).controller!.text, '人员');
       expect(find.text('已选 1 人'), findsOneWidget);
       await tester.tap(find.text('重试').last);
@@ -177,8 +175,6 @@ void main() {
         multiple: true,
         initialSelection: [_employee(0)],
       );
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(40));
       expect(_table(tester).selectedIds, contains('e0'));
       expect(_table(tester).refreshError, isNotNull);
@@ -190,11 +186,9 @@ void main() {
       invalid = false;
       _table(tester).onRetry!();
       await tester.pumpAndSettle();
-      expect(calls.map((query) => query.page), [1, 2, 1]);
+      expect(calls.map((query) => query.page), [1, 2, 1, 2, 3]);
       expect(_table(tester).selectedIds, contains('e0'));
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
-      expect(_table(tester).items, hasLength(80));
+      expect(_table(tester).items, hasLength(120));
     },
   );
 
@@ -208,13 +202,13 @@ void main() {
         tester,
         (query) async {
           calls.add(query);
-          if (query.page == 2) {
+          if (query.keyword != null && query.page == 2) {
             if (++continuation == 1) {
               throw StateError('fixture connection interruption');
             }
             return retry.future;
           }
-          return _page(1, totalPages: 2);
+          return _page(query.page, totalPages: query.keyword == null ? 1 : 2);
         },
         multiple: true,
         initialSelection: [_employee(0)],
@@ -222,8 +216,6 @@ void main() {
       final search = _searchField();
       await tester.enterText(search, '人员');
       await tester.pump(const Duration(milliseconds: 310));
-      await tester.pumpAndSettle();
-      _table(tester).onLoadMore!();
       await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(40));
       expect(_table(tester).selectedIds, contains('e0'));
@@ -240,7 +232,7 @@ void main() {
       expect(_table(tester).selectedIds, contains('e0'));
       expect(_table(tester).refreshError, isNull);
       expect(find.byType(UtenBusyOverlay), findsNothing);
-      expect(calls.map((query) => query.page), [1, 1, 2, 2]);
+      expect(calls.map((query) => query.page), [1, 1, 2, 1, 2]);
     },
   );
 
@@ -330,43 +322,26 @@ void main() {
   );
 
   testWidgets(
-    'first page does not drain all staff and continuation retains cross-page selection',
+    'all staff pages complete once and cross-page selection survives local scrolling',
     (tester) async {
       final calls = <UtenEmployeePickerQuery>[];
       await _mount(tester, (query) async {
         calls.add(query);
-        return UtenEmployeePickerPage(
-          items: List.generate(
-            40,
-            (index) => _employee((query.page - 1) * 40 + index),
-          ),
-          page: query.page,
-          totalPages: 1000,
-        );
+        return _page(query.page, totalPages: 3);
       }, multiple: true);
-      expect(calls.map((query) => query.page), [1]);
+      expect(calls.map((query) => query.page), [1, 2, 3]);
       await tester.tap(find.byKey(const ValueKey('employee-picker-item-e0')));
       await tester.pump();
-      var table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
-        find.byKey(const Key('uten-employee-picker-candidates')),
-      );
-      expect(table.selectedIds, contains('e0'));
-      table.onLoadMore!();
-      table.onLoadMore!();
-      await tester.pumpAndSettle();
-      expect(calls.map((query) => query.page), [1, 2]);
-      table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
-        find.byKey(const Key('uten-employee-picker-candidates')),
-      );
-      expect(table.items, hasLength(80));
-      expect(table.selectedIds, contains('e0'));
-      expect(table.items.last.id, 'e79');
+      var table = _table(tester);
+      expect(table.items, hasLength(120));
+      expect(table.items.last.id, 'e119');
+      expect(table.onLoadMore, isNull);
       table.onRowSelectionChanged!(table.items.last, true);
       await tester.pump();
-      table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
-        find.byKey(const Key('uten-employee-picker-candidates')),
-      );
-      expect(table.selectedIds, containsAll(['e0', 'e79']));
+      table = _table(tester);
+      expect(table.selectedIds, containsAll(['e0', 'e119']));
+      expect(calls.map((query) => query.page), [1, 2, 3]);
+      expect(find.text('加载更多'), findsNothing);
     },
   );
 

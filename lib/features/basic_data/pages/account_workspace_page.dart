@@ -68,6 +68,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
     with
         MasterInlinePageMixin<AccountPage, AccountListItem>,
         ScopedPagedReadViewMixin<AccountPage> {
+  @override
+  Future<void> onReadViewResumed() => _loadAccounts(1);
+
   final _readViewportRows = MasterDataTableRowsController<AccountListItem>();
   int get _visibleReadPage => _page == null
       ? (_pageNum)
@@ -358,6 +361,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_listRequests.isCurrent(generation)) {
@@ -367,7 +371,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_listRequests.isCurrent(generation)) {

@@ -18,6 +18,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../shared/finance_original_command.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -30,51 +31,86 @@ class FinanceApplicationSettingsPage extends ConsumerStatefulWidget {
       _SettingsState();
 }
 
-class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage> {
+class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage>
+    with ReadViewActivityMixin<FinanceApplicationSettingsPage> {
   Map<String, dynamic> _data = {}, _refs = {};
   String? _error;
   bool _busy = true;
   bool _editing = false;
   int _epoch = -1, _request = 0;
+  int _acceptedEpoch = -1;
+  ApiClient? _acceptedApi;
   @override
   void initState() {
     super.initState();
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (!mounted || previous == next) return;
+      ++_request;
+      setState(() {
+        _busy = false;
+        _data = {};
+        _refs = {};
+        _acceptedEpoch = -1;
+        _acceptedApi = null;
+        _error = '身份、权限或服务器已变化，请刷新流程设置';
+      });
+    });
     unawaited(_load());
   }
 
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   Future<void> _load() async {
+    if (!mounted) return;
+    final api = ref.read(apiClientProvider);
     final epoch = ref.read(exportContextEpochProvider), request = ++_request;
+    final retainAccepted =
+        _acceptedEpoch == epoch && identical(_acceptedApi, api);
+    bool current() =>
+        mounted &&
+        request == _request &&
+        epoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider));
     setState(() {
       _busy = true;
       _error = null;
       _epoch = epoch;
-      _data = {};
+      if (!retainAccepted) {
+        _data = {};
+        _refs = {};
+        _acceptedEpoch = -1;
+        _acceptedApi = null;
+      }
     });
     try {
-      final api = ref.read(apiClientProvider);
-      final rows = await Future.wait([
-        api.get('$financeApplicationsApi/settings'),
-        api.get('$financeApplicationsApi/references'),
-      ]);
-      if (!mounted ||
-          epoch != ref.read(exportContextEpochProvider) ||
-          request != _request) {
-        return;
-      }
+      final rows = await readViewActivity.runRead(
+        current,
+        () => Future.wait([
+          api.get('$financeApplicationsApi/settings'),
+          api.get('$financeApplicationsApi/references'),
+        ], eagerError: true),
+      );
+      if (!current()) return;
       setState(() {
         _data = rows[0];
         _refs = rows[1];
-        _busy = false;
+        _acceptedEpoch = epoch;
+        _acceptedApi = api;
       });
-    } catch (e) {
-      if (mounted &&
-          epoch == ref.read(exportContextEpochProvider) &&
-          request == _request) {
-        setState(() {
-          _error = humanErrorMessage(e) ?? '流程设置未读取完成';
-          _busy = false;
-        });
+    } catch (error) {
+      if (current()) {
+        setState(
+          () => _error = isRetiredViewRead(error)
+              ? '读取已中断，请刷新流程设置'
+              : humanErrorMessage(error) ?? '流程设置未读取完成，请重试',
+        );
       }
+    } finally {
+      // A retired response may release only its own read wait, never a newer
+      // request or a durable editor/unknown command. Epoch listeners already
+      // retire old rows and release that old wait immediately.
+      if (mounted && request == _request) setState(() => _busy = false);
     }
   }
 
@@ -83,7 +119,12 @@ class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage> {
     bool settings = false,
     String? resumeDraftId,
   }) async {
-    if (_editing || _busy || _epoch != ref.read(exportContextEpochProvider)) {
+    if (_editing ||
+        _busy ||
+        _acceptedEpoch != _epoch ||
+        _acceptedApi == null ||
+        _epoch != ref.read(exportContextEpochProvider) ||
+        !identical(_acceptedApi, ref.read(apiClientProvider))) {
       return;
     }
     _editing = true;
@@ -112,7 +153,10 @@ class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final current = ref.watch(exportContextEpochProvider) == _epoch;
+    final current =
+        ref.watch(exportContextEpochProvider) == _acceptedEpoch &&
+        _acceptedApi != null &&
+        identical(_acceptedApi, ref.read(apiClientProvider));
     final rows = current
         ? financeApplicationRows(_data['roles'])
         : <Map<String, dynamic>>[];
@@ -164,7 +208,9 @@ class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage> {
                   children: [
                     UtenDialogTitleWithHint(
                       title: Text(
-                        current && _data['enabled'] == true
+                        !current
+                            ? '流程资料需重新读取'
+                            : _data['enabled'] == true
                             ? '新申请流程已启用'
                             : '新申请流程未启用',
                       ),
@@ -187,7 +233,6 @@ class _SettingsState extends ConsumerState<FinanceApplicationSettingsPage> {
                   ],
                 ),
               ),
-              if (!current) const Text('身份或权限已变化，请刷新。'),
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
                   columns: [

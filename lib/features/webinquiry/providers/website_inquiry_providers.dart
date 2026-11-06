@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 // 官网询盘 Provider
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,56 +30,60 @@ final websiteInquiryStatusFilterProvider = StateProvider<WebsiteInquiryStatus?>(
 );
 final websiteInquiryHistoryProvider = StateProvider<bool>((ref) => false);
 
+final websiteInquiryReadActivityProvider =
+    Provider.autoDispose<ReadViewActivity>((ref) {
+      final activity = ReadViewActivity(onResume: ref.notifyListeners);
+      ref.onDispose(activity.dispose);
+      return activity;
+    });
+
 final websiteInquiryListProvider =
     AsyncNotifierProvider.autoDispose<
       WebsiteInquiryListNotifier,
       PagedResult<WebsiteInquiry>
-    >(WebsiteInquiryListNotifier.new);
+    >(
+      WebsiteInquiryListNotifier.new,
+      dependencies: [
+        exportContextEpochProvider,
+        websiteInquiryReadActivityProvider,
+      ],
+    );
 
 class WebsiteInquiryListNotifier
     extends AsyncNotifier<PagedResult<WebsiteInquiry>> {
-  int _page = 1;
-  Object? _lastScope;
   @override
   Future<PagedResult<WebsiteInquiry>> build() {
     final status = ref.watch(websiteInquiryStatusFilterProvider);
     final history = ref.watch(websiteInquiryHistoryProvider);
-    final scope = (status, history, ref.watch(masterDataSessionKeyProvider));
-    if (_lastScope != scope) _page = 1;
-    _lastScope = scope;
-    return ref
-        .watch(websiteInquiryRepositoryProvider)
-        .list(
+    ref.watch(masterDataSessionKeyProvider);
+    ref.watch(exportContextEpochProvider);
+    final repository = ref.watch(websiteInquiryRepositoryProvider);
+    final activity = ref.watch(websiteInquiryReadActivityProvider);
+    var current = true;
+    ref.onDispose(() => current = false);
+    return activity.runRead(
+      () => current,
+      () => loadCompletePagedResult<WebsiteInquiry>(
+        isCurrent: () => current,
+        idOf: (inquiry) => inquiry.id,
+        loadPage: (page, size) => repository.list(
           status: status?.wireName ?? (history ? 'HISTORY' : 'new'),
-          page: _page,
-        );
+          page: page,
+          size: size,
+        ),
+      ),
+    );
   }
 
   Future<void> refresh() async {
-    await _goTo(state.value?.page ?? 1, keepPrevious: false);
-  }
-
-  Future<void> previousPage() async {
-    final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
-  }
-
-  Future<void> nextPage() async {
-    final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
-  }
-
-  Future<void> goToPage(int page) async {
-    final current = state.value;
-    if (current == null ||
-        page < 1 ||
-        page > current.totalPages ||
-        page == current.page) {
-      return;
+    if (state.isLoading) return;
+    state = const AsyncLoading<PagedResult<WebsiteInquiry>>();
+    ref.invalidateSelf();
+    try {
+      await future;
+    } catch (_) {
+      /* Provider exposes the read error. */
     }
-    await _goTo(page);
   }
 
   /// 详情页写操作完成后，把服务端回执同步到当前页并保留页码。
@@ -101,31 +108,13 @@ class WebsiteInquiryListNotifier
         (filter == null || updated.status == filter);
     if (!stillInFilter) {
       final items = [...current.items]..removeAt(index);
-      final total = current.total > 0 ? current.total - 1 : 0;
-      final size = current.size > 0 ? current.size : 1;
-      final totalPages = (total + size - 1) ~/ size;
-      final lastPage = totalPages > 0 ? totalPages : 1;
-      final targetPage = current.page > lastPage
-          ? lastPage
-          : items.isEmpty && current.page > 1
-          ? current.page - 1
-          : current.page;
-      if (targetPage != current.page) {
-        // A server mutation can remove the last row of the last page. Reload
-        // a valid page through build so filters and stale-response guards stay
-        // identical to ordinary navigation and later refreshes.
-        _page = targetPage;
-        state = const AsyncLoading();
-        ref.invalidateSelf();
-        return;
-      }
       state = AsyncData(
         PagedResult(
           items: items,
-          page: current.page,
-          size: current.size,
-          total: total,
-          totalPages: totalPages,
+          page: 1,
+          size: items.length,
+          total: items.length,
+          totalPages: items.isEmpty ? 0 : 1,
         ),
       );
       return;
@@ -142,22 +131,6 @@ class WebsiteInquiryListNotifier
         totalPages: current.totalPages,
       ),
     );
-  }
-
-  Future<void> _goTo(int page, {bool keepPrevious = true}) async {
-    if (state.isLoading) return;
-    state = keepPrevious
-        ? const AsyncLoading<PagedResult<WebsiteInquiry>>().copyWithPrevious(
-            state,
-          )
-        : const AsyncLoading<PagedResult<WebsiteInquiry>>();
-    _page = page;
-    ref.invalidateSelf();
-    try {
-      await future;
-    } catch (_) {
-      /* Provider state retains the error. */
-    }
   }
 }
 

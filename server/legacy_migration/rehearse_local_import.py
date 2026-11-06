@@ -115,17 +115,8 @@ def verify_frozen_source() -> str:
                 HERE/'personnel_source_archive.py',
                 *(HERE/'java').glob('*.java'),
                 *(ROOT/'server/src/main/resources/db/migration').glob('V*__*.sql')]
-    paths=[path.relative_to(ROOT).as_posix() for path in controlled]
-    # Native Windows has a 32K command line ceiling; do not repeat the old
-    # verify_candidate.py failure by passing 800+ resource paths in one call.
-    for start in range(0,len(paths),60):
-        batch=paths[start:start+60]
-        subprocess.run(['git','-C',str(ROOT),'ls-files','--error-unmatch','--',*batch],
-                       check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        dirty=subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain=v1','--',*batch],text=True)
-        if dirty.strip():
-            raise ValueError('Importer or Flyway source has uncommitted bytes; use the frozen rehearsal worktree')
-    return subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip()
+    controlled.extend(ROOT / path for path in verify_candidate.VERSION_CONTRACT_INPUTS)
+    return verify_candidate.require_reviewed_files(ROOT, controlled)
 
 
 def csv_record(path: Path) -> dict:
@@ -574,10 +565,15 @@ def apply(db: Database, directory: Path, env: Path, log: Path, confirmation: str
             raise ValueError('Prepared BOM graph validation is invalid')
     if manifest["provenance"].get("executionScope","full")!=scope:raise ValueError("Prepared scope differs from execution")
     validate_execution_inputs(directory,scope)
-    migration_records = sorted((int(p.name.split('__')[0][1:]), p.name,
-                                verify_candidate.flyway_checksum(p.read_bytes()))
-                               for p in (ROOT / 'server/src/main/resources/db/migration').glob('V*__*.sql'))
-    actual = db.sql('SELECT version::int,script,checksum FROM flyway_schema_history ORDER BY version::int;')
+    migration_records = verify_candidate.migration_inventory(ROOT)
+    version_contract = verify_candidate.version_contract(ROOT)
+    expected_count = len(migration_records)
+    expected_head = version_contract.require_integer_flyway_head(row[0] for row in migration_records)
+    expected_state = '|'.join(map(str, (expected_count, expected_count, expected_count, expected_head)))
+    if db.sql(verify_candidate.history_state_sql() + ';') != expected_state:
+        raise ValueError('Rehearsal Flyway state differs from the complete frozen loader source')
+    migration_records = verify_candidate.history_projection(ROOT, migration_records)
+    actual = db.sql(verify_candidate.history_rows_sql() + ';')
     if actual.splitlines() != ['|'.join(map(str, row)) for row in migration_records]:
         raise ValueError('Rehearsal Flyway history differs from the frozen loader source')
     identity = db.sql('SELECT system_identifier::text FROM pg_control_system();')

@@ -211,9 +211,9 @@ public class FulfillmentWorkbenchQueryService {
              FROM (SELECT * FROM v_fulfillment_workbench archive_scope WHERE NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
-             JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw_doc ON draw_doc.id=mapping.document_id
+             JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw_doc ON draw_doc.id=mapping.document_id
                AND draw_doc.doc_type='DRAW' AND NOT draw_doc.is_deleted AND draw_doc.status IN(0,1)
-             JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) draw_item ON draw_item.id=mapping.document_item_id
+             JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) draw_item ON draw_item.id=mapping.document_item_id
                AND draw_item.doc_id=draw_doc.id AND NOT draw_item.is_deleted
              LEFT JOIN warehouses actual_warehouse ON actual_warehouse.id=draw_doc.warehouse_id
              LEFT JOIN departments draw_dept ON draw_dept.id=draw_doc.department_id
@@ -246,7 +246,7 @@ public class FulfillmentWorkbenchQueryService {
                     material.search_goods_names, material.search_goods_codes
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
-             JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
+             JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id
              CROSS JOIN LATERAL (
                  SELECT COUNT(DISTINCT item."goodsId") AS goods_count, COUNT(*) AS line_count,
                         CASE WHEN COUNT(DISTINCT item."goodsId")=1 THEN MIN(item."goodsId"::text)::uuid END AS goods_id,
@@ -381,11 +381,24 @@ public class FulfillmentWorkbenchQueryService {
                 page, size, table, warehouseScope, false);
     }
 
+    @Transactional(readOnly=true)
+    public FulfillmentWorkbenchPage query(String department,String status,String keyword,String exception,
+            LocalDate dateFrom,LocalDate dateTo,int page,int size,FulfillmentWorkbenchTableQuery table,
+            WarehouseTaskScope warehouseScope,boolean includeMetadata) {
+        return queryRows(department,status,keyword,exception,dateFrom,dateTo,page,size,table,warehouseScope,false,includeMetadata);
+    }
+
     private FulfillmentWorkbenchPage queryRows(
             String department, String status, String keyword, String exception,
             LocalDate dateFrom, LocalDate dateTo, int page, int size,
             FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope,
             boolean exportAll) {
+        return queryRows(department,status,keyword,exception,dateFrom,dateTo,page,size,table,warehouseScope,exportAll,true);
+    }
+
+    private FulfillmentWorkbenchPage queryRows(String department,String status,String keyword,String exception,
+            LocalDate dateFrom,LocalDate dateTo,int page,int size,FulfillmentWorkbenchTableQuery table,
+            WarehouseTaskScope warehouseScope,boolean exportAll,boolean includeMetadata) {
         if(table!=null)table=table.forOperationsProjection();
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
@@ -394,7 +407,9 @@ public class FulfillmentWorkbenchQueryService {
         int safeSize = exportAll ? size : Math.min(Math.max(size, 1), 100);
         if ("WAREHOUSE".equals(department)
                 && !accessPolicy.canAccessWarehouseTasks()) {
-            return emptyPage(safePage, safeSize);
+            var empty=emptyPage(safePage,safeSize);
+            return includeMetadata?empty:new FulfillmentWorkbenchPage(empty.items(),empty.page(),empty.size(),0,0,
+                    null,empty.capabilities(),null,null,false);
         }
         String normalizedStatus = status == null ? "" : status.strip();
         String normalizedKeyword = KeywordSearch.phrase(keyword);
@@ -404,7 +419,17 @@ public class FulfillmentWorkbenchQueryService {
         String sourceView = "WAREHOUSE".equals(department)
                 ? WAREHOUSE_DOCUMENT_ROWS
                 : "PURCHASE".equals(department) ? PURCHASE_ITEM_ROWS : SUBCONTRACT_ITEM_ROWS;
-        sourceView = enrichTableRows(sourceView, department);
+        boolean deferDifference = !exportAll && (table == null || !table.requiresDifference());
+        boolean deferProductionProduct = !exportAll && "WAREHOUSE".equals(department) && normalizedKeyword.isEmpty();
+        sourceView = enrichTableRows(sourceView, department, !deferDifference, !deferProductionProduct);
+        Map<String,String> pageValues = new LinkedHashMap<>();
+        if (deferDifference) pageValues.put("difference_qty",differenceSql(department,"page_rows"));
+        if (deferProductionProduct) {
+            pageValues.put("production_product_code","production_product.product_code");
+            pageValues.put("production_product_name","production_product.product_name");
+            pageValues.put("material_request_no","production_product.request_no");
+        }
+        String pageJoins = deferProductionProduct ? productionProductJoin("page_rows") : "";
         String statusFilter = """
                 (:status = '' OR (:status = 'OPEN_ANY' AND open_line_count > 0)
                  OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
@@ -440,8 +465,11 @@ public class FulfillmentWorkbenchQueryService {
                 + ", department, action_doc_type, action_doc_id, action_item_id";
 
         if (!exportAll) {
-            Query pageQuery = em.createNativeQuery(FulfillmentWorkbenchPageRead.sql(sourceView, baseFilter,
-                    statusFilter, exceptionFilter, dateFilter, orderBy, department, table));
+            String pageSql=includeMetadata?FulfillmentWorkbenchPageRead.sql(sourceView,baseFilter,
+                    statusFilter,exceptionFilter,dateFilter,orderBy,department,table,pageValues,pageJoins)
+                    :FulfillmentWorkbenchPageRead.rowsOnlySql(sourceView,baseFilter,statusFilter,exceptionFilter,
+                            dateFilter,orderBy,table,pageValues,pageJoins);
+            Query pageQuery = em.createNativeQuery(pageSql);
             bind(pageQuery, department, normalizedStatus, normalizedKeyword, normalizedException, dateFrom, dateTo);
             bindScope.accept(pageQuery);
             if (table != null) table.bind(pageQuery);
@@ -455,6 +483,10 @@ public class FulfillmentWorkbenchQueryService {
             Object[] metadata = result.getFirst();
             int offset = FulfillmentWorkbenchPageRead.METADATA_OFFSET;
             long total = ((Number) metadata[offset]).longValue();
+            if (!includeMetadata) return new FulfillmentWorkbenchPage(pageItems,safePage,safeSize,total,
+                    (int)Math.ceil(total/(double)safeSize),null,
+                    new FulfillmentWorkbenchPage.Capabilities("PURCHASE".equals(department)&&accessPolicy.canCreatePurchaseOrder(),
+                            "SUBCONTRACT".equals(department)&&accessPolicy.canCreateSubcontractOrder()),null,null,false);
             Map<String, Long> statusCounts = FulfillmentWorkbenchPageRead.counts(metadata[offset + 4]);
             if (usesDecompositionProjection(department)) {
                 statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
@@ -719,7 +751,7 @@ public class FulfillmentWorkbenchQueryService {
         if (canOrder) {
             String missingBom = subcontract ? """
                     AND NOT EXISTS (
-                        SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) gap_item
+                        SELECT 1 FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) gap_item
                         WHERE gap_item.id = decomposition.action_item_id AND NOT gap_item.is_deleted
                           AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id)))
                     """ : "";
@@ -863,6 +895,11 @@ public class FulfillmentWorkbenchQueryService {
      * 异常小类, 仓库取来源生产产品与领料申请号。状态列的表头筛选/排序都走 display_stage。
      */
     private String enrichTableRows(String source, String department) {
+        return enrichTableRows(source,department,true,true);
+    }
+
+    private String enrichTableRows(String source, String department, boolean includeDifference,
+                                   boolean includeProductionProduct) {
         boolean subcontract = "SUBCONTRACT".equals(department);
         boolean purchase = "PURCHASE".equals(department);
         boolean canCreate = subcontract ? accessPolicy.canCreateSubcontractOrder()
@@ -912,18 +949,18 @@ public class FulfillmentWorkbenchQueryService {
                                      AND waiting_case.status = 'WAITING_MORE'
                                      AND waiting_case.severity <> 'WITHIN_TOLERANCE'
                                      AND waiting_case.expected_complete_by >= CURRENT_DATE) AS waiting_more,
-                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) received_item
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) received_item
                                    WHERE received_item.order_id = base.action_doc_id AND received_item.id = base.action_item_id
                                      AND NOT received_item.is_deleted
                                      AND COALESCE(received_item.received_qty, 0) > 0) AS any_received,
-                           NOT EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) pending_item
+                           NOT EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) pending_item
                                        WHERE pending_item.order_id = base.action_doc_id AND pending_item.id = base.action_item_id
                                          AND NOT pending_item.is_deleted
                                          AND COALESCE(pending_item.received_qty, 0)
                                              - COALESCE(pending_item.returned_qty, 0)
                                              + %s
                                              < COALESCE(pending_item.qty, 0)) AS all_received,
-                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) draw_item
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) draw_item
                                    CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary
                                    WHERE base.task_status = 'FINANCE_APPROVED'
                                      AND draw_item.order_id = base.action_doc_id AND draw_item.id = base.action_item_id
@@ -944,20 +981,20 @@ public class FulfillmentWorkbenchQueryService {
                                                  WHERE draw_plan.order_id = base.action_doc_id
                                                    AND draw_plan.status = 'OPEN'
                                                    AND NOT draw_plan.is_deleted)) AS any_drawable,
-                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) draft_item
-                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) draft_doc
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) draft_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) draft_doc
                                      ON draft_doc.id = draft_item.issue_id
                                     AND draft_doc.status = 0 AND NOT draft_doc.is_deleted
-                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) draft_order_item
+                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) draft_order_item
                                      ON draft_order_item.id = draft_item.order_item_id
                                    WHERE draft_order_item.order_id = base.action_doc_id AND draft_order_item.id = base.action_item_id
                                      AND draft_item.plan_item_id IS NOT NULL
                                      AND NOT draft_item.is_deleted) AS any_draw_submitted,
-                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) issued_item
-                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issued_doc
+                           EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) issued_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issued_doc
                                      ON issued_doc.id = issued_item.issue_id
                                     AND issued_doc.status = 1 AND NOT issued_doc.is_deleted
-                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) issued_order_item
+                                   JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) issued_order_item
                                      ON issued_order_item.id = issued_item.order_item_id
                                    WHERE issued_order_item.order_id = base.action_doc_id AND issued_order_item.id = base.action_item_id
                                      AND NOT issued_item.is_deleted) AS any_issued
@@ -1026,32 +1063,8 @@ public class FulfillmentWorkbenchQueryService {
                 CASE WHEN base.action_doc_type='PURCHASE_ORDER' AND base.task_status='FINANCE_REJECTED'
                           THEN 'FINANCE_REJECTED'
                      ELSE base.exception_code END""" : "base.exception_code";
-        String productionProductJoin = "WAREHOUSE".equals(department) ? """
-                LEFT JOIN LATERAL (
-                    SELECT STRING_AGG(DISTINCT goods.code,'、' ORDER BY goods.code) AS product_code,
-                           STRING_AGG(DISTINCT goods.name,'、' ORDER BY goods.name) AS product_name,
-                           STRING_AGG(DISTINCT source.request_no,'、' ORDER BY source.request_no) AS request_no,
-                           STRING_AGG(DISTINCT segment.segment_code,'、' ORDER BY segment.segment_code) AS segment_codes
-                    FROM (
-                        SELECT discovery.execution_segment_id AS id,discovery.request_no
-                        FROM production_material_discovery_requests discovery
-                        WHERE base.action_doc_type='MATERIAL_DISCOVERY' AND discovery.id=base.action_doc_id
-                        UNION
-                        SELECT mapping.execution_segment_id,discovery.request_no
-                        FROM production_planning_package_documents mapping
-                        LEFT JOIN production_material_discovery_requests discovery
-                          ON discovery.execution_segment_id=mapping.execution_segment_id AND discovery.status='CONFIGURED'
-                         AND EXISTS(SELECT 1 FROM production_material_discovery_lines discovered
-                           JOIN production_planning_package_document_items item_mapping ON item_mapping.demand_id=discovered.demand_id
-                            AND item_mapping.document_type='DRAW' AND item_mapping.document_id=mapping.document_id
-                           WHERE discovered.request_id=discovery.id)
-                        WHERE base.action_doc_type='DRAW' AND mapping.document_type='DRAW'
-                          AND mapping.document_id=base.action_doc_id
-                    ) source
-                    JOIN production_execution_segments segment ON segment.id=source.id
-                    JOIN goods ON goods.id=segment.product_goods_id
-                ) production_product ON TRUE
-                """ : "";
+        String productionProductJoin = includeProductionProduct && "WAREHOUSE".equals(department)
+                ? productionProductJoin("base") : "";
         // ADR-156：待分解委外申请逐明细「这次能下单」= MIN(剩余未下单, 现有物料够做的套数)(库里唯一一处计算
         // fn_subcontract_application_kit_qty)。一条都不能下 = WAITING_KIT 锁住(照样留在「待处理」计红数, 只是
         // 不能勾选、不能生成订货单); 能下一部分 = KIT_PARTIAL。
@@ -1064,7 +1077,7 @@ public class FulfillmentWorkbenchQueryService {
                            STRING_AGG(DISTINCT open_task.task_no, '、' ORDER BY open_task.task_no) AS rd_task_no,
                            ARRAY_AGG(DISTINCT gap_item.id::text ORDER BY gap_item.id::text) AS item_ids
                     FROM unnest(base.action_item_ids) gap_ref(item_id)
-                    JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) gap_item
+                    JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) gap_item
                       ON gap_item.id = gap_ref.item_id::uuid AND gap_item.is_deleted = FALSE
                     LEFT JOIN rd_tasks open_task
                       ON open_task.goods_id = gap_item.goods_id AND open_task.category = 'BOM'
@@ -1101,16 +1114,7 @@ public class FulfillmentWorkbenchQueryService {
                 )
                 """.formatted(source) : "";
         if (subcontract) source = "kit_base";
-        String difference = (purchase || subcontract)
-                ? "CASE WHEN base.action_doc_type='" + (subcontract ? "SUBCONTRACT" : "PURCHASE")
-                    + "_ORDER' THEN (SELECT "
-                    + com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("difference_item.qty", "difference_item.received_qty", "difference_item.returned_qty")
-                    + " FROM " + (subcontract ? "subcontract" : "purchase")
-                    + "_order_items difference_item WHERE difference_item.id=base.action_item_id)"
-                    + " WHEN base.action_doc_type='" + requestType + "' THEN "
-                    + com.uten.imp.common.finance.ProcurementDeliveryDifference.balanceSql("base.required_qty", "base.fulfilled_qty")
-                    + " END"
-                : "NULL::numeric";
+        String difference = includeDifference ? differenceSql(department,"base") : "NULL::numeric";
         // An order item can have several source issues. Its earliest issue remains
         // the displayed date; later application creation never substitutes for it.
         return """
@@ -1142,15 +1146,57 @@ public class FulfillmentWorkbenchQueryService {
                         subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
                                 + " AND COALESCE(kit.orderable_lines, 0) > 0" : "",
                         visibleDoc, stageExpression,
-                        "WAREHOUSE".equals(department) ? "production_product.product_code" : "NULL::text",
-                        "WAREHOUSE".equals(department) ? "production_product.product_name" : "NULL::text",
-                        "WAREHOUSE".equals(department) ? "production_product.request_no" : "NULL::text",
-                        "WAREHOUSE".equals(department) ? "production_product.segment_codes" : "NULL::text",
+                        includeProductionProduct && "WAREHOUSE".equals(department) ? "production_product.product_code" : "NULL::text",
+                        includeProductionProduct && "WAREHOUSE".equals(department) ? "production_product.product_name" : "NULL::text",
+                        includeProductionProduct && "WAREHOUSE".equals(department) ? "production_product.request_no" : "NULL::text",
+                        includeProductionProduct && "WAREHOUSE".equals(department) ? "production_product.segment_codes" : "NULL::text",
                         subcontract ? "bom_gap.rd_task_no" : "NULL::text",
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
                         subcontract ? "kit.orderable_qty" : "NULL::numeric",
                         visibleDoc, difference,
                         source, issueJoin, progressJoin, bomGapJoin, productionProductJoin, closureJoin);
+    }
+
+    private static String differenceSql(String department,String alias) {
+        boolean subcontract="SUBCONTRACT".equals(department), purchase="PURCHASE".equals(department);
+        if (!purchase && !subcontract) return "NULL::numeric";
+        String prefix=subcontract?"subcontract":"purchase";
+        String requestType=subcontract?"SUBCONTRACT_APPLICATION":"PURCHASE_REQUEST";
+        return "CASE WHEN " + alias + ".action_doc_type='" + department + "_ORDER' THEN (SELECT "
+                + com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("difference_item.qty","difference_item.received_qty","difference_item.returned_qty")
+                + " FROM " + prefix + "_order_items difference_item WHERE difference_item.id=" + alias + ".action_item_id)"
+                + " WHEN " + alias + ".action_doc_type='" + requestType + "' THEN "
+                + com.uten.imp.common.finance.ProcurementDeliveryDifference.balanceSql(alias+".required_qty",alias+".fulfilled_qty")
+                + " END";
+    }
+
+    private static String productionProductJoin(String alias) {
+        return """
+                LEFT JOIN LATERAL (
+                    SELECT STRING_AGG(DISTINCT goods.code,'、' ORDER BY goods.code) AS product_code,
+                           STRING_AGG(DISTINCT goods.name,'、' ORDER BY goods.name) AS product_name,
+                           STRING_AGG(DISTINCT source.request_no,'、' ORDER BY source.request_no) AS request_no,
+                           STRING_AGG(DISTINCT segment.segment_code,'、' ORDER BY segment.segment_code) AS segment_codes
+                    FROM (
+                        SELECT discovery.execution_segment_id AS id,discovery.request_no
+                        FROM production_material_discovery_requests discovery
+                        WHERE base.action_doc_type='MATERIAL_DISCOVERY' AND discovery.id=base.action_doc_id
+                        UNION
+                        SELECT mapping.execution_segment_id,discovery.request_no
+                        FROM production_planning_package_documents mapping
+                        LEFT JOIN production_material_discovery_requests discovery
+                          ON discovery.execution_segment_id=mapping.execution_segment_id AND discovery.status='CONFIGURED'
+                         AND EXISTS(SELECT 1 FROM production_material_discovery_lines discovered
+                           JOIN production_planning_package_document_items item_mapping ON item_mapping.demand_id=discovered.demand_id
+                            AND item_mapping.document_type='DRAW' AND item_mapping.document_id=mapping.document_id
+                           WHERE discovered.request_id=discovery.id)
+                        WHERE base.action_doc_type='DRAW' AND mapping.document_type='DRAW'
+                          AND mapping.document_id=base.action_doc_id
+                    ) source
+                    JOIN production_execution_segments segment ON segment.id=source.id
+                    JOIN goods ON goods.id=segment.product_goods_id
+                ) production_product ON TRUE
+                """.replace("base.",alias+".");
     }
 
     private static FulfillmentWorkbenchPage emptyPage(int page, int size) {
@@ -1260,7 +1306,7 @@ public class FulfillmentWorkbenchQueryService {
         Query query = em.createNativeQuery("""
                 WITH visible_items AS (
                     SELECT item.id, item.application_id
-                    FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
+                    FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) item
                     WHERE item.application_id IN (:applicationIds) AND NOT item.is_deleted
                 ), source_rows AS (
                     SELECT item.application_id, origin.id AS origin_id, origin.source_type,
@@ -1278,7 +1324,7 @@ public class FulfillmentWorkbenchQueryService {
                      AND origin.analysis_id = material.analysis_id
                     JOIN goods product ON product.id = origin.goods_id
                     JOIN goods material_goods ON material_goods.id = action.goods_id
-                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sale ON sale.id = origin.sales_order_item_id
+                    LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sale ON sale.id = origin.sales_order_item_id
                     LEFT JOIN units unit ON unit.id = action.unit_id
                     UNION ALL
                     SELECT item.application_id, NULL::uuid, 'PUBLIC_STOCK', '', NULL::integer, '', '',

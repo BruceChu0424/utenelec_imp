@@ -1,0 +1,1793 @@
+package com.uten.imp.features.production.execution;
+
+import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
+import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
+import com.uten.imp.application.port.WorkshopMaterialStatePort;
+import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.NativeFacets;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
+/** Query service for the planning-root and exact workshop-task projections. */
+@Service
+@RequiredArgsConstructor
+public class ProductionExecutionWorkbenchService {
+
+    /** ADR-131 认料与换料权限；段级动作只在服务端按它算。 */
+    private static final String WORKSHOP_MATERIAL_CHOOSE = "workshop_material:choose";
+    /** 段级动作：这张工单改用别的料(生产中)。 */
+    static final String ACTION_CHANGE_MATERIAL = "CHANGE_MATERIAL";
+    /** 段级动作：在开工确认表里认料。 */
+    static final String ACTION_CHOOSE = "CHOOSE";
+    private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
+    /** The ongoing queue never inherits a historical-list originScope request. */
+    private static final String CURRENT_ROOT_PREDICATE = """
+            (CASE root.root_type
+              WHEN 'PLAN' THEN NOT fn_imported_business_document('production_plans', root.root_id)
+              WHEN 'ANALYSIS' THEN NOT fn_imported_business_document('production_material_analyses', root.root_id)
+              ELSE FALSE END)
+            """;
+
+    private final EntityManager em;
+    private final ProductionDocumentAccessPolicy productionAccess;
+    private final PurchaseDocumentAccessPolicy purchaseAccess;
+    private final SubcontractDocumentReadAccessPort subcontractAccess;
+    private final SecurityContextCurrentUser currentUser;
+    private final ProductionMaterialUsageReadPort materialUsage;
+    private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
+    /** 详情里「仓库已到多少」与齐套提升同口径(ADR-095)；只读端口，单任务粒度调用。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort materialAvailability;
+    /**
+     * 「计划还没下单」的缺料(ADR-117)：与物料分析主表「还缺数量」同一口径，只在「我的车间任务」
+     * 列表与任务详情里算(执行工作台的工单列表不算，省一次完整分析视图)。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.WorkshopPlanningGapReadPort planningGaps;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.security.ProductionWorkshopReadScopePolicy workshopReads;
+
+    private boolean allWorkshopReads() {
+        var actor=currentUser.get().orElse(null);
+        if(actor!=null && actor.isSuperAdmin())return true; // Existing administrative browse contract.
+        if(!com.uten.imp.security.ProductionWorkshopReadScopePolicy.hasAllReadGrant(actor))return false;
+        if(workshopReads==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"车间读取范围不可用");
+        return workshopReads.snapshot(actor).all();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchGroup> list(
+            int requestedPage,
+            int requestedSize,
+            String keyword,
+            UUID workshopDepartmentId,
+            boolean mine,
+            String sort,
+            String order,
+            String salesOrder) {
+        int size = boundedSize(requestedSize);
+        int page = Math.max(requestedPage, 1);
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners");
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean canSearchClient =
+                productionAccess.hasAuthority("sales_order:view");
+        String filters = rootFilters(
+                keyword, workshopDepartmentId, mine, employeeId,
+                canSearchClient, salesOrder);
+        String from = " FROM v_production_execution_workbench_roots root WHERE ("
+                + scope.predicate() + ") AND " + CURRENT_ROOT_PREDICATE + filters;
+        Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
+        scope.bind(count);
+        bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId,
+                salesOrder);
+        long total = ((Number) count.getSingleResult()).longValue();
+        int totalPages = pages(total, size);
+        if (totalPages > 0 && page > totalPages) page = totalPages;
+
+        String rootOrder = " ORDER BY " + (KeywordSearch.terms(keyword).isEmpty() ? "" : rootKeywordRank() + ", ")
+                + rootOrderBy(sort, order)
+                + ", root.root_id ASC";
+        Query data = em.createNativeQuery(rootProductCompletionSelect(
+                "SELECT root.*" + from + rootOrder + "\n" + """
+                LIMIT :limit OFFSET :offset
+                """) + rootOrder);
+        scope.bind(data);
+        bindRootFilters(data, keyword, workshopDepartmentId, mine, employeeId,
+                salesOrder);
+        data.setParameter("limit", size);
+        data.setParameter("offset", (long) (page - 1) * size);
+        List<ProductionExecutionWorkbenchGroup> items =
+                NativeQueryResults.objectArrayRows(data).stream()
+                        .map(ProductionExecutionWorkbenchService::groupRow)
+                        .toList();
+        return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /**
+     * 「进行中」根列表单号列 facets（2026-09-25 单号列统一）：{orders:[…]}。
+     * 与 {@link #list} 同一视图、同一可见范围与过滤基座（不含单号列自身的值筛选，
+     * 桶按 preview 全量分组计数）；桶值 = 关联订单 preview（前 3 单聚合，
+     * 与列展示同源），按 preview 升序，空串剔除——没有订单的根不进下拉。
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> rootFacets(
+            String keyword, UUID workshopDepartmentId, boolean mine) {
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners");
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean canSearchClient =
+                productionAccess.hasAuthority("sales_order:view");
+        String filters = rootFilters(
+                keyword, workshopDepartmentId, mine, employeeId,
+                canSearchClient, null);
+        var query = NativeFacets.query(em, "orders",
+                "SELECT COALESCE(root.sales_order_preview, ''), COUNT(*)"
+                + " FROM v_production_execution_workbench_roots root WHERE ("
+                + scope.predicate() + ") AND " + CURRENT_ROOT_PREDICATE + filters
+                + " GROUP BY 1 HAVING COALESCE(root.sales_order_preview, '') <> ''"
+                + " ORDER BY 1");
+        scope.bind(query);
+        bindRootFilters(query, keyword, workshopDepartmentId, mine, employeeId,
+                null);
+        return java.util.Map.of("orders", NativeFacets.rowsOf(query));
+    }
+
+    /**
+     * 「进行中」批次数(ADR-100 黄色进行中徽章)：与 {@link #list} 同一视图、同一可见范围、
+     * 同一 WHERE——列表默认不带任何筛选，所以这个数就等于列表行数，卡面与页内对得上。
+     * 此前客户端取 {@code ?size=1} 的分页 total 凑数，准则 §四之七 已禁这种取数法：
+     * 那条请求要付一遍 ORDER BY 与整行投影的钱，只为读一个 total。
+     */
+    @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
+    public long inProgressRootCount() {
+        if (!productionAccess.hasAuthority("production_execution:overview")
+                || !(productionAccess.hasAuthority("production_material_analysis:create")
+                    || productionAccess.hasAuthority("production_plan:edit")
+                    || productionAccess.hasAuthority("production_plan:approve"))) return 0L;
+        var owners = productionAccess.scope();
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners",
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
+        Query count = em.createNativeQuery(
+                "SELECT COUNT(*) FROM v_production_execution_workbench_roots root"
+                        + " WHERE root.owner_employee_id IS NOT NULL AND (" + scope.predicate() + ") AND "
+                        + CURRENT_ROOT_PREDICATE);
+        scope.bind(count);
+        return ((Number) count.getSingleResult()).longValue();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductionExecutionWorkbenchGroup group(
+            String rawRootType, UUID rootId) {
+        String rootType = rootType(rawRootType);
+        NativeReadScope scope = productionAccess.nativeReadScope(
+                "root.owner_employee_id", "rootOwners");
+        Query query = em.createNativeQuery(rootProductCompletionSelect("SELECT root.* " + """
+                FROM v_production_execution_workbench_roots root
+                WHERE root.root_type = :rootType
+                  AND root.root_id = :rootId
+                  AND (%s)
+                """.formatted(scope.predicate())));
+        query.setParameter("rootType", rootType);
+        query.setParameter("rootId", rootId);
+        scope.bind(query);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "生产任务批次不存在");
+        }
+        return groupRow(rows.getFirst());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workOrders(
+            String rawRootType,
+            UUID rootId,
+            int requestedPage,
+            int requestedSize) {
+        String rootType = rootType(rawRootType);
+        group(rootType, rootId);
+        return segmentPage(
+                "task.root_type = :rootType AND task.root_id = :rootId",
+                query -> {
+                    query.setParameter("rootType", rootType);
+                    query.setParameter("rootId", rootId);
+                },
+                requestedPage,
+                requestedSize);
+    }
+
+    /**
+     * Bounded actual-production query. Unlike the root workbench's broad "in progress" category,
+     * these rows have explicitly started and are exactly IN_PROGRESS. Both views retain their
+     * existing owner/assignment predicate and the same quantity projection used by the UI.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> inProgressTasks(
+            String productKeyword, boolean planningScope, int limit) {
+        return inProgressTasks(productKeyword, planningScope, null, Math.max(1, Math.min(20, limit)));
+    }
+
+    @Transactional(readOnly = true)
+    public ProductionExecutionWorkbenchSegment inProgressTask(UUID segmentId, boolean planningScope) {
+        if (segmentId == null) throw new ApiException(ErrorCode.NOT_FOUND, "在产工单不存在或不在当前范围内");
+        return inProgressTasks(null, planningScope, segmentId, 1).getItems().stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "在产工单不存在或不在当前范围内"));
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> inProgressTasks(
+            String productKeyword, boolean planningScope, UUID segmentId, int limit) {
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll(planningScope
+                ? "production_execution:overview" : "production_execution:view");
+        if (productKeyword != null && (productKeyword.length() > 80
+                || productKeyword.codePoints().anyMatch(Character::isISOControl)))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "货品名称或编码不能超过 80 个字");
+        String keyword = productKeyword == null || productKeyword.isBlank() ? null : productKeyword.strip().toLowerCase(Locale.ROOT);
+        NativeReadScope rootScope = planningScope
+                ? productionAccess.nativeReadScope("root.owner_employee_id", "inProgressOwners") : null;
+        boolean seeAllWorkshops = allWorkshopReads();
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        if (!planningScope && !seeAllWorkshops && employeeId == null)
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        String predicate = "task.segment_status = 'IN_PROGRESS' AND " + (planningScope
+                ? "EXISTS (SELECT 1 FROM v_production_execution_workbench_roots root"
+                    + " WHERE root.root_type = task.root_type AND root.root_id = task.root_id AND ("
+                    + rootScope.predicate() + "))"
+                : seeAllWorkshops ? "TRUE" : assignmentPredicate("task"));
+        if (keyword != null) predicate += " AND (strpos(lower(COALESCE(task.product_code,'')), :productKeyword) > 0"
+                + " OR strpos(lower(COALESCE(task.product_name,'')), :productKeyword) > 0)";
+        if (segmentId != null) predicate += " AND task.segment_id = :inProgressSegmentId";
+        return segmentPage(predicate, query -> {
+            if (rootScope != null) rootScope.bind(query);
+            else if (!seeAllWorkshops) query.setParameter("employeeId", employeeId);
+            if (keyword != null) query.setParameter("productKeyword", keyword);
+            if (segmentId != null) query.setParameter("inProgressSegmentId", segmentId);
+        }, 1, limit, "ORDER BY task.plan_begin_date ASC NULLS LAST, task.segment_code ASC, task.segment_id ASC",null,false,!planningScope);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage,
+            int requestedSize,
+            String keyword,
+            String rawStatus,
+            UUID workshopDepartmentId,
+            LocalDate dateFrom,
+            LocalDate dateTo) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
+                workshopDepartmentId, dateFrom, dateTo, null);
+    }
+
+    /**
+     * 「下一步」表头筛选(ADR-095)由完整重载接收 routeFilter：UNCONFIRMED(待选路线) / FULL_KIT /
+     * CONTINUOUS / BATCH；当前兼容入口不指定路线，其余筛选仍在分页前于服务端生效。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo, String preparationFilter) {
+        return workshopTasks(requestedPage, requestedSize, keyword, rawStatus,
+                workshopDepartmentId, dateFrom, dateTo, preparationFilter, null,
+                null, null, null, null);
+    }
+
+    /**
+     * 2026-09-25 单号列统一：来源计划/工单号/关联订单可排序(sort 白名单 sourcePlan/order/segment)
+     * 与表头值筛选（analysisNo/segmentCode 精确匹配，分页前服务端生效）。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
+            int requestedPage, int requestedSize, String keyword, String rawStatus,
+            UUID workshopDepartmentId, LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter,
+            String analysisNo, String segmentCode, String sort, String order) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = allWorkshopReads();
+        if (employeeId == null && !seeAll) {
+            int size = boundedSize(requestedSize);
+            return new PageResponse<>(List.of(), 1, size, 0, 0);
+        }
+        String status = normalizeTaskStatus(rawStatus);
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId, keyword, preparationFilter, routeFilter, analysisNo, segmentCode);
+        boolean history = "COMPLETED".equals(status);
+        // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
+        // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
+        String orderBy = workshopTaskOrderBy(status, sort, order);
+        if (!KeywordSearch.terms(keyword).isEmpty()) {
+            orderBy = orderBy.replace("ORDER BY ", "ORDER BY "
+                    + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"task.product_name"},
+                            new String[]{}, new String[]{"task.product_code", "task.segment_code", "task.plan_no"}) + ", ");
+        }
+        // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
+        String operatorRouteMemory = history ? null : operatorRouteMemory();
+        UUID scopedEmployeeId = seeAll ? null : employeeId;
+        return segmentPage(
+                predicate,
+                query -> bindWorkshopTaskFilters(query, scopedEmployeeId,
+                        keyword, workshopDepartmentId, dateFrom, dateTo, history,
+                        routeFilter, analysisNo, segmentCode),
+                requestedPage,
+                requestedSize,
+                orderBy,
+                operatorRouteMemory,
+                !history,true);
+    }
+
+    /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
+    private String workshopTaskPredicate(String status, UUID workshopDepartmentId, String keyword, String preparationFilter, String routeFilter, String analysisNo, String segmentCode) {
+        boolean seeAll = allWorkshopReads();
+        boolean history = "COMPLETED".equals(status);
+        String statuses = history
+                ? "('COMPLETED','CANCELLED','REVERSED')"
+                : "('WAITING','READY','DISPATCHED','IN_PROGRESS')";
+        String predicate = (seeAll ? "1=1" : assignmentPredicate("task"))
+                + " AND task.segment_status IN " + statuses;
+        if (history) {
+            predicate += " AND (CAST(:dateFrom AS date) IS NULL"
+                    + " OR task.plan_end_date >= CAST(:dateFrom AS date))"
+                    + " AND (CAST(:dateTo AS date) IS NULL"
+                    + " OR task.plan_end_date <= CAST(:dateTo AS date))";
+        }
+        if (workshopDepartmentId != null) {
+            predicate += " AND task.workshop_department_id = :workshopId";
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            predicate += " AND " + TaskKeywordSearch.conditionParameter("keyword",
+                    "task.plan_no", "task.segment_code", "task.sales_order_nos", "task.product_code",
+                    "task.product_name", "task.product_color_name", "task.workshop_name");
+        }
+        if (status != null) {
+            predicate += switch (status) {
+                // 2026-09-06 车间任务页改版：「等待物料」= 全部未开工段
+                //（WAITING 等料 + READY/DISPATCHED 物料齐套·可开工）；
+                //「可报工」兼容状态参数 2026-09-10 退役（无客户端调用方，且与分段计数口径矛盾）
+                //（无客户端调用方；它与分段计数第三列口径本就互相矛盾）。
+                case "PREPARING" ->
+                    " AND task.segment_status <> 'IN_PROGRESS'";
+                case "READY_TO_START" ->
+                    " AND task.segment_status IN ('READY', 'DISPATCHED')"
+                    + " AND NOT fn_material_discovery_pending(task.segment_id)"
+                    + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)"
+                    + " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
+                // 2026-10-10「报工送检」分类：IN_PROGRESS 按 remaining_qty 拆两段——
+                // 还有可报量的才是「生产中」，已报完(remaining<=0)未完工的等检验/点收/
+                // 结清，归「报工送检」；品质 FAIL 恢复授权会抬高 remaining_qty，任务自动
+                // 回「生产中」。两段互斥且并集=原 IN_PROGRESS。
+                case "IN_PROGRESS" ->
+                    " AND task.segment_status = 'IN_PROGRESS'"
+                    + " AND COALESCE(task.remaining_qty, 0) > 0";
+                case "REPORT_INSPECTION" ->
+                    " AND task.segment_status = 'IN_PROGRESS'"
+                    + " AND COALESCE(task.remaining_qty, 0) <= 0";
+                default -> "";
+            };
+        }
+        predicate += preparationPredicate(preparationFilter);
+        String normalizedRoute = normalizeRouteFilter(routeFilter);
+        if (normalizedRoute != null) {
+            predicate += "UNCONFIRMED".equals(normalizedRoute)
+                    ? " AND EXISTS (SELECT 1 FROM production_execution_segments route_filter"
+                        + " WHERE route_filter.id = task.segment_id AND route_filter.start_route IS NULL)"
+                    : " AND EXISTS (SELECT 1 FROM production_execution_segments route_filter"
+                        + " WHERE route_filter.id = task.segment_id AND route_filter.start_route = :routeFilter)";
+        }
+        // 2026-09-25 单号列值筛选：来源计划=根分析的 WL 编号（历史计划根不命中），工单号精确匹配。
+        if (analysisNo != null && !analysisNo.isBlank()) {
+            predicate += " AND COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                    + ", '') = :analysisNo";
+        }
+        if (segmentCode != null && !segmentCode.isBlank()) {
+            predicate += " AND COALESCE(task.segment_code, '') = :segmentCode";
+        }
+        return predicate;
+    }
+
+    /** workshopTasks/workshopTaskFacets 谓词参数绑定（未出现的条件不绑，Hibernate 校验未知参数）。 */
+    private void bindWorkshopTaskFilters(jakarta.persistence.Query query,
+            UUID scopedEmployeeId, String keyword, UUID workshopDepartmentId,
+            LocalDate dateFrom, LocalDate dateTo, boolean history,
+            String routeFilter, String analysisNo, String segmentCode) {
+        if (scopedEmployeeId != null) {
+            query.setParameter("employeeId", scopedEmployeeId);
+        }
+        if (workshopDepartmentId != null) {
+            query.setParameter("workshopId", workshopDepartmentId);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            query.setParameter("keyword", KeywordSearch.phrase(keyword));
+        }
+        if (history) {
+            query.setParameter("dateFrom", dateFrom);
+            query.setParameter("dateTo", dateTo);
+        }
+        String normalizedRoute = normalizeRouteFilter(routeFilter);
+        if (normalizedRoute != null && !"UNCONFIRMED".equals(normalizedRoute)) {
+            query.setParameter("routeFilter", normalizedRoute);
+        }
+        if (analysisNo != null && !analysisNo.isBlank()) {
+            query.setParameter("analysisNo", analysisNo.trim());
+        }
+        if (segmentCode != null && !segmentCode.isBlank()) {
+            query.setParameter("segmentCode", segmentCode.trim());
+        }
+    }
+
+    /** 排序：单号列白名单(sourcePlan/order/segment)；默认保持原「等待物料按可开工程度」档位。 */
+    private String workshopTaskOrderBy(String status, String sort, String order) {
+        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
+        return switch (sort == null ? "" : sort.strip()) {
+            case "sourcePlan" -> "ORDER BY COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                    + ", '') " + dir + " NULLS LAST, task.segment_code";
+            case "order" -> "ORDER BY task.sales_order_nos " + dir
+                    + " NULLS LAST, task.segment_code";
+            case "segment" -> "ORDER BY task.segment_code " + dir
+                    + ", task.segment_id";
+            default -> "PREPARING".equals(status)
+                    ? SEGMENT_ORDER_READINESS
+                    : SEGMENT_ORDER_DEFAULT;
+        };
+    }
+
+    /**
+     * 我的车间任务单号列 facets（2026-09-25 单号列统一）：{sourcePlan:[…], segment:[…]}。
+     * 与列表同一份谓词（不含单号自身的值筛选），分页前口径；空值不设「其他」桶——
+     * 来源计划为空=历史计划根，工单号恒非空。
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> workshopTaskFacets(
+            String keyword, String rawStatus, UUID workshopDepartmentId,
+            LocalDate dateFrom, LocalDate dateTo,
+            String preparationFilter, String routeFilter) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = allWorkshopReads();
+        if (employeeId == null && !seeAll) {
+            return java.util.Map.of();
+        }
+        String status = normalizeTaskStatus(rawStatus);
+        String predicate = workshopTaskPredicate(status, workshopDepartmentId, keyword, preparationFilter, routeFilter, null, null);
+        boolean history = "COMPLETED".equals(status);
+        String from = " FROM v_production_execution_workbench_segments task WHERE "
+                + predicate;
+        var sourcePlanQuery = NativeFacets.query(em, "sourcePlan", """
+                SELECT COALESCE(%s, ''), COUNT(*)
+                """.formatted(ROOT_ANALYSIS_NO_SQL) + from
+                + " GROUP BY 1 HAVING COALESCE(" + ROOT_ANALYSIS_NO_SQL
+                + ", '') <> '' ORDER BY 1");
+        var segmentQuery = NativeFacets.query(em, "segment",
+                "SELECT COALESCE(task.segment_code, ''), COUNT(*)" + from
+                + " GROUP BY 1 ORDER BY 1");
+        UUID scopedEmployeeId = seeAll ? null : employeeId;
+        for (var query : List.of(sourcePlanQuery, segmentQuery)) {
+            bindWorkshopTaskFilters(query, scopedEmployeeId, keyword,
+                    workshopDepartmentId, dateFrom, dateTo, history,
+                    routeFilter, null, null);
+        }
+        java.util.Map<String, List<java.util.Map<String, Object>>> result = new java.util.LinkedHashMap<>();
+        result.put("sourcePlan", NativeFacets.rowsOf(sourcePlanQuery));
+        result.put("segment", NativeFacets.rowsOf(segmentQuery));
+        return result;
+    }
+
+    /**
+     * 当前操作者最近一次确认的路线(ADR-096「记住上次的选择」)：取其最近一条 ROUTE_CONFIRMED
+     * 事件所在工单的当前路线；没有登录身份或从未确认过时为 null。V629 部分索引点查。
+     */
+    private String operatorRouteMemory() {
+        UUID userId = currentUser.get().map(AuthUser::getId).orElse(null);
+        if (userId == null) return null;
+        // Single-column native query: Hibernate hands back the scalar itself, not Object[].
+        List<String> rows = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT segment.start_route
+                FROM production_execution_segment_events event
+                JOIN production_execution_segments segment ON segment.id = event.execution_segment_id
+                WHERE event.action = 'ROUTE_CONFIRMED' AND event.created_by = :userId
+                  AND segment.start_route IS NOT NULL
+                  AND segment.is_deleted = FALSE
+                  AND segment.status NOT IN ('CANCELLED', 'REVERSED')
+                ORDER BY event.created_at DESC
+                LIMIT 1
+                """).setParameter("userId", userId), String.class);
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    /**
+     * 车间任务的逐种物料事实(ADR-095)：需求量 / 已预留 / 已申请待仓库发 / 可申请 / 线边仓待
+     * 自动投入 / 已实领 / 缺口 / 同车间直送已交接与待分配，以及与汇总同口径的状态桶。
+     * 可见范围与任务列表同源(本人车间归属或超管)，不授予任何写能力。
+     */
+    @Transactional(readOnly = true)
+    public List<ProductionWorkshopTaskMaterial> workshopTaskMaterials(UUID segmentId) {
+        requireVisibleWorkshopTask(segmentId);
+        // producing_segments「谁在给这条需求做料」只认 V736 唯一直送关系
+        // fn_workshop_direct_relationship_allows(同车间、真实父子、自制路线)，不再另写车间与路线条件。
+        Query query = em.createNativeQuery("""
+                SELECT facts.demand_id, goods.code, goods.name, color.name, unit.name,
+                       facts.supply_route, facts.direct_supply, facts.required_qty, facts.reserved_qty,
+                       facts.requested_unissued_qty, facts.requestable_qty, facts.line_side_pending_qty,
+                       facts.issued_qty, facts.shortage_qty, facts.direct_received_qty,
+                       facts.direct_available_qty, facts.state,
+                       (SELECT string_agg(producing.segment_code || '|' || producing.status, '、'
+                                          ORDER BY producing.segment_code)
+                        FROM production_execution_segments producing
+                        WHERE producing.product_goods_id = facts.goods_id
+                          AND producing.product_color_id IS NOT DISTINCT FROM facts.color_id
+                          AND NOT producing.is_deleted
+                          AND producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS','COMPLETED')
+                          AND fn_workshop_direct_relationship_allows(producing.id, facts.demand_id)
+                       ) AS producing_segments
+                FROM fn_execution_segment_material_facts(:segmentId) facts
+                JOIN goods ON goods.id = facts.goods_id
+                LEFT JOIN colors color ON color.id = facts.color_id
+                LEFT JOIN units unit ON unit.id = facts.unit_id
+                ORDER BY CASE facts.state WHEN 'SHORT_MAKE' THEN 0 WHEN 'SHORT' THEN 1 WHEN 'DRAWABLE' THEN 2
+                              WHEN 'AWAITING_WAREHOUSE' THEN 3 WHEN 'LINE_SIDE_PENDING' THEN 4
+                              WHEN 'PREPARING' THEN 5 ELSE 6 END,
+                         goods.name, goods.code, facts.demand_id
+                """);
+        query.setParameter("segmentId", segmentId);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
+        java.util.Map<UUID, BigDecimal> warehouseAvailable = warehouseAvailableByDemand(segmentId,
+                rows.stream().map(row -> uuid(row[0])).toList());
+        // 一种物料的计划缺口按需求逐条摊到各行(ADR-117)，物料表每行显示自己还差多少没下单。
+        java.util.Map<UUID, BigDecimal> gapQtyByDemand = new java.util.HashMap<>();
+        java.util.Map<UUID, com.uten.imp.application.port.WorkshopPlanningGapReadPort.Gap> gapByDemand =
+                new java.util.HashMap<>();
+        if (planningGaps != null && rows.stream().anyMatch(row -> isShortState(text(row[16])))) {
+            for (var gap : planningGaps.planningGaps(List.of(segmentId)).of(segmentId)) {
+                gap.demandGapQty().forEach((demandId, qty) -> {
+                    gapQtyByDemand.put(demandId, qty);
+                    gapByDemand.put(demandId, gap);
+                });
+            }
+        }
+        return rows.stream()
+                .map(row -> {
+                    var gap = gapByDemand.get(uuid(row[0]));
+                    return new ProductionWorkshopTaskMaterial(
+                        uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), text(row[4]),
+                        text(row[5]), bool(row[6]), decimal(row[7]), decimal(row[8]), decimal(row[9]),
+                        decimal(row[10]), decimal(row[11]), decimal(row[12]), decimal(row[13]),
+                        decimal(row[14]), decimal(row[15]),
+                        warehouseAvailable.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
+                        text(row[16]), text(row[17]),
+                        gapQtyByDemand.getOrDefault(uuid(row[0]), BigDecimal.ZERO),
+                        gap == null || gap.routeConfirmed());
+                })
+                .toList();
+    }
+
+    private static boolean isShortState(String state) {
+        return "SHORT".equals(state) || "SHORT_MAKE".equals(state);
+    }
+
+    /**
+     * 车间任务的可见范围(与「我的车间任务」列表同源：本人车间归属或超管)。看不到的按不存在
+     * 处理，不泄露任务是否存在。催计划等本页的写动作也先过这一道。
+     */
+    @Transactional(readOnly = true)
+    public void requireVisibleWorkshopTask(UUID segmentId) {
+        requireWorkshopTask(segmentId,allWorkshopReads());
+    }
+
+    /** Commands retain the original assignment universe even for read-all observers. */
+    @Transactional(readOnly = true)
+    public void requireAssignedWorkshopTask(UUID segmentId) {
+        requireWorkshopTask(segmentId,currentUser.get().map(AuthUser::isSuperAdmin).orElse(false));
+    }
+
+    private void requireWorkshopTask(UUID segmentId,boolean seeAll) {
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        if (segmentId == null || (employeeId == null && !seeAll)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
+        Query visible = em.createNativeQuery("SELECT COUNT(*) FROM v_production_execution_workbench_segments task"
+                + " WHERE task.segment_id = :segmentId AND (" + (seeAll ? "TRUE" : assignmentPredicate("task")) + ")");
+        visible.setParameter("segmentId", segmentId);
+        if (!seeAll) visible.setParameter("employeeId", employeeId);
+        if (((Number) visible.getSingleResult()).longValue() == 0) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
+        }
+    }
+
+    /**
+     * 「仓库已到多少」= 本任务专属来源权益 + 允许动用的公共库存(同主仓、扣安全库存)，与齐套
+     * 提升的 {@code batchAvailability} 同一口径；公共份额在同货品颜色的多条需求间不重复计入。
+     * 无可用端口(单元测试桩)或任务缺少确认计划包时返回空表，不猜数。
+     */
+    private java.util.Map<UUID, BigDecimal> warehouseAvailableByDemand(UUID segmentId, List<UUID> demandIds) {
+        if (materialAvailability == null || demandIds.isEmpty()) return java.util.Map.of();
+        List<Object[]> context = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT package.warehouse_id, plan.material_analysis_id, plan.material_analysis_item_id
+                FROM production_execution_segments segment
+                JOIN production_planning_packages package ON package.id = segment.package_id
+                  AND package.status = 'CONFIRMED' AND NOT package.is_deleted
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id = segment.plan_id
+                WHERE segment.id = :segmentId AND NOT segment.is_deleted
+                """).setParameter("segmentId", segmentId));
+        if (context.isEmpty() || context.getFirst()[0] == null) return java.util.Map.of();
+        Object[] first = context.getFirst();
+        var availability = materialAvailability.batchAvailability(uuid(first[0]), demandIds, uuid(first[1]), uuid(first[2]));
+        java.util.Map<UUID, BigDecimal> qualified = new java.util.HashMap<>();
+        java.util.Map<UUID, BigDecimal> publicQty = new java.util.HashMap<>();
+        java.util.Map<UUID, BigDecimal> safety = new java.util.HashMap<>();
+        for (var row : availability) {
+            qualified.merge(row.demandId(), row.qualifiedQty().max(BigDecimal.ZERO), BigDecimal::add);
+            publicQty.merge(row.demandId(), row.publicQty().max(BigDecimal.ZERO), BigDecimal::add);
+            safety.merge(row.demandId(), row.safetyQty(), BigDecimal::max);
+        }
+        java.util.Map<UUID, BigDecimal> result = new java.util.HashMap<>();
+        for (UUID demandId : demandIds) {
+            BigDecimal budget = com.uten.imp.common.inventory.MainWarehouseStockBudget.publicBudget(
+                    publicQty.getOrDefault(demandId, BigDecimal.ZERO), safety.getOrDefault(demandId, BigDecimal.ZERO));
+            result.put(demandId, qualified.getOrDefault(demandId, BigDecimal.ZERO).add(budget.max(BigDecimal.ZERO)));
+        }
+        return result;
+    }
+
+    private static String normalizeRouteFilter(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        if (!Set.of("UNCONFIRMED", "FULL_KIT", "CONTINUOUS", "BATCH").contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产路线筛选值不正确");
+        }
+        return normalized;
+    }
+
+    @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
+    public long workshopTaskCount() {
+        return workshopTaskCountBreakdown().total();
+    }
+
+    /** 顶部分类徽章与总数同源同范围：一次查询同时给出各状态计数。 */
+    @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
+    public WorkshopTaskCountBreakdown workshopTaskCountBreakdown() {
+        boolean canRead = productionAccess.hasAuthority("production_execution:view");
+        boolean preparing = canRead && productionAccess.hasAuthority("production_execution:start");
+        boolean reporting = canRead && productionAccess.hasAuthority("production_daily_report:view")
+                && (productionAccess.hasAuthority("production_daily_report:create")
+                    || productionAccess.hasAuthority("production_daily_report:edit")
+                    || productionAccess.hasAuthority("production_daily_report:approve"));
+        boolean ongoing = preparing || reporting;
+        if (!ongoing || !workshopMembership.isActiveOperator()) {
+            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
+        }
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        if (employeeId == null && !seeAll) {
+            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
+        }
+        String predicate = seeAll ? "TRUE" : assignmentPredicate("task");
+        // 2026-10-10「报工送检」桶：IN_PROGRESS 且 remaining_qty<=0(与列表谓词同一口径)；
+        // 「生产中」改为 remaining_qty>0——preparing + inProgress + reportInspection 互斥
+        // 恒等式保持 total 不变，hub 卡黄数(两黄事实数相加)与拆分前一致。
+        Query query = em.createNativeQuery("""
+                        SELECT COUNT(*),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status <> 'IN_PROGRESS' AND :countPreparing),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status = 'IN_PROGRESS'
+                                   AND COALESCE(task.remaining_qty, 0) > 0),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status = 'IN_PROGRESS'
+                                   AND COALESCE(task.remaining_qty, 0) <= 0)
+                        FROM v_production_execution_workbench_segments task
+                        WHERE task.segment_status IN (
+                            'WAITING','READY','DISPATCHED','IN_PROGRESS')
+                          AND (%s)
+                        """.formatted(predicate));
+        if (!seeAll) {
+            query.setParameter("employeeId", employeeId);
+        }
+        query.setParameter("countPreparing", preparing);
+        Object[] row = NativeQueryResults.objectArrayRows(query).getFirst();
+        long preparingCount = ((Number) row[1]).longValue();
+        long inProgressCount = ((Number) row[2]).longValue();
+        long reportInspectionCount = ((Number) row[3]).longValue();
+        return new WorkshopTaskCountBreakdown(
+                preparingCount + inProgressCount + reportInspectionCount,
+                preparingCount, inProgressCount, reportInspectionCount);
+    }
+
+    /** 车间任务分段计数（与列表筛选口径一一对应：等待物料 + 生产中 + 报工送检 = 总数）。 */
+    public record WorkshopTaskCountBreakdown(
+            long total, long preparing, long inProgress, long reportInspection) {
+    }
+
+    /** 段列表默认排序：计划完工日期 → 计划号 → 段序 → UUID 稳定收尾。 */
+    private static final String SEGMENT_ORDER_DEFAULT = """
+            ORDER BY task.plan_end_date ASC NULLS LAST,
+                     task.plan_no ASC,
+                     task.segment_no ASC,
+                     task.segment_id ASC
+            """;
+
+    /** ANALYSIS 根的分析编号（WL，V719）；历史计划根为 NULL。排序/值筛选/facets 共用。 */
+    private static final String ROOT_ANALYSIS_NO_SQL =
+            "(SELECT root_analysis.analysis_no FROM production_material_analyses root_analysis"
+                    + " WHERE task.root_type = 'ANALYSIS' AND root_analysis.id = task.root_id)";
+
+    /**
+     * 我的车间任务「等待物料」排序（2026-09-15 用户口径：可开工的放最前，越接近
+     * 可开工越靠前）。档位与状态筛选四桶一一对应（preparationPredicate 同款谓词）：
+     * 0 = 可开工（零料/已发料且 READY/DISPATCHED）；1 = 已提交领料·待仓库发料；
+     * 2 = 待认料或待开启整批领料 (ADR-131)；3 = 物料齐套·去领料；4 = 等料 (WAITING)。
+     * 同档位内再按既有键稳定排序。CASE 短路保证领料谓词里的 EXISTS 只对
+     * READY/DISPATCHED 行求值。
+     */
+    private static final String SEGMENT_ORDER_READINESS = """
+            ORDER BY CASE
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND %s THEN 2
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND NOT fn_material_discovery_pending(task.segment_id)
+                              AND (task.zero_material OR task.issued
+                                   OR fn_split_batch_empty_issued(task.segment_id)
+                                   OR fn_actual_supplement_material_ready(task.segment_id)) THEN 0
+                         WHEN task.segment_status IN ('READY','DISPATCHED')
+                              AND NOT task.zero_material AND NOT task.issued
+                              AND (%s) THEN 1
+                         WHEN task.segment_status IN ('READY','DISPATCHED') THEN 3
+                         ELSE 4
+                     END ASC,
+                     task.plan_end_date ASC NULLS LAST,
+                     task.plan_no ASC,
+                     task.segment_no ASC,
+                     task.segment_id ASC
+            """.formatted(unresolvedBinMaterialPredicate(), drawRequestedPredicate());
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize) {
+        return segmentPage(predicate, binder, requestedPage, requestedSize, SEGMENT_ORDER_DEFAULT);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy) {
+        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null, false,false);
+    }
+
+    /**
+     * @param planningFacts 顺带给出「计划还没下单」的缺料与在催状态(ADR-117)：只有「我的车间任务」
+     *                      的活动分类要，历史任务与执行工作台的工单列表不算
+     */
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory,
+            boolean planningFacts,boolean workshopReader) {
+        try(var readScope=com.uten.imp.common.util.InteractiveTaskReadScope.open(em)){
+            return readSegmentPage(predicate,binder,requestedPage,requestedSize,orderBy,
+                    operatorRouteMemory,planningFacts,workshopReader);
+        }
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> readSegmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory,
+            boolean planningFacts,boolean workshopReader) {
+        int size = boundedSize(requestedSize);
+        int page = Math.max(requestedPage, 1);
+        String from = " FROM v_production_execution_workbench_segments task WHERE "
+                + predicate;
+        Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
+        binder.accept(count);
+        long total = ((Number) count.getSingleResult()).longValue();
+        int totalPages = pages(total, size);
+        if (totalPages > 0 && page > totalPages) page = totalPages;
+        // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数查询不付这笔代价。
+        String dataFrom = " FROM v_production_execution_workbench_segments task"
+                + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
+                + " JOIN production_execution_segments rate_segment ON rate_segment.id=task.segment_id"
+                + " LEFT JOIN production_material_discovery_requests discovery ON discovery.execution_segment_id=task.segment_id AND discovery.status IN ('PENDING','CONFIGURED')"
+                + " LEFT JOIN production_overproduction_rate_requests rate_request ON rate_request.execution_segment_id=task.segment_id AND rate_request.status='PENDING'"
+                + " LEFT JOIN LATERAL (SELECT (fn_execution_overproduction_policy_applies(task.segment_id)"
+                + " OR EXISTS(SELECT 1 FROM v_production_fqc_recovery_balance recovery"
+                + " JOIN production_fqc_recovery_authorizations recovery_authority ON recovery_authority.id=recovery.authorization_id"
+                + " WHERE recovery.execution_segment_id=task.segment_id AND NOT recovery.cancelled AND recovery.available_qty>0"
+                + " AND (recovery_authority.disposition_code='REWORK' OR fn_fqc_replenishment_material_ready(recovery_authority.id)))) AS allowed) report_origin ON TRUE"
+                // ADR-131 车间内料仓用料状态：每行只算一次，状态列与「要不要过开工确认表」共用。
+                + " LEFT JOIN LATERAL (SELECT fn_segment_bin_material_state(task.segment_id) AS state) bin_material ON TRUE"
+                + " WHERE " + predicate;
+        UUID actionEmployee=currentUser.employeeId().orElse(null);
+        // Only newly broadened personal-task rows lose task eligibility. The
+        // ordinary plan-owner workbench keeps its original command contract.
+        boolean actionAll=!workshopReader || currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        String actionScope=actionAll?"TRUE":actionEmployee==null?"FALSE":assignmentPredicate("task")
+                .replace(":employeeId",":workshopActionEmployee");
+        Query data = em.createNativeQuery(segmentSelect() + ", ("+actionScope+") AS original_task_scope" + dataFrom + "\n" + orderBy
+                + "\n LIMIT :limit OFFSET :offset");
+        binder.accept(data);
+        if(!actionAll && actionEmployee!=null)data.setParameter("workshopActionEmployee",actionEmployee);
+        boolean activeOperator = workshopMembership.isActiveOperator();
+        boolean allowReport = activeOperator && reportAllowed(
+                productionAccess.hasAuthority("production_daily_report:view"),
+                productionAccess.hasAuthority("production_daily_report:create"),
+                productionAccess.hasAuthority("production_execution:view"));
+        data.setParameter("allowReport", allowReport);
+        data.setParameter("allowRequestDraw", activeOperator && productionAccess.hasAuthority("production_execution:start")
+                && productionAccess.hasAuthority("production_execution:view"));
+        data.setParameter("limit", size);
+        data.setParameter("offset", (long) (page - 1) * size);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
+        var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
+        java.util.Map<UUID, PlanningFacts> planning = planningFacts
+                ? planningFacts(rows, activeOperator && productionAccess.hasAuthority("production_execution:start")
+                        && productionAccess.hasAuthority("production_execution:view"))
+                : java.util.Map.of();
+        // ADR-131 段级动作(认料、换料)：服务端按权限码算好，页面只看 allowedActions。
+        boolean canChooseMaterial = activeOperator
+                && productionAccess.hasAuthority(WORKSHOP_MATERIAL_CHOOSE);
+        var requirements = new com.uten.imp.features.production.ProductionSalesRequirements(em)
+                .segments(rows.stream().map(row -> uuid(row[0])).toList());
+        List<ProductionExecutionWorkbenchSegment> items = rows.stream()
+                        .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
+                                operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE),
+                                canChooseMaterial && bool(row[80]), requirements.getOrDefault(uuid(row[0]), List.of())))
+                        .toList();
+        return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    /**
+     * 本页车间任务的「计划还没下单」缺料与在催状态(ADR-117)。只看还在进行、且列表已算出缺料的
+     * 任务；计划已经下够单的任务即使还有在催记录也不显示「已催」(核对任务稍后办结它)。
+     */
+    private java.util.Map<UUID, PlanningFacts> planningFacts(List<Object[]> rows, boolean canUrge) {
+        if (planningGaps == null) return java.util.Map.of();
+        // 只有「还缺料」的任务才可能在等计划：先按列表已算好的缺口种数过滤，省下完整分析视图。
+        List<UUID> shortTasks = rows.stream()
+                .filter(row -> ProductionPlanningUrgeService.ACTIVE_SEGMENT_STATUSES.contains(text(row[20]))
+                        && integer(row[56]) > 0)
+                .map(row -> uuid(row[0])).toList();
+        if (shortTasks.isEmpty()) return java.util.Map.of();
+        var gaps = planningGaps.planningGaps(shortTasks).gaps();
+        if (gaps.isEmpty()) return java.util.Map.of();
+        java.util.Map<UUID, Object[]> urges = new java.util.HashMap<>();
+        for (Object[] urge : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT execution_segment_id, urge_count, last_urged_at, last_urged_by_name
+                FROM production_planning_urges
+                WHERE execution_segment_id IN (:ids) AND status = 'OPEN'
+                """).setParameter("ids", List.copyOf(gaps.keySet())))) {
+            urges.put(uuid(urge[0]), urge);
+        }
+        java.util.Map<UUID, PlanningFacts> result = new java.util.HashMap<>();
+        var assigned=rows.stream().filter(row->bool(row[80])).map(row->uuid(row[0])).collect(java.util.stream.Collectors.toSet());
+        gaps.forEach((segmentId, segmentGaps) -> {
+            Object[] urge = urges.get(segmentId);
+            java.time.OffsetDateTime urgedAt = urge == null ? null
+                    : com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(urge[2]);
+            result.put(segmentId, new PlanningFacts(
+                    segmentGaps.size(),
+                    ProductionPlanningUrgeService.summary(segmentGaps),
+                    urge == null ? 0 : ((Number) urge[1]).intValue(),
+                    urgedAt,
+                    urge == null ? null : text(urge[3]),
+                    urgedAt == null ? null : urgedAt.plus(ProductionPlanningUrgeService.COOLDOWN),
+                    canUrge && assigned.contains(segmentId)));
+        });
+        return result;
+    }
+
+    /** 列表每行附带的「计划还没下单」事实(ADR-117)；没有缺口也没在催的任务用 {@link #NONE}。 */
+    private record PlanningFacts(int gapKindCount, String gapSummary, int urgeCount,
+                                 java.time.OffsetDateTime urgedAt, String urgedByName,
+                                 java.time.OffsetDateTime nextUrgeAt, boolean canUrge) {
+        static final PlanningFacts NONE = new PlanningFacts(0, null, 0, null, null, null, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchRelatedDocument> relatedDocuments(
+            String rawRootType,
+            UUID rootId,
+            int requestedPage,
+            int requestedSize) {
+        String rootType = rootType(rawRootType);
+        group(rootType, rootId);
+        int size = boundedSize(requestedSize);
+        int page = Math.max(requestedPage, 1);
+        List<String> branches = new ArrayList<>();
+        List<ScopeBinding> bindings = new ArrayList<>();
+
+        if ("ANALYSIS".equals(rootType)) {
+            if (purchaseAccess.hasAuthority("purchase_request:view")) {
+                NativeReadScope scope = purchaseAccess.nativeReadScope(
+                        "document.maker_id", "purchaseRequestOwners");
+                branches.add("""
+                        SELECT 'BUY' AS route, 'PURCHASE_REQUEST' AS document_type,
+                               document.id AS document_id,
+                               document.bill_no AS document_no,
+                               document.status::text AS status
+                        FROM preplan_supply_actions action
+                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) document
+                          ON document.id = action.external_document_id
+                         AND document.is_deleted = FALSE
+                        WHERE action.analysis_id = :rootId
+                          AND action.external_document_type = 'PURCHASE_REQUEST'
+                          AND %s
+                        """.formatted(scope.predicate()));
+                bindings.add(new ScopeBinding(scope));
+            }
+            if (purchaseAccess.hasAuthority("purchase_order:view")) {
+                NativeReadScope scope = purchaseAccess.nativeReadScope(
+                        "document.maker_id", "purchaseOrderOwners");
+                branches.add("""
+                        SELECT 'BUY', 'PURCHASE_ORDER', document.id,
+                               document.bill_no, document.status::text
+                        FROM preplan_supply_actions action
+                        JOIN preplan_supply_action_allocations allocation
+                          ON allocation.action_id = action.id
+                        JOIN purchase_order_item_sources source
+                          ON source.request_item_id = allocation.external_item_id
+                        JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) item
+                          ON item.id = source.order_item_id
+                         AND item.is_deleted = FALSE
+                        JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) document
+                          ON document.id = item.order_id
+                         AND document.is_deleted = FALSE
+                        WHERE action.analysis_id = :rootId
+                          AND action.route = 'BUY'
+                          AND %s
+                        """.formatted(scope.predicate()));
+                bindings.add(new ScopeBinding(scope));
+            }
+            if (subcontractAccess.hasAuthority("subcontract_application:view")) {
+                NativeReadScope scope = subcontractAccess.nativeReadScope(
+                        "document.maker_id", "subcontractApplicationOwners");
+                branches.add("""
+                        SELECT 'SUBCONTRACT', 'SUBCONTRACT_APPLICATION',
+                               document.id, document.bill_no, document.status::text
+                        FROM preplan_supply_actions action
+                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) document
+                          ON document.id = action.external_document_id
+                         AND document.is_deleted = FALSE
+                        WHERE action.analysis_id = :rootId
+                          AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                          AND %s
+                        """.formatted(scope.predicate()));
+                bindings.add(new ScopeBinding(scope));
+            }
+            if (subcontractAccess.hasAuthority("subcontract_order:view")) {
+                NativeReadScope scope = subcontractAccess.nativeReadScope(
+                        "document.maker_id", "subcontractOrderOwners");
+                branches.add("""
+                        SELECT 'SUBCONTRACT', 'SUBCONTRACT_ORDER', document.id,
+                               document.bill_no, document.status::text
+                        FROM preplan_supply_actions action
+                        JOIN preplan_supply_action_allocations allocation
+                          ON allocation.action_id = action.id
+                        JOIN subcontract_order_item_sources source
+                          ON source.application_item_id = allocation.external_item_id
+                        JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
+                          ON item.id = source.order_item_id
+                         AND item.is_deleted = FALSE
+                        JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) document
+                          ON document.id = item.order_id
+                         AND document.is_deleted = FALSE
+                        WHERE action.analysis_id = :rootId
+                          AND action.route = 'SUBCONTRACT'
+                          AND %s
+                        """.formatted(scope.predicate()));
+                bindings.add(new ScopeBinding(scope));
+            }
+        }
+        if (productionAccess.hasAuthority("production_plan:view")) {
+            NativeReadScope scope = productionAccess.nativeReadScope(
+                    "document.maker_id", "relatedPlanOwners");
+            // ANALYSIS 根：直接携带分析 id 的顶层计划之外，还要沿 subplan_links
+            // 血缘下钻——EXECUTION_V1 自动生成的自制子计划不回填
+            // material_analysis_id（该列语义=「直接由本分析创建」，1:1 锚点），
+            // 但它们仍是本批次的子计划单，必须出现在关联单据里。
+            String rootPredicate = "ANALYSIS".equals(rootType)
+                    ? """
+                      (document.material_analysis_id = :rootId
+                       OR document.id IN (
+                           WITH RECURSIVE analysis_root_plans(id) AS (
+                               SELECT root.id
+                               FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) root
+                               WHERE root.material_analysis_id = :rootId
+                                 AND root.is_deleted = FALSE
+                           ), analysis_plan_tree(id) AS (
+                               SELECT id FROM analysis_root_plans
+                               UNION ALL
+                               SELECT child.id
+                               FROM analysis_plan_tree parent_plan
+                               JOIN subplan_links link
+                                 ON link.plan_id = parent_plan.id
+                                AND link.is_deleted = FALSE
+                               JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) child
+                                 ON child.id = link.subplan_id
+                                AND child.is_deleted = FALSE
+                           )
+                           SELECT id FROM analysis_plan_tree))
+                      """
+                    : "task.root_type = 'PLAN' AND task.root_id = :rootId";
+            branches.add("""
+                    SELECT 'MAKE', 'PRODUCTION_PLAN', document.id,
+                           document.bill_no, document.status::text
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) document
+                    %s
+                    WHERE %s
+                      AND document.is_deleted = FALSE
+                      AND %s
+                    """.formatted(
+                    "ANALYSIS".equals(rootType)
+                            ? ""
+                            : "JOIN v_production_execution_workbench_segments task ON task.plan_id = document.id",
+                    rootPredicate,
+                    scope.predicate()));
+            bindings.add(new ScopeBinding(scope));
+        }
+        if (branches.isEmpty()) {
+            return new PageResponse<>(List.of(), 1, size, 0, 0);
+        }
+        String candidates = "SELECT DISTINCT * FROM ("
+                + String.join(" UNION ALL ", branches)
+                + ") candidate(route, document_type, document_id, document_no, status)";
+        Query count = em.createNativeQuery("SELECT COUNT(*) FROM ("
+                + candidates + ") visible_documents");
+        count.setParameter("rootId", rootId);
+        bindings.forEach(binding -> binding.scope().bind(count));
+        long total = ((Number) count.getSingleResult()).longValue();
+        int totalPages = pages(total, size);
+        if (totalPages > 0 && page > totalPages) page = totalPages;
+        Query data = em.createNativeQuery(candidates + "\n" + """
+                ORDER BY document_type, document_no, document_id
+                LIMIT :limit OFFSET :offset
+                """);
+        data.setParameter("rootId", rootId);
+        bindings.forEach(binding -> binding.scope().bind(data));
+        data.setParameter("limit", size);
+        data.setParameter("offset", (long) (page - 1) * size);
+        List<ProductionExecutionWorkbenchRelatedDocument> items =
+                NativeQueryResults.objectArrayRows(data).stream()
+                        .map(row -> new ProductionExecutionWorkbenchRelatedDocument(
+                                text(row[0]), text(row[1]), uuid(row[2]),
+                                text(row[3]), text(row[4]), true))
+                        .toList();
+        return new PageResponse<>(items, page, size, total, totalPages);
+    }
+
+    private static String rootSelect() {
+        return """
+                SELECT root.root_type, root.root_id, root.owner_employee_id,
+                       root.root_label, root.status,
+                       root.sales_order_preview, root.sales_order_count,
+                       root.sales_order_has_more,
+                       root.work_order_preview, root.work_order_count,
+                       root.work_order_has_more,
+                       root.workshop_preview, root.workshop_count,
+                       root.workshop_has_more,
+                       root.product_code_preview, root.product_name_preview,
+                       root.product_color_preview, root.product_count,
+                       root.product_has_more,
+                       root.quantity_summary, root.mixed_units,
+                       root.execution_unit_count, root.execution_unit_has_more,
+                       root.plan_count, root.segment_count,
+                       root.waiting_count, root.ready_count,
+                       root.dispatched_count, root.in_progress_count,
+                       root.completed_count, root.material_ready_count,
+                       root.warehouse_ready_count, root.issued_count,
+                       root.reportable_count, root.fqc_pending_count,
+                       root.finished_inbound_pending_count,
+                       root.earliest_begin_date, root.latest_end_date,
+                       root.owner_employee_name,
+                       to_char(root.analyzed_at, 'YYYY-MM-DD HH24:MI'),
+                       root.root_planned_qty, root.root_inbound_qty,
+                       root.root_progress_ratio,
+                       COALESCE(product_completion.completed_product_count, 0),
+                       COALESCE(product_completion.unfinished_product_count, 0),
+                       root.product_entries::text,
+                       root.product_colors_all
+                """;
+    }
+
+    /**
+     * Product identity is goods/color/unit, independent of planned quantities or segment count.
+     * 2026-11-04 用户口径（V1057 顶层产品）：两路事实源都只认顶层产品——段一路只取
+     * 锚定到根分析行的顶层计划段（PLAN 根全量，与 v_…_roots.root_progress_rollup 同
+     * 一先例）；分析行一路只取根分析行，锚点子件行（MAKE_COMPONENT）与挂父行的子层
+     * 行不再是「产品」，不进已完成/未完成统计。
+     */
+    private static String rootProductCompletionSelect(String selectedRoots) {
+        return """
+                WITH selected_roots AS MATERIALIZED (
+                %s
+                ), product_completion_facts AS (
+                    SELECT task.root_type, task.root_id,
+                           segment.product_goods_id, segment.product_color_id, segment.product_unit_id,
+                           task.segment_status = 'COMPLETED' AS completed
+                    FROM selected_roots root
+                    JOIN v_production_execution_workbench_segments task
+                      ON task.root_type = root.root_type AND task.root_id = root.root_id
+                    JOIN production_execution_segments segment ON segment.id = task.segment_id
+                    JOIN production_plans top_plan
+                      ON top_plan.id = task.plan_id AND top_plan.is_deleted = FALSE
+                    LEFT JOIN production_material_analysis_items top_item
+                      ON top_item.analysis_id = top_plan.material_analysis_id
+                     AND top_item.id = top_plan.material_analysis_item_id
+                     AND top_item.is_deleted = FALSE
+                     AND top_item.parent_analysis_material_id IS NULL
+                     AND top_item.source_type <> 'MAKE_COMPONENT'
+                    WHERE task.segment_status NOT IN ('CANCELLED', 'REVERSED')
+                      AND segment.product_goods_id IS NOT NULL
+                      AND (task.root_type = 'PLAN' OR top_item.id IS NOT NULL)
+                    UNION ALL
+                    SELECT root.root_type, root.root_id,
+                           source.goods_id, source.color_id, source.unit_id,
+                           source.remaining_fulfillment_qty <= 0 AS completed
+                    FROM selected_roots root
+                    JOIN v_production_analysis_workbench_item_progress source
+                      ON root.root_type = 'ANALYSIS' AND source.analysis_id = root.root_id
+                    JOIN production_material_analysis_items source_item
+                      ON source_item.id = source.analysis_item_id
+                     AND source_item.is_deleted = FALSE
+                     AND source_item.parent_analysis_material_id IS NULL
+                     AND source_item.source_type <> 'MAKE_COMPONENT'
+                ), product_completion_states AS (
+                    SELECT root_type, root_id,
+                           product_goods_id, product_color_id, product_unit_id,
+                           bool_and(completed) AS completed
+                    FROM product_completion_facts
+                    GROUP BY root_type, root_id,
+                             product_goods_id, product_color_id, product_unit_id
+                ), product_completion_counts AS (
+                    SELECT root_type, root_id,
+                           COUNT(*) FILTER (WHERE completed)::integer AS completed_product_count,
+                           COUNT(*) FILTER (WHERE NOT completed)::integer AS unfinished_product_count
+                    FROM product_completion_states
+                    GROUP BY root_type, root_id
+                )
+                """.formatted(selectedRoots) + rootSelect() + """
+                FROM selected_roots root
+                LEFT JOIN product_completion_counts product_completion
+                  ON product_completion.root_type = root.root_type AND product_completion.root_id = root.root_id
+                """;
+    }
+
+    static String segmentSelect() {
+        return """
+                SELECT task.segment_id, task.plan_id, task.plan_no,
+                       task.segment_code, task.sales_order_nos,
+                       task.workshop_department_id, task.workshop_name,
+                       task.responsible_employee_name,
+                       task.product_code, task.product_name,
+                       task.product_color_name, task.product_unit_name,
+                       task.planned_qty, task.reported_qty, task.remaining_qty,
+                       task.fqc_pending_qty, task.fqc_passed_qty,
+                       task.fqc_failed_qty,
+                       task.finished_inbound_pending_qty, task.inbound_qty,
+                       task.segment_status,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'KIT_READY' ELSE task.material_status END,
+                       CASE WHEN fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id) THEN 'PREPARED' ELSE task.preparation_status END,
+                       (task.material_status = 'KIT_READY' OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id)) AS material_ready,
+                       task.warehouse_ready, %s,
+                       FALSE,
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
+                         AND EXISTS (SELECT 1 FROM production_execution_segments start_segment
+                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) start_plan ON start_plan.id=start_segment.plan_id
+                           WHERE start_segment.id=task.segment_id
+                             AND start_segment.start_route IN ('FULL_KIT','CONTINUOUS')
+                             AND start_segment.workshop_department_id IS NOT NULL
+                             AND start_segment.responsible_employee_id IS NOT NULL
+                             AND start_plan.status=1 AND NOT start_plan.is_closed
+                             AND NOT start_plan.is_canceled AND NOT start_plan.is_stopped
+                             AND fn_execution_start_material_ready(task.segment_id))),
+                       (:allowReport AND task.reportable AND report_origin.allowed AND task.segment_status = 'IN_PROGRESS'),
+                       (:allowReport AND task.reportable AND report_origin.allowed AND fn_execution_overproduction_policy_applies(task.segment_id) AND task.segment_status = 'IN_PROGRESS'
+                        AND task.report_source_count = 1 AND task.remaining_qty > 0),
+                       CASE
+                           WHEN bin_material.state = 'NEED_CHOICE' THEN '请先在开工确认表里认料'
+                           WHEN bin_material.state = 'NEED_BIN' THEN '请先开启本车间整批领料'
+                           WHEN fn_material_discovery_pending(task.segment_id) THEN
+                             CASE WHEN discovery.id IS NULL THEN '请提交领料，由仓库填写实际材料'
+                               ELSE '等待仓库填写实际材料并办理发料' END
+                           WHEN NOT report_origin.allowed THEN '固定追加工单请从追加计划回原批次续报'
+                           WHEN :allowReport AND task.reportable
+                                AND task.segment_status = 'IN_PROGRESS' THEN NULL
+                           WHEN task.reportable AND NOT :allowReport
+                                AND task.segment_status = 'IN_PROGRESS'
+                             THEN '缺少生产报工权限'
+                           ELSE task.blocked_reason
+                       END,
+                       task.plan_begin_date, task.plan_end_date,
+                       task.lock_version,
+                       (task.zero_material AND NOT fn_material_discovery_pending(task.segment_id)),
+                       (:allowRequestDraw AND NOT fn_material_discovery_pending(task.segment_id) AND EXISTS (SELECT 1 FROM production_execution_segments current_segment
+                           WHERE current_segment.id = task.segment_id
+                             AND current_segment.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                             AND current_segment.start_route IN ('FULL_KIT','CONTINUOUS')
+                             AND current_segment.auto_promote_when_ready = TRUE
+                             AND current_segment.is_deleted = FALSE)),
+                       %s,
+                       (:allowRequestDraw AND %s),
+                       (:allowRequestDraw AND fn_can_split_execution_batch(task.segment_id)),
+                       (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
+                       EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
+                       EXISTS(SELECT 1 FROM fn_production_material_usage_source_segments(task.segment_id) source
+                              WHERE source.segment_id<>task.segment_id),
+                       COALESCE((SELECT continuous_supply FROM production_execution_segments WHERE id=task.segment_id), FALSE),
+                       (SELECT route_segment.start_route FROM production_execution_segments route_segment
+                           WHERE route_segment.id = task.segment_id),
+                       (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
+                         AND NOT EXISTS (SELECT 1 FROM production_execution_segments route_segment
+                              WHERE route_segment.id = task.segment_id
+                                AND route_segment.start_route IS NOT NULL)),
+                       (:allowRequestDraw AND task.segment_status IN ('WAITING','READY','DISPATCHED')
+                         AND fn_can_change_execution_route(task.segment_id)),
+                       EXISTS(SELECT 1 FROM production_execution_segments command_segment
+                         JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) command_plan ON command_plan.id=command_segment.plan_id
+                         JOIN production_planning_packages command_package ON command_package.id=command_segment.package_id
+                         WHERE command_segment.id=task.segment_id AND NOT command_segment.is_deleted
+                           AND command_plan.status=1 AND NOT command_plan.is_deleted
+                           AND NOT command_plan.is_closed AND NOT command_plan.is_canceled AND NOT command_plan.is_stopped
+                           AND command_package.status='CONFIRMED' AND NOT command_package.is_deleted),
+                       fn_execution_material_custody_valid(task.segment_id),
+                       (SELECT memory.start_route
+                          FROM production_execution_segments memory
+                         WHERE memory.product_goods_id = task.product_goods_id
+                           AND memory.id <> task.segment_id
+                           AND memory.is_deleted = FALSE
+                           AND memory.start_route IS NOT NULL
+                           AND memory.route_confirmed_at IS NOT NULL
+                           AND memory.status NOT IN ('CANCELLED', 'REVERSED')
+                         ORDER BY memory.route_confirmed_at DESC
+                         LIMIT 1),
+                       COALESCE(material.kind_count, 0), COALESCE(material.issued_count, 0),
+                       COALESCE(material.partial_issued_count, 0),
+                       COALESCE(material.awaiting_warehouse_count, 0), COALESCE(material.drawable_count, 0),
+                       COALESCE(material.line_side_pending_count, 0), COALESCE(material.preparing_count, 0),
+                       COALESCE(material.short_count, 0), COALESCE(material.short_make_count, 0),
+                       COALESCE(material.supported_output_qty, 0), COALESCE(material.prepared_output_qty, 0),
+                       task.actual_surplus_reported_qty, task.actual_surplus_inbound_qty,
+                       task.planned_inbound_qty,rate_segment.allowed_overproduction_rate,
+                       rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
+                       fn_execution_overproduction_policy_applies(rate_segment.id),
+                       (SELECT actual_output_supplement_request_id FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans WHERE id=task.plan_id),
+                       -- 2026-10-06：原任务行上「已批准未续报承接」的固定追加量——它占住了公共超产
+                       -- 额度，页面据此给出「回原批次续报」入口与待续报提示；无待续报为 0/null。
+                       fn_actual_supplement_pending_qty(rate_segment.id, NULL),
+                       (SELECT request.id FROM production_actual_output_supplement_requests request
+                          LEFT JOIN production_actual_output_supplement_proofs proof ON proof.command_id=request.id
+                          WHERE request.source_execution_segment_id=rate_segment.id AND request.status='APPROVED'
+                            AND proof.id IS NOT NULL
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
+                                JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) report ON report.id=claim.report_id
+                                WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
+                                  AND report.status IN(0,1)
+                                  AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id))
+                          ORDER BY request.created_at DESC LIMIT 1),
+                       fn_material_discovery_pending(task.segment_id),
+                       discovery.id, discovery.status,
+                       (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
+                         AND bin_material.state NOT IN ('NEED_CHOICE','NEED_BIN')
+                         AND rate_segment.start_route IN ('FULL_KIT','CONTINUOUS')
+                         AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED')),
+                       (SELECT root_analysis.analysis_no
+                          FROM production_material_analyses root_analysis
+                         WHERE task.root_type = 'ANALYSIS'
+                           AND root_analysis.id = task.root_id),
+                       bin_material.state,
+                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED')
+                         AND bin_material.state <> 'NEED_BIN'
+                         AND EXISTS (SELECT 1 FROM production_execution_segments confirm_segment
+                           JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) confirm_plan ON confirm_plan.id=confirm_segment.plan_id
+                           JOIN production_planning_packages confirm_package ON confirm_package.id=confirm_segment.package_id
+                           WHERE confirm_segment.id=task.segment_id
+                             AND confirm_segment.workshop_department_id IS NOT NULL
+                             AND confirm_segment.responsible_employee_id IS NOT NULL
+                             AND confirm_plan.status=1 AND NOT confirm_plan.is_deleted AND NOT confirm_plan.is_closed
+                             AND NOT confirm_plan.is_canceled AND NOT confirm_plan.is_stopped
+                             AND confirm_package.status='CONFIRMED' AND NOT confirm_package.is_deleted
+                             AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL))),
+                       COALESCE((SELECT SUM(disposition.qty) FROM production_over_limit_dispositions disposition
+                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) reported ON reported.id=disposition.report_id
+                         WHERE disposition.execution_segment_id=task.segment_id
+                           AND disposition.status IN('PENDING','HELD','RETURNED')
+                           AND reported.status=1 AND NOT reported.is_deleted),0),
+                       (SELECT disposition.id FROM production_over_limit_dispositions disposition
+                         JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) reported ON reported.id=disposition.report_id
+                         WHERE disposition.execution_segment_id=task.segment_id
+                           AND disposition.status IN('PENDING','HELD','RETURNED')
+                           AND reported.status=1 AND NOT reported.is_deleted
+                         ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"));
+    }
+
+    /**
+     * 本段尚未发完的领料行(V595)：与 `pending_warehouse.is_line_side` 组合判定「只剩线边仓直送料
+     * 没出库」——这种段不用去领料，开工时就地自动出库，车间任务页按「可开工」呈现。
+     */
+    private static String pendingDrawItemSql() {
+        return """
+                SELECT 1 FROM production_planning_package_documents pending_mapping
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) pending_document ON pending_document.id=pending_mapping.document_id
+                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) pending_item ON pending_item.doc_id=pending_document.id
+                      AND NOT pending_item.is_deleted
+                    JOIN warehouses pending_warehouse ON pending_warehouse.id=pending_document.warehouse_id
+                    WHERE pending_mapping.execution_segment_id=task.segment_id
+                      AND pending_mapping.document_type='DRAW'
+                      AND NOT pending_document.is_deleted AND pending_document.status IN (0,1)
+                      AND COALESCE(pending_item.issued_qty,0) < fn_production_draw_item_effective_qty(pending_item.id)""";
+    }
+
+    static String drawRequestedPredicate() {
+        return """
+                EXISTS (SELECT 1 FROM production_planning_package_documents draw_mapping
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw_document ON draw_document.id=draw_mapping.document_id
+                    WHERE draw_mapping.execution_segment_id=task.segment_id
+                      AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
+                      AND draw_document.status IN (0,1)
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM production_planning_package_documents draw_mapping
+                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw_document ON draw_document.id=draw_mapping.document_id
+                    WHERE draw_mapping.execution_segment_id=task.segment_id
+                      AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
+                      AND draw_document.status IN (0,1)
+                      AND NOT fn_production_draw_fully_requested(draw_document.id))
+                """;
+    }
+
+    /**
+     * 开工准备筛选：齐套可领、部分可领及仅缺本车间一种自产件，旧混合筛选保留兼容。
+     * ADR-131：待认料、待开启整批领料归「等待物料」桶，
+     * 不进去领料、待仓库发料、可开工三桶——认完料才知道要不要领、能不能开。
+     */
+    static String preparationPredicate(String rawFilter) {
+        if (rawFilter == null || rawFilter.isBlank()) return "";
+        String resolvedBinMaterial = " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
+        return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
+            case "DRAW_FULL_KIT" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count=0)";
+            case "DRAW_PARTIAL" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count>0)";
+            case "SAME_WORKSHOP_MAKE_ONLY" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count=1 AND preparation_material.short_make_count=1)"
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_facts(task.segment_id) short_material"
+                    + " WHERE short_material.shortage_qty>0 AND short_material.supply_route='MAKE'"
+                    + " AND (" + sameWorkshopSourceCapacitySql() + ")>=short_material.shortage_qty)";
+            case "WAITING_MATERIAL" -> " AND (task.segment_status='WAITING'"
+                    + " OR (task.segment_status IN ('READY','DISPATCHED') AND " + unresolvedBinMaterialPredicate() + "))";
+            case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND ((fn_material_discovery_pending(task.segment_id) AND NOT " + discoveryRequestedPredicate() + ")"
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")))"
+                    + resolvedBinMaterial;
+            case "DRAW_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND ((fn_material_discovery_pending(task.segment_id) AND " + discoveryRequestedPredicate() + ")"
+                    + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")))"
+                    + resolvedBinMaterial;
+            case "READY_TO_START" -> " AND task.segment_status IN ('READY','DISPATCHED')"
+                    + " AND NOT fn_material_discovery_pending(task.segment_id)"
+                    + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")"
+                    + resolvedBinMaterial;
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选值不正确");
+        };
+    }
+
+    /** Same ordinary warehouse slices as canRequestDraw; a filter never grants a new command capability. */
+    private static String requestablePreparationPredicate() {
+        return " AND task.segment_status IN ('READY','DISPATCHED')"
+                + " AND NOT fn_material_discovery_pending(task.segment_id)"
+                + " AND (" + ordinaryDrawRequestablePredicate("fn_segment_bin_material_state(task.segment_id)") + ")";
+    }
+
+    /** One SQL capability definition for the list button and material-preparation filters. */
+    private static String ordinaryDrawRequestablePredicate(String binStateExpression) {
+        return "task.segment_status IN ('READY','DISPATCHED','IN_PROGRESS')"
+                + " AND " + binStateExpression + " NOT IN ('NEED_CHOICE','NEED_BIN')"
+                + " AND NOT task.zero_material AND NOT (" + drawRequestedPredicate() + ")"
+                + " AND EXISTS (SELECT 1 FROM production_execution_segments route_segment"
+                + " WHERE route_segment.id=task.segment_id AND route_segment.start_route IN ('FULL_KIT','CONTINUOUS'))"
+                + " AND EXISTS (" + pendingDrawItemSql()
+                + " AND NOT pending_warehouse.is_line_side"
+                + " AND fn_production_draw_item_requested_qty(pending_item.id)<fn_production_draw_item_effective_qty(pending_item.id))";
+    }
+
+    /**
+     * Only live, approved, exactly related same-workshop production can explain the single missing kind.
+     * Use the existing source-share authority and base-unit conversion. Split segments of one source
+     * plan item share one entitlement, so their remaining output is grouped before capping that share.
+     * This is a read-side explanation, never a receipt, reservation or permission to start.
+     */
+    private static String sameWorkshopSourceCapacitySql() {
+        return """
+                SELECT COALESCE(SUM(source_capacity.qty),0) FROM (
+                    SELECT LEAST(SUM((GREATEST(COALESCE(producing_task.remaining_qty,0),0)
+                                      +GREATEST(COALESCE(producing_task.fqc_pending_qty,0),0)
+                                      +GREATEST(COALESCE(producing_task.finished_inbound_pending_qty,0),0))
+                                     *producing.product_unit_rate),
+                                 MAX(fn_workshop_direct_remaining_for_source(producing.id,short_material.demand_id))
+                                     +SUM(COALESCE(pending_direct.qty,0))) AS qty
+                    FROM production_execution_segments producing
+                    JOIN v_production_execution_workbench_segments producing_task ON producing_task.segment_id=producing.id
+                    JOIN production_plans producing_plan ON producing_plan.id=producing.plan_id
+                    JOIN production_planning_packages producing_package ON producing_package.id=producing.package_id
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(GREATEST(round(transfer_item.qty*COALESCE(report_item.unit_rate,1),4)
+                                           -COALESCE(received_lot.received_qty,0),0)) AS qty
+                        FROM production_workshop_direct_transfer_items transfer_item
+                        JOIN production_daily_report_items report_item ON report_item.id=transfer_item.source_report_item_id
+                        JOIN production_daily_reports report ON report.id=report_item.report_id
+                        LEFT JOIN v_workshop_direct_supply_lots received_lot ON received_lot.id=transfer_item.id
+                        WHERE report_item.execution_segment_id=producing.id AND NOT report_item.is_deleted
+                          AND report.status=1 AND NOT report.is_deleted
+                          AND transfer_item.to_demand_id=short_material.demand_id AND transfer_item.reversal_id IS NULL
+                    ) pending_direct ON TRUE
+                    WHERE NOT producing.is_deleted
+                      AND (producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                           OR (producing.status='COMPLETED'
+                               AND COALESCE(producing_task.fqc_pending_qty,0)+COALESCE(producing_task.finished_inbound_pending_qty,0)>0))
+                      AND producing.workshop_department_id=task.workshop_department_id
+                      AND producing.product_goods_id=short_material.goods_id
+                      AND producing.product_color_id IS NOT DISTINCT FROM short_material.color_id
+                      AND COALESCE(producing_task.remaining_qty,0)+COALESCE(producing_task.fqc_pending_qty,0)
+                          +COALESCE(producing_task.finished_inbound_pending_qty,0)>0
+                      AND producing.product_unit_rate>0
+                      AND producing_plan.status=1 AND NOT producing_plan.is_deleted
+                      AND NOT producing_plan.is_closed AND NOT producing_plan.is_canceled AND NOT producing_plan.is_stopped
+                      AND NOT fn_imported_business_document('production_plans',producing_plan.id)
+                      AND producing_package.status='CONFIRMED' AND NOT producing_package.is_deleted
+                      AND fn_workshop_direct_relationship_allows(producing.id,short_material.demand_id)
+                    GROUP BY producing.source_plan_item_id
+                ) source_capacity
+                """;
+    }
+
+    /** ADR-131：与领料命令入口、开工确认表同一个状态函数。 */
+    static String unresolvedBinMaterialPredicate() {
+        return com.uten.imp.features.production.fulfillment.ProductionOrderMaterialGate
+                .unresolvedSql("task.segment_id");
+    }
+
+    static String effectiveIssuedPredicate() {
+        return "(task.issued OR fn_split_batch_empty_issued(task.segment_id) OR fn_actual_supplement_material_ready(task.segment_id))";
+    }
+
+    private static String discoveryRequestedPredicate() {
+        return "EXISTS (SELECT 1 FROM production_material_discovery_requests discovery_filter"
+                + " WHERE discovery_filter.execution_segment_id=task.segment_id AND discovery_filter.status='PENDING')";
+    }
+
+    private static final String ROOT_SEARCH_TASK_FROM = """
+             FROM v_production_execution_workbench_segments search_task
+             WHERE search_task.root_type=root.root_type AND search_task.root_id=root.root_id
+            """;
+    private static final String ROOT_SEARCH_ANALYSIS_FROM = """
+             FROM production_material_analysis_items search_item
+             JOIN goods search_goods ON search_goods.id=search_item.goods_id
+             LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) search_order_item ON search_order_item.id=search_item.sales_order_item_id
+             LEFT JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) search_order ON search_order.id=search_order_item.order_id
+             WHERE root.root_type='ANALYSIS' AND search_item.analysis_id=root.root_id AND search_item.is_deleted=FALSE
+            """;
+
+    private static String rootKeywordRank() {
+        String[] names = {"ARRAY(SELECT search_task.product_name" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_goods.name" + ROOT_SEARCH_ANALYSIS_FROM + ")"};
+        return TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{}, names,
+                new String[]{"root.root_label"},
+                "ARRAY(SELECT search_task.product_code" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_task.segment_code" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_task.plan_no" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_goods.code" + ROOT_SEARCH_ANALYSIS_FROM + ")");
+    }
+
+    private static String rootFilters(
+            String keyword,
+            UUID workshopDepartmentId,
+            boolean mine,
+            UUID employeeId,
+            boolean canSearchClient,
+            String salesOrder) {
+        String filter = "";
+        if (keyword != null && !keyword.isBlank()) {
+            List<String> fields = new ArrayList<>(List.of("root.root_label",
+                    "(SELECT string_agg(concat_ws(' ', search_task.plan_no,search_task.segment_code,"
+                            + "search_task.sales_order_nos,search_task.product_code,search_task.product_name,"
+                            + "search_task.product_color_name,search_task.workshop_name),' ')" + ROOT_SEARCH_TASK_FROM + ")",
+                    "(SELECT string_agg(concat_ws(' ', search_item.source_ref,search_goods.code,"
+                            + "search_goods.name,search_order.bill_no),' ')" + ROOT_SEARCH_ANALYSIS_FROM + ")"));
+            if (canSearchClient) fields.add("""
+                    (SELECT string_agg(client.name,' ')
+                     FROM v_production_execution_workbench_segments search_task
+                     JOIN execution_segment_sales_allocations allocation ON allocation.execution_segment_id=search_task.segment_id
+                     JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_item ON sales_item.id=allocation.sales_order_item_id AND sales_item.is_deleted=FALSE
+                     JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_order ON sales_order.id=sales_item.order_id AND sales_order.is_deleted=FALSE
+                     JOIN clients client ON client.id=sales_order.client_id
+                     WHERE search_task.root_type=root.root_type AND search_task.root_id=root.root_id)
+                    """);
+            filter += " AND " + TaskKeywordSearch.conditionParameter("keyword", fields.toArray(String[]::new));
+        }
+        if (workshopDepartmentId != null) {
+            filter += "\n" + """
+                    AND EXISTS (
+                        SELECT 1
+                        FROM v_production_execution_workbench_segments task
+                        WHERE task.root_type = root.root_type
+                          AND task.root_id = root.root_id
+                          AND task.workshop_department_id = :workshopId)
+                    """;
+        }
+        if (mine) {
+            filter += employeeId == null
+                    ? " AND FALSE"
+                    : "\n" + """
+                    AND EXISTS (
+                        SELECT 1
+                        FROM v_production_execution_workbench_segments task
+                        WHERE task.root_type = root.root_type
+                          AND task.root_id = root.root_id
+                          AND %s)
+                    """.formatted(assignmentPredicate("task"));
+        }
+        // 2026-09-25 单号列统一：关联订单表头值筛选（精确匹配 preview，分页前生效）。
+        if (salesOrder != null && !salesOrder.isBlank()) {
+            filter += " AND COALESCE(root.sales_order_preview, '') = :salesOrder";
+        }
+        return filter;
+    }
+
+    private static void bindRootFilters(
+            Query query,
+            String keyword,
+            UUID workshopDepartmentId,
+            boolean mine,
+            UUID employeeId,
+            String salesOrder) {
+        if (keyword != null && !keyword.isBlank()) {
+            query.setParameter("keyword", KeywordSearch.phrase(keyword));
+        }
+        if (workshopDepartmentId != null) {
+            query.setParameter("workshopId", workshopDepartmentId);
+        }
+        if (mine && employeeId != null) {
+            query.setParameter("employeeId", employeeId);
+        }
+        if (salesOrder != null && !salesOrder.isBlank()) {
+            query.setParameter("salesOrder", salesOrder.trim());
+        }
+    }
+
+    /** Exact workshop subtree, including main and secondary departments. */
+    private static String assignmentPredicate(String alias) {
+        return com.uten.imp.security.ProductionWorkshopAssignmentScope.predicate(alias);
+    }
+
+    private static ProductionExecutionWorkbenchGroup groupRow(Object[] row) {
+        Double progressRatio = row[42] == null
+                ? null : ((BigDecimal) row[42]).doubleValue();
+        return new ProductionExecutionWorkbenchGroup(
+                text(row[0]), uuid(row[1]), text(row[3]), text(row[4]),
+                text(row[5]), integer(row[6]), bool(row[7]),
+                text(row[8]), integer(row[9]), bool(row[10]),
+                text(row[11]), integer(row[12]), bool(row[13]),
+                text(row[14]), text(row[15]), text(row[16]),
+                integer(row[17]), bool(row[18]), text(row[19]), bool(row[20]),
+                integer(row[21]), bool(row[22]), integer(row[23]),
+                integer(row[24]), integer(row[25]), integer(row[26]),
+                integer(row[27]), integer(row[28]), integer(row[29]),
+                integer(row[30]), integer(row[31]), integer(row[32]),
+                integer(row[33]), integer(row[34]), integer(row[35]),
+                false, date(row[36]), date(row[37]),
+                text(row[38]), text(row[39]),
+                decimal(row[40]), decimal(row[41]), progressRatio,
+                integer(row[43]), integer(row[44]),
+                productEntries(text(row[45])), colorList(text(row[46])));
+    }
+
+    /** 共享只读 Jackson：V969 全量产品 jsonb 解析（失败回空表，格内 preview 不受影响）。 */
+    private static final com.fasterxml.jackson.databind.ObjectMapper ENTRY_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<java.util.Map<String, String>> productEntries(String json) {
+        if (json == null || json.isBlank()) return java.util.List.of();
+        try {
+            return ENTRY_JSON.readValue(json, java.util.List.class);
+        } catch (java.io.IOException failure) {
+            return java.util.List.of();
+        }
+    }
+
+    private static java.util.List<String> colorList(String joined) {
+        if (joined == null || joined.isBlank()) return java.util.List.of();
+        return java.util.Arrays.stream(joined.split("、"))
+                .map(String::trim).filter(part -> !part.isEmpty()).toList();
+    }
+
+    private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,
+                                                                  String operatorRouteMemory, PlanningFacts planning,
+                                                                  boolean canChooseMaterial,
+                                                                  List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> requirements) {
+        // The same current plan/package facts gate every command capability. Compute once
+        // per projected task, so historical or paused rows do not advertise rejected actions.
+        boolean executable = bool(row[46]) && bool(row[80]);
+        boolean custodyValid = bool(row[47]);
+        // ADR-131 §5.4：待认料或路线未确认的行要先过开工确认表(车间没开启整批领料的不算)。
+        String binMaterialState = text(row[76]);
+        boolean needsStartConfirmation = executable && custodyValid && bool(row[77]);
+        List<String> allowedActions = segmentAllowedActions(
+                binMaterialState, text(row[20]), needsStartConfirmation, canChooseMaterial);
+        // 路线记忆(ADR-096)：本产品的历史优先；没有才退回操作者上次的选择。只作预填展示。
+        String productMemory = text(row[48]);
+        String suggestedRoute = productMemory != null ? productMemory : operatorRouteMemory;
+        String suggestedSource = productMemory != null ? "PRODUCT" : operatorRouteMemory != null ? "OPERATOR" : null;
+        return new ProductionExecutionWorkbenchSegment(
+                uuid(row[0]), uuid(row[1]), text(row[2]), text(row[3]),
+                text(row[4]), uuid(row[5]), text(row[6]), text(row[7]),
+                text(row[8]), text(row[9]), text(row[10]), text(row[11]),
+                decimal(row[12]), decimal(row[13]), decimal(row[14]),
+                decimal(row[15]), decimal(row[16]), decimal(row[17]),
+                decimal(row[18]), decimal(row[19]), text(row[20]),
+                text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
+                bool(row[25]), executable && bool(row[26]), executable && custodyValid && bool(row[27]), executable && custodyValid && bool(row[28]),
+                executable && custodyValid && bool(row[29]), !bool(row[80]) ? "当前仅可查看其它车间任务，办理仍须符合原责任范围" : custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
+                ((Number) row[33]).longValue(), bool(row[34]), executable && bool(row[35]),
+                usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), executable && bool(row[37]),
+                executable && bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),
+                usage.hasPendingReturn(), usage.hasAvailableMaterial(),
+                bool(row[42]),
+                text(row[43]), executable && bool(row[44]), executable && bool(row[45]),
+                suggestedRoute, suggestedSource,
+                integer(row[49]), integer(row[50]), integer(row[51]), integer(row[52]), integer(row[53]),
+                integer(row[54]), integer(row[55]), integer(row[56]), integer(row[57]),
+                decimal(row[58]), decimal(row[59]),
+                decimal(row[60]), decimal(row[61]), decimal(row[62]),decimal(row[63]),
+                ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]),
+                decimal(row[69]),uuid(row[70]),
+                planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
+                planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
+                bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
+                text(row[75]),
+                binMaterialState, needsStartConfirmation, allowedActions,
+                decimal(row[78]),uuid(row[79]), requirements);
+    }
+
+    /**
+     * 段级动作(ADR-131 评审 m7)：CHANGE_MATERIAL = 生产中且内料仓用料已知时可「这张工单改用别的料」；
+     * CHOOSE = 要过开工确认表时可在表里认料。都要当前员工持认料与换料权限。
+     */
+    static List<String> segmentAllowedActions(
+            String binMaterialState, String segmentStatus,
+            boolean needsStartConfirmation, boolean canChooseMaterial) {
+        if (!canChooseMaterial) return List.of();
+        List<String> actions = new ArrayList<>(2);
+        if (BIN_STATE_KNOWN.equals(binMaterialState) && "IN_PROGRESS".equals(segmentStatus)) {
+            actions.add(ACTION_CHANGE_MATERIAL);
+        }
+        if (needsStartConfirmation) {
+            actions.add(ACTION_CHOOSE);
+        }
+        return List.copyOf(actions);
+    }
+
+    private static int boundedSize(int requested) {
+        return Math.min(Math.max(requested, 1), 100);
+    }
+
+    private static int pages(long total, int size) {
+        return total == 0 ? 0 : (int) ((total + size - 1) / size);
+    }
+
+    static String rootOrderBy(String rawSort, String rawOrder) {
+        String direction = "desc".equalsIgnoreCase(rawOrder) ? "DESC" : "ASC";
+        String column = switch (rawSort == null ? "" : rawSort.strip()) {
+            case "status" -> """
+                    CASE root.status
+                        WHEN 'PARTIALLY_SCHEDULED' THEN 0
+                        WHEN 'KIT_SHORT' THEN 1
+                        WHEN 'PREPARING' THEN 2
+                        WHEN 'KIT_READY_PREPARING' THEN 3
+                        WHEN 'PREPARED' THEN 4
+                        WHEN 'IN_PROGRESS' THEN 5
+                        WHEN 'PLAN_PENDING' THEN 6
+                        WHEN 'ANALYZING' THEN 7
+                        ELSE 99
+                    END""";
+            case "rootLabel" -> "root.root_label";
+            // 2026-09-25 单号列统一：关联订单按 preview 排序（稳定键 root_id 由调用方追加）。
+            case "orders" -> "root.sales_order_preview";
+            case "latestEndDate", "" -> "root.latest_end_date";
+            default -> "root.latest_end_date";
+        };
+        return column + " " + direction + " NULLS LAST";
+    }
+
+    static boolean reportAllowed(
+            boolean canViewReports,
+            boolean canCreateReports,
+            boolean canViewWorkshopTasks) {
+        return canViewReports && canCreateReports && canViewWorkshopTasks;
+    }
+
+    private static String rootType(String value) {
+        String normalized = value == null ? "" : value.strip().toUpperCase(Locale.ROOT);
+        if (!Set.of("ANALYSIS", "PLAN").contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知生产任务根类型");
+        }
+        return normalized;
+    }
+
+    private static String normalizeTaskStatus(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        // REPORT_INSPECTION(2026-10-10 用户口径「报工送检」)：已报完未完工的执行段
+        // (IN_PROGRESS 且 remaining_qty<=0，见 workshopTaskPredicate)，与生产中互斥。
+        if (!Set.of(
+                        "PREPARING", "READY_TO_START", "IN_PROGRESS", "REPORT_INSPECTION", "COMPLETED")
+                .contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知车间任务状态");
+        }
+        return normalized;
+    }
+
+    private static UUID uuid(Object value) {
+        if (value == null) return null;
+        return value instanceof UUID id ? id : UUID.fromString(value.toString());
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private static boolean bool(Object value) {
+        return Boolean.TRUE.equals(value);
+    }
+
+    private static int integer(Object value) {
+        return value == null ? 0 : ((Number) value).intValue();
+    }
+
+    private static BigDecimal decimal(Object value) {
+        if (value instanceof BigDecimal number) return number;
+        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
+    private static LocalDate date(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate result) return result;
+        if (value instanceof java.sql.Date result) return result.toLocalDate();
+        return LocalDate.parse(value.toString());
+    }
+
+    private record ScopeBinding(NativeReadScope scope) {
+    }
+}

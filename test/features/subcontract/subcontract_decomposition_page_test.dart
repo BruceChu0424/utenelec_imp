@@ -1,7 +1,6 @@
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +50,51 @@ const _decomposePermissions = {
   Perm.subcontractOrderDecompose,
 };
 
+Map<String, dynamic> _facetDrawPage(
+  Map<String, Object?> query, {
+  required bool colors,
+}) {
+  final page = query['page']! as int;
+  final size = query['size']! as int;
+  final filters = query['columnFilters']! as Map<String, String?>;
+  final all = [
+    for (var index = 0; index < (colors ? 209 : 17); index++)
+      <String, dynamic>{
+        'orderItemId': 'facet-$index',
+        'orderBillNo': 'FACET-$index',
+        'colorName': colors
+            ? index < 201
+                  ? '浅灰'
+                  : index < 206
+                  ? '梦幻金'
+                  : ''
+            : '',
+        'supplierName': !colors
+            ? index < 12
+                  ? '华信加工'
+                  : index < 15
+                  ? '川田晓油'
+                  : ''
+            : '',
+        'canDraw': false,
+      },
+  ];
+  final matching = all
+      .where(
+        (row) => filters.entries.every(
+          (entry) => entry.value == null || row[entry.key] == entry.value,
+        ),
+      )
+      .toList();
+  return {
+    'items': matching.skip((page - 1) * size).take(size).toList(),
+    'page': page,
+    'size': size,
+    'total': matching.length,
+    'totalPages': (matching.length / size).ceil(),
+  };
+}
+
 void main() {
   testWidgets(
     'pending color choices combine both complete server scopes and filter both lanes',
@@ -83,14 +127,8 @@ void main() {
         ),
       );
       final draw = FakeSubcontractDrawGateway()
-        ..onList = (_) async => SubcontractDrawTaskList.fromJson({
-          'page': {
-            'items': <Object>[],
-            'page': 1,
-            'size': 200,
-            'total': 201,
-            'totalPages': 2,
-          },
+        ..onList = (query) async => SubcontractDrawTaskList.fromJson({
+          'page': _facetDrawPage(query, colors: true),
           'facets': {
             'colorName': [
               {'value': '浅灰', 'count': 201},
@@ -171,14 +209,8 @@ void main() {
         ),
       );
       final draw = FakeSubcontractDrawGateway()
-        ..onList = (_) async => SubcontractDrawTaskList.fromJson({
-          'page': {
-            'items': <Object>[],
-            'page': 1,
-            'size': 200,
-            'total': 15,
-            'totalPages': 1,
-          },
+        ..onList = (query) async => SubcontractDrawTaskList.fromJson({
+          'page': _facetDrawPage(query, colors: false),
           'facets': {
             'supplierName': [
               {'value': '华信加工', 'count': 12},
@@ -541,22 +573,7 @@ void main() {
       MasterDataTableView<SubcontractPendingRow> table() =>
           tester.widget(finder);
       expect(readWindowBindingOf(table().items), isNotNull);
-      final session = PagedReadWindowSession<OperationsWorkbenchTask>(
-        isCurrent: () => true,
-      );
-      addTearDown(session.invalidate);
-      session.bindResult(
-        PagedResult(
-          items: data.items,
-          page: 1,
-          size: 20,
-          total: 2,
-          totalPages: 1,
-        ),
-        replacementPages: {
-          1: [data.items.last],
-        },
-      );
+      final original = readWindowBindingOf(table().items)!;
       table().onSelectedIdsChanged!({});
       await tester.pumpAndSettle();
       final binding = readWindowBindingOf(table().items)!;
@@ -564,13 +581,16 @@ void main() {
         'subcontract-pending-application-rows',
         true,
       ));
-      final replacement = binding.replacementPages![1]!;
-      expect(replacement, hasLength(1));
-      expect(
-        (replacement.single as SubcontractApplicationRow).task,
-        same(data.items.last),
-      );
-      expect(replacement.whereType<SubcontractPendingDrawRow>(), isEmpty);
+      expect(binding.sameSession(original), isTrue);
+      expect(binding.isCurrent, isTrue);
+      final applications = table().items
+          .whereType<SubcontractApplicationRow>()
+          .toList();
+      expect(applications.length, data.items.length);
+      for (final row in applications) {
+        expect(data.items.any((task) => identical(task, row.task)), isTrue);
+      }
+      expect(table().items.whereType<SubcontractPendingDrawRow>(), isEmpty);
       expect(
         table().unpagedItems.whereType<SubcontractPendingDrawRow>(),
         hasLength(1),
@@ -1036,18 +1056,27 @@ void main() {
       await tester.pumpAndSettle();
       expect(draw.listQueries.last['applicationId'], 'application-parent');
       expect(draw.listQueries.last['applicationItemIds'], isEmpty);
-      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
-      await tester.pumpAndSettle();
-      expect(draw.listQueries.last['applicationId'], 'application-parent');
-      expect(draw.listQueries.last['page'], 2);
       final next = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
         finder,
       );
+      expect(next.unpagedItems, hasLength(201));
       expect(
-        (next.unpagedItems.single as SubcontractPendingDrawRow).row.orderItemId,
+        (next.unpagedItems.last as SubcontractPendingDrawRow).row.orderItemId,
         'draw-source-200',
       );
+      final scoped = draw.listQueries.where(
+        (query) => query['applicationId'] == 'application-parent',
+      );
+      expect(scoped.map((query) => query['page']), [1, 2, 3]);
+      expect(
+        scoped.every(
+          (query) =>
+              query['size'] == 100 &&
+              (query['applicationItemIds']! as List).isEmpty,
+        ),
+        isTrue,
+      );
+      expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1082,8 +1111,8 @@ void main() {
       MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
         find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
-      expect(table().unpagedItems, hasLength(200));
-      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
+      expect(table().unpagedItems, hasLength(201));
+      expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
       final link =
           table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
                 tester.element(
@@ -1119,12 +1148,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(draw.listQueries.last['applicationItemIds'], isEmpty);
       expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
-      expect(table().unpagedItems, hasLength(200));
-      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
-      await tester.pumpAndSettle();
-      expect(draw.listQueries.last['page'], 2);
+      expect(table().unpagedItems, hasLength(201));
+      expect(draw.listQueries.last['page'], 3);
       expect(
-        (table().unpagedItems.single as SubcontractPendingDrawRow)
+        (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
             .orderItemId,
         'linked-after-page-one',
@@ -1134,7 +1161,7 @@ void main() {
   );
 
   testWidgets(
-    'over 200 related picking tasks paginate within the source and refresh clamps a removed last page',
+    'over 200 related picking tasks complete within the exact source and refresh removes a deleted tail',
     (tester) async {
       _desktop(tester, const Size(1600, 1000));
       final draw = FakeSubcontractDrawGateway(
@@ -1172,24 +1199,25 @@ void main() {
               as InkWell;
       link.onTap!();
       await tester.pumpAndSettle();
-      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
-      await tester.pumpAndSettle();
+      expect(table().unpagedItems, hasLength(201));
       expect(draw.listQueries.last['applicationItemIds'], [
         'application-item-1',
       ]);
-      expect(draw.listQueries.last['page'], 2);
+      expect(draw.listQueries.last['page'], 3);
       expect(
-        (table().unpagedItems.single as SubcontractPendingDrawRow)
+        (table().unpagedItems.last as SubcontractPendingDrawRow)
             .row
             .orderItemId,
         'linked-200',
       );
+      final beforeRefresh = draw.listQueries.length;
       draw.rows.removeWhere((row) => row.orderItemId == 'linked-200');
       await tester.tap(find.byTooltip('刷新委外任务'));
       await tester.pumpAndSettle();
-      expect(draw.listQueries[draw.listQueries.length - 2]['page'], 2);
-      expect(draw.listQueries.last['page'], 1);
+      expect(
+        draw.listQueries.skip(beforeRefresh).map((query) => query['page']),
+        [1, 2],
+      );
       expect(draw.listQueries.last['applicationItemIds'], [
         'application-item-1',
       ]);
@@ -2291,7 +2319,7 @@ void main() {
         expect(gateway.queries, hasLength(1));
         expect(gateway.queries.single['status'], 'WAITING_ORDER');
         expect(gateway.queries.single['keyword'], 'EA-application-partial');
-        expect(gateway.queries.single['size'], 50);
+        expect(gateway.queries.single['size'], 100);
         expect(
           find.widgetWithText(TextField, 'EA-application-partial'),
           findsOneWidget,

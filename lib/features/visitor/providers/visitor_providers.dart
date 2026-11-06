@@ -41,6 +41,7 @@ final visitorApplicationsProvider = FutureProvider.autoDispose
               fetchPage: (page) => repository.myApplications(
                 status: q.status,
                 page: page,
+                size: 100,
                 columns: columns.searches,
                 sort: columns.sort,
                 ascending: columns.ascending,

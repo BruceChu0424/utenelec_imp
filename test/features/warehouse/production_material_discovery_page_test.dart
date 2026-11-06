@@ -521,6 +521,31 @@ void main() {
     },
   );
   test(
+    'warehouse material quantity uses the service 14/4 boundary and keeps raw text',
+    () {
+      final row = DiscoveryMaterialRow(initial: _material);
+      addTearDown(row.dispose);
+      for (final raw in ['1.00001', '1.0000100', '100000000000000', '1e3']) {
+        row.qty.text = raw;
+        expect(row.quantityError, isNotNull, reason: raw);
+        expect(row.toRequest(), isNull);
+        expect(row.qty.text, raw);
+      }
+      for (final raw in [
+        '0.0001',
+        '12.7500',
+        '1.0000000',
+        '99999999999999.9999',
+      ]) {
+        row.qty.text = raw;
+        expect(row.quantityError, isNull, reason: raw);
+        expect(row.toRequest()!['qty'], raw);
+        expect(row.toRequest()!['unitId'], 'kg');
+      }
+    },
+  );
+
+  test(
     'quantity preserves material, color, base unit and exact warehouse identity',
     () {
       final row = DiscoveryMaterialRow(initial: _material);

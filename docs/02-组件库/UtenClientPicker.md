@@ -1,5 +1,7 @@
 # UtenClientPicker · 客户选择器
 
+> 2026-11-04 当前合同：页面、右滑窗和弹窗都在同一授权/搜索/分类范围内读齐候选摘要，内部仍按服务端上限分批；完成后统一一页虚拟滚动，移除页码、滚动补读及邻页预取。搜索或范围变化退休旧读取，完整性失败允许从头重试，保留合法选择和确认/取消语义。外部访客原有至少2字/最多5名的隐私查询保持原限制。下文旧分页描述仅为历史背景，以本条及共享完整读取实现为准。
+
 > 源码：[`uten_client_picker.dart`](../../lib/features/basic_data/widgets/uten_client_picker.dart)(配置) + [`uten_master_picker.dart`](../../lib/features/basic_data/widgets/uten_master_picker.dart)(面板与字段本体) · 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-10-17。
 >
 > 2026-09-23(ADR-111)：客户与供应商选择器原是两份 84% 相同的面板，现合为泛型 `showUtenMasterPicker<TItem>` / `UtenMasterPickerField<TItem>`；`showUtenClientPicker` 与 `ClientPickerField`(以及 `showUtenSupplierPicker` / `SupplierPickerField`)保留原函数名与构造参数，只提供仓储闭包、文案与供应商的「添加供应商」。客户和供应商通过 `tableColumns` 配置重点字段表格；供应商仅显示名称、联系人、联系电话和地区，不生成不存在的编号；其余搜索、分页与确认契约共用。

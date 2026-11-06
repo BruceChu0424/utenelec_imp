@@ -282,6 +282,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       fetch: () => fetchPage(requestedPage),
       fetchPage: fetchPage,
       isCurrent: current,
+      ownerIsCurrent: queryCurrent,
     );
     setState(() {
       _loading = _reportPages.loading;
@@ -438,10 +439,10 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     });
     // 返回即刷新：行点击 push 的销售单据详情里审核/取消/红冲后返回，重拉报表。
     _myLocation ??= currentLocationOr(context, SalesRoutePath.hub);
-    ref.onPageResume(
-      _myLocation!,
-      () => _reportPages.revalidate(_load(background: true)),
-    );
+    Future<void> visibleReadReturn() =>
+        _reportPages.revalidate(_load(background: true));
+    _reportRead.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: '$docLabel${_kind.shortLabel}报表',
@@ -588,7 +589,6 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       isRefreshing: _reportPages.refreshing,
       refreshError: _reportPages.refreshError,
       refreshedPages: _reportPages.refreshedPages,
-      onRetainedPagesChanged: _reportPages.retainPages,
       paginationRevision: _reportPages.paginationRevision,
       error: _reportPages.error,
       onRetry: () => _load(background: _data != null),
@@ -887,6 +887,8 @@ class _SalesClientDetailDialogState
 
   @override
   Widget build(BuildContext context) {
+    _reportRead.bindView(context, onResume: () => _load());
+
     final size = MediaQuery.of(context).size;
     if (_readerChanged) {
       return UtenAlertDialog(

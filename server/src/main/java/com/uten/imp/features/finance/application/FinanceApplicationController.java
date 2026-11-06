@@ -20,6 +20,7 @@ public class FinanceApplicationController {
     public Map<String,Object> intake(){return service.intake();}
     @GetMapping("/references") public Map<String,Object> references(){return references.references();}
     @GetMapping("/sources") public Map<String,Object> sources(@RequestParam String kind,@RequestParam(required=false)String search,@RequestParam(required=false)UUID supplierId,@RequestParam(required=false)UUID currencyId){return references.sources(kind,search,supplierId,currencyId);}
+    @GetMapping("/sources/page") public com.uten.imp.common.web.PageResponse<Map<String,Object>> sourcesPage(@RequestParam String kind,@RequestParam(required=false)String search,@RequestParam(required=false)UUID supplierId,@RequestParam(required=false)UUID currencyId,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="100")int size){return references.sourcesPage(kind,search,supplierId,currencyId,page,size);}
     @GetMapping("/catalog") public Map<String,Object> catalog(){return service.catalog();}
     @GetMapping("/counts") public Map<String,Long> counts(){return service.counts();}
     @GetMapping public Map<String,Object> list(@RequestParam(defaultValue="mine")String queue,@RequestParam(required=false)String search,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="20")int size){return service.list(queue,search,page,size);}

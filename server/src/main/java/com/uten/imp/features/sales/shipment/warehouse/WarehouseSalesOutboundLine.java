@@ -45,4 +45,12 @@ public record WarehouseSalesOutboundLine(
     public String getQuantityExact() {
         return com.uten.imp.common.util.DecimalText.of(quantity);
     }
+
+    public String getUnitRateExact() {
+        return com.uten.imp.common.util.DecimalText.of(unitRate);
+    }
+
+    public String getWeightKgExact() {
+        return com.uten.imp.common.util.DecimalText.of(weightKg);
+    }
 }

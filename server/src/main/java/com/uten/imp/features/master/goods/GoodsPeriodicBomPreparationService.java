@@ -86,8 +86,27 @@ public class GoodsPeriodicBomPreparationService {
     // ================================================================ 列表
 
     @PreAuthorize("hasAuthority('goods:view') and hasAuthority('workshop_material:setup')")
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PreparationView list(UUID workshopDepartmentId) {
+        java.time.Instant asOf=java.time.Instant.now();
+        if(workshopDepartmentId==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择车间");
+        long count=db.queryForObject(PeriodicPreparationReadSql.UNIVERSE+" SELECT count(*) "+PeriodicPreparationReadSql.ELIGIBLE,
+                new MapSqlParameterSource("workshop",workshopDepartmentId).addValue("windowAsOf",java.sql.Timestamp.from(asOf)),Long.class);
+        if(count>ROW_LIMIT)throw new ApiException(ErrorCode.VALIDATION_FAILED,"准备范围超过旧明细接口，请使用完整产品摘要入口");
+        return listInternal(workshopDepartmentId,null,ROW_LIMIT,true,asOf);
+    }
+
+    /** A selected product keeps every current BOM/choice row; no all-product editable tree. */
+    @PreAuthorize("hasAuthority('goods:view') and hasAuthority('workshop_material:setup')")
+    @Transactional(readOnly=true)
+    public PreparationView selectedProduct(UUID workshopDepartmentId,UUID productGoodsId,java.time.Instant windowAsOf) {
+        if(productGoodsId==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择产品");
+        PreparationView result=listInternal(workshopDepartmentId,productGoodsId,1,false,windowAsOf);
+        if(result.rows().isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"产品不在当前车间准备范围");
+        return result;
+    }
+
+    private PreparationView listInternal(UUID workshopDepartmentId,UUID productGoodsId,int limit,boolean includeMaterials,java.time.Instant windowAsOf) {
         if (workshopDepartmentId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
         }
@@ -99,7 +118,7 @@ public class GoodsPeriodicBomPreparationService {
         List<MaterialOption> materials = materialOptions();
         Map<UUID, List<Map<String, Object>>> byProduct = new LinkedHashMap<>();
         for (Map<String, Object> row : db.queryForList(PRODUCTS_SQL,
-                new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("limit", ROW_LIMIT))) {
+                new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("limit", limit).addValue("product", productGoodsId).addValue("windowAsOf",java.sql.Timestamp.from(windowAsOf)))) {
             byProduct.computeIfAbsent((UUID) row.get("id"), key -> new ArrayList<>()).add(row);
         }
         Map<UUID, List<Map<String, Object>>> choicesByProduct = activeChoices(byProduct.keySet());
@@ -148,33 +167,21 @@ public class GoodsPeriodicBomPreparationService {
             }
         }
         return new PreparationView(workshopDepartmentId, workshop.getFirst(), byProduct.size(), chosen, weighed,
-                List.copyOf(rows), materials);
+                List.copyOf(rows), includeMaterials?materials:List.of());
     }
 
     /**
      * 近 12 个月在该车间做过 (按执行段) 或生产车间为该车间的产品, 每个产品带上它的期间边 (没有则一行空边)。
      * 整批领料的料本身不算产品。
      */
-    private static final String PRODUCTS_SQL = """
-            WITH recent AS (
-                SELECT segment.product_goods_id AS goods_id, count(*) AS runs
-                FROM production_execution_segments segment
-                WHERE segment.workshop_department_id = :workshop AND segment.is_deleted = FALSE
-                  AND segment.created_at >= now() - interval '12 months'
-                GROUP BY segment.product_goods_id
-            ), products AS (
-                SELECT source.goods_id, sum(source.runs) AS runs
-                FROM (SELECT goods_id, runs FROM recent
-                      UNION ALL
-                      SELECT owned.id, 0 FROM goods owned
-                      WHERE owned.owning_workshop_department_id = :workshop AND owned.is_deleted = FALSE) source
-                GROUP BY source.goods_id
-            ), picked AS (
+    private static final String PRODUCTS_SQL = PeriodicPreparationReadSql.UNIVERSE + """
+            , picked AS (
                 SELECT products.goods_id, products.runs
                 FROM products
                 JOIN goods product ON product.id = products.goods_id
                 WHERE product.is_deleted = FALSE AND product.auto_created = FALSE
                   AND product.issue_method <> 'PERIODIC'
+                  AND (CAST(:product AS uuid) IS NULL OR product.id=CAST(:product AS uuid))
                 ORDER BY products.runs DESC, product.code, product.id
                 LIMIT :limit
             )
@@ -215,17 +222,7 @@ public class GoodsPeriodicBomPreparationService {
     /** 可选的料: 整批领料的主料 (分摊方式为主料)。 */
     private List<MaterialOption> materialOptions() {
         List<MaterialOption> out = new ArrayList<>();
-        for (Map<String, Object> row : db.queryForList("""
-                SELECT material.id, material.code, material.name, material.color_id, color.name AS color_name,
-                       unit.name AS unit_name
-                FROM goods material
-                LEFT JOIN colors color ON color.id = material.color_id
-                LEFT JOIN units unit ON unit.id = material.unit_id AND unit.is_deleted = FALSE
-                WHERE material.issue_method = 'PERIODIC' AND material.periodic_cost_basis = 'OWN'
-                  AND material.is_deleted = FALSE
-                ORDER BY material.code, material.id
-                LIMIT 500
-                """, Map.of())) {
+        for (Map<String, Object> row : db.queryForList("SELECT material.id,material.code,material.name,material.color_id,color.name AS color_name,unit.name AS unit_name "+PeriodicMaterialCandidateSql.FROM+" ORDER BY material.code,material.id", Map.of())) {
             String unitName = (String) row.get("unit_name");
             out.add(new MaterialOption((UUID) row.get("id"), (String) row.get("code"), (String) row.get("name"),
                     (UUID) row.get("color_id"), (String) row.get("color_name"), unitName,

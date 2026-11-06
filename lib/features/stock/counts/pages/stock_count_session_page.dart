@@ -543,26 +543,19 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     Set<String> goodsIds, {
     bool Function()? isCurrent,
   }) async {
-    final rows = <CountStockRow>[];
-    final ids = goodsIds.toList();
-    for (var offset = 0; offset < ids.length; offset += 50) {
-      final chunk = ids.sublist(offset, (offset + 50).clamp(0, ids.length));
-      var page = 1;
-      while (true) {
-        if (isCurrent?.call() == false) return const [];
-        final result = await _repo.candidates(
-          warehouseId: warehouseId,
-          goodsIds: chunk,
-          page: page,
-          size: 100,
-        );
-        if (isCurrent?.call() == false) return const [];
-        rows.addAll(result.items);
-        if (page >= result.totalPages) break;
-        page++;
-      }
+    bool current() => mounted && (isCurrent?.call() ?? true);
+    try {
+      return await _repo.completeCandidatesForGoods(
+        warehouseId: warehouseId,
+        goodsIds: goodsIds,
+        isCurrent: current,
+      );
+    } catch (error) {
+      // Retired draft restoration previously returned no candidates; never
+      // publish a partial chunk or overwrite an input belonging to a new visit.
+      if (isRetiredViewRead(error) && !current()) return const [];
+      rethrow;
     }
-    return rows;
   }
 
   Future<void> _addMaterials() async {
@@ -665,13 +658,12 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     final source = _page?.items;
     if (source == null) return _projectCountRows(const []);
     final rows = _projectCountRows(source);
-    projectReadWindowBinding(
+    return projectReadWindowBinding(
       source,
       rows,
       project: _projectCountRows,
       projectionKey: 'stock-count-extra-rows-v1',
     );
-    return rows;
   }
 
   List<CountStockRow> _projectCountRows(List<CountStockRow> source) {

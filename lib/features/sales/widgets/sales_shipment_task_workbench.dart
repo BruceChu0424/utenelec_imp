@@ -70,6 +70,7 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
     super.key,
     required this.mode,
     this.embedded = false,
+    this.historyOnly = false,
     this.externalHeader,
     this.refreshTick = 0,
     this.refreshCompletion,
@@ -77,6 +78,7 @@ class SalesShipmentTaskWorkbench extends ConsumerStatefulWidget {
 
   final SalesShipmentTaskWorkbenchMode mode;
   final bool embedded;
+  final bool historyOnly;
 
   /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
   /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
@@ -203,7 +205,7 @@ class _SalesShipmentTaskWorkbenchState
       });
       if (_hasRequiredPermission) unawaited(_load(1));
     });
-    _financeAudit = _isFinance ? 0 : 1;
+    _financeAudit = _isFinance && !widget.historyOnly ? 0 : 1;
     if (!_isFinance) {
       _warehouseWorkStatus = SalesWarehouseWorkStatus.pendingPick;
     }
@@ -224,7 +226,7 @@ class _SalesShipmentTaskWorkbenchState
         ),
       );
       final completion = widget.refreshCompletion;
-      _load(1, false, true).whenComplete(() {
+      _load(1).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -253,11 +255,7 @@ class _SalesShipmentTaskWorkbenchState
     super.dispose();
   }
 
-  Future<void> _load([
-    int? page,
-    bool useCache = false,
-    bool preferPrepared = false,
-  ]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
     // 路由守卫之外再失败关闭；权限撤销或独立 widget 场景都不得旁路请求数据。
     if (!_hasRequiredPermission) return;
     final requestedPage = page ?? _refreshPage;
@@ -298,6 +296,7 @@ class _SalesShipmentTaskWorkbenchState
         keyword: _keyword,
         financeAudit: _financeAudit,
         financeRejected: _financeRejected,
+        financeHistory: _isFinance && _financeAudit == 1,
         warehouseWorkStatus: _warehouseWorkStatus,
         billNo: _columnFilters['billNo'],
       );
@@ -308,6 +307,7 @@ class _SalesShipmentTaskWorkbenchState
 
       final value = await readScopedPage(
         requestedPage,
+        idOf: (row) => row.id,
         slot: '_load',
         query: [pageRepository, query, _isFinance],
         currentQuery: () => [
@@ -327,10 +327,10 @@ class _SalesShipmentTaskWorkbenchState
         useCache: useCache,
         fetchPage: (target) => pageRepository.list(
           page: target,
+          size: 100,
           filter: pageFilter,
           sort: pageSort,
           order: pageOrder,
-          preferPrepared: preferPrepared,
         ),
       );
       if (!current()) return;
@@ -383,6 +383,7 @@ class _SalesShipmentTaskWorkbenchState
                 keyword: _keyword,
                 financeAudit: _financeAudit,
                 financeRejected: _financeRejected,
+                financeHistory: _isFinance && _financeAudit == 1,
                 warehouseWorkStatus: _warehouseWorkStatus,
               ),
             ),
@@ -1025,17 +1026,19 @@ class _SalesShipmentTaskWorkbenchState
         segments: [
           // 「待审核」= 等我放行的队列（进页面默认选中）；
           // 「已退回」= 被我退回、销售还没改回来的单（V578 专段）。
-          UtenFilterSegment(
-            value: 'pending',
-            label: '待审核',
-            count: ref.watch(
-              badgeFactOrNullProvider(BadgeFact.shipmentFinance),
+          if (!widget.historyOnly)
+            UtenFilterSegment(
+              value: 'pending',
+              label: '待审核',
+              count: ref.watch(
+                badgeFactOrNullProvider(BadgeFact.shipmentFinance),
+              ),
+              countForm: UtenSegmentCountForm.actionable,
             ),
-            countForm: UtenSegmentCountForm.actionable,
-          ),
-          const UtenFilterSegment(value: 'rejected', label: '已退回'),
-          const UtenFilterSegment(value: 'audited', label: '已审核'),
-          const UtenFilterSegment(value: 'all', label: '全部'),
+          if (!widget.historyOnly)
+            const UtenFilterSegment(value: 'rejected', label: '已退回'),
+          if (widget.historyOnly || !widget.embedded)
+            const UtenFilterSegment(value: 'audited', label: '历史单据'),
         ],
         selected: {_financeSegment},
         onSelectionChanged: _changeFinanceSegment,

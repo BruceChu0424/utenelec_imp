@@ -1,3 +1,5 @@
+import '../../../shared/auth/read_owner_fence.dart';
+import '../repositories/production_daily_report_draft_snapshot.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../models/production_workshop_task_stage.dart';
 import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
@@ -84,12 +86,12 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_workbench.dart';
+import '../models/production_exact_quantity.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/workshop_task_drafts.dart';
 import '../providers/production_department_provider.dart';
 import '../providers/production_workshop_task_count_provider.dart';
-import '../providers/production_page_preparation.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import 'production_material_discovery_request_page.dart';
 import '../repositories/production_material_discovery_request_repository.dart';
@@ -127,6 +129,11 @@ class ProductionWorkshopTasksPage extends ConsumerStatefulWidget {
 class _ProductionWorkshopTasksPageState
     extends ConsumerState<ProductionWorkshopTasksPage>
     with ScopedPagedReadViewMixin<ProductionWorkshopTasksPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   final _navigation = PageNavigationSession();
 
   @override
@@ -255,7 +262,7 @@ class _ProductionWorkshopTasksPageState
       await _navigation.push(
         RoutePath.productionMaterialIncrementForSegment(task.segmentId),
       );
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -276,7 +283,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       await _navigation.push(RoutePath.productionActualOutputSupplement(id));
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -292,7 +299,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       await _navigation.push(RoutePath.productionActualOutputSupplement(id));
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -337,7 +344,10 @@ class _ProductionWorkshopTasksPageState
           );
         }
       }
-      if (mounted) await _load();
+      if (mounted &&
+          await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+        await _load();
+      }
     } catch (error) {
       if (mounted) {
         context.appError(
@@ -369,7 +379,7 @@ class _ProductionWorkshopTasksPageState
   /// 未审核报工草稿（SR status=0）按执行段承接的数量（2026-09-26 用户口径：
   /// 草稿承接的数量要从「生产中」的待报里扣除——车间任务读侧只认已审核报工，
   /// 草稿占住的额度不扣会引导重复报工）。key=segmentId；删除草稿后重拉即恢复。
-  Map<String, double> _draftReportQty = const {};
+  Map<String, String> _draftReportQty = const {};
 
   /// 未审核报工按真实执行段关联原任务行；草稿不改变任务分类。
   Map<String, List<ProductionDailyReportListItem>> _reportDraftsBySegment =
@@ -434,11 +444,17 @@ class _ProductionWorkshopTasksPageState
         permissions.contains(Perm.productionExecutionStart);
   }
 
+  bool get _canViewServerReportDrafts =>
+      ref.read(isSuperAdminProvider) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionDailyReportView);
+
   bool get _canCreateReport {
     if (ref.read(isSuperAdminProvider)) return true;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.productionExecutionView) &&
-        permissions.contains(Perm.productionDailyReportView) &&
+        _canViewServerReportDrafts &&
         permissions.contains(Perm.productionDailyReportCreate);
   }
 
@@ -1160,7 +1176,7 @@ class _ProductionWorkshopTasksPageState
         return '报工草稿待审核：本次数量已由草稿承接；审核通过或删除草稿后，'
             '这里会按剩余量恢复';
       }
-      if (_remainingReportOf(task) <= 0.000001) {
+      if (_reportPreview(task).atMostThreshold) {
         return '${_flowStageOf(task).label}；当前可报数量为 0，不能重复报工';
       }
       return task.blockedReason ?? '当前工单暂不能批量报工，请打开详情查看来源';
@@ -1206,13 +1222,20 @@ class _ProductionWorkshopTasksPageState
   /// 随全站徽章汇总带回(ADR-108), 只重拉列表时它要等下一轮 60s 轮询才动。这里显式
   /// 重拉一次汇总(单飞合并; 网络层写后兜底补拉会被这次取数吸收, 不重复请求)。
   /// 纯切换分类/翻页/搜索不走这里——数据没变, 不为徽章多打请求。
-  Future<void> _reloadAfterChange() {
+  Future<void> _reloadAfterChange({bool afterNavigation = false}) async {
+    if (afterNavigation &&
+        !await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      return;
+    }
     refreshBadges(ref);
-    return _load();
+    await _load();
   }
 
   Future<void> _reloadAfterDrawReview() async {
-    if (!mounted) return;
+    if (!mounted ||
+        !await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      return;
+    }
     setState(() {
       _busy = _busyDrawReviewRefresh;
       _navigating = true;
@@ -1224,10 +1247,7 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  Future<void> _load({
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _load({bool useCache = false}) async {
     final generation = ++_loadGeneration;
     // 分类默认不选（ADR-066 同范式）：未选分类不发布表格数据；有界准备的
     // 活动首屏在选择后交接，分类徽章仍与全站同源。历史任务段同理：
@@ -1279,8 +1299,8 @@ class _ProductionWorkshopTasksPageState
         query: query,
         currentQuery: () => _taskReadQuery,
         useCache: useCache,
-        fetchPage: (page) => repo.readWorkshopTasks(
-          preparedRead: ref.read(productionWorkshopPreparedPageProvider),
+        fetchPage: (page) => repo.workshopTasks(
+          size: 100,
           page: page,
           keyword: requestedKeyword,
           status: requestedStatus,
@@ -1293,7 +1313,6 @@ class _ProductionWorkshopTasksPageState
           segmentCode: requestedSegmentCode,
           sort: requestedSort,
           order: requestedOrder,
-          preferPrepared: preferPrepared,
         ),
       );
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
@@ -1323,6 +1342,7 @@ class _ProductionWorkshopTasksPageState
       // 报工草稿保留原任务行与计数，只扣减已经承接的可报额度。
       unawaited(_loadDraftReportState(generation));
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (mounted && generation == _loadGeneration) {
         setState(
           () => _error = humanErrorMessage(caughtError) ?? '车间任务加载失败，请重试',
@@ -1340,97 +1360,83 @@ class _ProductionWorkshopTasksPageState
     _serverReportDraftsError = null;
   }
 
-  /// 按报工明细的执行段身份关联原任务行，并累计已经承接的数量。
-  ///
-  /// 草稿是待审的暂态（审核通过即转入已报），正常很少；先列草稿再逐张读明细，
-  /// 按「非实际超产」行的完工量累计到执行段——与报工读侧的额度口径一致（实际
-  /// 超产不占计划额度）。任何失败都保持不扣：宁可显示还能报，也不能把没报的说成
-  /// 已报完；删除草稿后下一次重拉自然恢复待报。
-  ///
-  /// 无须扫描全部任务或扣减任务计数；保存草稿没有让任务离开生产阶段。
+  /// Only current accepted task identities locate authorized draft headers.
+  /// Missing scope/version proof remains unknown; no all-scope fallback runs.
   Future<void> _loadDraftReportState(int generation) async {
-    final bySegment = <String, List<ProductionDailyReportListItem>>{};
-    final claims = <String, double>{};
-    try {
-      final repo = ref.read(productionDailyReportRepositoryProvider);
-      var page = 1;
-      while (true) {
-        if (!mounted || generation != _loadGeneration) return;
-        final result = await repo.list(
-          page: page,
-          size: 100,
-          filter: const ProductionDailyReportFilter(status: 0),
-        );
-        if (!mounted || generation != _loadGeneration) return;
-        for (final draft in result.items) {
-          if (!mounted || generation != _loadGeneration) return;
-          final detail = await repo.detail(draft.id);
-          if (detail.status != 0) continue;
-          final linkedSegments = <String>{};
-          for (final item in detail.items) {
-            final segmentId = item.executionSegmentId;
-            final qty = item.qty;
-            if (segmentId != null && segmentId.isNotEmpty) {
-              linkedSegments.add(segmentId);
-            }
-            if (segmentId == null ||
-                qty == null ||
-                !qty.isFinite ||
-                item.actualSurplus) {
-              continue;
-            }
-            claims[segmentId] = (claims[segmentId] ?? 0) + qty;
-          }
-          for (final segmentId in linkedSegments) {
-            bySegment.putIfAbsent(segmentId, () => []).add(draft);
-          }
-        }
-        if (page >= result.totalPages || page >= 10) break;
-        page++;
-      }
-    } catch (_) {
-      // 草稿读不回来就不扣、不并（与未上线本口径时的显示一致）。
-      if (!mounted || generation != _loadGeneration) return;
+    final repo = ref.read(productionDailyReportRepositoryProvider);
+    bool current() =>
+        mounted &&
+        generation == _loadGeneration &&
+        identical(repo, ref.read(productionDailyReportRepositoryProvider));
+    if (!current()) return;
+    if (!_canViewServerReportDrafts) {
       setState(() {
+        _draftReportQty = const {};
         _reportDraftsBySegment = const {};
-        _serverReportDraftsError = '报工草稿读取失败，请刷新后核对已保存的报工';
+        _serverReportDraftsError = '当前无权核对报工草稿，待报额度尚未核对';
       });
       _taskDetailRevision.value++;
       return;
     }
-    if (!mounted || generation != _loadGeneration) return;
-    setState(() {
-      _draftReportQty = claims;
-      _reportDraftsBySegment = bySegment;
-      _serverReportDraftsError = null;
-      // 扣减可能让个别行失去报工资格：勾选集同步收敛，与 _load 收口同一谓词。
-      final available = _tableRows.items
-          .where(_selectableTask)
-          .map((item) => item.segmentId)
-          .toSet();
-      _selected.removeWhere((id) => !available.contains(id));
-    });
-    _taskDetailRevision.value++;
+    // The accepted immutable list is replaced on refresh, never mutated here.
+    // ID validation/deduplication is cancellable and sliced by the collector.
+    final tasks = _items;
+    if (tasks.isEmpty) {
+      setState(() {
+        _draftReportQty = const {};
+        _reportDraftsBySegment = const {};
+        _serverReportDraftsError = null;
+      });
+      _taskDetailRevision.value++;
+      return;
+    }
+    try {
+      final snapshot = await readViewActivity.runRead(
+        current,
+        () => loadProductionDailyReportDraftSnapshot(
+          repository: repo,
+          executionSegmentIds: tasks.map((task) => task.segmentId),
+          isCurrent: current,
+        ),
+        slot: 'report-draft-claims',
+      );
+      if (!current()) return;
+      setState(() {
+        _draftReportQty = snapshot.quantities;
+        _reportDraftsBySegment = snapshot.reports;
+        _serverReportDraftsError = null;
+        final available = _tableRows.items
+            .where(_selectableTask)
+            .map((item) => item.segmentId)
+            .toSet();
+        _selected.removeWhere((id) => !available.contains(id));
+      });
+    } catch (error) {
+      if (isRetiredViewRead(error) || !current()) return;
+      setState(() {
+        _draftReportQty = const {};
+        _reportDraftsBySegment = const {};
+        _serverReportDraftsError = '报工草稿读取失败，请刷新后核对已保存的报工';
+      });
+    }
+    if (current()) _taskDetailRevision.value++;
   }
 
   /// 本任务被未审核报工草稿承接的数量。
-  double _draftClaimedQty(ProductionExecutionWorkbenchSegment task) =>
-      _draftReportQty[task.segmentId] ?? 0;
+  String _draftClaimedQty(ProductionExecutionWorkbenchSegment task) =>
+      _draftReportQty[task.segmentId] ?? '0';
 
   /// 扣除草稿后的待报数量（含品质恢复；读侧只认已审核，草稿额度在这里补扣）。
-  double _remainingReportOf(ProductionExecutionWorkbenchSegment task) {
-    final claimed = _draftClaimedQty(task);
-    if (claimed <= 0) return task.remainingReportQty;
-    return (task.remainingReportQty - claimed).clamp(0.0, double.infinity);
-  }
+  ProductionReportPreview _reportPreview(
+    ProductionExecutionWorkbenchSegment task,
+  ) => ProductionReportPreview(
+    remaining: task.remainingReportQtyText,
+    draft: _draftClaimedQty(task),
+  );
 
   /// 草稿已承接全部额度：原任务仍展示，但禁止重复创建报工。
   bool _draftFullyClaimed(ProductionExecutionWorkbenchSegment task) =>
-      _fullyClaimedValues(task.remainingReportQty, _draftClaimedQty(task));
-
-  /// 草稿额度是否已承接全部剩余待报数量。
-  static bool _fullyClaimedValues(double remainingReportQty, double claimed) =>
-      remainingReportQty > 0.000001 && remainingReportQty - claimed <= 0.000001;
+      _reportPreview(task).fullyClaimed;
 
   /// 原任务行的本地填写恢复范围。
   static const _draftScope = FormDraftCategoryScope(
@@ -1474,7 +1480,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       await resumeTaskFormDraft(context, ref, drafts, navigation: _navigation);
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1575,7 +1581,7 @@ class _ProductionWorkshopTasksPageState
           navigation: _navigation,
         );
       }
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1589,7 +1595,7 @@ class _ProductionWorkshopTasksPageState
     final items = _items;
     if (!_isPreparing || _sortColumn != null) return items;
     final sorted = _readinessSortedItems(items);
-    projectReadWindowBinding(
+    return projectReadWindowBinding(
       items,
       sorted,
       project: _readinessSortedItems,
@@ -1599,7 +1605,6 @@ class _ProductionWorkshopTasksPageState
         _sortColumn,
       ),
     );
-    return sorted;
   }
 
   List<ProductionExecutionWorkbenchSegment> _readinessSortedItems(
@@ -1785,7 +1790,7 @@ class _ProductionWorkshopTasksPageState
       );
       if (!mounted) return;
       if (result == true) setState(() => _selected.remove(task.segmentId));
-      await _reloadAfterChange();
+      await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1978,7 +1983,7 @@ class _ProductionWorkshopTasksPageState
           workshopId: workshopId ?? _workshopDepartmentId,
         ),
       );
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -2141,7 +2146,7 @@ class _ProductionWorkshopTasksPageState
         _selected.clear();
         _clearSelectionOnResume = false;
       });
-      await _reloadAfterChange();
+      await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -2164,7 +2169,7 @@ class _ProductionWorkshopTasksPageState
     setState(() => _navigating = true);
     try {
       await _navigation.push(RoutePath.productionPlanDetail(task.planId));
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -2293,7 +2298,7 @@ class _ProductionWorkshopTasksPageState
             return WorkshopTaskDetailDialog(
               task: task,
               stage: _flowStageOf(task),
-              remainingReportQty: _remainingReportOf(task),
+              remainingReportQty: _reportPreview(task).remainingText,
               draftReportedQty: _draftClaimedQty(task),
               routeBadge: UtenStatusBadge(
                 label: task.startRoute == null ? '路线待确认' : task.startRouteLabel,
@@ -2454,7 +2459,7 @@ class _ProductionWorkshopTasksPageState
           await _navigation.push(
             RoutePath.productionOverLimitDisposition(dispositionId),
           );
-          if (mounted) await _reloadAfterChange();
+          if (mounted) await _reloadAfterChange(afterNavigation: true);
         }
     }
   }
@@ -2662,7 +2667,7 @@ class _ProductionWorkshopTasksPageState
         // Closing changes a whole plan; a workshop task only grants its exact material rows.
         canClose: false,
       );
-      if (mounted) await _reloadAfterChange();
+      if (mounted) await _reloadAfterChange(afterNavigation: true);
     } catch (error) {
       if (mounted) {
         context.appApiError(error);
@@ -2818,16 +2823,23 @@ class _ProductionWorkshopTasksPageState
   @override
   Widget build(BuildContext context) {
     // 2026-09-12 用户口径「从子页面回来整页要自动刷新」：子页面里做过任何写操作
-    // (本端写修订号前进)或离开超过 30 秒就重拉(ADR-108; 纯查看后返回不再整页重拉)。
+    // 每次真实返回都重拉核对，包括其它设备改动；不以本端写修订或等待时长替代。
     // 生产执行刷新信号(bumpListRefresh)在本页栈顶时立即重拉, 被盖住时留到返回再拉。
     // 返回时连同顶部分类徽章一起重拉(报工审核、领料提交等都在子页面里办完)。
+    Future<void> visibleReadReturn() async {
+      if (_busy != null) return;
+      if (_navigation.consumeReturnedVisit()) return;
+      if (!_navigating) await _reloadAfterChange();
+    }
+
+    _activityReturnRead = () async {
+      // This callback means an actual read is still unfulfilled. Navigation's
+      // dedup flag is proof of a completed visit, not proof of a fresh read.
+      if (_busy == null && !_navigating) await _reloadAfterChange();
+    };
     ref.onPageResume(
       RouteName.productionWorkshopTasks,
-      () async {
-        if (_busy != null) return;
-        if (_navigation.consumeReturnedVisit()) return;
-        if (!_navigating) await _reloadAfterChange();
-      },
+      visibleReadReturn,
       refreshKeys: const [productionExecutionRefreshKey],
       // 选择清理属于报工语义。导航等待和在途写请求各自释放自己的锁，
       // 返回事件不能提前解除开工、改路线或撤回申请的写保护。
@@ -2848,16 +2860,7 @@ class _ProductionWorkshopTasksPageState
     // 顶部分类徽章：与列表/服务端分段计数同源（互斥口径，加总=总数）；
     // 「历史任务」是终态，按全站口径不挂徽章。
     final counts = ref.watch(productionWorkshopTaskCountProvider);
-    if (!_isHistory) {
-      prepareProductionWorkshopPages(
-        ref,
-        context,
-        keyword: _keyword,
-        workshopDepartmentId: _workshopDepartmentId,
-        activeStatus: _status,
-        canPrepare: () => !_loading && _busy == null && !_navigating,
-      );
-    }
+
     final workshops =
         ref.watch(productionWorkshopTreeProvider).value ?? const [];
     // 顶栏「车间内料仓」与路由守卫同一份契约(不在页面里拼权限码)。
@@ -2992,7 +2995,7 @@ class _ProductionWorkshopTasksPageState
                             ? UtenHistoryTimeValue.lastMonth()
                             : const UtenHistoryTimeValue.all();
                       });
-                      _load(preferPrepared: !_isHistory);
+                      _load();
                     },
                     searchHint: '搜索订单 / 工单 / 产品 / 车间',
                     onSearchChanged: (value) {
@@ -3246,7 +3249,7 @@ class _ProductionWorkshopTasksPageState
                           _canRequestBatchDrawTask(task)
                               ? Icons.call_split_rounded
                               : task.segmentStatus == 'IN_PROGRESS' &&
-                                    _remainingReportOf(task) <= 0.000001
+                                    _reportPreview(task).atMostThreshold
                               ? Icons.info_outline_rounded
                               : Icons.lock_outline_rounded,
                           size: 20,

@@ -8,6 +8,7 @@ import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../../shared/delivery/order_delivery_plan.dart';
+import '../../../shared/models/paged_result.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
 import 'production_sales_requirement.dart';
@@ -199,6 +200,16 @@ class MaterialAnalysisSalesCandidatePage {
   final int size;
   final int total;
   final int totalPages;
+
+  MaterialAnalysisSalesCandidatePage withPage(
+    PagedResult<MaterialAnalysisSalesCandidate> combined,
+  ) => MaterialAnalysisSalesCandidatePage(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   List<MaterialAnalysisSalesCandidateLine> get lines => [
     for (final order in items)

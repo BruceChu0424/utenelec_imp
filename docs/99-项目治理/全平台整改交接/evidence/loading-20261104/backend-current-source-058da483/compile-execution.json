@@ -1,0 +1,15 @@
+{
+  "label": "final",
+  "startedAtUtc": "2026-11-05T10:48:13.1162504Z",
+  "endedAtUtc": "2026-11-05T10:54:44.0557452Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "log": "build/loading-validation/combined-final-test-compile.log"
+}

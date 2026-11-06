@@ -1,0 +1,446 @@
+package com.uten.imp.features.production.execution;
+
+import com.uten.imp.support.MigratedSchemaBaseline;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.postgresql.util.PSQLException;
+
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.time.LocalDate;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+/** PostgreSQL evidence for exact report/inbound ownership and segment close gates. */
+@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+class ProductionExecutionSegmentOperationsPostgresTest {
+
+    private static final java.util.concurrent.atomic.AtomicInteger BUSINESS_IDENTIFIER_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
+
+    @BeforeAll
+    static void migrate() throws Exception {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("measurement_08e29bbfa307");
+    }
+
+    @AfterAll
+    static void stop() throws Exception {
+        if (POSTGRES != null) POSTGRES.close();
+    }
+
+    @Test
+    void partialInboundWaitsForMaterialClearanceAndCompletedReverseFailsClosed()
+            throws Exception {
+        try (Connection connection = connection()) {
+            Fixture f = fixture(connection);
+            // V690 起无销售分配的公共产出入库以"已审核报工"为上限(与真实链路 报工→点收 同构),
+            // 先审一张覆盖计划量 10 的报工, 再验分批入库与超量拒绝。
+            approvedPublicReport(connection, f, "10");
+
+            UUID firstInbound = finishedIn(connection, f, "4");
+            update(connection,
+                    "update stock_documents set status=1 where id=?",
+                    firstInbound);
+            assertStatus(connection, f.segmentId(), "IN_PROGRESS");
+
+            UUID secondInbound = finishedIn(connection, f, "6");
+            update(connection,
+                    "update stock_documents set status=1 where id=?",
+                    secondInbound);
+            assertStatus(connection, f.segmentId(), "IN_PROGRESS");
+
+            UUID excessiveInbound = finishedIn(connection, f, "1");
+            PSQLException over = assertThrows(
+                    PSQLException.class,
+                    () -> update(connection,
+                            "update stock_documents set status=1 where id=?",
+                            excessiveInbound));
+            assertEquals("23514", over.getSQLState());
+
+            UUID stockEvent = com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(
+                    connection,f.drawId(),"ISSUE","issue-"+UUID.randomUUID());
+            UUID issuePostingId = UUID.randomUUID();
+            update(connection,"""
+                    UPDATE stock_balances balance SET qty=balance.qty-10
+                    FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
+                    WHERE item.id=? AND balance.warehouse_id=document.warehouse_id AND balance.goods_id=item.goods_id
+                      AND balance.color_id IS NOT DISTINCT FROM item.color_id
+                    """,f.drawItemId());
+            insert(connection, """
+                    insert into production_material_stock_postings(
+                        id,event_id,stock_document_item_id,demand_id,
+                        reservation_id,posting_type,qty_base
+                    ) values(?,?,?,?,?,'ISSUE',10)
+                    """, issuePostingId, stockEvent, f.drawItemId(),
+                    f.demandId(), f.reservationId());
+            assertEquals(1, update(connection, """
+                    UPDATE stock_reservations
+                    SET consumed_qty=10, status=1, lock_version=lock_version+1
+                    WHERE id=? AND consumed_qty=0 AND released_qty=0 AND qty=10
+                    """, f.reservationId()));
+            com.uten.imp.support.ProductionMaterialMovementTestSupport.bindAndCommit(connection,stockEvent,f.drawItemId());
+            assertStatus(connection, f.segmentId(), "IN_PROGRESS");
+
+            UUID settlementEvent = UUID.randomUUID();
+            insert(connection, """
+                    insert into production_material_settlement_events(
+                        id,plan_id,event_type,idempotency_key,request_hash
+                    ) values(?,?,'POST',?,?)
+                    """, settlementEvent, f.planId(),
+                    "settle-" + UUID.randomUUID(), "d".repeat(64));
+            insert(connection, """
+                    insert into production_material_settlement_postings(
+                        id,event_id,demand_id,settlement_type,qty_base,issue_posting_id
+                    ) values(?,?,?,'CONSUMED',10,?)
+                    """, UUID.randomUUID(), settlementEvent, f.demandId(),issuePostingId);
+            try(var statement=connection.prepareStatement("""
+                    SELECT count(*) FROM production_material_settlement_postings settlement
+                    JOIN production_material_stock_postings issue ON issue.id=settlement.issue_posting_id
+                    JOIN production_material_movement_links link ON link.event_id=issue.event_id
+                        AND link.document_item_id=issue.stock_document_item_id
+                    JOIN stock_movements movement ON movement.id=link.movement_id
+                    WHERE settlement.event_id=? AND issue.id=? AND issue.demand_id=settlement.demand_id
+                        AND issue.posting_type='ISSUE' AND issue.qty_base=10
+                        AND movement.source_item_id=issue.stock_document_item_id
+                        AND movement.direction=-1 AND movement.qty=10
+                    """)){
+                statement.setObject(1,settlementEvent);statement.setObject(2,issuePostingId);
+                try(var result=statement.executeQuery()){result.next();assertEquals(1,result.getInt(1));}
+            }
+            assertStatus(connection, f.segmentId(), "COMPLETED");
+
+            PSQLException reverse = assertThrows(
+                    PSQLException.class,
+                    () -> update(connection,
+                            "update stock_documents set status=-1 where id=?",
+                            secondInbound));
+            assertEquals("23514", reverse.getSQLState());
+            assertStatus(connection, f.segmentId(), "COMPLETED");
+        }
+    }
+
+    @Test
+    void dailyReportRejectsAExecutionSegmentFromAnotherPlanItem()
+            throws Exception {
+        try (Connection connection = connection()) {
+            Fixture f = fixture(connection);
+            UUID otherPlan = UUID.randomUUID();
+            UUID otherPlanItem = UUID.randomUUID();
+            LocalDate billDate = LocalDate.of(2026, 7, 31);
+            String otherPlanNo = businessIdentifier("SJ", billDate);
+            insert(connection, """
+                    insert into production_plans(
+                        id,bill_no,bill_date,status,is_closed
+                    ) values(?,?,?,1,false)
+                    """, otherPlan, otherPlanNo, billDate);
+            insert(connection, """
+                    insert into production_plan_items(
+                        id,bill_no,bill_date,plan_id,product_no,
+                        goods_id,unit_id,unit_rate,qty,fqty,iqty
+                    ) values(?,?,?,?,?,?,?,1,10,0,0)
+                    """, otherPlanItem, otherPlanNo,
+                    billDate, otherPlan,
+                    "PRODUCT-" + otherPlanItem, f.productGoodsId(), f.unitId());
+
+            UUID report = UUID.randomUUID();
+            String reportNo = businessIdentifier("SR", billDate);
+            insert(connection, """
+                    insert into production_daily_reports(
+                        id,bill_no,bill_date,status
+                    ) values(?,?,?,0)
+                    """, report, reportNo, billDate);
+            PSQLException mismatch = assertThrows(
+                    PSQLException.class,
+                    () -> insert(connection, """
+                            insert into production_daily_report_items(
+                                id,bill_no,bill_date,report_id,line_no,
+                                goods_id,unit_id,unit_rate,qty,plan_item_id,
+                                execution_segment_id
+                            ) values(?,?,?,?,1,?,?,1,1,?,?)
+                            """, UUID.randomUUID(), reportNo,
+                            billDate, report,
+                            f.productGoodsId(), f.unitId(),
+                            otherPlanItem, f.segmentId()));
+            assertEquals("23514", mismatch.getSQLState());
+        }
+    }
+
+    private static Fixture fixture(Connection c) throws Exception {
+        UUID warehouse = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        UUID product = UUID.randomUUID();
+        UUID unit = UUID.randomUUID();
+        UUID balance = UUID.randomUUID();
+        UUID plan = UUID.randomUUID();
+        UUID planItem = UUID.randomUUID();
+        UUID pkg = UUID.randomUUID();
+        UUID segment = UUID.randomUUID();
+        UUID demand = UUID.randomUUID();
+        UUID reservation = UUID.randomUUID();
+        UUID draw = UUID.randomUUID();
+        UUID drawItem = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String planNo = businessIdentifier("SJ", billDate);
+        String drawNo = businessIdentifier("SL", billDate);
+
+        insert(c, "insert into units(id,code,name) values(?,?,'piece')",
+                unit, "U-" + unit);
+        insert(c, "insert into goods(id,code,name,min_qty,code_sequence,unit_id) "
+                        + "values(?,?,'material',0,(select coalesce(max(code_sequence),0)+1 from goods),?)",
+                material, "M-" + material, unit);
+        insert(c, "insert into goods(id,code,name,min_qty,code_sequence,unit_id) "
+                        + "values(?,?,'product',0,(select coalesce(max(code_sequence),0)+1 from goods),?)",
+                product, "P-" + product, unit);
+        insert(c, "insert into warehouses(id,code,name) values(?,?,'warehouse')",
+                warehouse, "W-" + warehouse);
+        insert(c, """
+                insert into stock_balances(id,warehouse_id,goods_id,qty)
+                values(?,?,?,10)
+                """, balance, warehouse, material);
+        insert(c, """
+                insert into production_plans(
+                    id,bill_no,bill_date,status,is_closed
+                ) values(?,?,?,1,false)
+                """, plan, planNo, billDate);
+        insert(c, """
+                insert into production_plan_items(
+                    id,bill_no,bill_date,plan_id,product_no,
+                    goods_id,unit_id,unit_rate,qty,fqty,iqty
+                ) values(?,?,?,?,?,?,?,1,10,0,0)
+                """, planItem, planNo, billDate,
+                plan, "PRODUCT-" + planItem, product, unit);
+
+        c.setAutoCommit(false);
+        try {
+            insert(c, """
+                    insert into production_planning_packages(
+                        id,plan_id,warehouse_id,idempotency_key,
+                        request_hash,preview_fingerprint,status,
+                        execution_model_version
+                    ) values(?,?,?,?,?,?,'CONFIRMED',1)
+                    """, pkg, plan, warehouse, "package-" + pkg,
+                    "a".repeat(64), "b".repeat(64));
+            insert(c, """
+                    insert into production_execution_segments(
+                        id,package_id,plan_id,source_plan_item_id,
+                        segment_no,segment_code,client_segment_key,
+                        product_goods_id,product_unit_id,product_unit_rate,
+                        planned_qty,status,bom_fingerprint,idempotency_key,start_route,route_confirmed_at
+                    ) values(?,?,?,?,1,?,?,?, ?,1,10,'READY',?,?,'FULL_KIT',now())
+                    """, segment, pkg, plan, planItem,
+                    canonicalSegmentCode(segment), "client-" + segment, product, unit,
+                    "e".repeat(64), "segment-" + segment);
+            insert(c, """
+                    insert into production_material_demands(
+                        id,package_id,plan_id,warehouse_id,goods_id,unit_id,
+                        required_qty,supply_route,status,idempotency_key,
+                        execution_segment_id,source_plan_item_id,per_product_qty
+                    ) values(?,?,?,?,?,?,10,'BUY','ALLOCATED',?,?,?,1)
+                    """, demand, pkg, plan, warehouse, material, unit,
+                    "demand-" + demand, segment, planItem);
+            insert(c, """
+                    insert into stock_reservations(
+                        id,goods_id,warehouse_id,qty,consumed_qty,released_qty,
+                        status,source,source_doc_type,source_doc_id,
+                        owner_type,owner_id,purpose,demand_id,
+                        supply_type,supply_id,idempotency_key
+                    ) values(?,?,?,10,0,0,0,2,'PRODUCTION_PLANNING_PACKAGE',?,
+                        'PRODUCTION_MATERIAL_DEMAND',?,'PRODUCTION_MATERIAL',?,
+                        'STOCK_BALANCE',?,?)
+                    """, reservation, material, warehouse, pkg, demand,
+                    demand, balance, "reservation-" + reservation);
+            insert(c, """
+                    insert into stock_documents(
+                        id,doc_type,bill_no,bill_date,warehouse_id,status
+                    ) values(?,'DRAW',?,?,?,0)
+                    """, draw, drawNo, billDate, warehouse);
+            insert(c, """
+                    insert into stock_document_items(
+                        id,doc_id,bill_type,bill_no,bill_date,line_no,
+                        goods_id,unit_id,unit_rate,qty,base_qty,
+                        goods_snapshot_source
+                    ) values(?,?,'DRAW','LINE',?,1,?,?,1,10,10,'MASTER_AT_SAVE')
+                    """, drawItem, draw, LocalDate.of(2026, 7, 31),
+                    material, unit);
+            insert(c, """
+                    insert into plan_draw_links(plan_id,draw_id)
+                    values(?,?)
+                    """, plan, draw);
+            insert(c, """
+                    insert into production_planning_package_documents(
+                        id,package_id,document_type,document_id,document_no,
+                        execution_segment_id
+                    ) values(?,?,'DRAW',?,?,?)
+                    """, UUID.randomUUID(), pkg, draw, drawNo, segment);
+            insert(c, """
+                    insert into production_planning_package_document_items(
+                        id,package_id,demand_id,document_type,
+                        document_id,document_item_id
+                    ) values(?,?,?,'DRAW',?,?)
+                    """, UUID.randomUUID(), pkg, demand, draw, drawItem);
+            c.commit();
+        } catch (Throwable error) {
+            c.rollback();
+            throw error;
+        } finally {
+            c.setAutoCommit(true);
+        }
+
+        UUID department = departmentId(c, "WS_ZHUSU");
+        UUID employee = UUID.randomUUID();
+        insert(c, """
+                insert into employees(
+                    id,code,full_name,id_type,department_id,hire_date,
+                    status,employment_type
+                ) values(?,?,?,'其他',?,?,'active','regular')
+                """, employee, "E-" + employee, com.uten.imp.support.SyntheticEmployeeIdentity.name("owner",employee), department,
+                LocalDate.of(2026, 1, 1));
+        update(c, """
+                update production_execution_segments
+                set workshop_department_id=?,responsible_employee_id=?,
+                    plan_begin_date=?,plan_end_date=?,status='DISPATCHED'
+                where id=?
+                """, department, employee, LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 2), segment);
+        update(c, """
+                update production_execution_segments
+                set status='IN_PROGRESS' where id=?
+                """, segment);
+        return new Fixture(
+                warehouse, product, unit, plan, planItem, segment,
+                demand, reservation, draw, drawItem);
+    }
+
+    private static void approvedPublicReport(
+            Connection c, Fixture f, String qty) throws Exception {
+        UUID report = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String reportNo = businessIdentifier("SR", billDate);
+        insert(c, """
+                insert into production_daily_reports(
+                    id,bill_no,bill_date,status
+                ) values(?,?,?,0)
+                """, report, reportNo, billDate);
+        insert(c, """
+                insert into production_daily_report_items(
+                    id,bill_no,bill_date,report_id,line_no,
+                    goods_id,unit_id,unit_rate,qty,plan_item_id,
+                    execution_segment_id
+                ) values(?,?,?,?,1,?,?,1,?,?,?)
+                """, UUID.randomUUID(), reportNo, billDate, report,
+                f.productGoodsId(), f.unitId(), decimal(qty),
+                f.planItemId(), f.segmentId());
+        update(c, "update production_daily_reports set status=1, row_version=row_version+1 where id=?",
+                report);
+    }
+
+    private static UUID finishedIn(
+            Connection c, Fixture f, String qty) throws Exception {
+        UUID doc = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 7, 31);
+        String documentNo = businessIdentifier("CR", billDate);
+        insert(c, """
+                insert into stock_documents(
+                    id,doc_type,bill_no,bill_date,warehouse_id,status
+                ) values(?,'FINISHED_IN',?,?,?,0)
+                """, doc, documentNo, billDate,
+                f.warehouseId());
+        insert(c, """
+                insert into stock_document_items(
+                    id,doc_id,bill_type,bill_no,bill_date,line_no,
+                    goods_id,unit_id,unit_rate,qty,base_qty,
+                    upstream_item_id,execution_segment_id,
+                    goods_snapshot_source
+                ) values(?,?,'FINISHED_IN','LINE',?,1,?,?,1,?,?,?,?,'MASTER_AT_SAVE')
+                """, UUID.randomUUID(), doc, LocalDate.of(2026, 7, 31),
+                f.productGoodsId(), f.unitId(), decimal(qty), decimal(qty),
+                f.planItemId(), f.segmentId());
+        return doc;
+    }
+
+    private static void assertStatus(
+            Connection c, UUID segmentId, String expected) throws Exception {
+        try (PreparedStatement statement = c.prepareStatement(
+                "select status from production_execution_segments where id=?")) {
+            statement.setObject(1, segmentId);
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                assertEquals(expected, result.getString(1));
+            }
+        }
+    }
+
+    private static UUID departmentId(
+            Connection connection,
+            String code) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id FROM departments WHERE code = ? AND is_deleted = FALSE")) {
+            statement.setString(1, code);
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                return result.getObject(1, UUID.class);
+            }
+        }
+    }
+
+    private static void insert(
+            Connection c, String sql, Object... values) throws Exception {
+        update(c, sql, values);
+    }
+
+    private static int update(
+            Connection c, String sql, Object... values) throws Exception {
+        try (PreparedStatement statement = c.prepareStatement(sql)) {
+            for (int index = 0; index < values.length; index++) {
+                statement.setObject(index + 1, values[index]);
+            }
+            return statement.executeUpdate();
+        }
+    }
+
+    private static BigDecimal decimal(String value) {
+        return new BigDecimal(value);
+    }
+
+    private static String canonicalSegmentCode(UUID segmentId) {
+        return "ZX%08d".formatted(
+                Math.floorMod(segmentId.hashCode(), 99_999_999) + 1);
+    }
+
+    private static String businessIdentifier(String prefix, LocalDate date) {
+        int sequence = BUSINESS_IDENTIFIER_SEQUENCE.incrementAndGet();
+        if (sequence > 999_999) {
+            throw new IllegalStateException("test business identifier sequence exhausted");
+        }
+        return prefix + date.toString().replace("-", "") + "%06d".formatted(sequence);
+    }
+
+    private static Connection connection() throws Exception {
+        return DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+    }
+
+    private record Fixture(
+            UUID warehouseId,
+            UUID productGoodsId,
+            UUID unitId,
+            UUID planId,
+            UUID planItemId,
+            UUID segmentId,
+            UUID demandId,
+            UUID reservationId,
+            UUID drawId,
+            UUID drawItemId) {
+    }
+}

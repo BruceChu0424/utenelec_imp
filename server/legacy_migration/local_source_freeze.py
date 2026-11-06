@@ -22,6 +22,10 @@ def inventory(root):
     for pattern in ('*.py', '*.sql', '*.ps1', '*.sh', '*.json', '*.txt', '*.csv', 'java/*.java'):
         paths.update(here.glob(pattern))
     paths.update((root / 'server/src/main/resources/db/migration').glob('V*__*.sql'))
+    # The local loader imports this sole shared version authority by fixed path.
+    # A changed/missing helper must retire the same explicit source-freeze ticket.
+    paths.update(root / name for name in ('deploy/contracts/flyway_version_contract.py',
+        'contracts/flyway-version/fixtures.json', 'tool/sync_flyway_version_contract.py'))
     result = {}
     for path in sorted(paths):
         if path.is_symlink() or not path.is_file():

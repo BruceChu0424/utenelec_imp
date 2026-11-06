@@ -271,6 +271,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
       ],
       page: result.page,
       totalPages: result.totalPages,
+      total: result.total,
     );
   }
 

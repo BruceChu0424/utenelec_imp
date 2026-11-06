@@ -703,10 +703,10 @@ public class ProductionExecutionPackageCommandService {
                 em.createNativeQuery("""
                                 SELECT link.id, link.plan_item_id,
                                        link.order_item_id, link.allocated_qty
-                                FROM (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('plan_order_item_links',archive_origin.id)) link
-                                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) order_item
+                                FROM (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('plan_order_item_links',to_jsonb(archive_origin))) link
+                                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) order_item
                                   ON order_item.id = link.order_item_id
-                                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) sales_order
+                                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_order
                                   ON sales_order.id = order_item.order_id
                                 WHERE link.plan_item_id IN (:planItemIds)
                                   AND link.is_deleted = FALSE
@@ -1190,14 +1190,14 @@ public class ProductionExecutionPackageCommandService {
                                        item.color_id, item.unit_id,
                                        item.qty * COALESCE(
                                            item.unit_rate, 1)
-                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
+                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
                                 JOIN subplan_links link
                                   ON link.subplan_id = item.plan_id
                                  AND link.plan_id = :planId
                                  AND link.planning_package_id = :packageId
                                  AND link.source = 'EXECUTION_V1'
                                  AND link.is_deleted = FALSE
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) child
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) child
                                   ON child.id = item.plan_id
                                  AND child.is_deleted = FALSE
                                  AND child.status <> -1
@@ -1392,7 +1392,7 @@ public class ProductionExecutionPackageCommandService {
                                        h.document_no,
                                        COUNT(i.id)
                                 FROM production_planning_package_documents h
-                                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_document_items',archive_origin.id)) i
+                                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) i
                                   ON i.doc_id = h.document_id
                                  AND i.is_deleted = FALSE
                                 WHERE h.package_id = :packageId
@@ -1470,10 +1470,10 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT plan.id, plan.bill_no,
                                        COUNT(item.id), plan.workshop_name
                                 FROM production_planning_package_documents doc
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan
+                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
                                   ON plan.id = doc.document_id
                                  AND plan.is_deleted = FALSE
-                                LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
+                                LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
                                   ON item.plan_id = plan.id
                                  AND item.is_deleted = FALSE
                                 WHERE doc.package_id = :packageId
@@ -1517,8 +1517,8 @@ public class ProductionExecutionPackageCommandService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT r.bill_no, COUNT(i.id)
-                                FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) r
-                                LEFT JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) i
+                                FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r
+                                LEFT JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
                                   ON i.request_id = r.id
                                  AND i.is_deleted = FALSE
                                 WHERE r.id = :id
@@ -1543,10 +1543,10 @@ public class ProductionExecutionPackageCommandService {
                                        application.bill_no,
                                        COUNT(item.id)
                                 FROM production_planning_package_documents doc
-                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
+                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
                                   ON application.id = doc.document_id
                                  AND application.is_deleted = FALSE
-                                LEFT JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) item
+                                LEFT JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) item
                                   ON item.application_id = application.id
                                  AND item.is_deleted = FALSE
                                 WHERE doc.package_id = :packageId
@@ -1606,7 +1606,7 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT bill_no, delivery_date, status,
                                        is_deleted, is_canceled, is_stopped,
                                        material_analysis_id
-                                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) production_plans
+                                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
                                 WHERE id = :id
                                 FOR UPDATE
                                 """)
@@ -1652,7 +1652,7 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT
                                   EXISTS (
                                     SELECT 1
-                                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plan_items',archive_origin.id)) item
+                                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
                                     WHERE item.plan_id = :planId
                                       AND item.is_deleted = FALSE
                                       AND (
@@ -1663,7 +1663,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM mrp_generations link
-                                    JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request
+                                    JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) request
                                       ON request.id = link.request_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE
@@ -1673,7 +1673,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM plan_draw_links link
-                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) draw
+                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw
                                       ON draw.id = link.draw_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE
@@ -1684,7 +1684,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM subplan_links link
-                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) subplan
+                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) subplan
                                       ON subplan.id = link.subplan_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE

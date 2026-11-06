@@ -1,0 +1,27 @@
+{
+  "label": "current-pg",
+  "state": "completed",
+  "startedAtUtc": "2026-11-06T01:39:49.0662796Z",
+  "completedAtUtc": "2026-11-06T02:18:59.0908433Z",
+  "actualExitCode": 1,
+  "sourceAggregateSha256": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "upstreamMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-fa-final",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.exportFlywayChecksums=true",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-fa-final/current-pg-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-fa-final/current-pg-measurements",
+    "-Dtest=LegacyQuantityUnapprovalCompositionPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,UnapprovalFrozenAdoptionPostgresTest,ProcurementUnapprovalEligibilityEndToEndTest,GiftUnitRateConservationEndToEndTest,GiftPhysicalConservationEndToEndTest,FinanceApplicationsPostgresTest,FinanceUnapprovalEligibilityEndToEndTest,SubcontractMaterialReturnOriginalCostEndToEndTest,InventoryValueOutputRefreshContinuationPostgresTest,DirectMakeDeliveryClosedCreditPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,LegacyFlywayVersionIdentityPostgresTest,NonFinanceUnapprovalEligibilityEndToEndTest,FinanceDocumentMutationConcurrencyPostgresTest",
+    "surefire:test"
+  ],
+  "selection": "LegacyQuantityUnapprovalCompositionPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,UnapprovalFrozenAdoptionPostgresTest,ProcurementUnapprovalEligibilityEndToEndTest,GiftUnitRateConservationEndToEndTest,GiftPhysicalConservationEndToEndTest,FinanceApplicationsPostgresTest,FinanceUnapprovalEligibilityEndToEndTest,SubcontractMaterialReturnOriginalCostEndToEndTest,InventoryValueOutputRefreshContinuationPostgresTest,DirectMakeDeliveryClosedCreditPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,LegacyFlywayVersionIdentityPostgresTest,NonFinanceUnapprovalEligibilityEndToEndTest,FinanceDocumentMutationConcurrencyPostgresTest",
+  "wrapperPid": 44788,
+  "log": "build\\loading-validation\\main-fa-final\\current-pg.log",
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g"
+  }
+}

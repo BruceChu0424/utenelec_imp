@@ -66,6 +66,7 @@ class _Api extends ApiClient {
   bool loseBatchResponse = false;
   bool multiPage = false;
   bool mixedKinds = false;
+  bool denyQueue = false;
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -79,11 +80,14 @@ class _Api extends ApiClient {
     reads.add(path);
     if (path == '/sales/manager-review') {
       queueQueries.add(Map.of(query ?? {}));
+      if (denyQueue) {
+        throw ApiException('FORBIDDEN', 'queue revoked', httpStatus: 403);
+      }
       final page = multiPage ? (query?['page'] as int? ?? 1) : 1;
       return {
         'page': page,
         'size': 30,
-        'total': multiPage ? 2 : 1,
+        'total': (multiPage ? 2 : 1) * (mixedKinds ? 2 : 1),
         'totalPages': multiPage ? 2 : 1,
         'items': [
           {
@@ -340,6 +344,33 @@ Future<FinanceClaimFixture> _pump(
 }
 
 void main() {
+  testWidgets(
+    'queue permission rejection retires accepted rows and batch targets',
+    (tester) async {
+      final api = _Api();
+      await _pump(tester, api, '/sales/manager-review?kind=order', {
+        Perm.salesOrderManagerView,
+        Perm.salesOrderManagerConfirm,
+      });
+      MasterDataTableView<SalesManagerReviewTask> table() => tester.widget(
+        find.byType(MasterDataTableView<SalesManagerReviewTask>),
+      );
+      expect(table().items, hasLength(1));
+      table().onSelectedIdsChanged!({'order-1'});
+      await tester.pump();
+      api.denyQueue = true;
+      await Future<void>.sync(table().onRetry!);
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(table().error, contains('queue revoked'));
+      expect(api.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
   test(
     'shared management contract preserves stage and exact price provenance',
     () {
@@ -650,8 +681,8 @@ void main() {
       table = tester.widget(
         find.byType(MasterDataTableView<SalesManagerReviewTask>),
       );
-      table.onPageChange!(2);
-      await tester.pumpAndSettle();
+      expect(table.items, hasLength(2));
+      expect(table.items.last.id, 'order-2');
       expect(api.queueQueries.last['page'], 2);
       expect(api.queueQueries.last['search.seller'], '销售员');
       await tester.tap(find.text('历史记录'));
@@ -877,7 +908,7 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
   testWidgets(
-    'batch review includes selected orders on previous pages and their shown versions',
+    'batch review retains all complete-result orders and their exact shown versions',
     (tester) async {
       final api = _Api()
         ..multiPage = true
@@ -892,8 +923,7 @@ void main() {
           );
       table().onSelectedIdsChanged!({'order-1'});
       await tester.pump();
-      table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      expect(table().items.where((row) => row.kind == 'order'), hasLength(2));
       expect(table().selectedIds, contains('order-1'));
       table().onSelectedIdsChanged!({'order-1', 'order-2'});
       await tester.pump();

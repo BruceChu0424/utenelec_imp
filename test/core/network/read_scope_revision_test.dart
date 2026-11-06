@@ -162,6 +162,38 @@ void main() {
     },
   );
 
+  for (final path in [
+    '/master/goods/cost-sheets/versions/summary',
+    '/api/master/goods/cost-sheets/templates/summary',
+    '/master/goods/cost-sheets/templates/11111111-1111-4111-8111-111111111111',
+  ]) {
+    test(
+      'new cost summary/detail proof remains independent of goods: $path',
+      () async {
+        final goods = request(
+          'goods-first',
+          path: '/master/goods/cost-sheets/actual',
+        );
+        await sent();
+        reply('goods-first', 'goods-proof');
+        await goods;
+        final cost = request('cost-route', path: path);
+        await sent();
+        reply('cost-route', 'cost-proof');
+        await cost;
+        expect(revision, 0);
+        final nextGoods = request(
+          'goods-after',
+          path: '/master/goods/cost-sheets/production-output',
+        );
+        await sent();
+        reply('goods-after', 'goods-proof');
+        await nextGoods;
+        expect(revision, 0);
+      },
+    );
+  }
+
   test('报销查看范围撤销会使旧读请求失效且不借用财务单据范围', () async {
     final firstExpense = request('expenseA', path: '/expense-claims/browse');
     await sent();

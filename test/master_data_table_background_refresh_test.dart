@@ -23,6 +23,16 @@ PagedResult<_Row> _page(int page, {String suffix = ''}) => PagedResult(
   totalPages: 3,
 );
 
+PagedResult<_Row> _full({String suffix = ''}) => PagedResult(
+  items: [
+    for (var page = 1; page <= 3; page++) ..._page(page, suffix: suffix).items,
+  ],
+  page: 1,
+  size: 48,
+  total: 48,
+  totalPages: 1,
+);
+
 class _Harness extends StatefulWidget {
   const _Harness({super.key, this.openDetails = false});
 
@@ -33,13 +43,12 @@ class _Harness extends StatefulWidget {
 }
 
 class _HarnessState extends State<_Harness> {
-  final list = PagedListController<_Row>()..page = _page(1);
+  final list = PagedListController<_Row>()..page = _full();
   final rows = MasterDataTableRowsController<_Row>();
   final opened = <String>[];
 
   Future<void> refresh(Future<PagedResult<_Row>> result) {
-    // This fixture can receive an already failed second-page future. Observe it
-    // now while the ordered window revalidation still awaits the first page.
+    // Observe an already failed refresh future before starting the read.
     result.ignore();
     final target = list.currentPage;
     return refreshWindow(
@@ -103,7 +112,6 @@ class _HarnessState extends State<_Harness> {
             isRefreshing: list.refreshing,
             refreshError: list.refreshError,
             refreshedPages: list.refreshedPages,
-            onRetainedPagesChanged: list.retainPages,
             onRetry: () {},
             currentPage: list.currentPage,
             totalPages: list.totalPages,
@@ -281,9 +289,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(host.opened, ['1-0']);
       expect(find.text('详情 1-0'), findsOneWidget);
-      pending.complete(_page(1, suffix: '-late'));
-      await request;
+      pending.complete(_full(suffix: '-late'));
       await tester.pumpAndSettle();
+      await request;
       expect(find.text('详情 1-0'), findsOneWidget);
       expect(host.opened, ['1-0']);
       expect(tester.takeException(), isNull);
@@ -311,8 +319,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       expect(tester.getTopLeft(row).dy, greaterThan(originalY));
       pending.complete(accepted);
-      await request;
       await tester.pumpAndSettle();
+      await request;
       expect(tester.getTopLeft(row).dy, closeTo(originalY, 0.1));
       expect(
         tester
@@ -329,72 +337,68 @@ void main() {
     },
   );
 
-  testWidgets('background reads retain rows, table State and scroll window', (
-    tester,
-  ) async {
-    final hostKey = GlobalKey<_HarnessState>();
-    await tester.pumpWidget(_Harness(key: hostKey));
-    await tester.pumpAndSettle();
-    final host = hostKey.currentState!;
-    await host.rows.loadNextPage();
-    await tester.pumpAndSettle();
-    expect(host.rows.items, hasLength(32));
+  testWidgets(
+    'background reads retain the complete rows, table State and scroll',
+    (tester) async {
+      final hostKey = GlobalKey<_HarnessState>();
+      await tester.pumpWidget(_Harness(key: hostKey));
+      await tester.pumpAndSettle();
+      final host = hostKey.currentState!;
+      expect(host.rows.items, hasLength(48));
 
-    final table = find.byWidgetPredicate(
-      (widget) => widget is MasterDataTableView,
-    );
-    final state = tester.state(table);
-    final scroll = Scrollable.of(
-      tester.element(find.byKey(const ValueKey('anchor-1-0'))),
-      axis: Axis.vertical,
-    ).position;
-    // Stay away from the look-ahead boundary while testing revalidation alone.
-    scroll.jumpTo(120);
-    await tester.pumpAndSettle();
-    final pixels = scroll.pixels;
-    final pending = Completer<PagedResult<_Row>>();
-    final request = host.refresh(pending.future);
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey('master-table-refresh-progress')),
-      findsOneWidget,
-    );
-    expect(host.rows.items, hasLength(32));
-    expect(tester.state(table), same(state));
-    expect(scroll.pixels, pixels);
+      final table = find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView,
+      );
+      final state = tester.state(table);
+      final scroll = Scrollable.of(
+        tester.element(find.byKey(const ValueKey('anchor-1-0'))),
+        axis: Axis.vertical,
+      ).position;
+      scroll.jumpTo(120);
+      await tester.pumpAndSettle();
+      final pixels = scroll.pixels;
+      final pending = Completer<PagedResult<_Row>>();
+      final request = host.refresh(pending.future);
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('master-table-refresh-progress')),
+        findsOneWidget,
+      );
+      expect(host.rows.items, hasLength(48));
+      expect(tester.state(table), same(state));
+      expect(scroll.pixels, pixels);
 
-    pending.complete(_page(2, suffix: '-fresh'));
-    await request;
-    await tester.pumpAndSettle();
-    expect(host.rows.items, hasLength(32));
-    expect(host.rows.items.last.label, endsWith('-fresh'));
-    expect(tester.state(table), same(state));
-    expect(scroll.pixels, pixels);
-    expect(
-      find.byKey(const ValueKey('master-table-refresh-progress')),
-      findsNothing,
-    );
+      pending.complete(_full(suffix: '-fresh'));
+      await tester.pumpAndSettle();
+      await request;
+      expect(host.rows.items, hasLength(48));
+      expect(host.rows.items.last.label, endsWith('-fresh'));
+      expect(tester.state(table), same(state));
+      expect(scroll.pixels, pixels);
+      expect(
+        find.byKey(const ValueKey('master-table-refresh-progress')),
+        findsNothing,
+      );
 
-    await host.refresh(
-      Future<PagedResult<_Row>>.error(ApiException('NETWORK', 'offline')),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('更新失败，显示上次数据'), findsOneWidget);
-    expect(host.rows.items, hasLength(32));
-    expect(tester.state(table), same(state));
-    expect(scroll.pixels, pixels);
-    expect(tester.takeException(), isNull);
-  });
+      await host.refresh(
+        Future<PagedResult<_Row>>.error(ApiException('NETWORK', 'offline')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('更新失败，显示上次数据'), findsOneWidget);
+      expect(host.rows.items, hasLength(48));
+      expect(tester.state(table), same(state));
+      expect(scroll.pixels, pixels);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('a shifted window removes deleted rows atomically', (
+  testWidgets('a changed complete result removes deleted rows atomically', (
     tester,
   ) async {
     final key = GlobalKey<_HarnessState>();
     await tester.pumpWidget(_Harness(key: key));
     await tester.pumpAndSettle();
     final host = key.currentState!;
-    await host.rows.loadNextPage();
-    await tester.pumpAndSettle();
     final oldRows = host.rows.items.map((row) => row.id).toList();
     final source = [for (var page = 1; page <= 3; page++) ..._page(page).items]
       ..removeAt(0);
@@ -412,19 +416,11 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(host.rows.items.map((row) => row.id), oldRows);
-    await host.rows.loadNextPage();
-    expect(
-      host.list.currentPage,
-      2,
-      reason: 'background refresh blocks appending',
-    );
+    expect(host.list.currentPage, 1);
     lastPage.complete(shifted(2));
-    await request;
     await tester.pumpAndSettle();
-    expect(
-      host.rows.items.map((row) => row.id),
-      source.take(32).map((row) => row.id),
-    );
+    await request;
+    expect(host.rows.items.map((row) => row.id), source.map((row) => row.id));
     expect(host.rows.items.any((row) => row.id == '1-0'), isFalse);
     expect(tester.takeException(), isNull);
   });

@@ -1,0 +1,1241 @@
+{
+  "schemaVersion": 1,
+  "scope": "2026-11-04 remaining loading / finance queues / continuous lists",
+  "generatedAt": "2026-11-05T07:23:20.362821+00:00",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+  "head": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "status": "flutter-focused-validation-complete-backend-and-upstream-broad-separate",
+  "notADeployment": true,
+  "discovery": {
+    "method": "Actual async caller/source review plus repeated rg for pagination/loadMore/direct first-page list/typed snapshot unwrap; static candidates are not acceptance.",
+    "entries": 75,
+    "uniqueReviewedFiles": 69,
+    "necessaryEagerFacetCallers": 13,
+    "pagedEmployeeSourceCallers": 11
+  },
+  "entries": [
+    {
+      "path": "lib/shared/paging/prepared_page_read.dart",
+      "entry": "prepare",
+      "line": 7,
+      "mechanism": "PagedReadIntent.scopedRead + physical preparation budget",
+      "outcome": "migrated",
+      "retainedDifference": "Visibility changes do not cancel a foreground-adopted flight; identity/write/dispose retire reads without prematurely releasing transport budget.",
+      "tests": [
+        "test/shared/paging/prepared_page_read_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_server_column_filters.dart",
+      "entry": "loadFacets",
+      "line": 12,
+      "mechanism": "one shared scoped facet request owner/generation",
+      "outcome": "migrated",
+      "retainedDifference": "Keep each column own-value exclusion, null semantics, authorization and genuine needed buckets.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "entry": "nativeFacetLoaders",
+      "line": 1140,
+      "mechanism": "NativeFacetOptions + actual popup lifecycle",
+      "outcome": "migrated",
+      "retainedDifference": "Retired eager billNo bucket only because the same authorized native route exists; no initial/page/sort facet call; first popup remains exact. First and following statement batches explicitly request100; the source query key includes100.",
+      "tests": [
+        "test/features/basic_data/account_detail_permissions_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "entry": "_history",
+      "line": 73,
+      "mechanism": "History navigation and selected-group preparation",
+      "outcome": "migrated",
+      "retainedDifference": "Active subgroups retain operations; history has distinct child keys; no speculative unselected group requests.",
+      "tests": [
+        "test/features/finance/finance_audit_center_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "entry": "historyOnly",
+      "line": 75,
+      "mechanism": "Server pending/rejected versus confirmed scope",
+      "outcome": "migrated",
+      "retainedDifference": "Confirmed moves to history; rejected orders remain work.",
+      "tests": [
+        "test/features/finance/finance_audit_center_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "entry": "historyOnly",
+      "line": 60,
+      "mechanism": "Server PENDING/CLOSURE_PENDING/RETURNED versus HISTORY",
+      "outcome": "migrated",
+      "retainedDifference": "RETURNED means latest rejected/canceled ORDER with editable lifecycle; closure is business confirmation, not a finance approve action; legacy API REJECTED/ALL kept.",
+      "tests": [
+        "test/features/finance/finance_procurement_approval_tasks_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "entry": "SalesQuoteFinanceState.confirmed",
+      "line": 166,
+      "mechanism": "Pending/returned work and confirmed history",
+      "outcome": "migrated",
+      "retainedDifference": "No returned count fetch in confirmed-only history; only authorized pending query may adopt preparation.",
+      "tests": [
+        "test/features/finance/finance_audit_center_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_applications_page.dart",
+      "entry": "financeApplicationCatalogProvider",
+      "line": 32,
+      "mechanism": "Independent catalog provider + ScopedPagedRead",
+      "outcome": "migrated",
+      "retainedDifference": "Rows do not await catalog; failed/stale eligibility disables creation; mine/payment/history filtered by authoritative server status before pagination.",
+      "tests": [
+        "test/features/finance/finance_applications_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "entry": "_fetch",
+      "line": 228,
+      "mechanism": "PagedListController + real business id + fixed batch100",
+      "outcome": "migrated",
+      "retainedDifference": "Draft delete, import origin, money/currency/source and command guards unchanged.",
+      "tests": [],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "entry": "readScopedPage",
+      "line": 211,
+      "mechanism": "ScopedPagedRead + fixed batch100",
+      "outcome": "migrated",
+      "retainedDifference": "Party name lookup only referenced IDs; preserve original settlement/source eligibility and exact ledger figures.",
+      "tests": [
+        "test/features/finance/finance_ar_ap_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "entry": "readScopedPage",
+      "line": 180,
+      "mechanism": "ScopedPagedRead + fixed batch100",
+      "outcome": "migrated",
+      "retainedDifference": "Statement authority and period/party filters unchanged; first full-query totals are not recalculated from rows.",
+      "tests": [],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "entry": "readScopedPage",
+      "line": 257,
+      "mechanism": "ScopedPagedRead + withPage + fixed100",
+      "outcome": "migrated",
+      "retainedDifference": "Preexisting dirty page edits retained; rebuild typed items with complete list while preserving first summary.",
+      "tests": [
+        "test/features/finance/finance_payables_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "entry": "rebuildSnapshot",
+      "line": 143,
+      "mechanism": "ScopedPagedRead + typed withPage + fixed100",
+      "outcome": "migrated",
+      "retainedDifference": "Summary/capability and original settlement period/command contract retained.",
+      "tests": [
+        "test/features/finance/supplier_settlement_panel_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "entry": "rebuildSnapshot",
+      "line": 146,
+      "mechanism": "ScopedPagedRead + typed withPage + fixed100",
+      "outcome": "migrated",
+      "retainedDifference": "Decision/fulfillment authority remains original, not inferred from list lifecycle.",
+      "tests": [
+        "test/features/finance/subcontract_loss_claim_detail_panel_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+      "entry": "readScopedPage",
+      "line": 172,
+      "mechanism": "ScopedPagedRead + ledger query batch100",
+      "outcome": "migrated",
+      "retainedDifference": "Depreciation/deferred-ledger identity and detail commands retained; taxonomy is optional decoration.",
+      "tests": [
+        "test/features/finance/finance_asset_workbench_page_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "entry": "collectPartyMatches",
+      "line": 405,
+      "mechanism": "Existing grouped category metadata with scoped retirement",
+      "outcome": "migrated",
+      "retainedDifference": "Server returns grouped category aggregates, not every customer or financial document; preserve complete category buckets.",
+      "tests": [
+        "test/features/finance/finance_ar_ap_overview_search_test.dart"
+      ],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "entry": "_load",
+      "line": 112,
+      "mechanism": "Shared report complete snapshot (core owner taskcenter_data_audit)",
+      "outcome": "migrated",
+      "retainedDifference": "Report periods, totals, permission-masked facts, export/printing retain server authority.",
+      "tests": [],
+      "verification": "Source reviewed; unmapped leaf-specific tests remain explicit rather than inferred from a static scan"
+    },
+    {
+      "path": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "entry": "historyOnly",
+      "line": 51,
+      "mechanism": "ScopedPagedRead + history status",
+      "outcome": "migrated",
+      "retainedDifference": "PENDING_FINANCE work; PROCESSED history.",
+      "tests": [
+        "test/features/finance/finance_audit_center_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "entry": "historyOnly",
+      "line": 42,
+      "mechanism": "Existing scoped reader + ACTIVE/TERMINAL server filter",
+      "outcome": "migrated",
+      "retainedDifference": "ACTIVE retains pending return/return recorded/finance exception; TERMINAL contains CREDIT_CONFIRMED/CLOSED_NO_CREDIT/REVERSED.",
+      "tests": [
+        "test/features/finance/finance_audit_center_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "entry": "historyOnly",
+      "line": 73,
+      "mechanism": "Existing scoped reader + FINANCE_HISTORY server filter",
+      "outcome": "migrated",
+      "retainedDifference": "Pending and rejected work stay actionable; completed/legacy/closed shipment history does not enter working tabs.",
+      "tests": [
+        "test/features/sales/pages/sales_shipment_task_workbench_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/ar_ap_picker_dialog.dart",
+      "entry": "_load",
+      "line": 145,
+      "mechanism": "ScopedPagedRead complete ledger query",
+      "outcome": "migrated",
+      "retainedDifference": "Source and amounts preserved across filters; full original party/currency eligibility; same-query Enter only coalesces genuine active request.",
+      "tests": [
+        "test/features/finance/finance_ar_reference_picker_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart",
+      "entry": "_load",
+      "line": 94,
+      "mechanism": "ScopedPagedRead + typed withPage, original fixed200",
+      "outcome": "migrated",
+      "retainedDifference": "All supplier payables loaded; original same-currency and six-place booking-rate compatibility unchanged; exact raw amount survives local scrolling.",
+      "tests": [
+        "test/features/finance/supplier_credit_complete_read_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/customer_prepayment_apply_panel.dart",
+      "entry": "_load",
+      "line": 68,
+      "mechanism": "ScopedPagedRead + typed withPage + local virtual rows",
+      "outcome": "migrated",
+      "retainedDifference": "Previously hidden after100 sources now complete; first server summary preserved; legacy/unverified balance remains unavailable.",
+      "tests": [
+        "test/features/finance/customer_prepayment_apply_panel_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "entry": "class _OffsetTargetPickerState",
+      "line": 561,
+      "mechanism": "ScopedPagedRead complete supplier query, fixed200",
+      "outcome": "migrated",
+      "retainedDifference": "Previously hidden after200 targets now complete; original PAYABLE/notSETTLED filter and decision write contract unchanged.",
+      "tests": [
+        "test/features/finance/subcontract_loss_claim_detail_panel_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+      "entry": "_loadRuns",
+      "line": 128,
+      "mechanism": "loadCompletePagedSnapshot + scoped owner + virtual summary rows",
+      "outcome": "migrated",
+      "retainedDifference": "Only run summaries, no preview/details eagerly loaded; allowedActions, versions, precise amounts retained.",
+      "tests": [
+        "test/features/finance/finance_asset_workbench_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 1712,
+      "mechanism": "Complete current draft query",
+      "outcome": "migrated",
+      "retainedDifference": "Only draft summaries; no original source bytes or edit detail payloads eagerly loaded.",
+      "tests": [
+        "test/features/finance/finance_asset_opening_group_dialog_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 127,
+      "mechanism": "Complete assignment summary query",
+      "outcome": "migrated",
+      "retainedDifference": "Period/project/source identity and all edit commands unchanged; note/group modes retain original finite sources.",
+      "tests": [
+        "test/features/finance/finance_expense_analysis_dialog_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/applications/pages/business_application_detail_page.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 1294,
+      "mechanism": "Complete original finance-link candidate query + authenticated scope",
+      "outcome": "migrated",
+      "retainedDifference": "Original prepayment amount/party/type/status eligibility; exact textual amount adapter; payment/unknown-submit protocol unchanged.",
+      "tests": [
+        "test/features/applications/business_application_payment_recovery_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_goods_alias_tab.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 111,
+      "mechanism": "Complete authorized customer alias query + virtual rows",
+      "outcome": "migrated",
+      "retainedDifference": "Customer UUID and server delete capability remain authoritative; raw search immediately retires older query.",
+      "tests": [
+        "test/features/basic_data/widgets/client_goods_alias_tab_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 306,
+      "mechanism": "Complete physical lines + first metadata",
+      "outcome": "migrated",
+      "retainedDifference": "Warehouse scope and columns/sort preserved before paging; do not invent a universal physical-line dedup id.",
+      "tests": [
+        "test/features/warehouse/warehouse_task_physical_detail_dialog_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_overview_page.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 241,
+      "mechanism": "Complete selected risk summaries + virtual rows",
+      "outcome": "migrated",
+      "retainedDifference": "Overview size1 is intentional aggregate-only; risk selection uses original whole scope and exact unit metadata.",
+      "tests": [
+        "test/features/stock/instant_inventory_overview_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/shared/history/record_history_page.dart",
+      "entry": "loadCompleteCursorSnapshot",
+      "line": 240,
+      "mechanism": "True cursor complete current history query",
+      "outcome": "migrated",
+      "retainedDifference": "Opaque token termination, immutable revision id, dates/entity/source/ACL preserved; source details only opened on demand.",
+      "tests": [
+        "test/features/basic_data/pages/master_record_history_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/shared/drafts/form_draft_history_view.dart",
+      "entry": "loadCompleteCursorSnapshot",
+      "line": 33,
+      "mechanism": "True local cursor complete metadata query",
+      "outcome": "migrated",
+      "retainedDifference": "No payload read before a history row is opened; no restore or create shortcut introduced.",
+      "tests": [
+        "test/shared/drafts/form_draft_history_view_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/admin/pages/admin_permissions_page.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 398,
+      "mechanism": "Complete account-summary directory",
+      "outcome": "migrated",
+      "retainedDifference": "Account ID remains account ID; exact selected refresh and permission drafts/leave guards retained; never substitute HR roster.",
+      "tests": [
+        "test/features/admin/admin_permissions_layout_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/employee/widgets/department_employee_picker.dart",
+      "entry": "_candidatePages.read",
+      "line": 453,
+      "mechanism": "ScopedPagedRead complete authorized department candidates",
+      "outcome": "migrated",
+      "retainedDifference": "Original account/employment states, department path/unknown nodes, exclusions and fixed workflow scope retained.",
+      "tests": [
+        "test/features/employee/department_employee_picker_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/components/inputs/uten_employee_selection_panel.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 381,
+      "mechanism": "Single public complete paged-loader adapter",
+      "outcome": "migrated",
+      "retainedDifference": "Use real optional total or explicit -1 plus fixed true totalPages, never guessed size*pages; authorized partial prefix retained only with visible retry on later failure; 403 retires it.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/webinquiry/providers/website_inquiry_providers.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 52,
+      "mechanism": "Complete active/history summary provider",
+      "outcome": "migrated",
+      "retainedDifference": "Local finished/reopened row removes itself without page navigation; real return/refresh stays fresh.",
+      "tests": [
+        "test/features/webinquiry/website_inquiry_lifecycle_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/payroll/providers/payroll_providers.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 269,
+      "mechanism": "Complete active/history payroll batch summaries",
+      "outcome": "migrated",
+      "retainedDifference": "Approved still awaiting publication remains active; detail authority and publish idempotency unchanged.",
+      "tests": [
+        "test/features/payroll/payroll_batch_lifecycle_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+      "entry": "loadCompletePagedResult",
+      "line": 1503,
+      "mechanism": "Complete summary records family, session-scoped",
+      "outcome": "migrated",
+      "retainedDifference": "PII/list grants, read-only closed details and in-progress editor draft state retained.",
+      "tests": [
+        "test/features/hr_task/hr_reconcile_page_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/components/layout/uten_pagination.dart",
+      "entry": "class UtenPagination",
+      "line": 5,
+      "mechanism": "One complete source, local virtual rendering; old constructor compatibility only",
+      "outcome": "migrated",
+      "retainedDifference": "No client slicing or visible pagination; editable controllers retain original data/drafts/precision.",
+      "tests": [
+        "test/components/uten_pagination_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/components/layout/uten_picker_footer_layout.dart",
+      "entry": "class UtenPickerPageControls",
+      "line": 163,
+      "mechanism": "One complete source, local virtual rendering; old constructor compatibility only",
+      "outcome": "migrated",
+      "retainedDifference": "No client slicing or visible pagination; editable controllers retain original data/drafts/precision.",
+      "tests": [
+        "test/components/uten_picker_footer_layout_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/components/layout/uten_paged_grid.dart",
+      "entry": "class UtenPagedGrid",
+      "line": 9,
+      "mechanism": "One complete source, local virtual rendering; old constructor compatibility only",
+      "outcome": "migrated",
+      "retainedDifference": "No client slicing or visible pagination; editable controllers retain original data/drafts/precision.",
+      "tests": [
+        "test/components/uten_mobile_adaptation_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_editable_grid_window.dart",
+      "entry": "class FinanceEditableGridWindow",
+      "line": 12,
+      "mechanism": "One complete source, local virtual rendering; old constructor compatibility only",
+      "outcome": "migrated",
+      "retainedDifference": "No client slicing or visible pagination; editable controllers retain original data/drafts/precision.",
+      "tests": [
+        "test/features/finance/finance_editable_grid_window_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_material_statement_compare.dart",
+      "entry": "_showMapping",
+      "line": 147,
+      "mechanism": "One complete source, local virtual rendering; old constructor compatibility only",
+      "outcome": "migrated",
+      "retainedDifference": "No client slicing or visible pagination; editable controllers retain original data/drafts/precision.",
+      "tests": [
+        "test/features/finance/finance_material_statement_dialog_test.dart"
+      ],
+      "verification": "focused tests mapped; see validationRuns"
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 381,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 307,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 293,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 606,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 512,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 610,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 476,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 269,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 616,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 260,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 299,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 480,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "entry": "_columnFilters.loadFacets",
+      "line": 215,
+      "mechanism": "Shared MasterServerColumnFilters scoped request",
+      "outcome": "retained-needed-query",
+      "retainedDifference": "This bill/document-number bucket is genuinely used; other existing native loaders do not supply this same column/scope. Preserve self-filter exclusion and cancellation, do not mislabel all eager requests removable.",
+      "tests": [
+        "test/features/basic_data/master_server_column_filters_reset_test.dart"
+      ],
+      "verification": "Public helper tests; each leaf source reviewed, no claim of per-leaf real company UAT"
+    },
+    {
+      "path": "lib/features/approvals/repositories/approval_policy_repository.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 65,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/admin/widgets/provision_account_dialog.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 57,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/admin/widgets/impersonation_actions.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 91,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/admin/widgets/audit_query_scope.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 741,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/client_access_employee_loader.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 6,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/basic_data/pages/warehouse_page.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 1875,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/shared/repositories/employee_reference_repository.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 119,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/employee/repositories/employee_picker_candidates.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 7,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/notice/pages/notice_publish_page.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 245,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/shared/handover/data_handover_repository.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 94,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/company_files/widgets/company_file_access_editor.dart",
+      "entry": "UtenEmployeePickerPage",
+      "line": 109,
+      "mechanism": "Shared panel complete pagedLoader + actual total",
+      "outcome": "metadata-forwarded",
+      "retainedDifference": "Preserve source account/employee/principal/actor/visitor/historical identity and ACL; department intersection occurs before each server page.",
+      "tests": [
+        "test/components/inputs/uten_employee_picker_paging_test.dart",
+        "test/features/admin/audit_actor_picker_pagination_test.dart"
+      ],
+      "verification": "Source forwarding reviewed; specialized server/caller tests owned by root and other agents remain separate"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_applications_page.dart",
+      "entry": "class _ApplicationSourcePickerState",
+      "line": 475,
+      "mechanism": "loadCompletePagedResult + source repository",
+      "outcome": "migrated-focused-validation-passed",
+      "retainedDifference": "All five original source kinds now use authorized true count/page; legacy top100 endpoint remains backward compatible only. Travel unions preserve sourceKind plus UUID; no lookup by name.",
+      "tests": [
+        "test/features/finance/finance_application_source_picker_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/finance/repositories/finance_application_source_repository.dart",
+      "entry": "class FinanceApplicationSourceRepository",
+      "line": 20,
+      "mechanism": "GET /finance/applications/sources/page + typed PageResult",
+      "outcome": "migrated-focused-validation-passed",
+      "retainedDifference": "Explicit page/size100, original kind/search/supplier/currency intact; missing source identity fails the complete reader.",
+      "tests": [
+        "test/features/finance/finance_application_source_picker_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_payroll_preparation.dart",
+      "entry": "class _GlPickerState",
+      "line": 1023,
+      "mechanism": "Complete payroll GL candidates; exact selected preview remains old endpoint",
+      "outcome": "migrated-focused-validation-passed",
+      "retainedDifference": "Actual claim, employee auxiliary, style/currency/asOf and original payroll source gates preserved. Voucher/entry+allocation identity stays separate; first balancePool metadata kept; selected capacity is revalidated without changing amount authority. Voucher table row keys use voucherId; allocations use entryId plus allocationNo. Repeated/stale row callbacks cannot pop another route; async query/preview waits use UtenBusyOverlay.",
+      "tests": [
+        "test/features/finance/finance_payroll_preparation_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_compare_dialog.dart",
+      "entry": "class _ComparisonState",
+      "line": 43,
+      "mechanism": "Complete authorized local source + existing Master virtual rendering",
+      "outcome": "migrated-focused-validation-passed",
+      "retainedDifference": "New static-slice discovery this review: three independent 50-row slices hid later source/actual/difference facts after pagination controls were retired. All complete local rows now feed the existing virtual financeSourceTable; sourceRow/__number/mapping/fingerprint/draft fields and precise original values remain unchanged.",
+      "tests": [
+        "test/features/finance/finance_statement_compare_dialog_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/basic_data/pages/payment_style_page.dart",
+      "entry": "Widget _buildWorkspace",
+      "line": 1124,
+      "mechanism": "Complete authorized local source + existing Master virtual rendering",
+      "outcome": "migrated-focused-validation-passed",
+      "retainedDifference": "New static-slice discovery this review: local workspace skip/take50 removed, including obsolete workspace page state; filtering/sequence/category/subtree/permissions, original inline CAS and draft ownership remain unchanged.",
+      "tests": [
+        "test/features/basic_data/pages/payment_style_workspace_test.dart"
+      ],
+      "verification": "Final focused file/case results recorded in latestUniqueFlutterLedger; no claim of company UAT or full-platform physical device coverage."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "entry": "_loadEmployees",
+      "line": 974,
+      "mechanism": "Common employee reference/panel complete query with authoritative default batch100",
+      "outcome": "migrated-final-validation-pending",
+      "retainedDifference": "Retired leaf override30 (three times as many reads); inherits one maintained100 default. Purpose financeAssetCustodian and fixed department/subtree intersection, selected custodian and all asset commands unchanged.",
+      "tests": [
+        "test/features/finance/finance_asset_workbench_page_test.dart"
+      ],
+      "verification": "Source inspected; inherits the existing public default100 and unchanged financeAssetCustodian/department contract. Direct custodian UI was not separately rerun; shared employee purpose/panel evidence is owned by the common-caller review."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "entry": "_loadEmployees",
+      "line": 426,
+      "mechanism": "Common employee reference/panel complete query with authoritative default batch100",
+      "outcome": "migrated-final-validation-pending",
+      "retainedDifference": "Retired leaf override30 (three times as many reads); inherits one maintained100 default. Purpose financeAssetCustodian and fixed department/subtree intersection, selected custodian and all asset commands unchanged.",
+      "tests": [
+        "test/features/finance/finance_asset_workbench_page_test.dart"
+      ],
+      "verification": "Source inspected; inherits the existing public default100 and unchanged financeAssetCustodian/department contract. Direct custodian UI was not separately rerun; shared employee purpose/panel evidence is owned by the common-caller review."
+    }
+  ],
+  "sourceSha256": {
+    "lib/components/inputs/uten_employee_selection_panel.dart": "c5b48c74dc37711f8a923736166225a6372ce171490eabaeae8707b61126bdef",
+    "lib/components/layout/uten_paged_grid.dart": "71b64dfe1efabc36122554af28dc90d7a9565cf593f15887949ee95ab3098de4",
+    "lib/components/layout/uten_pagination.dart": "d1ccd265285180272b759c5b41d7b51e03c9c2340647d139f9d23451439ecac6",
+    "lib/components/layout/uten_picker_footer_layout.dart": "6fd9e82a8098b3458d8a422b5da058851dbb7cb060f3162b3aad63472a576de2",
+    "lib/features/admin/pages/admin_permissions_page.dart": "bc682d58dc42ad2304cbc7e6f63b45ea3d5755ca0604cb34935876339cb430fb",
+    "lib/features/admin/widgets/audit_query_scope.dart": "0156cc0d004d16d6bc0f906eac4554cc670b41d08bb89900016a4fd64538b54e",
+    "lib/features/admin/widgets/impersonation_actions.dart": "7b89d888fb5ee12e96e06649209d7669ad3d7ff013fd1f51a530b4495bd54785",
+    "lib/features/admin/widgets/provision_account_dialog.dart": "675196cd54820f1168d80a280a6187fbb5783b37acb852c7dac7886d67999d71",
+    "lib/features/applications/pages/business_application_detail_page.dart": "213b1e749038d0f3d35925b66b71aa49b500c239dbe5e5f6fb2a8ce5f23df1a4",
+    "lib/features/approvals/repositories/approval_policy_repository.dart": "bf6d9ad4350bdae72f543ad92e47a53eaca721f71c78635a86834296d50924c1",
+    "lib/features/basic_data/pages/account_detail_page.dart": "28e18f4f46f76929f9cf08262924167f9c4fce8ae25a812a4afc93a666ada57d",
+    "lib/features/basic_data/pages/payment_style_page.dart": "9c461dcf3a8cb1db26c65c188318195ccb1a2be03f01d23e26a9bfd65673254e",
+    "lib/features/basic_data/pages/warehouse_page.dart": "6ef28fad37f0233725f6f85500005cd79482ba234d9f9b3c70d5b52896672d22",
+    "lib/features/basic_data/widgets/client_access_employee_loader.dart": "caa5fc95499012b9428925e4be14668f8431b50931dccec2c70a3b1d3f829599",
+    "lib/features/basic_data/widgets/client_goods_alias_tab.dart": "c8cda40f5b4aabd6dcfd706540fac11edc6fceee9e9691e3da0a4700366d5911",
+    "lib/features/basic_data/widgets/master_server_column_filters.dart": "a6fc45967a696783811146056ad8c3580c793f84c06fdf88f04be111739bee78",
+    "lib/features/company_files/widgets/company_file_access_editor.dart": "5ebede10ee1d1b3c834cee909426d8c323a1997b327752eee5c2ba61c723fe97",
+    "lib/features/employee/repositories/employee_picker_candidates.dart": "7369522b32ee8bea312117c3b8ea5d05371dbeb00c6b90657683bbf082daa3fb",
+    "lib/features/employee/widgets/department_employee_picker.dart": "d87e6334ad07341152b4fa2f9aff9f4072b3fd14bd2a3b79404c8b2297d3133b",
+    "lib/features/finance/pages/finance_applications_page.dart": "2aaad08064c04242b04226fbd7617f4401c01c75509b2bb86c40d29499db60a1",
+    "lib/features/finance/pages/finance_ar_ap_overview_page.dart": "49a491d6595434db49eb055af042c773a5bde136c1764da21adcd0bad7e612c2",
+    "lib/features/finance/pages/finance_ar_ap_page.dart": "69487bd283831da106739ff10ed35246205cc9bccf75fca436a693df2c0fe561",
+    "lib/features/finance/pages/finance_audit_center_page.dart": "2be9ef15d8150388cdb03375bf36fa368cb08cd531832ad5bc2f5262ef05accc",
+    "lib/features/finance/pages/finance_doc_list_page.dart": "6d8d1a2db341e0f238bbeb0d4f56ec06f6666274da5caa7e8ccaa6fea5e48a46",
+    "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart": "acd99e416aa1d6c971af4aaa8a4b39fed3e6cace2c12f69224380bc93d2a6b88",
+    "lib/features/finance/pages/finance_quote_review_list_page.dart": "aa81de96e402df443c0ad0b79eecdc58fb5719d69f4aa7a8994e7957ae9b253b",
+    "lib/features/finance/pages/finance_reconciliation_page.dart": "02102f5226609ce255c8421957fef8c287acd99e36eb0ea2d27180c73426cf87",
+    "lib/features/finance/pages/finance_report_table_page.dart": "4c8b8f9432c18f5df18e94329992afbecd2085c7d0a4205f47965d0c223d6b82",
+    "lib/features/finance/pages/finance_sales_order_confirmation_page.dart": "6d2bedd04bfdf385b23f69ca4f753fea80bc3e7123b0c2005ce002fa288677f7",
+    "lib/features/finance/payables/pages/finance_payables_page.dart": "b8a82a546fa30bdc6dab3149c0293ab5e09e63a40650fb5af030f5c0227ba393",
+    "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart": "c5a6e0efd211e0442fd0803889355b3932a9e29d6dd2de9d57c55a411080c031",
+    "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart": "70dc5e4cba21d1ef681dad3cb83508d0354e7bffe37d64bf5f23774c6df4cabe",
+    "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart": "00ce7ed581ae9bb29453b4a5b9bd3b3e300a5ade9dc5fd279b4cb069ff7f3d1b",
+    "lib/features/finance/payables/widgets/supplier_settlement_panel.dart": "ff0c361e8a2a84251061a4bbbda7aa1e32a1626b961e2dde9c5df2a9f0a72c5e",
+    "lib/features/finance/repositories/finance_application_source_repository.dart": "e22feba34a7fe7a9c632529521c6cd1ef8368dfe5ae0063994e6ad0c229bf887",
+    "lib/features/finance/widgets/ar_ap_picker_dialog.dart": "ab48e049c8a72185976c46d6096fc3f295ae99715ee1e76202d66bfa05a06a33",
+    "lib/features/finance/widgets/customer_prepayment_apply_panel.dart": "a55aa1271af743b986ef5122ce93e2cf380d8fcb7fc7633c81f823ac3efe3b5b",
+    "lib/features/finance/widgets/finance_asset_detail.dart": "36fd802f14918ce7af649c8542ee817f4b1c809fc0c32b50fd994b2faba1d252",
+    "lib/features/finance/widgets/finance_asset_form_v2.dart": "ee6914ac2eb6224325b79668986ba4693c020dc1fc3e51b18c0da11a14399eb5",
+    "lib/features/finance/widgets/finance_asset_ledger_panel.dart": "c9c1136f52274a1679b432316fb56ea82c1d419d9dac912f9b948be9020be5dc",
+    "lib/features/finance/widgets/finance_asset_opening_group_dialog.dart": "c045549ec0363a7e3fac1b5ec220c13e26f97142f122dcc0ccdbeb642146acd7",
+    "lib/features/finance/widgets/finance_asset_posting_panel.dart": "f29280de83832a371e6e1e238171f8a3f78ef41865b1cf3ca4c28fa191923a3c",
+    "lib/features/finance/widgets/finance_editable_grid_window.dart": "e97e858ddcdfebdbb9e8db484c4a64a90278d407b9d8726269b4d474e762023f",
+    "lib/features/finance/widgets/finance_expense_analysis_dialog.dart": "6678c5a841750c3732b38d1e72bef015a68ede71c3f975d48796039bd82489bc",
+    "lib/features/finance/widgets/finance_material_statement_compare.dart": "fce986eb38c07fd2aad2c10f5eaef99ab15c15e033a50af6ed784f3387c54b93",
+    "lib/features/finance/widgets/finance_payroll_preparation.dart": "8af66324095d154f6b5b2ed3926e0ad6bc626609cc8ffc1822727e572da2461e",
+    "lib/features/finance/widgets/finance_statement_compare_dialog.dart": "e87503dbc4624f5c60c5335600f6693c9f3fd903d14b346f99f53629c0c762f4",
+    "lib/features/hr_task/pages/hr_reconcile_page.dart": "e06065b2216f163eb5c66ba4599c0e2241984121c9170240f85b9dfb1469a44e",
+    "lib/features/notice/pages/notice_publish_page.dart": "80ee278dc036a6781d7bf4a272dd9d8b929e0634535a6ab76ef49f9ce234d8ec",
+    "lib/features/payroll/providers/payroll_providers.dart": "d57fec39cd49aac80bd14a89a1fc1cb47a4c63d4c33f867662401bd6f2a61cf0",
+    "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart": "85725f67149c45cfd5bc11c3aae566c519456ee145815b2eff3f1386fd8f2f83",
+    "lib/features/purchase/pages/purchase_doc_list_page.dart": "86b03bb57a411da48545fe068ea27c74f1ac9f803ab8badc4a3012f4226d338d",
+    "lib/features/sales/pages/sales_doc_list_page.dart": "dd96c146ac53f174f89261379c6211b7209857dec5542bc8c4932a3a0c67c73a",
+    "lib/features/sales/widgets/sales_shipment_task_workbench.dart": "332e5244552887424da5173a8c70e84d492a1d9da4d708a6f603fd6e18ed66db",
+    "lib/features/stock/pages/instant_inventory_overview_page.dart": "84bc1761809d50513b79b392c4f1393a9331ac2af6e8d5967e7aa3eef0f84da8",
+    "lib/features/subcontract/pages/subcontract_business_list_pages.dart": "4b0b650f3b2974b648b0fa2a39a21aa7930b28c3ab8961370e18775317d16f74",
+    "lib/features/warehouse/pages/finance_arrival_exception_pages.dart": "04320bd7b97bee2cedab2c028f1adbdfef47e050d06afd38961512d6e44e7500",
+    "lib/features/warehouse/pages/stock_doc_list_page.dart": "0ebc068d8bc737a05df305de9e071fb27f7862ee1a7c2f0bb0f49184c55858a3",
+    "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart": "a08e2331f99edd8978c94ee79b4382134fee90ba44222598dde1f7adc5fa879f",
+    "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart": "e39fc56b2a865b6b4f0cee6958f87191194b0677a79ce003e3132f939712f87f",
+    "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart": "f61469c95e9d65224f85d54e08af346ffbca12735dcc5e3c9fdeb0e7749a9fde",
+    "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart": "03b1952fdafe1b580b725208ffa133910ed916eeaf30b4730187ba0d301f7a72",
+    "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart": "dfc8cb973ed3c49657e94f14ebfe1e63e061bb545452008948be8182d4c00fdd",
+    "lib/features/webinquiry/providers/website_inquiry_providers.dart": "e94e443c42e6c8ac3564d226527341c728f3df7d3f159f7b541083fd111d1e4e",
+    "lib/shared/drafts/form_draft_history_view.dart": "5257fff8799ddadd052e7f32e04107a14eef27edeae0ed7f41b4d0ff331e3940",
+    "lib/shared/handover/data_handover_repository.dart": "4d4fad50eead09673a0487d6b43af7d513dc84e31f5586ba953d1314826aada6",
+    "lib/shared/history/record_history_page.dart": "6f1057f1bd9e20fb7839ee54e8469167c94ad9d016709968f64c2c3aa3fe2ab7",
+    "lib/shared/paging/prepared_page_read.dart": "4ac54c160c3f581b39964f98df965ee836a713c5c3adafae595019a08d6800b0",
+    "lib/shared/repositories/employee_reference_repository.dart": "da804117fc4ff8d205585ace23d41b648c44a984a1bc07a3ca768dafb9ad8ffa"
+  },
+  "validationRuns": [
+    {
+      "log": "build-loading-continuous-related.log",
+      "status": "passed",
+      "files": 9,
+      "passed": 91,
+      "failed": 0
+    },
+    {
+      "log": "build-loading-history-corrections-final.log",
+      "status": "passed",
+      "files": 4,
+      "passed": 52,
+      "failed": 0
+    },
+    {
+      "log": "build-loading-continuous-manual-final.log",
+      "status": "superseded-fixture-assertion",
+      "files": 4,
+      "passed": 101,
+      "failed": 1,
+      "notes": "Only credential refresh counter assumed exact userById; full directory now contains selected account. Actual directory refresh increment verified separately."
+    },
+    {
+      "log": "build-loading-admin-credential-final.log",
+      "status": "passed",
+      "files": 1,
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "log": "build-loading-continuous-people-corrections.log",
+      "status": "superseded-fixture-pagination",
+      "files": 5,
+      "passed": 59,
+      "failed": 2,
+      "notes": "Department fixture claimed total101 while returning only2 rows; corrected truthful total; complete department tests passed in later manual suite."
+    },
+    {
+      "log": "build-loading-finance-prepayment-offset.log",
+      "status": "passed-before-additional-large-cases",
+      "files": 2,
+      "passed": 14,
+      "failed": 0
+    },
+    {
+      "log": "build-loading-ar-audit-corrections-final.log",
+      "status": "running"
+    },
+    {
+      "log": "build-loading-finance-contracts-final.log",
+      "status": "intermediate-source-compilation-failure",
+      "notes": "Root removed retired table API while draft wrapper owner was migrating; no assertion execution claimed. Rerun after wrapper freeze."
+    },
+    {
+      "log": "build-loading-finance-manual-analyze.log",
+      "status": "passed-before-final-three-finance-additions",
+      "notes": "No issues found for finance + manual source directories; final full source analyze owned by root."
+    },
+    {
+      "log": "build-loading-final-finance-manual-contracts.log",
+      "status": "retained-initial-real-product-failure-and-fixture-failure",
+      "files": 8,
+      "passed": 100,
+      "failed": 13,
+      "notes": "12 Ops returning calls exposed actual same-query accepted rows owner retirement; core owner+Ops/Sub invalidation subsequently repaired by core agent. Account fixture had nonempty rows/total0 and was corrected. No final pass inferred."
+    },
+    {
+      "log": "build-loading-ops-return-diagnostic.log",
+      "status": "retained-root-cause-evidence",
+      "notes": "items contained PLAN-A but shared rowsController had zero rows while refreshing; diagnostic print subsequently removed."
+    },
+    {
+      "log": "build-loading-ops-return-final.log",
+      "status": "retained-before-second-root-cause-fix",
+      "files": 1,
+      "passed": 0,
+      "failed": 12,
+      "notes": "After the first core owner split, Ops/Sub background invalidation still retired accepted rows; those two extra invalidations were subsequently removed. Must rerun actual 12 cases."
+    },
+    {
+      "log": "build-loading-account-and-new-finance-final.log",
+      "status": "runner-compilation-cache-collision",
+      "notes": "Concurrent Flutter processes hit PathExistsException copying .cache.dill.track.dill. Preserve failure log; rerun exclusively and do not label as business defect."
+    },
+    {
+      "log": "build-loading-finance-final-analyze-clean.log",
+      "status": "passed-before-last-candidate-page-additions",
+      "notes": "No issues found; final candidate additions still require analyze."
+    },
+    {
+      "log": "build-loading-finance-final-exclusive.log",
+      "status": "retained-focused-run-before-last-four-fixture-corrections",
+      "files": 10,
+      "passed": 117,
+      "failed": 4,
+      "notes": "Two payroll new cases selected the underlying and popup table together; corrected to actual popup.last and added125 unique row-key assertion. Two successful Ops cases still expected old refreshedPages keys[1,2]; actual complete snapshot has key1 with both rows; updated expectation without removing stale/403/identity assertions. All other cases, including original source retirement, AR precision, material2000 mapping, actual Account flow, Admin complete windows, customer/loss candidates passed. Not claimed whole round green."
+    },
+    {
+      "log": "build-loading-final-candidates-slices-analyze.log",
+      "status": "passed-before-final-local-slice-edits",
+      "notes": "No issues found; next final analyze must include the completed local-slice and final GL identity edits."
+    },
+    {
+      "log": "build-loading-final-six-leaves.log",
+      "status": "final-focused-joint-run-with-one-fixture-failure",
+      "files": 6,
+      "passed": 56,
+      "failed": 1,
+      "notes": "Noncash voucher selected correctly, but SelectableText also contains its explanatory text; exact text V124 matcher missed it. Corrected to textContaining without changing source or authority; final full payroll file below resolves it."
+    },
+    {
+      "log": "build-loading-payroll-source-final.log",
+      "status": "passed-final-payroll-source",
+      "files": 1,
+      "passed": 13,
+      "failed": 0
+    },
+    {
+      "log": "build-loading-own-source-final-analyze.log",
+      "status": "passed-final-owned-sources",
+      "notes": "No issues found for finance + Account/PaymentStyle and their changed leaf tests after all final code edits."
+    }
+  ],
+  "backend": {
+    "status": "awaiting root coordinated recompile and real Postgres suite",
+    "changedReads": [
+      "FinanceApplicationService list/count queues and editable-source enrichment gated by precomputed actions.edit",
+      "ProcurementFinanceApprovalService RETURNED/HISTORY before paging/count/facets/typeCounts",
+      "SalesShipmentService FINANCE_HISTORY shared list filter"
+    ],
+    "newRealPostgresClass": "ProcurementApprovalReturnedQueuePostgresTest",
+    "notChanged": [
+      "financial amount calculations",
+      "payment and expense read/write guards",
+      "approval command guards",
+      "archival hot/cold data movement"
+    ],
+    "newRealPostgresClasses": [
+      "ProcurementApprovalReturnedQueuePostgresTest",
+      "FinanceApplicationReferencePagingPostgresTest"
+    ],
+    "newCandidatePageRoutes": [
+      "GET /finance/applications/sources/page",
+      "GET /finance/applications/{id}/payroll-gl-sources/page"
+    ],
+    "candidateLegacyCompatibility": "Original capped /sources and exact /payroll-gl-sources kept; live full-list UI uses explicit pages. New count and rows share the original SQL/gates, not broader employee/financial directories.",
+    "sourceSha256": {
+      "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationReferences.java": "898e59a086f1968e7b3db7c367cb43329c8915e254e05b01954ca63560dd5ea6",
+      "server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationController.java": "e5c68f0b7aff556cdadfff8695dfb7aedd45908fa922a0daf677fd8ca474b5bf",
+      "server/src/main/java/com/uten/imp/features/finance/application/FinancePayrollApplicationReferences.java": "aeb22f0e64068a41cd467f2cc2bf37f5bbbb34baaad99d9e5c3e362f90c20bfc",
+      "server/src/main/java/com/uten/imp/features/finance/application/FinancePayrollApplicationReferenceController.java": "70f80ac28fc5c2b4d7b436fe3b840b1f83b5f8bd4919b3a17201253eb965fdf0",
+      "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationReferencePagingPostgresTest.java": "cc5d8e7f8313c64a1810d875d060711d76f6fdd80d9b2389de2a1314d6208abc"
+    }
+  },
+  "otherOwners": {
+    "root": [
+      "MasterDataTableView",
+      "Goods/MasterPane",
+      "ApiClient authenticated read lifecycle",
+      "AdminAuditLogPage production scroll owner"
+    ],
+    "taskcenter_data_audit": [
+      "complete_paged_snapshot / cursor helper",
+      "ScopedPagedRead / PagedListController",
+      "nonfinance typed wrappers",
+      "draft sources",
+      "server storage metadata",
+      "WPF candidate evidence"
+    ],
+    "permission_search_audit": [
+      "operations and warehouse SQL/metadata",
+      "company files main/move picker",
+      "material reallocation candidate source"
+    ]
+  },
+  "unverified": [
+    "Production deployment / activation / release packages were not performed.",
+    "Real company UAT, actual company-data latency and every user/OS/device combination are not established by widget tests.",
+    "WPF complete ERP financial/selector surfaces remain candidates or unported; no Win7 UAT support claim.",
+    "Historical search-stage 401/258/196 suites are not relabeled as passing this current loading source.",
+    "Final all-source analyzer, final backend Postgres and real native/Web evidence are separate root-owned gates."
+  ],
+  "retainedNonListLimits": [
+    {
+      "path": "lib/features/finance/intake/finance_intake_models.dart",
+      "meaning": "take12 bounds untrusted AI warning text, not business candidate/record rows."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "meaning": "maxBatchSize bounds atomic command selection; take5 only abbreviates the confirmation summary, never the authoritative selected IDs or displayed tasks."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "meaning": "take3 abbreviates distinct pending-note captions; complete report rows and server totals remain intact."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+      "meaning": "take8 bounds inline validation diagnostic excerpts; all original issues still block apply. It is not assignment entries/results pagination."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "meaning": "balances.skip1 avoids reprocessing the separately handled first controller; does not drop any source rows or monetary fields."
+    }
+  ],
+  "latestUniqueFlutterLedger": {
+    "files": [
+      {
+        "path": "test/features/finance/finance_application_source_picker_test.dart",
+        "cases": 5,
+        "status": "passed",
+        "log": "build-loading-final-six-leaves.log"
+      },
+      {
+        "path": "test/features/finance/finance_payroll_preparation_test.dart",
+        "cases": 13,
+        "status": "passed",
+        "log": "build-loading-payroll-source-final.log"
+      },
+      {
+        "path": "test/features/operations_workbench/procurement_workbench_return_navigation_test.dart",
+        "cases": 12,
+        "status": "passed",
+        "log": "build-loading-final-six-leaves.log"
+      },
+      {
+        "path": "test/features/basic_data/account_detail_permissions_test.dart",
+        "cases": 16,
+        "status": "passed",
+        "log": "build-loading-final-six-leaves.log"
+      },
+      {
+        "path": "test/features/finance/finance_statement_compare_dialog_test.dart",
+        "cases": 4,
+        "status": "passed",
+        "log": "build-loading-final-six-leaves.log"
+      },
+      {
+        "path": "test/features/basic_data/pages/payment_style_workspace_test.dart",
+        "cases": 7,
+        "status": "passed",
+        "log": "build-loading-final-six-leaves.log"
+      }
+    ],
+    "uniqueCases": 57,
+    "aggregationRule": "Latest result per test identity. The six-file joint run was56 passed/1 failed; final payroll full-file13/13 replaces its exact-text fixture failure. Do not add these overlapping counts together or call the original joint run all-green."
+  }
+}

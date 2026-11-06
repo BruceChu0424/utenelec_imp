@@ -1,3 +1,9 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
+import 'dart:async';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../components/buttons/click_guard.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/cards/uten_card.dart';
@@ -212,12 +218,11 @@ class AuditSessionTimeline extends StatefulWidget {
   State<AuditSessionTimeline> createState() => _AuditSessionTimelineState();
 }
 
-class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
+class _AuditSessionTimelineState extends State<AuditSessionTimeline>
+    with ReadViewActivityMixin<AuditSessionTimeline> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   List<AuditLogEntry> _events = const [];
-  String? _nextCursorAt;
-  int? _nextCursorId;
-  int? _eventSnapshotAuditId;
-  bool _hasMore = false;
   bool _loading = true;
   String? _error;
   int _generation = 0;
@@ -228,7 +233,7 @@ class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loading = false;
-      _load(reset: true);
+      _load();
     });
   }
 
@@ -239,13 +244,10 @@ class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
         oldWidget.snapshotAuditId != widget.snapshotAuditId) {
       _generation++;
       _events = const [];
-      _nextCursorAt = null;
-      _nextCursorId = null;
-      _eventSnapshotAuditId = null;
-      _hasMore = false;
       _error = null;
+      _loading = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load(reset: true);
+        if (mounted) _load();
       });
     }
   }
@@ -256,51 +258,71 @@ class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
     super.dispose();
   }
 
-  Future<void> _load({required bool reset}) async {
+  Future<void> _load() async {
     if (_loading) return;
     final generation = ++_generation;
-    final requestedSnapshot = reset
-        ? widget.snapshotAuditId
-        : _eventSnapshotAuditId ?? widget.snapshotAuditId;
+    var highWater = widget.snapshotAuditId;
+    final loadEvents = widget.loadEvents;
+    bool current() => mounted && generation == _generation;
     setState(() {
       _loading = true;
       _error = null;
-      if (reset) {
-        _events = const [];
-        _nextCursorAt = null;
-        _nextCursorId = null;
-        _hasMore = false;
-      }
     });
     try {
-      final page = await widget.loadEvents(
-        cursorAt: reset ? null : _nextCursorAt,
-        cursorId: reset ? null : _nextCursorId,
-        snapshotAuditId: requestedSnapshot,
+      final complete = await readViewActivity.runRead(
+        current,
+        () =>
+            loadCompleteCursorSnapshot<
+              AuditLogEntry,
+              AuditSessionEventPage,
+              ({String at, int id})
+            >(
+              isCurrent: current,
+              idOf: (event) => event.id > 0 ? event.id : null,
+              revisionOf: (page) => page.snapshotAuditId,
+              deduplicateOverlaps: true,
+              loadPage: (cursor, _) async {
+                final response = await loadEvents(
+                  cursorAt: cursor?.at,
+                  cursorId: cursor?.id,
+                  snapshotAuditId: highWater,
+                );
+                if (highWater != null &&
+                    highWater != response.snapshotAuditId) {
+                  throw ApiException('READ_SCOPE_CHANGED', '会话读取快照已变化，请重新读取');
+                }
+                highWater ??= response.snapshotAuditId;
+                return response;
+              },
+              rowsOf: (page) => page.items,
+              nextCursorOf: (page) {
+                if (!page.hasMore) return null;
+                if (page.nextCursorAt == null || page.nextCursorId == null) {
+                  throw ApiException('INVALID_PAGINATION', '会话读取游标不完整，请重试');
+                }
+                return (at: page.nextCursorAt!, id: page.nextCursorId!);
+              },
+              rebuildSnapshot: (first, rows) => AuditSessionEventPage(
+                items: rows,
+                hasMore: false,
+                snapshotAuditId: first.snapshotAuditId,
+              ),
+            ),
       );
-      if (!mounted || generation != _generation) return;
-      final knownIds = reset
-          ? <int>{}
-          : _events.map((event) => event.id).toSet();
-      final appended = page.items
-          .where((event) => knownIds.add(event.id))
-          .toList(growable: false);
+      if (!current()) return;
       setState(() {
-        _events = reset ? appended : [..._events, ...appended];
-        _nextCursorAt = page.nextCursorAt;
-        _nextCursorId = page.nextCursorId;
-        _eventSnapshotAuditId = page.snapshotAuditId;
-        _hasMore =
-            page.hasMore &&
-            page.nextCursorAt != null &&
-            page.nextCursorId != null;
+        _events = complete.items;
         _loading = false;
       });
-    } catch (_) {
-      if (!mounted || generation != _generation) return;
+    } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (current()) setState(() => _loading = false);
+        return;
+      }
+      if (!current()) return;
       setState(() {
         _loading = false;
-        _error = _events.isEmpty ? '会话时间线加载失败' : '更多会话事件加载失败';
+        _error = '会话时间线加载失败';
       });
     }
   }
@@ -310,58 +332,22 @@ class _AuditSessionTimelineState extends State<AuditSessionTimeline> {
     if (_loading && _events.isEmpty) {
       return const SliverToBoxAdapter(child: _TimelineLoading());
     }
-    if (_error != null && _events.isEmpty) {
+    if (_error != null) {
       return SliverToBoxAdapter(
-        child: AuditSessionLoadError(
-          message: _error!,
-          onRetry: () => _load(reset: true),
-        ),
+        child: AuditSessionLoadError(message: _error!, onRetry: _load),
       );
     }
-    if (!_loading && _events.isEmpty) {
+    if (_events.isEmpty) {
       return const SliverToBoxAdapter(child: _TimelineEmpty());
     }
     return SliverList.builder(
-      itemCount: _events.length + 1,
-      itemBuilder: (context, index) {
-        if (index < _events.length) {
-          return AuditSessionTimelineEvent(
-            entry: _events[index],
-            first: index == 0,
-            last: index == _events.length - 1 && !_hasMore,
-            onTap: () => widget.onOpenEvent(_events[index]),
-          );
-        }
-        if (_error != null) {
-          return AuditSessionLoadError(
-            message: _error!,
-            onRetry: () => _load(reset: false),
-          );
-        }
-        if (_hasMore) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Align(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 220, minHeight: 48),
-                child: FilledButton.tonalIcon(
-                  key: ValueKey('audit-session-load-more-${widget.sessionId}'),
-                  onPressed: _loading ? null : () => _load(reset: false),
-                  icon: _loading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.expand_more_rounded),
-                  label: Text(_loading ? '正在加载...' : '加载更早的操作'),
-                ),
-              ),
-            ),
-          );
-        }
-        return const SizedBox.shrink();
-      },
+      itemCount: _events.length,
+      itemBuilder: (context, index) => AuditSessionTimelineEvent(
+        entry: _events[index],
+        first: index == 0,
+        last: index == _events.length - 1,
+        onTap: () => widget.onOpenEvent(_events[index]),
+      ),
     );
   }
 }
@@ -556,7 +542,7 @@ class AuditSessionLoadError extends StatelessWidget {
   });
 
   final String message;
-  final VoidCallback onRetry;
+  final FutureOr<void> Function() onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -580,10 +566,15 @@ class AuditSessionLoadError extends StatelessWidget {
               message,
               style: TextStyle(color: theme.colorScheme.onErrorContainer),
             ),
-            OutlinedButton.icon(
+            UtenActionButton(
               key: const ValueKey('audit-session-retry'),
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
+              onAction: () => UtenBusyOverlay.run<void>(
+                context,
+                title: '正在读取会话',
+                action: () => Future<void>.sync(onRetry),
+              ),
+              type: UtenActionButtonType.secondary,
+              icon: Icons.refresh_rounded,
               label: const Text('重新加载'),
             ),
           ],

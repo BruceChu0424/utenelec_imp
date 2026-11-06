@@ -85,6 +85,9 @@ class _WarehouseTaskRecordsViewState
     with
         UtenRefreshParticipant<WarehouseTaskRecordsView>,
         ScopedPagedReadViewMixin<WarehouseTaskRecordsView> {
+  @override
+  Future<void> onReadViewResumed() => _loadPage(1);
+
   int get _refreshPage => _rows.visiblePage ?? (_result?.page ?? 1);
 
   @override
@@ -159,9 +162,7 @@ class _WarehouseTaskRecordsViewState
     ref.listenManual(warehouseTaskScopeProvider, (previous, next) {
       if (previous != next) _invalidate(reset: true);
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _load(1, preferPrepared: true),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
   @override
@@ -220,20 +221,10 @@ class _WarehouseTaskRecordsViewState
   String? get _effectiveStatus =>
       _status?.startsWith('source:') == true ? null : _status;
 
-  Future<void> _load(
-    int page, {
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) => trackRefresh(
-    _loadPage(page, useCache: useCache, preferPrepared: preferPrepared),
-    replaceKey: 'rows',
-  );
+  Future<void> _load(int page, {bool useCache = false}) =>
+      trackRefresh(_loadPage(page, useCache: useCache), replaceKey: 'rows');
 
-  Future<void> _loadPage(
-    int page, {
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _loadPage(int page, {bool useCache = false}) async {
     if (!mounted) return;
     final version = ++_requestVersion;
     setState(() {
@@ -262,6 +253,7 @@ class _WarehouseTaskRecordsViewState
       final cached = await readScopedPage<WarehouseTaskCenterRecord>(
         page,
         slot: '_loadPage',
+        idOf: (row) => row.rowKey,
         query: [
           pageRepository,
           pageDirection,
@@ -308,7 +300,7 @@ class _WarehouseTaskRecordsViewState
             page: target,
             sort: pageSort,
             order: pageOrder,
-          ).read(ref, pageRepository, preferPrepared: preferPrepared);
+          ).read(ref, pageRepository);
           return PagedReadSnapshot<
             WarehouseTaskCenterRecord,
             WarehouseTaskCenterPageResult
@@ -331,6 +323,7 @@ class _WarehouseTaskRecordsViewState
         }
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted) return;
       if (version != _requestVersion) {
         return;

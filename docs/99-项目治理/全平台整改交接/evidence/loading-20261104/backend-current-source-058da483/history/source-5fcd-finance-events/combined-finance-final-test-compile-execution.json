@@ -1,0 +1,15 @@
+{
+  "label": "finance-final",
+  "startedAtUtc": "2026-11-05T12:13:56.0238424Z",
+  "endedAtUtc": "2026-11-05T12:16:20.1284427Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "5fcd0a4e6fa40ea4cf783f62ea123d329413d03998ed6dcb866309dd0a6db089",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "log": "build/loading-validation/combined-finance-final-test-compile.log"
+}

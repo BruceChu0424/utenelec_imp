@@ -3311,6 +3311,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         child: SizedBox(
                           width: canvasWidth,
                           child: UtenAncestorRowWindow<T>(
+                            deferRowMounts: false,
                             controller: _rowWindow,
                             rows: rows,
                             estimatedRowExtent: _rowExtentEstimate,

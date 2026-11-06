@@ -23,6 +23,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../../shared/hierarchy/category_tree_search.dart';
 import '../../../shared/models/department_node.dart';
@@ -108,7 +109,19 @@ class _DeptEmployeePickerSheet extends ConsumerStatefulWidget {
 
 class _DeptEmployeePickerSheetState
     extends ConsumerState<_DeptEmployeePickerSheet>
-    with EmployeePickerAccessState<_DeptEmployeePickerSheet> {
+    with
+        EmployeePickerAccessState<_DeptEmployeePickerSheet>,
+        ReadViewActivityMixin<_DeptEmployeePickerSheet> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_acceptPendingSearch) {
+      await _applyGlobalSearch(_globalQuery);
+    } else {
+      await _resumeRead?.call();
+    }
+  }
+
+  Future<void> Function()? _resumeRead;
   static const _pageSize = 100;
   final _candidatePages = ScopedPagedRead<EmployeeSummary>();
 
@@ -127,13 +140,9 @@ class _DeptEmployeePickerSheetState
   Set<String>? _visibleFilterIds;
   Set<String> _categoryMatchDepartmentIds = {};
   Set<String> _contentMatchDepartmentIds = {};
-  int _itemPage = 0;
-  int _itemTotalPages = 0;
   int _itemTotal = 0;
   String? _pageDepartmentId;
   String? _pageKeyword;
-  bool _loadingMore = false;
-  String? _loadMoreError;
   int _requestVersion = 0;
   bool _acceptPendingSearch = false;
   bool _started = false;
@@ -264,6 +273,10 @@ class _DeptEmployeePickerSheetState
     if (!_canUseCandidates) return;
     final query = rawQuery.trim();
     if (!_acceptPendingSearch || query != _globalQuery) return;
+    _resumeRead = () {
+      _acceptPendingSearch = true;
+      return _applyGlobalSearch(_globalQuery);
+    };
     _acceptPendingSearch = false;
     final request = ++_requestVersion;
     final headers = _headers;
@@ -312,6 +325,7 @@ class _DeptEmployeePickerSheetState
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!_isCurrent(request)) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '员工搜索失败，请稍后重试';
@@ -327,28 +341,18 @@ class _DeptEmployeePickerSheetState
         () => _isCurrent(request),
         () => collectPagedHierarchyCategoryIds<EmployeeSummary>(
           seedPage: firstPage,
-          loadPage: (page) => page == 2
-              ? PagedReadIntent.bufferSeed(
-                  () => _readEmployeePage(
-                    page,
-                    request: request,
-                    keyword: query,
-                    useCache: true,
-                    prepare: false,
-                  ),
-                )
-              : repository.listWithColumnQuery(
-                  page: page,
-                  size: _pageSize,
-                  search: query,
-                  statuses: widget.statuses,
-                  includeSubtree: true,
-                  columnQuery: headers.searches,
-                  sort: headers.sort,
-                  order: headers.sort == null
-                      ? null
-                      : (headers.ascending ? 'asc' : 'desc'),
-                ),
+          loadPage: (page) => repository.listWithColumnQuery(
+            page: page,
+            size: _pageSize,
+            search: query,
+            statuses: widget.statuses,
+            includeSubtree: true,
+            columnQuery: headers.searches,
+            sort: headers.sort,
+            order: headers.sort == null
+                ? null
+                : (headers.ascending ? 'asc' : 'desc'),
+          ),
           categoryIdOf: (item) => item.departmentId,
           isCurrent: () => _isCurrent(request),
         ),
@@ -411,6 +415,8 @@ class _DeptEmployeePickerSheetState
 
   Future<void> _loadEmployees({String? departmentId, String? keyword}) async {
     if (!_canUseCandidates) return;
+    _resumeRead = () =>
+        _loadEmployees(departmentId: departmentId, keyword: keyword);
     final request = ++_requestVersion;
     if (departmentId == null &&
         (keyword == null || keyword.isEmpty) &&
@@ -441,6 +447,7 @@ class _DeptEmployeePickerSheetState
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!_isCurrent(request)) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '加载人员失败，请稍后重试';
@@ -464,33 +471,37 @@ class _DeptEmployeePickerSheetState
         _isCurrent(request) &&
         identical(repository, ref.read(employeeRepositoryProvider)) &&
         setEquals(statuses, widget.statuses);
-    return _candidatePages.read(
-      page,
-      scope: [repository, request, departmentId, keyword, statuses, headers],
-      isCurrent: current,
-      useCache: useCache,
-      canPrefetch: () =>
-          prepare &&
-          current() &&
-          TickerMode.valuesOf(context).enabled &&
-          (ModalRoute.of(context)?.isCurrent ?? true),
-      onPrefetchError: (error) {
-        if (current() && pagedReadAccessDenied(error)) {
-          onPickerAccessInvalidated();
-        }
-      },
-      fetchPage: (target) => repository.listWithColumnQuery(
-        page: target,
-        size: _pageSize,
-        departmentId: departmentId,
-        search: keyword,
-        statuses: statuses,
-        includeSubtree: true,
-        columnQuery: headers.searches,
-        sort: headers.sort,
-        order: headers.sort == null
-            ? null
-            : (headers.ascending ? 'asc' : 'desc'),
+    return readViewActivity.runRead(
+      current,
+      () => _candidatePages.read(
+        page,
+        idOf: (row) => row.id,
+        scope: [repository, request, departmentId, keyword, statuses, headers],
+        isCurrent: current,
+        useCache: useCache,
+        canPrefetch: () =>
+            prepare &&
+            current() &&
+            TickerMode.valuesOf(context).enabled &&
+            (ModalRoute.of(context)?.isCurrent ?? true),
+        onPrefetchError: (error) {
+          if (current() && pagedReadAccessDenied(error)) {
+            onPickerAccessInvalidated();
+          }
+        },
+        fetchPage: (target) => repository.listWithColumnQuery(
+          page: target,
+          size: _pageSize,
+          departmentId: departmentId,
+          search: keyword,
+          statuses: statuses,
+          includeSubtree: true,
+          columnQuery: headers.searches,
+          sort: headers.sort,
+          order: headers.sort == null
+              ? null
+              : (headers.ascending ? 'asc' : 'desc'),
+        ),
       ),
     );
   }
@@ -504,23 +515,15 @@ class _DeptEmployeePickerSheetState
         .where((employee) => !widget.excludeEmployeeIds.contains(employee.id))
         .map(_toPickerItem)
         .toList();
-    _itemPage = result.page;
-    _itemTotalPages = result.totalPages;
-    _itemTotal = result.total;
+    _itemTotal = _items.length;
     _pageDepartmentId = departmentId;
     _pageKeyword = keyword;
-    _loadingMore = false;
-    _loadMoreError = null;
   }
 
   void _resetPageState() {
-    _itemPage = 0;
-    _itemTotalPages = 0;
     _itemTotal = 0;
     _pageDepartmentId = null;
     _pageKeyword = null;
-    _loadingMore = false;
-    _loadMoreError = null;
   }
 
   Future<void> _changeHeaders(TableColumnQuery headers) async {
@@ -548,48 +551,6 @@ class _DeptEmployeePickerSheetState
         accountStatus: employee.accountStatus,
         employmentStatus: employee.status,
       );
-
-  Future<void> _loadMoreEmployees() async {
-    if (!_canUseCandidates || _loadingMore || _itemPage >= _itemTotalPages) {
-      return;
-    }
-    final request = _requestVersion;
-    final nextPage = _itemPage + 1;
-    setState(() {
-      _loadingMore = true;
-      _loadMoreError = null;
-    });
-    try {
-      final result = await _readEmployeePage(
-        nextPage,
-        request: request,
-        keyword: _pageKeyword,
-        departmentId: _pageDepartmentId,
-        useCache: true,
-      );
-      if (!_isCurrent(request)) return;
-      setState(() {
-        _items = [
-          ..._items,
-          ...result.items
-              .where(
-                (employee) => !widget.excludeEmployeeIds.contains(employee.id),
-              )
-              .map(_toPickerItem),
-        ];
-        _itemPage = result.page;
-        _itemTotalPages = result.totalPages;
-        _itemTotal = result.total;
-        _loadingMore = false;
-      });
-    } catch (caughtError) {
-      if (!_isCurrent(request)) return;
-      setState(() {
-        _loadingMore = false;
-        _loadMoreError = humanErrorMessage(caughtError) ?? '加载更多失败，请重试';
-      });
-    }
-  }
 
   DepartmentNode? _findDepartment(List<DepartmentNode> nodes, String id) {
     for (final node in nodes) {
@@ -746,8 +707,6 @@ class _DeptEmployeePickerSheetState
         ),
       );
     }
-    final showFooter =
-        _loadingMore || _loadMoreError != null || _itemPage < _itemTotalPages;
     final requestVersion = _requestVersion;
     return Column(
       children: [
@@ -853,13 +812,6 @@ class _DeptEmployeePickerSheetState
               _requestVersion,
               _headers,
             ),
-            loadingMore: _loadingMore,
-            onLoadMore:
-                !_loadingMore &&
-                    _loadMoreError == null &&
-                    _itemPage < _itemTotalPages
-                ? _loadMoreEmployees
-                : null,
             showPaginationControls: false,
             showFullscreenToggle: false,
             showColumnChooser: false,
@@ -867,25 +819,6 @@ class _DeptEmployeePickerSheetState
             enableTextSelection: false,
           ),
         ),
-        if (showFooter)
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: _loadingMore
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : TextButton.icon(
-                    key: const ValueKey('department-employee-load-more'),
-                    onPressed: _loadMoreEmployees,
-                    icon: Icon(
-                      _loadMoreError == null
-                          ? Icons.expand_more_rounded
-                          : Icons.refresh_rounded,
-                    ),
-                    label: Text(_loadMoreError ?? '加载更多员工'),
-                  ),
-          ),
       ],
     );
   }

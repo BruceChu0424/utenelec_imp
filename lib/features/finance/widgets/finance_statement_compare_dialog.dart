@@ -47,7 +47,6 @@ class _ComparisonState extends ConsumerState<_Comparison>
   final _mapping = <int, int>{};
   String? _mappingFingerprint, _error;
   int? _selected;
-  int _sourcePage = 1, _actualPage = 1, _resultPage = 1;
   bool _busy = false, _loading = true;
   bool get _current => mounted && formDraftIdentityIsCurrent;
   bool get _stale =>
@@ -235,7 +234,6 @@ class _ComparisonState extends ConsumerState<_Comparison>
       if (_current && request.isCurrent) {
         setState(() {
           _result = result;
-          _resultPage = 1;
         });
       }
     } catch (error) {
@@ -283,10 +281,6 @@ class _ComparisonState extends ConsumerState<_Comparison>
     markFormDraftChanged();
   }
 
-  List<Map<String, dynamic>> _slice(
-    List<Map<String, dynamic>> rows,
-    int page,
-  ) => rows.skip((page - 1) * 50).take(50).toList();
   @override
   Widget build(BuildContext context) {
     ref.watch(exportContextEpochProvider);
@@ -404,12 +398,8 @@ class _ComparisonState extends ConsumerState<_Comparison>
                                   width: 170,
                                 ),
                             ],
-                            rows: _slice(sourceRows, _sourcePage),
+                            rows: sourceRows,
                             idOf: (row) => '${row['sourceRow']}',
-                            page: _sourcePage,
-                            pages: (sourceRows.length / 50).ceil(),
-                            onPage: (page) =>
-                                setState(() => _sourcePage = page),
                             busy: _busy,
                             canOpen: (_) => !_busy,
                             onOpen: (row) => setState(
@@ -436,12 +426,8 @@ class _ComparisonState extends ConsumerState<_Comparison>
                                   width: 170,
                                 ),
                             ],
-                            rows: _slice(actualRows, _actualPage),
+                            rows: actualRows,
                             idOf: (row) => '${row['__number']}',
-                            page: _actualPage,
-                            pages: (actualRows.length / 50).ceil(),
-                            onPage: (page) =>
-                                setState(() => _actualPage = page),
                             busy: _busy,
                             canOpen: (_) =>
                                 !_busy && !_stale && _selected != null,
@@ -479,13 +465,9 @@ class _ComparisonState extends ConsumerState<_Comparison>
                                       : '不一致',
                                 ),
                               ],
-                              rows: _slice(differences, _resultPage),
+                              rows: differences,
                               idOf: (row) =>
                                   '${row['sourceRow']}:${row['column']}',
-                              page: _resultPage,
-                              pages: (differences.length / 50).ceil(),
-                              onPage: (page) =>
-                                  setState(() => _resultPage = page),
                               scope: _mappingFingerprint,
                             ),
                           ),

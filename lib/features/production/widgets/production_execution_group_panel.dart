@@ -16,7 +16,6 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_execution_refresh.dart';
-import '../providers/production_prepared_page_provider.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -51,6 +50,9 @@ class _ProductionExecutionGroupPanelState
     with
         UtenRefreshParticipant<ProductionExecutionGroupPanel>,
         ScopedPagedReadViewMixin<ProductionExecutionGroupPanel> {
+  @override
+  Future<void> onReadViewResumed() => _loadPage();
+
   final _navigation = PageNavigationSession();
   final _tableRows =
       MasterDataTableRowsController<ProductionExecutionWorkbenchGroup>();
@@ -100,7 +102,7 @@ class _ProductionExecutionGroupPanelState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) trackRefresh(_load(preferPrepared: true));
+      if (mounted) trackRefresh(_load());
     });
   }
 
@@ -117,16 +119,10 @@ class _ProductionExecutionGroupPanelState
     }
   }
 
-  Future<void> _load({bool useCache = false, bool preferPrepared = false}) =>
-      trackRefresh(
-        _loadPage(useCache: useCache, preferPrepared: preferPrepared),
-        replaceKey: 'rows',
-      );
+  Future<void> _load({bool useCache = false}) =>
+      trackRefresh(_loadPage(useCache: useCache), replaceKey: 'rows');
 
-  Future<void> _loadPage({
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _loadPage({bool useCache = false}) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readQuery = (
@@ -168,14 +164,12 @@ class _ProductionExecutionGroupPanelState
           _salesOrderFilter,
         ),
         useCache: useCache,
-        fetchPage: (page) => repo.readGroups(
-          preparedRead: ref.read(productionGroupsPreparedPageProvider),
+        fetchPage: (page) => repo.groups(
           page: page,
           keyword: requestedKeyword,
           sort: requestedSort,
           order: requestedOrder,
           salesOrder: requestedSalesOrder,
-          preferPrepared: preferPrepared,
         ),
       );
       // 关联订单 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
@@ -188,6 +182,7 @@ class _ProductionExecutionGroupPanelState
         _totalPages = result.totalPages;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (mounted && generation == _loadGeneration) {
         setState(
           () => _error = humanErrorMessage(caughtError) ?? '生产任务加载失败，请重试',
@@ -315,7 +310,8 @@ class _ProductionExecutionGroupPanelState
       key: 'progress',
       label: '产品完成情况',
       width: 220,
-      info: '按货品、颜色、单位统计；同一产品所有有效工单完工才算完成，取消和红冲工单不计。双击批次查看实际阶段。',
+      info:
+          '只统计顶层产品：按货品、颜色、单位计数，子件和子层不并入；同一顶层产品所有有效工单完工才算完成，取消和红冲工单不计。双击批次查看实际阶段。',
       value: (row) => row.productCompletionLabel,
     ),
     MasterColumnDef(
@@ -348,7 +344,7 @@ class _ProductionExecutionGroupPanelState
       label: '产品名称',
       width: 200,
       info:
-          '本组全部产品的名称；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情，双击行打开批次详情。与右侧编号/颜色列各自独立聚合，不逐项对应。',
+          '本组全部顶层产品的名称（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情，双击行打开批次详情。与右侧编号/颜色列各自独立聚合，不逐项对应。',
       value: (row) =>
           _productNames(row).isEmpty ? '—' : _productNames(row).join('、'),
       cellBuilder: (context, row) => UtenMultiValueCell(
@@ -363,7 +359,8 @@ class _ProductionExecutionGroupPanelState
       key: 'productCode',
       label: '货品编码',
       width: 130,
-      info: '本组全部产品的货品编码；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情。与名称列不逐项对应。',
+      info:
+          '本组全部顶层产品的货品编码（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情。与名称列不逐项对应。',
       value: (row) =>
           _productCodes(row).isEmpty ? '—' : _productCodes(row).join('、'),
       cellBuilder: (context, row) => UtenMultiValueCell(
@@ -378,7 +375,7 @@ class _ProductionExecutionGroupPanelState
       key: 'productColor',
       label: '颜色',
       width: 96,
-      info: '本组全部产品的颜色；格内显示首个 +「等 N 个」，点击单元格弹出全部。与名称列不逐项对应。',
+      info: '本组全部顶层产品的颜色（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部。与名称列不逐项对应。',
       value: (row) =>
           _productColors(row).isEmpty ? '—' : _productColors(row).join('、'),
       cellBuilder: (context, row) => UtenMultiValueCell(

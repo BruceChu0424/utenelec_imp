@@ -75,7 +75,7 @@ namespace Uten.Legacy.Core
         private static readonly Regex ReportPath = new Regex("^/(?:api/)?(sales|purchase|subcontract|production|stock|finance)/reports(?:/|$)", RegexOptions.CultureInvariant);
         private static readonly Regex MasterPath = new Regex("^/(?:api/)?master/(clients|suppliers|goods|accounts|currencies|colors|units|moulds|warehouses)(?:/|$)", RegexOptions.CultureInvariant);
         private static readonly Regex SettlementPath = new Regex("^/(?:api/)?master/reference-methods/settlement-admin(?:/page)?$", RegexOptions.CultureInvariant);
-        private static readonly Regex GoodsCostPath = new Regex("^/(?:api/)?master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates|/export)?$", RegexOptions.CultureInvariant);
+        private static readonly Regex GoodsCostPath = new Regex("^/(?:api/)?master/goods/cost-sheets(?:/versions(?:/summary)?|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates(?:/summary|/[0-9a-fA-F-]{36})?|/export)?$", RegexOptions.CultureInvariant);
         private static readonly Dictionary<string, string> MasterDomains = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             { "clients", "client" }, { "suppliers", "supplier" }, { "goods", "master_goods" },

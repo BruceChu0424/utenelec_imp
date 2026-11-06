@@ -6,7 +6,7 @@ import '../../features/basic_data/widgets/master_data_table_view.dart';
 
 export '../data_display/master_data_table_rows_controller.dart';
 
-/// A bounded picker list with the same bidirectional page window as tables.
+/// A continuous picker list with the same local virtual rendering as tables.
 /// The caller retains ownership of selection, fetching, and confirmation.
 class UtenPagedPickerList<T> extends StatelessWidget {
   const UtenPagedPickerList({

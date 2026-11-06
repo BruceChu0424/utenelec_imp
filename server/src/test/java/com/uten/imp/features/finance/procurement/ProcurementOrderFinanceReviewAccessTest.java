@@ -164,15 +164,10 @@ class ProcurementOrderFinanceReviewAccessTest {
                 .canCurrentActorReviewPending(anyString(), any(UUID.class));
     }
 
-    /**
-     * 财务审批态切片（2026-09-19）：「草稿」段与「等待财务审核」段同为 status=0，
-     * 靠 financeApproval=NONE/PENDING 区分——切片时必须向投影查询要 PENDING 集合
-     * （采购/委外各自按 orderType 取），不切片（null）不得多查一次；
-     * 非法值 fail-closed 抛 VALIDATION_FAILED。
-     */
+    /** Slice validation stays fail-closed; row qualification is now a database relation. */
     @Test
     @SuppressWarnings("unchecked")
-    void listFinanceApprovalSliceConsultsPendingProjectionPerOrderType() {
+    void listFinanceApprovalSlicesUseDatabasePredicatesWithoutDirectoryQueries() {
         PurchaseFixture purchase = purchaseFixture((short) 0);
         OwnerVisibility.OwnerScope purchaseScope =
                 new OwnerVisibility.OwnerScope(false, Set.of(purchase.ownerId()));
@@ -185,19 +180,17 @@ class ProcurementOrderFinanceReviewAccessTest {
         purchase.service().list(
                 new OrderQueryFilter(null, null, null, (short) 0, null, null, "NONE"),
                 1, 20, null, null);
-        verify(purchase.projection()).pendingOrderIds("PURCHASE");
+        verify(purchase.projection(), never()).isCurrentActorEligibleReviewer();
 
         purchase.service().list(
                 new OrderQueryFilter(null, null, null, (short) 0, null, null, "PENDING"),
                 1, 20, null, null);
-        verify(purchase.projection(), org.mockito.Mockito.times(2))
-                .pendingOrderIds("PURCHASE");
+        verify(purchase.projection(), never()).canCurrentActorReviewPending(anyString(), any(UUID.class));
 
         purchase.service().list(
                 new OrderQueryFilter(null, null, null, (short) 0, null, null, null),
                 1, 20, null, null);
-        verify(purchase.projection(), org.mockito.Mockito.times(2))
-                .pendingOrderIds("PURCHASE");
+        verify(purchase.projection(), never()).canCurrentActorReviewPending(anyString(), any(UUID.class));
 
         assertEquals(ErrorCode.VALIDATION_FAILED,
                 assertThrows(ApiException.class, () -> purchase.service().list(
@@ -218,7 +211,7 @@ class ProcurementOrderFinanceReviewAccessTest {
                 new com.uten.imp.features.subcontract.order.dto.OrderQueryFilter(
                         null, null, null, (short) 0, null, null, null, "PENDING"),
                 1, 20, null, null);
-        verify(subcontract.projection()).pendingOrderIds("SUBCONTRACT");
+        verify(subcontract.projection(), never()).canCurrentActorReviewPending(anyString(), any(UUID.class));
     }
 
     @Test

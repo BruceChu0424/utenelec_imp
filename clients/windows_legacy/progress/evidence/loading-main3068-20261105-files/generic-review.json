@@ -1,0 +1,505 @@
+{
+  "atUtc": "2026-11-05T21:33:40.882694+00:00",
+  "baseMain": "f6e0d8532e6e11239243b4fb2149fb90410395ba",
+  "mainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "mainIndexDiffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "mainDirtyTracked": {},
+  "entries": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/UnitExportMutationChecks.cs",
+      "baseSha256": "67027dcb953b12b2596306850ad469813103cf08fa83c0725aeed18331845ca6",
+      "taskSha256": "d0b8285028955b6492a58d06dce2ae46e14c81635a871b5b96d7daf1abbfcaee",
+      "mainSha256": "49896808656e36c75aa5b28d3cff57c3a6300eda0c17a963ad350bc372810551",
+      "action": "adopt_main",
+      "resultSha256": "49896808656e36c75aa5b28d3cff57c3a6300eda0c17a963ad350bc372810551"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitColumnProjectionContract.cs",
+      "baseSha256": "f5534707777e19dd7327decaf07dbaa5931e0e38924049854fab25eed78d9f51",
+      "taskSha256": "436ed654d4225946c0ab4b73e745b5e58d1fa70097ac3267e7ee900b5fbca9f2",
+      "mainSha256": "36290609bc4e9c9790f35399ea42109f06effff22b5fc4121474ab47f20f78f1",
+      "action": "adopt_main",
+      "resultSha256": "36290609bc4e9c9790f35399ea42109f06effff22b5fc4121474ab47f20f78f1"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportDownload.cs",
+      "baseSha256": "55503deec53c328bbada6ba125d4ab27ea6e93e5b3db3dc34b5c08bee88febae",
+      "taskSha256": "0ff29d7887f08495ccf0283648c929e0add68e28b9bd485d321b7f4157692635",
+      "mainSha256": "26cdbb277be6ba1030815bd65721c4a11424acb1f8db22510b1996c31ae033a8",
+      "action": "adopt_main",
+      "resultSha256": "26cdbb277be6ba1030815bd65721c4a11424acb1f8db22510b1996c31ae033a8"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportMutationContract.cs",
+      "baseSha256": "c77a165bbe07a160e1f0f8722a15bc000dfb2e5afd6eec21e5924aa17e69ed55",
+      "taskSha256": "70651aebbce8e4e2de3f29229b227ad4de14a7e267d1cee3f2442e5446a5ebc0",
+      "mainSha256": "74b342a03f833e1a44791011cba3d03299703f3a91b587d1ef5ee60841844bb3",
+      "action": "adopt_main",
+      "resultSha256": "74b342a03f833e1a44791011cba3d03299703f3a91b587d1ef5ee60841844bb3"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "baseSha256": "bca07ceef5235c12403bde459d9ba22e546f83286eb5715238ebea529100051d",
+      "taskSha256": "823109997734a3d76d05d5370770b2874798f674e1b8a0a69366715c16fc0ad7",
+      "mainSha256": "bdd40fb9cc3d848c85a8b67e22c806b33d974d7f123e6338f02ff121b30e6ba6",
+      "action": "adopt_main",
+      "resultSha256": "bdd40fb9cc3d848c85a8b67e22c806b33d974d7f123e6338f02ff121b30e6ba6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportService.cs",
+      "baseSha256": "de72d792cf663b8439f9370dcd308a82977fb9772c01d686f529e12fc830ba5d",
+      "taskSha256": "471c88b8dfdca6f3fc11e9805b12c37655550edfd7717d6c6cb5e7addc3b240f",
+      "mainSha256": "f5351dab4b3f65b48f9806b59c0dfb4f169c7c84a0ba7d6093a495c07d947d9b",
+      "action": "adopt_main",
+      "resultSha256": "f5351dab4b3f65b48f9806b59c0dfb4f169c7c84a0ba7d6093a495c07d947d9b"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportUiChecks.cs",
+      "baseSha256": "24b166eee1cc20302e8331c6e213cb12e052be5a72b208235432b0c6fc3fbfe7",
+      "taskSha256": "e68f0534eed6f5b0517113ee347ca5ab2083741f7851e022ffdfb8f9d68c4fae",
+      "mainSha256": "859db320920224357141abfc11d3800d5fd574c21d21dc3ed3c91047be99ae8e",
+      "action": "adopt_main",
+      "resultSha256": "859db320920224357141abfc11d3800d5fd574c21d21dc3ed3c91047be99ae8e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitExportWindow.cs",
+      "baseSha256": "c384dab5a6dbf555d2b4b3a662a9580e81c487f349413870252e2299b48a6a94",
+      "taskSha256": "10341515868a62565c7578040edb669a8522818d6f740f2fbc10443c41cdce29",
+      "mainSha256": "eac74e95580f536cc2a09432a5f689cfc0566294ab416476ce39a79e8077e106",
+      "action": "adopt_main",
+      "resultSha256": "eac74e95580f536cc2a09432a5f689cfc0566294ab416476ce39a79e8077e106"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintSnapshot.cs",
+      "baseSha256": "6988d8478ab4f63d0c0bbf2d3f3835659e37c412807706d2dc3fea56ccc79e2c",
+      "taskSha256": "926957f13a25bc142d7920a1e119212d03794d476fb93a153f8656029cb32c54",
+      "mainSha256": "f079c4b3095f029e1f74e7dd7413c936af17fccd3dd967e22147c2e3ff569f36",
+      "action": "adopt_main",
+      "resultSha256": "f079c4b3095f029e1f74e7dd7413c936af17fccd3dd967e22147c2e3ff569f36"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitPrintWindow.cs",
+      "baseSha256": "2a3a090e439291e281741934cd93e5440c03189a87f9867d4d7b0c2ed1f60018",
+      "taskSha256": "8ec9c907b04f87047238e8ebd9ccfbf6ba55bfa26e99d58dfc78dc48c80d948f",
+      "mainSha256": "32115478f5668fffc9b159c033dc1f1e2d11fd29ef3f117cf14c49b1e9290931",
+      "action": "adopt_main",
+      "resultSha256": "32115478f5668fffc9b159c033dc1f1e2d11fd29ef3f117cf14c49b1e9290931"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "baseSha256": "0d418a1867ce2d21d8dec786e55535ba3bb080b2b9d647b1c463db409f6ef16e",
+      "taskSha256": "226509822b059ba63952fc4a8fa27418f81cbaffda5b57232ea29272e6ff092c",
+      "mainSha256": "fa0f2b4867615c8a250fb2b551c21cab12a06216c4d596bb29738a0d77c831cb",
+      "action": "reviewed_semantic_merge",
+      "resultSha256": "c9ad85c18a417e451a4500596ae2c45288cd8f0cc09b55fa7944325e6d12c68c",
+      "resolution": {
+        "sha256": "c9ad85c18a417e451a4500596ae2c45288cd8f0cc09b55fa7944325e6d12c68c",
+        "strategy": "Keep complete allRows projection and original bounded transport/owner checks; retain authoritative server total only for the latest print/export scope protocol. No user page state or pager."
+      }
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/NativePrintContractChecks.cs",
+      "baseSha256": "4d06555404bb46bf98d3ba6d6dcfcb813146d09952278ea89c772542ca3e57cb",
+      "taskSha256": "6d87b197129c91c742e41dbc6c98447571da7e4751fe62e0ac064d429c6eae26",
+      "mainSha256": "bd473dc25298c6c4cafb3f46f26b0537f1f8b2d2f64f2c28a212ebbd91709c10",
+      "action": "adopt_main",
+      "resultSha256": "bd473dc25298c6c4cafb3f46f26b0537f1f8b2d2f64f2c28a212ebbd91709c10"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/TableOutputScopeDialog.cs",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "726f523e60fd3f3cd536e1d87c9bb99bcba1ecd691d4a8e2116e69ceddb46ad7",
+      "action": "adopt_main",
+      "resultSha256": "726f523e60fd3f3cd536e1d87c9bb99bcba1ecd691d4a8e2116e69ceddb46ad7"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "baseSha256": "9121b9508ee949f90fd68a0c7d0ce75160cf304c951af8bf16c2388c7290e21f",
+      "taskSha256": "854bf127722ef94efbd7f2bbcb1640949269c4110b840b6c4bb466b9b4be7306",
+      "mainSha256": "bdcde452097b86bb9ba069af8a6de900d77038784695662960a47b00e51b8c07",
+      "action": "clean_merge",
+      "resultSha256": "22d859a3d1f6b9ec94348c8f3a403a6ee1b16de0c51839e6ef541e311315c483"
+    },
+    {
+      "path": "clients/windows_legacy/progress/business-inventory.json",
+      "baseSha256": "1883bd9c2f434259d6b3649299f445d6e7ec07f3faf1eecc71a09db7fb2a9173",
+      "taskSha256": "1883bd9c2f434259d6b3649299f445d6e7ec07f3faf1eecc71a09db7fb2a9173",
+      "mainSha256": "64f27640e72a37f193d66ff84bc63d3633accd35bd59895a7feb6ad24b373407",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/ci-source-fingerprint-review-20261105.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "e744d1b1eda8a2662ad0ce4c2da1f078a40b26150eaf7d05ca0480bb0854ad0f",
+      "action": "adopt_main",
+      "resultSha256": "e744d1b1eda8a2662ad0ce4c2da1f078a40b26150eaf7d05ca0480bb0854ad0f"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-checkout-archive.json",
+      "baseSha256": "a00be8b163dc540e8fa688a13ba86f456e760b3c541828e7b0e698f0e3b21c1e",
+      "taskSha256": "a00be8b163dc540e8fa688a13ba86f456e760b3c541828e7b0e698f0e3b21c1e",
+      "mainSha256": "1b8017aade18b2a1de347f279952891d43ae3817cc8802fdec18b6b3bcf7f24c",
+      "action": "adopt_main",
+      "resultSha256": "1b8017aade18b2a1de347f279952891d43ae3817cc8802fdec18b6b3bcf7f24c"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/internal-feedback-20261104-pre-eol-normalization.json",
+      "baseSha256": "128985d03c29f721c2f8e7e3bab56a19c4f85806673b47dc898a0dd8013dd10a",
+      "taskSha256": "128985d03c29f721c2f8e7e3bab56a19c4f85806673b47dc898a0dd8013dd10a",
+      "mainSha256": "3bb45c27359e4044d3fa16a8d5c0fea7e157dc1fc223b39f7402eaa78ffa9bae",
+      "action": "adopt_main",
+      "resultSha256": "3bb45c27359e4044d3fa16a8d5c0fea7e157dc1fc223b39f7402eaa78ffa9bae"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/internal-feedback-20261104.json",
+      "baseSha256": "48e1f1d77402c37d83b7294db0e65f4f5bda960b747eab03e74b5be5a23b5fc1",
+      "taskSha256": "48e1f1d77402c37d83b7294db0e65f4f5bda960b747eab03e74b5be5a23b5fc1",
+      "mainSha256": "45ea9e18ad56000ab79b1982ed558ce6a36672fc280f9faa994599eba108f3a2",
+      "action": "adopt_main",
+      "resultSha256": "45ea9e18ad56000ab79b1982ed558ce6a36672fc280f9faa994599eba108f3a2"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "5ce3dbbb8c5a8e0900b2990b3f1d604558edbaf2efe3d46faecdf55127dd78fa",
+      "action": "adopt_main",
+      "resultSha256": "5ce3dbbb8c5a8e0900b2990b3f1d604558edbaf2efe3d46faecdf55127dd78fa"
+    },
+    {
+      "path": "clients/windows_legacy/progress/history.jsonl",
+      "baseSha256": "def25a0a8ab32ff4c42f2d55f207a1b5680a8ae27f49cae9b263342a19e46794",
+      "taskSha256": "c1cbe6caee958f54ded7cc1e259db2697aaf48cf1f79815de6f5fd129793efbb",
+      "mainSha256": "a15ca96fdb4e981a12e25f843fe86b4b26c17830ef5c023ccb43c4485eed6892",
+      "action": "reviewed_semantic_merge",
+      "resultSha256": "2b57880225d6377e90a39c126947ed951d23b81d7e90c95f89490205e54d62b1",
+      "resolution": {
+        "sha256": "2b57880225d6377e90a39c126947ed951d23b81d7e90c95f89490205e54d62b1",
+        "strategy": "Preserve all original Main JSONL lines and append semantically distinct task history lines; no rewrite/removal of existing audit history.",
+        "mainLines": 419,
+        "taskLines": 403,
+        "appendedTaskLines": 4
+      }
+    },
+    {
+      "path": "clients/windows_legacy/progress/work-items.json",
+      "baseSha256": "d5b9ea0af723b6d1e505e96cef5bf15a2bfe664bced02e71b3f6a29cee6e022e",
+      "taskSha256": "2b5150dcab10d0d0769240ec98d53f2df246f9370a375e41ec8c5411bf556ad1",
+      "mainSha256": "3dacd3214af0b3ffbe7acef137528479909f1ea427d5cf659e57893637e9b6eb",
+      "action": "reviewed_semantic_merge",
+      "resultSha256": "9f3fa1894cd4becd79025c5839816c3acd2e5766989960d5cee9d6a94ed5a86c",
+      "resolution": {
+        "sha256": "9f3fa1894cd4becd79025c5839816c3acd2e5766989960d5cee9d6a94ed5a86c",
+        "strategy": "Start with latest Main metadata/task order; append exact task-only notes and evidence. Keep every Main status/owner/DoD/dependency/nativeTarget. Source fingerprints regenerated on owning tree.",
+        "taskNoteOrEvidenceIds": [
+          "W7-BIZ-025",
+          "W7-BIZ-034",
+          "W7-BIZ-037"
+        ],
+        "protectedTasks": 372
+      }
+    },
+    {
+      "path": "docs/00-项目准则/15-全量测试分片与耗时核对.md",
+      "baseSha256": "71fa0b28cb7164d4e023259a87bf0a7c27c53b70915e318860a666e5db4dcccf",
+      "taskSha256": "71fa0b28cb7164d4e023259a87bf0a7c27c53b70915e318860a666e5db4dcccf",
+      "mainSha256": "8c475fecda78c675d49a6a26f954417d5913664c58dd5b807b2dc34c926588fb",
+      "action": "adopt_main",
+      "resultSha256": "8c475fecda78c675d49a6a26f954417d5913664c58dd5b807b2dc34c926588fb"
+    },
+    {
+      "path": "docs/99-项目治理/2026-11-05-表格输出范围与货品模具反查修复.md",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "f2159b97d7ddf685d797fdc66333f77d3361c8e5adcf5cfd8441566aa4a9891c",
+      "action": "adopt_main",
+      "resultSha256": "f2159b97d7ddf685d797fdc66333f77d3361c8e5adcf5cfd8441566aa4a9891c"
+    },
+    {
+      "path": "docs/99-项目治理/2026-11-05-订单散件交付主线验证.json",
+      "baseSha256": "36b60e4381c5d5a0a6c1effe71bfb3e913421cd41e92f9ffc7cfdd3599468657",
+      "taskSha256": "36b60e4381c5d5a0a6c1effe71bfb3e913421cd41e92f9ffc7cfdd3599468657",
+      "mainSha256": "5d0a64bcbb30202902500f68df303c43e78b2b43a1045176fa49ad6df94c12e8",
+      "action": "adopt_main",
+      "resultSha256": "5d0a64bcbb30202902500f68df303c43e78b2b43a1045176fa49ad6df94c12e8"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/04-当前接手记录.md",
+      "baseSha256": "399794a292bc31ed2c2580605814153bfd335f09f0dddc068dfe792b7b805765",
+      "taskSha256": "399794a292bc31ed2c2580605814153bfd335f09f0dddc068dfe792b7b805765",
+      "mainSha256": "72135c50a36b2e817b04fe0df77df543ca6959ab72da5fc5de94d161a14d840c",
+      "action": "adopt_main",
+      "resultSha256": "72135c50a36b2e817b04fe0df77df543ca6959ab72da5fc5de94d161a14d840c"
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/07-变更与完成记录.md",
+      "baseSha256": "ba1431f94fab57ad3d31cb0ca8959171dd5a5f92b893cb79d3d0af5d31988426",
+      "taskSha256": "3ed5f2bb3c221972662555edd8b76a50138c6e783633c187c4ebb680d7ac730e",
+      "mainSha256": "4c615cf9ba9b863f5efbc8cda412ab4c685a3dedf52330005ebbe428921a0c8d",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/admin.md",
+      "baseSha256": "b8a7f007fbef8b3d6261ece840b78af58caf7bf94520fb878a5638f251b9c6a1",
+      "taskSha256": "b8a7f007fbef8b3d6261ece840b78af58caf7bf94520fb878a5638f251b9c6a1",
+      "mainSha256": "2e3859b7ea72574df6d330dd3f2a14a6a1163ed6121d620386239ddd3145821b",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/applications.md",
+      "baseSha256": "1d1e8c05ee3cf65af973765df42d37918cec77aa7f87624a5bc565ba651788a4",
+      "taskSha256": "1d1e8c05ee3cf65af973765df42d37918cec77aa7f87624a5bc565ba651788a4",
+      "mainSha256": "695f6d18ad2c7ea59bbaac71a4ab36e56b0f393dedf7f14a5b9f1d27fe335f47",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/approvals.md",
+      "baseSha256": "baecb3c83e6e9e7adcc5b45aa4d11762a59dc28d3c7f810839b4209d2b0b7da9",
+      "taskSha256": "baecb3c83e6e9e7adcc5b45aa4d11762a59dc28d3c7f810839b4209d2b0b7da9",
+      "mainSha256": "2502758032177576ccbf707c6c9a8c85924d6c6493553396117e99a278932cf9",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/basic_data.md",
+      "baseSha256": "384ce2b43cefee492e387821c464f89ff6551a2148538a10571ebac7dd4f1683",
+      "taskSha256": "384ce2b43cefee492e387821c464f89ff6551a2148538a10571ebac7dd4f1683",
+      "mainSha256": "6aa9bed8150f18dee2483a50c0321afee6780cdaa3319b6e8051a96d8ec48808",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/expense.md",
+      "baseSha256": "4f01c649caa8cbe467adee5f6c0d9b449b563f6cc5217a88801ba26be4fc1a4e",
+      "taskSha256": "4f01c649caa8cbe467adee5f6c0d9b449b563f6cc5217a88801ba26be4fc1a4e",
+      "mainSha256": "ad77006682d98f374a928a52465cd0043e298a437aadf56d00116b7c4b4c2433",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/finance.md",
+      "baseSha256": "799f7483bb93ca36ec661b49bc0a7fe05ed46f0c8fa87d9558c7e3113c56635f",
+      "taskSha256": "799f7483bb93ca36ec661b49bc0a7fe05ed46f0c8fa87d9558c7e3113c56635f",
+      "mainSha256": "a204007fa2404714b23cc5aa30adbc45b7a65bf1b062f96393be08d5d0d7f07b",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/operations_workbench.md",
+      "baseSha256": "3bdf85f8e32f0c3a8a03f1a64c255cb91686406eda687a2fddc2b046a8c1eab2",
+      "taskSha256": "3bdf85f8e32f0c3a8a03f1a64c255cb91686406eda687a2fddc2b046a8c1eab2",
+      "mainSha256": "7050a348e561defe54fc89803906b8577f520ba73df97be37d1c795c23be4e97",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/procurement_iqc_rejection.md",
+      "baseSha256": "17ed09631deb040fadeb734b69bb57648b6ef091b3604afd08485057c25fdf14",
+      "taskSha256": "17ed09631deb040fadeb734b69bb57648b6ef091b3604afd08485057c25fdf14",
+      "mainSha256": "c8a9730ef76546a5674abad0861341259b4b663ab5cbaba89a21eca1ff9f8c4f",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/production.md",
+      "baseSha256": "6888e2ba84a2d88e9136cfefef93ed607ffd0f95f9ba82cb01d344864bb33379",
+      "taskSha256": "6888e2ba84a2d88e9136cfefef93ed607ffd0f95f9ba82cb01d344864bb33379",
+      "mainSha256": "3a91028e40c8c1cd7653f82d486998c9114e1a8cc6f50f0b76ea04efebf3b88a",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/profile.md",
+      "baseSha256": "27a9e517e4ec9ea1e46554f1a1c17d1e1f01868e996b71da5bd690feaa52ab08",
+      "taskSha256": "27a9e517e4ec9ea1e46554f1a1c17d1e1f01868e996b71da5bd690feaa52ab08",
+      "mainSha256": "2b8eb91aa6832f009fd53e5f8e643d3b0ebfd9ef4a1079d91f2b013b9df07835",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/purchase.md",
+      "baseSha256": "546ee0ca61da3172f301feb54a6f0706eb6815633d529fabc8e167a523f6770d",
+      "taskSha256": "546ee0ca61da3172f301feb54a6f0706eb6815633d529fabc8e167a523f6770d",
+      "mainSha256": "6f41239c2d5f698c4c245403ab861a1c16cf9591562024ebf6c445247f9dcada",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/quality.md",
+      "baseSha256": "9014164dc60fb9fff1f8e998d29ed9d07ff3a224263842766bce4b322c0e4339",
+      "taskSha256": "9014164dc60fb9fff1f8e998d29ed9d07ff3a224263842766bce4b322c0e4339",
+      "mainSha256": "b542baee7aaa29da4ed58cbd80114d0ab1b3be2171def4f144bb665a414f8927",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/sales.md",
+      "baseSha256": "0bb232606836e9c4d72390fca92fe06a42528f1519d6170024ec7711d99a0254",
+      "taskSha256": "0bb232606836e9c4d72390fca92fe06a42528f1519d6170024ec7711d99a0254",
+      "mainSha256": "f5ed184047c9aa79546290752a2faf70ac53e25da4a189d95ae40c5ec7ca3d6f",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/security.md",
+      "baseSha256": "28e81617a231758bb9f02ed9d0db4f71030a51175dcdbc42e5429ada1c06f7b0",
+      "taskSha256": "28e81617a231758bb9f02ed9d0db4f71030a51175dcdbc42e5429ada1c06f7b0",
+      "mainSha256": "80ad5e7259b74af1b54c0de8431ce694c47d4e559d744282c2ee7c8fd903a527",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/stock.md",
+      "baseSha256": "3a96fec5de534026ba4ecce38e6d05d5a50f3d3ed3a94c4d5494f0d6493b1f8e",
+      "taskSha256": "3a96fec5de534026ba4ecce38e6d05d5a50f3d3ed3a94c4d5494f0d6493b1f8e",
+      "mainSha256": "a6424c507f8da33db667f36f33f4fec956d76ffe0e39c1fc7a94051dd007f2e0",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/subcontract.md",
+      "baseSha256": "ca908f914a1ff6d5f75a5b8c3dc528a38aeb57c88cab9d2b6f889c64e8a29e08",
+      "taskSha256": "ca908f914a1ff6d5f75a5b8c3dc528a38aeb57c88cab9d2b6f889c64e8a29e08",
+      "mainSha256": "9fc9067ee3aaaae09120d3c518fb33ab3fda05d35eb96f0c11f5eff069fdc2d9",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/suggestion.md",
+      "baseSha256": "2327fd67c41688a7e43de26d2251d06b0e3c429a5ac69bcae14cd338a64ed73a",
+      "taskSha256": "2327fd67c41688a7e43de26d2251d06b0e3c429a5ac69bcae14cd338a64ed73a",
+      "mainSha256": "c10588226f3665f0f74e980b38fc83c2dfec3c0416ed4a1a90ff25f2a1c09ca8",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/pages/warehouse.md",
+      "baseSha256": "43b214682d166c0a704eb053382172c55e1b3cb48023bdfddadf80f2c5a3de3e",
+      "taskSha256": "43b214682d166c0a704eb053382172c55e1b3cb48023bdfddadf80f2c5a3de3e",
+      "mainSha256": "fc947be4d34525d7a7081ecb3d484f6930a58bcaa5adf35b82209e5ffa19e7b3",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-admin.md",
+      "baseSha256": "fd93538e31a961d7e089e1bd6dc6f313f260354ef48ae5cfa5813b2209eb10cb",
+      "taskSha256": "fd93538e31a961d7e089e1bd6dc6f313f260354ef48ae5cfa5813b2209eb10cb",
+      "mainSha256": "00fd98a668b9d6c6d9da77f0406d5cb8e8f5b9edb67c307a6a1c2e189e16d9d6",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-basic_data.md",
+      "baseSha256": "767481bf7d59c124e04b43b14871e7b3537b82e5449b03e811c17e9ef92a933d",
+      "taskSha256": "4c457bf23f56b364ba6b95d00620436186b3cfe4875f1ac5cc90146952692093",
+      "mainSha256": "fd1c98173f3eb3081b3abf4a1272ed0ba198cb479fb9e1ceb1cfae455458c4e1",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-operations_workbench.md",
+      "baseSha256": "ecdfa074dc9b5c6608e4dbd88d35b4000fad98676a375cf510c61e86e9a5ba63",
+      "taskSha256": "ecdfa074dc9b5c6608e4dbd88d35b4000fad98676a375cf510c61e86e9a5ba63",
+      "mainSha256": "7b084c9bf89bb31906f84b0934426e85712a26235b3cad0516db220164cfcef2",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-production.md",
+      "baseSha256": "f9d3c580f8e6551f474260eef0908f4bdb2c7e4d527ed66005156eadd874e2e5",
+      "taskSha256": "f9d3c580f8e6551f474260eef0908f4bdb2c7e4d527ed66005156eadd874e2e5",
+      "mainSha256": "36e7fd153ed75c35823b7f16343abf63d9e8700a6d467f4c33589561251ed243",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/Win7兼容版/tasks/BIZ-subcontract.md",
+      "baseSha256": "4ff20500a8ebd1b37baeab46870edf4cce34abc470a0bd5cac6bb1a88c6fc0f4",
+      "taskSha256": "4ff20500a8ebd1b37baeab46870edf4cce34abc470a0bd5cac6bb1a88c6fc0f4",
+      "mainSha256": "10e1892b334ca377ea86ca4dfbfb3e30d7b41017a31a74ce359bf37c78122be5",
+      "action": "regenerate_on_owning_tree",
+      "resultSha256": null
+    },
+    {
+      "path": "docs/99-项目治理/当前版本验证.md",
+      "baseSha256": "dd384913bc61094ab3e9e896831afa684d493c2189a3c424f92d945d252d97f3",
+      "taskSha256": "dd384913bc61094ab3e9e896831afa684d493c2189a3c424f92d945d252d97f3",
+      "mainSha256": "e67c4201313b1a65e58d1afb69f8575da57154ca7a79b386e9b224cf1eaf2ed8",
+      "action": "adopt_main",
+      "resultSha256": "e67c4201313b1a65e58d1afb69f8575da57154ca7a79b386e9b224cf1eaf2ed8"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/coverage.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "a306e45a14b4ab7f888d78081efb304cdf75ae16c5a936fbbeef2d9c87e85a0f",
+      "action": "adopt_main",
+      "resultSha256": "a306e45a14b4ab7f888d78081efb304cdf75ae16c5a936fbbeef2d9c87e85a0f"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/main-integration-validation.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "5653ecfd60cdd880cd69652a691962d45c02b6658c5cfb41b079ce377568f7d3",
+      "action": "adopt_main",
+      "resultSha256": "5653ecfd60cdd880cd69652a691962d45c02b6658c5cfb41b079ce377568f7d3"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/receipt.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "d4ea11acef2f9aeec87cc921f4365425ffbcfc4646132f0e0f6574773a28344f",
+      "action": "adopt_main",
+      "resultSha256": "d4ea11acef2f9aeec87cc921f4365425ffbcfc4646132f0e0f6574773a28344f"
+    },
+    {
+      "path": "docs/99-项目治理/表格输出范围-20261105/report-line-identity-validation.json",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "310949176a07431cc39e9535ab2cb71310cafac513cce82e101fd457dbfa83e5",
+      "action": "adopt_main",
+      "resultSha256": "310949176a07431cc39e9535ab2cb71310cafac513cce82e101fd457dbfa83e5"
+    },
+    {
+      "path": "tool/table_output_scope_harness.dart",
+      "baseSha256": null,
+      "taskSha256": null,
+      "mainSha256": "484f9938043c4873a84c73d87bd123237ae3ab054bb6af9c1d183d2b7aac6962",
+      "action": "adopt_main",
+      "resultSha256": "484f9938043c4873a84c73d87bd123237ae3ab054bb6af9c1d183d2b7aac6962"
+    }
+  ],
+  "scope": "Generic docs/tools/WPF only; source not written. All frontend belongs Root, all server/contracts/migration README belong backend owner.",
+  "mainWritten": false,
+  "candidateWritten": false,
+  "manualResolutions": {
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs": {
+      "sha256": "c9ad85c18a417e451a4500596ae2c45288cd8f0cc09b55fa7944325e6d12c68c",
+      "strategy": "Keep complete allRows projection and original bounded transport/owner checks; retain authoritative server total only for the latest print/export scope protocol. No user page state or pager."
+    },
+    "clients/windows_legacy/progress/work-items.json": {
+      "sha256": "9f3fa1894cd4becd79025c5839816c3acd2e5766989960d5cee9d6a94ed5a86c",
+      "strategy": "Start with latest Main metadata/task order; append exact task-only notes and evidence. Keep every Main status/owner/DoD/dependency/nativeTarget. Source fingerprints regenerated on owning tree.",
+      "taskNoteOrEvidenceIds": [
+        "W7-BIZ-025",
+        "W7-BIZ-034",
+        "W7-BIZ-037"
+      ],
+      "protectedTasks": 372
+    },
+    "clients/windows_legacy/progress/history.jsonl": {
+      "sha256": "2b57880225d6377e90a39c126947ed951d23b81d7e90c95f89490205e54d62b1",
+      "strategy": "Preserve all original Main JSONL lines and append semantically distinct task history lines; no rewrite/removal of existing audit history.",
+      "mainLines": 419,
+      "taskLines": 403,
+      "appendedTaskLines": 4
+    }
+  },
+  "resolvedAtUtc": "2026-11-05T21:33:43.224134+00:00"
+}

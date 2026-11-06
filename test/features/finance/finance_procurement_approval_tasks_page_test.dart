@@ -65,6 +65,8 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
         .where(
           (item) =>
               (status == 'ALL' ||
+                  (status == 'HISTORY' &&
+                      const {'APPROVED', 'CANCELED'}.contains(item.status)) ||
                   item.status == status ||
                   (status == 'CLOSURE_PENDING' &&
                       item.status == 'PENDING' &&
@@ -389,7 +391,7 @@ void main() {
     });
     final repository = _FakeWorkflowRepo([closure]);
     await _pumpPage(tester, repository);
-    await tester.tap(find.text('历史结束申请'));
+    await tester.tap(find.text('结束待业务确认'));
     await tester.pumpAndSettle();
     expect(find.text('PO-CLOSE-1'), findsOneWidget);
     expect(find.text('采购 · 历史结束申请待业务确认'), findsOneWidget);

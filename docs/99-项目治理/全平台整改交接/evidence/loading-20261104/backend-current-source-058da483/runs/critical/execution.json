@@ -1,0 +1,27 @@
+{
+  "label": "critical",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-critical-remaining-selection.txt",
+  "selected": "ProcurementFirstPayablePostgresTest,FulfillmentWorkbenchQueryServiceTest,VisitorAdmissionConcurrencyPostgresTest,ImportedDocumentAncestryWalkPostgresTest,ProcurementApprovalReturnedQueuePostgresTest,VisitorApplicationPaginationTest,BusinessArchivePilotPostgresTest,BusinessArchiveEligibilityPageTest,GiftPhysicalConservationEndToEndTest,GiftUnitRateConservationEndToEndTest,ProcurementUnapprovalEligibilityEndToEndTest,AiUsageDashboardPostgresTest,AiUsageAuditControllerSecurityTest,FinanceApplicationReferencePagingPostgresTest",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=ProcurementFirstPayablePostgresTest,FulfillmentWorkbenchQueryServiceTest,VisitorAdmissionConcurrencyPostgresTest,ImportedDocumentAncestryWalkPostgresTest,ProcurementApprovalReturnedQueuePostgresTest,VisitorApplicationPaginationTest,BusinessArchivePilotPostgresTest,BusinessArchiveEligibilityPageTest,GiftPhysicalConservationEndToEndTest,GiftUnitRateConservationEndToEndTest,ProcurementUnapprovalEligibilityEndToEndTest,AiUsageDashboardPostgresTest,AiUsageAuditControllerSecurityTest,FinanceApplicationReferencePagingPostgresTest",
+    "surefire:test"
+  ],
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-critical-empty-benchmark.json",
+    "MAVEN_OPTS": "-Xmx2g"
+  },
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "startedAtUtc": "2026-11-05T12:59:37.9347143Z",
+  "wrapperPid": 53696,
+  "log": "build/loading-validation/combined-critical.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T13:20:13.4123490Z",
+  "actualExitCode": 0
+}

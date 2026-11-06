@@ -58,6 +58,9 @@ class _BatchShipSheet extends ConsumerStatefulWidget {
 
 class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
     with ScopedPagedReadViewMixin<_BatchShipSheet> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   static const _maxSelection = 500;
   PagedResult<ShippableLine>? _page;
   final _rows = MasterDataTableRowsController<ShippableLine>();
@@ -221,6 +224,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
         }
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       if (error is ApiException &&
           ({401, 403}.contains(error.httpStatus) ||
@@ -518,7 +522,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                   ),
                 ),
                 const UtenFieldHintIcon(
-                  info: '每页100行，已选产品和输入跨页保留；单批最多500行。',
+                  info: '显示当前筛选的全部产品，保留已选产品和输入；单批最多500行。',
                   dense: true,
                 ),
                 const SizedBox(width: UtenSpacing.s8),

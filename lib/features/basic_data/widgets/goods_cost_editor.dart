@@ -27,7 +27,10 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       final client = id == null
           ? null
           : await ref.read(clientRepositoryProvider).detail(id);
-      final templates = await _repository.templates(widget.detail.id, id);
+      final templates = await _readTemplateSummaries(
+        id,
+        isCurrent: () => request == _templateRequest,
+      );
       if (mounted &&
           _capability.canRead &&
           request == _templateRequest &&
@@ -226,7 +229,24 @@ extension _GoodsCostEditor on _GoodsCostTabState {
 
   Future<void> _compareVersions() async {
     final current = _calculation;
-    if (current == null || _versions.isEmpty) return;
+    if (current == null || _busy) return;
+    final repository = _repository, goods = widget.detail.id;
+    final ownerCurrent = _costReadCurrent(repository, goods);
+    final versions = await _action(
+      () => UtenBusyOverlay.run(
+        context,
+        title: '正在读取完整成本版本',
+        action: () => repository.completeVersionListForRead(
+          goods,
+          isCurrent: ownerCurrent,
+        ),
+      ),
+      preservePreview: true,
+    );
+    if (!mounted || versions == null || !ownerCurrent() || versions.isEmpty) {
+      return;
+    }
+    _versions = versions;
     String? baselineId;
     GoodsCostCalculation? baseline;
     String? error;
@@ -806,7 +826,10 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                 for (final t in _templates)
                   UtenDropdownItem(
                     value: costText(t['id']),
-                    label: costText(costMap(t['input'])['name']) ?? '—',
+                    label:
+                        costText(t['name']) ??
+                        costText(costMap(t['input'])['name']) ??
+                        '—',
                   ),
               ],
               onChanged: (id) => _change(() {
@@ -1486,171 +1509,301 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       UtenDropdownItem(value: key, label: _category(key)),
   ];
   Future<void> _addPriceColumn() async {
+    if (!_editable) return;
+    final repository = _repository,
+        goods = widget.detail.id,
+        client = costText(_input['clientId']);
+    final ownerCurrent = _costReadCurrent(repository, goods);
+    bool current() => ownerCurrent() && client == costText(_input['clientId']);
+    final summaries = await _action(
+      () => UtenBusyOverlay.run(
+        context,
+        title: '正在读取成本模板',
+        action: () => _readTemplateSummaries(client),
+      ),
+      preservePreview: true,
+    );
+    if (!mounted || summaries == null || !current()) return;
+    _templates = summaries;
     final name = TextEditingController();
     var type = 'PER_UNIT', category = 'PROCESS';
     var advanced = false;
     final base = TextEditingController(text: 'MATERIAL');
     Map<String, dynamic>? reuse;
-    final known = <String, Map<String, dynamic>>{
-      for (final template in _templates)
-        for (final column in costMaps(
-          costMap(template['input'])['priceColumns'],
-        ))
-          column['key'].toString(): column,
-      for (final column in costMaps(_input['priceColumns']))
-        column['key'].toString(): column,
-    };
+    String? sourceTemplateId;
+    var templateLoading = false, templateRead = 0;
+    List<Map<String, dynamic>> templateColumns = [];
+    final known = <String, Map<String, dynamic>>{};
+    void rebuildKnown() {
+      known
+        ..clear()
+        ..addAll({
+          for (final column in templateColumns)
+            column['key'].toString(): column,
+          // This document's current exact definition always takes precedence.
+          for (final column in costMaps(_input['priceColumns']))
+            column['key'].toString(): column,
+        });
+      if (reuse != null && !known.containsKey(reuse!['key'])) reuse = null;
+    }
+
+    rebuildKnown();
     final saved = await _dialogWhenRemoved<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => UtenAlertDialog(
-          scrollable: false,
-          title: Text(_l.costAddPriceColumn),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (known.isNotEmpty) ...[
-                    UtenDropdownField(
-                      label: _l.costFeeReuse,
-                      value: costText(reuse?['key']),
-                      searchable: true,
-                      items: [
-                        for (final column in known.values)
-                          UtenDropdownItem(
-                            value: costText(column['key']),
-                            label: costText(column['name']) ?? '—',
-                          ),
+      builder: (dialogContext) => Consumer(
+        builder: (context, ref, _) {
+          ref.watch(sensitiveReadBoundaryProvider);
+          ref.watch(exportContextEpochProvider);
+          ref.watch(costWorkbenchCapabilityProvider);
+          if (!current()) {
+            return UtenAlertDialog(
+              title: const Text('读取范围已变化'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('关闭'),
+                ),
+              ],
+            );
+          }
+          return StatefulBuilder(
+            builder: (context, update) => UtenAlertDialog(
+              scrollable: false,
+              title: Text(_l.costAddPriceColumn),
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_templates.isNotEmpty) ...[
+                        UtenDropdownField(
+                          key: const Key('cost-column-template-source'),
+                          label: _l.costTemplate,
+                          value: sourceTemplateId,
+                          enabled: !templateLoading,
+                          searchable: true,
+                          items: [
+                            for (final template in _templates)
+                              UtenDropdownItem(
+                                value: costText(template['id']),
+                                label:
+                                    costText(template['name']) ??
+                                    costText(
+                                      costMap(template['input'])['name'],
+                                    ) ??
+                                    '—',
+                              ),
+                          ],
+                          onChanged: (id) async {
+                            if (templateLoading ||
+                                id == sourceTemplateId ||
+                                !current()) {
+                              return;
+                            }
+                            final request = ++templateRead;
+                            if (id == null) {
+                              update(() {
+                                sourceTemplateId = null;
+                                templateColumns = [];
+                                rebuildKnown();
+                              });
+                              return;
+                            }
+                            final summary = _templates
+                                .where((row) => costText(row['id']) == id)
+                                .firstOrNull;
+                            if (summary == null) return;
+                            update(() => templateLoading = true);
+                            try {
+                              final detail = await UtenBusyOverlay.run(
+                                dialogContext,
+                                title: '正在读取所选成本模板',
+                                action: () =>
+                                    repository.selectedTemplateForRead(
+                                      summary,
+                                      goods,
+                                      client,
+                                      isCurrent: () =>
+                                          current() &&
+                                          dialogContext.mounted &&
+                                          request == templateRead,
+                                    ),
+                              );
+                              if (!current() ||
+                                  !dialogContext.mounted ||
+                                  request != templateRead) {
+                                return;
+                              }
+                              update(() {
+                                sourceTemplateId = id;
+                                templateColumns = costMaps(
+                                  costMap(detail['input'])['priceColumns'],
+                                );
+                                reuse = null;
+                                rebuildKnown();
+                              });
+                            } catch (error) {
+                              if (current() &&
+                                  dialogContext.mounted &&
+                                  request == templateRead &&
+                                  !isRetiredViewRead(error)) {
+                                dialogContext.appApiError(
+                                  error,
+                                  fallback: '所选模板未读取，请重试',
+                                );
+                              }
+                            } finally {
+                              if (dialogContext.mounted &&
+                                  request == templateRead) {
+                                update(() => templateLoading = false);
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
                       ],
-                      onChanged: (key) => update(() {
-                        reuse = known[key];
-                        if (reuse != null) {
-                          name.text = costText(reuse!['name']) ?? '';
-                          type = costText(reuse!['type']) ?? 'PER_QUANTITY';
-                          category = costText(reuse!['category']) ?? 'PROCESS';
-                          base.text = (reuse!['baseKeys'] as List? ?? []).join(
-                            ',',
-                          );
-                        }
-                      }),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  TextFormField(
-                    key: const Key('cost-column-name'),
-                    controller: name,
-                    errorBuilder: utenTextFieldErrorBuilder,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(labelText: _l.costFeeName),
-                      info: _l.costDefaultFeeHelp,
-                    ),
-                  ),
-                  TextButton(
-                    key: const Key('cost-column-advanced'),
-                    onPressed: () => update(() => advanced = !advanced),
-                    child: Text(_l.costAdvancedOptions),
-                  ),
-                  if (advanced) ...[
-                    const SizedBox(height: 12),
-                    UtenDropdownField(
-                      label: _l.costFeeMethod,
-                      value: type,
-                      allowClear: false,
-                      items: _methods,
-                      onChanged: (v) => update(() => type = v!),
-                    ),
-                    const SizedBox(height: 12),
-                    UtenDropdownField(
-                      label: _l.costFeeCategory,
-                      value: category,
-                      allowClear: false,
-                      items: _categories,
-                      onChanged: (v) => update(() => category = v!),
-                    ),
-                    if (type == 'PERCENT') ...[
-                      const SizedBox(height: 12),
-                      UtenButton(
-                        type: UtenButtonType.tonal,
-                        onPressed: () async {
-                          final selected = await _pickBases(base.text);
-                          if (selected != null && context.mounted) {
-                            update(() => base.text = selected.join(','));
-                          }
-                        },
-                        child: Text(
-                          '${_l.costFeeBase}: ${_baseText(base.text)}',
+                      if (known.isNotEmpty) ...[
+                        UtenDropdownField(
+                          label: _l.costFeeReuse,
+                          value: costText(reuse?['key']),
+                          searchable: true,
+                          items: [
+                            for (final column in known.values)
+                              UtenDropdownItem(
+                                value: costText(column['key']),
+                                label: costText(column['name']) ?? '—',
+                              ),
+                          ],
+                          onChanged: (key) => update(() {
+                            reuse = known[key];
+                            if (reuse != null) {
+                              name.text = costText(reuse!['name']) ?? '';
+                              type = costText(reuse!['type']) ?? 'PER_QUANTITY';
+                              category =
+                                  costText(reuse!['category']) ?? 'PROCESS';
+                              base.text = (reuse!['baseKeys'] as List? ?? [])
+                                  .join(',');
+                            }
+                          }),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      TextFormField(
+                        key: const Key('cost-column-name'),
+                        controller: name,
+                        errorBuilder: utenTextFieldErrorBuilder,
+                        decoration: UtenInputDecoration(
+                          InputDecoration(labelText: _l.costFeeName),
+                          info: _l.costDefaultFeeHelp,
                         ),
                       ),
+                      TextButton(
+                        key: const Key('cost-column-advanced'),
+                        onPressed: () => update(() => advanced = !advanced),
+                        child: Text(_l.costAdvancedOptions),
+                      ),
+                      if (advanced) ...[
+                        const SizedBox(height: 12),
+                        UtenDropdownField(
+                          label: _l.costFeeMethod,
+                          value: type,
+                          allowClear: false,
+                          items: _methods,
+                          onChanged: (v) => update(() => type = v!),
+                        ),
+                        const SizedBox(height: 12),
+                        UtenDropdownField(
+                          label: _l.costFeeCategory,
+                          value: category,
+                          allowClear: false,
+                          items: _categories,
+                          onChanged: (v) => update(() => category = v!),
+                        ),
+                        if (type == 'PERCENT') ...[
+                          const SizedBox(height: 12),
+                          UtenButton(
+                            type: UtenButtonType.tonal,
+                            onPressed: () async {
+                              final selected = await _pickBases(base.text);
+                              if (selected != null && context.mounted) {
+                                update(() => base.text = selected.join(','));
+                              }
+                            },
+                            child: Text(
+                              '${_l.costFeeBase}: ${_baseText(base.text)}',
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
-                  ],
-                ],
+                  ),
+                ),
               ),
-            ),
-          ),
-          actions: [
-            if (reuse != null &&
-                costMaps(
-                  _input['priceColumns'],
-                ).any((c) => c['key'] == reuse!['key']))
-              TextButton(
-                onPressed: () async {
-                  final confirmed = await UtenDialog.show(
-                    context,
-                    title: _l.costDeleteColumn,
-                    content: Text(_l.costDeleteFeePrompt),
-                    confirmLabel: _l.costDelete,
-                    cancelLabel: _l.commonCancel,
-                  );
-                  if (confirmed == true && dialogContext.mounted) {
+              actions: [
+                if (reuse != null &&
+                    costMaps(
+                      _input['priceColumns'],
+                    ).any((c) => c['key'] == reuse!['key']))
+                  TextButton(
+                    onPressed: () async {
+                      final confirmed = await UtenDialog.show(
+                        context,
+                        title: _l.costDeleteColumn,
+                        content: Text(_l.costDeleteFeePrompt),
+                        confirmLabel: _l.costDelete,
+                        cancelLabel: _l.commonCancel,
+                      );
+                      if (confirmed == true && dialogContext.mounted) {
+                        Navigator.pop(dialogContext, <String, dynamic>{
+                          '_deleteKey': reuse!['key'],
+                        });
+                      }
+                    },
+                    child: Text(_l.costDeleteColumn),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(_l.commonCancel),
+                ),
+                TextButton(
+                  key: const Key('cost-column-create'),
+                  onPressed: () {
+                    if (name.text.trim().isEmpty) return;
+                    final existing = costMaps(_input['priceColumns'])
+                        .where(
+                          (c) =>
+                              costText(c['name'])?.toLowerCase() ==
+                              name.text.trim().toLowerCase(),
+                        )
+                        .firstOrNull;
+                    if (existing != null && existing['key'] != reuse?['key']) {
+                      Navigator.pop(dialogContext);
+                      return;
+                    }
                     Navigator.pop(dialogContext, <String, dynamic>{
-                      '_deleteKey': reuse!['key'],
+                      'key': reuse?['key'] ?? const Uuid().v4(),
+                      'name': name.text.trim(),
+                      'type': type,
+                      'category': category,
+                      'baseKeys': base.text
+                          .split(',')
+                          .map((v) => v.trim())
+                          .where((v) => v.isNotEmpty)
+                          .toList(),
                     });
-                  }
-                },
-                child: Text(_l.costDeleteColumn),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_l.commonCancel),
+                  },
+                  child: Text(_l.commonConfirm),
+                ),
+              ],
             ),
-            TextButton(
-              key: const Key('cost-column-create'),
-              onPressed: () {
-                if (name.text.trim().isEmpty) return;
-                final existing = costMaps(_input['priceColumns'])
-                    .where(
-                      (c) =>
-                          costText(c['name'])?.toLowerCase() ==
-                          name.text.trim().toLowerCase(),
-                    )
-                    .firstOrNull;
-                if (existing != null && existing['key'] != reuse?['key']) {
-                  Navigator.pop(dialogContext);
-                  return;
-                }
-                Navigator.pop(dialogContext, <String, dynamic>{
-                  'key': reuse?['key'] ?? const Uuid().v4(),
-                  'name': name.text.trim(),
-                  'type': type,
-                  'category': category,
-                  'baseKeys': base.text
-                      .split(',')
-                      .map((v) => v.trim())
-                      .where((v) => v.isNotEmpty)
-                      .toList(),
-                });
-              },
-              child: Text(_l.commonConfirm),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
     name.dispose();
     base.dispose();
-    if (saved != null && mounted) {
+    if (saved != null && current()) {
       _change(() {
         final deleted = costText(saved['_deleteKey']);
         final key = deleted ?? saved['key'];
@@ -2055,10 +2208,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       }, const Uuid().v4()),
     );
     if (result != null && mounted) {
-      _templates = await _repository.templates(
-        widget.detail.id,
-        costText(_input['clientId']),
-      );
+      _templates = await _readTemplateSummaries(costText(_input['clientId']));
       if (mounted) {
         setState(() {});
         context.appSuccess(_l.costTemplateSaved);

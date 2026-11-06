@@ -520,6 +520,7 @@ class _WarehouseArrivalExceptionsViewState
           status: _statusFilter,
           scope: WarehouseListScope.of(context),
         ),
+    isCurrent: captureReadOwner(ref),
     onLoaded: () {
       if (mounted) setState(() {});
     },

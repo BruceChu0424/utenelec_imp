@@ -1,0 +1,2802 @@
+[
+  {
+    "path": "backend-reviewed-resolutions.json",
+    "sha256": "aa5fa4419fdeb95c96acafe7268c8726e0f7fe35a31300c0413d39f513dbd37d",
+    "bytes": 5241
+  },
+  {
+    "path": "current-qualified/archive-qualified.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "current-qualified/backend-current-acceptance.json",
+    "sha256": "bf127592a72bf39802df4f7e07c08406aad8e7f7044ca4cb087a0432bf3e5842",
+    "bytes": 108886
+  },
+  {
+    "path": "current-qualified/compile-gift-console.log",
+    "sha256": "5b411225e54cc7143d68e8179e2479737b10e5d42050eef0815dce4c65be805a",
+    "bytes": 1114
+  },
+  {
+    "path": "current-qualified/compiled-class-byte-manifest.json",
+    "sha256": "029b16f7d782f40c1163195c7b5227e7f0ce6dd29c707d60cd77aff46e313855",
+    "bytes": 2294142
+  },
+  {
+    "path": "current-qualified/compiled-patch-receipt.json",
+    "sha256": "25d751795e644729389de7a621c598a9a47fcd6c294b5fd0fb451f1e2e220f8e",
+    "bytes": 764
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-execution.json",
+    "sha256": "2d61d2002b2ae7a3c5da2d6b5ec91934f6314fe8ab201f88eac13f275e3630ed",
+    "bytes": 1166
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-receipt/complete-input-inventory.json",
+    "sha256": "9a316527c7d6535f0babba68fa26aff773307cda95670f4e376d1117a509659c",
+    "bytes": 1480583
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-receipt/execution.json",
+    "sha256": "2d61d2002b2ae7a3c5da2d6b5ec91934f6314fe8ab201f88eac13f275e3630ed",
+    "bytes": 1166
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-receipt/maven.log",
+    "sha256": "725d2dfec19dcde858f4060c9ff45bc8a5dec2523f23efb39144e18869925eb1",
+    "bytes": 393111
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-receipt/source-input.json",
+    "sha256": "9a316527c7d6535f0babba68fa26aff773307cda95670f4e376d1117a509659c",
+    "bytes": 1480583
+  },
+  {
+    "path": "current-qualified/gift-physical-whole-receipt/TEST-com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest.xml",
+    "sha256": "c8044829936c5d70934cc6d7f4278f3322a9cf7183b65d7972dbe48ef2d0cff1",
+    "bytes": 444017
+  },
+  {
+    "path": "current-qualified/gift-physical-whole.log",
+    "sha256": "725d2dfec19dcde858f4060c9ff45bc8a5dec2523f23efb39144e18869925eb1",
+    "bytes": 393111
+  },
+  {
+    "path": "current-qualified/javac-gift-execution.json",
+    "sha256": "d55ca5d88c8fbd3999d7efbaa37bf0e02e3c2c9cdd66a6c18c9e8e1c6fb584fb",
+    "bytes": 761
+  },
+  {
+    "path": "current-qualified/javac-gift.args",
+    "sha256": "abb2c16ff2212df0b9fbf41d636b2eda81170f1131d27fec23c2fe29eb15dad6",
+    "bytes": 22736
+  },
+  {
+    "path": "current-qualified/javac-gift.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "path": "current-qualified/original-compiled-gift.class",
+    "sha256": "eb4c67ca14ed3354a9d10181bf91f5828d5a99846245be6dd74e2a154f02a2fb",
+    "bytes": 29491
+  },
+  {
+    "path": "current-qualified/qualified-seal.log",
+    "sha256": "d2480444cccef8709408daf97988c3f9405107b2e4a64810bc2a77da24091c9d",
+    "bytes": 666
+  },
+  {
+    "path": "current-qualified/resumption-source-verification.json",
+    "sha256": "78e0e65e6b10bff7e4c3a167addbb67c9dea10a2543443e8a9ba67709f61a653",
+    "bytes": 426
+  },
+  {
+    "path": "current-qualified/run-suite-source-preflight.log",
+    "sha256": "a5981e25e62e561ecf4c9c3ed1437c67e1ea648e3c5f947855d4d8d11caaad1f",
+    "bytes": 399
+  },
+  {
+    "path": "current-qualified/run-suite.ps1",
+    "sha256": "e0b944141f4f33c0352314716b130d4c1dede18d7d8cb3d3c3cc49c8d2be1dd1",
+    "bytes": 3383
+  },
+  {
+    "path": "current-qualified/single-test-cas-receipt.json",
+    "sha256": "603a951a64e6be91d48198909333c219faa339fca3c35d0851cce688c4c7d701",
+    "bytes": 864
+  },
+  {
+    "path": "current-qualified/source-input.json",
+    "sha256": "9a316527c7d6535f0babba68fa26aff773307cda95670f4e376d1117a509659c",
+    "bytes": 1480583
+  },
+  {
+    "path": "current-qualified/verify-source.py",
+    "sha256": "63daa4af6a55b449efbed23697f607a38cb93517e24c9d17c75d86525990771a",
+    "bytes": 2786
+  },
+  {
+    "path": "current-source-delta/build/loading-validation/upstream-current-composition/backend-reviewed-resolutions.json",
+    "sha256": "aa5fa4419fdeb95c96acafe7268c8726e0f7fe35a31300c0413d39f513dbd37d",
+    "bytes": 5241
+  },
+  {
+    "path": "current-source-delta/deploy/updater/release_guard.py",
+    "sha256": "96d446cd510f85c8086f6dfa32145983a2b3d0e5ea1f984e4e2076c7f6950684",
+    "bytes": 56390
+  },
+  {
+    "path": "current-source-delta/docs/数据迁移/README.md",
+    "sha256": "2c9be2b190b8ef488d37250df65d39af7da8d1ba4493e529dff5bf1532492618",
+    "bytes": 179788
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/local_source_freeze.py",
+    "sha256": "26fdbc523f067cd8603a01b305b3c5b03924675b549cbd1966414b8443b250c5",
+    "bytes": 3305
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/mapping-version.txt",
+    "sha256": "e6dfe7365149d01285aa6473638315533ff38d9ebd512e7b3118d17867a74e4c",
+    "bytes": 14
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/migrate.sh",
+    "sha256": "33f6b59eb517df377ec1b4bd6b5459c7f4b9885bd7e36c5dc713fbceac40f095",
+    "bytes": 70485
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/migrate_purchase.sql",
+    "sha256": "29de999ae3e5de24b129e1e81eeccf5564d9ad6dceb39dc77b79f40607fecad5",
+    "bytes": 35774
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/migrate_subcontract.sql",
+    "sha256": "8ddd71ad4e5d7bdf12d5d26967cbf317488cda4670b7cab5b2e13abefa903e09",
+    "bytes": 51537
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/README.md",
+    "sha256": "a73919b4671b53dbea3835de57f265cc6e5cc533a716a32ad7d4e9c3348e8594",
+    "bytes": 28024
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/rehearse_local_import.py",
+    "sha256": "8b36f64912d26e451774d04e433067fcc78c7262483b9891e19abe07ffb3a12e",
+    "bytes": 53056
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/scoped_bootstrap.py",
+    "sha256": "42f28418c898b17622b02e4ef4040ac5891aa9c76083730b5460c4eb7adc7225",
+    "bytes": 10903
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/test_local_source_freeze.py",
+    "sha256": "6619f64cb53edfcf29d3b12269e42932eeb7869fb21d3b4246be77ef14d844cf",
+    "bytes": 3132
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/test_rehearsal_stock_checks.py",
+    "sha256": "4aa944edaca89f3437ed7c9a1754bc1bf8958098c4887e9305112e99a045ead1",
+    "bytes": 8994
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/test_rehearse_local_import.py",
+    "sha256": "24d4038c5f1bbfb001b2e92575ffdad462afdc26bc822e530e3fd3e5376c320c",
+    "bytes": 6498
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/test_verify_candidate.py",
+    "sha256": "4ceabba7821d51961be9c7ac8cbe0f4c143e680e3d78a6a1b586deadf558e73f",
+    "bytes": 9687
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/test_verify_rehearsal_counter_baseline.py",
+    "sha256": "8578f4ef78b515e4b56d2d8b9bb7839bdd025c0d38c0541e84d93918f4611d84",
+    "bytes": 11279
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/verify_candidate.py",
+    "sha256": "6b1ffdd500d4291c14a3cdd91cc257a6a995095f003c8c5dbbf2763ef2fc3940",
+    "bytes": 8711
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/verify_rehearsal_result.py",
+    "sha256": "221476a38beb4be027769b43b49b7306f2c3121018ad5b083084df101d098620",
+    "bytes": 54923
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/verify_source_counter_baseline.sql",
+    "sha256": "ad9010e7b6328688be0e38b8964c266f1e2dfc119b55ca4b5f9ecfae7ee829a5",
+    "bytes": 4079
+  },
+  {
+    "path": "current-source-delta/server/legacy_migration/warehouse_crosswalk.csv",
+    "sha256": "19055e11607d7689d5da3786ccdd8927d33e45a8c8dc248dd3119ebf8040a602",
+    "bytes": 1856
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/application/port/ProcurementArchiveEligibilityPort.java",
+    "sha256": "f44cbc8998c7cccf8bed24dac171c363b14df0a741f5cec443e7016033b6b643",
+    "bytes": 499
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/finance/DocumentQuantityDraftInputs.java",
+    "sha256": "3a7f7334a879923a5c5a3396cb97b599df01715af71cd33728d01d469b38f589",
+    "bytes": 764
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/integrity/LinkedDocumentIntegrityService.java",
+    "sha256": "fb270992867a603588abc842f90519083179100c9bc59dc1fbce72ca45f3fd4e",
+    "bytes": 26899
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/numeric/DocumentWeightEvidence.java",
+    "sha256": "25fa6099c6ff4248e6f6deeb9d410c3ac8d15a4a4225fa27557a3b98148450ec",
+    "bytes": 1376
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java",
+    "sha256": "dcf1812eaf9d6bb871b527cdc299886f9e2149dd1b9fe85932cc10f38344dc2c",
+    "bytes": 7237
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/util/InteractiveTaskReadScope.java",
+    "sha256": "8b09218e84d4964caafd62d23079f8771b8e3f8353d0cbb6bde2863ffc634572",
+    "bytes": 2686
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/web/ExactBodyReadRoutes.java",
+    "sha256": "65e2e27831b06debd6c33f55796abe179d39c92b2a9cbb9929faed588acdac98",
+    "bytes": 783
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/common/web/PageMetadataRequest.java",
+    "sha256": "2549a452e12a2a81e23723632b0f583ce6667c412b38fbc1621f1dc184aa0895",
+    "bytes": 709
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/ai/usage/AiUsageAuditController.java",
+    "sha256": "5d2fe830d0bc686de12148df6c1f54e845bc4764ba6407c27c03bc6622bc1b3a",
+    "bytes": 3865
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/ai/usage/AiUsageDashboardService.java",
+    "sha256": "6b170a323a7700d8416d0a4c5cb9f9b5b68e7d18eeb6fc3e5973bf98bce834b1",
+    "bytes": 24178
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/archive/BusinessArchiveEligibilityService.java",
+    "sha256": "1574984ef9b31e6b5ecd35044c523c43ce883738bf300d071488563a93517a4f",
+    "bytes": 32476
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
+    "sha256": "64498f2ee669bdcd64c53629b6167c3e150cdd0a4cc75004fcf226767ba97e75",
+    "bytes": 101548
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationController.java",
+    "sha256": "e5c68f0b7aff556cdadfff8695dfb7aedd45908fa922a0daf677fd8ca474b5bf",
+    "bytes": 5291
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationReferences.java",
+    "sha256": "898e59a086f1968e7b3db7c367cb43329c8915e254e05b01954ca63560dd5ea6",
+    "bytes": 7210
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationService.java",
+    "sha256": "b3933bb16684885ed1a97fe92b206d79374cddc794f2cab6b702ae1690108c20",
+    "bytes": 50021
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/application/FinancePayrollApplicationReferenceController.java",
+    "sha256": "70f80ac28fc5c2b4d7b436fe3b840b1f83b5f8bd4919b3a17201253eb965fdf0",
+    "bytes": 2210
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/application/FinancePayrollApplicationReferences.java",
+    "sha256": "aeb22f0e64068a41cd467f2cc2bf37f5bbbb34baaad99d9e5c3e362f90c20bfc",
+    "bytes": 13925
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/payables/ProcurementArchiveEligibilityAdapter.java",
+    "sha256": "b3d1045d0303f04ac7ab59a67943280e6abf228ffe4928d932f6e8ba6a63d70e",
+    "bytes": 3345
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementApprovalProjectionQuery.java",
+    "sha256": "1a6be4b602f17e5f43dda579b37af0aa5a6d228f162498bb110e1a54e5b90878",
+    "bytes": 8915
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalService.java",
+    "sha256": "2216a183a8fe9f3cd6c9504c104f4164961f89f9952058ab0de42c9eb0b5ca91",
+    "bytes": 88444
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementOrderApprovalPredicates.java",
+    "sha256": "166f07af37500b529edc68e4fe4299c49cf5e274dbe57e88d0432d57d4ddd03f",
+    "bytes": 2274
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementOrderApprovalRead.java",
+    "sha256": "0571fc11290e4d6b3996812d752f63171bdfa7f8f1f434d1d05e3a03b72767c0",
+    "bytes": 947
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchController.java",
+    "sha256": "0f9d82321165a7780f0afd242146627656017f31ca9f1318c10d0378f61fbd80",
+    "bytes": 11428
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPage.java",
+    "sha256": "b1df04859f810ad30dfe8bf37aa384f157a7d6b58dfe26503151af39592610d7",
+    "bytes": 1504
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageRead.java",
+    "sha256": "1781a242deef01c64fa2398534da24f6ef51068343f5dba259b0993828d9c7ad",
+    "bytes": 11877
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+    "sha256": "af8466e3a44fdb045567db424811240a44e4b0191f91a45373ddd02be5791802",
+    "bytes": 100156
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchTableQuery.java",
+    "sha256": "84a3bb30121631c5198a9b9ee119294e1e680ff9a4da475ec7c5219f5373f0b7",
+    "bytes": 13738
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialBatchLookup.java",
+    "sha256": "d402cdb39a5b6a76a0a967fb18c809dbece01616b5d017fcf5965831c6549a84",
+    "bytes": 2880
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/AggregateMaterialOrderWriteService.java",
+    "sha256": "aa3a884072cbccaaf3f2cc90fe639026b9a6698925cbdef87f48ec90c2bc4b7d",
+    "bytes": 106268
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/AggregateMissingDeepAliasRepair.java",
+    "sha256": "bdf86304cbd9ef640f255525f19732a6354baf390216db80924b14b870638134",
+    "bytes": 19636
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/AggregatePrivateIntentReader.java",
+    "sha256": "192cc41d8a56b57acdcd9c630e7681dcea15eb127d665431306e54f4925be60b",
+    "bytes": 11671
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/AnalysisLinkedSalesOrderService.java",
+    "sha256": "43ea97fffe3288baea836901433c2c4d33a1bfba36dc940230903cba32d87c10",
+    "bytes": 11167
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisBomDiagnosticService.java",
+    "sha256": "93d7431144ddefee3b26e4d054b68e87912a2322aad61bdded55f44f6ad19d86",
+    "bytes": 8376
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java",
+    "sha256": "5e8a435e5b5788876cbbb753403433249bf8e18ecb6196ada7013da4c9f47b7b",
+    "bytes": 205955
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisFlowStageService.java",
+    "sha256": "edf2b6a6313362acbae4e0a8b4263340b0e580ec72fd8640a973c3a676fe18cb",
+    "bytes": 37302
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisOverproductionRateService.java",
+    "sha256": "383670fa967c7b9f7f4446057de89b4ddb616d42ca0a706ffa4cc2c19a8675d8",
+    "bytes": 6186
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisPlanningGapReader.java",
+    "sha256": "6aa0cc10372ce940864531d6ecdbfdf739d79cb66b264e7bf07ed8dbe7504e91",
+    "bytes": 19910
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisPlanWithdrawalService.java",
+    "sha256": "7f9e4dbaf4c669e539b878dfdcf116c4c10c3ca7214d1de9eee27f8b5a4f959a",
+    "bytes": 9109
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisReservationPreview.java",
+    "sha256": "0d9f057d0d680400f55d6cee412c87a16abf5bccf9934d24ee79335382ddc7d1",
+    "bytes": 23276
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRootSupplyService.java",
+    "sha256": "eb7f9f4f60d898b32a1f2c962751cf52414dc9d8d9e17d05b4b63536d48486a9",
+    "bytes": 53143
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSalesSourceQuery.java",
+    "sha256": "6f0140cd685904100f143e95993b8e1b7b8d1174cabc2bcc3190ef56fd4a388f",
+    "bytes": 3637
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSalesSourceReader.java",
+    "sha256": "cf39ef16dac844e7d7f251a456810bfcc6cf70e83cf1c459b2b67a0dcd2cb701",
+    "bytes": 4744
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+    "sha256": "b7851ccdeb36d391cdd758bb15db3c0d67f61356aeff39d3fc0ce4dbbf1a2848",
+    "bytes": 660969
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyCoverageReader.java",
+    "sha256": "8bdd996885eb257e550744e9e2ccb77d0ea5a9b6d98ff912ec22f476681aff5b",
+    "bytes": 31837
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyProgressService.java",
+    "sha256": "3514e25fcfd1629f8196163e57399460cf41fbd5115815eca20a3a446b9e99f1",
+    "bytes": 48412
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyWakeupService.java",
+    "sha256": "04f6170ded3ddcda913cdc5d55b01bd5dea965ca476d38e7ae931be1dd6ed520",
+    "bytes": 35437
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/MaterialPreparationBudgetReader.java",
+    "sha256": "cc8fd49afd07485e333b9194b1351eb55da25da354fd83fc4b219c0653159a28",
+    "bytes": 14253
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanAnalysisStockPegService.java",
+    "sha256": "5c446797a6b7a4cc7a5730da47796b3bcc03284e2cf85ba50a4178dcaa04799b",
+    "bytes": 142050
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanFutureSupplyTransferService.java",
+    "sha256": "bd3f52d825aa2b09d1105fbe010af9a992b6a73b95cbf752621575a0a0825a5e",
+    "bytes": 31802
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanInboundAllocationProjectionService.java",
+    "sha256": "6ed8ebe7e38061c659d811affa2844450484fb6f78cb534045813898fabee9f2",
+    "bytes": 66096
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanMakePublicSupplyService.java",
+    "sha256": "cdc313b72a0fbdd9060f7cecd8ef6fa269ad940c5756c24faf9b523c784cf644",
+    "bytes": 19039
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanReallocationMakeSupplement.java",
+    "sha256": "785ce8632b5c57cfc30b792e9d8b920e658ada51ef6dc88bb362082de7236460",
+    "bytes": 7649
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/PreplanStockEntitlementService.java",
+    "sha256": "8c41f5bc9fcc1bc57c0a02bed351d345a813ea8e5b0ffbe7867d3e4b8a032fbe",
+    "bytes": 87320
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/SalesPlanningNoticeSourceReader.java",
+    "sha256": "b51a8511861e4a2182fea34821ec03af971623562da9255cba3be3bde9e22e91",
+    "bytes": 2157
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjection.java",
+    "sha256": "9318a77088fe0f6f2ce0a8d82a016092ba096333ea5c4e5e8fd65001e42b7aa2",
+    "bytes": 36943
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/dto/DailyReportDraftClaim.java",
+    "sha256": "d970c96629092336eb9ee45355e35387a57ba79a0eaadcd2cedb76e8e84cd923",
+    "bytes": 358
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/dto/DailyReportDraftClaimsHeader.java",
+    "sha256": "8c28ee8cc1a52fca9f5d52c3e77a17f32c0039ace392a2c82a40c840446911ba",
+    "bytes": 916
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/dto/DailyReportDraftClaimsQuery.java",
+    "sha256": "89bc488890a6f6a2b8f2cfc9ee36021a6a11f6cbd4e863fd01578650e7747416",
+    "bytes": 305
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/dto/DailyReportListItem.java",
+    "sha256": "8649d953bbe995446319606f8073381afd50cdbd4478edf706d701677fffe646",
+    "bytes": 1534
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportController.java",
+    "sha256": "52b3130f41b663c3189b6515bf4fb3f6f5267a0dc2011b21827ed2c8d4bb57c5",
+    "bytes": 11543
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportItem.java",
+    "sha256": "30c6653745cfc4e4323033f9033bd5a84ef98c8f19977b2c8b081251f886dba9",
+    "bytes": 6110
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionDailyReportService.java",
+    "sha256": "0925667f369b295cb357a6caeb37ce8b1dd531af09cd2525f9ff4dfc0fdb2128",
+    "bytes": 191194
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionCompletionReverseService.java",
+    "sha256": "0f8f9d5462272bd5bd815dfb3dd54d7a4a03cd93c922133ca56316fd3e4fd322",
+    "bytes": 21587
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionDrawRequestService.java",
+    "sha256": "edfeda24be97dad09b420eb75af1694d60d4a50ad4558fa11901da894bfde589",
+    "bytes": 28783
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentService.java",
+    "sha256": "fb412bf5a142d0ae8c9e09f5c82cce7e4c3ecb5f6a75aff05b8b579fe290ec29",
+    "bytes": 77168
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchSegment.java",
+    "sha256": "bc4bd2fcc6ffe81ed1d8d767f8af068a0fda5f105e61b0397975f7ae42651af7",
+    "bytes": 9117
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+    "sha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+    "bytes": 117255
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionOverproductionRateService.java",
+    "sha256": "5a39e5f13951e520ef9da72c6aee2af066c0a2a128f3f03a79291a4ac9a0abde",
+    "bytes": 38724
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionPlanningUrgeService.java",
+    "sha256": "5dd4e12b1bd9f8cbda1fd397a337bc1f699f1722776370e791d9ddade5830733",
+    "bytes": 17430
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkCardService.java",
+    "sha256": "217477fb2e0e49248bb6cc08ec3aca4e18044d760e29b76e4ffbda335cad5af9",
+    "bytes": 16931
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionDrawDiscoveryBatchService.java",
+    "sha256": "71a9c9496487fea594f11516ec32d38369d8ec1ed8dbb31bbe859222c9272867",
+    "bytes": 27276
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionExecutionReadinessService.java",
+    "sha256": "735ff85e7e9caeab4d2b16af79857446261d5b7d8cd8d91f86b4bd6679e4f437",
+    "bytes": 183468
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialDiscoveryService.java",
+    "sha256": "28d5b940747a57d760386d660a6f36657636ef0ca2c4e272d8f6ff5ce83727fc",
+    "bytes": 42978
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementService.java",
+    "sha256": "7d964f9db47011ba2c54f7af852bb992a741603576046f9fb59900c7f7817342",
+    "bytes": 32806
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionPurchaseSupplyTransitionService.java",
+    "sha256": "c6f3d6a5a9efaac28e1dce7317280ffb4e216d866d3304cc412959a4a59badb6",
+    "bytes": 63788
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionReadinessReconciler.java",
+    "sha256": "a4f76bb08684a2a4185206a6e9d945080c1b78485dfc98bad408f837bf89d7c9",
+    "bytes": 7841
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionSubcontractSupplyTransitionService.java",
+    "sha256": "c99995ded9d1b4e42e8f19e93d6ff9f1877c738b01293926f8e5ed140ea65fa5",
+    "bytes": 31468
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/MrpService.java",
+    "sha256": "d662cf501a468bc31718a976781afd3be776184cc2cff9217628ebcbb8eb75ab",
+    "bytes": 43445
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/ProductionExecutionBatchService.java",
+    "sha256": "34342c4e6a2fa6497a21a484e79f56df3315baaa2e7076b76e9081cd94d2936a",
+    "bytes": 42409
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/ProductionExecutionPackageCommandService.java",
+    "sha256": "8b8ae8cffcfbb7bf7c989324acfb59ad4a8d73b4b0cd641310b97a35c153b911",
+    "bytes": 101315
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/ProductionExecutionPlanningService.java",
+    "sha256": "0f6a5c2086cf123ae29a71f5222e5d9afd485080ddd658dda9813f0139e84828",
+    "bytes": 53211
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/ProductionPlanningPackageService.java",
+    "sha256": "566d3a6b429ef362eb2fbb2b312d161e02fc7fa1ea13565ffbd89bc175a18271",
+    "bytes": 33531
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/mrp/ProductionPlanResourceGuard.java",
+    "sha256": "10c24886402d15045ebf1c0de1c4a7eba49ca2d78b255a548f13106b87d15bbd",
+    "bytes": 3333
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleService.java",
+    "sha256": "efb06a846bf4c846ec6dea9a97b812b906b7ec52326b7bfb641c0522d0df9417",
+    "bytes": 36141
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/purchase/common/PurchaseRequestQuantities.java",
+    "sha256": "ac39ba02f1cc00134ec7a02c7b2904f30947acde7e6b68e3098cb3c7c9989879",
+    "bytes": 4350
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java",
+    "sha256": "d837c041e71821245573b3dff45fc710336d31322fa4c4b5ca222337ba4b4254",
+    "bytes": 103804
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/purchase/request/PurchaseRequestService.java",
+    "sha256": "bb970af4f3a306da49df10d80c4da79a663942b15a81eb090ad25a3ce3de23ef",
+    "bytes": 42062
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java",
+    "sha256": "29c07824aae9a1a10d4fee18da1615f1794d755d381199daf2d13f9692a2ec1b",
+    "bytes": 58967
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/order/SalesOrderRevisionService.java",
+    "sha256": "b08b49c0853215eaf785a066c287b3e92e08845ab870976a5c8a713dc8c0c3b2",
+    "bytes": 18220
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+    "sha256": "a86cf6298dd1d6a2818202cf543a7d450fee5b322e946123e036f816d97c3c75",
+    "bytes": 226228
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/order/SalesOrderTimelineService.java",
+    "sha256": "315d75cdba38be89a0837bc1c5a6a1b260e037263de62d47704ff5d97b934db9",
+    "bytes": 30417
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceService.java",
+    "sha256": "864bff777b028bb839be54fc6052c724e43b4f71b738df387006ccef4c7111ab",
+    "bytes": 47926
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+    "sha256": "4ac01e7fe3cf57f02bcedbcbbc8996524606dc730f88ee7891c58866b28357ea",
+    "bytes": 74902
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java",
+    "sha256": "755aee949cfc4d8dca0bbbadd1d857f0f14a66e695a39d1e258ec6137509d93e",
+    "bytes": 227554
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/stock/weight/DocumentWeightAdoption.java",
+    "sha256": "c2f7a4043f977472ddf8831783ecdb4ba218257a5648cbc18c4bab44a2afa2c4",
+    "bytes": 1597
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/subcontract/draw/SubcontractDrawQueryService.java",
+    "sha256": "a9de978cb56eee77c1650d66a816b420caeff4a8f935606b032a18efe0f812ac",
+    "bytes": 49256
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderProgressService.java",
+    "sha256": "50194c41999a09cdc2b216c4ffb865937f21f3dd750178e08508034936a7e92c",
+    "bytes": 41034
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+    "sha256": "e5cab5b8dae267fccefe795e26ba2af11e05e21dd6ddf87a680232ad1dd9acd0",
+    "bytes": 129671
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/subcontract/plan/SubcontractMaterialPlanService.java",
+    "sha256": "e9500f5dd5ac8f5d446f0fe220bc45eff893543cfbab9f84ea4454413d40756a",
+    "bytes": 81526
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/visitor/VisitorApplicationService.java",
+    "sha256": "5aee45794cd7205858c197f0457139bea67907d7f3389d08fbae5ab34d7b6c46",
+    "bytes": 16354
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/visitor/VisitorController.java",
+    "sha256": "282ae5eeaa64a3254c0d1534be771df0121a19501297019df073baff7acb8f33",
+    "bytes": 2781
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
+    "sha256": "65d1cc9f21b92ccd23856fe8cead3391f508ae30e9536cc795129a54f8772022",
+    "bytes": 8562
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java",
+    "sha256": "f7d9757a1fa4df1d688d531b4d7d56c72ddbefd9c09108938002ebcf7b7c373f",
+    "bytes": 40896
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
+    "sha256": "06b6d7260c601e3e0bf0d4b36a18ea89f360bc585de28509f3a9a9b60048651d",
+    "bytes": 50233
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
+    "sha256": "955fdcdfa9e0d836f25759b155d112927df9034ec154d1bee0e6c5d689c13a0e",
+    "bytes": 7097
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryService.java",
+    "sha256": "0f80564c5601257676ae5e57d6a1bb4e498c4399089888f837cfd849c111590b",
+    "bytes": 35372
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
+    "sha256": "61cb8964603fd31d20a38c48546c53390191eb57855192f568b3e0d177a41edd",
+    "bytes": 33738
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterContracts.java",
+    "sha256": "c13e36e51ccc19fb964444a5325533d62f8e4b39850e7519a6de7e219a2ea57d",
+    "bytes": 6419
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+    "sha256": "d0a4079c3e5e68113f95b6b47fafea03e78d0aaa7c8a11eb0d35fda6cc4b52ac",
+    "bytes": 7663
+  },
+  {
+    "path": "current-source-delta/server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskPageMetadata.java",
+    "sha256": "68e3149a3794452f589cbc299d5a73e2a2d5c0a9c1de2760d57dadb75e8a8cb1",
+    "bytes": 1542
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/attachment-preview-safe-profile.xcu",
+    "sha256": "f114bf03f52f28e44dbaad89a3fc6ab3acf12374bd26b1ac0aaa9b30ef945585",
+    "bytes": 923
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/db/migration/V1069__direct_make_closed_delivery_capacity_branches.sql",
+    "sha256": "76dea0c8f7980171e58adc5ce0c3919984ffc200e72cae13be4263d5d44904bf",
+    "bytes": 2199
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/db/migration/V1072__verified_legacy_quantity_adoption.sql",
+    "sha256": "a3cd270d22c2e851e35ad0780f66f742e5977a1337a81d276dc51fc84005d08b",
+    "bytes": 4276
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/db/migration/V1073__legacy_return_quantity_source_proofs.sql",
+    "sha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486",
+    "bytes": 12501
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/db/migration/V1074__execution_workbench_top_level_product_caliber.sql",
+    "sha256": "9b7003020f6b9a3af12f0ba86676490b32d5c776d23b6547c3de81453c4d630c",
+    "bytes": 24399
+  },
+  {
+    "path": "current-source-delta/server/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports",
+    "sha256": "bf4b57cf3495e790acae5e6cd1a6ed5d24082fd13a2b7a586040c5d38df16a31",
+    "bytes": 59
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/DailyReportDraftClaimsPostgresTest.java",
+    "sha256": "efa59f9ec56ef43e03f257404fcce3a96876d422e60fcaaad930cd303837703f",
+    "bytes": 31259
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+    "sha256": "503d4681ed470595e7a725e8d0906d16eaecce15ce7adf1802c61fb2e79ae76c",
+    "bytes": 19583
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.java",
+    "sha256": "9def84fce03bac666c9d3e3e2ff491483e3f0658b6a57a47733b74432d6acfbb",
+    "bytes": 22369
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/GiftUnitRateConservationEndToEndTest.java",
+    "sha256": "3abafaff6c17875a376dcb60c89d0efd7995b31a1c55a6ff8df4f7041009801e",
+    "bytes": 21946
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/ProcurementFirstPayablePostgresTest.java",
+    "sha256": "f264cd25894a6455d8f88f85b9aa0ec9fce7f8f8c603ea19ab9acba08ac0916e",
+    "bytes": 52982
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/ProcurementUnapprovalEligibilityEndToEndTest.java",
+    "sha256": "be90ea20dc89b47faf082e2f48448e290a5f6ac81fd396fd35155e984ac3ed62",
+    "bytes": 39429
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java",
+    "sha256": "feec5490aca18d57490e5f3b98243476e70775ea8c7432fa3fd8276fecb381ca",
+    "bytes": 30367
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java",
+    "sha256": "38875fc327115559acbeb5b73797bd89547ae5973c119b4325293b5a8ef371e1",
+    "bytes": 15514
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/businesschain/SubcontractOrderClosureLifecycleMatrixEndToEndTest.java",
+    "sha256": "bb9e59bccb75884c7dd3d36c35a85dd0b5c16b4ca79efa108356fb928a03ba57",
+    "bytes": 44993
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/common/finance/DocumentQuantityAdoptionPostgresTest.java",
+    "sha256": "2ecf7ce4bd5d88c6dae073a33ea5e4b762b22b2f27a406a9a6a9ba7af9babfbe",
+    "bytes": 14381
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java",
+    "sha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847",
+    "bytes": 7658
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/common/web/PageMetadataRequestTest.java",
+    "sha256": "4307baccf3dc1963a36c27027d308db998f16260d53f34410a0e7d1282066fb0",
+    "bytes": 944
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/common/web/ProductionDraftClaimsReadRoutesTest.java",
+    "sha256": "8f9776ae9c519c1122ddd2a69dd2d1e4344d84ee413e3ab5352696163d80e6bb",
+    "bytes": 900
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/ai/usage/AiUsageAuditControllerSecurityTest.java",
+    "sha256": "57cdc50cb2bb2cc38fe404337611672db4bb3767df36fcf180c617a9d1c9c43f",
+    "bytes": 9884
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/ai/usage/AiUsageDashboardPostgresTest.java",
+    "sha256": "99345cf4ad0069669adaf2ca7915c78c2dc1a49e3f85ccbc69c1dc2f9bbc914f",
+    "bytes": 22591
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/archive/BusinessArchiveEligibilityPageTest.java",
+    "sha256": "0efaf106699b8f3e3d97b98701cf7de73f114561e32311903e1e769a118d069d",
+    "bytes": 1987
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/archive/BusinessArchivePilotPostgresTest.java",
+    "sha256": "3834acd035bd940808133a95fc783cf4220d1f7fb29e003c411ba43a3a65a0ab",
+    "bytes": 27989
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationReferencePagingPostgresTest.java",
+    "sha256": "cc5d8e7f8313c64a1810d875d060711d76f6fdd80d9b2389de2a1314d6208abc",
+    "bytes": 16208
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+    "sha256": "e60e823374a88c1c3bd0b9950f8980eb6b5f2c75e115f292c0573c488a22a672",
+    "bytes": 53299
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalHistoryQueryTest.java",
+    "sha256": "711d91c93cd8ce24b78aa150fc76ab30a3c43218633c9c908fdb3b58932bb274",
+    "bytes": 5819
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalReturnedQueuePostgresTest.java",
+    "sha256": "e9492735695cf0cd269a2ee36558d0cae6ee26a6c2e0e5a50ffcd8fb675bbc81",
+    "bytes": 7843
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementOrderFinanceReviewAccessTest.java",
+    "sha256": "2453c5fb31ac9e914843cc6619ceba2d1ca9e73ee5ad438836b8b687872479ad",
+    "bytes": 19271
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchEmptyPageLatencyPostgresTest.java",
+    "sha256": "8993bd716f7e16661ddc472058d7e4185dc6438e5e9365fd5d0b34dc99e43f48",
+    "bytes": 10806
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchPageReadPostgresTest.java",
+    "sha256": "d1ad5a998a4ff75ff765accaf7eaa23468caaa6ddbdf6e8a318fd2348b3049cd",
+    "bytes": 26797
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java",
+    "sha256": "8c9436fd65f4025f960e6bec951754b733e37b15c21e57183279787f15a98040",
+    "bytes": 52878
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisOverproductionRateServiceTest.java",
+    "sha256": "d6b7e7b6591ac0a387e0a8831b4ffc11f8024c776685941aa32a0bcfa23a1981",
+    "bytes": 8047
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyProgressServiceTest.java",
+    "sha256": "191c82ddba1665ef8dd253d9162667cacef956c24fca95942fa73035cbab9a86",
+    "bytes": 34094
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyWakeupQueryPostgresTest.java",
+    "sha256": "2a25fd36e4c1bf93d2792128ffb22333a00c37a2047df5921d393e8d1c3b258b",
+    "bytes": 37817
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyWakeupServiceTest.java",
+    "sha256": "14324ff9b15293acb49ed87e96a95eeccfbca17964676c5938d2a35cda338fc9",
+    "bytes": 23089
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/PreplanAnalysisStockPegServiceTest.java",
+    "sha256": "cc1f3e666e3db4802307a838a5e25bdce51ac8f4eef7e2e10008af00540da884",
+    "bytes": 35725
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/analysis/ProductionMaterialAnalysisWorkflowContractTest.java",
+    "sha256": "351cb6a381297aa9cf8fac32dd437ad26d862b432e3e33bbd67e5147e3f1b018",
+    "bytes": 33193
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/dailyreport/DailyReportDraftClaimsJsonTest.java",
+    "sha256": "aa78c1b2db445395b8b86c017b2991c60e6d88fe73e67372e85c290ce2211357",
+    "bytes": 2991
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQuantityExactJsonTest.java",
+    "sha256": "83233c32ad5e28446ab3ec24b71e283e60b42750e836147423ac3a3129771df5",
+    "bytes": 1658
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+    "sha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+    "bytes": 83661
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionContinuousZeroBudgetTest.java",
+    "sha256": "b896467f5daf0ca012793b0a837f684b82de546afed7d1f34ca004a671fdf085",
+    "bytes": 7317
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/purchase/request/PurchaseRequestServiceUnitPolicyTest.java",
+    "sha256": "6a5f14dfc24181fbfd1176a586edc2b2268851535d7238495fd7140485c51d7a",
+    "bytes": 15082
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/sales/report/SalesReportOwnerScopeTest.java",
+    "sha256": "c493dab9b4f9365f6ded069f7c516bed6889c877d432b6bae9a31984db3e5ec1",
+    "bytes": 8783
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentCurrencyFilterTest.java",
+    "sha256": "7faec12beec653281a89d8b3786e46263d2a636f7bedc40922c1ca5e325c2387",
+    "bytes": 6867
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java",
+    "sha256": "767160d14d5e7809493aeddd9705efaa80a4acf82d94baedf976f830a65f50ba",
+    "bytes": 20449
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/stock/ProductionStockLockOrderContractTest.java",
+    "sha256": "e5b008287cc1ac913c2ebb109898c6b8d658f29ff6909a802f4c2bed3bca8330",
+    "bytes": 5258
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/stock/weight/DocumentWeightAdoptionTest.java",
+    "sha256": "4f2593e273b7fb77d8ffef84473259a7411e21368a7c3ebab353d66d96e3f63c",
+    "bytes": 3502
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderInProgressFilterTest.java",
+    "sha256": "6ea7178822eba0bf7e5bf3b5f837e1aa8ee3969037bd544fd5a8e60072ddab10",
+    "bytes": 6290
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/visitor/VisitorAdmissionConcurrencyPostgresTest.java",
+    "sha256": "e9a2710c40c1a40503eab53d97160f2761807e7cd5b0b90e444d5ddc792bd5cd",
+    "bytes": 17445
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/TaskContinuationMetadataHttpTest.java",
+    "sha256": "5df0ff3b1b52f75aa9f52e05c87bc6c9863166d7180f805369ba333d4ea302ca",
+    "bytes": 3217
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryServiceTest.java",
+    "sha256": "f33d59846714edc0836ae8453bf398dc34cd0ebe0c23cfbad1660576fa93a8b9",
+    "bytes": 9196
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryServiceTest.java",
+    "sha256": "63a77702db2e95e1f7910c0d7285ccf865a90be7904bc9f2d9238fcf97ef2a30",
+    "bytes": 24768
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehousePhysicalDetailHeaderPostgresTest.java",
+    "sha256": "482a29c400bc674b4b2bd0b43b62c9703031c0daffac7a99acf2aeb5f44a1ebf",
+    "bytes": 10941
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java",
+    "sha256": "81c9291eddbd5000540d85a7472a57da4f185b90c47738fb5898c624ff237980",
+    "bytes": 2698
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskPageMetadataPostgresTest.java",
+    "sha256": "9ee7be049ca094af5247d69398c296f166785ced031783de61fb7c655a13a6ce",
+    "bytes": 7178
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/FlywayChecksumManifestExporterTest.java",
+    "sha256": "e9c96736cb1db3f2d7d369733bf3b2c1950c9ac4c5b792abb1dcd89d49f070da",
+    "bytes": 12099
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java",
+    "sha256": "220c95de0b2653f49cdd5c4aebb83ef754504475fdc4e529ec6c7b3cb9941f6f",
+    "bytes": 23326
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/LegacyFlywayVersionIdentityPostgresTest.java",
+    "sha256": "1f9c8b79e06f08949ce9d80e717f53d0a9f5c809a30478b577468d5993fe0c7d",
+    "bytes": 8092
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/LegacyMigrationSafetyContractTest.java",
+    "sha256": "e3af48387d3135484573fc8e51c1ce46d713e3d0191aefd93136605afb521c1d",
+    "bytes": 23390
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/LegacyQuantityAdoptionCompatibilityPostgresTest.java",
+    "sha256": "a1f5f96f5dab69449deb2ab505abbbf21add2ef8efd1902a14cedc64a2732558",
+    "bytes": 19761
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/migration/LegacyQuantityUnapprovalCompositionPostgresTest.java",
+    "sha256": "1a24fbe5094e02b64398aeab2c400e42ab87fcf800727ed95a189a880135cf02",
+    "bytes": 4459
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/imp/support/LoadingGrowthEvidence.java",
+    "sha256": "cf44dc25cb170e0eb5a9b2bfc07d34fe34a47d52d96c64d317b0363b2ac85645",
+    "bytes": 2091
+  },
+  {
+    "path": "current-source-delta/server/src/test/java/com/uten/searchtest/ProcurementOrderApprovalPredicatesPostgresTest.java",
+    "sha256": "a47b08be6e7d3e4074e41114983f4839e7973bb203fdf16b1371cfc1995c49c6",
+    "bytes": 5983
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/application.properties",
+    "sha256": "3608b93e3398b643ab24deaf7ad2a32b39d040266468933db84e48a3a923861e",
+    "bytes": 224
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/inno-7.1.0/fixture.iss",
+    "sha256": "16727e9a1acab4e17c2fb1a09f950f96a72d06b0f74fe1df6c06ab1012328aee",
+    "bytes": 1026
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/inno-7.1.0/INNO-LICENSE.txt",
+    "sha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c",
+    "bytes": 1521
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/inno-7.1.0/local-test.versioninfo.hex",
+    "sha256": "f2daae0c0553435a0899b310a65528161e68e38730ccde5996150eac30b16e3e",
+    "bytes": 2914
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/inno-7.1.0/normal.versioninfo.hex",
+    "sha256": "d374a45173f047eaf578b28ae535ce0d8b04c786e4f6bebce91cc37e4248b865",
+    "bytes": 2914
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/inno-7.1.0/payload.txt",
+    "sha256": "2c2c0bbc18a552846e717b41202cb5be3fb61c1484f129431c65648716148637",
+    "bytes": 74
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/runtime-profile-v1/formal.g.h",
+    "sha256": "0ed4527b2d9f596bb414f83b0a0c4384f15c63d7a2c757c2dd572d6e9252a8ba",
+    "bytes": 326
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/clientupdates/runtime-profile-v1/local_test.g.h",
+    "sha256": "8df7b4b6269cfef3d22a935709cc7b0ae8e11ec1a59483ba9858d081bb49db34",
+    "bytes": 358
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/contracts/flyway-version-identity-v1.json",
+    "sha256": "58b4ac949f31c20d8e36924b26bb3ad3b1b6e3d4fb67a2ab9edecf3098d9f163",
+    "bytes": 6830
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/fixture-schema-guard/column-debt-baseline.txt",
+    "sha256": "8f320d2465459903298ba4bde19135742a3a44dfeb575e2c8bf4e01a8a555a73",
+    "bytes": 782317
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/fixture-schema-guard/dynamic-ddl-files.txt",
+    "sha256": "500179bd01a6b38f9e4471c5e403b5c09678245ff0833c5b2c35fafa053cc925",
+    "bytes": 5217
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/legacy-bootstrap-fixture/warehouse_crosswalk.csv",
+    "sha256": "8fad87f0467ebae8a623bf664313ae7a230a926efe9b025f5052f8ead7e90e1c",
+    "bytes": 431
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/legacy-migration/client_categories.csv",
+    "sha256": "551090e441716ac429543ae9169ede8819ced4c3ac3978fcde2436c5cd841965",
+    "bytes": 82
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/legacy-migration/goods_categories.csv",
+    "sha256": "20129a6f16ddf938637375d8e1fc4e7758f023059fa633f0af2d5b3d09e9d25f",
+    "bytes": 81
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/legacy-migration/mould_categories.csv",
+    "sha256": "6a8e4c25458e070eb94f17234123b49f587d2e45add00e1d954f44e6fbd49c65",
+    "bytes": 81
+  },
+  {
+    "path": "current-source-delta/server/src/test/resources/legacy-migration/supplier_categories.csv",
+    "sha256": "cc12dcabfd87747dbd8de5b0d6593982f62bcb026c236ead73ff62fcfed3a1c3",
+    "bytes": 87
+  },
+  {
+    "path": "current1013-final-consumers-result.json",
+    "sha256": "8b1712cdc53afe55c16ed0a1a2b0cb9e2a7c7c9e0f831b1a30b6c8e52368c0d0",
+    "bytes": 2243
+  },
+  {
+    "path": "fa-source-composition/0/base",
+    "sha256": "2f0eb11ad63be1986764f121133620482d1983d876a394af23dfddf91ab2e494",
+    "bytes": 177960
+  },
+  {
+    "path": "fa-source-composition/0/main",
+    "sha256": "09ef61c29088ea542531815e9250cd911ba62589a77ec23b10290feabf6ead81",
+    "bytes": 178297
+  },
+  {
+    "path": "fa-source-composition/0/merged",
+    "sha256": "f6fedc6b95b3331ec8a32807e689a71579d646ccf80a41af31b021ab32e15b9c",
+    "bytes": 180889
+  },
+  {
+    "path": "fa-source-composition/0/task",
+    "sha256": "8a62a2445fbfde62c5ddba0f945bee4debb4232d315373a23c7e28e735f6c824",
+    "bytes": 179323
+  },
+  {
+    "path": "fa-source-composition/1/base",
+    "sha256": "6837d66d0413d09b7706e2df224fdc3a66304e75a56ad84085d74610641906b4",
+    "bytes": 3743
+  },
+  {
+    "path": "fa-source-composition/1/main",
+    "sha256": "0b1a8e13daf2c4761fcbb53383594832375629e4bcb9e9e74fe4c731e172678f",
+    "bytes": 3891
+  },
+  {
+    "path": "fa-source-composition/1/merged",
+    "sha256": "578400ddafa678647ed7507727713e88017fb561ec60e5bef8097c3e57c1284e",
+    "bytes": 4052
+  },
+  {
+    "path": "fa-source-composition/1/task",
+    "sha256": "5a5ea47494db98d8c82a3f2eb1ae1445310b2ac0162cf931b817b64dce592156",
+    "bytes": 3904
+  },
+  {
+    "path": "fa-source-composition/10/base",
+    "sha256": "e5a3eea0190749e9447ea73637b23b13c892a024c78f4aaf3f31fc4b2a1f7872",
+    "bytes": 1888
+  },
+  {
+    "path": "fa-source-composition/10/main",
+    "sha256": "3e12efa60d23c10ced981ea386ce1ce961a34f1d7b8d882ddcb8013190434669",
+    "bytes": 1960
+  },
+  {
+    "path": "fa-source-composition/10/merged",
+    "sha256": "512177bb36a7d10eb975f7c1f7ff02aad257b9555df05ea042adb9ab2f9aebdd",
+    "bytes": 2129
+  },
+  {
+    "path": "fa-source-composition/10/task",
+    "sha256": "0a4e3ea02405a5b22bff818a98118f065478ffda3987ac86358ab1cb8923585f",
+    "bytes": 2057
+  },
+  {
+    "path": "fa-source-composition/13/base",
+    "sha256": "be83958fd5187ddc309a30ee5b01a080aaac64382e7a46638227ed654e95fe44",
+    "bytes": 1866
+  },
+  {
+    "path": "fa-source-composition/13/main",
+    "sha256": "6c478753acc281e955b60a8eeeeedc903f0a664b0032273746c341fb558e2d81",
+    "bytes": 1938
+  },
+  {
+    "path": "fa-source-composition/13/merged",
+    "sha256": "ef20ee77b6ded959c0baed410c22377320b9bceb00db77a2a3a5eddcbb91c66b",
+    "bytes": 2025
+  },
+  {
+    "path": "fa-source-composition/13/task",
+    "sha256": "63221adde1c42b7ecf6314e58460553a50053aee437290985f0f62d5d731f16b",
+    "bytes": 1953
+  },
+  {
+    "path": "fa-source-composition/21/base",
+    "sha256": "91f427b9ac7f9a572c265db594e82d2fe1cff19828e3c9cacd809384b393c787",
+    "bytes": 16377
+  },
+  {
+    "path": "fa-source-composition/21/main",
+    "sha256": "4caf36a361969a7b016bdd2b867cd92dd742f9ad7fa406c737eed94e3930e1da",
+    "bytes": 16779
+  },
+  {
+    "path": "fa-source-composition/21/merged",
+    "sha256": "9e3d210d2d319d7b557531cdcfdaaf1fa4528e4a8683047144d896b6b12ac6c4",
+    "bytes": 20715
+  },
+  {
+    "path": "fa-source-composition/21/task",
+    "sha256": "5b0a69492fd13aa0b9794dfcaff12d2412426aa45b43efd2484114ea674460f5",
+    "bytes": 20313
+  },
+  {
+    "path": "fa-source-composition/22/base",
+    "sha256": "99524fc6f9ea466add5069381902b4dee7b49b3436c0d494a1d143d8d5781ab7",
+    "bytes": 18931
+  },
+  {
+    "path": "fa-source-composition/22/main",
+    "sha256": "a4e8e1402689a078ffbd79185280cda59c2c4552f7c285d4709478ed09f8fc4f",
+    "bytes": 21027
+  },
+  {
+    "path": "fa-source-composition/22/merged",
+    "sha256": "c6adb533006961f81cadde9d10236b599e3b728c7b082350cad5aeea6a5808f1",
+    "bytes": 22558
+  },
+  {
+    "path": "fa-source-composition/22/task",
+    "sha256": "c8cceb78e29e2db423fd72efb69262ea29466d2b7292247bfaecf2e5a2770df0",
+    "bytes": 19413
+  },
+  {
+    "path": "fa-source-composition/28/base",
+    "sha256": "105774e5d66c0d7a730f6f7dd337c2a3d740ad9c2854bdf5d18409f4d29a01c0",
+    "bytes": 31964
+  },
+  {
+    "path": "fa-source-composition/28/main",
+    "sha256": "75d8246d8c17c9e36175c4eddcba76f1185cfc2313a644a018212a644d41089c",
+    "bytes": 36816
+  },
+  {
+    "path": "fa-source-composition/28/merged",
+    "sha256": "435a2f6376a6177522c0df8d75dbd4fbf43e3a53b4f1ae832acd675aa91e6833",
+    "bytes": 40369
+  },
+  {
+    "path": "fa-source-composition/28/task",
+    "sha256": "b485711e22ac9c9c2a0befc4bede29f71553cdfae9d68e7452f675005aee95ab",
+    "bytes": 33921
+  },
+  {
+    "path": "fa-source-composition/3/base",
+    "sha256": "983c3da3231fbf38a54ff40b7d4f98101bd57d3d3f5944c750f884f70d9ddddd",
+    "bytes": 19140
+  },
+  {
+    "path": "fa-source-composition/3/main",
+    "sha256": "be8a50098078b5666383fe74f09fa7191d41897829fbea0160720232487b00ec",
+    "bytes": 19755
+  },
+  {
+    "path": "fa-source-composition/3/merged",
+    "sha256": "b299aef3c503824538212547d6b0939aa771580c74bf88f6b2dc3ae96ac28dbe",
+    "bytes": 21677
+  },
+  {
+    "path": "fa-source-composition/3/task",
+    "sha256": "7dd12057269f96a3c908ff5dd1cb0cef8b3e36cfb63478d5eb74b949d3130fe8",
+    "bytes": 20172
+  },
+  {
+    "path": "fa-source-composition/38/base",
+    "sha256": "271ce693a13c000464ed22b3d66817ce6c23e6d61f90a4a4b6bfcddf0c4ba087",
+    "bytes": 40243
+  },
+  {
+    "path": "fa-source-composition/38/main",
+    "sha256": "6851db6f2f20297b492ef1890e677cf499453a0819434b5e9c556e3fcced9d30",
+    "bytes": 52264
+  },
+  {
+    "path": "fa-source-composition/38/merged",
+    "sha256": "406b7803ed8dd32e0fd9e7b0c85b4dcc8820eb721adbd2cb54b60f30f20cfcaf",
+    "bytes": 64656
+  },
+  {
+    "path": "fa-source-composition/38/task",
+    "sha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce",
+    "bytes": 50934
+  },
+  {
+    "path": "fa-source-composition/5/base",
+    "sha256": "50463bdc052444ea4aeb7e94424cdf874d5f801945be1a04c34802492b438984",
+    "bytes": 100573
+  },
+  {
+    "path": "fa-source-composition/5/main",
+    "sha256": "8376d43200baa0a4271028d87d3ed39eed30939ad0d1db8c4a68657e17be5db6",
+    "bytes": 101334
+  },
+  {
+    "path": "fa-source-composition/5/merged",
+    "sha256": "64498f2ee669bdcd64c53629b6167c3e150cdd0a4cc75004fcf226767ba97e75",
+    "bytes": 101548
+  },
+  {
+    "path": "fa-source-composition/5/task",
+    "sha256": "870551d69bdc948b7ca56e25c15dbb6d1750a9ece3f55f1c8d0f59b21b3ade09",
+    "bytes": 100787
+  },
+  {
+    "path": "fa-source-composition/6/base",
+    "sha256": "66b7bb889d7b28dae135c8a497a723a83fb55499bcddbcbe1724fcbb7526049a",
+    "bytes": 49740
+  },
+  {
+    "path": "fa-source-composition/6/main",
+    "sha256": "7306a4c5e25d0c83958fca512370f0ffd7a5fb151ba0f6ca78a5c91e262d3564",
+    "bytes": 49953
+  },
+  {
+    "path": "fa-source-composition/6/merged",
+    "sha256": "c8dfd6a230691f66afbc27b5ba1af6bfe3162d3ac60150543ba6c57fadf5a6e8",
+    "bytes": 51891
+  },
+  {
+    "path": "fa-source-composition/6/task",
+    "sha256": "24317ebbb01f49de4169ec63a878aa58c448f366c2dee3f9876236a47c84771c",
+    "bytes": 49798
+  },
+  {
+    "path": "fa-source-composition/9/base",
+    "sha256": "6dc0972618d2bdbb18bb99e51ceb5efc45d83af6b89706c9051f2890d715aca1",
+    "bytes": 1943
+  },
+  {
+    "path": "fa-source-composition/9/main",
+    "sha256": "69c672078638f9dd6dbb8033387801ef36fb73ad9b00e3090811f0e1e117f82c",
+    "bytes": 2015
+  },
+  {
+    "path": "fa-source-composition/9/merged",
+    "sha256": "0abfa885d595765cc0954b05ff3f09223293a9c237f49788ab4d3d23c9587eea",
+    "bytes": 2268
+  },
+  {
+    "path": "fa-source-composition/9/task",
+    "sha256": "9c86169d746e6af9a12e265602d0eb84f4802e85f0de6bf5e3ff3ee898504136",
+    "bytes": 2196
+  },
+  {
+    "path": "fa-source-composition/compose-source.py",
+    "sha256": "7ef6e4e29259f6a9ec8af9e0e07b6c3e44eb251165a21e7eb9e44152c4008f26",
+    "bytes": 14353
+  },
+  {
+    "path": "fa-source-composition/count-debug.json",
+    "sha256": "5e5405fc4a02a24a63f64ae38f4c6891edd9aedc8f82569d91ab1f91d515da00",
+    "bytes": 456
+  },
+  {
+    "path": "fa-source-composition/four-manifest-current-pin.json",
+    "sha256": "77dc17db689c8087f0fca79c43c3c206ff6a5c481343bfbcf8659575d8e8d952",
+    "bytes": 289
+  },
+  {
+    "path": "fa-source-composition/frozen-weight-supersession-review.json",
+    "sha256": "8f08cea3a0f92f68a4863c4360ab3b40240dc7e848b456444a5e099f18d0de77",
+    "bytes": 2634
+  },
+  {
+    "path": "fa-source-composition/intermediate-weight-composition/server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalPort.java",
+    "sha256": "578400ddafa678647ed7507727713e88017fb561ec60e5bef8097c3e57c1284e",
+    "bytes": 4052
+  },
+  {
+    "path": "fa-source-composition/intermediate-weight-composition/server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalService.java",
+    "sha256": "a68d9ccd1435877e719bcbeb37faa6dbd85effb056c5920173056a022e0613c4",
+    "bytes": 20708
+  },
+  {
+    "path": "fa-source-composition/intermediate-weight-composition/server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java",
+    "sha256": "0abfa885d595765cc0954b05ff3f09223293a9c237f49788ab4d3d23c9587eea",
+    "bytes": 2268
+  },
+  {
+    "path": "fa-source-composition/intermediate-weight-composition/server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+    "sha256": "512177bb36a7d10eb975f7c1f7ff02aad257b9555df05ea042adb9ab2f9aebdd",
+    "bytes": 2129
+  },
+  {
+    "path": "fa-source-composition/intermediate-weight-composition/server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+    "sha256": "ef20ee77b6ded959c0baed410c22377320b9bceb00db77a2a3a5eddcbb91c66b",
+    "bytes": 2025
+  },
+  {
+    "path": "fa-source-composition/migration-proposal.json",
+    "sha256": "097a978e786ba4f38e34e2eb859ad3fde6806c56c9b1f651ddd1f78b8f878673",
+    "bytes": 4876
+  },
+  {
+    "path": "fa-source-composition/migration-source-proof.json",
+    "sha256": "8fdbd1ce3355d3dec5280ee15db22d659f4a5a162301b9741b3f051bf30c5587",
+    "bytes": 203131
+  },
+  {
+    "path": "fa-source-composition/original-four-manifest-824384.json",
+    "sha256": "824384c47f2a1d05a6799f894db6c6cd7b813ada3e20127dcebeeffa3da7802b",
+    "bytes": 4287
+  },
+  {
+    "path": "fa-source-composition/original-task/docs/数据迁移/README.md",
+    "sha256": "8a62a2445fbfde62c5ddba0f945bee4debb4232d315373a23c7e28e735f6c824",
+    "bytes": 179323
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalPort.java",
+    "sha256": "5a5ea47494db98d8c82a3f2eb1ae1445310b2ac0162cf931b817b64dce592156",
+    "bytes": 3904
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/common/export/ExportDocumentProjectionService.java",
+    "sha256": "23880211ee37cedb1db1bb88f2905c49251de0afa65f62f3ab0ce11f97b33815",
+    "bytes": 7715
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalService.java",
+    "sha256": "7dd12057269f96a3c908ff5dd1cb0cef8b3e36cfb63478d5eb74b949d3130fe8",
+    "bytes": 20172
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicationSourceAdapter.java",
+    "sha256": "edf24259097c428b736b75e8ed00f00360c9af130740e1abf3444acb6c196f7d",
+    "bytes": 4078
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
+    "sha256": "870551d69bdc948b7ca56e25c15dbb6d1750a9ece3f55f1c8d0f59b21b3ade09",
+    "bytes": 100787
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/finance/application/FinanceApplicationService.java",
+    "sha256": "24317ebbb01f49de4169ec63a878aa58c448f366c2dee3f9876236a47c84771c",
+    "bytes": 49798
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentUnapprovalAdapter.java",
+    "sha256": "e45adcd0ca57666e4995f83f3a76ed2edb6266ede24111d7ec47b95734ad8c1c",
+    "bytes": 2178
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderUnapprovalAdapter.java",
+    "sha256": "1e65f017f3d3c8ff4da7e622b8904f15e8223b1df747542017ce8be0cce1b63a",
+    "bytes": 2161
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java",
+    "sha256": "9c86169d746e6af9a12e265602d0eb84f4802e85f0de6bf5e3ff3ee898504136",
+    "bytes": 2196
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+    "sha256": "0a4e3ea02405a5b22bff818a98118f065478ffda3987ac86358ab1cb8923585f",
+    "bytes": 2057
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnUnapprovalAdapter.java",
+    "sha256": "512b9b138c574644832f99654adaf59ae4aabf365d439d8144730783541c9ceb",
+    "bytes": 1957
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderUnapprovalAdapter.java",
+    "sha256": "81cdb9a7e425b6fe5b5fdaaa04aba1474a29a2141b8ce3372c42009f42f75906",
+    "bytes": 2041
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+    "sha256": "63221adde1c42b7ecf6314e58460553a50053aee437290985f0f62d5d731f16b",
+    "bytes": 1953
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/resources/ai-feature-map.json",
+    "sha256": "722f5546ed22cf805b17cb085edab3327d63bbfc812d88784ba579d378fbd4cb",
+    "bytes": 110707
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/resources/db/migration/V1067__verified_legacy_quantity_adoption.sql",
+    "sha256": "8ac700039933f5dbec8c8c0974ae224ce712d31f135013536fbd6073c3d0b9a2",
+    "bytes": 4304
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/resources/db/migration/V1068__legacy_return_quantity_source_proofs.sql",
+    "sha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486",
+    "bytes": 12501
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/resources/db/migration/V1070__expense_payment_reversal_event_contract.sql",
+    "sha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2",
+    "bytes": 1439
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/main/resources/db/migration/V1071__execution_workbench_top_level_product_caliber.sql",
+    "sha256": "9b7003020f6b9a3af12f0ba86676490b32d5c776d23b6547c3de81453c4d630c",
+    "bytes": 24399
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/FinanceUnapprovalEligibilityEndToEndTest.java",
+    "sha256": "980797849116531242bc9458e09a47620e9307d4e1575255faec335517c12b58",
+    "bytes": 30775
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/GiftPhysicalConservationEndToEndTest.java",
+    "sha256": "5b0a69492fd13aa0b9794dfcaff12d2412426aa45b43efd2484114ea674460f5",
+    "bytes": 20313
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/GiftUnitRateConservationEndToEndTest.java",
+    "sha256": "c8cceb78e29e2db423fd72efb69262ea29466d2b7292247bfaecf2e5a2770df0",
+    "bytes": 19413
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/InventoryValueOutputRefreshContinuationPostgresTest.java",
+    "sha256": "a7eff731dc7161fc46a6dbfb0521f0a6f562bfe069350c8f7108515bb6116e3d",
+    "bytes": 15182
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/IqcExactProofUpgradeEndToEndTest.java",
+    "sha256": "f4685605d5d0219fc5da75a1cd71d53f35dca7b47d5ab975853eef9acc793a89",
+    "bytes": 11052
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/LegacyValuationComponentUpgradePostgresTest.java",
+    "sha256": "ea048dc6724b47fbdfdcd3238ac60c7a4a40f3ed8f50d135eb3036192ca59833",
+    "bytes": 27770
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/MaterialReturnQuantityLegacyValueUpgradePostgresTest.java",
+    "sha256": "b91422f4386412f8f83b37a4fb71bbdc5f4dac64eb83456b9f64e236e191efe3",
+    "bytes": 6795
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/ProcurementUnapprovalEligibilityEndToEndTest.java",
+    "sha256": "b485711e22ac9c9c2a0befc4bede29f71553cdfae9d68e7452f675005aee95ab",
+    "bytes": 33921
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/StandaloneDepartmentLifecycleConservationEndToEndTest.java",
+    "sha256": "4514087cd7ad36dab6b6cbd6bbbc8fe3cbbb15e95cec0d30a1ba6260e97d7416",
+    "bytes": 35703
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/SubcontractMaterialReturnOriginalCostEndToEndTest.java",
+    "sha256": "7e17b6fd203d801d09f5fb642e2d4909b62c13a7992b4931a31d131009887bee",
+    "bytes": 7889
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/businesschain/WorkshopMaterialStockAuthorizationPostgresTest.java",
+    "sha256": "9d7dbcb466f3a179775eea2e51f45f01f7dfb3ae11bfe9bacc4a02032f2670e9",
+    "bytes": 39458
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/common/report/StockFinanceReportLineIdentityTest.java",
+    "sha256": "9bde0b75452463e8a84f41f4fa383275756dc6cddc07d14295bb825d27916b85",
+    "bytes": 12756
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/ai/chat/AiDocumentRoutePostgresTest.java",
+    "sha256": "579d7400accf5a7790dfff1a5563900cc54050dd4a96d6c8f50b63aa873b737f",
+    "bytes": 36216
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/ai/usage/AiProviderBillingPostgresTest.java",
+    "sha256": "4c79489728de7e7b68b9c76b97995d20a228ded08317a9465504f82541c226a5",
+    "bytes": 8520
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/documents/DocumentUnapprovalCapabilityTest.java",
+    "sha256": "408fbc9df4fa5455e564bd65d2b4c4f067105f281de1f32de5c9eb29f333ec1f",
+    "bytes": 9550
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimServiceTest.java",
+    "sha256": "982384625618a8fd59b327096c7d6fcdf0841b223d1f09223418238cd932fdc1",
+    "bytes": 40971
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/expenseclaim/HistoricalExpenseSourceJdbc.java",
+    "sha256": "2d79b99af10e604f78dd27019c43470d681a2892c515b572666a9ba12783f5ee",
+    "bytes": 4719
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+    "sha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce",
+    "bytes": 50934
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/finance/receivables/SalesOrderFuturePositionPostgresTest.java",
+    "sha256": "3d53591b7d5e484828ba55550eba4b6d7503f388e38f9fa88e7808a8806f9856",
+    "bytes": 5412
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/goods/costing/GoodsActualCostStreamingExportTest.java",
+    "sha256": "993bad5af62f055c8b87c1389f8ec0951d7280762686e73016b6dcdc6bb6c06b",
+    "bytes": 7930
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/goods/GoodsClientGoodsNamePostgresTest.java",
+    "sha256": "ed0fd04fc25e87cf4ce695639143ec778a366e5f4cc10b00775ac97b3ba2fc42",
+    "bytes": 14871
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryCapturePostgresTest.java",
+    "sha256": "0e4399b73e40690f1d9815d92942445985ccd85667a1e1232779aec8023cd188",
+    "bytes": 17740
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryPostgresTest.java",
+    "sha256": "c56351b63e907e90c11b6859050508625e2aa4ed085117ff2a993ebc3c8c4cb3",
+    "bytes": 34830
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportHistoryPostgresTest.java",
+    "sha256": "8ebcc00e11960ddd082f55e70275d4b940d8184d91e5b35ed2ccf749b05c37a4",
+    "bytes": 79844
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/master/MasterNumericHeadersPostgresTest.java",
+    "sha256": "6bd923e2c5365ba146f3adedd7b5e5229b5827c89e3836ae6946e051ec00a0d8",
+    "bytes": 16251
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/analysis/PreplanExternalSupplySourceGuardPostgresTest.java",
+    "sha256": "57b54a299bccdde1c35d609acd8bda7c836f3242a6e10b7225c0765a5fce3225",
+    "bytes": 59521
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/execution/ProductionCompletionReversePostgresTest.java",
+    "sha256": "9e80c2abd0a352d42788276264a615da15b19b5b8d1095f2c99be87ce2ee1950",
+    "bytes": 32398
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionSegmentOperationsPostgresTest.java",
+    "sha256": "bc4f074d1942636a16332400c7e79bb5c3f8b6db586a06c6cbafa1d2c930fb73",
+    "bytes": 21465
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionPurchaseReceiptProvenancePostgresTest.java",
+    "sha256": "620366eddfdb54943a2c60ef17ec881bf59fb2a8403d78a65a0cd4c405e72cc4",
+    "bytes": 32957
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/fulfillment/ProductionPurchaseSupplyTransitionPostgresTest.java",
+    "sha256": "b705cc68bd189f3232c25dde859e1abde9c8d700751c3600e835a41bcdbed4c3",
+    "bytes": 53427
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/production/mrp/ProductionExecutionSegmentPostgresTest.java",
+    "sha256": "f6386d469ff1ccbe60f5902b9300778057d6ff8edb7605c84b63d0c96cd94fc0",
+    "bytes": 134651
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/sales/report/SalesReportUnitsPostgresTest.java",
+    "sha256": "157b78a6c0d8a0bc7bd33513db1d12bfbf7321c7035273a2a7737b144108646f",
+    "bytes": 34410
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/stock/insight/WarehouseInsightPostgresTest.java",
+    "sha256": "59983d949085f166236f7c4bd7bd2e389e4b60e2630fbe0b200a0ac75ef620af",
+    "bytes": 25328
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionIntegrityPostgresTest.java",
+    "sha256": "08fbcfa2c27afa3836f827f34f4f53cfd2d75cb884759f9f31c44546a7c7105c",
+    "bytes": 70907
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/migration/SecurityPermissionMigrationTest.java",
+    "sha256": "cefe3ef01240476282af03094c8e9d908da7ecdc07e8838b028871f777532234",
+    "bytes": 46299
+  },
+  {
+    "path": "fa-source-composition/original-task/server/src/test/java/com/uten/imp/testsupport/HistoricalJdbcNativeSqlTest.java",
+    "sha256": "81180b7e93e8b92457b965ce2ee1889ac6d67c7d2ea14791fd64a0d78d243efc",
+    "bytes": 1153
+  },
+  {
+    "path": "fa-source-composition/preview.json",
+    "sha256": "67234943946991dbb42d935a8036982df7d76ffa1fbcaf8069e19cea47f3c71a",
+    "bytes": 24975
+  },
+  {
+    "path": "fa-source-composition/source-composition-final-receipt.json",
+    "sha256": "087075a0165d5bd230314834faa9cd34c2ebc47bb855b147fce3690607b99a61",
+    "bytes": 38347
+  },
+  {
+    "path": "fa-source-composition/source-composition-receipt.json",
+    "sha256": "df58d5da8df94ebd5b44f7d598e97278681d632300d6cb6ad307bde83c1c78db",
+    "bytes": 35535
+  },
+  {
+    "path": "original1009-history/golden-installed-history-raw.json",
+    "sha256": "3f491bae81811f3bb69147d2a44febb3d808460872af1d9fe09adc99382ebf7a",
+    "bytes": 196376
+  },
+  {
+    "path": "original1009-history/golden-installed-history-raw.tsv",
+    "sha256": "96973247105e5b8a795c65532f1cd1d2ddf1715ecadc8e496ab0d6f7acb73fdb",
+    "bytes": 60399
+  },
+  {
+    "path": "original1009-history/golden-installed-history-receipt.json",
+    "sha256": "db43bad8a1af9faf8279e182435c9ef5238b33a50adbabbb41fb9d75124a3332",
+    "bytes": 4727
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/compiled-patch-receipt.json",
+    "sha256": "6e9a9d1d5cc6e29597a78a861f3473ccf281207568359214834e158fcf99edb5",
+    "bytes": 723
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/core-applicability-bridge.json",
+    "sha256": "f5aefd1bf171c5ee714ac480dc3750cc4647968611f19904dccbd797e79a1216",
+    "bytes": 373823
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/current-pg-execution.json",
+    "sha256": "935a4847259a7529ee9a946d3604f4c6756f38592109a1e0c10dc616c3b5aa9f",
+    "bytes": 1864
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/current-pg.log",
+    "sha256": "6c912e4031a879d5cb673c28eaaaabb6d0a69404a7f8ad5bcf7737a12d3f8736",
+    "bytes": 2029182
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/fast-seven-source-bridge.json",
+    "sha256": "0dc81adfe26c29cea3a6c41db20fdca046f35e2d7bdfc451ca97c2c47210e52c",
+    "bytes": 5138
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/golden-current-installed-history-raw.json",
+    "sha256": "c642f433efedb8eac4d08781ebcfaba249f8d3f48e82d5dd3426638371fb0412",
+    "bytes": 196614
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/golden-current-installed-history-raw.tsv",
+    "sha256": "7c6997df1d80247c517ad245213d0a8dd229cc8334f316fc480ba7fbd3d93ba5",
+    "bytes": 60481
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/golden-current-installed-history-receipt.json",
+    "sha256": "8d92e6671ee261b864218eea8458bb69f990dddc87bf486e4699b5aeaad2e851",
+    "bytes": 1366
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/original-nine-red-seal.json",
+    "sha256": "fd72dca0755caad9602526f72db519ad7782a05ce46628b65310ac5b7a402698",
+    "bytes": 8982
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/queue-execution.json",
+    "sha256": "3e3155e070fee67da7fe5004c06609021fc54a9e7e208af75617b7a7064c11a3",
+    "bytes": 251
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/source-input.json",
+    "sha256": "e6bebf62d5b8b65d79c15d8c22991c3a8787c320c8439ca967ed5bdd01c818f0",
+    "bytes": 1507659
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/complete-input-inventory.json",
+    "sha256": "e6bebf62d5b8b65d79c15d8c22991c3a8787c320c8439ca967ed5bdd01c818f0",
+    "bytes": 1507659
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/execution.json",
+    "sha256": "935a4847259a7529ee9a946d3604f4c6756f38592109a1e0c10dc616c3b5aa9f",
+    "bytes": 1864
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/maven.log",
+    "sha256": "6c912e4031a879d5cb673c28eaaaabb6d0a69404a7f8ad5bcf7737a12d3f8736",
+    "bytes": 2029182
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/source-input.json",
+    "sha256": "e6bebf62d5b8b65d79c15d8c22991c3a8787c320c8439ca967ed5bdd01c818f0",
+    "bytes": 1507659
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.FinanceApplicationContinuationEndToEndTest.xml",
+    "sha256": "e4cf72907ab82090c59bb980dff84cf2efdbc713a99b10224a32abec8667d798",
+    "bytes": 445375
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.InventoryValueOutputRefreshContinuationPostgresTest.xml",
+    "sha256": "d0b76acd75603e1e202e46efc2ee19960ea70e2b89ecb4083c339180b37dcd04",
+    "bytes": 117229
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.ProcurementFinanceReviewReadOnlyEndToEndTest.xml",
+    "sha256": "7ba0b6c4734d6c6c6143889e77cb29b73c9a2b325330c0f1811486af191285db",
+    "bytes": 440115
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest.xml",
+    "sha256": "f3993a2089121a7796e7b962ea8c0fac3a37159db070c6261ef68ed33a2ca710",
+    "bytes": 58843
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest.xml",
+    "sha256": "6dcb961c3ed8b55c514c371f6cd746958889541b686f85385d3efcdd75870f80",
+    "bytes": 59707
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.businesschain.StandardFinanceApprovalReadOnlyEndToEndTest.xml",
+    "sha256": "07f9bd9ccf98122f86ad0ee5a65f850f7e0bf7f3bc4b0e0b2ba32349dca6b5f6",
+    "bytes": 59750
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+    "sha256": "3d9682fd3bd22581ba22f8efafdc1fcf5b9b19155b42ff468a74d18bacf95b7e",
+    "bytes": 824285
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest.xml",
+    "sha256": "1452ad9e4ca28b202565155893b7746ff6833c738c9d96b8615a5e40fd4325e7",
+    "bytes": 442571
+  },
+  {
+    "path": "original6fb-nine-infrastructure-red/whole-receipt/TEST-com.uten.imp.migration.LegacyFlywayVersionIdentityPostgresTest.xml",
+    "sha256": "21bbd0da08625125a38922dad9bee65bdef6501fd57248acdb249f4fd6932ee5",
+    "bytes": 53770
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/archive-final.py",
+    "sha256": "365fa410df4bf1d28e028e5e4d8fd680ed52f8659efa8f52ba38f2cdf1029c65",
+    "bytes": 5512
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/archive-qualified.py",
+    "sha256": "f892e1a4e80a6ce4f32c0284454940b357dec9b4e3d21dcd25d93c26685d00af",
+    "bytes": 5893
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/backend-current-acceptance.json",
+    "sha256": "c7d403760e3aa8cc324fc15bedc12d82b134a189fe7cbf5bf8c25266972b0bbb",
+    "bytes": 61857
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/canonical-source-checksums.tsv",
+    "sha256": "3b41577abb65c05a9595808cc4125f254a99e1305cb17986860fdb65f99dde5c",
+    "bytes": 60738
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/capture-current-golden-v2.py",
+    "sha256": "54ef6097d28e11a92c4f680a60176b77f2727a4a2c629db91c3ccfd4361bc027",
+    "bytes": 5601
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/capture-current-golden.original-v1.py",
+    "sha256": "4b543528716a23580faf242ebf48a70c79b1dee2fc53479b0cb438bf27e3ce5a",
+    "bytes": 5433
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/capture-current-golden.py",
+    "sha256": "4b543528716a23580faf242ebf48a70c79b1dee2fc53479b0cb438bf27e3ce5a",
+    "bytes": 5433
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/0/canonical-diff.txt",
+    "sha256": "f485085b51f78a16559999c616f271fa9ad56726905ef78546da261d6a141f51",
+    "bytes": 37333
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/0/diff.txt",
+    "sha256": "cf139886d3d913aaf771413ce55327452515ca3514d97f39d95628bf2fc6fd2d",
+    "bytes": 37711
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/0/main.raw",
+    "sha256": "904a566b6922b54c2c6557e06672286d6fdd70aa15417c943272e91389564026",
+    "bytes": 96565
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/0/task.raw",
+    "sha256": "af8466e3a44fdb045567db424811240a44e4b0191f91a45373ddd02be5791802",
+    "bytes": 100156
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/1/canonical-diff.txt",
+    "sha256": "babbe6737c88b3faf2abfa541294f965a3eed93a1daa539c298a6e0e3b27e084",
+    "bytes": 6120
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/1/diff.txt",
+    "sha256": "9d71adb91a5ef1936231ca1de78628dc4b8633dfc3df55e6f1514375e0faa9dd",
+    "bytes": 6206
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/1/main.raw",
+    "sha256": "9af6ad91780b958538280ec649edc4e982271f59a96f0512d43e61864f1e8a76",
+    "bytes": 104931
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/1/task.raw",
+    "sha256": "d837c041e71821245573b3dff45fc710336d31322fa4c4b5ca222337ba4b4254",
+    "bytes": 103804
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/10/canonical-diff.txt",
+    "sha256": "56b2b30c4fc9f0eda8111e6315379ffc1b7e974df112eabc9cfe1dfa4e674ce4",
+    "bytes": 2548
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/10/diff.txt",
+    "sha256": "c40d2ac67e5e46cddd9531a00df6b6842d8158ecd69a8eebadb627516618b4c5",
+    "bytes": 2587
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/10/main.raw",
+    "sha256": "1126f8b605401ad433270d49ce34c51f744d852d82a4727d145487d32004be99",
+    "bytes": 4040
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/10/task.raw",
+    "sha256": "711d91c93cd8ce24b78aa150fc76ab30a3c43218633c9c908fdb3b58932bb274",
+    "bytes": 5819
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/11/canonical-diff.txt",
+    "sha256": "8fdafa1e6bba189fd50b858800ae96cb5c4d8a9e8f41ac861402153530c743ba",
+    "bytes": 4336
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/11/diff.txt",
+    "sha256": "2e126dc57b87c7b31d92f0b163ad46908e246197a4f042784e7e19fbca212f05",
+    "bytes": 4387
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/11/main.raw",
+    "sha256": "2791330d14ad2d8ae2d1ebc2520f55c1f28f06073efcad7d5615af429d4edd56",
+    "bytes": 49474
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/11/task.raw",
+    "sha256": "8c9436fd65f4025f960e6bec951754b733e37b15c21e57183279787f15a98040",
+    "bytes": 52878
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/12/canonical-diff.txt",
+    "sha256": "19bb6716c3346c17202fa1335bdb99b662f91740474b01934724c9996d1a33b5",
+    "bytes": 1667
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/12/diff.txt",
+    "sha256": "8aa54f19c65c1f2fa27673b2bef4c8041325ad4503fa7054e137d51d6b2db7eb",
+    "bytes": 1688
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/12/main.raw",
+    "sha256": "43b5e05b9f9ae9740b623602aae8994dc847bcd61ba8fe38a3047c4f8beaddb1",
+    "bytes": 2593
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/12/task.raw",
+    "sha256": "81c9291eddbd5000540d85a7472a57da4f185b90c47738fb5898c624ff237980",
+    "bytes": 2698
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/13/canonical-diff.txt",
+    "sha256": "a777fd93940b811a9b55c3a3d8c6dd68b37735be7564344b762478a759f4c75d",
+    "bytes": 3634
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/13/diff.txt",
+    "sha256": "e07b8a7215af5a34ceb8bf21a5c1aff3d0a316c3c47bd39e49fc455299592a69",
+    "bytes": 3689
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/13/main.raw",
+    "sha256": "255eca93bf586d47d820b05b043eef3f49e7438d201360aabb39a401250cada4",
+    "bytes": 23268
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/13/task.raw",
+    "sha256": "e3af48387d3135484573fc8e51c1ce46d713e3d0191aefd93136605afb521c1d",
+    "bytes": 23390
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/2/canonical-diff.txt",
+    "sha256": "14e52fd534d5e86d65d612292811200989ff92c5a86b6649deff917f5dbbcbcd",
+    "bytes": 7270
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/2/diff.txt",
+    "sha256": "96a33826ab7e7b2b86d07c2c21dd22823d183e80b0b6de1c4e117f8613cff76f",
+    "bytes": 7321
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/2/main.raw",
+    "sha256": "e58945ade94934cf63357c000d391cb145033a4a1782e3c9480830259c56d0c2",
+    "bytes": 226140
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/2/task.raw",
+    "sha256": "a86cf6298dd1d6a2818202cf543a7d450fee5b322e946123e036f816d97c3c75",
+    "bytes": 226228
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/3/canonical-diff.txt",
+    "sha256": "e0bec032d707cd86195f65a984f01421cf07d6e42cd7aab1663b884e8e5f6c19",
+    "bytes": 2060
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/3/diff.txt",
+    "sha256": "2e9c2522b161c5deedac11279da23b1d48d820526721b60373415a5dbda05c7f",
+    "bytes": 2077
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/3/main.raw",
+    "sha256": "826609a8b4f5f3c3967b43d0011ae34a09c0b9094369f7c2f40552aac618e7df",
+    "bytes": 74880
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/3/task.raw",
+    "sha256": "4ac01e7fe3cf57f02bcedbcbbc8996524606dc730f88ee7891c58866b28357ea",
+    "bytes": 74902
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/4/canonical-diff.txt",
+    "sha256": "c8339e285fb19c380a8d650c326c13b0c55c65a385e0207de48b1889ac59d481",
+    "bytes": 9884
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/4/diff.txt",
+    "sha256": "dc4f879329035dcb8e611ba720341544f88f092a15f9e8e3d41b8f20f1ce5981",
+    "bytes": 10002
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/4/main.raw",
+    "sha256": "86efef549b0a08f598b8897ea1fea56ed0ce97d40b7a936375891a565f06b8bf",
+    "bytes": 130980
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/4/task.raw",
+    "sha256": "e5cab5b8dae267fccefe795e26ba2af11e05e21dd6ddf87a680232ad1dd9acd0",
+    "bytes": 129671
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/5/canonical-diff.txt",
+    "sha256": "f442ae0bb6ffcd60232756ec9de67bc2a83e59bdee3af9f9644dd07ba3e79d24",
+    "bytes": 1643
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/5/diff.txt",
+    "sha256": "0e0a3dd6a7edb532f78ec4596394bef93ebef79fbd15c2bf7fd558a71a82eba5",
+    "bytes": 1665
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/5/main.raw",
+    "sha256": "6e4a45df0a5475a4d60ad838a8dbdd627e04d7fe43f9c953dea736cddad105e6",
+    "bytes": 8359
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/5/task.raw",
+    "sha256": "65d1cc9f21b92ccd23856fe8cead3391f508ae30e9536cc795129a54f8772022",
+    "bytes": 8562
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/6/canonical-diff.txt",
+    "sha256": "c9aa1b9d87e7297466ed21fe1b2abd1dca42b2a7bcbd95c6ab548964a0f256e1",
+    "bytes": 1561
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/6/diff.txt",
+    "sha256": "d58635a8535679d8009350542991af7bbb62c26f9bdd973fa44326b8f5875619",
+    "bytes": 1583
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/6/main.raw",
+    "sha256": "cbbaadf571941d39f795c2d6bd178db138649119dedd4b9f03e3ce5916d03d30",
+    "bytes": 6894
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/6/task.raw",
+    "sha256": "955fdcdfa9e0d836f25759b155d112927df9034ec154d1bee0e6c5d689c13a0e",
+    "bytes": 7097
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/7/canonical-diff.txt",
+    "sha256": "9d2383601685e40f84f611ef33a11630f7e8289f02cfb35116820b217e91318f",
+    "bytes": 929
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/7/diff.txt",
+    "sha256": "2d5b70fb740fd7cca8a624ff8ead7a6435a69c4561b1029dcdfb93fa327470de",
+    "bytes": 944
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/7/main.raw",
+    "sha256": "53622f921b102df7c1c0edad0477903d8fd4d9a1d6492c3903d069ec29f0f5b5",
+    "bytes": 7651
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/7/task.raw",
+    "sha256": "d0a4079c3e5e68113f95b6b47fafea03e78d0aaa7c8a11eb0d35fda6cc4b52ac",
+    "bytes": 7663
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/8/canonical-diff.txt",
+    "sha256": "66289528253d6ef5969f647ee631f3b4ad4d0a493bef6dc32b09eab0fc8577eb",
+    "bytes": 5133
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/8/diff.txt",
+    "sha256": "25904fe7fa6efcc0bc902a543c214490929784e6f27625c05186c367ff313008",
+    "bytes": 5200
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/8/main.raw",
+    "sha256": "f539c4ce8848d9798388cc0ed2593c38e008b4a1218861d69df82c07dbff84cb",
+    "bytes": 15031
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/8/task.raw",
+    "sha256": "38875fc327115559acbeb5b73797bd89547ae5973c119b4325293b5a8ef371e1",
+    "bytes": 15514
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/9/canonical-diff.txt",
+    "sha256": "bd976952dacee85023ffbd6bab91f858c602ef3f13476873ebb0b38549a793ad",
+    "bytes": 2396
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/9/diff.txt",
+    "sha256": "a100082cddee0619fe7fabb3022370ec73caf110fda5db70633753348fb1f62c",
+    "bytes": 2433
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/9/main.raw",
+    "sha256": "7ffa2dfaa9eb479002f9f5da48933df202cae379a3e41c695ef95034da8aaa11",
+    "bytes": 9078
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/9/task.raw",
+    "sha256": "57cdc50cb2bb2cc38fe404337611672db4bb3767df36fcf180c617a9d1c9c43f",
+    "bytes": 9884
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/inputs.before-canonical-diff.json",
+    "sha256": "f1afa6f8a15a79b4d18bc68bd1fcd0ac6e823a8617d8c3d4567686a4ca5fc67f",
+    "bytes": 10455
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/inputs.json",
+    "sha256": "ae17bc2b3165036cf974a64571866b0096c475d2a2412d5b1583350585f4ca58",
+    "bytes": 15062
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/cas-overlap-review/semantic-review.json",
+    "sha256": "7b25b8b9286101b65546e6625c92e0696340a5cb203485a72b5c0bcea51f7aca",
+    "bytes": 25697
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compile-execution.json",
+    "sha256": "ba4a96c7984104e4d6f65e2bef8a9bb75561f8b410da87bd57829938c71656de",
+    "bytes": 557
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compile-gift-test.py",
+    "sha256": "d8bca30e30d3b611a70d2fc8b67b8aaa5a94411e86342f0a8dcd5c74f1ba4fea",
+    "bytes": 3611
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compile-source-preflight.log",
+    "sha256": "d6a392a1d7cfc9ab7c5eb0396c77ef963a0cad6f068fe8ed362373ed5f02660c",
+    "bytes": 399
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compile.log",
+    "sha256": "71ea6130b3eee9c45ec911ecf607e15221c649cd7319f4d2abfabd8b147cdf7b",
+    "bytes": 2117
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compile.ps1",
+    "sha256": "678520cdc4ea7f185081017ff7ed83cad0ace2d8eab9fbea4f93c90dcf384903",
+    "bytes": 1659
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/compiled-class-byte-manifest.json",
+    "sha256": "a367beffa9ccf6e6a21738f9d2ddf5a63a3ec961d87d8b2c45e329705477b2a0",
+    "bytes": 2334844
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/complete-freeze-correction-and-python-bridge.json",
+    "sha256": "c1e1797a7896b9854864ff6e8e4bfeb9a3786a1a26d856d1f9ff73f6858017cb",
+    "bytes": 2036
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/complete-freeze.py",
+    "sha256": "074b02393588297e11d09a598b1dce1d5947cbd687b4d3e7476fe3bb0263ba16",
+    "bytes": 3197
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/complete-source-input.json",
+    "sha256": "86025aec72bf1b148434e7f6a7896d737d83d912e0635768a03d817a20367765",
+    "bytes": 1510261
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/complete-source-summary.json",
+    "sha256": "0bf4bd30e9bcbb3ad9dc0656d58e0e8d6b3fdc5e90fb7c6fd840ba551125abe0",
+    "bytes": 523
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/correct-diff-evidence.py",
+    "sha256": "9a12d822e6b5c9942ddf72b3abb2356f8832af244b03bf006248b9614b8ad38c",
+    "bytes": 1755
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-execution.json",
+    "sha256": "fb9d02073b2e4c9763f343fdec922f09057f831251cd6bf0518a3c3c9e0f634f",
+    "bytes": 1717
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/complete-input-inventory.json",
+    "sha256": "86025aec72bf1b148434e7f6a7896d737d83d912e0635768a03d817a20367765",
+    "bytes": 1510261
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/complete-source-input.json",
+    "sha256": "86025aec72bf1b148434e7f6a7896d737d83d912e0635768a03d817a20367765",
+    "bytes": 1510261
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/execution.json",
+    "sha256": "fb9d02073b2e4c9763f343fdec922f09057f831251cd6bf0518a3c3c9e0f634f",
+    "bytes": 1717
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/maven.log",
+    "sha256": "5b0a766e9bb101a40f81d20dca33b78f475a4816dd866f43a29394263911fccc",
+    "bytes": 6704
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/seal.json",
+    "sha256": "9287ee31e00356462ead841b1b7ffab3b98d3efe20ecb9384f08539f8c1a6bf2",
+    "bytes": 25583
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.common.export.SelectedDocumentProjectionTest.xml",
+    "sha256": "13c565c045706bd4099f2e4173863ea11b830b986cd0f3e4220f3b6362e8d51e",
+    "bytes": 53355
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest.xml",
+    "sha256": "82f7d3ac8b951466d476a3645c806f943dfa683fd5bb290e984650c185ef1751",
+    "bytes": 57994
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest.xml",
+    "sha256": "20eb06810175e3e0fef24f7c0c6245f7c718d26a8ef04bd6ee0b8ad12d8e01b2",
+    "bytes": 54678
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest.xml",
+    "sha256": "f303cb23b8f9d755edb0b9967f81ea22359a672bb2337a06b58737ad8d90e118",
+    "bytes": 59569
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.finance.procurement.ProcurementApprovalHistoryQueryTest.xml",
+    "sha256": "7436fdc2a577b4f8edaf38ec0161d5f7f416d946f8dcae8c64c0366576cd1147",
+    "bytes": 53456
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest.xml",
+    "sha256": "5bc0f1827f4876317cd6954a662e780b5675e977195b81e87734f29445b2a6a1",
+    "bytes": 58906
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterOutputIdentityTest.xml",
+    "sha256": "d27b060b5fe62d10e95f1ec52326f289d9868704aa3f3ede10bf2ccdabf2f35e",
+    "bytes": 52862
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.migration.FlywayChecksumManifestExporterTest.xml",
+    "sha256": "5c23b8e2afbbd4e88f19979cc2b5bc662f8a898a2d4e4e0555a5a00ab85df401",
+    "bytes": 52979
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.migration.ForwardMigrationSequenceContractTest.xml",
+    "sha256": "8dbcff3ad284bcfe3959f7724caa902719c277043d5652ab71e30c78d8e6f97f",
+    "bytes": 53305
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-receipt/TEST-com.uten.imp.migration.LegacyMigrationSafetyContractTest.xml",
+    "sha256": "7e08f404f7d82d940770d36fafe616906c25a26618c5431377b3c227b1b63a62",
+    "bytes": 54585
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast-selection.txt",
+    "sha256": "9c2e11798510ceab86300e4d50dc1ce09beba78c791784a0250fce256b1ffc66",
+    "bytes": 341
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-fast.log",
+    "sha256": "5b0a766e9bb101a40f81d20dca33b78f475a4816dd866f43a29394263911fccc",
+    "bytes": 6704
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-execution.json",
+    "sha256": "307eee6805df59e7047ddb43c27fcd34a3dace289d4a743df16e4ceb97599aa9",
+    "bytes": 2323
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/complete-input-inventory.json",
+    "sha256": "86025aec72bf1b148434e7f6a7896d737d83d912e0635768a03d817a20367765",
+    "bytes": 1510261
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/complete-source-input.json",
+    "sha256": "86025aec72bf1b148434e7f6a7896d737d83d912e0635768a03d817a20367765",
+    "bytes": 1510261
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/execution.json",
+    "sha256": "307eee6805df59e7047ddb43c27fcd34a3dace289d4a743df16e4ceb97599aa9",
+    "bytes": 2323
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/maven.log",
+    "sha256": "26b8ced980ec41b7fc4bd97394f7574302c15614369c9f7d1a1d12da248277c1",
+    "bytes": 2754368
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/seal.json",
+    "sha256": "62de816fbf4d66e2581088b83dcbf8ac616d0a417bb13a9f692d7fafc6c74e21",
+    "bytes": 29733
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest.xml",
+    "sha256": "24516b43f808bb347e19f5093dca8888e6d7d5a2a0807d01b77c8f382ff4b771",
+    "bytes": 58656
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest.xml",
+    "sha256": "2334cd2f5b75398ceaa6194627a2400395115f44c84a561d59a93497a77f5ca5",
+    "bytes": 442844
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest.xml",
+    "sha256": "1d8d110a1a70f8722ab77e8bcf3e637e60ee5a5e2481d80be1244e1925b54003",
+    "bytes": 442595
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest.xml",
+    "sha256": "ae29bd013c27f58b02a3bbb60f3993d1d1661204998c6f28a258834a886a2e6b",
+    "bytes": 58772
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.InventoryValueOutputRefreshContinuationPostgresTest.xml",
+    "sha256": "6ff638b02c70908e84fc42e32a48284f91be567813d512604b58cd4190581849",
+    "bytes": 440312
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest.xml",
+    "sha256": "05ce9121af872cc4f0d599aa5c22054ff2d75c32c6dc31e3e1a1d4f8c8c996e2",
+    "bytes": 63295
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest.xml",
+    "sha256": "3a2a662753e2a8458aa516c09fbc50337e33bd29d7046614cbaa776435ff1f78",
+    "bytes": 61466
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest.xml",
+    "sha256": "ae12f5472a8c1b49fb43cda593d42af385f4a765cc4d6bd398dbf6168b0021f0",
+    "bytes": 59806
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest.xml",
+    "sha256": "95257b1444ab0a50b48b85efce38241bd6655ee28da32775f280e9f10446b92a",
+    "bytes": 56921
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+    "sha256": "c56a3ed84eed37923ab79cec1a415e3e0f52d104afb077c534514259e3979357",
+    "bytes": 444834
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest.xml",
+    "sha256": "67f749e87b716bbdbf259374b9e07e0a49a4bc240616b7ab65576c03d0a47fcf",
+    "bytes": 61229
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml",
+    "sha256": "746cd61e3c71beb011adca6a1ed6fc6fddf511563b0c5d1ef6ea340b67c526b4",
+    "bytes": 442309
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.migration.LegacyFlywayVersionIdentityPostgresTest.xml",
+    "sha256": "45b7e01fe8c114a0b0c95e032f7e30d4b375a579402257ea399d66354ef3e9df",
+    "bytes": 53916
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest.xml",
+    "sha256": "aaf11c2760f0f7c4ebb6968faee042d47b8a393d3055a2dff477bc769ef47e1d",
+    "bytes": 437362
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-receipt/TEST-com.uten.imp.migration.LegacyQuantityUnapprovalCompositionPostgresTest.xml",
+    "sha256": "36395621050499fbfa9678f1f319c38736e250fcb12903d18540ce1dbdfb3895",
+    "bytes": 438072
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg-selection.txt",
+    "sha256": "1a2c678455fe50f6aec1828e7f979597de73ed9f92bf5b7c9af57a6fcbaf0ddf",
+    "bytes": 648
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current-pg.log",
+    "sha256": "26b8ced980ec41b7fc4bd97394f7574302c15614369c9f7d1a1d12da248277c1",
+    "bytes": 2754368
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/current1013-consumers.log",
+    "sha256": "4ae974047805c900b451946569de6170cacce3423abcbc7b284d8fb00971a539",
+    "bytes": 2121
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/external-path-delta.json",
+    "sha256": "7c86c0bd06576d7efd8266a219edafbef27c872a1765e59a77239b53488b5273",
+    "bytes": 88
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/external-resources.json",
+    "sha256": "09d089714ea09bf84efe95c8dbbdc7711ed2e14a3d43b8b1c1f0e0c53db881ad",
+    "bytes": 94402
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/gift-physical-weight-repair/original.raw",
+    "sha256": "9e3d210d2d319d7b557531cdcfdaaf1fa4528e4a8683047144d896b6b12ac6c4",
+    "bytes": 20715
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/gift-physical-weight-repair/review.diff",
+    "sha256": "f47456012713fed973475410e7c41945295925c82aba63c14f8f4b90ecb794c6",
+    "bytes": 6021
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/gift-physical-weight-repair/review.json",
+    "sha256": "7d3473786f72ced2588584f19f28d77d46fd13a6bc67747c24a15b3e85392d2f",
+    "bytes": 2120
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/gift-physical-weight-repair/root-review.json",
+    "sha256": "205bad8c6f663abf109a1acecfe0616225f3cbf1cebafcc5e02597844776e3b3",
+    "bytes": 888
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/gift-physical-weight-repair/staged.raw",
+    "sha256": "9def84fce03bac666c9d3e3e2ff491483e3f0658b6a57a47733b74432d6acfbb",
+    "bytes": 22369
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture-original-v1-state.json",
+    "sha256": "a07414b24625625dc6e89774e7df37270b625df3d0ce6f54f34416098d7d5c84",
+    "bytes": 283
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture-state.json",
+    "sha256": "a07414b24625625dc6e89774e7df37270b625df3d0ce6f54f34416098d7d5c84",
+    "bytes": 283
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture-v2-native-execution.json",
+    "sha256": "125130399fc859d0528b6c3f0074e81f182c7eb049de88ce92b62eaf729c7c61",
+    "bytes": 596
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture-v2-state.json",
+    "sha256": "af494c71ff36482d1dfbd1cd41d6dfe16a20f68cabc9a6aec056f946d1a28714",
+    "bytes": 1710
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture-v2.log",
+    "sha256": "7632f9ff2a6786393abdfee6aa2de6b76182a1f0c9237315391b5747bc51ce81",
+    "bytes": 1295
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-capture.log",
+    "sha256": "45d4d99f7e61250fa0266f20133c7056ea6981f84453ff959947c5b654a1a312",
+    "bytes": 913
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-current-installed-history-raw.json",
+    "sha256": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+    "bytes": 197308
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-current-installed-history-raw.tsv",
+    "sha256": "95f91eacfed0db0dd7e2069228f9358616614f265fe603bcfcebdbe3c88182ac",
+    "bytes": 60716
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-current-installed-history-receipt.json",
+    "sha256": "38893d5b503ba5a0a28ee69ea859f5cd6d1cca5a7d475213e8f3e4d4b737583c",
+    "bytes": 1411
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/golden-observer-v1-failure-and-v2-repair.json",
+    "sha256": "99afe1988e07b26a67d17db2d987c134faedbd73128adb8c79b74bd81f9cd1ee",
+    "bytes": 925
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/official-current-producer-provenance.json",
+    "sha256": "3ba442112377b9833317dc8ee1e2ac745e99dbc7c34480d379d115b413d35d19",
+    "bytes": 773
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-applicability-bridge.py",
+    "sha256": "69c8473ed6fc63fdd929153da87d9efdb13bdc647c7d1d495cb1d5c222c88f78",
+    "bytes": 3535
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-cas-overlap-review.py",
+    "sha256": "2c1a75614ac0a30394066f728e2011c43884094965ec63fb321b99b7fff0bf24",
+    "bytes": 2018
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-gift-physical-repair.py",
+    "sha256": "5c85933688d6a12c825dbe77d8061a3976fa7e46e3abd9466f5adb222076b3c4",
+    "bytes": 6609
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-golden-v2.py",
+    "sha256": "87592628156a1758dbdfebda67be73bc72e8ae080581bacc591dfc9a0b9ade2f",
+    "bytes": 1675
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-qualified-tools.py",
+    "sha256": "c66f90ad53bfa8a7b7811160eaa55777ae85de55fffe45ee426f759a6f5c340d",
+    "bytes": 721
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-runners.py",
+    "sha256": "6b485da4dee78513dfdcffde5d85f08e83f1f3819502a25a750549a407cef712",
+    "bytes": 1421
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prepare-selection.py",
+    "sha256": "855080d1676ff8dcd72f5cee17a4e6f4c39a68f8705ae4661fc89647c7a3a1a6",
+    "bytes": 2373
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/prior-current-applicability-bridge.json",
+    "sha256": "f22cf44874dbd04be31961d94b81005e37a11262e4a9e80fcbf5005a1aa0a884",
+    "bytes": 393507
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/python-execution.json",
+    "sha256": "53ccb25f7bd8a15effee48f09ce67834df13910e756f30f3418cf8e0f30809eb",
+    "bytes": 14392
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/python.log",
+    "sha256": "2037a4d9dc9bf07d774e3b8b0073f23b82cf3fb97b9b8a74d1ef6db30cf2768b",
+    "bytes": 14541
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/queue-current.ps1",
+    "sha256": "0104112753615b8ebda99369a25d750dff8ae2f611b81bcc26219db53180e210",
+    "bytes": 2151
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/queue-execution.json",
+    "sha256": "9b2ea33a1c17f0f4d2fb9f2e1b9097f4875a9f105a735b47fd3a6d580f1e0fae",
+    "bytes": 271
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/repair-and-refreeze.py",
+    "sha256": "46fa09015ebc803ff77620b22dadabb483c116874d8895eed1eaab8d19f29ff9",
+    "bytes": 2966
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/required-targets.json",
+    "sha256": "318f03e6c7a6a5bf1dfc45a390cc736d37e1bc2bef1bf43e94469a2288d9d71f",
+    "bytes": 2286
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/resumption-source-verification.json",
+    "sha256": "fae531f53b2accd40cd97aa925f99cb5ab7b3e191747ba2c1cf8e135676b1af5",
+    "bytes": 426
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/run-python.py",
+    "sha256": "de5effe62d22b946e224a47cec87f4eb7f3c7b0e74b468f5a0592f65f95e70f7",
+    "bytes": 2183
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/run-suite-source-preflight.log",
+    "sha256": "4fb5c064fb2fa8cf20a8d9abf29c8a2cc54801dd14cb7a32610a3d491c9e3394",
+    "bytes": 399
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/run-suite.ps1",
+    "sha256": "54c976c1bde883c597d28d9fec64bafaff188c5d7fc81e9cfd58ef1030811f1b",
+    "bytes": 3443
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/seal-cas-overlap-review.py",
+    "sha256": "d2f655d7f6f355c72774002d6ff11675dac600e2a9048bc674fb533ca6bb63f2",
+    "bytes": 7694
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/seal-current.before-launcher-fix.py",
+    "sha256": "9aca4de28a91cc5271777fb69e97e821465cc2ae20434407d7b460cbefce11c1",
+    "bytes": 6319
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/seal-current.py",
+    "sha256": "82f18b7fcc82e7d18edd47d683f3bea5f062ae85b585a70acc54eed0848145f6",
+    "bytes": 6468
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/seal-qualified-gift.py",
+    "sha256": "18b119d78522209429fc04f8556f44947e252f0a28df6c5b22d22ed0bf33f9cf",
+    "bytes": 6252
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/seal.log",
+    "sha256": "6bf670d8ebd30ac3e6b85016b69f7aaa3184ae287c5507fca10c115ebe6f3ceb",
+    "bytes": 582
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/source-input.json",
+    "sha256": "a33663103f627e23c34ff10dc7fdabcee9a58f680c8cc5ff3a9821a60ecfebb7",
+    "bytes": 1509716
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/source-metadata-snapshot-1013.json",
+    "sha256": "63e3d611f5dc019899c76db69c22ff944c91cdb5d3687c5b61570c3bb7b22268",
+    "bytes": 287801
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/source-summary.json",
+    "sha256": "a9b263b8cd247ee54984f6409186fe2a0adf28974edb1497bcec29bdbf2562ac",
+    "bytes": 304
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/verify-official-checksum.py",
+    "sha256": "f06e5f6a8071794390ab752444a30f6c3f24bbc0226e7f75c9c7d37cf8bcdd15",
+    "bytes": 2622
+  },
+  {
+    "path": "original776-current-whole-red-and-preparation/verify-source.py",
+    "sha256": "d72148dbf888ee5ca53df956a86e15b309d8e013224a63da8082e62c1b07f4a3",
+    "bytes": 2795
+  },
+  {
+    "path": "original777-fast-quote-red/current-fast-execution.json",
+    "sha256": "ca51af473b38c9ab389ea91a09e5b48a66c0c72ebdba7a49e97fb9d16e399e01",
+    "bytes": 1569
+  },
+  {
+    "path": "original777-fast-quote-red/current-fast.log",
+    "sha256": "cf06e574922083af291806f3fee3d406f0324eab5bdbabfaf3b4abafe2c60a1c",
+    "bytes": 19886
+  },
+  {
+    "path": "original777-fast-quote-red/source-input.json",
+    "sha256": "52ebf952736cbb369d9a62bba8e39cb58211a214fb1cf25e70789b245522990b",
+    "bytes": 1507623
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/complete-input-inventory.json",
+    "sha256": "52ebf952736cbb369d9a62bba8e39cb58211a214fb1cf25e70789b245522990b",
+    "bytes": 1507623
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/execution.json",
+    "sha256": "ca51af473b38c9ab389ea91a09e5b48a66c0c72ebdba7a49e97fb9d16e399e01",
+    "bytes": 1569
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/maven.log",
+    "sha256": "cf06e574922083af291806f3fee3d406f0324eab5bdbabfaf3b4abafe2c60a1c",
+    "bytes": 19886
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/source-input.json",
+    "sha256": "52ebf952736cbb369d9a62bba8e39cb58211a214fb1cf25e70789b245522990b",
+    "bytes": 1507623
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml",
+    "sha256": "1ab82bbbb243f7b02d959df669b4c20c58e67be4a41a06c282f888034e33b5e4",
+    "bytes": 54149
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.common.finance.ProcurementReferencePriceTest.xml",
+    "sha256": "49f6dfd9a54c4ba94babcbe4aae80afdea7f32b36fd670706703323ae2b4a29d",
+    "bytes": 55089
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.features.finance.receipt.FinanceReceiptSettlementTest.xml",
+    "sha256": "23fca39d2f97e892560696cff9cd47335082e82e04533b71d0bf0a148c4832e0",
+    "bytes": 59142
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.features.purchase.order.PurchaseOrderTotalAmountTest.xml",
+    "sha256": "9f47940e5ebdad360b373a7ebb97f03449f2fdf00bea665b827d7ce9f6e7a20b",
+    "bytes": 52999
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.features.subcontract.order.SubcontractOrderTotalAmountTest.xml",
+    "sha256": "c240bd25bfdd92928a8bc120485b272f1df9371d9ce7034eda25c218ac06c1b7",
+    "bytes": 53017
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.migration.FlywayChecksumManifestExporterTest.xml",
+    "sha256": "0bf8321b1cb625f139088462d81fcbb1ac3640b70a195902bfc667c7a8c6dd2e",
+    "bytes": 52981
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.migration.LegacyMigrationSafetyContractTest.xml",
+    "sha256": "749a40a8fe5eb224482ed05e14e9485747978e6e1dd9e35ff4cf2b8516ba5735",
+    "bytes": 71634
+  },
+  {
+    "path": "original777-fast-quote-red/whole-receipt/TEST-com.uten.imp.testsupport.HistoricalJdbcNativeSqlTest.xml",
+    "sha256": "446d891c47e79927e850fdaf14a4b737a08883e990014a061bbabcdec7b13f8f",
+    "bytes": 52822
+  },
+  {
+    "path": "stage-summary.json",
+    "sha256": "d3619f8d2ef3b41b1e72d6be63b95ed7ec89964ef15a894a63e23f6c7fc0a381",
+    "bytes": 60399
+  }
+]

@@ -43,7 +43,6 @@ import '../providers/goods_clipboard.dart';
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_bom_batch_repository.dart';
 import '../repositories/goods_repository.dart';
-import '../repositories/goods_location_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
@@ -733,19 +732,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         excludeDisabled: categoryBrowsing && !q.hasKeyword,
         excludeStub: true, // 迁移兜底占位归「未分类」节点的集合行
       ),
-      locatePage: (q, id) => ref
-          .read(goodsLocationRepositoryProvider)
-          .locate(
-            id: id,
-            categoryId: q.categoryId,
-            keyword: q.keyword,
-            filters: q.filters,
-            sort: q.sort,
-            order: q.order,
-            size: q.size ?? 20,
-            excludeDisabled: categoryBrowsing && !q.hasKeyword,
-            includeRelated: includeRelated && q.hasKeyword,
-          ),
       loadFacets: (id) async {
         final f = await goods.facets(id);
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);

@@ -1,0 +1,9 @@
+{
+  "atUtc": "2026-11-05T21:24:08.771621+00:00",
+  "path": "server/src/test/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterOutputIdentityTest.java",
+  "beforeSha256": "43b5e05b9f9ae9740b623602aae8994dc847bcd61ba8fe38a3047c4f8beaddb1",
+  "afterSha256": "81c9291eddbd5000540d85a7472a57da4f185b90c47738fb5898c624ff237980",
+  "reason": "Main-added identity fixture mocked old one-argument query while existing task export deliberately reads without broad metadata. Stub the actual two-argument overload and verify metadata-free path; keep every physical rowKey selection assertion. No production source/permissions/guards altered.",
+  "oldNativeRun": 1,
+  "oldRunPreserved": true
+}

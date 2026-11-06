@@ -1,0 +1,15 @@
+{
+  "label": "finance-fixture",
+  "startedAtUtc": "2026-11-05T11:59:07.7463833Z",
+  "endedAtUtc": "2026-11-05T12:01:13.8711813Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "b81e056189d9998e0581e4494ca37123f0f63a8a0110b7b8cc8f8d7302243a63",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "log": "build/loading-validation/combined-finance-fixture-test-compile.log"
+}

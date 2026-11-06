@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,6 +39,86 @@ void main() {
         customerPrepaymentSummaryUsesLocalCurrency(incompletePage),
         isTrue,
       );
+    },
+  );
+
+  testWidgets(
+    'all authorized prepayments complete before selection with first summary and exact balances retained across scrolling',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _ApplyPanelApi(count: 120);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.financeViewAll,
+              Perm.customerPrepaymentView,
+              Perm.customerPrepaymentApply,
+            }),
+          ],
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showCustomerPrepaymentApplyPanel(
+                    context,
+                    clientId: 'client-1',
+                  ),
+                  child: const Text('打开预收'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开预收'));
+      await tester.pumpAndSettle();
+      expect(api.reads, [
+        {'page': 1, 'size': 100, 'clientId': 'client-1'},
+        {'page': 2, 'size': 100, 'clientId': 'client-1'},
+      ]);
+      final window = tester
+          .widget<UtenAncestorRowWindow<CustomerPrepaymentItem>>(
+            find.byType(UtenAncestorRowWindow<CustomerPrepaymentItem>),
+          );
+      expect(window.rows, hasLength(120));
+      expect(window.rows.last.availableOriginal, '70.1000');
+      expect(window.deferRowMounts, false);
+      final list = find.byType(ListView).last;
+      final scroll = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final last = find.byKey(const ValueKey('customer-prepayment-many-119'));
+      await tester.scrollUntilVisible(
+        last,
+        500,
+        scrollable: scroll,
+        maxScrolls: 60,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: last, matching: find.byType(Checkbox)),
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.descendant(of: last, matching: find.byType(Checkbox)),
+            )
+            .value,
+        true,
+      );
+      final position = tester.state<ScrollableState>(scroll).position;
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(api.reads, hasLength(2));
+      expect(find.text('100.1234'), findsOneWidget);
+      expect(api.posts, isEmpty);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -214,7 +295,9 @@ class _PostCall {
 }
 
 class _ApplyPanelApi extends ApiClient {
-  _ApplyPanelApi({this.legacy = false}) : super(Dio());
+  _ApplyPanelApi({this.legacy = false, this.count}) : super(Dio());
+  final int? count;
+  final reads = <Map<String, dynamic>>[];
 
   final posts = <_PostCall>[];
   final bool legacy;
@@ -225,6 +308,27 @@ class _ApplyPanelApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/finance/customer-prepayments') {
+      reads.add({...?query});
+      if (count case final length?) {
+        final page = query!['page'] as int;
+        final size = query['size'] as int;
+        return {
+          ..._prepayments,
+          'page': page,
+          'size': size,
+          'total': length,
+          'totalPages': (length + size - 1) ~/ size,
+          'items': [
+            for (var i = (page - 1) * size; i < page * size && i < length; i++)
+              {
+                ...(_prepayments['items'] as List).first
+                    as Map<String, dynamic>,
+                'ledgerId': 'many-$i',
+                'billNo': 'YS-$i',
+              },
+          ],
+        };
+      }
       return {
         ..._prepayments,
         'items': [

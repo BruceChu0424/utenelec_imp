@@ -165,7 +165,7 @@ public class SalesShipmentService {
      * 历史来源不完整的 LEGACY 单与仓库驳回单不进任何活动阶段，只在历史记录里可见。
      */
     static final Set<String> SHIPMENT_STAGES = Set.of(
-            "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "SHIPPED", "REVERSED", "ACTIVE");
+            "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "FINANCE_HISTORY", "SHIPPED", "REVERSED", "ACTIVE");
 
     private static void addStagePredicates(
             List<Predicate> ps, CriteriaBuilder cb, Root<SalesShipment> root, String rawStage) {
@@ -212,6 +212,11 @@ public class SalesShipmentService {
                 ps.add(cb.isFalse(root.get("rejected")));
                 ps.add(cb.equal(root.get("financeAudit"), (short) 1));
             }
+            case "FINANCE_HISTORY" -> ps.add(cb.or(
+                    cb.equal(root.get("financeAudit"), (short) 1),
+                    root.get("status").in((short) 1, (short) -1),
+                    cb.equal(root.get("shipmentKind"), "LEGACY"),
+                    cb.and(cb.isTrue(root.get("rejected")), cb.isFalse(root.get("financeRejected")))));
             case "SHIPPED" -> ps.add(cb.equal(root.get("status"), (short) 1));
             case "REVERSED" -> ps.add(cb.equal(root.get("status"), (short) -1));
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段的筛选值不正确：" + rawStage);
@@ -2586,7 +2591,7 @@ public class SalesShipmentService {
     private void validateShippable(SalesShipmentItem it) {
         Object[] r = (Object[]) em.createNativeQuery(
                 "SELECT qty, shipped_qty, returned_qty, flag_qty, reserved_qty, chain_status"
-                        + " FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_order_items',archive_origin.id)) sales_order_items WHERE id = :id")
+                        + " FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_order_items WHERE id = :id")
                 .setParameter("id", it.getOrderItemId())
                 .getSingleResult();
         BigDecimal qty = toBd(r[0]);

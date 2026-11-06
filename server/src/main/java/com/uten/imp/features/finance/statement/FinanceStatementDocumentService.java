@@ -31,6 +31,7 @@ public class FinanceStatementDocumentService {
     private final SecurityContextCurrentUser current;
     private final ObjectMapper json;
     private final FinanceDocumentAccessPolicy access;
+    private final FinanceStatementOriginalSnapshotReader originalSnapshots;
     private final FinanceAuxiliaryLedgerReadPort ledger;
     private final FinancialAuxiliaryValidationPort auxiliary;
     private final ObjectProvider<FinanceStatementService> statements;
@@ -233,6 +234,14 @@ public class FinanceStatementDocumentService {
         row.remove("counterpart_file_provider");row.remove("counterpart_file_key");row.remove("counterpart_file_version");row.put("original",original);row.put("confirmationMetadata",confirmations(row));return row;
     }
 
+    /** Public review/confirmation facts only, without fetching/decrypting all
+     * original rows. The old full detail endpoint remains for command recovery. */
+    @Transactional(readOnly=true)
+    public Map<String,Object> reviewSummary(UUID id){
+        read();var row=new LinkedHashMap<>(reviewSummaryRow(id));
+        row.put("confirmationMetadata",confirmations(row));return row;
+    }
+
     @Transactional(isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String,Object> decideReview(UUID id,Decision command){
         read();if(command==null)throw invalid("请明确原件审核结果");reference(command.reason());tx.bind();lockSettlementVersion(id);var row=reviewRow(id,true);Context c=reviewContext(row);writeDocument(c);
@@ -286,10 +295,13 @@ public class FinanceStatementDocumentService {
     }
     @Transactional(readOnly=true)
     public com.uten.imp.features.finance.report.ReportTableResponse originalTable(UUID id,int page,int size){
-        var reviewed=review(id);var original=map(reviewed.get("original"));var rows=(List<?>)original.get("rows");int p=Math.max(1,page),s=Math.max(1,Math.min(500,size));
+        var reviewed=reviewSummary(id);var original=originalSnapshot(id,reviewed);var rows=(List<?>)original.get("rows");int p=Math.max(1,page),s=Math.max(1,Math.min(500,size));
         var columns=json.convertValue(original.get("columns"),new TypeReference<List<com.uten.imp.features.finance.report.ReportColumn>>(){});
         var totals=json.convertValue(original.get("totals"),new TypeReference<List<com.uten.imp.common.report.ReportTotal>>(){});
-        int start=(int)Math.min(rows.size(),(long)(p-1)*s),end=Math.min(rows.size(),start+s);var data=new ArrayList<Map<String,Object>>();for(Object row:rows.subList(start,end))data.add(map(row));
+        int start=(int)Math.min(rows.size(),(long)(p-1)*s),end=Math.min(rows.size(),start+s);var data=new ArrayList<Map<String,Object>>();for(Object row:rows.subList(start,end)){
+            var projection=new LinkedHashMap<String,Object>(map(row));
+            com.uten.imp.common.report.ReportQueryKit.includeFrozenDecimalTexts(projection);data.add(projection);
+        }
         var meta=new LinkedHashMap<>(map(original.get("documentMetadata")));meta.put("reviewId",id);meta.put("documentSha256",reviewed.get("document_sha256"));meta.put("reviewStatus",reviewed.get("status"));meta.put("confirmationMetadata",reviewed.get("confirmationMetadata"));
         meta.put("preparedBy",reviewed.get("submitted_name"));
         meta.put("issuedDate",chinaDate(reviewed.get("submitted_at")));
@@ -426,6 +438,31 @@ public class FinanceStatementDocumentService {
         var ids=(List<?>)metadata.get("profileIds");if(ids.get(0)==null||ids.get(1)==null||ids.get(2)==null)throw invalid("请先维护并审核双方真实抬头与账载/质保来源资料");
         for(var value:(List<?>)metadata.get("footerLines")){var line=map(value);if(Set.of("partyName","closingBalance","retention","adjustedProcessingAmount","closingMaterialWeight").contains(line.get("key"))&&Boolean.TRUE.equals(line.get("pending")))throw invalid("原件末尾仍有待核验项目："+line.get("label"));}
     }
+    // Explicit lean columns are intentional: to_jsonb(row)-'snapshot_cipher'
+    // would still read the large TOAST ciphertext before subtracting its key.
+    private static final String REVIEW_PUBLIC_COLUMNS="id,request_id,payload_hash,template_key,party_role,party_id,currency_id,date_from,date_to,"
+        +"own_profile_id,counterpart_profile_id,context_profile_id,document_sha256,source_fingerprint,status,submitted_by,submitted_name,submitted_at,"
+        +"approved_by,approved_name,approved_at,review_reason,counterpart_name,counterpart_confirmed_date,counterpart_received_by,counterpart_received_name,"
+        +"counterpart_received_at,counterpart_source_reference,counterpart_file_name,counterpart_file_content_type,counterpart_file_size,counterpart_file_sha256,"
+        +"material_context_id,material_all_contexts";
+    private Map<String,Object> reviewSummaryRow(UUID id){
+        var rows=db.queryForList("SELECT "+REVIEW_PUBLIC_COLUMNS+" FROM finance_statement_document_reviews WHERE id=?",id);
+        if(rows.size()!=1)throw invalid("对账原件版本不存在");return rows.getFirst();
+    }
+    private Map<String,Object> originalSnapshot(UUID id,Map<String,Object> reviewed){
+        var realm=db.queryForMap("SELECT business_dataset_id,business_reset_generation FROM authorization_state WHERE singleton_id=1");
+        UUID dataset=uuid(realm.get("business_dataset_id"));Object rawGeneration=realm.get("business_reset_generation");
+        if(dataset==null||!(rawGeneration instanceof Number generation)||generation.longValue()<0)
+            throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"数据集读取范围信息不可用");
+        var key=new FinanceStatementOriginalSnapshotReader.Key(dataset,generation.longValue(),id,
+            Objects.requireNonNull(reviewed.get("document_sha256")).toString(),Objects.requireNonNull(reviewed.get("source_fingerprint")).toString(),1);
+        return originalSnapshots.read(key,()->{
+            var values=db.queryForList("SELECT snapshot_cipher FROM finance_statement_document_reviews WHERE id=? AND document_sha256=? AND source_fingerprint=?",
+                id,key.documentSha256(),key.sourceFingerprint());
+            if(values.size()!=1)throw conflict("原件身份已变化，请重新打开核对");
+            return Objects.requireNonNull(values.getFirst().get("snapshot_cipher")).toString();
+        });
+    }
     private Map<String,Object> reviewRow(UUID id,boolean lock){var rows=db.queryForList("SELECT * FROM finance_statement_document_reviews WHERE id=?"+(lock?" FOR UPDATE":""),id);if(rows.size()!=1)throw invalid("对账原件版本不存在");return rows.getFirst();}
     private static Context reviewContext(Map<String,Object> row){return new Context(row.get("template_key").toString(),row.get("party_role").toString(),(UUID)row.get("party_id"),(UUID)row.get("currency_id"),date(row.get("date_from")),date(row.get("date_to")),(UUID)row.get("material_context_id"),(Boolean)row.get("material_all_contexts"));}
     private static LocalDate date(Object value){return value==null?null:value instanceof java.sql.Date d?d.toLocalDate():value instanceof LocalDate d?d:LocalDate.parse(value.toString());}
@@ -487,8 +524,8 @@ public class FinanceStatementDocumentService {
     private Map<String,Object> latest(String kind,String template,String role,UUID party,UUID currency){var rows=db.queryForList("SELECT * FROM finance_statement_profiles WHERE kind=? AND template_key=? AND party_role IS NOT DISTINCT FROM ?::text AND party_id IS NOT DISTINCT FROM ?::uuid AND currency_id=? AND status='APPROVED' ORDER BY revision DESC LIMIT 1",kind,template,role,party,currency);return rows.isEmpty()?null:rows.getFirst();}
     private Map<String,Object> profileRow(UUID id,boolean lock){var rows=db.queryForList("SELECT * FROM finance_statement_profiles WHERE id=?"+(lock?" FOR UPDATE":""),id);if(rows.size()!=1)throw invalid("打印资料版本不存在");return rows.getFirst();}
     private Map<String,Object> profileView(Map<String,Object> source){var row=new LinkedHashMap<>(source);Object body=row.remove("body_cipher");row.put("body",decode(body,new TypeReference<Map<String,Object>>(){}));return row;}
-    private <T>T decode(Object value,Class<T> type){try{return json.readValue(tx.decrypt(value.toString()),type);}catch(Exception e){throw conflict("打印资料历史版本无法读取，请核对原密钥和版本");}}
-    private <T>T decode(Object value,TypeReference<T> type){try{return json.readValue(tx.decrypt(value.toString()),type);}catch(Exception e){throw conflict("打印资料历史版本无法读取，请核对原密钥和版本");}}
+    private <T>T decode(Object value,Class<T> type){try{return com.uten.imp.common.finance.FinancialJsonResults.value(json,tx.decrypt(value.toString()),type);}catch(Exception e){throw conflict("打印资料历史版本无法读取，请核对原密钥和版本");}}
+    private <T>T decode(Object value,TypeReference<T> type){try{return com.uten.imp.common.finance.FinancialJsonResults.value(json,tx.decrypt(value.toString()),type);}catch(Exception e){throw conflict("打印资料历史版本无法读取，请核对原密钥和版本");}}
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw invalid("打印资料无法保存");}}
     private String hash(Object value){return ImmutableDocumentStore.digest(encode(value).getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     private void requestLock(UUID id){db.query("SELECT pg_advisory_xact_lock(hashtextextended('uten:statement-document-request:'||?::text,0))",rs->{},id);}

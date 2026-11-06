@@ -1,3 +1,5 @@
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
@@ -19,6 +21,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../providers/finance_report_facet_options.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,7 +77,12 @@ class FinanceArApOverviewPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceArApOverviewPageState
-    extends ConsumerState<FinanceArApOverviewPage> {
+    extends ConsumerState<FinanceArApOverviewPage>
+    with ReadViewActivityMixin<FinanceArApOverviewPage> {
+  @override
+  Future<void> onReadViewResumed() => _searchQuery.isEmpty
+      ? _load()
+      : _runUnifiedSearch(_searchQuery, _searchRequestGeneration);
   List<ProductCategoryNode> _clientTree = const [];
   List<ProductCategoryNode> _supplierTree = const [];
   bool _treeLoading = false;
@@ -105,7 +113,7 @@ class _FinanceArApOverviewPageState
   int _searchRequestGeneration = 0;
   int _reportRequestGeneration = 0;
   int _page = 1;
-  final int _size = 50;
+  final int _size = 100;
 
   // 列排序态：_sortKey=当前排序列 key（null=不排序）；_sortAsc=升序。
   String? _sortKey;
@@ -336,6 +344,8 @@ class _FinanceArApOverviewPageState
   void _onPrimarySearchInputChanged() =>
       _onSearchInputChanged(_searchController, _treeSearchController);
 
+  bool _isQueryPending(String text) => _loading && text.trim() == _keyword;
+
   void _onTreeSearchInputChanged() =>
       _onSearchInputChanged(_treeSearchController, _searchController);
 
@@ -406,35 +416,51 @@ class _FinanceArApOverviewPageState
     int requestGeneration,
   ) async {
     final categoryIds = <String?>{};
-    var page = 1;
-    var totalPages = 1;
-    do {
-      final json = await ref
-          .read(apiClientProvider)
-          .get(
+    final api = ref.read(apiClientProvider);
+    final epoch = ref.read(exportContextEpochProvider);
+    bool current() =>
+        mounted &&
+        requestGeneration == _searchRequestGeneration &&
+        epoch == ref.read(exportContextEpochProvider) &&
+        identical(api, ref.read(apiClientProvider));
+    return readViewActivity.runRead(current, () async {
+      var page = 1;
+      var totalPages = 1;
+      do {
+        if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+          throw const UiWorkCancelled();
+        }
+        final json = await PagedReadIntent.scopedRead(
+          current,
+          () => api.get(
             '/finance/reports/ar-ap/party-locations',
             query: {'keyword': query, 'page': page, 'size': 100},
-          );
-      if (!mounted || requestGeneration != _searchRequestGeneration) {
-        return const <String?>{};
-      }
-      final items = json['items'];
-      if (items is List) {
-        for (final raw in items) {
-          if (raw is! Map) continue;
-          final partyType = raw['partyType']?.toString();
-          if (partyType != 'CLIENT' && partyType != 'SUPPLIER') continue;
-          final categoryId = raw['categoryId']?.toString().trim();
-          categoryIds.add(
-            categoryId == null || categoryId.isEmpty ? null : categoryId,
-          );
+          ),
+        );
+        if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+          throw const UiWorkCancelled();
         }
-      }
-      final parsedTotalPages = (json['totalPages'] as num?)?.toInt() ?? 1;
-      totalPages = parsedTotalPages < 1 ? 1 : parsedTotalPages;
-      page++;
-    } while (page <= totalPages);
-    return categoryIds;
+        if (!mounted || requestGeneration != _searchRequestGeneration) {
+          return const <String?>{};
+        }
+        final items = json['items'];
+        if (items is List) {
+          for (final raw in items) {
+            if (raw is! Map) continue;
+            final partyType = raw['partyType']?.toString();
+            if (partyType != 'CLIENT' && partyType != 'SUPPLIER') continue;
+            final categoryId = raw['categoryId']?.toString().trim();
+            categoryIds.add(
+              categoryId == null || categoryId.isEmpty ? null : categoryId,
+            );
+          }
+        }
+        final parsedTotalPages = (json['totalPages'] as num?)?.toInt() ?? 1;
+        totalPages = parsedTotalPages < 1 ? 1 : parsedTotalPages;
+        page++;
+      } while (page <= totalPages);
+      return categoryIds;
+    }, slot: 'party-locations');
   }
 
   Future<void> _runUnifiedSearch(String query, int requestGeneration) async {
@@ -458,6 +484,7 @@ class _FinanceArApOverviewPageState
         _searchError = null;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || requestGeneration != _searchRequestGeneration) return;
       setState(() {
         _searchLoading = false;
@@ -541,7 +568,13 @@ class _FinanceArApOverviewPageState
           });
         },
       );
-      final snapshot = await read.read(requestedPage) as ReportPageSnapshot;
+      final snapshot =
+          await readViewActivity.runRead(
+                current,
+                () => read.read(requestedPage),
+                slot: 'report',
+              )
+              as ReportPageSnapshot;
       if (!mounted || !current() || !_reportRead.accept(snapshot)) return;
       setState(() {
         _data = snapshot.snapshot;
@@ -554,6 +587,10 @@ class _FinanceArApOverviewPageState
         _reportError = null;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) {
+        if (mounted && current()) setState(() => _loading = false);
+        return;
+      }
       if (!mounted || !current()) return;
       context.appError(humanErrorMessage(e) ?? '应收应付没有加载出来，请稍后重试');
       setState(() {
@@ -643,6 +680,8 @@ class _FinanceArApOverviewPageState
 
   @override
   Widget build(BuildContext context) {
+    _reportRead.bindView(context);
+
     final theme = Theme.of(context);
     // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
     ref.listen(financeArApOverviewReportPrefsProvider, (prev, next) {
@@ -695,6 +734,7 @@ class _FinanceArApOverviewPageState
           search: UtenSearchBar(
             key: const ValueKey('finance-ar-ap-unified-search'),
             controller: _treeSearchController,
+            isQueryPending: _isQueryPending,
             hint: '搜索分类/往来单位名称或编号',
             onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
           ),
@@ -745,6 +785,7 @@ class _FinanceArApOverviewPageState
             child: UtenSearchBar(
               key: const ValueKey('finance-ar-ap-compact-search'),
               controller: _searchController,
+              isQueryPending: _isQueryPending,
               hint: '搜索分类/往来单位名称或编号',
               onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
             ),

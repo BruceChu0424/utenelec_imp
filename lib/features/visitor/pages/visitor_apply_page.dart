@@ -22,13 +22,13 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/input/china_input_formatters.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/responsive/scale.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/id_card_utils.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../models/visitor_application.dart';
 import '../repositories/visitor_repository.dart';
 
 class VisitorApplyPage extends ConsumerStatefulWidget {
@@ -49,6 +49,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   String? _hostId;
   DateTime? _visitTime;
   bool _submitting = false;
+  bool _choosingTime = false;
   String? _error;
 
   @override
@@ -62,6 +63,16 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   }
 
   Future<void> _pickTime() async {
+    if (_choosingTime || _submitting) return;
+    _choosingTime = true;
+    try {
+      await _chooseTime();
+    } finally {
+      _choosingTime = false;
+    }
+  }
+
+  Future<void> _chooseTime() async {
     final l10n = AppLocalizations.of(context);
     final now = ChinaDateTime.now();
     final today = ChinaDateTime.today();
@@ -125,17 +136,27 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
 
     // 校验 2：与该访客已有 active 申请同时段冲突检查（pending/hostReviewing/
     // approved/checkedIn；rejected/cancelled 不算）。
-    late final List<VisitorApplication> myApps;
+    late final bool conflict;
+    final repository = ref.read(visitorRepositoryProvider);
+    bool current() =>
+        mounted && identical(ref.read(visitorRepositoryProvider), repository);
     try {
-      myApps = await ref.read(visitorRepositoryProvider).activeApplications();
+      conflict = await UtenBusyOverlay.run(
+        context,
+        title: l10n.commonLoading,
+        action: () => PagedReadIntent.scopedRead(
+          current,
+          () => repository.hasActiveApplicationAt(picked),
+        ),
+      );
     } catch (error) {
-      if (mounted) {
+      if (current()) {
         setState(() => _error = humanErrorMessage(error) ?? l10n.commonError);
       }
       return;
     }
-    if (!mounted) return;
-    if (_hasConflictWithActive(picked, myApps)) {
+    if (!current()) return;
+    if (conflict) {
       setState(() {
         _visitTime = null;
         _error = l10n.visitorApplyDuplicateTime;
@@ -151,23 +172,6 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
-
-  bool _hasConflictWithActive(DateTime picked, List<VisitorApplication> apps) {
-    const active = <VisitorApplicationStatus>{
-      VisitorApplicationStatus.pending,
-      VisitorApplicationStatus.hostReviewing,
-      VisitorApplicationStatus.approved,
-      VisitorApplicationStatus.checkedIn,
-    };
-    for (final a in apps) {
-      if (!active.contains(a.status)) continue;
-      final existing = ChinaDateTime.asWallTime(a.plannedVisitAt);
-      if (ChinaDateTime.sameWallMinute(existing, picked)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   Future<void> _submit() async {
     final l10n = AppLocalizations.of(context);

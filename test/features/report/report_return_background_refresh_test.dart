@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -29,6 +30,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/uten_test_actions.dart';
 
 class _Snapshots extends SessionSnapshotNotifier {
   @override
@@ -39,6 +41,9 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
   Completer<Map<String, dynamic>>? held;
   bool requestedHeld = false;
+  int? heldPage;
+  String prefix = 'ACCEPTED';
+  final queries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -46,13 +51,15 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (!path.contains('/reports/')) return {};
+    queries.add({...?query});
     final pending = held;
     if (pending != null) {
       requestedHeld = true;
+      heldPage = (query?['page'] as int?) ?? 1;
       held = null;
       return pending.future;
     }
-    return _report('ACCEPTED', (query?['page'] as int?) ?? 1);
+    return _report(prefix, (query?['page'] as int?) ?? 1);
   }
 
   @override
@@ -149,19 +156,42 @@ void main() {
         );
         MasterDataTableView<Map<String, dynamic>> table() =>
             tester.widget(tableFinder);
-        await table().onPageChange!(2);
-        await tester.pumpAndSettle();
-        expect(table().currentPage, 2);
+        void expectCompleteSnapshot(String prefix) {
+          expect(table().items, hasLength(150));
+          expect(table().items.map((row) => (row['id'], row['proof'])), [
+            for (var page = 1; page <= 3; page++)
+              for (var row = 0; row < 50; row++)
+                ('$page-$row', '$prefix-$page-$row'),
+          ]);
+          expect(table().currentPage, 1);
+          expect(table().totalPages, 1);
+          expect(find.byType(UtenPagination), findsNothing);
+        }
+
+        expectCompleteSnapshot('ACCEPTED');
+        expect(api.queries.map((query) => query['page']), [1, 2, 3]);
+        expect(api.queries.every((query) => query['size'] == 50), isTrue);
         final originalState = tester.state(tableFinder);
-        final position = Scrollable.of(
-          tester.element(find.text('ACCEPTED-2-0')),
-          axis: Axis.vertical,
+        final position = utenTestTableBodyController(
+          tester,
+          tableFinder,
         ).position;
         position.jumpTo(220);
         await tester.pumpAndSettle();
         final pixels = position.pixels;
+        expect(pixels, greaterThan(0));
+        expect(api.queries, hasLength(3));
+        void expectCurrentBodyRetained() {
+          final current = utenTestTableBodyController(
+            tester,
+            tableFinder,
+          ).position;
+          expect(current, same(position));
+          expect(current.pixels, pixels);
+        }
 
         Future<Completer<Map<String, dynamic>>> returnWithPendingRead() async {
+          final beforeReadCount = api.queries.length;
           router.push<void>('/detail');
           await tester.pumpAndSettle();
           final pending = Completer<Map<String, dynamic>>();
@@ -172,30 +202,44 @@ void main() {
             await tester.pump(const Duration(milliseconds: 50));
           }
           expect(api.requestedHeld, isTrue);
+          expect(api.heldPage, 1);
+          expect(api.queries, hasLength(beforeReadCount + 1));
           // The request starts from a post-frame resume callback; its setState
           // is visible in the following frame, while I/O is still held.
           await tester.pump();
           expect(table().isLoading, isFalse);
           expect(table().isRefreshing, isTrue);
           expect(tester.state(tableFinder), same(originalState));
-          expect(position.pixels, pixels);
+          expectCurrentBodyRetained();
           return pending;
         }
 
         final fresh = await returnWithPendingRead();
-        fresh.complete(_report('FRESH', 2));
+        expectCompleteSnapshot('ACCEPTED');
+        api.prefix = 'FRESH';
+        fresh.complete(_report('FRESH', api.heldPage!));
         await tester.pumpAndSettle();
-        expect(table().items.first['proof'], 'FRESH-2-0');
+        expectCompleteSnapshot('FRESH');
+        expect(api.queries.map((query) => query['page']), [1, 2, 3, 1, 2, 3]);
         expect(tester.state(tableFinder), same(originalState));
-        expect(position.pixels, pixels);
+        expectCurrentBodyRetained();
 
         final failed = await returnWithPendingRead();
         failed.completeError(ApiException('NETWORK', 'offline'));
         await tester.pumpAndSettle();
-        expect(table().items.first['proof'], 'FRESH-2-0');
+        expectCompleteSnapshot('FRESH');
+        expect(api.queries.map((query) => query['page']), [
+          1,
+          2,
+          3,
+          1,
+          2,
+          3,
+          1,
+        ]);
         expect(table().refreshError, 'offline');
         expect(tester.state(tableFinder), same(originalState));
-        expect(position.pixels, pixels);
+        expectCurrentBodyRetained();
 
         final denied = await returnWithPendingRead();
         denied.completeError(ApiException('FORBIDDEN', 'no longer authorized'));
@@ -206,7 +250,18 @@ void main() {
         expect(table().error, 'no longer authorized');
         expect(table().isRefreshing, isFalse);
         expect(table().refreshedPages, isEmpty);
-        expect(find.textContaining('FRESH-2-'), findsNothing);
+        expect(find.textContaining('FRESH-'), findsNothing);
+        expect(api.queries.map((query) => query['page']), [
+          1,
+          2,
+          3,
+          1,
+          2,
+          3,
+          1,
+          1,
+        ]);
+        expect(api.queries.every((query) => query['size'] == 50), isTrue);
         expect(tester.takeException(), isNull);
         // The rejected route has retired its consumers; the external owner
         // still holds short-lived category snapshots until explicitly closed.

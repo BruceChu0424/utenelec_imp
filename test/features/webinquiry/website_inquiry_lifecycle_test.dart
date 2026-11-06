@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
@@ -20,90 +21,58 @@ void main() {
     WebsiteInquiryStatus.closed,
   ]) {
     test(
-      'last active page returns to a valid page after ${terminal.name}',
+      'complete active inquiries remove a finished row without a navigation read: ${terminal.name}',
       () async {
-        final repository = _MutableRepository(history: false);
-        final container = ProviderContainer(
-          overrides: [
-            websiteInquiryRepositoryProvider.overrideWithValue(repository),
-            masterDataSessionKeyProvider.overrideWithValue('test'),
-          ],
-        );
-        addTearDown(container.dispose);
-        final subscription = container.listen(
-          websiteInquiryListProvider,
-          (_, _) {},
-          fireImmediately: true,
-        );
-        addTearDown(subscription.close);
-        await container.read(websiteInquiryListProvider.future);
-        await container.read(websiteInquiryListProvider.notifier).nextPage();
-        expect(container.read(websiteInquiryListProvider).requireValue.page, 2);
-        final updated = repository.change('second', terminal);
-        container
+        final repo = _MutableRepository(history: false);
+        final actual = _container(repo);
+        final first = await actual.read(websiteInquiryListProvider.future);
+        expect(first.items.map((row) => row.id), ['first', 'second']);
+        expect(first.page, 1);
+        expect(first.totalPages, 1);
+        final reads = repo.requests.length;
+        actual
             .read(websiteInquiryListProvider.notifier)
-            .replaceIfPresent(updated);
-        final repaired = await container.read(
-          websiteInquiryListProvider.future,
-        );
-        expect(repaired.page, 1);
-        expect(repaired.totalPages, 1);
-        expect(repaired.total, 1);
-        expect(repaired.items.single.id, 'first');
-        expect(repository.requests.last, ('new', 1));
-        await container.read(websiteInquiryListProvider.notifier).refresh();
-        expect(repository.requests.last, ('new', 1));
+            .replaceIfPresent(repo.change('second', terminal));
+        final changed = actual.read(websiteInquiryListProvider).requireValue;
+        expect(changed.items.single.id, 'first');
+        expect(changed.total, 1);
+        expect(repo.requests.length, reads);
+        await actual.read(websiteInquiryListProvider.notifier).refresh();
+        expect(repo.requests.last, ('new', 1));
       },
     );
   }
-
   test(
-    'an empty last history page retreats within HISTORY and refresh stays there',
+    'complete history removes a reopened row and refresh retains HISTORY',
     () async {
-      final repository = _MutableRepository(history: true);
-      final container = ProviderContainer(
-        overrides: [
-          websiteInquiryRepositoryProvider.overrideWithValue(repository),
-          masterDataSessionKeyProvider.overrideWithValue('test'),
-        ],
-      );
-      addTearDown(container.dispose);
-      container.read(websiteInquiryHistoryProvider.notifier).state = true;
-      final subscription = container.listen(
-        websiteInquiryListProvider,
-        (_, _) {},
-        fireImmediately: true,
-      );
-      addTearDown(subscription.close);
-      await container.read(websiteInquiryListProvider.future);
-      await container.read(websiteInquiryListProvider.notifier).nextPage();
-      container
+      final repo = _MutableRepository(history: true);
+      final actual = _container(repo, history: true);
+      await actual.read(websiteInquiryListProvider.future);
+      actual
           .read(websiteInquiryListProvider.notifier)
           .replaceIfPresent(
-            repository.change('second', WebsiteInquiryStatus.following),
+            repo.change('second', WebsiteInquiryStatus.following),
           );
-      final repaired = await container.read(websiteInquiryListProvider.future);
-      expect(repaired.page, 1);
-      expect(repaired.totalPages, 1);
-      expect(repaired.items.single.id, 'first');
-      expect(repository.requests.last, ('HISTORY', 1));
-      await container.read(websiteInquiryListProvider.notifier).refresh();
-      expect(repository.requests.last, ('HISTORY', 1));
+      expect(
+        actual.read(websiteInquiryListProvider).requireValue.items.single.id,
+        'first',
+      );
+      await actual.read(websiteInquiryListProvider.notifier).refresh();
+      expect(repo.requests.last, ('HISTORY', 1));
     },
   );
-
   testWidgets(
-    'active and history scopes retain pagination, clearing and refresh semantics',
+    'active and history are complete continuous lists with no page controls or scroll reads',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
-      final repository = _Repository();
+      final repo = _Repository();
       await tester.binding.setSurfaceSize(const Size(1400, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            websiteInquiryRepositoryProvider.overrideWithValue(repository),
+            websiteInquiryRepositoryProvider.overrideWithValue(repo),
             sharedPreferencesProvider.overrideWithValue(preferences),
             masterDataSessionKeyProvider.overrideWithValue('test'),
           ],
@@ -119,100 +88,108 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(WebsiteInquiryListPage)),
       );
-      expect(repository.requests.last, ('new', 1));
-      expect(find.text('active-1'), findsOneWidget);
-      expect(find.text('全部进行中'), findsNothing);
+      expect(
+        container.read(websiteInquiryListProvider).requireValue.items,
+        hasLength(2),
+      );
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(
         tester.getTopLeft(find.byType(UtenFilterToolbar<String>)).dy,
         greaterThanOrEqualTo(tester.getBottomLeft(find.byType(UtenAppBar)).dy),
       );
       await tester.tap(find.text('跟进中'));
       await tester.pumpAndSettle();
-      expect(repository.requests.last, ('following', 1));
       expect(
         container
             .read(websiteInquiryListProvider)
             .requireValue
             .items
-            .single
-            .status,
-        WebsiteInquiryStatus.following,
+            .every((row) => row.status == WebsiteInquiryStatus.following),
+        true,
       );
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
-      expect(repository.requests.last, ('HISTORY', 1));
-      expect(find.text('active-1'), findsNothing);
       expect(find.text('history-1'), findsOneWidget);
-      container.read(websiteInquiryStatusFilterProvider.notifier).state =
-          WebsiteInquiryStatus.closed;
-      await tester.pumpAndSettle();
-      container.read(websiteInquiryStatusFilterProvider.notifier).state = null;
-      await tester.pumpAndSettle();
-      expect(repository.requests.last, ('HISTORY', 1));
-      await tester.enterText(find.byType(TextFormField), '2');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-      expect(repository.requests.last, ('HISTORY', 2));
       expect(find.text('history-2'), findsOneWidget);
+      final reads = repo.requests.length;
+      final wheelTarget = find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first;
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(wheelTarget),
+          scrollDelta: const Offset(0, 250),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          position: tester.getCenter(wheelTarget),
+          scrollDelta: const Offset(0, -250),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.requests.length, reads);
       await container.read(websiteInquiryListProvider.notifier).refresh();
       await tester.pumpAndSettle();
-      expect(repository.requests.last, ('HISTORY', 2));
-      await tester.tap(find.text('未处理'));
-      await tester.pumpAndSettle();
-      expect(repository.requests.last, ('new', 1));
-      final current = container
-          .read(websiteInquiryListProvider)
-          .requireValue
-          .items
-          .single;
-      container
-          .read(websiteInquiryListProvider.notifier)
-          .replaceIfPresent(_item(current.id, WebsiteInquiryStatus.converted));
-      expect(
-        container.read(websiteInquiryListProvider).requireValue.items,
-        isEmpty,
-      );
+      expect(repo.requests.last, ('HISTORY', 2));
       expect(tester.takeException(), isNull);
     },
   );
-
   test(
-    'a stale active page cannot replace the selected history scope',
+    'a retired active continuation cannot replace the complete history query',
     () async {
-      final repository = _Repository()..delayedActive = Completer();
-      final container = ProviderContainer(
-        overrides: [
-          websiteInquiryRepositoryProvider.overrideWithValue(repository),
-          masterDataSessionKeyProvider.overrideWithValue('test'),
-        ],
-      );
-      addTearDown(container.dispose);
-      final subscription = container.listen(
-        websiteInquiryListProvider,
-        (_, _) {},
-        fireImmediately: true,
-      );
-      addTearDown(subscription.close);
-      await container.read(websiteInquiryListProvider.future);
-      final oldPage = container
-          .read(websiteInquiryListProvider.notifier)
-          .nextPage();
+      final repo = _Repository();
+      final actual = _container(repo);
+      await actual.read(websiteInquiryListProvider.future);
+      repo.delayedActive = Completer();
+      final old = actual.read(websiteInquiryListProvider.notifier).refresh();
       await Future<void>.delayed(Duration.zero);
-      container.read(websiteInquiryHistoryProvider.notifier).state = true;
-      await container.read(websiteInquiryListProvider.future);
-      repository.delayedActive!.complete(_page('new', 2));
-      await oldPage;
+      actual.read(websiteInquiryHistoryProvider.notifier).state = true;
+      final history = await actual.read(websiteInquiryListProvider.future);
+      expect(history.items, hasLength(2));
+      repo.delayedActive!.complete(_page('new', 2));
+      await old;
       expect(
-        container
+        actual
             .read(websiteInquiryListProvider)
             .requireValue
             .items
-            .single
-            .status,
-        WebsiteInquiryStatus.closed,
+            .map((row) => row.id),
+        ['history-1', 'history-2'],
       );
     },
   );
+}
+
+ProviderContainer _container(
+  WebsiteInquiryRepository repository, {
+  bool history = false,
+}) {
+  final container = ProviderContainer(
+    overrides: [
+      websiteInquiryRepositoryProvider.overrideWithValue(repository),
+      masterDataSessionKeyProvider.overrideWithValue('test'),
+    ],
+  );
+  if (history) {
+    container.read(websiteInquiryHistoryProvider.notifier).state = true;
+  }
+  final subscription = container.listen(
+    websiteInquiryListProvider,
+    (_, _) {},
+    fireImmediately: true,
+  );
+  addTearDown(container.dispose);
+  addTearDown(subscription.close);
+  return container;
 }
 
 class _MutableRepository extends Fake implements WebsiteInquiryRepository {

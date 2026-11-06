@@ -54,9 +54,42 @@ void main() {
           .queryParams['includeRelated'],
       isTrue,
     );
-    _table(tester).onPageChange!(2);
+    final relatedReads = api.requests.where(
+      (request) =>
+          request.path == api.listPath &&
+          request.queryParameters['keyword'] == '螺丝' &&
+          request.queryParameters['includeRelated'] == true &&
+          request.queryParameters['categoryId'] == null,
+    );
+    expect(relatedReads.map((request) => request.queryParameters['page']), [
+      1,
+      2,
+      3,
+    ]);
+    expect(
+      relatedReads.every((request) => request.queryParameters['size'] == 100),
+      isTrue,
+    );
+    final readsBeforeScroll = api.requests
+        .where((r) => r.path == api.listPath)
+        .length;
+    final body = tester
+        .stateList<ScrollableState>(
+          find.descendant(
+            of: find.byType(MasterDataTableView<GoodsListItem>),
+            matching: find.byType(Scrollable),
+          ),
+        )
+        .firstWhere((state) => state.position.axis == Axis.vertical);
+    body.position.jumpTo(body.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters['page'], 2);
+    body.position.jumpTo(body.position.minScrollExtent);
+    await tester.pumpAndSettle();
+    expect(
+      api.requests.where((r) => r.path == api.listPath),
+      hasLength(readsBeforeScroll),
+    );
+    expect(_ids(tester), ['a', 'b', 'r']);
     await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
     expect(api.lastList.queryParameters['categoryId'], 'cat-b');
@@ -69,7 +102,7 @@ void main() {
             request.queryParameters['page'] == 1,
       ),
       isTrue,
-      reason: '分类切换从第一页开始；邻页预取不是当前浏览页',
+      reason: '分类切换从当前条件的首批重新完整读取',
     );
     expect(_ids(tester), ['b', 'r']);
     expect(_tree(tester).selectedIds, {'cat-b'});
@@ -108,8 +141,8 @@ void main() {
     api.release(latest, 'new');
     await tester.pumpAndSettle();
     expect(_ids(tester), ['new']);
-    // Resolving the new page may prepare an adjacent page. Only retire the
-    // captured old cohort, never resolve the new response handler twice.
+    // The latest exact complete response has no synthetic continuation.
+    // Retire only captured older cohorts, never resolve a handler twice.
     for (var i = 0; i < latest; i++) {
       api.release(i, 'old');
     }
@@ -613,7 +646,7 @@ class _DedicatedSource extends UtenGoodsPickerDataSource {
 
 Future<void> _finishHeldReads(WidgetTester tester, _GoodsApi api) async {
   // Assertions above deliberately delivered stale responses. Dispose the reader
-  // before releasing any additional adjacent-page request owned by this fake.
+  // before releasing any remaining held cohort owned by this fake.
   await tester.pumpWidget(const SizedBox.shrink());
   api.holdRelated = false;
   for (final (request, handler) in api.held) {
@@ -784,9 +817,11 @@ Map<String, dynamic> _uncategorizedRow() => {
   'autoCreated': false,
 };
 Map<String, dynamic> _page(List<Map<String, dynamic>> rows, int page) => {
-  'items': rows,
+  // A real server clamp exercises all three continuations without inventing
+  // missing rows or repeating the first page as a continuation.
+  'items': rows.skip(page - 1).take(1).toList(),
   'page': page,
-  'size': 20,
-  'total': rows.length + 20,
-  'totalPages': 2,
+  'size': 1,
+  'total': rows.length,
+  'totalPages': rows.length,
 };

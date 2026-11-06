@@ -9,6 +9,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/features/basic_data/pages/party_detail_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/supplier_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_read_only_fields.dart';
@@ -16,12 +17,14 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/subcontract_loss_summary_loader.dart';
+import 'package:uten_imp/shared/models/subcontract_short_delivery.dart';
 
 final _grants = StateProvider<Set<String>>(
   (_) => {Perm.supplierView, Perm.subcontractOrderView},
 );
 
 class _Wire {
+  int goodsCount = 0;
   int summaries = 0;
   bool failSummary = false;
   late final api = () {
@@ -32,7 +35,7 @@ class _Wire {
           Object body;
           if (request.path == subcontractSupplierLossSummaryPath) {
             summaries++;
-            expect(request.queryParameters['supplierId'], 'supplier-1');
+            expectSync(request.queryParameters['supplierId'], 'supplier-1');
             if (failSummary) {
               handler.reject(
                 DioException(
@@ -47,7 +50,23 @@ class _Wire {
               return;
             }
             // An empty summary still provides the supplier-scoped cases entry.
-            body = {'supplierId': 'supplier-1', 'settledLineCount': 0};
+            body = {
+              'supplierId': 'supplier-1',
+              'settledLineCount': goodsCount,
+              'byGoods': [
+                for (var i = 0; i < goodsCount; i++)
+                  {
+                    'goodsId': 'goods-$i',
+                    'goodsCode': 'CODE-$i',
+                    'goodsName': '损耗货品-$i',
+                    'settledLineCount': 1,
+                    'orderedQtyExact': '9876543210.1234',
+                    'lossQtyExact': '0.0001',
+                    'lossPctExact': '0.00001',
+                    'maxLossPctExact': '0.00002',
+                  },
+              ],
+            };
           } else if (request.path == '/master/suppliers/supplier-1') {
             body = {
               'id': 'supplier-1',
@@ -172,6 +191,42 @@ Future<void> _revealEntry(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'all 251 supplier goods losses remain reachable without scroll reads',
+    (tester) async {
+      final wire = _Wire()..goodsCount = 251;
+      await _pump(tester, wire);
+      await _revealEntry(tester);
+      final window = find.byKey(const Key('supplier-loss-goods'));
+      expect(window, findsOneWidget);
+      final table = tester
+          .widget<UtenAncestorRowWindow<SubcontractGoodsLossRow>>(window);
+      expect(table.rows, hasLength(251));
+      expect(table.deferRowMounts, isFalse);
+      final scrollable = find
+          .descendant(
+            of: find.byType(RefreshIndicator).first,
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('supplier-loss-goods-goods-250')),
+        900,
+        scrollable: scrollable,
+        maxScrolls: 100,
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('损耗货品-250 CODE-250：'), findsOneWidget);
+      expect(
+        find.textContaining('订 9876543210.1234，损耗 0.0001(0.00001%)'),
+        findsWidgets,
+      );
+      expect(wire.summaries, 1);
+      expect(table.controller.mountedRowCount, lessThan(251));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final size in [(1280.0, 1.0), (390.0, 1.5)]) {
     testWidgets(
       'supplier loss entry preserves shared cards and exact scoped route ${size.$1}/${size.$2}',

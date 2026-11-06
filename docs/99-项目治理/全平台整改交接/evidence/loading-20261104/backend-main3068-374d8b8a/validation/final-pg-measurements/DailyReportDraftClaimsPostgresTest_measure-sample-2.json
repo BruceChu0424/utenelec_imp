@@ -1,0 +1,70 @@
+{
+  "commits" : 1,
+  "maxPreparedParameterIndex" : 4,
+  "sqlMaxNanos" : {
+    "523c495bd9c19756" : 3416700,
+    "c0150cb74d80f82f" : 2205500,
+    "c4824bc8b842922e" : 4784200,
+    "8a3e2e11fb57f9be" : 3268600,
+    "ae79c01b5c08d3b6" : 2304300
+  },
+  "sqlNanos" : {
+    "523c495bd9c19756" : 3416700,
+    "c0150cb74d80f82f" : 2205500,
+    "c4824bc8b842922e" : 4784200,
+    "8a3e2e11fb57f9be" : 3268600,
+    "ae79c01b5c08d3b6" : 2304300
+  },
+  "jdbcCalls" : 5,
+  "sqlFingerprints" : {
+    "523c495bd9c19756" : 1,
+    "c0150cb74d80f82f" : 1,
+    "c4824bc8b842922e" : 1,
+    "8a3e2e11fb57f9be" : 1,
+    "ae79c01b5c08d3b6" : 1
+  },
+  "logicalStatements" : 5,
+  "rollbacks" : 0,
+  "sqlLabels" : {
+    "523c495bd9c19756" : "read.other",
+    "c0150cb74d80f82f" : "read.other",
+    "c4824bc8b842922e" : "read.other",
+    "8a3e2e11fb57f9be" : "archive.metadata_origin",
+    "ae79c01b5c08d3b6" : "read.other"
+  },
+  "jdbcMillis" : 15.9793,
+  "prepareMillis" : 0.049501,
+  "commitMillis" : 1.1868,
+  "rollbackMillis" : 0.0,
+  "instrumentationMillis" : 4.089997,
+  "sqlAffectedRows" : { },
+  "sqlZeroDmlCalls" : { },
+  "md5Statements" : 0,
+  "setConfigStatements" : 0,
+  "statementOrigins" : [ {
+    "fingerprint" : "523c495bd9c19756",
+    "locations" : [ "com.uten.imp.common.util.NativeQueryResults#typedRows:30", "com.uten.imp.security.EmployeeHandoverVisibility#inheritedOwners:26", "com.uten.imp.security.OwnerVisibility#evaluate:58", "com.uten.imp.security.DocumentAccessPolicy#scope:56", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#reportListSpecification:179", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#list:167", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#listWithDraftClaims:222", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#listWithDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#lambda$optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection$7:199", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#measure:352", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection:199" ],
+    "tables" : [ "employee_data_handovers", "employee_data_handover_scopes", "employees", "employment_history", "ranked_edges", "latest_edges", "inherited" ],
+    "logicalStatements" : 1
+  }, {
+    "fingerprint" : "c0150cb74d80f82f",
+    "locations" : [ "com.uten.imp.security.OwnerVisibility#grantedOwners:85", "com.uten.imp.security.OwnerVisibility#evaluate:63", "com.uten.imp.security.DocumentAccessPolicy#scope:56", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#reportListSpecification:179", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#list:167", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#listWithDraftClaims:222", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#listWithDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#lambda$optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection$7:199", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#measure:352", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection:199" ],
+    "tables" : [ "user_data_scopes", "employment_history" ],
+    "logicalStatements" : 1
+  }, {
+    "fingerprint" : "c4824bc8b842922e",
+    "locations" : [ "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#list:171", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#listWithDraftClaims:222", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#listWithDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#lambda$optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection$7:199", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#measure:352", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection:199" ],
+    "tables" : [ "public.production_daily_reports" ],
+    "logicalStatements" : 1
+  }, {
+    "fingerprint" : "8a3e2e11fb57f9be",
+    "locations" : [ "com.uten.imp.common.history.RetainedRecordReader#metadata:45", "com.uten.imp.common.history.RetainedRecordReader#page:78", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:98", "com.uten.imp.common.history.RetainedRecordReader$$SpringCGLIB$$0#page:-1", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#list:173", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#listWithDraftClaims:222", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#listWithDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#lambda$optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection$7:199", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#measure:352", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection:199" ],
+    "tables" : [ "public.production_daily_reports" ],
+    "logicalStatements" : 1
+  }, {
+    "fingerprint" : "ae79c01b5c08d3b6",
+    "locations" : [ "com.uten.imp.common.util.NativeQueryResults#objectArrayRows:21", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#readDraftClaimEvidence:285", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService#listWithDraftClaims:224", "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor#invoke:119", "com.uten.imp.features.production.dailyreport.ProductionDailyReportService$$SpringCGLIB$$0#listWithDraftClaims:-1", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#lambda$optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection$7:199", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#measure:352", "com.uten.imp.businesschain.DailyReportDraftClaimsPostgresTest#optionalPublicReadKeepsTheOldBodyAndAddsOnlyOneChildProjection:199" ],
+    "tables" : [ "production_daily_report_items", "production_daily_reports" ],
+    "logicalStatements" : 1
+  } ]
+}

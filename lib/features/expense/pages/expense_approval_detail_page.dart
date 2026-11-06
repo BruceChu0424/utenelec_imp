@@ -13,6 +13,7 @@ import '../../../shared/formatters/money_display.dart';
 // 宽度口径：默认 1600 容器。
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,7 +25,6 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -535,12 +535,16 @@ class _ExpenseApprovalDetailPageState
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              UtenFieldHintIcon(
-                                info: !_canInspect
-                                    ? AppLocalizations.of(
-                                        context,
-                                      ).expenseFlowReadEvidenceRequired
-                                    : '通过或驳回将记录当前审核员与节点。请核对明细和原件；财务节点须登记凭证查验，驳回须写明修改原因。',
+                              Flexible(
+                                child: UtenReviewerResponsibilityNotice(
+                                  actionLabel: '报销审批',
+                                  inline: true,
+                                  description: !_canInspect
+                                      ? AppLocalizations.of(
+                                          context,
+                                        ).expenseFlowReadEvidenceRequired
+                                      : '通过或驳回将记录当前审核员与节点。请核对明细和原件；财务节点须登记凭证查验，驳回须写明修改原因。',
+                                ),
                               ),
                               if (!heldByMe && taskClaim != null)
                                 TaskClaimBadge(claim: taskClaim),

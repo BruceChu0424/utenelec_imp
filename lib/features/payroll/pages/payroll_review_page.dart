@@ -25,7 +25,6 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -54,6 +53,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
   @override
   Widget build(BuildContext context) {
     final scope = ref.watch(payrollBatchScopeProvider);
+    ref.watch(payrollBatchReadActivityProvider).bindView(context);
     final batchesAsync = ref.watch(payrollBatchListProvider);
     final batches = batchesAsync.value?.items ?? const <PayrollBatch>[];
     final selectedId = batches.any((batch) => batch.id == _selectedId)
@@ -105,25 +105,6 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                 },
               ),
             ),
-            if (page.totalPages > 1)
-              UtenGridPager(
-                currentPage: page.page,
-                totalPages: page.totalPages,
-                totalItems: page.total,
-                busy: batchesAsync.isLoading,
-                onPageChanged: (target) => ref
-                    .read(payrollBatchListProvider.notifier)
-                    .goToPage(target),
-                onPrev: !batchesAsync.isLoading && page.page > 1
-                    ? () => ref
-                          .read(payrollBatchListProvider.notifier)
-                          .previousPage()
-                    : null,
-                onNext: !batchesAsync.isLoading && page.page < page.totalPages
-                    ? () =>
-                          ref.read(payrollBatchListProvider.notifier).nextPage()
-                    : null,
-              ),
             const Divider(height: 1),
             Expanded(
               child: detailAsync!.when(

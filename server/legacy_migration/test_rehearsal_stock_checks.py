@@ -5,6 +5,7 @@ The stock-check SQL cannot alter the real application's data in these tests.
 Requires the coordinator's explicit private Testcontainers destination.
 """
 from pathlib import Path
+import re
 import unittest
 
 import compose_bootstrap
@@ -13,8 +14,12 @@ from legacy_test_postgres import fixture_psql
 
 SQL_FILE = Path(__file__).with_name("migrate_rehearsal_stock_checks.sql")
 CHECK_SQL = SQL_FILE.read_text(encoding="utf-8")
-FIXTURE = """
-BEGIN;
+WEIGHT_MIGRATION = Path(__file__).resolve().parents[1] / "src/main/resources/db/migration/V743__warehouse_weight_ledger_and_learning.sql"
+WEIGHT_FACTOR_SQL = re.search(
+    r"(?ms)^CREATE FUNCTION fn_weight_unit_kg_factor\(p_code TEXT\)\n.*?^\$\$;",
+    WEIGHT_MIGRATION.read_text(encoding="utf-8"),
+).group(0)
+FIXTURE = "BEGIN;\n" + WEIGHT_FACTOR_SQL + """
 SET LOCAL uten.bootstrap_run_id='00000000-0000-4000-8000-000000000099';
 CREATE TEMP TABLE legacy_migration_runs(run_id uuid,status text,migration_mode text,reconciliation_summary jsonb);
 CREATE TEMP TABLE goods(id uuid,legacy_id int,unit_id uuid);

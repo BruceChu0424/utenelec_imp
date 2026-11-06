@@ -14,7 +14,7 @@ public class FinancePayableStatementAdjustmentController {
     private final FinancePayableStatementAdjustmentService service;
     private final AuditDetailViewRecorder detailViewAudit;
     public record Reason(String reason){ }
-    @GetMapping public Map<String,Object> choices(@RequestParam UUID statementReviewId,@RequestParam String expectedSourceFingerprint,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size,@RequestParam(defaultValue="1")int adjustmentPage){return service.choices(new Context(statementReviewId,expectedSourceFingerprint),page,size,adjustmentPage);}
+    @GetMapping public Map<String,Object> choices(@RequestParam UUID statementReviewId,@RequestParam String expectedSourceFingerprint,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size,@RequestParam(defaultValue="1")int adjustmentPage,@RequestParam(required=false)String part,@RequestParam(required=false)String readSnapshotRevision){var context=new Context(statementReviewId,expectedSourceFingerprint);return part==null?service.choices(context,page,size,adjustmentPage):service.versionedChoices(context,page,size,adjustmentPage,part,readSnapshotRevision);}
     @PostMapping("/preview")public Preview preview(@RequestBody FinancePayableStatementAdjustmentService.PreviewInput request){return service.preview(request.context(),request.lines());}
     @PostMapping public Map<String,UUID> submit(@RequestBody Submit request){return Map.of("id",service.submit(request));}
     // 2026-11-04 对账: 0aaffa3aa 财务复刻端点补 DirectView 审计登记(参照 FinanceApplicationController 范式)。

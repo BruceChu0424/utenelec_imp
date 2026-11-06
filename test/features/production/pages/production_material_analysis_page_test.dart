@@ -2048,7 +2048,7 @@ void main() {
   );
 
   testWidgets(
-    'compact sales candidates paginate and preserve cross-page selection',
+    'compact sales candidates keep the complete local selection and original quantities',
     (tester) async {
       final requestedPages = <int>[];
       await _pumpPage(
@@ -2061,12 +2061,18 @@ void main() {
         seeded: false,
         responseOverride: (request) {
           if (!request.path.endsWith('/sales-candidates')) return null;
-          final page = (request.queryParameters['page'] as num?)?.toInt() ?? 1;
-          requestedPages.add(page);
-          return _pagedSalesCandidatesJson(page);
+          requestedPages.add(
+            (request.queryParameters['page'] as num?)?.toInt() ?? 1,
+          );
+          final first = _pagedSalesCandidatesJson(1);
+          final second = _pagedSalesCandidatesJson(2);
+          return {
+            ...first,
+            'items': [...first['items'] as List, ...second['items'] as List],
+            'totalPages': 1,
+          };
         },
       );
-
       final mobileList = find.byKey(
         const Key('material-analysis-candidate-mobile-list'),
       );
@@ -2075,99 +2081,45 @@ void main() {
         findsNothing,
       );
       expect(find.text('手机候选产品 A'), findsOneWidget);
-      expect(find.text('上一页'), findsNothing);
-      expect(find.text('下一页'), findsNothing);
-      expect(find.text('/ 2'), findsOneWidget);
+      expect(find.byType(UtenPagination), findsNothing);
       expect(find.text('共 2 项'), findsOneWidget);
-      expect(
-        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        1,
-      );
-
-      final candidateCheckbox = find.descendant(
-        of: mobileList,
+      Finder checkbox(String suffix) => find.descendant(
+        of: find.byKey(
+          ValueKey('material-candidate-card-mobile-sales-line-$suffix'),
+        ),
         matching: find.byType(Checkbox),
       );
-      await tester.ensureVisible(candidateCheckbox);
-      await tester.tap(candidateCheckbox);
+      await tester.ensureVisible(checkbox('a'));
+      await tester.tap(checkbox('a'));
       await tester.pump();
       final editSelectedQty = find.byKey(
         const Key('material-compact-edit-selected-qty'),
       );
-      expect(
-        find.byKey(const Key('source-qty-mobile-sales-line-a')),
-        findsNothing,
-      );
       await tester.ensureVisible(editSelectedQty);
       await tester.tap(editSelectedQty);
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('material-compact-selected-qty-list')),
-        findsOneWidget,
-      );
       final firstQty = find.byKey(const Key('source-qty-mobile-sales-line-a'));
-      expect(firstQty, findsOneWidget);
       expect(tester.widget<TextField>(firstQty).controller?.text, '8');
       await tester.enterText(firstQty, '9');
       await tester.tap(find.text('数量核对完成'));
       await tester.pumpAndSettle();
-      expect(firstQty, findsNothing);
-
-      await tester.tap(find.byKey(const Key('material-candidate-next-page')));
-      await tester.pumpAndSettle();
-      expect(find.text('手机候选产品 B'), findsOneWidget);
-      expect(find.text('/ 2'), findsOneWidget);
-      expect(
-        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        2,
-      );
-      expect(
-        find.byKey(const Key('source-qty-mobile-sales-line-a')),
-        findsNothing,
-      );
-
-      await tester.ensureVisible(candidateCheckbox);
-      await tester.tap(candidateCheckbox);
+      await tester.ensureVisible(checkbox('b'));
+      await tester.tap(checkbox('b'));
       await tester.pump();
-      expect(tester.widget<Checkbox>(candidateCheckbox).value, isTrue);
+      expect(tester.widget<Checkbox>(checkbox('b')).value, isTrue);
       expect(find.text('已选 2 个销售产品'), findsOneWidget);
-      expect(
-        find.byKey(const Key('source-qty-mobile-sales-line-b')),
-        findsNothing,
-      );
-
       await tester.ensureVisible(editSelectedQty);
       await tester.tap(editSelectedQty);
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(firstQty).controller?.text, '9');
-      expect(
-        find.byKey(const Key('source-qty-mobile-sales-line-b')),
-        findsOneWidget,
-      );
+      final secondQty = find.byKey(const Key('source-qty-mobile-sales-line-b'));
+      expect(tester.widget<TextField>(secondQty).controller?.text, '7');
       await tester.tap(find.text('数量核对完成'));
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(of: mobileList, matching: find.byType(ListView)),
-        findsNothing,
-      );
-
-      await tester.tap(find.byKey(const Key('material-candidate-prev-page')));
-      await tester.pumpAndSettle();
-      expect(find.text('手机候选产品 A'), findsOneWidget);
-      expect(
-        tester
-            .widget<Checkbox>(
-              find.descendant(of: mobileList, matching: find.byType(Checkbox)),
-            )
-            .value,
-        isTrue,
-      );
-      expect(requestedPages, containsAllInOrder([1, 2]));
-      expect(
-        requestedPages.where((page) => page == 1),
-        hasLength(1),
-        reason: '返回已准备的第一页保持选择与数量，不重复网络读取',
-      );
+      await tester.ensureVisible(checkbox('a'));
+      expect(tester.widget<Checkbox>(checkbox('a')).value, isTrue);
+      expect(requestedPages, [1]);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -3134,14 +3086,12 @@ void main() {
       );
 
       // 2026-09-04 改版口径：树头「批量选择(整次分析)」三枚全选勾下线；
-      // 表格分页（200/页）后表头三态只选当页，跨页批量用「全选全部」按钮。
+      // 完整结果通过公共表头三态全选；不额外保留跨页选择按钮。
       // 分批/幂等/CAS 断言不变。
       await _openBucketDetail(tester, 'buy');
       final selectAllPage = _bucketHeaderCheckbox();
       expect(tester.widget<Checkbox>(selectAllPage).value, isFalse);
-      final selectAllEverything = find.byKey(
-        const Key('material-analysis-bucket-select-all'),
-      );
+      final selectAllEverything = _bucketHeaderCheckbox();
       expect(selectAllEverything, findsOneWidget);
       await tester.ensureVisible(selectAllEverything);
       await tester.pumpAndSettle();
@@ -3152,6 +3102,14 @@ void main() {
       await _openIssuePageFromBucket(
         tester,
         'material-analysis-bucket-action-buy',
+      );
+      expect(
+        tester
+            .widget<MasterDataTableView<dynamic>>(
+              find.byKey(const Key('material-preparation-order-table')),
+            )
+            .items,
+        hasLength(501),
       );
       // 大草稿编码在真实原生事件循环完成，与下方501行未知提交用例同口径等待。
       await _submitIssuePage(tester);
@@ -3241,12 +3199,10 @@ void main() {
       );
 
       // 2026-09-04 改版口径：全选/提交入口移入可采购桶详情页；分页（200/页）
-      // 后 501 行跨页全选走「全选全部」按钮；失败后余量桶里只剩 1 行可执行
+      // 后 501 行由公共表头完整全选；失败后余量桶里只剩 1 行可执行
       // 组，重开桶表头全选重提，幂等键断言不变。
       await _openBucketDetail(tester, 'buy');
-      final selectAllEverything = find.byKey(
-        const Key('material-analysis-bucket-select-all'),
-      );
+      final selectAllEverything = _bucketHeaderCheckbox();
       expect(selectAllEverything, findsOneWidget);
       await tester.ensureVisible(selectAllEverything);
       await tester.pumpAndSettle();
@@ -8394,7 +8350,7 @@ void main() {
   testWidgets(
     'ready bucket keeps all 101 rows reachable and selectable on one page',
     (tester) async {
-      // 2026-09-22 起桶表只读且按 200 行分页: 原「先建 100 行 + 追加加载不丢
+      // 桶表只读且当前结果完整本地虚拟显示；原「先建 100 行 + 追加加载不丢
       // 输入框」的口径退役(表里没有输入框了), 改守「101 行全在一页、都可抵达、
       // 表头全选把 101 行一起带进下单入口」。
       final json = _analysisJson(const ['GENERATE_PLAN', 'PLAN_PREVIEW'])
@@ -8473,6 +8429,46 @@ void main() {
     expect(debugMaterialCandidateSortEvaluations - before, 32);
   });
 
+  testWidgets('expanding the same analysis reuses its complete filter facts', (
+    tester,
+  ) async {
+    final before = debugMaterialProjectionSteps;
+    final harness = await _pumpPage(
+      tester,
+      size: const Size(1600, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      analysisJson: _bigWaitingAnalysisJson(productCount: 200),
+      expandTree: false,
+    );
+    final initialWork = debugMaterialProjectionSteps - before;
+    final collapsedCount = tester
+        .widget<MasterDataTableView<dynamic>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<dynamic>,
+          ),
+        )
+        .items
+        .length;
+    final reads = harness.requests.length;
+    final beforeExpand = debugMaterialProjectionSteps;
+    await expandMaterialAnalysisTree(tester);
+    final expandedWork = debugMaterialProjectionSteps - beforeExpand;
+    final expanded = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<dynamic>,
+      ),
+    );
+    expect(initialWork, greaterThan(0));
+    expect(expandedWork, lessThan(initialWork));
+    expect(expanded.items.length, greaterThan(collapsedCount));
+    expect(harness.requests, hasLength(reads));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('big analysis opens waiting bucket fast (perf canary)', (
     tester,
   ) async {
@@ -8541,17 +8537,31 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('/ 8'), findsOneWidget);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      '1',
+    expect(find.byType(UtenPagination), findsNothing);
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find
+          .byWidgetPredicate((widget) => widget is MasterDataTableView<dynamic>)
+          .last,
     );
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).controller?.text,
-      '2',
-    );
+    expect(table.items, hasLength(1500));
+    final requestsBeforeScroll = harness.requests.length;
+    final position = tester
+        .state<ScrollableState>(
+          find
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              )
+              .last,
+        )
+        .position;
+    for (final fraction in [.9, .0, 1.0, .0]) {
+      position.jumpTo(position.maxScrollExtent * fraction);
+      await tester.pumpAndSettle();
+    }
+    expect(harness.requests, hasLength(requestsBeforeScroll));
+    expect(table.items, hasLength(1500));
     expect(
       stopwatch.elapsed.inSeconds,
       lessThan(30),
@@ -10481,8 +10491,8 @@ Map<String, dynamic> _bulkSalesCandidatesJson(int count) => {
     },
   ],
   'page': 1,
-  'size': count,
-  'total': count,
+  'size': 100,
+  'total': 1,
   'totalPages': 1,
 };
 

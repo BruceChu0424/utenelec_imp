@@ -1,0 +1,165 @@
+{
+  "combinedHead": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "status": "Final frozen coverage/source mapping. Runtime verdict and deduplicated cases are maintained exclusively in backend-combined-acceptance.json after natural completion.",
+  "areas": [
+    {
+      "area": "Complete physical row origin classification",
+      "publicEntry": "fn_imported_business_document_row(table, to_jsonb(full_physical_row))",
+      "callers": "537 literal SELECT-star physical wrappers and one whitelisted private correction-order helper across 68 files",
+      "regressionClasses": [
+        "ImportedDocumentAncestryWalkPostgresTest",
+        "CurrentWorkbenchOriginPostgresTest",
+        "ProductionExecutionWorkbenchQueryPostgresTest",
+        "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+        "SalesShipmentOwnerBoundaryTest"
+      ],
+      "preserved": "Original ancestry graph, direct/inherited/run and polymorphic origin facts, null/deleted/unknown semantics, cycle/depth guard, RLS and write guards. Fifty-three existing table-and-id expressions remain at JPA, scoped projection, bound identity or authority boundaries.",
+      "qualification": "Complete lexical/source audit is distinct from focused representative runtime fixtures. It is not a separate performance acceptance for each of the 538 expressions."
+    },
+    {
+      "area": "Approval qualification before list materialization",
+      "publicEntry": "ProcurementOrderApprovalPredicates and shared approval projection",
+      "callers": "Purchase and subcontract pending-order and latest-rejected predicates, finance returned queue",
+      "regressionClasses": [
+        "ProcurementOrderApprovalPredicatesPostgresTest",
+        "ProcurementApprovalReturnedQueuePostgresTest",
+        "ProcurementFirstPayablePostgresTest"
+      ],
+      "preserved": "Order type, request kind, latest order-attempt and current correction eligibility. The test grows historical cases to6000 and verifies one SQL with bounded bindings and the existing pending index.",
+      "qualification": "This removes Java candidate-ID materialization; it does not claim every business filter is constant time."
+    },
+    {
+      "area": "Task source/metadata and page detail work",
+      "publicEntry": "FulfillmentWorkbenchPageRead and WarehouseTaskPageMetadata",
+      "callers": "Fulfillment purchase/subcontract/warehouse workbench and warehouse inbound/outbound task centers",
+      "regressionClasses": [
+        "FulfillmentWorkbenchPageReadTest",
+        "FulfillmentWorkbenchPageReadPostgresTest",
+        "FulfillmentWorkbenchQueryServiceTest",
+        "FulfillmentWorkbenchTaskAudiencePostgresTest",
+        "FulfillmentWorkbenchEmptyPageLatencyPostgresTest",
+        "WarehouseTaskPageMetadataPostgresTest",
+        "WarehouseOutboundTaskCenterQueryServiceTest",
+        "WarehouseOutboundTaskCenterSqlPostgresTest",
+        "WarehouseOutboundTaskCenterMigratedSchemaPostgresTest",
+        "WarehouseInboundTaskCenterQueryServiceTest",
+        "WarehouseInboundTaskCenterQueryPostgresTest",
+        "WarehousePhysicalDetailHeaderPostgresTest"
+      ],
+      "preserved": "Filter-specific facets, null buckets, exact quantity precision, task audience and physical-command eligibility. Warehouse data and its combined metadata retain one existing REPEATABLE_READ transaction.",
+      "qualification": "At10k/100k/1m historical fixture rows with50 fixed active rows, workbench detail work is20 and broad totals remain N+1; warehouse metadata uses one statement and N+52 source evaluations instead of three and3(N+52). Actual plans and three warm samples remain structural fixture evidence."
+    },
+    {
+      "area": "Continuation metadata and bounded complete-list contracts",
+      "publicEntry": "PageMetadataRequest and existing bounded list API entry points",
+      "callers": "Five warehouse/workbench task routes and bounded business application read routes",
+      "regressionClasses": [
+        "PageMetadataRequestTest",
+        "TaskContinuationMetadataHttpTest",
+        "BusinessApplicationReadScopeTest",
+        "NativeTaskReadScopeInterceptorTest",
+        "SchemaIndexHygieneContractTest"
+      ],
+      "preserved": "Default full first-read metadata; explicit false is a continuation response and retains actual rows/count. Server-side batch limits, read admission and index hygiene remain intact.",
+      "qualification": "Client complete-snapshot assembly, stale-response retirement and real interaction evidence have separate frontend/WPF owners. This backend receipt does not substitute for them."
+    },
+    {
+      "area": "Finance history, references and optional private detail",
+      "publicEntry": "FinanceApplicationService, reference paging owners and ExpenseClaimService.detail",
+      "callers": "Finance queues/history, supplier/expense/travel/payroll/payable/voucher/allocation references, payment reversal result",
+      "regressionClasses": [
+        "FinanceApplicationsPostgresTest",
+        "FinanceApplicationReferencePagingPostgresTest",
+        "SalesShipmentFinanceReleaseRateEndToEndTest",
+        "SalesShipmentCurrencyFilterTest"
+      ],
+      "preserved": "Owner and payer object-read distinctions, current canEdit gate, currency/amount eligibility, legacy capped suggestion behavior, and exact allocation identity/capacity. Optional private read denial cannot mark a successful authorized reversal rollback-only. The true1039 ->1040 ->current historical fixture preserves original invoices/payload/round authority; main-thread preparation and later all-worker/independent scan-journal routing use the same upgraded B database.",
+      "qualification": "Pure detail noRollbackFor keeps object denial and avoids poisoning an authorized reversal.1062 additionally restores PAYMENT_REVERSED already emitted by the service/understood by Flutter after later CHECK rewrites omitted it; all9 current types remain and unknown23514 still fails. Full current Finance8 plus positive/negative event checks are required; old initialization/errors remain historical."
+    },
+    {
+      "area": "Draft generations, native and trusted legacy evidence",
+      "publicEntry": "DocumentQuantityDraftInputs, DocumentWeightEvidence, native quantity guards and verified legacy source proof registry",
+      "callers": "Purchase receipt/return and subcontract receipt/material-return unapproval clone paths, five trusted legacy families",
+      "regressionClasses": [
+        "DocumentQuantityAdoptionPostgresTest",
+        "DocumentWeightAdoptionTest",
+        "DocumentUnapprovalCapabilityTest",
+        "LegacyQuantityAdoptionCompatibilityPostgresTest",
+        "GiftPhysicalConservationEndToEndTest",
+        "GiftUnitRateConservationEndToEndTest",
+        "ProcurementUnapprovalEligibilityEndToEndTest"
+      ],
+      "preserved": "Original raw quantities/weights and unknown-versus-zero facts. New owner/new row evidence is captured atomically under the current action policy; old policy/proof is not copied. Version1 legacy adoption requires approved same-transaction exact source proof, while untrusted runtime writes remain denied.",
+      "qualification": "All995 migrations committed in backend/schema ancestor6493 are byte-equal, including1033/1034 and1049-1058. Gift1048/execution1057 WIP remain original bytes. Legacy bodies are1059/1060 with unchanged five-family proof semantics, actual return schema gate1060 and unpublished bootstrap-v22;1061 is a separate forward lifecycle/alias-capacity correction;1062 restores only the original expense payment reversal event CHECK contract. No company schema change."
+    },
+    {
+      "area": "Archive fairness and retained evidence",
+      "publicEntry": "BusinessArchiveEligibilityService",
+      "callers": "Bounded fair eligibility scan and purchase-order package pilot",
+      "regressionClasses": [
+        "BusinessArchivePilotPostgresTest",
+        "BusinessArchiveEligibilityPageTest"
+      ],
+      "preserved": "Reopened documents are rechecked, payload corruption fails, attachment lifecycle versions remain represented, and unresolved/unpackaged finance references block packaging.",
+      "qualification": "Packaging is tested only in owned disposable fixtures; no physical activity/history cutover or company archive job runs."
+    },
+    {
+      "area": "New main delivery composition and shared read regression",
+      "publicEntry": "Existing admitted delivery order/read/mutation services and original reverse CTE",
+      "callers": "BOM, make source, mixed source, original-order claims, private source, revision, reverse units and warehouse scope",
+      "regressionClasses": [
+        "SalesBomDeliveryEndToEndTest",
+        "SalesDeliveryMakeSourceEndToEndTest",
+        "SalesDeliveryMixedScenarioEndToEndTest",
+        "SalesDeliveryOrderClaimEndToEndTest",
+        "SalesDeliveryPrivateSourceEndToEndTest",
+        "SalesDeliveryRevisionEndToEndTest",
+        "SalesDeliverySourceReverseUnitsEndToEndTest",
+        "SalesDeliveryWarehouseScopeEndToEndTest",
+        "ArchitectureBoundaryTest",
+        "DirectMakeDeliveryClosedCreditPostgresTest"
+      ],
+      "preserved": "Latest-main delivery fields and complete new semantic body. Full-file composition receipt verifies only the declared read-classifier substitutions plus the existing authorized finance-history stage delta. Committed1058 is adopted byte-for-byte;1061 reuses its complete exact original/restored MAKE receipt, order/path/plan/movement/held/counter proofs and avoids crediting a frozen alias MAX twice.",
+      "qualification": "The checked-out base is6d and the exact new main backend delta is6493; latest observed mainafe9 adds documentation only. Final current-source regression results are distinct from historical0c/0d/f619/5a evidence."
+    },
+    {
+      "area": "Visitor and AI dashboard read boundaries",
+      "publicEntry": "VisitorApplicationService and AiUsageDashboardService",
+      "callers": "Bounded visitor application reads/admission and authorized AI usage dashboard aggregate/raw-read separation",
+      "regressionClasses": [
+        "VisitorAdmissionConcurrencyPostgresTest",
+        "VisitorApplicationPaginationTest",
+        "AiUsageDashboardPostgresTest",
+        "AiUsageAuditControllerSecurityTest"
+      ],
+      "preserved": "Existing visitor privacy/admission boundaries and server authority; AI aggregate permissions do not expose raw prompts, response bodies or business content.",
+      "qualification": "The visitor external privacy boundary remains an explicit exception to deleting business-list page controls."
+    },
+    {
+      "area": "Transaction-local interactive task JIT scope",
+      "publicEntry": "InteractiveTaskReadScope -> existing ProductionExecutionWorkbenchService.segmentPage",
+      "callers": "The shared workOrders/inProgressTasks/workshopTasks segment projection; all other report/read owners retain their existing optimizer policy. Backend-only behavior uses unchanged Web/Flutter/WPF HTTP contracts.",
+      "regressionClasses": [
+        "InteractiveTaskReadScopePostgresTest",
+        "ProductionExecutionWorkbenchQueryPostgresTest"
+      ],
+      "preserved": "Actual existing transaction/physical connection/role/readOnly/isolation, exact business SQL, row values/metadata/auth predicates and prior jit on/off. The scope closes on success/application error; aborted or cancelled database transactions clear local settings on rollback before subsequent reads/writes.",
+      "qualification": "Exact isolated8row raw-SQL A/B identifies JIT24366.517ms versus15.306ms non-JIT execution, identical fingerprints. Actual public-service read is separately tested and repeated within the SQL/growth selection; complete-service cold timings include JPA and enrichment and are not relabelled15ms or production p95.",
+      "evidence": "backend-jit-diagnostic.json and final capacity/integration/sql receipts"
+    }
+  ],
+  "excludedClaims": [
+    "All-server full regression",
+    "Company production latency SLA",
+    "Strict O(1) for broad summaries or all origin traversals",
+    "Published source or deployment",
+    "Physical hot/history switch",
+    "Client interaction UAT",
+    "Complete Win7 ERP migration"
+  ],
+  "originalAuditSourceInputSha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+  "backendMainCompositionCommit": "6493cadb7c967223334dc660dd8076bd53d0ceec",
+  "latestObservedMainHead": "afe9fcd8af0121a8287d798024f553fa90247f79",
+  "sourceApplicabilityEvidence": "backend-source-applicability.json"
+}

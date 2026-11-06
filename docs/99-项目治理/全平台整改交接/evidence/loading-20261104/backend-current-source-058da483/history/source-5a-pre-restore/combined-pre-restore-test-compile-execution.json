@@ -1,0 +1,15 @@
+{
+  "label": "pre-restore",
+  "startedAtUtc": "2026-11-05T10:22:34.4409041Z",
+  "endedAtUtc": "2026-11-05T10:28:05.8367405Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "5a1bcea10e4c1ed74510b497a8ecc02aa98cfebe96f48818f6c0d9df20eae500",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "log": "build/loading-validation/combined-pre-restore-test-compile.log"
+}

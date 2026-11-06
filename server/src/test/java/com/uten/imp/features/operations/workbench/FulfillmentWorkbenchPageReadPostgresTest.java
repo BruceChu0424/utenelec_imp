@@ -164,6 +164,109 @@ class FulfillmentWorkbenchPageReadPostgresTest {
                 .getFirst()[50]).longValue());
     }
 
+    @Test void pageOnlyDetailsStayBoundedWhileBroadCategoryTotalsRetainGrowingHistory() throws Exception {
+        insertRows();
+        jdbc.getJdbcTemplate().execute("CREATE TEMP SEQUENCE workbench_detail_probe");
+        jdbc.getJdbcTemplate().execute("UPDATE workbench_fixture SET difference_qty=7.25");
+        jdbc.getJdbcTemplate().execute("INSERT INTO workbench_fixture(department,task_id,task_status,display_stage,open_line_count,open_qty,need_date,difference_qty)"
+                + " SELECT 'PURCHASE',md5('active'||n)::uuid,'WAITING_ORDER','WAITING_ORDER',1,1,DATE '2026-10-04',7.25 FROM generate_series(1,48)n");
+        int previous=0;
+        for (int history : List.of(10_000,100_000,1_000_000)) {
+            jdbc.getJdbcTemplate().execute("INSERT INTO workbench_fixture(department,task_id,task_status,display_stage,open_line_count,open_qty)"
+                    + " SELECT 'PURCHASE',md5('historical'||n)::uuid,'COMPLETED','COMPLETED',0,0 FROM generate_series("+(previous+1)+","+history+")n");
+            previous=history;
+            String columns=Arrays.stream(FulfillmentWorkbenchPageRead.ROW_COLUMNS.split(",")).map(String::strip)
+                    .map(name->name.equals("difference_qty")?"(nextval('workbench_detail_probe')*0+fixture.difference_qty) AS difference_qty":"fixture."+name)
+                    .collect(java.util.stream.Collectors.joining(","));
+            String oldSource="(SELECT "+columns+",fixture.visible_doc_no FROM workbench_fixture fixture)";
+            String source="(SELECT * FROM workbench_fixture)";
+            String status="task_status='WAITING_ORDER'", ordering="need_date NULLS LAST,task_id";
+            var table=new FulfillmentWorkbenchTableQuery(null,null,Map.of(),null,null,null,null);
+            var parameters=new MapSqlParameterSource().addValue("limit",20).addValue("offset",0L);
+            jdbc.getJdbcTemplate().execute("ALTER SEQUENCE workbench_detail_probe RESTART WITH 1");
+            String oldSql=FulfillmentWorkbenchPageRead.sql(oldSource,"department='PURCHASE'",status,"TRUE","TRUE",ordering,"PURCHASE",table);
+            var before=jdbc.query(oldSql,parameters,(rs,index)->rowArray(rs));
+            long oldWork=jdbc.queryForObject("SELECT last_value FROM workbench_detail_probe",Map.of(),Long.class);
+            jdbc.getJdbcTemplate().execute("ALTER SEQUENCE workbench_detail_probe RESTART WITH 1");
+            String newSql=FulfillmentWorkbenchPageRead.sql(source,"department='PURCHASE'",status,"TRUE","TRUE",ordering,"PURCHASE",table,
+                    Map.of("difference_qty","nextval('workbench_detail_probe')*0+page_rows.difference_qty"),"");
+            var after=jdbc.query(newSql,parameters,(rs,index)->rowArray(rs));
+            assertEquals(20,after.size());
+            for(int row=0;row<before.size();row++)assertEquals(before.get(row)[49],after.get(row)[49]);
+            for(int index=50;index<58;index++)assertEquals(before.getFirst()[index],after.getFirst()[index],"Metadata column "+index);
+            assertEquals(history+52L,oldWork);
+            assertEquals(20L,jdbc.queryForObject("SELECT last_value FROM workbench_detail_probe",Map.of(),Long.class));
+            assertEquals(history+1L,FulfillmentWorkbenchPageRead.counts(after.getFirst()[54]).get("COMPLETED"));
+            String plan=jdbc.queryForObject("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+newSql,parameters,String.class);
+            assertTrue(plan.contains("Limit"));
+            com.uten.imp.support.LoadingGrowthEvidence.write("workbench-page-detail",history,Map.of(
+                    "beforeDetailEvaluations",oldWork,"afterDetailEvaluations",20,"broadCompleted",history+1,
+                    "before",com.uten.imp.support.LoadingGrowthEvidence.samples(()->jdbc.query(oldSql,parameters,(rs,index)->rowArray(rs))),
+                    "after",com.uten.imp.support.LoadingGrowthEvidence.samples(()->jdbc.query(newSql,parameters,(rs,index)->rowArray(rs)))),plan);
+        }
+    }
+
+    @Test void continuationReadsHaveExactRowsAndCountWithoutAnyMetadataDisplayOracleCalls() throws Exception {
+        insertRows();
+        jdbc.getJdbcTemplate().execute("CREATE TEMP SEQUENCE workbench_metadata_probe");
+        // Stable output, test-only counter: permits PostgreSQL to prune unused metadata projection.
+        jdbc.getJdbcTemplate().execute("CREATE FUNCTION pg_temp.metadata_label(value text) RETURNS text LANGUAGE plpgsql STABLE AS $$ BEGIN PERFORM nextval('workbench_metadata_probe');RETURN value;END $$");
+        String columns=Arrays.stream(FulfillmentWorkbenchPageRead.ROW_COLUMNS.split(",")).map(String::strip)
+                .map(name->"fixture."+name).collect(java.util.stream.Collectors.joining(","));
+        String source="(SELECT "+columns+",pg_temp.metadata_label(fixture.visible_doc_no) AS visible_doc_no FROM workbench_fixture fixture)";
+        var table=new FulfillmentWorkbenchTableQuery(null,null,Map.of(),null,null,null,null);
+        var parameters=new MapSqlParameterSource().addValue("limit",1).addValue("offset",0L);
+        String fullSql=FulfillmentWorkbenchPageRead.sql(source,"department='PURCHASE'","task_status='WAITING_ORDER'","TRUE","TRUE","need_date,task_id","PURCHASE",table);
+        Object[] full=jdbc.query(fullSql,parameters,(rs,index)->rowArray(rs)).getFirst();
+        assertEquals(4L,jdbc.queryForObject("SELECT last_value FROM workbench_metadata_probe",Map.of(),Long.class));
+        jdbc.getJdbcTemplate().execute("ALTER SEQUENCE workbench_metadata_probe RESTART WITH 1");
+        String continuation=FulfillmentWorkbenchPageRead.rowsOnlySql(source,"department='PURCHASE'","task_status='WAITING_ORDER'","TRUE","TRUE","need_date,task_id",table,Map.of(),"");
+        Object[] rows=jdbc.query(continuation,parameters,(rs,index)->rowArray(rs)).getFirst();
+        assertEquals(full[1],rows[1]);assertEquals(full[50],rows[50]);assertEquals(51,rows.length);
+        assertFalse(jdbc.queryForObject("SELECT is_called FROM workbench_metadata_probe",Map.of(),Boolean.class));
+        assertFalse(continuation.contains("status_counts"));assertFalse(continuation.contains("facet_rows"));
+        parameters.addValue("offset",99L);Object[] empty=jdbc.query(continuation,parameters,(rs,index)->rowArray(rs)).getFirst();
+        assertNull(empty[0]);assertEquals(2L,((Number)empty[50]).longValue());
+        System.out.println("TASK-CONTINUATION metadataOracleCalls=0 exactTotal=2 deepEmptyTotal=2");
+    }
+
+    @Test void broadMetadataKeepsOnlyItsOriginalOwnFilterExclusionAcrossDepartments() throws Exception {
+        insertRows();
+        jdbc.getJdbcTemplate().execute("UPDATE workbench_fixture SET display_stage='BOM_MISSING' WHERE task_status='FINANCE_APPROVED'");
+        for(String department:List.of("PURCHASE","SUBCONTRACT","WAREHOUSE")) {
+            jdbc.getJdbcTemplate().execute("UPDATE workbench_fixture SET department='"+department+"'");
+            String status="SUBCONTRACT".equals(department)
+                    ? "CASE WHEN display_stage='BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END='BOM_MISSING'"
+                    : "task_status='WAITING_ORDER'";
+            Map<String,Long> expectedExceptions="SUBCONTRACT".equals(department)?Map.of("OTHER",1L):Map.of("OVERDUE",2L);
+            for(String exception:List.of("exception_code='OVERDUE'","exception_code='OTHER'","exception_code='ABSENT'","exception_code IS NULL")) {
+                jdbc.getJdbcTemplate().execute("ALTER SEQUENCE workbench_probe RESTART WITH 1");
+                String source="(SELECT fixture.*,nextval('workbench_probe') AS probe FROM workbench_fixture fixture)";
+                // A selected date outside all rows must not narrow the independent cards.
+                String sql=FulfillmentWorkbenchPageRead.sql(source,"department=:department",status,exception,"FALSE",
+                        "need_date NULLS LAST,task_id",department,null);
+                Object[] metadata=jdbc.query(sql,new MapSqlParameterSource().addValue("department",department)
+                        .addValue("offset",0L).addValue("limit",20),(rs,index)->rowArray(rs)).getFirst();
+                assertNull(metadata[0]);assertEquals(0L,((Number)metadata[50]).longValue());
+                assertEquals(expectedExceptions,FulfillmentWorkbenchPageRead.counts(metadata[55]),
+                        "Exception distribution excludes its own selected exception filter");
+                Map<String,Long> expectedStatuses=exception.contains("OVERDUE")?Map.of("WAITING_ORDER",2L)
+                        :exception.contains("OTHER")?Map.of("SUBCONTRACT".equals(department)?"BOM_MISSING":"FINANCE_APPROVED",1L)
+                        :exception.contains("IS NULL")?Map.of("COMPLETED",1L):Map.of();
+                assertEquals(expectedStatuses,FulfillmentWorkbenchPageRead.counts(metadata[54]));
+                assertEquals(exception.contains("OVERDUE")?2L:exception.contains("OTHER")?1L:0L,((Number)metadata[56]).longValue());
+                assertTrue(FulfillmentWorkbenchPageRead.facets(metadata[57]).values().isEmpty());
+                assertEquals(4L,jdbc.queryForObject("SELECT last_value FROM workbench_probe",Map.of(),Long.class));
+            }
+        }
+    }
+
+    private static Object[] rowArray(java.sql.ResultSet rs) throws java.sql.SQLException {
+        Object[] row=new Object[rs.getMetaData().getColumnCount()];
+        for(int index=0;index<row.length;index++)row[index]=rs.getObject(index+1);
+        return row;
+    }
+
     private List<Object[]> read(String status, Map<String, String> filters, LocalDate from, LocalDate to,
                                 long offset, int limit) {
         var table = new FulfillmentWorkbenchTableQuery("needDate", "asc", filters, null, null, null, null);

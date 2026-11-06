@@ -10,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
-import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -299,6 +298,8 @@ void main() {
       final second = find.byKey(
         const ValueKey('permission-select-user-prefetch-account-2-0'),
       );
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(second, 250, scrollable: scrollable);
       await tester.pumpAndSettle();
       await tester.tap(second);
@@ -431,58 +432,45 @@ void main() {
   });
 
   testWidgets(
-    'account list prefetches before the end once and preserves the viewport',
+    'account summaries complete once and preserve the viewport during scroll without reads',
     (tester) async {
-      final pending = Completer<PagedResult<AdminUserSummary>>();
-      final repository = _PrefetchRepository(pageTwo: pending);
+      final gate = Completer<PagedResult<AdminUserSummary>>();
+      final repository = _PrefetchRepository(pageTwo: gate);
       await _mount(
         tester,
         repository,
         _AiRepository(),
         width: 1440,
         initialEmployeeId: null,
+        settle: false,
       );
+      expect(repository.pages, [1, 2]);
+      expect(find.text('预加载员工 1-0'), findsNothing);
+      gate.complete(repository.page(2));
+      await tester.pumpAndSettle();
       final list = find.byKey(const ValueKey('admin-account-list-scroll'));
       final original = tester.element(list);
+      expect(tester.widget<ListView>(list).semanticChildCount, 60);
       final scrollable = find
           .descendant(of: list, matching: find.byType(Scrollable))
           .first;
       final position = tester.state<ScrollableState>(scrollable).position;
-      expect(repository.pages, [1]);
-      expect(
-        position.extentAfter,
-        greaterThan(UtenScrollPrefetchPolicy.distanceOf(position)),
-      );
-      position.jumpTo(
-        position.maxScrollExtent -
-            UtenScrollPrefetchPolicy.distanceOf(position) / 2,
-      );
-      expect(position.extentAfter, greaterThan(0));
-      await tester.pump();
-      await tester.pump();
-      expect(repository.pages, [1, 2]);
-      position.jumpTo(position.pixels + 1);
-      await tester.pump();
-      expect(repository.pages, [
-        1,
-        2,
-      ], reason: 'Only one read may be pending for the next page');
-      final offset = position.pixels;
-      pending.complete(repository.page(2));
+      position.jumpTo(position.maxScrollExtent - 100);
+      await tester.pumpAndSettle();
+      position.jumpTo(0);
       await tester.pumpAndSettle();
       expect(repository.pages, [1, 2]);
+      expect(find.text('加载更多'), findsNothing);
       expect(tester.element(list), same(original));
       expect(
         tester.state<ScrollableState>(scrollable).position,
         same(position),
       );
-      expect(position.pixels, closeTo(offset, .01));
       expect(tester.takeException(), isNull);
     },
   );
-
   testWidgets(
-    'account prefetch failure waits for manual retry without replacing loaded rows',
+    'an incomplete account read is retryable from the beginning without exposing a partial directory',
     (tester) async {
       final repository = _PrefetchRepository(failPageTwoOnce: true);
       await _mount(
@@ -492,35 +480,23 @@ void main() {
         width: 1440,
         initialEmployeeId: null,
       );
-      final list = find.byKey(const ValueKey('admin-account-list-scroll'));
-      final scrollable = find
-          .descendant(of: list, matching: find.byType(Scrollable))
-          .first;
-      final position = tester.state<ScrollableState>(scrollable).position;
-      position.jumpTo(
-        position.maxScrollExtent -
-            UtenScrollPrefetchPolicy.distanceOf(position) / 2,
-      );
-      await tester.pumpAndSettle();
       expect(repository.pages, [1, 2]);
-      position.jumpTo(position.pixels + 1);
-      await tester.pumpAndSettle();
-      expect(repository.pages, [1, 2]);
-      await tester.scrollUntilVisible(
-        find.text('加载更多'),
-        160,
-        scrollable: scrollable,
-      );
-      await tester.pumpAndSettle();
-      expect(repository.pages, [1, 2]);
-      await tester.tap(find.text('加载更多'));
-      await tester.pumpAndSettle();
-      expect(repository.pages, [1, 2, 2]);
-      expect(find.text('加载更多'), findsNothing);
       expect(
-        tester.state<ScrollableState>(scrollable).position,
-        same(position),
+        find.byKey(const ValueKey('admin-account-list-scroll')),
+        findsNothing,
       );
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2, 1, 2]);
+      expect(
+        tester
+            .widget<ListView>(
+              find.byKey(const ValueKey('admin-account-list-scroll')),
+            )
+            .semanticChildCount,
+        60,
+      );
+      expect(find.text('加载更多'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1459,8 +1435,7 @@ void main() {
         width: 1440,
         initialEmployeeId: null,
       );
-      await tester.tap(find.text('加载更多'));
-      await tester.pumpAndSettle();
+      expect(find.text('加载更多'), findsNothing);
       await tester.tap(find.textContaining('第二页员工').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('账号安全'));
@@ -1475,9 +1450,13 @@ void main() {
       expect(find.text('一次性临时密码'), findsWidgets);
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('Temp-Demo!12345'), findsOneWidget);
+      final readsBeforeAcknowledgement = repository.directoryReads;
       await tester.tap(find.text('我已妥善保存'));
       await tester.pumpAndSettle();
-      expect(repository.refreshedTargets, greaterThanOrEqualTo(1));
+      expect(
+        repository.directoryReads,
+        greaterThan(readsBeforeAcknowledgement),
+      );
       expect(find.text('Temp-Demo!12345'), findsNothing);
       expect(find.text('第二页员工'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -1541,6 +1520,7 @@ Future<void> _mount(
   String? actorUserId,
   bool accountSupport = true,
   bool notifications = false,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
@@ -1624,7 +1604,13 @@ Future<void> _mount(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 6; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+  }
 }
 
 class _Snapshot extends SessionSnapshotNotifier {
@@ -1667,6 +1653,7 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
   final requestedPasswords = <String?>[];
   Object? resetError;
   int refreshedTargets = 0;
+  int directoryReads = 0;
   @override
   Future<AdminUserSummary> userById(String userId) async {
     expect(userId, user.id);
@@ -1698,6 +1685,7 @@ class _Repository implements AdminRepository, AdminUserLookupRepository {
     String? search,
     String? status,
   }) async {
+    directoryReads++;
     if (paged && search == user.loginAccount) refreshedTargets++;
     const first = AdminUserSummary(
       id: 'user-first',

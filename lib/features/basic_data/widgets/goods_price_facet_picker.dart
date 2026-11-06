@@ -1,6 +1,5 @@
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -16,7 +15,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/pricing/price_analysis_l10n.dart';
-import '../../../shared/pricing/price_analysis_models.dart';
 import '../../../shared/pricing/price_analysis_repository.dart';
 import '../models/master_facet.dart';
 import 'master_data_table_view.dart';
@@ -41,7 +39,11 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
         NativeReadViewScopeMixin<GoodsPriceFacetPicker>,
         ScopedPagedReadViewMixin<GoodsPriceFacetPicker> {
   @override
+  Future<void> onReadViewResumed() => _load(1, preserveSelection: true);
+
+  @override
   void scopedPagedReadOwnerChanged() {
+    invalidateNativeReadAccess();
     _clear();
     if (mounted) {
       setState(() {
@@ -97,14 +99,22 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
   void nativeReadPermissionChanged() => _clear();
   @override
   Future<void> nativeReadReload() => _load(1);
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preserveSelection = false,
+  }) async {
     if (!mounted || !_allowed) return;
-    final accepts = captureNativeRead(_identity, () => _identity);
+    final accepts = captureNativeRead(
+      _identity,
+      () => _identity,
+      retainAccepted: preserveSelection,
+    );
     if (!accepts()) return;
     setState(() {
       _loading = true;
       _error = null;
-      _picked = null;
+      if (!preserveSelection) _picked = null;
     });
     final repository = ref.read(priceAnalysisRepositoryProvider),
         goodsId = widget.goodsId;
@@ -112,7 +122,7 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
       ...widget.query,
       'column': _column,
       'search': _search,
-      'size': 50,
+      'size': 100,
     });
     Object pagingQuery() => [
       ref.read(priceAnalysisRepositoryProvider),
@@ -132,30 +142,34 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
             ...parameters,
             'page': target,
           });
-          final rows = priceMaps(
-            response['buckets'],
-          ).map(MasterFacetBucket.fromJson).toList();
-          return PagedReadSnapshot<MasterFacetBucket, Map<String, dynamic>>(
-            page: PagedResult(
-              items: rows,
-              page: (response['page'] as num?)?.toInt() ?? target,
-              size: 50,
-              total: (response['total'] as num?)?.toInt() ?? rows.length,
-              totalPages: (response['totalPages'] as num?)?.toInt() ?? 1,
-            ),
-            snapshot: response,
-          );
+          if (response['buckets'] is! List ||
+              response['page'] is! int ||
+              response['size'] is! int ||
+              response['total'] is! num ||
+              response['totalPages'] is! int) {
+            throw const FormatException('筛选候选分页信息异常，请重新读取');
+          }
+          return PagedResult<MasterFacetBucket>.fromJson({
+            ...response,
+            'items': response['buckets'],
+          }, MasterFacetBucket.fromJson);
         },
       );
       if (!accepts() || !_allowed) return;
       acceptNativeRead();
       setState(() {
         _rows = cached.items;
+        _picked = preserveSelection && _picked != null
+            ? cached.items
+                  .where((row) => row.value == _picked!.value)
+                  .firstOrNull
+            : null;
         _page = cached.page;
         _pages = cached.totalPages;
         _loading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!accepts()) return;
       setState(() {
         _loading = false;
@@ -266,6 +280,7 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                       child: UtenSearchBar(
                         initialValue: _search,
                         hint: priceText(context, 'searchAllValues'),
+                        isQueryPending: (text) => _loading && text == _search,
                         onInputChanged: (value) {
                           _search = value;
                           invalidateNativeReadAccess();

@@ -322,12 +322,19 @@ void main() {
       addTearDown(row.dispose);
       expect(row.quantity.text, '99999999999999.9999');
       expect(row.toJson()['qty'], '99999999999999.9999');
-      row.quantity.text = '100000000000000';
+      row.quantity.text = '1.0000000';
       expect(row.quantityError, isNull);
-      expect(row.toJson()['qty'], '100000000000000');
-      row.quantity.text = '10000000000000000000000000000000000000000';
-      expect(row.quantityError, isNotNull);
-      expect(row.toJson, throwsFormatException);
+      expect(row.toJson()['qty'], '1.0000000');
+      for (final invalid in [
+        '1.00001',
+        '100000000000000',
+        '10000000000000000000000000000000000000000',
+      ]) {
+        row.quantity.text = invalid;
+        expect(row.quantity.text, invalid);
+        expect(row.quantityError, isNotNull);
+        expect(row.toJson, throwsFormatException);
+      }
       final unknown = ProductionDrawDiscoveryRow(
         request: request,
         index: 1,

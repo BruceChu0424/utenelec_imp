@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -134,6 +136,49 @@ class _PurchaseRepository extends PurchaseRepository {
   }
 }
 
+class _ProgressivePurchaseRepository extends _PurchaseRepository {
+  _ProgressivePurchaseRepository({this.firstId = 'first'});
+  final String firstId;
+  final String firstLabel = '首批采购草稿';
+  int detailStatus = 0;
+  final detailReads = <String>[];
+  @override
+  Future<PurchaseDocDetail> detail(String id) async {
+    detailReads.add(id);
+    return PurchaseDocDetail.fromJson({
+      'id': id,
+      'status': detailStatus,
+      'makerId': 'maker',
+    });
+  }
+
+  final later = Completer<PagedResult<PurchaseDocListItem>>();
+  final requested = <int>[];
+
+  @override
+  Future<PagedResult<PurchaseDocListItem>> list({
+    int page = 1,
+    int size = 20,
+    PurchaseDocFilter filter = const PurchaseDocFilter(),
+    String? sort,
+    String? order,
+  }) async {
+    requested.add(page);
+    if (page == 1) {
+      return PagedResult(
+        items: [
+          PurchaseDocListItem(id: firstId, billNo: firstLabel, status: 0),
+        ],
+        page: 1,
+        size: 1,
+        total: 2,
+        totalPages: 2,
+      );
+    }
+    return later.future;
+  }
+}
+
 class _SubcontractRepository extends SubcontractRepository {
   _SubcontractRepository({this.exactAmount})
     : super(ApiClient(Dio()), SubcontractDocType.order);
@@ -183,14 +228,19 @@ Future<void> _pump(
         formDraftsProvider.overrideWith(() => drafts),
         masterNameServiceProvider.overrideWith((ref) => _Names()),
         fixedBadgeSummaryOverride(),
-        draftWorkspaceRowsProvider(
+        draftWorkspaceReadProvider(
           DraftDocKind.financeExpense,
-        ).overrideWith((ref) async => [_expense]),
-        draftWorkspaceRowsProvider(DraftDocKind.financeReceipt).overrideWith((
+        ).overrideWith((ref) => DraftWorkspaceRead.fromRows([_expense])),
+        draftWorkspaceReadProvider(DraftDocKind.financeReceipt).overrideWith((
           ref,
-        ) async {
-          if (failReceipt) throw NetworkException('offline');
-          return [_receipt];
+        ) {
+          final owner = DraftWorkspaceRead<DraftWorkspaceRow>((read) async {
+            if (failReceipt) throw NetworkException('offline');
+            read.addRows([_receipt]);
+          });
+          owner.start();
+          ref.onDispose(owner.dispose);
+          return owner;
         }),
       ],
       child: const MaterialApp(
@@ -209,7 +259,285 @@ Future<void> _pump(
 MasterDataTableView<DraftWorkspaceRow> _table(WidgetTester tester) =>
     tester.widget(find.byType(MasterDataTableView<DraftWorkspaceRow>));
 
+Future<List<T>> _readAllDraftPages<T>(
+  Future<PagedResult<T>> Function(int) fetch,
+) async {
+  final owner = DraftWorkspaceRead<T>(
+    (read) => read.loadPages(fetch, (rows) async => rows),
+  );
+  owner.start();
+  try {
+    return await owner.completion;
+  } finally {
+    owner.dispose();
+  }
+}
+
 void main() {
+  for (final failLater in [false, true]) {
+    testWidgets(
+      'a checkpoint whose formal row is on a later ${failLater ? 'failed' : 'pending'} batch cannot be discarded as a local-only row',
+      (tester) async {
+        final repo = _ProgressivePurchaseRepository()..detailStatus = 1;
+        final checkpoint = _draft(
+          'checkpoint',
+          kind: 'purchaseOrder',
+          created: 'later',
+        );
+        final drafts = _Drafts([checkpoint]);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'draft-progress'),
+              ),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.purchaseOrderView,
+                Perm.purchaseOrderDelete,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+              sessionSnapshotProvider.overrideWith(_Snapshot.new),
+              documentScopeCapabilityProvider(
+                DocumentDataScope.purchase,
+              ).overrideWith(
+                (ref) async => const DocumentScopeCapability(
+                  scope: 'purchase',
+                  writeAll: true,
+                  writableOwnerIds: {},
+                ),
+              ),
+              masterNameServiceProvider.overrideWith((ref) => _Names()),
+              purchaseRepositoryProvider(
+                PurchaseDocType.order,
+              ).overrideWithValue(repo),
+              formDraftsProvider.overrideWith(() => drafts),
+              fixedBadgeSummaryOverride(),
+            ],
+            child: const MaterialApp(
+              home: Scaffold(
+                body: DraftWorkspaceTable(
+                  kinds: [DraftDocKind.purchaseOrder],
+                  localScope: FormDraftCategoryScope(
+                    module: BadgeModule.finance,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        final local = _table(
+          tester,
+        ).items.singleWhere((row) => row.local != null);
+        expect(local.kind, isNull);
+        expect(_table(tester).idOf!(local), isNull);
+        expect(_table(tester).onSelectedIdsChanged, isNull);
+        expect(drafts.deleted, isEmpty);
+        expect(repo.deleted, isEmpty);
+        if (failLater) {
+          repo.later.completeError(NetworkException('offline'));
+          await tester.pumpAndSettle();
+          expect(_table(tester).idOf!(local), isNull);
+          expect(_table(tester).onSelectedIdsChanged, isNull);
+          expect(drafts.state.single.id, checkpoint.id);
+          expect(drafts.deleted, isEmpty);
+          expect(repo.deleted, isEmpty);
+        } else {
+          repo.later.complete(
+            const PagedResult(
+              items: [
+                PurchaseDocListItem(id: 'later', billNo: '后页正式草稿', status: 0),
+              ],
+              page: 2,
+              size: 1,
+              total: 2,
+              totalPages: 2,
+            ),
+          );
+          await tester.pumpAndSettle();
+          final formal = _table(
+            tester,
+          ).items.singleWhere((row) => row.id == 'later');
+          expect(formal.kind, DraftDocKind.purchaseOrder);
+          expect(formal.local, same(checkpoint));
+          _table(tester).onSelectedIdsChanged!({formal.key});
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('删除所选草稿 (1)'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('确认删除'));
+          await tester.pumpAndSettle();
+          expect(repo.detailReads, ['later']);
+          expect(repo.deleted, isEmpty);
+          expect(
+            drafts.deleted,
+            isEmpty,
+            reason:
+                'The formal status changed: its existing authoritative guard runs before local CAS discard.',
+          );
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  test(
+    'an identity change retires the old owner and its pending later page',
+    () async {
+      var identity = const AuthenticatedScope(userId: 'reader-a');
+      final signal = Provider<AuthenticatedScope>((ref) => identity);
+      final first = _ProgressivePurchaseRepository(firstId: 'a-first');
+      final second = _ProgressivePurchaseRepository(firstId: 'b-first');
+      final container = ProviderContainer(
+        overrides: [
+          authenticatedScopeProvider.overrideWith((ref) => ref.watch(signal)),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.purchaseOrderView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          sessionSnapshotProvider.overrideWith(_Snapshot.new),
+          masterNameServiceProvider.overrideWith((ref) => _Names()),
+          purchaseRepositoryProvider(PurchaseDocType.order).overrideWith(
+            (ref) => ref.watch(authenticatedScopeProvider)?.userId == 'reader-a'
+                ? first
+                : second,
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(
+        draftWorkspaceSnapshotProvider(DraftDocKind.purchaseOrder),
+        (_, _) {},
+      );
+      final old = container.read(
+        draftWorkspaceReadProvider(DraftDocKind.purchaseOrder),
+      );
+      await old.firstPage;
+      expect(old.snapshot.rows.single.id, 'a-first');
+      identity = const AuthenticatedScope(userId: 'reader-b');
+      container.invalidate(signal);
+      await container.pump();
+      final current = container.read(
+        draftWorkspaceReadProvider(DraftDocKind.purchaseOrder),
+      );
+      await current.firstPage;
+      expect(old.current, isFalse);
+      expect(current.snapshot.rows.single.id, 'b-first');
+      first.later.complete(
+        const PagedResult(
+          items: [
+            PurchaseDocListItem(id: 'a-late', billNo: '旧身份后页', status: 0),
+          ],
+          page: 2,
+          size: 1,
+          total: 2,
+          totalPages: 2,
+        ),
+      );
+      await container.pump();
+      expect(current.snapshot.rows.map((row) => row.id), ['b-first']);
+      second.later.complete(
+        const PagedResult(
+          items: [
+            PurchaseDocListItem(id: 'b-late', billNo: '当前身份后页', status: 0),
+          ],
+          page: 2,
+          size: 1,
+          total: 2,
+          totalPages: 2,
+        ),
+      );
+      expect((await current.completion).map((row) => row.id), [
+        'b-first',
+        'b-late',
+      ]);
+      expect(first.requested, [1, 2]);
+      expect(second.requested, [1, 2]);
+    },
+  );
+
+  testWidgets(
+    'first draft page and local inputs render before complete global search and facets',
+    (tester) async {
+      final repo = _ProgressivePurchaseRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'draft-progress'),
+            ),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.purchaseOrderView,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            sessionSnapshotProvider.overrideWith(_Snapshot.new),
+            masterNameServiceProvider.overrideWith((ref) => _Names()),
+            purchaseRepositoryProvider(
+              PurchaseDocType.order,
+            ).overrideWithValue(repo),
+            formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
+            fixedBadgeSummaryOverride(),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: DraftWorkspaceTable(
+                kinds: [DraftDocKind.purchaseOrder],
+                localScope: FormDraftCategoryScope(module: BadgeModule.finance),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        _table(tester).items.map((row) => row.key),
+        containsAll(['purchaseOrder:first', 'local:local']),
+      );
+      expect(_table(tester).facets, isEmpty);
+      expect(_table(tester).columns.first.info, contains('后续草稿'));
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DraftWorkspaceTable)),
+      );
+      var completed = false;
+      final completeRows = container.read(
+        draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder).future,
+      );
+      unawaited(
+        completeRows.then<void>((_) {
+          completed = true;
+        }),
+      );
+      tester
+          .widget<UtenFilterToolbar<String>>(
+            find.byType(UtenFilterToolbar<String>),
+          )
+          .onSearchChanged!('后页目标');
+      await tester.pump();
+      expect(_table(tester).items, isEmpty);
+      expect(_table(tester).emptyMessage, '正在检索后续草稿');
+      expect(completed, isFalse);
+
+      repo.later.complete(
+        const PagedResult(
+          items: [PurchaseDocListItem(id: 'later', billNo: '后页目标', status: 0)],
+          page: 2,
+          size: 1,
+          total: 2,
+          totalPages: 2,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect((await completeRows).map((row) => row.id), ['first', 'later']);
+      expect(_table(tester).items.single.id, 'later');
+      expect(_table(tester).facets['category']!.single.count, 1);
+      expect(repo.requested, [1, 2]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'local supplier IDs resolve through the shared dictionary and remain searchable',
     (tester) async {
@@ -265,6 +593,16 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+      final purchaseSubscription = container.listen(
+        draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder),
+        (_, _) {},
+      );
+      final subcontractSubscription = container.listen(
+        draftWorkspaceRowsProvider(DraftDocKind.subcontractOrder),
+        (_, _) {},
+      );
+      addTearDown(purchaseSubscription.close);
+      addTearDown(subcontractSubscription.close);
       final purchase = await container.read(
         draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder).future,
       );
@@ -305,6 +643,16 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+      final purchaseSubscription = container.listen(
+        draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder),
+        (_, _) {},
+      );
+      final subcontractSubscription = container.listen(
+        draftWorkspaceRowsProvider(DraftDocKind.subcontractOrder),
+        (_, _) {},
+      );
+      addTearDown(purchaseSubscription.close);
+      addTearDown(subcontractSubscription.close);
       final purchase = await container.read(
         draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder).future,
       );
@@ -366,7 +714,7 @@ void main() {
         container.read(dataWriteRevisionProvider.notifier).state++;
         // Another mounted workspace can refresh this shared source too.
         container.invalidate(
-          draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder),
+          draftWorkspaceReadProvider(DraftDocKind.purchaseOrder),
         );
       };
       await tester.pumpWidget(
@@ -404,7 +752,7 @@ void main() {
     'all pages are read even when the first server page is capped',
     () async {
       final requested = <int>[];
-      final rows = await loadAllDraftPages<int>((page) async {
+      final rows = await _readAllDraftPages<int>((page) async {
         requested.add(page);
         return PagedResult(
           items: [page],
@@ -423,7 +771,7 @@ void main() {
     'an empty intermediate page is not silently treated as the full result',
     () async {
       await expectLater(
-        loadAllDraftPages<int>(
+        _readAllDraftPages<int>(
           (page) async => PagedResult(
             items: page == 1 ? [1] : [],
             page: page,
@@ -441,7 +789,7 @@ void main() {
     'a wrong page response is rejected instead of repeating a page forever',
     () async {
       await expectLater(
-        loadAllDraftPages<int>(
+        _readAllDraftPages<int>(
           (page) async => const PagedResult(
             items: [1],
             page: 1,
@@ -529,7 +877,8 @@ void main() {
       'local:local',
       'financeExpense:formal',
     ]);
-    expect(find.textContaining('销售收款单加载失败'), findsOneWidget);
+    expect(_table(tester).columns.first.info, contains('销售收款单尚未完整读取'));
+    expect(find.text('重试'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

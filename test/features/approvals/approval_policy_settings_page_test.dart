@@ -203,18 +203,27 @@ void main() {
         find.descendant(of: field, matching: find.byType(InkWell)).first,
       );
       await tester.pumpAndSettle();
-      expect(api.candidateQueries.map((entry) => entry.query['page']), [1]);
-      final table = find.byKey(const Key('uten-employee-picker-candidates'));
-      tester
-          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
-          .onLoadMore!();
-      await tester.pumpAndSettle();
       expect(api.candidateQueries.map((entry) => entry.query['page']), [1, 2]);
+      final table = find.byKey(const Key('uten-employee-picker-candidates'));
+      final complete = tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table);
+      expect(complete.items, hasLength(101));
+      expect(complete.onLoadMore, isNull);
+      expect(complete.onPageChange, isNull);
+      expect(complete.showPaginationControls, isFalse);
+      expect(
+        complete.items.every(
+          (item) => item.departmentId == 'executive-department',
+        ),
+        isTrue,
+      );
       expect(
         api.candidateQueries.every(
           (entry) =>
               entry.path ==
-              '/approval-policy/departments/department-finance/candidates/page',
+                  '/approval-policy/departments/department-finance/candidates/page' &&
+              entry.query['size'] == 100 &&
+              !entry.query.containsKey('departmentId'),
         ),
         true,
       );
@@ -237,6 +246,9 @@ void main() {
         scrollable: scrollable,
         maxScrolls: 30,
       );
+      await tester.pumpAndSettle();
+      expect(last.hitTestable(), findsOneWidget);
+      expect(api.candidateQueries.map((entry) => entry.query['page']), [1, 2]);
       await tester.tap(last);
       await tester.pump();
       await tester.tap(find.widgetWithText(UtenButton, '确定'));
@@ -244,6 +256,10 @@ void main() {
       expect(
         tester.widget<UtenEmployeePicker>(field).initial?.id,
         'substitute-100',
+      );
+      expect(
+        tester.widget<UtenEmployeePicker>(field).initial?.departmentId,
+        'executive-department',
       );
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);

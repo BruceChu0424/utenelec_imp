@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/delivery/delivery_processing_target.dart';
+import '../../../shared/models/paged_result.dart';
 export '../../../shared/delivery/delivery_processing_target.dart';
 
 class DeliveryProcessingTask {
@@ -27,15 +28,35 @@ class DeliveryProcessingTask {
   String? value(String key) => data[key]?.toString();
 }
 
-class DeliveryProcessingPage {
+class DeliveryProcessingPage extends PagedResult<DeliveryProcessingTask> {
   const DeliveryProcessingPage(
-    this.items,
-    this.page,
-    this.totalPages,
-    this.total,
+    List<DeliveryProcessingTask> items,
+    int page,
+    int totalPages,
+    int total, {
+    super.size = 100,
+    super.readScopeVersion,
+    this.metadata = const {},
+  }) : super(items: items, page: page, total: total, totalPages: totalPages);
+
+  final Map<String, dynamic> metadata;
+
+  @override
+  DeliveryProcessingPage withRows(
+    List<DeliveryProcessingTask> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => DeliveryProcessingPage(
+    freezePagedRows(rows),
+    page,
+    totalPages ?? this.totalPages,
+    total ?? this.total,
+    size: size ?? this.size,
+    readScopeVersion: readScopeVersion,
+    metadata: metadata,
   );
-  final List<DeliveryProcessingTask> items;
-  final int page, totalPages, total;
 }
 
 class PendingDeliveryProcessingAction {
@@ -59,6 +80,7 @@ class DeliveryProcessingRepository {
   Future<DeliveryProcessingPage> list(
     String? shipmentId, {
     int page = 1,
+    int size = 100,
     String? keyword,
   }) async {
     final json = await api.get(
@@ -66,10 +88,29 @@ class DeliveryProcessingRepository {
       query: {
         'shipmentId': ?shipmentId,
         'page': page,
-        'size': 50,
+        'size': size,
         'keyword': ?keyword,
       },
     );
+    if (json['items'] is! List ||
+        [
+          'page',
+          'size',
+          'total',
+          'totalPages',
+        ].any((key) => json[key] is! int)) {
+      throw ApiException('INVALID_RESPONSE', '加工任务读取结果不完整，请刷新后重试');
+    }
+    final metadata = Map<String, dynamic>.from(json)
+      ..removeWhere(
+        (key, _) => const {
+          'items',
+          'page',
+          'size',
+          'total',
+          'totalPages',
+        }.contains(key),
+      );
     return DeliveryProcessingPage(
       [
         for (final row in json['items'] as List? ?? const [])
@@ -78,6 +119,9 @@ class DeliveryProcessingRepository {
       (json['page'] as num?)?.toInt() ?? page,
       (json['totalPages'] as num?)?.toInt() ?? 1,
       (json['total'] as num?)?.toInt() ?? 0,
+      size: (json['size'] as num?)?.toInt() ?? size,
+      readScopeVersion: json['readScopeVersion'] as String?,
+      metadata: Map.unmodifiable(metadata),
     );
   }
 

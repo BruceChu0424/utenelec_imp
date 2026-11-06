@@ -1,0 +1,195 @@
+{
+  "sealedAtUtc": "2026-11-06T00:29:36.306449+00:00",
+  "source": "c51925b87cb438f9134136cf2ad31b8d8dc40c38a6c7d0da9e7011e11ff4cb00",
+  "upstreamMainSnapshot": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "sourceFilesChecked": 7399,
+  "sourceDrift": [],
+  "executionState": "completed",
+  "actualNativeExitCode": 1,
+  "classes": 9,
+  "uniqueMethods": 34,
+  "passed": 33,
+  "failed": 0,
+  "errors": 1,
+  "skipped": 0,
+  "methodLedger": [
+    {
+      "class": "com.uten.imp.businesschain.FinanceApplicationContinuationEndToEndTest",
+      "method": "actualUpgradeFencesNewOldWorkflowAndReviewsOriginalsWithoutCashOrGl",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.InventoryValueOutputRefreshContinuationPostgresTest",
+      "method": "sameConfirmedDocumentResumesItsOriginalRootWithoutRepricingOrInventingSourceFacts",
+      "status": "error"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceReviewReadOnlyEndToEndTest",
+      "method": "independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceReviewReadOnlyEndToEndTest",
+      "method": "pendingPurchaseIsFrozenAndApprovalPreservesAmountsAndSourceAllocationExactlyOnce",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementFinanceReviewReadOnlyEndToEndTest",
+      "method": "pendingTotalPricedPurchaseKeepsItsReviewCaseAndOriginalEvidenceAcrossAnExplicitQuantityRevision",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "method": "closedFulfilledOrder735CanRetainActualPrepayment1000AndUnapplied265",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "method": "shipmentBatchCompanyFeeKeepsGrossSettlementAndRejectsUnrelatedOrderSource",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "method": "shipmentBatchPartial400Then600ReplaysAndReversesExactBalance",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ReceiptExplicitOrderLifecyclePostgresTest",
+      "method": "orderBoundPrepaymentChangesThisBatchOnlyAfterActualOffset",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "method": "baseCurrencyReleaseIsAlwaysOneAndRejectsAnyOtherRate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "method": "financeFillsTheRecognitionRateAtReleaseAndTheWarehousePostsReceivablesWithIt",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "method": "financeAuditInfoCarriesTheActionsTheCurrentUserCanTakeNow",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "method": "standardPaymentMethodsAreSeededWhenNoConfirmedLegacyMethodExists",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.StandardFinanceApprovalReadOnlyEndToEndTest",
+      "method": "expenseIncomeAndTransferApprovalsPreserveOriginalAmountsOwnerAndPlatformFields",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.StandardFinanceApprovalReadOnlyEndToEndTest",
+      "method": "receiptReviewerCannotChangeAmountsAndApprovalPostsOnlyTheOriginalAmountThenReverses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.StandardFinanceApprovalReadOnlyEndToEndTest",
+      "method": "paymentReviewerCannotChangeAmountsAndOriginalBankDebitIsReversible",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.StandardFinanceApprovalReadOnlyEndToEndTest",
+      "method": "approvalAuthorityDoesNotDiscoverOtherwiseHiddenFinancialDrafts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "originalTravelPathHasThreeDistinctStepsNoCashAndFrozenSignaturesAndDurableReplay",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "guessingAnOriginalPayableUuidDoesNotBypassItsExistingReadPermission",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "method": "originalPayrollHrFinanceManagementPathPaysOnceConfirmsAndReversesOnlyActualPayment",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "confirmedExpenseSurvivesRejectedPeriodRegenerationByteForByte",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "approveWinsAndWaitingDeletesObserveTheApprovedStateAcrossAllDocuments",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "pendingExpenseConfirmationStaysActiveAcrossPagingFacetsScopeAndRealConfirmation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "localOnlyExpenseAndIncomeRejectHeaderCurrencyOrRateContradictingTheBaseAccount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "localOnlyExpenseAndIncomeRejectAnActiveForeignCurrencyAccount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "receiptGlAndAccountFlowsFinalizeThenReverseWithoutMutableBypasses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "deleteWinsAndWaitingApprovalsObserveTheSoftDeleteAcrossAllDocuments",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "method": "multiCurrencyReceiptPostsNetAndReverses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyFlywayVersionIdentityPostgresTest",
+      "method": "completeCompoundHistoryAndEverySignificantIdentityStillFailClosed",
+      "status": "passed"
+    }
+  ],
+  "failedClass": "InventoryValueOutputRefreshContinuationPostgresTest",
+  "failureClassification": "Observed postgres16 Testcontainers ready-log timeout during DynamicPropertySource before Spring/case body. Last logged initdb post-bootstrap initialization ok; no observed OOM or business assertion. Container auto removed; underlying host/resource causation not asserted.",
+  "businessCaseNotExecuted": true,
+  "originalWholeNativeRedRetained": true,
+  "newerMainNotComposed": "fa657181a42ec750d97d5e5f7d37723d91067e51, announced after this snapshot run completed; preserve clocks; do not apply6fb pins to newMain",
+  "next": "New Main composition/compile/appropriate affected whole validation must precede final acceptance. Old failed inventory class can be retested once under proper new source, retaining this native1.",
+  "mainWritten": false,
+  "companyDbWritten": false
+}

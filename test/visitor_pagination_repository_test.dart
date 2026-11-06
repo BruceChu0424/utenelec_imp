@@ -8,6 +8,54 @@ import 'package:uten_imp/features/visitor/repositories/visitor_staff_repository.
 
 void main() {
   test(
+    'selected-minute conflict reads one boolean and never walks application pages',
+    () async {
+      final requests = <RequestOptions>[];
+      var exists = true;
+      final repository = DioVisitorRepository(
+        _api((request) {
+          requests.add(request);
+          return {'exists': exists};
+        }),
+        SecureStorage(const FlutterSecureStorage()),
+      );
+      expect(
+        await repository.hasActiveApplicationAt(
+          DateTime.utc(2026, 11, 4),
+        ),
+        isTrue,
+      );
+      expect(requests, hasLength(1));
+      expect(requests.single.path, '/visitor/applications/active-at');
+      expect(requests.single.queryParameters, {
+        'plannedVisitAt': '2026-11-03T16:00:00.000Z',
+      });
+      exists = false;
+      expect(
+        await repository.hasActiveApplicationAt(
+          DateTime.utc(2026, 11, 4, 0, 1),
+        ),
+        isFalse,
+      );
+      expect(requests, hasLength(2));
+    },
+  );
+
+  test(
+    'missing conflict result remains a failure instead of being treated as no conflict',
+    () async {
+      final repository = DioVisitorRepository(
+        _api((_) => <String, Object?>{}),
+        SecureStorage(const FlutterSecureStorage()),
+      );
+      await expectLater(
+        repository.hasActiveApplicationAt(DateTime.utc(2026, 11, 4)),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
     'column queries remain server criteria and phone searches stay in a body',
     () async {
       final requests = <RequestOptions>[];

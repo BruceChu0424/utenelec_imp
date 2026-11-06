@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/visitor_column_query.dart';
 import '../models/visitor.dart';
 import '../models/visitor_application.dart';
@@ -75,6 +76,7 @@ abstract class VisitorRepository {
     bool ascending = true,
   });
   Future<List<VisitorApplication>> activeApplications();
+  Future<bool> hasActiveApplicationAt(DateTime wallTime);
   Future<VisitorApplicationDetail> getApplication(String id);
   Future<VisitorApplication> submit(Map<String, dynamic> body);
 
@@ -154,6 +156,21 @@ class DioVisitorRepository implements VisitorRepository {
       response,
       VisitorApplication.fromJson,
     );
+  }
+
+  @override
+  Future<bool> hasActiveApplicationAt(DateTime wallTime) async {
+    final result = await _api.get(
+      '${ApiEndpoints.visitorApplications}/active-at',
+      query: {
+        'plannedVisitAt': ChinaDateTime.wallTimeToUtc(
+          wallTime,
+        ).toIso8601String(),
+      },
+    );
+    final exists = result['exists'];
+    if (exists is! bool) throw const FormatException('预约核验响应无效');
+    return exists;
   }
 
   @override

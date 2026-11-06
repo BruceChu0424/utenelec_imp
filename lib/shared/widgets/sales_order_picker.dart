@@ -73,6 +73,9 @@ class _SalesOrderPickerSheet extends ConsumerStatefulWidget {
 class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
     with ScopedPagedReadViewMixin<_SalesOrderPickerSheet> {
   @override
+  Future<void> onReadViewResumed() => _load(1, reconcileSelection: true);
+
+  @override
   void scopedPagedReadOwnerChanged() {
     _loadGeneration++;
     if (mounted) {
@@ -145,7 +148,11 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
     }
   }
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool reconcileSelection = false,
+  }) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     setState(() {
@@ -186,7 +193,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                   '/finance/receipts/order-sources',
                   query: {
                     'page': target,
-                    'size': 20,
+                    'size': 100,
                     if (filter.keyword?.trim().isNotEmpty == true)
                       'keyword': filter.keyword,
                     'sellerId': ?filter.sellerId,
@@ -202,6 +209,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
           }
           return repository.list(
             page: target,
+            size: 100,
             filter: filter,
             sort: sort,
             order: order,
@@ -211,15 +219,20 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _page = r;
+        if (reconcileSelection && _picked != null) {
+          _picked = r.items.where((row) => row.id == _picked!.id).firstOrNull;
+        }
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = '加载销售订单失败';
@@ -365,7 +378,9 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                   pagination: UtenPickerPageControls(controller: _pickerRows),
                   selectedCount: _picked == null ? 0 : 1,
                   selectedLabel: _picked?.billNo,
-                  onConfirm: () => Navigator.of(context).pop(_picked),
+                  onConfirm: _loading || _error != null
+                      ? null
+                      : () => Navigator.of(context).pop(_picked),
                 ),
               ],
             ),

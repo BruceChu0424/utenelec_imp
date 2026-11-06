@@ -199,6 +199,8 @@ class ProductionExecutionWorkbenchSegment {
     required this.plannedQty,
     required this.reportedQty,
     required this.remainingReportQty,
+    this.remainingReportQtyExact,
+    this.remainingReportQtyKnown = true,
     required this.fqcPendingQty,
     required this.fqcPassedQty,
     required this.fqcFailedQty,
@@ -319,6 +321,13 @@ class ProductionExecutionWorkbenchSegment {
   final double plannedQty;
   final double reportedQty;
   final double remainingReportQty;
+  final String? remainingReportQtyExact;
+  final bool remainingReportQtyKnown;
+  String? get remainingReportQtyText => remainingReportQtyKnown
+      ? productionExactQuantityText(
+          remainingReportQtyExact ?? remainingReportQty,
+        )
+      : null;
   final double fqcPendingQty;
   final double fqcPassedQty;
   final double fqcFailedQty;
@@ -548,6 +557,14 @@ class ProductionExecutionWorkbenchSegment {
     plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
     reportedQty: (json['reportedQty'] as num?)?.toDouble() ?? 0,
     remainingReportQty: (json['remainingReportQty'] as num?)?.toDouble() ?? 0,
+    remainingReportQtyExact: productionExactQuantityText(
+      json['remainingReportQtyExact'] ?? json['remainingReportQty'],
+    ),
+    remainingReportQtyKnown: json.containsKey('remainingReportQtyExact')
+        ? json['remainingReportQtyExact'] is String &&
+              productionExactQuantityText(json['remainingReportQtyExact']) !=
+                  null
+        : productionExactQuantityText(json['remainingReportQty']) != null,
     fqcPendingQty: (json['fqcPendingQty'] as num?)?.toDouble() ?? 0,
     fqcPassedQty: (json['fqcPassedQty'] as num?)?.toDouble() ?? 0,
     fqcFailedQty: (json['fqcFailedQty'] as num?)?.toDouble() ?? 0,

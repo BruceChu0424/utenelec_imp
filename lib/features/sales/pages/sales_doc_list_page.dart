@@ -136,7 +136,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         DraftBulkDeleteMixin<SalesDocListPage>,
         UtenRefreshParticipant<SalesDocListPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
-  var _list = PagedListController<SalesDocListItem>();
+  var _list = PagedListController<SalesDocListItem>(idOf: (row) => row.id);
   final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
   int _reloadGeneration = 0;
   int _statsGeneration = 0;
@@ -337,7 +337,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _statsGeneration++;
     clearDraftSelection();
     _list.dispose();
-    _list = PagedListController<SalesDocListItem>();
+    _list = PagedListController<SalesDocListItem>(idOf: (row) => row.id);
     _columnFilters.reset();
     _stage = null;
     _statusSeg = null;
@@ -593,7 +593,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<SalesDocListItem>> _fetch([
     int? requestedPage,
-    bool preferPrepared = false,
+    int batchSize = 100,
   ]) async {
     final names = ref.read(salesMasterNameServiceProvider);
     final current = captureReadOwner(ref);
@@ -602,12 +602,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         .read(salesRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: batchSize,
           filter: _docFilter(),
           sort: _shippableFirst && !_isHistory ? 'shippable' : _list.sortKey,
           order: _shippableFirst && !_isHistory || _list.sortKey == null
               ? null
               : _list.sortOrder,
-          preferPrepared: preferPrepared,
         );
     if (!current()) throw StateError('读取作用域已变化');
     unawaited(
@@ -663,9 +663,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     int? page,
     bool silent = false,
     bool useCachedPage = false,
-    bool preferPrepared = false,
   ]) => trackRefresh(
-    _reloadRows(page, silent, useCachedPage, preferPrepared),
+    _reloadRows(page, silent, useCachedPage),
     replaceKey: 'rows',
   );
 
@@ -673,7 +672,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     int? page,
     bool silent = false,
     bool useCachedPage = false,
-    bool preferPrepared = false,
   ]) async {
     final cacheQuery = _pageQueryScope;
     final ownerCurrent = captureReadOwner(ref);
@@ -698,8 +696,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     await _list.load(
       page ?? _list.pageNum,
       silent: silent,
-      fetch: () => _fetch(null, preferPrepared),
-      fetchPage: (target) => _fetch(target, preferPrepared),
+      fetch: () => _fetch(),
+      fetchPage: (target) => _fetch(target),
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -772,7 +771,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         _historyTime = const UtenHistoryTimeValue.all();
       }
     });
-    _reload(1, false, false, !seg.history);
+    _reload(1);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
@@ -1294,14 +1293,21 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       context,
       SalesRoutePath.list(_cfg.type.pathSegment),
     );
-    ref.onPageResume(_myLocation!, () {
+    FutureOr<void> visibleReadReturn() {
       return _list.revalidate(
         Future.wait([
           _reload(null, true),
           if (_isOrder) _loadStats(),
         ]).then((_) {}),
       );
-    }, refreshKeys: [_cfg.refreshKey]);
+    }
+
+    _list.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(
+      _myLocation!,
+      visibleReadReturn,
+      refreshKeys: [_cfg.refreshKey],
+    );
     final seg = _statusSeg;
     // 报价分段/状态文字走 arb(ADR-134)；其它单据沿用原有文案。
     final l10n = _quoteStaged ? AppLocalizations.of(context) : null;
@@ -1619,7 +1625,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       totalPages: _list.totalPages,
                       paginationRevision: _list.paginationRevision,
                       refreshedPages: _list.refreshedPages,
-                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         widget.docType,
                         _list.normalizedKeyword,

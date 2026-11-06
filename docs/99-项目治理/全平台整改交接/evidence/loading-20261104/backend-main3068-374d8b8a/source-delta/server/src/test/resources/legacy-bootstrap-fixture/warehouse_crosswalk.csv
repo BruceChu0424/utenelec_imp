@@ -1,0 +1,4 @@
+legacy_id|legacy_code|legacy_name|action|target_code|target_name|target_defective|note
+900200|SYN-MAIN|合成主仓|SPLIT|001|合成主仓|false|合成首导回归样本：老库主仓，明细与余额按货品所属子仓拆分
+900201|SYN-WH|合成仓库|KEEP|SYN-WH|合成仓库|false|合成首导回归样本：子仓
+910201|||DROP||||合成首导回归样本：老库已删除的仓，落在上面的单据与余额不迁

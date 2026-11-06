@@ -43,6 +43,13 @@ final class FulfillmentWorkbenchPageRead {
     static String sql(String source, String baseFilter, String statusFilter,
                       String exceptionFilter, String dateFilter, String orderBy,
                       String department, FulfillmentWorkbenchTableQuery table) {
+        return sql(source,baseFilter,statusFilter,exceptionFilter,dateFilter,orderBy,department,table,Map.of(),"");
+    }
+
+    static String sql(String source, String baseFilter, String statusFilter,
+                      String exceptionFilter, String dateFilter, String orderBy,
+                      String department, FulfillmentWorkbenchTableQuery table,
+                      Map<String,String> pageValues, String pageJoins) {
         String selected = statusFilter + " AND " + exceptionFilter + " AND " + dateFilter;
         String tableFilters = table == null ? "" : table.rangeSql() + table.filterSql(null);
         String statusKey = "SUBCONTRACT".equals(department)
@@ -56,9 +63,9 @@ final class FulfillmentWorkbenchPageRead {
         } else {
             facetRows = "SELECT NULL::text AS key, NULL::text AS value, NULL::text AS label, 0::bigint AS task_count WHERE FALSE";
         }
-        String pageColumns = java.util.Arrays.stream(ROW_COLUMNS.split(","))
-                .map(column -> "page_rows." + column.strip())
-                .collect(java.util.stream.Collectors.joining(", "));
+        String pageColumns = pageColumns(pageValues);
+        // Preserve one materialized authorized projection and its broad category authority.
+        // Aggregate the independent cards once, retaining own-filter exclusions and SQL NULL rules.
         return """
                 WITH candidates AS MATERIALIZED (SELECT * FROM %s WHERE %s),
                 selected_rows AS MATERIALIZED (SELECT * FROM candidates WHERE %s%s),
@@ -71,21 +78,27 @@ final class FulfillmentWorkbenchPageRead {
                            COUNT(*) FILTER (WHERE open_line_count>0) AS open_tasks,
                            COALESCE(SUM(open_qty),0) AS open_qty
                     FROM selected_rows
+                ), metadata_groups AS MATERIALIZED (
+                    SELECT %s AS status_key, exception_code,
+                           (%s) AS include_status, (%s) AS include_exception,
+                           COUNT(*) AS task_count,
+                           COUNT(*) FILTER (WHERE open_line_count>0) AS pending_count
+                    FROM candidates GROUP BY 1,2,3,4
                 ), status_rows AS (
-                    SELECT %s AS status_key, COUNT(*) AS task_count
-                    FROM candidates WHERE %s GROUP BY 1
+                    SELECT status_key, SUM(task_count)::bigint AS task_count
+                    FROM metadata_groups WHERE include_status GROUP BY status_key
                 ), status_counts AS (
                     SELECT COALESCE(json_object_agg(status_key,task_count ORDER BY status_key),'{}'::json)::text AS counts
                     FROM status_rows
                 ), exception_rows AS (
-                    SELECT exception_code, COUNT(*) AS task_count
-                    FROM candidates WHERE %s AND exception_code IS NOT NULL GROUP BY exception_code
+                    SELECT exception_code, SUM(task_count)::bigint AS task_count
+                    FROM metadata_groups WHERE include_exception AND exception_code IS NOT NULL GROUP BY exception_code
                 ), exception_counts AS (
                     SELECT COALESCE(json_object_agg(exception_code,task_count ORDER BY exception_code),'{}'::json)::text AS counts
                     FROM exception_rows
                 ), pending_count AS (
-                    SELECT COUNT(*) FILTER (WHERE open_line_count>0) AS task_count
-                    FROM candidates WHERE %s
+                    SELECT COALESCE(SUM(pending_count),0)::bigint AS task_count
+                    FROM metadata_groups WHERE include_status
                 ), facet_rows AS (%s), facet_values AS (
                     SELECT COALESCE(jsonb_agg(jsonb_build_array(key,value,label,task_count)
                            ORDER BY key,value NULLS LAST),'[]'::jsonb)::text AS buckets FROM facet_rows
@@ -101,9 +114,38 @@ final class FulfillmentWorkbenchPageRead {
                             THEN facet_values.buckets END AS page_facets
                 FROM page_summary CROSS JOIN status_counts CROSS JOIN exception_counts
                 CROSS JOIN pending_count CROSS JOIN facet_values LEFT JOIN page_rows ON TRUE
+                %s
                 ORDER BY page_rows.page_position NULLS LAST
                 """.formatted(source, baseFilter, selected, tableFilters, ROW_COLUMNS, orderBy, orderBy,
-                    statusKey, exceptionFilter, statusFilter, exceptionFilter, facetRows, pageColumns);
+                    statusKey, exceptionFilter, statusFilter, facetRows, pageColumns, pageJoins);
+    }
+
+    private static String pageColumns(Map<String,String> pageValues) {
+        return java.util.Arrays.stream(ROW_COLUMNS.split(","))
+                .map(column -> {
+                    String key=column.strip();
+                    return pageValues.containsKey(key)?"("+pageValues.get(key)+") AS "+key:"page_rows."+key;
+                }).collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /** Continuation response: exact selected count and rows, no broad summary/facet evaluation. */
+    static String rowsOnlySql(String source,String baseFilter,String statusFilter,String exceptionFilter,
+            String dateFilter,String orderBy,FulfillmentWorkbenchTableQuery table,
+            Map<String,String> pageValues,String pageJoins) {
+        String selected=statusFilter+" AND "+exceptionFilter+" AND "+dateFilter;
+        String tableFilters=table==null?"":table.rangeSql()+table.filterSql(null);
+        return """
+                WITH selected_rows AS MATERIALIZED (
+                  SELECT %s,ROW_NUMBER() OVER(ORDER BY %s) AS page_position
+                  FROM %s WHERE %s AND %s%s
+                ), page_rows AS (
+                  SELECT * FROM selected_rows ORDER BY page_position LIMIT :limit OFFSET :offset
+                ), page_total AS (SELECT COUNT(*) AS total FROM selected_rows)
+                SELECT %s,page_total.total FROM page_total LEFT JOIN page_rows ON TRUE
+                %s
+                ORDER BY page_rows.page_position NULLS LAST
+                """.formatted(ROW_COLUMNS,orderBy,source,baseFilter,selected,tableFilters,
+                        pageColumns(pageValues),pageJoins);
     }
 
     /** 每列一组候选桶: 该列自身的表头筛选不参与自己的桶(选定时仍看全量分布)。 */

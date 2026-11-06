@@ -128,13 +128,16 @@ class UtenEmployeePickerPage {
     required this.items,
     required this.page,
     required this.totalPages,
+    this.total,
   });
   const UtenEmployeePickerPage.empty({this.page = 1})
     : items = const [],
-      totalPages = 0;
+      totalPages = 0,
+      total = 0;
   final List<UtenEmployeePickerItem> items;
   final int page;
   final int totalPages;
+  final int? total;
 }
 
 typedef UtenEmployeePickerPagedLoader =

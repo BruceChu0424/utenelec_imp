@@ -68,6 +68,9 @@ class _ColorPageState extends ConsumerState<ColorPage>
     with
         MasterInlinePageMixin<ColorPage, ColorListItem>,
         ScopedPagedReadViewMixin<ColorPage> {
+  @override
+  Future<void> onReadViewResumed() => _loadColors(1);
+
   final _readViewportRows = MasterDataTableRowsController<ColorListItem>();
   int get _visibleReadPage => _page == null
       ? (_pageNum)
@@ -262,6 +265,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {
@@ -271,7 +275,8 @@ class _ColorPageState extends ConsumerState<ColorPage>
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation)) {

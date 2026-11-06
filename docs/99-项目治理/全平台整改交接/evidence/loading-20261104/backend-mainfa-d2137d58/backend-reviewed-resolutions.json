@@ -1,0 +1,54 @@
+{
+  "createdAtUtc": "2026-11-06T00:45:27.728073+00:00",
+  "mainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "reviewedMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+      "reviewedMainSha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c",
+      "resolvedCandidateSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Retain exact latest fa Main business constraints, original Task top-level product/JIT/full physical-row optimization and original alias/precision/RESTORE assertions; README preserves cancelled release/server update and actual1013/head1074/return1073.",
+      "reviewedCommittedMainSha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c",
+      "previousReviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "previousResolvedTaskSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "reviewedMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+      "reviewedMainSha256": "84fb0c4dec4d67c522284263f1bb34ab109eb62df6aa86466ee9b4af3d65ff5e",
+      "resolvedCandidateSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Retain exact latest fa Main business constraints, original Task top-level product/JIT/full physical-row optimization and original alias/precision/RESTORE assertions; README preserves cancelled release/server update and actual1013/head1074/return1073.",
+      "reviewedCommittedMainSha256": "84fb0c4dec4d67c522284263f1bb34ab109eb62df6aa86466ee9b4af3d65ff5e",
+      "previousReviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "previousResolvedTaskSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "reviewedMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+      "reviewedMainSha256": "4bcb9076e8badc06bcd577f7b2e5d37b71f024fad48dfea6c408fd61bf41fc4b",
+      "resolvedCandidateSha256": "503d4681ed470595e7a725e8d0906d16eaecce15ce7adf1802c61fb2e79ae76c",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Retain exact latest fa Main business constraints, original Task top-level product/JIT/full physical-row optimization and original alias/precision/RESTORE assertions; README preserves cancelled release/server update and actual1013/head1074/return1073.",
+      "reviewedCommittedMainSha256": "4bcb9076e8badc06bcd577f7b2e5d37b71f024fad48dfea6c408fd61bf41fc4b",
+      "previousReviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "previousResolvedTaskSha256": "503d4681ed470595e7a725e8d0906d16eaecce15ce7adf1802c61fb2e79ae76c"
+    },
+    {
+      "path": "docs/数据迁移/README.md",
+      "reviewedMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+      "reviewedMainSha256": "09ef61c29088ea542531815e9250cd911ba62589a77ec23b10290feabf6ead81",
+      "resolvedCandidateSha256": "2c9be2b190b8ef488d37250df65d39af7da8d1ba4493e529dff5bf1532492618",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Retain exact latest fa Main business constraints, original Task top-level product/JIT/full physical-row optimization and original alias/precision/RESTORE assertions; README preserves cancelled release/server update and actual1013/head1074/return1073.",
+      "reviewedCommittedMainSha256": "09ef61c29088ea542531815e9250cd911ba62589a77ec23b10290feabf6ead81",
+      "previousReviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "previousResolvedTaskSha256": "8a62a2445fbfde62c5ddba0f945bee4debb4232d315373a23c7e28e735f6c824"
+    }
+  ],
+  "sameMain1058Sha256": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a",
+  "oldExec1057": "Moved to final1074 with original body byte-exact; actual Main1009 raw unchanged; candidate1013/head1074/return1073; redundant unapplied expense candidate retired under Main1068 semantic proof.",
+  "previousManifestSha256": "824384c47f2a1d05a6799f894db6c6cd7b813ada3e20127dcebeeffa3da7802b",
+  "latestCompositionReceiptSha256": "087075a0165d5bd230314834faa9cd34c2ebc47bb855b147fce3690607b99a61"
+}

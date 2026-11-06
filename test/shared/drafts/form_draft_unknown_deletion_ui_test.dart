@@ -121,8 +121,8 @@ Future<void> _mount(
             writableOwnerIds: {},
           ),
         ),
-        draftWorkspaceRowsProvider(DraftDocKind.purchaseOrder).overrideWith(
-          (ref) async => [
+        draftWorkspaceReadProvider(DraftDocKind.purchaseOrder).overrideWith(
+          (ref) => DraftWorkspaceRead.fromRows([
             if (repo?.deletes.isEmpty ?? true)
               const DraftWorkspaceRow(
                 kind: DraftDocKind.purchaseOrder,
@@ -132,7 +132,7 @@ Future<void> _mount(
                 billNo: 'PO-1',
                 deletable: true,
               ),
-          ],
+          ]),
         ),
       ],
       child: MaterialApp(

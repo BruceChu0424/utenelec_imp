@@ -310,7 +310,7 @@ HrReconcilePlanSummaryPage _recordsPage(
   ],
   'page': page,
   'size': 50,
-  'total': totalPages == 1 ? ids.length : 51,
+  'total': ids.length * totalPages,
   'totalPages': totalPages,
 });
 
@@ -1441,7 +1441,7 @@ void main() {
   }
 
   testWidgets(
-    'records paginate to older completed plans and open read-only details',
+    'all records complete once and older completed plans open read-only details',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
       tester.view.devicePixelRatio = 1;
@@ -1476,32 +1476,16 @@ void main() {
         find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
         findsOneWidget,
       );
-      var pager = tester.widget<UtenGridPager>(
-        find.byKey(const Key('hr-reconcile-records-pager')),
-      );
-      expect(pager.onPrev, isNull);
-      final pageInput = find.descendant(
-        of: find.byKey(const Key('hr-reconcile-records-pager')),
-        matching: find.byType(TextFormField),
-      );
-      await tester.enterText(pageInput, '2');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
+      expect(find.byType(UtenGridPager), findsNothing);
       expect(repo.recordPagesRequested, [1, 2]);
       expect(
         find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
         findsOneWidget,
       );
-      pager = tester.widget<UtenGridPager>(
-        find.byKey(const Key('hr-reconcile-records-pager')),
-      );
-      expect(pager.currentPage, 2);
-      expect(pager.onNext, isNull);
-      expect(pager.onPrev, isNotNull);
       await tester.tap(
         find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
       );
@@ -1515,19 +1499,15 @@ void main() {
     },
   );
 
-  testWidgets('records page failure can retry the same page', (tester) async {
+  testWidgets('incomplete records can retry the whole authorized query', (
+    tester,
+  ) async {
     final repo = _FakeRepo(HrReconcilePlan.fromJson(_planJson(rows: const [])))
       ..recordPages[1] = _recordsPage(1, ['newer-plan'], totalPages: 2)
       ..recordPages[2] = _recordsPage(2, ['older-plan'], totalPages: 2)
       ..recordPageErrors[2] = StateError('failed page');
     await _pump(tester, repo: repo);
     await tester.tap(find.byKey(const Key('hr-reconcile-records')));
-    await tester.pumpAndSettle();
-    tester
-        .widget<UtenGridPager>(
-          find.byKey(const Key('hr-reconcile-records-pager')),
-        )
-        .onNext!();
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
@@ -1536,7 +1516,7 @@ void main() {
     repo.recordPageErrors.remove(2);
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
-    expect(repo.recordPagesRequested, [1, 2, 2]);
+    expect(repo.recordPagesRequested, [1, 2, 1, 2]);
     expect(
       find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
       findsOneWidget,

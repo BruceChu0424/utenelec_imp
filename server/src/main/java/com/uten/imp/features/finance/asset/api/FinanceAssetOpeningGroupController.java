@@ -22,4 +22,11 @@ public class FinanceAssetOpeningGroupController {
     @PostMapping("/{id}/approve") @PreAuthorize("hasAuthority('finance_asset:approve')") public Map<String,Object> approve(@PathVariable UUID id,@Valid @RequestBody AssetOpeningGroupContracts.Action input){return service.approve(id,input);}
     @PostMapping("/{id}/revoke") @PreAuthorize("hasAuthority('finance_asset:edit')") public Map<String,Object> revoke(@PathVariable UUID id,@Valid @RequestBody AssetOpeningGroupContracts.Action input){return service.requestRevoke(id,input);}
     @PostMapping("/{id}/approve-revoke") @PreAuthorize("hasAuthority('finance_asset:approve')") public Map<String,Object> approveRevoke(@PathVariable UUID id,@Valid @RequestBody AssetOpeningGroupContracts.Action input){return service.approveRevoke(id,input);}
+
+    @GetMapping("/summaries") @PreAuthorize("hasAuthority('finance_asset:view')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(
+            @RequestParam(defaultValue="all") String scope,@RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="100") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return service.summaries(scope,page,size,readSnapshotRevision);
+    }
 }

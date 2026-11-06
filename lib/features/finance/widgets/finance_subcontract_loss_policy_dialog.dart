@@ -15,6 +15,9 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'finance_source_table.dart';
@@ -22,11 +25,6 @@ import 'finance_source_table.dart';
 const _base = '/finance/subcontract-loss-policies';
 Map<String, dynamic> _map(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : {};
-List<Map<String, dynamic>> _maps(Object? value) => [
-  if (value is List)
-    for (final item in value)
-      if (item is Map) _map(item),
-];
 String _status(Object? value) => switch (value) {
   'SUBMITTED' => '待审核',
   'APPROVED' => '已审核',
@@ -76,14 +74,16 @@ class _PolicyDirectory extends ConsumerStatefulWidget {
   ConsumerState<_PolicyDirectory> createState() => _PolicyDirectoryState();
 }
 
-class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
+class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory>
+    with ReadViewActivityMixin<_PolicyDirectory> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
   late final int _epoch;
   final _keyword = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
   bool _busy = false, _opening = false;
   String? _error;
-  int _page = 1, _pages = 0;
   bool get _current =>
       mounted &&
       _epoch == ref.read(exportContextEpochProvider) &&
@@ -93,7 +93,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -102,30 +102,45 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await _api.get(
-        widget.chooseSource ? '$_base/source-choices' : _base,
-        query: {
-          'supplierId': widget.supplierId,
-          'keyword': _keyword.text,
-          'page': page,
-          'size': 50,
-        },
+      final keyword = _keyword.text;
+      final result = await readViewActivity.runRead(
+        () => _current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: () => _current,
+          idOf: (row) => widget.chooseSource
+              ? row['goodsId'] == null || row['unitId'] == null
+                    ? null
+                    : _dimensionId(row)
+              : row['id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(
+                  widget.chooseSource ? '$_base/source-choices' : _base,
+                  query: {
+                    'supplierId': widget.supplierId,
+                    'keyword': keyword,
+                    'page': page,
+                    'size': size,
+                  },
+                ),
+                (row) => row,
+              ),
+        ),
       );
       if (_current) {
         setState(() {
-          _rows = _maps(result['items']);
-          _page = page;
-          _pages = (result['totalPages'] as num?)?.toInt() ?? 0;
+          _rows = result.items;
         });
       }
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (_current) {
         setState(() {
           _rows = [];
@@ -156,7 +171,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
     } finally {
       _opening = false;
     }
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   @override
@@ -191,7 +206,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
                 child: UtenInput(
                   label: '搜索商品、颜色、单位',
                   controller: _keyword,
-                  onFieldSubmitted: (_) => _load(1),
+                  onFieldSubmitted: (_) => _load(),
                   enabled: !_busy,
                 ),
               ),
@@ -200,7 +215,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
                 child: UtenResponsiveActionWrap(
                   children: [
                     UtenButton(
-                      onPressed: _busy ? null : () => _load(1),
+                      onPressed: _busy ? null : _load,
                       child: const Text('查询'),
                     ),
                     if (!widget.chooseSource && canEdit)
@@ -270,10 +285,7 @@ class _PolicyDirectoryState extends ConsumerState<_PolicyDirectory> {
                       widget.chooseSource ? _dimensionId(r) : '${r['id']}',
                   busy: _busy,
                   error: _error,
-                  retry: () => _load(_page),
-                  page: _page,
-                  pages: _pages,
-                  onPage: _load,
+                  retry: _load,
                   onOpen: _open,
                   canOpen: (_) => !_busy,
                   scope: (widget.supplierId, _epoch),

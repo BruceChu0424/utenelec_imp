@@ -1,3 +1,5 @@
+import '../../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../../shared/models/paged_result.dart';
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -556,11 +558,17 @@ class _OffsetTargetPicker extends ConsumerStatefulWidget {
       _OffsetTargetPickerState();
 }
 
-class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
+class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker>
+    with ScopedPagedReadViewMixin<_OffsetTargetPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   List<FinancePayableItem> _items = const [];
   final Map<String, TextEditingController> _amounts = {};
   final Set<String> _selected = {};
   bool _loading = true;
+  bool _readRetired = false;
+  int _readVersion = 0;
   String? _error;
 
   @override
@@ -583,15 +591,51 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
     super.dispose();
   }
 
+  Object get _readQuery => [
+    ref.read(financePayablesRepositoryProvider),
+    widget.supplierId,
+  ];
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _readVersion++;
+    if (!mounted) return;
+    setState(() {
+      _readRetired = true;
+      _items = const [];
+      _selected.clear();
+      _loading = false;
+      _error = scopedPagedReadRejection?.message ?? '读取身份已变化，请关闭后重新打开';
+    });
+  }
+
   Future<void> _load() async {
+    if (_readRetired) return;
+    final version = ++_readVersion;
     try {
-      final result = await ref
-          .read(financePayablesRepositoryProvider)
-          .list(
+      final repository = ref.read(financePayablesRepositoryProvider);
+      final result = await readScopedPage<FinancePayableItem>(
+        1,
+        query: _readQuery,
+        currentQuery: () => _readQuery,
+        isCurrent: () => version == _readVersion && !_readRetired,
+        idOf: (row) => row.id,
+        fetchPage: (target) async {
+          final value = await repository.list(
+            page: target,
             size: 200,
             filter: FinancePayablesFilter(supplierId: widget.supplierId),
           );
-      if (!mounted) return;
+          return PagedResult(
+            items: value.items,
+            page: value.page,
+            size: value.size,
+            total: value.total,
+            totalPages: value.totalPages,
+          );
+        },
+      );
+      if (!mounted || version != _readVersion || _readRetired) return;
       setState(() {
         _items = result.items
             .where(
@@ -601,22 +645,18 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
             .toList(growable: false);
         _loading = false;
       });
-    } on ApiException catch (error) {
-      if (!mounted) return;
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
+      if (!mounted || version != _readVersion || _readRetired) return;
       setState(() {
         _loading = false;
-        _error = error.message;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '加载可抵销应付失败';
+        _error = error is ApiException ? error.message : '加载可抵销应付失败';
       });
     }
   }
 
   void _confirm() {
+    if (_loading || _readRetired || _error != null) return;
     final result = <SubcontractLossOffsetTarget>[];
     for (final id in _selected) {
       final amount = _amounts[id]?.text.trim() ?? '';
@@ -707,7 +747,9 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
             type: UtenButtonType.danger,
             size: UtenButtonSize.large,
             icon: Icons.check_rounded,
-            onPressed: _loading ? null : _confirm,
+            onPressed: _loading || _readRetired || _error != null
+                ? null
+                : _confirm,
             child: Text('确认选择 (${_selected.length})'),
           ),
         ],

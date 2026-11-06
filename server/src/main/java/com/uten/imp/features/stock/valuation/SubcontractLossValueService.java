@@ -173,8 +173,20 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
     @Override @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
     public WasteValue wasteValue(UUID item){
         var row=db.queryForMap("SELECT * FROM v_subcontract_waste_actual_value WHERE waste_item_id=:id",Map.of("id",item));
+        UUID order=(UUID)row.get("order_item_id");
+        // A queued same-transaction revision can invalidate this currently
+        // known projection before commit. Keep every original interval/value;
+        // its availability also includes that already registered work.
+        boolean complete=Boolean.TRUE.equals(row.get("complete"))&&!hasDeferredRefresh(order);
         return new WasteValue((UUID)row.get("order_item_id"),(UUID)row.get("normal_value_node_id"),(UUID)row.get("excess_value_node_id"),
-                (BigDecimal)row.get("normal_value_local"),(BigDecimal)row.get("excess_value_local"),Boolean.TRUE.equals(row.get("complete"))?State.FINAL:State.PENDING);
+                (BigDecimal)row.get("normal_value_local"),(BigDecimal)row.get("excess_value_local"),complete?State.FINAL:State.PENDING);
+    }
+
+    private boolean hasDeferredRefresh(UUID order){
+        return TransactionSynchronizationManager.isSynchronizationActive()
+                &&TransactionSynchronizationManager.getSynchronizations().stream()
+                    .filter(FinalLossCosts.class::isInstance).map(FinalLossCosts.class::cast)
+                    .anyMatch(pending->pending.orders.containsKey(order));
     }
 
     private PoolKey registeredProduct(UUID order){

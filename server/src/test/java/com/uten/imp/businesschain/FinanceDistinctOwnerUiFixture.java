@@ -31,11 +31,22 @@ final class FinanceDistinctOwnerUiFixture {
     @Autowired FinanceStatementDocumentService documents;
     @Autowired FinanceMaterialStatementService materials;
     @Autowired FinanceAssetWorkflowService assets;
+    @Autowired com.uten.imp.features.finance.gl.FinanceChartService chartService;
 
-    private static final String[] PERMISSIONS={"finance_report:view","finance:view:all","ar_ap_ledger:view",
-        "supplier_settlement:confirm","finance_post:execute","payment_style:edit","finance_receipt:approve",
-        "finance_asset:view","finance_asset:edit","finance_asset:approve","finance_asset:post",
-        "finance_asset:reverse","finance_asset_period:manage"};
+    /** Shared with the task's normal public-permission API configurator. */
+    private Set<String> personaPermissions(String role){
+        try(var input=getClass().getResourceAsStream("/finance/finance-ui-persona-permissions.json")){
+            if(input==null)throw new IllegalStateException("Missing explicit finance UAT persona contract");
+            var contract=json.readTree(input);assertThat(contract.path("version").asInt()).isEqualTo(1);
+            var permissions=new LinkedHashSet<String>();contract.path("base").forEach(value->permissions.add(value.asText()));
+            var persona=contract.path("roles").path(role);assertThat(persona.isObject()).isTrue();
+            for(var family:contract.path("families"))for(var action:persona.path("actions"))permissions.add(family.asText()+":"+action.asText());
+            persona.path("additional").forEach(value->permissions.add(value.asText()));
+            assertThat(permissions).noneMatch(value->value.contains("*")||value.equals("authorization:manage"));
+            assertThat(permissions.contains("finance_receipt:approve")).isEqualTo(role.equals("reviewer"));
+            return Collections.unmodifiableSet(permissions);
+        }catch(java.io.IOException failure){throw new IllegalStateException("Cannot read the explicit finance UAT persona contract",failure);}
+    }
     private FullChainEndToEndTest full;
     private FullChainEndToEndTest.World world;
     private UUID maker,reviewer,base;
@@ -48,15 +59,29 @@ final class FinanceDistinctOwnerUiFixture {
         db.update("UPDATE suppliers SET name='匿名原件供应商 UAT' WHERE id=?",world.supplierId());
         db.update("UPDATE clients SET name='匿名材料对象 UAT' WHERE id=?",world.clientId());
         var accounts=new LinkedHashMap<String,Object>();
+        var ordinaryEmployees=new HashSet<UUID>();
         for(String surface:List.of("web","windows"))for(String role:List.of("maker","reviewer","poster")){
             String tag="finance-owner-"+surface+"-"+role;
-            UUID actor=full.createUserWithPerms(world,tag,PERMISSIONS);
+            Set<String> permissions=personaPermissions(role);
+            UUID actor=full.createUserWithPerms(world,tag,permissions.toArray(String[]::new));
             full.grantDataScope(actor,"finance",world.employeeId());
             db.update("UPDATE users SET password_hash=?,must_change_password=false WHERE id=?",passwords.encode("FinanceUiSynthetic-2026!"),actor);
-            accounts.put(surface+"-"+role,Map.of("id",actor,"login","USR-"+tag));
+            UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=? AND NOT is_super_admin AND status='active' AND NOT must_change_password",UUID.class,actor);
+            assertThat(employee).isNotNull();assertThat(ordinaryEmployees.add(employee)).isTrue();
+            var effective=beans.getBean(com.uten.imp.features.auth.PermissionResolver.class).grantedPermsOf(actor);
+            assertThat(effective).containsAll(permissions);
+            for(String family:List.of("finance_receipt","finance_payment","finance_expense","finance_other_income","finance_bank_transfer")){
+                assertThat(effective.contains(family+":create")).isEqualTo(role.equals("maker"));
+                assertThat(effective.contains(family+":edit")).isEqualTo(role.equals("maker"));
+                assertThat(effective.contains(family+":approve")).isEqualTo(role.equals("reviewer"));
+                assertThat(effective.contains(family+":reverse")).isEqualTo(role.equals("poster"));
+            }
+            accounts.put(surface+"-"+role,Map.of("id",actor,"employeeId",employee,"login","USR-"+tag,"moneyRole",role,
+                    "explicitPermissions",permissions.stream().sorted().toList()));
             if(surface.equals("web")&&role.equals("maker"))maker=actor;
             if(surface.equals("web")&&role.equals("reviewer"))reviewer=actor;
         }
+        assertThat(ordinaryEmployees).hasSize(6);
         full.loginAs(world.superAdminUserId());
         preparePayableAccount("2202","AP_CONTROL","LIABILITY");
         var nativeFixture=new SupplierPrepaymentPostgresTest();beans.autowireBean(nativeFixture);
@@ -114,6 +139,10 @@ final class FinanceDistinctOwnerUiFixture {
     }
     private UUID prepareMaterialContext(){
         UUID style=style("ACCOUNT","匿名材料往来 UAT");chart("1221",style,"ASSET");
+        long version=db.queryForObject("SELECT row_version FROM finance_chart_codes WHERE code='1221'",Long.class);
+        chartService.map("1221",new com.uten.imp.features.finance.gl.FinanceChartContracts.Mapping(
+            version,List.of(style),"BS_8",null,"ASSET",base));
+        assertThat(db.queryForObject("SELECT count(*) FROM finance_chart_code_styles map JOIN finance_report_line_bindings binding ON binding.style_id=map.style_id WHERE map.code='1221' AND map.style_id=? AND binding.binding_kind='STYLE' AND binding.line_key='BS_8'",Integer.class,style)).isEqualTo(1);
         var auxiliary=auxiliaries.save(new FinanceAuxiliaryContracts.Save(null,null,"匿名材料UAT账套","UAT-MAT-"+world.clientId(),"匿名材料对象 UAT","CUSTOMER",world.clientId(),"真实财务对象UUID前置","1221"));
         full.loginAs(maker);
         var saved=materials.saveContext(new ContextInput(UUID.randomUUID(),null,null,auxiliary.id(),base,AmountBasis.LOCAL,null,world.goodsB(),null,BusinessTime.today(),"匿名实际KG维护前置，目标单位换算未保存","1221",1,Set.of(Kind.PURCHASE_RECEIPT_LINE),"匿名铜料产品 UAT","匿名规格",world.unitId(),"PCS",null,null,1));
@@ -134,7 +163,7 @@ final class FinanceDistinctOwnerUiFixture {
         full.loginAs(reviewer);materials.decide(evidence,"approve",materialAction(context,evidence));full.loginAs(maker);
     }
     private UUID prepareAssetDraft(boolean deferred){
-        UUID cost=style("ACCOUNT","匿名"+(deferred?"待摊成本":"固定资产原值")+" UAT"),accumulated=deferred?null:style("ACCOUNT","匿名累计折旧 UAT"),expense=style("EXPENSE","匿名"+(deferred?"摊销":"折旧")+"费用 UAT"),clearing=style("LIABILITY","匿名资产待结算 UAT"),category=UUID.randomUUID();
+        UUID cost=style("ACCOUNT","匿名"+(deferred?"待摊成本":"固定资产原值")+" UAT"),accumulated=deferred?null:style("ACCOUNT","匿名累计折旧 UAT"),expense=style("EXPENSE","匿名"+(deferred?"摊销":"折旧")+"费用 UAT"),clearing=style("ACCOUNT","匿名"+(deferred?"待摊":"固定资产")+"待结算 UAT"),category=UUID.randomUUID();
         db.update("INSERT INTO finance_asset_categories(id,object_type,code,name,cost_style_id,accumulated_style_id,expense_style_id,clearing_style_id,default_method,default_months,default_salvage_rate,effective_from,status) VALUES(?,?,?,?,?,?,?,?,'STRAIGHT_LINE',12,0,?,'ACTIVE')",category,deferred?"DEFERRED_EXPENSE":"FIXED_ASSET","UAT-OWNER-"+category,deferred?"匿名待摊 UAT":"匿名固定资产 UAT",cost,accumulated,expense,clearing,BusinessTime.today().withDayOfMonth(1).minusDays(1));
         UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,maker);
         var month=YearMonth.from(BusinessTime.today());var acquisition=month.atDay(1).minusDays(1);

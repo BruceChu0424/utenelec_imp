@@ -151,7 +151,10 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         fixture.loginAs(w.superAdminUserId());
         String frozenBeforeChange=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId);
         assertThatThrownBy(()->db.update("UPDATE purchase_order_items SET qty=2,amount_original=0.2,amount_local=0.2 WHERE id=?",itemId))
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+                .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class)
+                .hasMessageContaining("frozen reference price operands are immutable without their actual source revision")
+                .rootCause().isInstanceOfSatisfying(java.sql.SQLException.class,
+                    sql -> assertThat(sql.getSQLState()).isEqualTo("55000"));
         assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_order_items i WHERE id=?",String.class,itemId)).isEqualTo(frozenBeforeChange);
         UUID incompleteRevision=UUID.randomUUID();
         var incompleteUpdateReached=new java.util.concurrent.atomic.AtomicBoolean();
@@ -194,7 +197,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"10,HALF_UP,3.3744855964","24,DOWN,3.374485596366666666666666"})
     void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity(int creationScale,String creationRounding,String expectedPrice) throws Exception {
-        var w = fixture.seedWorld("subcontract-review-readonly");
+        var w = fixture.seedWorld("subcontract-review-readonly-"+UUID.randomUUID());
         fixture.loginAs(w.superAdminUserId());
         fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);

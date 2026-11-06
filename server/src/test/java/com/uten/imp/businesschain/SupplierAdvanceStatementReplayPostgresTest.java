@@ -235,7 +235,7 @@ class SupplierAdvanceStatementReplayPostgresTest {
    sql.executeUpdate("INSERT INTO party_monthly_summaries(side,party_id,currency_id,month_start,net_original,posted_local_sum,settled_local_sum,net_local,event_count,null_original_count) SELECT 'AP',supplier_id,currency_id,date_trunc('month',bill_date)::date,-999,0,999,-999,1,0 FROM finance_payments WHERE id='"+payment+"'");
    sql.executeUpdate("DELETE FROM party_month_dirty WHERE side='AP' AND party_id='"+supplier+"'");
    sql.executeUpdate("ALTER TABLE party_month_dirty ADD PRIMARY KEY(side,party_id,month_start)");
-   String migration;try(var input=Objects.requireNonNull(getClass().getClassLoader().getResourceAsStream("db/migration/V1078__supplier_advance_statement_replay.sql"))){migration=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
+   String migration;try(var input=Objects.requireNonNull(getClass().getClassLoader().getResourceAsStream("db/migration/V1081__supplier_advance_statement_replay.sql"))){migration=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);}
    int backfill=migration.indexOf("INSERT INTO party_month_dirty(side,party_id,month_start,reason)");assertThat(backfill).isGreaterThan(0);sql.executeUpdate(migration.substring(backfill,migration.indexOf(';',backfill)));
    try(var row=sql.executeQuery("SELECT count(*) FROM party_month_dirty WHERE side='AP' AND party_id='"+supplier+"' AND month_start=DATE '1900-01-01'")){assertThat(row.next()).isTrue();assertThat(row.getInt(1)).as("the real forward migration invalidates an old clean legacy cache").isEqualTo(1);}
    assertLegacyPublic(setup,original,"-276","276");

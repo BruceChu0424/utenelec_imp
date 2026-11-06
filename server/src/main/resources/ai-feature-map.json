@@ -235,6 +235,475 @@
       "doc": "docs/03-页面/系统设置页.md"
     },
     {
+      "route": "/applications",
+      "title": "我的申请",
+      "aliases": [
+        "我的申请与审批中心"
+      ],
+      "module": "我的申请",
+      "purpose": "包含：申请报销、申请预付、申请出差报销、供应商付款申请、申请出差、申请付款、申请记录。",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的申请"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:apply",
+        "application:apply:payment",
+        "application:apply:prepayment",
+        "application:apply:supplier_payment",
+        "application:apply:travel",
+        "expense:apply"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/expense/new",
+        "/expense",
+        "/applications/new",
+        "/applications/mine"
+      ],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/applications/mine",
+      "title": "申请记录",
+      "aliases": [],
+      "module": "我的申请",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请记录"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:apply",
+        "application:apply:payment",
+        "application:apply:prepayment",
+        "application:apply:supplier_payment",
+        "application:apply:travel"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/applications/new",
+      "title": "申请预付",
+      "aliases": [
+        "供应商付款申请",
+        "申请付款",
+        "申请出差"
+      ],
+      "module": "我的申请",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "供应商付款申请"
+        ],
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请付款"
+        ],
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请出差"
+        ],
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请预付"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:apply",
+        "application:apply:payment",
+        "application:apply:prepayment",
+        "application:apply:supplier_payment",
+        "application:apply:travel"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_ENG",
+      "title": "审批中心(工程研发部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "工程研发部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "工程研发部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_FIN",
+      "title": "部门审批(财税部)",
+      "aliases": [
+        "部门审批"
+      ],
+      "module": "财税部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "部门审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_HR",
+      "title": "审批中心(行政与人力资源部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_NEWMEDIA",
+      "title": "审批中心(新媒体事业部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "新媒体事业部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "新媒体事业部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_PMC",
+      "title": "审批中心(PMC运营部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "PMC运营部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "application:approve:procurement",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_PROD",
+      "title": "审批中心(生产部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "生产部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_QA",
+      "title": "审批中心(品质管理部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "品质管理部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "品质管理部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_RAIL",
+      "title": "审批中心(轨道事业部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "轨道事业部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "轨道事业部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_SALES",
+      "title": "审批中心(综合营销部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "综合营销部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department",
+        "sales_order_manager:view",
+        "sales_quote_manager:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/DEPT_SECURITY",
+      "title": "审批中心(安保部)",
+      "aliases": [
+        "审批中心"
+      ],
+      "module": "安保部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "安保部",
+          "审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/FINANCE",
+      "title": "申请审批中心",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "报销与其他申请按实际岗位办理",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "申请审批中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:finance_initial",
+        "application:approve:finance_review",
+        "application:pay",
+        "application:prepayment:link_finance",
+        "application:receive",
+        "application:view",
+        "expense:approve",
+        "expense:approve:finance_initial",
+        "expense:approve:finance_review",
+        "expense:pay",
+        "expense:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/GM",
+      "title": "任务中心(总经办)",
+      "aliases": [
+        "任务中心"
+      ],
+      "module": "总经办",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "总经办",
+          "任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:executive",
+        "application:approve:vice_executive",
+        "expense:approve:executive"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/GM_DEPARTMENT",
+      "title": "部门审批(总经办)",
+      "aliases": [
+        "部门审批"
+      ],
+      "module": "总经办",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "总经办",
+          "部门审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "application:approve:department",
+        "expense:approve:department"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
+      "route": "/approvals/settings",
+      "title": "审批设置",
+      "aliases": [],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "审批设置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "approval_policy:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的申请与审批中心.md"
+    },
+    {
       "route": "/basicinfo",
       "title": "基础资料",
       "aliases": [
@@ -709,19 +1178,11 @@
     },
     {
       "route": "/expense",
-      "title": "我的报销",
-      "aliases": [
-        "报销列表页"
-      ],
-      "module": "常用功能",
+      "title": "报销列表页",
+      "aliases": [],
+      "module": "我的申请",
       "purpose": "员工管理自己报销单的列表入口。",
-      "paths": [
-        [
-          "工作台",
-          "常用功能",
-          "我的报销"
-        ]
-      ],
+      "paths": [],
       "parent": null,
       "record": false,
       "anyOf": [
@@ -735,7 +1196,7 @@
       "route": "/expense/:id",
       "title": "报销详情页",
       "aliases": [],
-      "module": "常用功能",
+      "module": "我的申请",
       "purpose": "",
       "paths": [],
       "parent": "/expense",
@@ -749,24 +1210,19 @@
     },
     {
       "route": "/expense/approval",
-      "title": "报销审批",
-      "aliases": [
-        "报销审批列表页"
-      ],
-      "module": "钱流管理",
-      "purpose": "核对凭证、审批及登记付款",
-      "paths": [
-        [
-          "工作台",
-          "财税部",
-          "钱流管理",
-          "报销审批"
-        ]
-      ],
-      "parent": null,
+      "title": "报销审批列表页",
+      "aliases": [],
+      "module": "我的申请",
+      "purpose": "",
+      "paths": [],
+      "parent": "/expense",
       "record": false,
       "anyOf": [
         "expense:approve",
+        "expense:approve:department",
+        "expense:approve:executive",
+        "expense:approve:finance_initial",
+        "expense:approve:finance_review",
         "expense:pay",
         "expense:view"
       ],
@@ -778,13 +1234,17 @@
       "route": "/expense/approval/:id",
       "title": "报销审批详情页",
       "aliases": [],
-      "module": "钱流管理",
+      "module": "我的申请",
       "purpose": "",
       "paths": [],
       "parent": "/expense/approval",
       "record": true,
       "anyOf": [
         "expense:approve",
+        "expense:approve:department",
+        "expense:approve:executive",
+        "expense:approve:finance_initial",
+        "expense:approve:finance_review",
         "expense:pay",
         "expense:view"
       ],
@@ -794,14 +1254,28 @@
     },
     {
       "route": "/expense/new",
-      "title": "新建报销页(新建)",
+      "title": "申请报销",
       "aliases": [
-        "新建报销页"
+        "新建报销页",
+        "申请出差报销"
       ],
-      "module": "常用功能",
+      "module": "我的申请",
       "purpose": "员工先保存申请，再到详情补齐原件和票据，最后提交。",
-      "paths": [],
-      "parent": "/expense",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请出差报销"
+        ],
+        [
+          "工作台",
+          "常用功能",
+          "我的申请",
+          "申请报销"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "expense:apply"
@@ -840,7 +1314,7 @@
       "title": "钱流管理",
       "aliases": [],
       "module": "钱流管理",
-      "purpose": "包含：业务审核中心、报销审批、普通仓盘点审核、费用单财务确认、报价核价、新建销售收款、新建银行存取款、新建采购付款。",
+      "purpose": "包含：业务审核中心、申请审批中心、普通仓盘点审核、各部门申请流程、费用单财务确认、报价核价、新建销售收款、新建银行存取款。",
       "paths": [
         [
           "工作台",
@@ -852,11 +1326,24 @@
       "record": false,
       "anyOf": [
         "account:view",
+        "application:approve:finance_initial",
+        "application:approve:finance_review",
+        "application:pay",
+        "application:prepayment:link_finance",
+        "application:receive",
+        "application:view",
         "ar_ap_ledger:view",
+        "expense:apply",
         "expense:approve",
+        "expense:approve:department",
+        "expense:approve:executive",
+        "expense:approve:finance_initial",
+        "expense:approve:finance_review",
         "expense:pay",
         "expense:settings",
         "expense:view",
+        "finance_application:apply",
+        "finance_application:view",
         "finance_asset:view",
         "finance_bank_transfer:create",
         "finance_expense:create",
@@ -866,6 +1353,7 @@
         "finance_payment:create",
         "finance_receipt:create",
         "finance_report:view",
+        "payroll:generate",
         "procurement_iqc_rejection:view",
         "sales_order_finance:view",
         "sales_quote_finance:view",
@@ -878,11 +1366,13 @@
       ],
       "allOf": [],
       "hubOf": [
+        "/finance/applications",
         "/finance/expenses",
         "/finance/audits",
         "/finance/quote-review",
         "/finance/stock-count-review",
         "/expense/approval",
+        "/approvals/FINANCE",
         "/expense/settings",
         "/finance/receipts/new",
         "/finance/payments/new",
@@ -904,6 +1394,33 @@
         "/reports/workshop-material"
       ],
       "doc": null
+    },
+    {
+      "route": "/finance/applications",
+      "title": "各部门申请流程",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "出差、报销、付款、预付及工资原流程",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "各部门申请流程"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "expense:apply",
+        "expense:settings",
+        "finance_application:apply",
+        "finance_application:view",
+        "payroll:generate"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/各部门申请流程.md"
     },
     {
       "route": "/finance/assets",
@@ -2795,20 +3312,12 @@
     },
     {
       "route": "/sales/manager-review",
-      "title": "订单审核",
-      "aliases": [
-        "销售负责人订单审核页"
-      ],
-      "module": "综合营销部",
+      "title": "销售负责人订单审核页",
+      "aliases": [],
+      "module": "销售管理",
       "purpose": "",
-      "paths": [
-        [
-          "工作台",
-          "综合营销部",
-          "订单审核"
-        ]
-      ],
-      "parent": null,
+      "paths": [],
+      "parent": "/sales",
       "record": false,
       "anyOf": [
         "sales_order_manager:view",

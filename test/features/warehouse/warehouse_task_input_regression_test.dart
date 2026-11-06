@@ -167,7 +167,9 @@ class _InputApi extends ApiClient {
           'goodsId': 'goods-a',
           'goodsName': '材料A',
           'receivedBaseQty': 10,
+          'receivedBaseQtyExact': '10.0000',
           'passedBaseQty': 10,
+          'passedBaseQtyExact': '10.0000',
           'lineStatus': 'RESOLVED',
           if (preStockReadback)
             'preStocked': {'warehouseId': 'warehouse', 'place': '原上架库位'},
@@ -184,8 +186,11 @@ class _InputApi extends ApiClient {
                 'warehouseId': 'warehouse',
                 'warehouseName': '原料仓',
                 'receivedBaseQty': 10,
+                'receivedBaseQtyExact': '10.0000',
                 'releasedBaseQty': 10,
+                'releasedBaseQtyExact': '10.0000',
                 'remainingBaseQty': remaining,
+                'remainingBaseQtyExact': remaining.toString(),
                 'placeHint': '默认库位',
               },
             ]
@@ -198,6 +203,7 @@ class _InputApi extends ApiClient {
             'goodsId': 'goods-a',
             'goodsName': '材料A',
             'failedQty': 2,
+            'failedQtyExact': '2',
             'physicalStatus': 'PENDING_RETURN',
             'rowVersion': 7,
             'canRecordReturn': true,
@@ -395,10 +401,13 @@ void main() {
               ? body
               : (body['batches'] as List).single as Map;
           expect(actual['idempotencyKey'], isNotEmpty);
-          expect((actual['items'] as List).single, containsPair('baseQty', 10));
           expect(
             (actual['items'] as List).single,
-            containsPair('expectedRemainingBaseQty', 10),
+            containsPair('baseQty', '10'),
+          );
+          expect(
+            (actual['items'] as List).single,
+            containsPair('expectedRemainingBaseQty', '10.0'),
           );
           expect(
             (actual['items'] as List).single,
@@ -703,7 +712,7 @@ void main() {
       final saved = container.read(formDraftsProvider).single;
       final savedRows = ((saved.data['input'] as Map)['rows'] as List)
           .cast<Map<String, dynamic>>();
-      expect(savedRows.single['weightKg'], 1.25);
+      expect(savedRows.single['weightKg'], '1.25');
       api.salesAllowed = false;
       await tester.tap(
         find.byKey(const Key('warehouse-sales-outbound-detail-refresh')),
@@ -715,7 +724,7 @@ void main() {
           .singleWhere((draft) => draft.id == saved.id);
       final inputs = original.data['input'] as Map;
       final rows = (inputs['rows'] as List).cast<Map<String, dynamic>>();
-      expect(rows.single['weightKg'], 1.25);
+      expect(rows.single['weightKg'], '1.25');
       expect(rows.single['place'], '已称重待放行');
       expect(api.posts, isEmpty);
       expect(tester.takeException(), isNull);
@@ -825,7 +834,7 @@ void main() {
           .cast<Map<String, dynamic>>();
       expect(oldRows.single['place'], '人工库位');
       expect(oldRows.single['quantity'], '10.0000');
-      expect(oldRows.single['weightKg'], 1.25);
+      expect(oldRows.single['weightKg'], '1.25');
       final fresh = drafts.singleWhere((draft) => draft.id != saved.id);
       final rows = ((fresh.data['input'] as Map)['rows'] as List)
           .cast<Map<String, dynamic>>();

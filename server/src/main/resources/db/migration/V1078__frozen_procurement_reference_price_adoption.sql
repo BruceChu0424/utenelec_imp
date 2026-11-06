@@ -4,11 +4,8 @@
 -- Main V1062 owns the canonical policy column. Its existing NULL and plain
 -- {version,choices} rows remain unchanged; genuine future intents use a tagged
 -- saved-input proof in that same column. There is no second writable policy.
-ALTER TABLE purchase_order_items ADD COLUMN reference_price_successor_source_id uuid REFERENCES purchase_order_items(id),
-    ADD CONSTRAINT purchase_order_reference_price_source_unique UNIQUE(reference_price_successor_source_id);
-ALTER TABLE subcontract_order_items ADD COLUMN reference_price_successor_source_id uuid REFERENCES subcontract_order_items(id),
-    ADD CONSTRAINT subcontract_order_reference_price_source_unique UNIQUE(reference_price_successor_source_id);
-
+-- Successor identity and transaction ownership remain Main V1067's single
+-- unapproval_source_item_id/document_unapprovals authority.
 CREATE FUNCTION fn_procurement_tagged_reference_price_shape_valid(proof jsonb)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS $$
 DECLARE fields text[];
@@ -251,19 +248,21 @@ BEGIN
         OR proof->>'sourceActionId' IS DISTINCT FROM revision.created_txid::text
         OR proof->>'actorId' IS DISTINCT FROM revision.actor_user_id::text THEN RETURN false;END IF;
     IF revision.order_id IS DISTINCT FROM (p_item->>'order_id')::uuid OR revision.order_item_id IS DISTINCT FROM (p_item->>'id')::uuid THEN
-        IF p_item->>'reference_price_successor_source_id' IS NULL THEN RETURN false;END IF;
+        IF p_item->>'unapproval_source_item_id' IS NULL THEN RETURN false;END IF;
         prefix:=CASE revision.order_type WHEN 'PURCHASE' THEN 'purchase' ELSE 'subcontract' END;
         family:=CASE revision.order_type WHEN 'PURCHASE' THEN 'purchaseOrder' ELSE 'subcontractOrder' END;
         EXECUTE format('WITH RECURSIVE ancestors AS (
-            SELECT i.id,i.order_id,i.reference_price_successor_source_id,ARRAY[i.id] path FROM %I i
+            SELECT i.id,i.order_id,i.unapproval_source_item_id,ARRAY[i.id] path FROM %I i
+                JOIN document_unapprovals relation ON relation.family=$3 AND relation.original_id=i.order_id
+                    AND relation.draft_id=$6 AND relation.line_id_map->>i.id::text=$7 AND relation.created_txid IS NOT NULL
                 WHERE i.id=$1 AND i.reference_price_precision_policy=$2 AND NOT i.is_deleted
-            UNION ALL SELECT parent.id,parent.order_id,parent.reference_price_successor_source_id,child.path||parent.id
-                FROM ancestors child JOIN %I parent ON parent.id=child.reference_price_successor_source_id
+            UNION ALL SELECT parent.id,parent.order_id,parent.unapproval_source_item_id,child.path||parent.id
+                FROM ancestors child JOIN %I parent ON parent.id=child.unapproval_source_item_id
                 JOIN document_unapprovals relation ON relation.family=$3 AND relation.original_id=parent.order_id
                     AND relation.draft_id=child.order_id AND relation.line_id_map->>parent.id::text=child.id::text
                 WHERE NOT parent.id=ANY(child.path) AND parent.reference_price_precision_policy=$2 AND NOT parent.is_deleted)
             SELECT EXISTS(SELECT 1 FROM ancestors WHERE id=$4 AND order_id=$5)',prefix||'_order_items',prefix||'_order_items')
-            INTO inherited USING (p_item->>'reference_price_successor_source_id')::uuid,proof,family,revision.order_item_id,revision.order_id;
+            INTO inherited USING (p_item->>'unapproval_source_item_id')::uuid,proof,family,revision.order_item_id,revision.order_id,(p_item->>'order_id')::uuid,p_item->>'id';
         IF NOT inherited THEN RETURN false;END IF;
     END IF;
     basis:=fn_procurement_reference_root_basis(revision.before_item);
@@ -299,11 +298,33 @@ BEGIN
     RETURN expected IS NOT DISTINCT FROM (p_item->>'total_amount_input')::numeric;
 END $$;
 
+-- Extend the original Main frozen-fact owner to understand the same tagged
+-- proof as finance review. Keep its original quantity/physical evidence path.
+DO $unapproval_saved_reference_dispatch$
+DECLARE definition text; anchor text;
+BEGIN
+ definition:=pg_get_functiondef('fn_unapproval_frozen_fields(text,jsonb)'::regprocedure);
+ anchor:=$old$IF p_source->>'total_amount_input' IS NOT NULL AND (p_source->>'price')::numeric IS DISTINCT FROM
+    fn_procurement_reference_price_proof((p_source->>'total_amount_input')::numeric,(p_source->>'qty')::numeric,p_source->'reference_price_precision_policy') THEN$old$;
+ IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+  RAISE EXCEPTION 'Review Main frozen reference proof before tagged dispatch'; END IF;
+ EXECUTE replace(definition,anchor,'IF NOT fn_procurement_reference_price_matches(p_source) THEN');
+END $unapproval_saved_reference_dispatch$;
+
 CREATE OR REPLACE FUNCTION fn_guard_procurement_reference_price_policy() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE old_item jsonb;new_item jsonb:=to_jsonb(NEW);expected jsonb;source jsonb;
     prefix text;kind text;family text;old_status smallint;new_status smallint;old_deleted boolean;new_deleted boolean;
     changed boolean;field text;proven_revision boolean:=false;
 BEGIN
+    -- Main's actor/same-transaction/source-map proof owns every inherited row.
+    -- Validate the frozen original; no current reviewer choice is re-adopted.
+    IF TG_OP='INSERT' AND NEW.unapproval_source_item_id IS NOT NULL THEN
+        source:=fn_unapproval_source_item(TG_TABLE_NAME,new_item);
+        IF NOT fn_procurement_reference_price_matches(source) THEN
+            RAISE EXCEPTION 'reference price successor source proof is inconsistent' USING ERRCODE='23514';
+        END IF;
+        RETURN jsonb_populate_record(NEW,fn_unapproval_frozen_fields(TG_TABLE_NAME,source));
+    END IF;
     prefix:=CASE TG_TABLE_NAME WHEN 'purchase_order_items' THEN 'purchase' WHEN 'subcontract_order_items' THEN 'subcontract' END;
     kind:=upper(prefix);family:=CASE prefix WHEN 'purchase' THEN 'purchaseOrder' ELSE 'subcontractOrder' END;
     IF TG_OP='UPDATE' THEN
@@ -314,10 +335,6 @@ BEGIN
             IF NEW.reference_price_precision_policy IS DISTINCT FROM OLD.reference_price_precision_policy THEN
                 RAISE EXCEPTION 'saved reference price proof cannot be independently replaced' USING ERRCODE='55000';END IF;
             RETURN NEW;
-        END IF;
-        IF NEW.reference_price_successor_source_id IS DISTINCT FROM OLD.reference_price_successor_source_id
-            OR OLD.reference_price_successor_source_id IS NOT NULL AND NEW.id IS DISTINCT FROM OLD.id THEN
-            RAISE EXCEPTION 'saved reference price successor identity is immutable' USING ERRCODE='55000';
         END IF;
         changed:=(new_item->'qty',new_item->'total_amount_input',new_item->'price',new_item->'unit_id',new_item->'unit_rate')
             IS DISTINCT FROM (old_item->'qty',old_item->'total_amount_input',old_item->'price',old_item->'unit_id',old_item->'unit_rate');
@@ -343,27 +360,6 @@ BEGIN
             AND pending.order_id=NEW.order_id AND pending.status='PENDING') THEN
             RAISE EXCEPTION 'pending finance reference price proof is immutable' USING ERRCODE='55000';END IF;
     END IF;
-    IF TG_OP='INSERT' AND NEW.reference_price_successor_source_id IS NOT NULL THEN
-        EXECUTE format('SELECT to_jsonb(i),original.status,draft.status,original.is_deleted,draft.is_deleted
-            FROM %I i JOIN %I original ON original.id=i.order_id JOIN %I draft ON draft.id=$1
-            WHERE i.id=$2 AND i.id<>$3 AND original.id<>draft.id AND NOT i.is_deleted FOR SHARE OF i,original,draft',
-            TG_TABLE_NAME,prefix||'_orders',prefix||'_orders')
-            INTO source,old_status,new_status,old_deleted,new_deleted
-            USING NEW.order_id,NEW.reference_price_successor_source_id,NEW.id;
-        IF source IS NULL OR old_status IS DISTINCT FROM -1 OR new_status IS DISTINCT FROM 0 OR old_deleted OR new_deleted THEN
-            RAISE EXCEPTION 'reference price successor requires a reversed original and distinct live draft' USING ERRCODE='23514';
-        END IF;
-        FOREACH field IN ARRAY ARRAY['goods_id','color_id','unit_id','unit_rate','qty','price','total_amount_input',
-            'amount_original','amount_local','extra_columns','quantity_semantics','gift_qty','reference_price_precision_policy'] LOOP
-            IF new_item->field IS DISTINCT FROM source->field THEN
-                RAISE EXCEPTION 'reference price successor must preserve original field %',field USING ERRCODE='23514';
-            END IF;
-        END LOOP;
-        IF NOT fn_procurement_reference_price_matches(new_item) THEN
-            RAISE EXCEPTION 'reference price successor source proof is inconsistent' USING ERRCODE='23514';
-        END IF;
-        RETURN NEW;
-    END IF;
     -- Genuine imported historical rows keep Main's existing ten-place NULL
     -- proof. Ordinary native INSERTs cannot acquire that importer identity.
     IF TG_OP='INSERT' AND NEW.legacy_id IS NOT NULL AND NEW.reference_price_precision_policy IS NULL THEN
@@ -379,24 +375,6 @@ BEGIN
     END IF;
     NEW.reference_price_precision_policy:=expected;
     RETURN NEW;
-END $$;
-
-CREATE FUNCTION fn_require_procurement_reference_price_successor_lineage() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE prefix text;family text;valid boolean;
-BEGIN
-    IF NEW.reference_price_successor_source_id IS NULL THEN RETURN NULL;END IF;
-    prefix:=CASE TG_TABLE_NAME WHEN 'purchase_order_items' THEN 'purchase' ELSE 'subcontract' END;
-    family:=CASE prefix WHEN 'purchase' THEN 'purchaseOrder' ELSE 'subcontractOrder' END;
-    EXECUTE format('SELECT EXISTS(SELECT 1 FROM %I successor JOIN %I original ON original.id=$1
-        JOIN %I old_header ON old_header.id=original.order_id JOIN %I draft_header ON draft_header.id=successor.order_id
-        JOIN document_unapprovals relation ON relation.original_id=original.order_id AND relation.draft_id=successor.order_id
-        WHERE successor.id=$2 AND successor.order_id=$3 AND successor.reference_price_successor_source_id=$1
-            AND NOT successor.is_deleted AND NOT original.is_deleted AND old_header.status=-1 AND NOT old_header.is_deleted
-            AND draft_header.status=0 AND NOT draft_header.is_deleted AND relation.family=$4
-            AND relation.line_id_map->>original.id::text=successor.id::text)',TG_TABLE_NAME,TG_TABLE_NAME,prefix||'_orders',prefix||'_orders')
-        INTO valid USING NEW.reference_price_successor_source_id,NEW.id,NEW.order_id,family;
-    IF NOT valid THEN RAISE EXCEPTION 'reference price successor requires its immutable unapproval line mapping' USING ERRCODE='23514';END IF;
-    RETURN NULL;
 END $$;
 
 DO $reference_price_triggers$
@@ -417,8 +395,6 @@ BEGIN
             WHEN ((%s) IS DISTINCT FROM (%s)) EXECUTE FUNCTION fn_guard_procurement_reference_price_policy()',target,old_values,new_values);
         -- Main's INSERT activation/import semantics are retained; UPDATE stays ALWAYS.
         EXECUTE format('ALTER TABLE %I ENABLE ALWAYS TRIGGER trg_00_reference_price_policy_update',target);
-        EXECUTE format('CREATE CONSTRAINT TRIGGER trg_require_reference_price_successor_lineage AFTER INSERT ON %I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fn_require_procurement_reference_price_successor_lineage()',target);
-        EXECUTE format('ALTER TABLE %I ENABLE ALWAYS TRIGGER trg_require_reference_price_successor_lineage',target);
     END LOOP;
 END $reference_price_triggers$;
 
@@ -470,7 +446,7 @@ BEGIN
     SELECT pg_get_functiondef('fn_guard_procurement_finance_commercial_snapshot()'::regprocedure) INTO definition;
     needle:='(total_amount_input IS NOT NULL AND price<>fn_procurement_reference_price_proof(total_amount_input,qty,reference_price_precision_policy))';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>2 THEN
-        RAISE EXCEPTION 'V1075 Main reference price snapshot verification anchor differs';END IF;
+        RAISE EXCEPTION 'V1078 Main reference price snapshot verification anchor differs';END IF;
     definition:=replace(definition,'FROM purchase_order_items','FROM purchase_order_items reference_item');
     definition:=replace(definition,'FROM subcontract_order_items','FROM subcontract_order_items reference_item');
     EXECUTE replace(definition,needle,'(total_amount_input IS NOT NULL AND NOT fn_procurement_reference_price_matches(to_jsonb(reference_item)))');
@@ -482,13 +458,13 @@ BEGIN
     needle:='ELSIF (p_new->>''price'')::numeric IS DISTINCT FROM fn_procurement_reference_price_proof(
     (p_new->>''total_amount_input'')::numeric,(p_new->>''qty'')::numeric,p_new->''reference_price_precision_policy'') THEN RETURN FALSE;';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1075 Main quantity reference proof anchor differs';END IF;
+        RAISE EXCEPTION 'V1078 Main quantity reference proof anchor differs';END IF;
     EXECUTE replace(definition,needle,'ELSIF NOT fn_procurement_reference_price_matches(p_new) THEN RETURN FALSE;');
 
     SELECT pg_get_functiondef('fn_is_pending_purchase_case_qty_revision(jsonb,jsonb)'::regprocedure) INTO definition;
     needle:='(i.total_amount_input IS NOT NULL AND i.price IS DISTINCT FROM
                fn_procurement_reference_price_proof(i.total_amount_input,i.qty,i.reference_price_precision_policy))';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1075 Main pending-case reference proof anchor differs';END IF;
+        RAISE EXCEPTION 'V1078 Main pending-case reference proof anchor differs';END IF;
     EXECUTE replace(definition,needle,'(i.total_amount_input IS NOT NULL AND NOT fn_procurement_reference_price_matches(to_jsonb(i)))');
 END $saved_reference_price_verification$;

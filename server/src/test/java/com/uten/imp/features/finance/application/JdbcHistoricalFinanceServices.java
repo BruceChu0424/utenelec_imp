@@ -9,16 +9,14 @@ import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.expenseclaim.ExpenseApplicationSourceAdapter;
 import com.uten.imp.features.expenseclaim.ExpenseClaimService;
-import com.uten.imp.features.expenseclaim.JdbcOriginalExpenseSnapshot;
+import com.uten.imp.features.expenseclaim.HistoricalExpenseSourceJdbc;
+import com.uten.imp.testsupport.HistoricalJdbcNativeSql;
 import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.statement.FinanceAuxiliaryService;
 import com.uten.imp.security.*;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -41,7 +39,7 @@ final class JdbcHistoricalFinanceServices {
     static Wiring create(DataSource source) {
         var db=new JdbcTemplate(source);var json=Jackson2ObjectMapperAutoConfiguration.domainObjectMapper();
         var manager=new DataSourceTransactionManager(source);var current=new SecurityContextCurrentUser();
-        var entityQueries=jdbcNativeQueries(db);
+        var entityQueries=HistoricalJdbcNativeSql.statements(db);
         var crypto=new CryptoProperties();crypto.setPgpMasterKey("application-test-only-pgp-key-0123456789-0123456789");crypto.setHmacKey("application-test-only-hmac-key-0123456789");
         var identity=new TxSessionVars(crypto,current,new AuditDeviceContext(json));ReflectionTestUtils.setField(identity,"em",entityQueries);
         var users=mock(UserAccountRepository.class);
@@ -59,7 +57,13 @@ final class JdbcHistoricalFinanceServices {
         });
         var roles=new FinanceApplicationRoles(db,users,permissions,current,identity,null);
         var nativeSnapshots=mock(ExpenseClaimService.class,call->{throw new IllegalStateException("Historical bootstrap may only read its actual JDBC expense snapshot: "+call.getMethod().getName());});
-        doAnswer(call->JdbcOriginalExpenseSnapshot.capture(db,call.getArgument(0))).when(nativeSnapshots).applicationBusinessSnapshot(any(UUID.class));
+        doAnswer(call->{
+            // This original fixture deliberately has no platform definitions or
+            // values; do not synthesize historical fields through a current ORM.
+            assertThat(db.queryForObject("SELECT count(*) FROM platform_column_definitions WHERE scope IN('expense_claim','expense_claim_item')",Integer.class)).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM platform_record_fields WHERE scope IN('expense_claim','expense_claim_item')",Integer.class)).isZero();
+            return HistoricalExpenseSourceJdbc.snapshot(db,call.getArgument(0));
+        }).when(nativeSnapshots).applicationBusinessSnapshot(any(UUID.class));
         var providers=new StaticListableBeanFactory();providers.addBean("originalExpenseSnapshots",nativeSnapshots);
         var expenseSource=new ExpenseApplicationSourceAdapter(db,json,providers.getBeanProvider(ExpenseClaimService.class));
         var numbers=transactional(new DocNumberService(entityQueries),manager,DocNumberService.class);
@@ -70,20 +74,6 @@ final class JdbcHistoricalFinanceServices {
         return new Wiring(applications,roles,numbers,auxiliary,nativeSnapshots,identity,manager);
     }
 
-    /** Execute the owning DocNumberService/TxSessionVars SQL through JDBC; no SQL or numbering formula is duplicated. */
-    private static EntityManager jdbcNativeQueries(JdbcTemplate db) {
-        var named=new NamedParameterJdbcTemplate(db);var em=mock(EntityManager.class);
-        when(em.createNativeQuery(anyString())).thenAnswer(call->{
-            String sql=call.getArgument(0);var parameters=new LinkedHashMap<String,Object>();var query=mock(Query.class);
-            when(query.setParameter(anyString(),any())).thenAnswer(binding->{parameters.put(binding.getArgument(0),binding.getArgument(1));return query;});
-            when(query.getResultList()).thenAnswer(ignored->rows(named,sql,parameters));
-            when(query.getSingleResult()).thenAnswer(ignored->{var values=rows(named,sql,parameters);if(values.size()!=1)throw new IllegalStateException("Owning fixture SQL did not return one row");var row=values.getFirst();return row.length==1?row[0]:row;});
-            when(query.executeUpdate()).thenAnswer(ignored->named.update(sql,parameters));return query;
-        });return em;
-    }
-    private static List<Object[]> rows(NamedParameterJdbcTemplate db,String sql,Map<String,Object> parameters){
-        return db.query(sql,parameters,(row,index)->{Object[] result=new Object[row.getMetaData().getColumnCount()];for(int column=0;column<result.length;column++)result[column]=row.getObject(column+1);return result;});
-    }
     private static <T> T transactional(T target,PlatformTransactionManager manager,Class<T> type){
         var interceptor=new TransactionInterceptor();interceptor.setTransactionManager(manager);interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
         var proxy=new ProxyFactory(target);proxy.setProxyTargetClass(true);proxy.addAdvice(interceptor);return type.cast(proxy.getProxy());

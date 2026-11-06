@@ -15,6 +15,90 @@ Future<void> _frames(WidgetTester tester) async {
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
   tearDown(UtenBusyOverlay.debugResetYield);
+  testWidgets('实际等待卡片绘制后才开始任务，不用定时延迟', (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (value) {
+            context = value;
+            return const Scaffold(body: Text('原页面'));
+          },
+        ),
+      ),
+    );
+    final completion = Completer<void>();
+    var calls = 0;
+    var paintedAtStart = false;
+    final pending = runUtenBlockingTask<void>(
+      context: context,
+      title: '实际绘制',
+      task: () {
+        calls++;
+        paintedAtStart =
+            find.byType(UtenBusyOverlayCard).evaluate().length == 1 &&
+            find.text('实际绘制').evaluate().length == 1;
+        return completion.future;
+      },
+    );
+    await tester.pump();
+    expect(calls, 0);
+    expect(tester.binding.hasScheduledFrame, isTrue);
+    await tester.pump();
+    expect(calls, 1);
+    expect(paintedAtStart, isTrue);
+    expect(find.text('实际绘制'), findsOneWidget);
+    completion.complete();
+    await tester.pumpAndSettle();
+    await pending;
+    expect(find.byType(UtenTaskProgressDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('卡片绘制前撤权不执行任务且关闭所属弹窗', (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (value) {
+            context = value;
+            return const Scaffold(body: Text('原页面'));
+          },
+        ),
+      ),
+    );
+    final revision = ValueNotifier<int>(0);
+    addTearDown(revision.dispose);
+    var calls = 0;
+    Object? failure;
+    final pending =
+        runUtenBlockingTask<void>(
+          context: context,
+          title: '撤权前等待',
+          invalidation: revision,
+          isCurrent: () => revision.value == 0,
+          task: () async {
+            calls++;
+          },
+        ).then<void>(
+          (_) {},
+          onError: (Object error, StackTrace _) {
+            failure = error;
+          },
+        );
+    await tester.pump();
+    expect(calls, 0);
+    revision.value++;
+    await tester.pumpAndSettle();
+    await pending;
+    expect(calls, 0);
+    expect(failure, isA<StateError>());
+    expect(find.byType(UtenTaskProgressDialog), findsNothing);
+    expect(find.byType(UtenBusyOverlayCard), findsNothing);
+    expect(find.text('原页面'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('任务开始前显示等待，完成后只关闭自己的等待框', (tester) async {
     final completion = Completer<void>();
     late BuildContext pageContext;
@@ -218,6 +302,8 @@ void main() {
   testWidgets('真实再认证让位，新核验仍显示自己的统一等待，返回后恢复原任务', (tester) async {
     final verification = Completer<String>(), continuation = Completer<void>();
     var finished = false;
+    var verificationCalls = 0, taskCalls = 0;
+    String? verifiedToken;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -230,17 +316,14 @@ void main() {
                       context: context,
                       title: '导出处理中',
                       task: () async {
-                        final token = await showReauthDialog(
+                        taskCalls++;
+                        verifiedToken = await showReauthDialog(
                           context,
                           verify: (_) {
-                            return UtenBusyOverlay.run(
-                              context,
-                              title: '正在核验身份',
-                              action: () => verification.future,
-                            );
+                            verificationCalls++;
+                            return verification.future;
                           },
                         );
-                        expect(token, 'task-owned-token');
                         await continuation.future;
                         finished = true;
                       },
@@ -264,16 +347,22 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('reauth-confirm')));
     await _frames(tester);
-    expect(find.text('正在核验身份'), findsOneWidget);
+    expect(find.text('正在验证身份'), findsOneWidget);
+    expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+    expect(verificationCalls, 1);
+    expect(taskCalls, 1);
     expect(find.text('导出处理中'), findsNothing);
     verification.complete('task-owned-token');
     await _frames(tester);
     expect(find.byKey(const Key('reauth-dialog')), findsNothing);
     expect(find.text('导出处理中'), findsOneWidget);
+    expect(verifiedToken, 'task-owned-token');
     expect(finished, isFalse);
     continuation.complete();
     await tester.pumpAndSettle();
     expect(finished, isTrue);
+    expect(verificationCalls, 1);
+    expect(taskCalls, 1);
     expect(find.byType(UtenBusyOverlayCard), findsNothing);
     expect(tester.takeException(), isNull);
   });

@@ -178,7 +178,9 @@ class StockFinanceReportLineIdentityTest {
         var from=Pattern.compile("\\bFROM\\b",Pattern.CASE_INSENSITIVE).matcher(sql);
         if(!from.find())return List.of();
         var named=Pattern.compile("\\bAS\\s+\"([^\"]+)\"",Pattern.CASE_INSENSITIVE).matcher(sql.substring(0,from.start()));
-        var result=new ArrayList<String>();while(named.find())result.add(named.group(1));return result;
+        var result=new ArrayList<String>();
+        while(named.find()) { result.add(named.group(1)); }
+        return result;
     }
     private static Object[] values(List<String> keys,UUID id,String sql) {
         var result=new Object[keys.size()];

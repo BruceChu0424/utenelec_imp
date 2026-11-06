@@ -23,10 +23,11 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/finance_chart_import_test_support.dart';
 import '../../support/finance_command_test_support.dart'
     show financeCommandTestReceipt;
 
-const _chartImport = '00000000-0000-0000-0000-000000000801';
+const _chartImport = financeChartImportTestRoot;
 
 class _Session extends SessionNotifier {
   @override
@@ -358,20 +359,13 @@ class _ChartApi extends ApiClient {
   final metadataRequests = <Map<String, dynamic>>[];
   int uploads = 0, actualImports = 0;
   final applies = <String>[];
-  final preview = <String, dynamic>{
-    'importId': _chartImport,
-    'sourceName': 'chart.xls',
-    'applied': false,
-    'sha256': sha256.convert([1, 2, 3]).toString(),
-    'parentImportId': null,
-    'sourceImportId': _chartImport,
-    'cancelled': false,
-    'applyOutcome': null,
-    'rows': [
+  final preview = financeChartImportTestPreview(
+    sourceName: 'chart.xls',
+    sha256: sha256.convert([1, 2, 3]).toString(),
+    rows: [
       {'code': '1001', 'name': '库存现金', 'currencyName': ''},
     ],
-    'issues': <Object>[],
-  };
+  );
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -591,15 +585,13 @@ class _ChartApi extends ApiClient {
     return {};
   }
 
-  Map<String, dynamic> _applyReceipt() => {
-    'found': true,
-    'outcome': 'SUCCEEDED',
-    'requestId': _chartImport,
-    'actorId': 'chart-test-user',
-    'operation': 'CHART_IMPORT_APPLY',
-    'method': 'POST',
-    'path': '/finance/chart/import-apply',
-    'requestBody': {'importId': _chartImport},
-    'result': {'importId': _chartImport, 'imported': 1, 'status': 'APPLIED'},
-  };
+  Map<String, dynamic> _applyReceipt() => financeCommandTestReceipt(
+    operation: 'CHART_IMPORT_APPLY',
+    method: 'POST',
+    path: '/finance/chart/import-apply',
+    body: {'importId': _chartImport},
+    identityField: 'importId',
+    actorId: 'chart-test-user',
+    result: {'importId': _chartImport, 'imported': 1, 'status': 'APPLIED'},
+  );
 }

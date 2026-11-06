@@ -11,11 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
+import 'package:uten_imp/core/router/route_access_policy.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/features/visitor/providers/visitor_session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/document_permission_set.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_record_history_labels.dart';
 
 /// 桩会话：默认未登录态，不触 secure_storage（测试环境无插件实现）。
@@ -88,7 +91,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 251 条守卫 / 19 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 269 条守卫 / 19 条豁免。
 /// 2026-10-31 销售负责人队列与报价/订货详情独立登记三条路径，各自查看码不授予决策动作。
 /// 2026-10-29 客户端发布工作台 /settings/software-publish 上线（client-updates
 /// 批次），any=[client_release:publish]（V946 INDIVIDUAL_ONLY），守卫 244→245；
@@ -186,6 +189,46 @@ const _masterHistoryViewPermissions = <String>[
 ];
 
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  // The generic sample segment is unknown and therefore fail-closed. Actual
+  // native families are checked separately below: original receipt/cancel
+  // recovery needs view, never a replacement create/edit permission.
+  '/finance/:seg/batch-recovery': [],
+  // Completed applications, staged approvals and exact-weight recovery routes.
+  // Keep the legacy count fixed; each added path retains its exact authority.
+  '/applications': [Perm.expenseApply, ..._applicationApplyAny],
+  '/applications/new': _applicationApplyAny,
+  '/applications/mine': _applicationApplyAny,
+  '/applications/:id/edit': _applicationApplyAny,
+  '/applications/approval': [
+    Perm.applicationView,
+    ...Perm.applicationApprovalPermissions,
+  ],
+  '/applications/:id': [
+    ..._applicationApplyAny,
+    Perm.applicationView,
+    ...Perm.applicationApprovalPermissions,
+  ],
+  '/approvals/settings': [Perm.approvalPolicyManage],
+  // Unknown department identities fail closed; actual stages have dedicated tests.
+  '/approvals/:departmentCode': [],
+  '/finance/applications': _financeApplicationAny,
+  '/finance/applications/new': _financeApplicationAny,
+  '/finance/applications/:id': _financeApplicationAny,
+  '/finance/applications/:id/edit': _financeApplicationAny,
+  '/finance/applications/:id/continue': _financeApplicationAny,
+  '/finance/applications/settings': [Perm.expenseSettings],
+  '/workshop-material/close-retry': [Perm.workshopMaterialCount],
+  '/measurement/weigh-count-recovery': [
+    Perm.stockView,
+    Perm.warehouseInboundStockIn,
+    Perm.stockDocEdit,
+    Perm.stockWeightManage,
+  ],
+  '/measurement/weight-sample': [
+    Perm.warehouseInboundStockIn,
+    Perm.stockDocEdit,
+    Perm.stockWeightManage,
+  ],
   '/sales/manager-review': [
     Perm.salesQuoteManagerView,
     Perm.salesOrderManagerView,
@@ -266,6 +309,21 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // 撤回仍由服务端逐动作校验，页面权限面按独立系统管理边界豁免转授。
   '/settings/software-publish': [Perm.clientReleasePublish],
 };
+
+const _applicationApplyAny = <String>[
+  Perm.applicationApply,
+  Perm.applicationApplyTravel,
+  Perm.applicationApplyPayment,
+  Perm.applicationApplyPrepayment,
+  Perm.applicationApplySupplierPayment,
+];
+const _financeApplicationAny = <String>[
+  Perm.financeApplicationView,
+  Perm.financeApplicationApply,
+  Perm.expenseApply,
+  Perm.payrollGenerate,
+  Perm.expenseSettings,
+];
 
 String _samplePath(String pattern) => pattern
     .split('/')
@@ -535,6 +593,94 @@ void main() {
         exemptButGuarded,
         isEmpty,
         reason: '以下路由在豁免清单里却挂了权限码——文档与代码漂移，二者取其一改齐。',
+      );
+    },
+  );
+
+  test(
+    'finance batch recovery keeps each native view grant after write withdrawal',
+    () {
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => _StubSessionNotifier()),
+          visitorSessionProvider.overrideWith(
+            () => _StubVisitorSessionNotifier(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+      AppUser user(Iterable<String> permissions) => AppUser(
+        id: 'batch-recovery-permission-review',
+        code: 'RECOVERY',
+        name: '权限核对',
+        permissions: permissions.toList(growable: false),
+      );
+      expect(
+        DocumentPermissionCatalog.financeBySegment.keys,
+        orderedEquals([
+          'receipts',
+          'payments',
+          'expenses',
+          'incomes',
+          'bank-transfers',
+        ]),
+      );
+      for (final family in DocumentPermissionCatalog.financeBySegment.entries) {
+        final path =
+            '/finance/${family.key}/batch-recovery?draftId=retained-original';
+        expect(requiredAnyPermFor(path), orderedEquals([family.value.view]));
+        expect(requiredAllPermsFor(path), isEmpty);
+        expect(_isDocumentedExempt(Uri.parse(path).path), isFalse);
+        final owningSurface = pagePermissionScopeFor('/finance/${family.key}');
+        expect(owningSurface, isNotNull);
+        expect(
+          pagePermissionScopeFor(path)?.surfaceKey,
+          owningSurface!.surfaceKey,
+        );
+        final match = router.configuration.findMatch(Uri.parse(path));
+        expect(match.isError, isFalse);
+        expect(match.last.route.name, 'finance-batch-recovery');
+        expect(
+          employeePermissionRedirect(user([family.value.view]), path),
+          isNull,
+          reason: '撤回写权限后仍可凭原查看权限核对本人原批次，不能要求创建或编辑',
+        );
+        for (final missingView in [
+          <String>[],
+          [family.value.create!],
+          [family.value.edit!],
+          [
+            DocumentPermissionCatalog.financeBySegment.entries
+                .firstWhere((other) => other.key != family.key)
+                .value
+                .view,
+          ],
+        ]) {
+          expect(
+            employeePermissionRedirect(user(missingView), path),
+            RouteName.accessDenied,
+            reason: '${family.key} 缺少自身查看权限不能进入',
+          );
+        }
+      }
+      const unknown =
+          '/finance/unknown-family/batch-recovery?draftId=retained-original';
+      expect(requiredAnyPermFor(unknown), isNotNull);
+      expect(requiredAnyPermFor(unknown), isEmpty);
+      expect(requiredAllPermsFor(unknown), isEmpty);
+      expect(pagePermissionScopeFor(unknown), isNull);
+      expect(
+        employeePermissionRedirect(
+          user(
+            DocumentPermissionCatalog.financeBySegment.values.map(
+              (family) => family.view,
+            ),
+          ),
+          unknown,
+        ),
+        RouteName.notFound,
+        reason: '未知单据段不能借其他财务查看权限回落成收款或无守卫页面',
       );
     },
   );

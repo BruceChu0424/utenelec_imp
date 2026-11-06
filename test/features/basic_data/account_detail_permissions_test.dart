@@ -152,6 +152,7 @@ void main() {
         ) {
           await tester.pump(const Duration(milliseconds: 20));
         }
+        await tester.pump();
         expect(
           find.text(action == '删除账户' ? '正在删除账户' : '正在停用账户'),
           findsOneWidget,
@@ -250,6 +251,7 @@ void main() {
         reason:
             'The editor must open while the intentionally held history remains unresolved',
       );
+      await tester.pump();
       expect(repository.statementCalls, 1);
       expect(statement.isCompleted, isFalse);
       expect(find.byType(MasterEditForm), findsOneWidget);

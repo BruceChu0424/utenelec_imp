@@ -142,7 +142,9 @@ Future<void> _until(
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 50)),
     );
-    await tester.pump();
+    // HTML media advances in real time; video_player samples its real position
+    // with a Dart periodic timer, so its fake test clock must advance as well.
+    await tester.pump(const Duration(milliseconds: 50));
   }
   expect(condition(), isTrue, reason: reason);
 }

@@ -54,8 +54,8 @@ Future<T> runUtenBlockingTask<T>({
   navigator.push(route);
   invalidation?.addListener(dismissIfInvalidated);
   try {
-    // The first frame mounts the route; the portal's root entry paints in the
-    // next frame. Start even synchronous work only after that mask is visible.
+    // The route mounts first; its busy overlay inserts the root entry after
+    // that frame. Paint that entry before work, including synchronous encoding.
     await WidgetsBinding.instance.endOfFrame;
     await WidgetsBinding.instance.endOfFrame;
     if (isCurrent != null && !isCurrent()) {

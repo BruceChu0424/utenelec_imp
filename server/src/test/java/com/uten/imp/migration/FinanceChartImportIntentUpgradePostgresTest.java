@@ -14,9 +14,9 @@ import static org.assertj.core.api.Assertions.*;
 /** SQL upgrade/retention only. Actual file policy and public transactions are tested separately. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceChartImportIntentUpgradePostgresTest {
-    @Test void realPre1083RowsKeepAllOriginalSourceAndSuccessBytesWhileNewReviewAndStopProofsAreConstrained() {
+    @Test void realPre1086RowsKeepAllOriginalSourceAndSuccessBytesWhileNewReviewAndStopProofsAreConstrained() {
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")){
-            pg.start();migrate(pg,"1082");var source=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());var db=new JdbcTemplate(source);
+            pg.start();migrate(pg,"1085");var source=new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword());var db=new JdbcTemplate(source);
             UUID employee=UUID.randomUUID(),actor=UUID.randomUUID(),pending=UUID.randomUUID(),success=UUID.randomUUID();
             db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)VALUES(?,?,?,'其他',(SELECT id FROM departments WHERE code='DEPT_FIN'),CURRENT_DATE,'active','regular')",employee,"UP-"+employee,"匿名升级原人员");
             db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password,is_super_admin)VALUES(?,?,?,'test-only','active',false,false)",actor,employee,"chart-upgrade-"+actor);
@@ -27,7 +27,7 @@ class FinanceChartImportIntentUpgradePostgresTest {
             String literalSuccess=db.queryForObject("SELECT preview::text FROM finance_chart_imports WHERE id=?",String.class,success);
             String result=db.queryForObject("SELECT applied_result::text FROM finance_chart_imports WHERE id=?",String.class,success);
             String originalAudit=db.queryForObject("SELECT jsonb_agg(to_jsonb(a) ORDER BY id)::text FROM audit_log a WHERE target_type='finance_chart_imports' AND target_id IN(?,?)",String.class,pending.toString(),success.toString());
-            migrate(pg,"1083");
+            migrate(pg,"1086");
             for(UUID id:List.of(pending,success)){
                 assertThat(db.queryForObject("SELECT parent_import_id IS NULL AND review_request_id IS NULL AND apply_receipt IS NULL AND cancelled_at IS NULL AND cancellation_result IS NULL FROM finance_chart_imports WHERE id=?",Boolean.class,id)).isTrue();
                 assertThat(db.queryForObject("SELECT (to_jsonb(c)-ARRAY['parent_import_id','review_request_id','apply_receipt','cancelled_at','cancellation_result'])::text FROM finance_chart_imports c WHERE id=?",String.class,id)).isEqualTo(id.equals(pending)?oldPending:oldSuccess);

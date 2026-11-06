@@ -25,17 +25,23 @@ class UtenBusyOverlay extends StatefulWidget {
     this.showDoNotLeaveHint = true,
     this.onCancel,
     this.cancelLabel = '取消',
-  }) : _runOwner = null;
+  }) : _runOwner = null,
+       _runContext = null;
 
-  const UtenBusyOverlay._run({required this.title, required Object owner})
-    : _runOwner = owner,
-      description = null,
-      semanticsKey = null,
-      showDoNotLeaveHint = false,
-      onCancel = null,
-      cancelLabel = '取消';
+  const UtenBusyOverlay._run({
+    required this.title,
+    required Object owner,
+    required BuildContext ownerContext,
+  }) : _runOwner = owner,
+       _runContext = ownerContext,
+       description = null,
+       semanticsKey = null,
+       showDoNotLeaveHint = false,
+       onCancel = null,
+       cancelLabel = '取消';
 
   final Object? _runOwner;
+  final BuildContext? _runContext;
 
   /// 进度卡片的语义 key（宿主测试锁定用，如物料分析的
   /// material-analysis-plan-submission-progress）。
@@ -65,7 +71,11 @@ class UtenBusyOverlay extends StatefulWidget {
     final owner = Object();
     _active.add(owner);
     final entry = OverlayEntry(
-      builder: (_) => UtenBusyOverlay._run(title: title, owner: owner),
+      builder: (_) => UtenBusyOverlay._run(
+        title: title,
+        owner: owner,
+        ownerContext: context,
+      ),
     );
     var inserted = false;
     try {
@@ -147,7 +157,9 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _lifecycle.attach(context);
+    // The carrier lives in the root Overlay. Ownership remains with the
+    // original route/ticker/element; its lifetime must not become root-global.
+    _lifecycle.attach(widget._runContext ?? context);
   }
 
   void _ensureEntry() {
@@ -182,7 +194,7 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
   void activate() {
     super.activate();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _lifecycle.attach(context);
+      if (mounted) _lifecycle.attach(widget._runContext ?? context);
     });
   }
 

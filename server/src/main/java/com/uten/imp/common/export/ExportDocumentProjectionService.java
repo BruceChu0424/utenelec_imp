@@ -21,7 +21,10 @@ public class ExportDocumentProjectionService {
         List<ExportDocument.Section> sections = new ArrayList<>();
         int targets=0;
         for (var section : document.sections()) {
-            if (!section.name().equals(sectionName)) { if(!selection.active())sections.add(section); continue; }
+            if (!section.name().equals(sectionName)) {
+                if (!selection.active()) { sections.add(section); }
+                continue;
+            }
             targets++;
             if(selection.active()&&targets>1)throw invalidSelection();
             var result=projectSection(section.columns(),selection.select(section.columns(),section.rows()),projection,scope);
@@ -75,7 +78,10 @@ public class ExportDocumentProjectionService {
                 int targets=0;
                 for(var section:header.sections()) {
                     sources.put(section.id(),section);
-                    if(!section.name().equals(sectionName)) {if(!selection.active())sections.add(section);continue;}
+                    if(!section.name().equals(sectionName)) {
+                        if(!selection.active()) { sections.add(section); }
+                        continue;
+                    }
                     targets++;
                     if(selection.active()&&targets>1)throw invalidSelection();
                     var selected=projectSection(section.columns(),List.of(),projection,scope).columns();
@@ -91,7 +97,10 @@ public class ExportDocumentProjectionService {
             public void accept(DocumentPageSink.Page page) {
                 var original=sources.get(page.sectionId());
                 if(!begun||completed||failed||original==null)throw new IllegalStateException("Document projection source section is unknown or ended");
-                if(!projectedColumns.containsKey(page.sectionId())) {if(!selection.active())destination.accept(page);return;}
+                if(!projectedColumns.containsKey(page.sectionId())) {
+                    if(!selection.active()) { destination.accept(page); }
+                    return;
+                }
                 ExportPayload selected;
                 try {selected=projectSection(original.columns(),selection.select(original.columns(),page.rows()),projection,scope);}
                 catch(RuntimeException failure){failed=true;throw failure;}

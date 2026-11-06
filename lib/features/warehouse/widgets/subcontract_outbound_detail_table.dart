@@ -17,7 +17,6 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/formatters/quantity_display.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -113,8 +112,8 @@ class SubcontractOutboundLineDraft {
       nonNegativeDocumentQuantityText(maxEditableQtyText ?? '') == null ||
       item.unitRateText == null;
   bool get exceedsMaximum {
-    final amount = financeExactDecimalUnits(quantityText);
-    final maximum = financeExactDecimalUnits(maxEditableQtyText);
+    final amount = nonNegativeDocumentQuantityUnits(quantityText);
+    final maximum = nonNegativeDocumentQuantityUnits(maxEditableQtyText);
     return amount != null && maximum != null && amount > maximum;
   }
 

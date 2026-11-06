@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -13,13 +12,24 @@ import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/finance_chart_dialog.dart';
+import 'package:uten_imp/features/finance/widgets/finance_chart_import_workbench.dart';
 import 'package:uten_imp/features/finance/widgets/finance_entry_file_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../support/audit_screenshot_support.dart';
+import '../../support/finance_chart_import_test_support.dart';
+import '../../support/finance_command_test_support.dart';
+import '../../support/pump_until.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  setUp(prepareFinanceCommandTest);
   for (final layout in [(1280.0, 1.0), (390.0, 1.5)]) {
     testWidgets(
       'actual chart launcher fills its panel without another dialog card and keeps keyboard/search/result at ${layout.$1}',
@@ -28,7 +38,7 @@ void main() {
         if (capture) await loadAuditScreenshotFonts(tester);
         final state = await _mount(
           tester,
-          _Api(),
+          _transport(),
           width: layout.$1,
           scale: layout.$2,
         );
@@ -77,7 +87,7 @@ void main() {
         expect(find.byType(FinanceChartDialog), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
-        state.container.dispose();
+        state.dispose();
       },
     );
   }
@@ -85,18 +95,31 @@ void main() {
   testWidgets(
     'chart launcher cannot close through a captured callback while import is pending and returns the original changed result',
     (tester) async {
-      final api = _Api()..applyGate = Completer<void>();
+      final api = _transport()..holdApply = Completer<void>();
       final state = await _mount(tester, api);
       await tester.tap(find.text('报表中的科目管理'));
       await tester.pumpAndSettle();
+      final close = tester
+          .widget<UtenButton>(
+            find.descendant(
+              of: find.byType(FinanceChartDialog),
+              matching: find.widgetWithText(UtenButton, '关闭'),
+            ),
+          )
+          .onPressed!;
       if (find.text('导入科目目录').evaluate().isEmpty) {
         await tester.tap(find.byTooltip('表格操作'));
         await tester.pumpAndSettle();
       }
       await tester.tap(find.text('导入科目目录'));
       await tester.pumpAndSettle();
-      final close = tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '关闭'))
+      final closeImport = tester
+          .widget<UtenButton>(
+            find.descendant(
+              of: find.byType(FinanceChartImportWorkbench),
+              matching: find.widgetWithText(UtenButton, '关闭'),
+            ),
+          )
           .onPressed!;
       final apply = tester
           .widget<UtenButton>(find.widgetWithText(UtenButton, '确认导入科目目录'))
@@ -104,34 +127,55 @@ void main() {
       apply();
       apply();
       close();
-      await tester.pump();
-      await tester.pump();
-      expect(api.applies, 1);
+      closeImport();
+      await pumpUntil(
+        tester,
+        () =>
+            api.applyCalls.length == 1 &&
+            find.byType(UtenBusyOverlayCard).evaluate().isNotEmpty,
+        reason:
+            'The original apply must dispatch once after its durable draft and actual waiting card are ready',
+      );
+      expect(api.applyCalls, hasLength(1));
+      expect(api.applyCalls.single.body, {
+        'importId': financeChartImportTestRoot,
+      });
+      expect(api.applied, 0);
       expect(find.byType(FinanceChartDialog), findsOneWidget);
       expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
       expect(state.result, isNull);
-      api.applyGate!.complete();
+      api.holdApply!.complete();
       await tester.pumpAndSettle();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(state.result, isTrue);
+      expect(api.applied, 1);
+      expect(api.applyCalls, hasLength(1));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
-      state.container.dispose();
+      state.dispose();
     },
   );
 }
 
 class _State {
-  _State(this.container);
+  _State(this.container, this.dio);
   final ProviderContainer container;
+  final Dio dio;
   final boundary = GlobalKey();
   bool? result;
+  bool _disposed = false;
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    container.dispose();
+    dio.close(force: true);
+  }
 }
 
 Future<_State> _mount(
   WidgetTester tester,
-  _Api api, {
+  FinanceChartImportTestTransport api, {
   double width = 1280,
   double scale = 1,
 }) async {
@@ -139,26 +183,43 @@ Future<_State> _mount(
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  final dio = Dio(BaseOptions(baseUrl: 'https://finance-command.test/api'))
+    ..httpClientAdapter = api;
   final container = ProviderContainer(
     overrides: [
-      apiClientProvider.overrideWithValue(api),
+      apiClientProvider.overrideWithValue(ApiClient(dio)),
+      apiBaseUrlProvider.overrideWithValue('https://finance-command.test/api'),
+      sessionProvider.overrideWith(FinanceChartImportTestSession.new),
+      formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+      sharedPreferencesProvider.overrideWithValue(
+        await SharedPreferences.getInstance(),
+      ),
       authenticatedScopeProvider.overrideWithValue(
-        const AuthenticatedScope(userId: 'chart-launcher-owner'),
+        const AuthenticatedScope(userId: financeCommandTestActor),
       ),
       currentPermissionsProvider.overrideWithValue({
         Perm.paymentStyleEdit,
         Perm.paymentStyleCreate,
+        Perm.financeReportView,
+        Perm.financeViewAll,
       }),
       financeEntryFilePickerProvider.overrideWithValue(
         () async => PlatformFile(
           name: 'chart.xlsx',
-          size: 3,
-          bytes: Uint8List.fromList([1, 2, 3]),
+          size: financeChartImportTestBytes.length,
+          bytes: financeChartImportTestBytes,
         ),
       ),
     ],
   );
-  final state = _State(container);
+  final state = _State(container, dio);
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    if (api.holdApply != null && !api.holdApply!.isCompleted) {
+      api.holdApply!.complete();
+    }
+    state.dispose();
+  });
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -195,16 +256,12 @@ Future<_State> _mount(
   return state;
 }
 
-class _Api extends ApiClient {
-  _Api() : super(Dio());
-  Completer<void>? applyGate;
-  int applies = 0;
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async => path == '/finance/chart'
-      ? {
+FinanceChartImportTestTransport _transport() =>
+    FinanceChartImportTestTransport()
+      ..loseApply = false
+      ..rootVersion = 0
+      ..readExtra = (path) => switch (path) {
+        '/finance/chart' => {
           'items': [
             {
               'code': '1001',
@@ -215,37 +272,7 @@ class _Api extends ApiClient {
               'lineKeys': <Object>[],
             },
           ],
-        }
-      : path == '/finance/chart/options'
-      ? {'currencies': <Object>[]}
-      : {'items': <Object>[]};
-  @override
-  Future<Map<String, dynamic>> postMultipartFile(
-    String path,
-    Uint8List bytes,
-    String filename,
-    String contentType, {
-    Duration? receiveTimeout,
-    Map<String, Object?> jsonParts = const {},
-    Map<String, dynamic>? headers,
-  }) async => {
-    'importId': 'chart-batch',
-    'sourceName': filename,
-    'rows': [
-      {'code': '1001', 'name': '库存现金'},
-    ],
-    'issues': <Object>[],
-    'applied': false,
-  };
-  @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? headers,
-    Map<String, dynamic>? query,
-  }) async {
-    applies++;
-    if (applyGate != null) await applyGate!.future;
-    return {'status': 'APPLIED', 'imported': 1};
-  }
-}
+        },
+        '/finance/chart/options' => {'currencies': <Object>[]},
+        _ => null,
+      };

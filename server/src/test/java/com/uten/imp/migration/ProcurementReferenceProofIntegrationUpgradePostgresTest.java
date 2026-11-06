@@ -57,10 +57,11 @@ class ProcurementReferenceProofIntegrationUpgradePostgresTest {
                 List<Row> retained=new ArrayList<>(legacy);retained.addAll(mainMaps);
                 for(Row row:retained) {
                     JsonNode actual=json(connection,row);JsonNode before=beforeCurrent.get(row.item());
-                    // Only genuinely new technical source/copy columns may appear.
+                    // Main's sole provenance column may appear; no second lineage is added.
                     for(var field:before.properties())assertThat(actual.get(field.getKey())).as(row.kind()+" retained "+field.getKey()).isEqualTo(field.getValue());
-                    assertThat(actual.path("reference_price_successor_source_id").isNull()).isTrue();
-                    assertThat(actual.path("successor_copy_txid").isNull()).isTrue();
+                    assertThat(actual.path("unapproval_source_item_id").isNull()).isTrue();
+                    assertThat(actual.has("reference_price_successor_source_id")).isFalse();
+                    assertThat(actual.has("successor_copy_txid")).isFalse();
                     for(String choices:List.of("{\"version\":1,\"choices\":{}}",UP)) {
                         policy(connection,master.actor(),choices,false);
                         assertThat(value(connection,"SELECT fn_procurement_reference_price_matches(to_jsonb(i)) FROM "+row.table()+" i WHERE id=?",row.item())).isEqualTo("t");

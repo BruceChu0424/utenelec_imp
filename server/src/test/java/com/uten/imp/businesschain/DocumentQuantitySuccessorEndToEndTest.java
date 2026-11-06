@@ -31,8 +31,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import static org.assertj.core.api.Assertions.*;
 
-/** Pre1033 rows are genuine historical version1 facts. Version2 sources use
- * real current business approval; both inherit, publicly edit and approve again. */
+/** Genuine pre1033 public-command originals become version1 on real upgrade.
+ * Historical orphan inputs retain their original conversion and fail closed;
+ * supported old/current sources inherit, publicly edit and approve again. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
@@ -48,11 +49,16 @@ import static org.assertj.core.api.Assertions.*;
 class DocumentQuantitySuccessorEndToEndTest {
     private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("document_successor_quantity");
     private static final Map<String,Legacy> LEGACY=new LinkedHashMap<>();
+    private static HistoricalSubcontractCommandFixture.Originals originalSubcontract;
     private static final AtomicInteger NUMBERS=new AtomicInteger(810000);
     private static final List<String> FAMILIES=List.of("purchaseOrder","purchaseReceipt","purchaseReturn","subcontractReceipt","subcontractMaterialReturn","salesReturn");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry)throws Exception {
         DB.start();TestFlyway.configure().dataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()).locations("classpath:db/migration").target("1032").load().migrate();
-        seedLegacy();FixtureDatabaseProperties.bindSameRole(registry,DB::getJdbcUrl,DB::getUsername,DB::getPassword);
+        if(LEGACY.isEmpty())seedLegacy();
+        if(originalSubcontract==null)originalSubcontract=HistoricalInventoryJdbc.originalSubcontract1032(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()),
+                DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());
+        FixtureDatabaseProperties.bindSameRole(registry,DB::getJdbcUrl,DB::getUsername,DB::getPassword);
     }
     public static final class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
@@ -80,15 +86,31 @@ class DocumentQuantitySuccessorEndToEndTest {
     @ParameterizedTest @MethodSource("families")
     void copiedV1OrV2FactsRemainExactThenPublicEditingUsesNormalAdoption(String family,boolean legacy)throws Exception {
         Scenario scenario=scenario(family,legacy);DocumentUnapprovalPort adapter=adapter(family);
-        UUID source=legacy?LEGACY.get(family).document():scenario.original();
-        UUID sourceLine=legacy?LEGACY.get(family).item():item(adapter,source);
-        if(legacy)reverse(scenario);
+        var genuine=legacy?genuineOriginal(family):null;
+        Legacy historical=genuine==null?LEGACY.get(family):new Legacy(genuine.document(),genuine.item());
+        UUID source=legacy?historical.document():scenario.original();
+        UUID sourceLine=legacy?historical.item():item(adapter,source);
+        if(legacy){
+            reverse(scenario);
+            if(genuine!=null){assertOriginalUpgrade(adapter,genuine);worldFactory.loginAs(genuine.actor());reverseOriginal(family,source);}
+        }
         String before=facts(adapter,sourceLine);
-        UUID draft=legacy?copyLegacy(adapter,LEGACY.get(family)):unapprove(family,source);
+        UUID draft=legacy?copyLegacy(adapter,historical):unapprove(family,source);
         UUID initial=item(adapter,draft);String inherited=facts(adapter,initial);
-        assertThat(inherited).isEqualTo(before);
+        if(genuine==null)assertThat(inherited).isEqualTo(before);
+        else {
+            var json=new com.fasterxml.jackson.databind.ObjectMapper();
+            var original=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(before);
+            var cloned=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(inherited);
+            assertThat(original.has("adopted_base_qty")&&original.path("adopted_base_qty").isNull()).isTrue();
+            assertThat(cloned.path("adopted_base_qty").decimalValue()).isEqualByComparingTo(genuine.physicalQuantity());
+            // The one derived column is asserted separately against a frozen,
+            // unique actual preupgrade physical fact. Every other field remains exact.
+            original.remove("adopted_base_qty");cloned.remove("adopted_base_qty");assertThat(cloned).isEqualTo(original);
+            assertThat(facts(adapter,sourceLine)).isEqualTo(before);
+        }
         if(legacy)assertThat(version(adapter,initial)).isEqualTo(1);else assertThat(version(adapter,initial)).isEqualTo(2);
-        UUID origin=db.queryForObject("SELECT "+sourceColumn(family)+" FROM "+adapter.lines().table()+" WHERE id=?",UUID.class,initial);
+        UUID origin=db.queryForObject("SELECT unapproval_source_item_id FROM "+adapter.lines().table()+" WHERE id=?",UUID.class,initial);
         assertThat(origin).isEqualTo(sourceLine);
         String savedAdoption=adoption(adapter,initial);
         saveSameQuantity(adapter,draft,false);
@@ -116,13 +138,19 @@ class DocumentQuantitySuccessorEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"purchaseOrder","purchaseReceipt","purchaseReturn","subcontractReceipt","subcontractMaterialReturn","salesReturn"})
     void initialCopyCannotBeMutatedMovedOrLeftWithoutItsPermanentMap(String family)throws Exception {
-        Scenario scenario=scenario(family);DocumentUnapprovalPort adapter=adapter(family);Legacy old=LEGACY.get(family+"-invalid");
+        Scenario scenario=scenario(family);DocumentUnapprovalPort adapter=adapter(family);
+        Legacy old=new Legacy(scenario.original(),item(adapter,scenario.original()));
+        reverse(scenario); // A valid current source includes its actual physical/cost proof.
         String before=facts(adapter,old.item());long rows=db.queryForObject("SELECT count(*) FROM "+adapter.header().table(),Long.class);
+        String history=sourceHistory(adapter,old.item());
         for(String mode:List.of("NO_MAP","EDIT","QTY","MOVE","DELETE","FALSE_SOURCE")){
             var assembled=new java.util.concurrent.atomic.AtomicBoolean();
+            var copyAttempted=new java.util.concurrent.atomic.AtomicBoolean();
             assertThatThrownBy(()->new TransactionTemplate(transactions).executeWithoutResult(status->{
-                identity.bind();UUID draft=copyRows(adapter,old,mode.equals("FALSE_SOURCE")?LEGACY.get(family).item():null);UUID line=item(adapter,draft);assembled.set(true);
-                if(!mode.equals("NO_MAP"))lineage(adapter,old,draft,line);
+                identity.bind();InitialCopy plan=copyHeader(adapter,old);
+                if(!mode.equals("NO_MAP"))lineage(adapter,old,plan.draft(),plan.line());
+                copyAttempted.set(true);copyLine(adapter,old,plan,mode.equals("FALSE_SOURCE")?LEGACY.get(family).item():null);
+                UUID line=plan.line();assembled.set(true);
                 if(mode.equals("EDIT"))db.update("UPDATE "+adapter.lines().table()+" SET price=COALESCE(price,0)+1 WHERE id=?",line);
                 if(mode.equals("QTY")){
                     String bases=family.startsWith("purchase")?",charged_base_qty=(qty+1)*unit_rate,gift_base_qty=COALESCE(gift_qty,0)*unit_rate":"";
@@ -130,11 +158,34 @@ class DocumentQuantitySuccessorEndToEndTest {
                 }
                 if(mode.equals("MOVE"))db.update("UPDATE "+adapter.lines().table()+" SET "+adapter.lines().parentColumn()+"=? WHERE id=?",scenario.original(),line);
                 if(mode.equals("DELETE"))db.update("DELETE FROM "+adapter.lines().table()+" WHERE id=?",line);
-            })).isInstanceOf(RuntimeException.class);
-            assertThat(assembled.get()).as("the valid initial copy must complete before testing %s",mode).isTrue();
+            })).isInstanceOf(RuntimeException.class).satisfies(failure->{
+                if(Set.of("NO_MAP","FALSE_SOURCE").contains(mode))assertThat(sqlState(failure)).isEqualTo("55000");
+            });
+            assertThat(copyAttempted.get()).as("header and intended lineage completed before the guarded copy INSERT: %s",mode).isTrue();
+            assertThat(assembled.get()).as("actual source guard rejects missing/false lineage at INSERT; other mutations start from a valid copy: %s",mode)
+                    .isEqualTo(!Set.of("NO_MAP","FALSE_SOURCE").contains(mode));
             assertThat(db.queryForObject("SELECT count(*) FROM "+adapter.header().table(),Long.class)).isEqualTo(rows);
-            assertThat(facts(adapter,old.item())).isEqualTo(before);
+            assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE family=? AND original_id=?",Long.class,family,old.document())).isZero();
+            assertThat(facts(adapter,old.item())).isEqualTo(before);assertThat(sourceHistory(adapter,old.item())).isEqualTo(history);
         }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"subcontractReceipt","subcontractMaterialReturn"})
+    void unknownHistoricalPhysicalBasisKeepsItsOriginalConvertedInputAndCannotCreateACloneOrMoney(String family){
+        var adapter=adapter(family);Legacy original=LEGACY.get(family);
+        worldFactory.loginAs(db.queryForObject("SELECT created_by FROM "+adapter.header().table()+" WHERE id=?",UUID.class,original.document()));
+        String header=db.queryForObject("SELECT to_jsonb(value)::text FROM "+adapter.header().table()+" value WHERE id=?",String.class,original.document());
+        String row=db.queryForObject("SELECT to_jsonb(value)::text FROM "+adapter.lines().table()+" value WHERE id=?",String.class,original.item());
+        String history=sourceHistory(adapter,original.item());String inputs=facts(adapter,original.item());
+        assertThat(db.queryForObject("SELECT unit_rate FROM "+adapter.lines().table()+" WHERE id=?",BigDecimal.class,original.item())).isEqualByComparingTo("1.00005");
+        var counts=new LinkedHashMap<String,Long>();for(String table:List.of(adapter.header().table(),"document_unapprovals","stock_movements","stock_value_events","gl_entries","ar_ap_ledger"))counts.put(table,db.queryForObject("SELECT count(*) FROM "+table,Long.class));
+        assertThatThrownBy(()->copyLegacy(adapter,original)).isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("legacy unapproval requires its actual original physical quantity evidence")
+                .satisfies(failure->assertThat(sqlState(failure)).isEqualTo("55000"));
+        assertThat(db.queryForObject("SELECT to_jsonb(value)::text FROM "+adapter.header().table()+" value WHERE id=?",String.class,original.document())).isEqualTo(header);
+        assertThat(db.queryForObject("SELECT to_jsonb(value)::text FROM "+adapter.lines().table()+" value WHERE id=?",String.class,original.item())).isEqualTo(row);
+        assertThat(facts(adapter,original.item())).isEqualTo(inputs);assertThat(sourceHistory(adapter,original.item())).isEqualTo(history);
+        counts.forEach((table,count)->assertThat(db.queryForObject("SELECT count(*) FROM "+table,Long.class)).as(table).isEqualTo(count));
     }
 
     @ParameterizedTest @ValueSource(strings={"purchaseOrder","purchaseReceipt","purchaseReturn"})
@@ -278,24 +329,57 @@ class DocumentQuantitySuccessorEndToEndTest {
         var source=db.queryForMap("SELECT * FROM subcontract_material_issue_items WHERE id=?",issue);
         var row=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine();row.setGoodsId((UUID)source.get("goods_id"));row.setUnitId((UUID)source.get("unit_id"));row.setUnitRate((BigDecimal)source.get("unit_rate"));row.setQty(new BigDecimal(qty));row.setPrice(BigDecimal.TEN);row.setMaterialIssueItemId(issue);row.setOrderItemId(order);row.setParentGoodsId(w.goodsE());request.setItems(List.of(row));return request;
     }
+    private HistoricalSubcontractCommandFixture.Original genuineOriginal(String family){return switch(family){
+        case "subcontractReceipt"->Objects.requireNonNull(originalSubcontract).receipt();
+        case "subcontractMaterialReturn"->Objects.requireNonNull(originalSubcontract).materialReturn();default->null;};}
+    private void assertOriginalUpgrade(DocumentUnapprovalPort adapter,HistoricalSubcontractCommandFixture.Original original){
+        for(var part:List.of(new String[]{adapter.header().table(),original.document().toString(),original.headerBeforeUpgrade()},
+                new String[]{adapter.lines().table(),original.item().toString(),original.itemBeforeUpgrade()},
+                new String[]{original.family().equals("subcontractReceipt")?"procurement_inspection_items":"stock_movements",original.physicalFact().toString(),original.physicalBeforeUpgrade()}))
+            assertThat(db.queryForObject("SELECT (SELECT jsonb_object_agg(cell.key,cell.value) FROM jsonb_each(to_jsonb(stored)) cell WHERE cell.key IN(SELECT jsonb_object_keys(CAST(? AS jsonb))))::text FROM "+part[0]+" stored WHERE id=?",String.class,part[2],UUID.fromString(part[1]))).as("All genuinely stored original columns survive the upgrade: %s",part[0]).isEqualTo(part[2]);
+        assertThat(db.queryForObject("SELECT quantity_adoption_version=1 AND quantity_precision_policy IS NULL AND adopted_base_qty IS NULL FROM "+adapter.lines().table()+" WHERE id=?",Boolean.class,original.item())).isTrue();
+        if(original.family().equals("subcontractReceipt"))assertThat(db.queryForObject("SELECT received_base_qty FROM procurement_inspection_items WHERE id=? AND receipt_type='SUBCONTRACT' AND receipt_id=? AND receipt_item_id=?",BigDecimal.class,original.physicalFact(),original.document(),original.item())).isEqualByComparingTo(original.physicalQuantity());
+        else assertThat(db.queryForObject("SELECT qty FROM stock_movements WHERE id=? AND source_doc_type='SUBCONTRACT_MATERIAL_RETURN' AND source_doc_id=? AND source_item_id=? AND movement_type=16 AND direction=1",BigDecimal.class,original.physicalFact(),original.document(),original.item())).isEqualByComparingTo(original.physicalQuantity());
+    }
+    private void reverseOriginal(String family,UUID id){switch(family){case "subcontractReceipt"->subcontractReceipts.reverse(id);case "subcontractMaterialReturn"->materialReturns.reverse(id);default->throw new IllegalArgumentException(family);}}
     private void reverse(Scenario s){switch(s.family()){case "purchaseOrder"->purchaseOrders.reverse(s.original());case "purchaseReceipt"->purchaseReceipts.reverse(s.original());case "purchaseReturn"->purchaseReturns.reverse(s.original());case "subcontractReceipt"->subcontractReceipts.reverse(s.original());case "subcontractMaterialReturn"->materialReturns.reverse(s.original());case "salesReturn"->salesReturns.reverse(s.original());default->throw new IllegalArgumentException();}}
     private UUID unapprove(String family,UUID id){unapproval.unapprove(family,id,new DocumentUnapprovalService.UnapproveRequest("quantity-successor-"+UUID.randomUUID(),"保存原数量决定，正常编辑后再审核"));return db.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",UUID.class,family,id);}
     private UUID settlement(){return db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1",UUID.class);}
     private DocumentUnapprovalPort adapter(String family){return adapters.stream().filter(a->a.family().equals(family)).findFirst().orElseThrow();}
     private UUID item(DocumentUnapprovalPort a,UUID parent){return db.queryForObject("SELECT id FROM "+a.lines().table()+" WHERE "+a.lines().parentColumn()+"=? AND NOT is_deleted ORDER BY line_no,id LIMIT 1",UUID.class,parent);}
-    private String facts(DocumentUnapprovalPort a,UUID id){return db.queryForObject("SELECT jsonb_object_agg(cell.key,cell.value)::text FROM "+a.lines().table()+" item CROSS JOIN LATERAL jsonb_each(to_jsonb(item)) cell WHERE item.id=? AND cell.key=ANY(fn_document_successor_preserved_fields(?))",String.class,id,a.lines().table());}
+    private String facts(DocumentUnapprovalPort a,UUID id){
+        // Fixed observation projection retains the original test's complete field
+        // set without introducing another business source/profile authority.
+        return db.queryForObject("SELECT jsonb_object_agg(cell.key,cell.value)::text FROM "+a.lines().table()+" item CROSS JOIN LATERAL jsonb_each(to_jsonb(item)) cell WHERE item.id=? AND cell.key=ANY(ARRAY['bill_date','goods_id','color_id','unit_id','unit_rate','qty','quantity_semantics','gift_qty',"+
+            "'charged_base_qty','gift_base_qty','adopted_base_qty','quantity_adoption_version','quantity_precision_policy','quantity_source_proof',"+
+            "'receipt_quantity_version','receipt_base_qty','receipt_quantity_proof','order_item_id','receipt_item_id','out_item_id',"+
+            "'material_issue_item_id','request_item_id','replacement_intent','gift_replacement_intent','price','amount_original','amount_local',"+
+            "'parent_goods_id','parent_color_id','cost_amount']::text[] || CASE WHEN ? IN('purchase_order_items','subcontract_order_items') THEN ARRAY['total_amount_input','reference_price_precision_policy','extra_columns']::text[] ELSE ARRAY[]::text[] END)",String.class,id,a.lines().table());
+    }
+    private String sourceHistory(DocumentUnapprovalPort a,UUID id){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(value) ORDER BY id),'[]'::jsonb)::text FROM business_record_history value WHERE source_table=? AND source_id=?",String.class,a.lines().table(),id.toString());}
+    private static String sqlState(Throwable failure){for(Throwable cause=failure;cause!=null;cause=cause.getCause())if(cause instanceof SQLException sql&&sql.getSQLState()!=null)return sql.getSQLState();return null;}
     private int version(DocumentUnapprovalPort a,UUID id){return db.queryForObject("SELECT "+(a.family().equals("salesReturn")?"receipt_quantity_version":"quantity_adoption_version")+" FROM "+a.lines().table()+" WHERE id=?",Integer.class,id);}
-    private static String sourceColumn(String family){return family.equals("purchaseOrder")?"reference_price_successor_source_id":"quantity_successor_source_id";}
-    private UUID copyLegacy(DocumentUnapprovalPort a,Legacy l){return new TransactionTemplate(transactions).execute(status->{identity.bind();UUID draft=copyRows(a,l,null);lineage(a,l,draft,item(a,draft));return draft;});}
-    private UUID copyRows(DocumentUnapprovalPort a,Legacy l,UUID falseSource){
-        UUID draft=UUID.randomUUID(),line=UUID.randomUUID();String bill=numbers.nextNumber(a.numberPrefix(l.document()));
+    private record InitialCopy(UUID draft,UUID line,String bill){}
+    private UUID copyLegacy(DocumentUnapprovalPort a,Legacy l){return new TransactionTemplate(transactions).execute(status->{
+        identity.bind();InitialCopy plan=copyHeader(a,l);lineage(a,l,plan.draft(),plan.line());copyLine(a,l,plan,null);return plan.draft();
+    });}
+    private InitialCopy copyHeader(DocumentUnapprovalPort a,Legacy l){
+        var plan=new InitialCopy(UUID.randomUUID(),UUID.randomUUID(),numbers.nextNumber(a.numberPrefix(l.document())));
         var head=new ArrayList<>(List.of("id","bill_no","status","created_by","updated_by"));head.addAll(a.header().inputs());
-        var values=new ArrayList<>(List.of("?","?","0","source.created_by","source.updated_by"));values.addAll(a.header().inputs().stream().map(x->"source."+x).toList());
-        db.update("INSERT INTO "+a.header().table()+"("+String.join(",",head)+") SELECT "+String.join(",",values)+" FROM "+a.header().table()+" source WHERE id=?",draft,bill,l.document());
-        var cols=new ArrayList<>(List.of("id",a.lines().parentColumn(),"bill_no","created_by","updated_by"));cols.addAll(a.lines().inputs());cols.addAll(a.generatedLineInputs().keySet());
-        var vals=new ArrayList<>(List.of("?","?","?","source.created_by","source.updated_by"));vals.addAll(a.lines().inputs().stream().map(x->"source."+x).toList());
-        vals.addAll(a.generatedLineInputs().entrySet().stream().map(e->falseSource!=null?"CAST('"+falseSource+"' AS uuid)":e.getValue()).toList());
-        db.update("INSERT INTO "+a.lines().table()+"("+String.join(",",cols)+") SELECT "+String.join(",",vals)+" FROM "+a.lines().table()+" source WHERE id=?",line,draft,bill,l.item());return draft;
+        var values=new ArrayList<>(List.of("?","?","0","source.created_by","?"));values.addAll(a.header().inputs().stream().map(x->a.generatedHeaderInputs().getOrDefault(x,"source."+x)).toList());
+        assertThat(db.update("INSERT INTO "+a.header().table()+"("+String.join(",",head)+") SELECT "+String.join(",",values)+" FROM "+a.header().table()+" source WHERE id=? AND status=-1 AND NOT is_deleted",plan.draft(),plan.bill(),current.requireId(),l.document())).isEqualTo(1);
+        return plan;
+    }
+    private void copyLine(DocumentUnapprovalPort a,Legacy l,InitialCopy plan,UUID falseSource){
+        assertThat(a.inheritsFrozenLineFacts()).isTrue();
+        var cols=new ArrayList<>(List.of("id",a.lines().parentColumn(),"created_by","updated_by"));
+        var vals=new ArrayList<>(List.of("?","?","source.created_by","?"));
+        var arguments=new ArrayList<Object>(List.of(plan.line(),plan.draft(),current.requireId()));
+        if(a.lines().lineBillNumber()){cols.add("bill_no");vals.add("?");arguments.add(plan.bill());}
+        cols.addAll(a.lines().inputs());vals.addAll(a.lines().inputs().stream().map(x->"source."+x).toList());
+        cols.add("unapproval_source_item_id");vals.add("?");arguments.add(falseSource==null?l.item():falseSource);
+        cols.addAll(a.generatedLineInputs().keySet());vals.addAll(a.generatedLineInputs().values());arguments.add(l.item());
+        assertThat(db.update("INSERT INTO "+a.lines().table()+"("+String.join(",",cols)+") SELECT "+String.join(",",vals)+" FROM "+a.lines().table()+" source WHERE id=? AND NOT is_deleted",arguments.toArray())).isEqualTo(1);
     }
     private void lineage(DocumentUnapprovalPort a,Legacy l,UUID draft,UUID line){db.update("INSERT INTO document_unapprovals(family,original_id,draft_id,draft_bill_no,request_key,reason,line_id_map,created_by) SELECT ?,?,?,bill_no,?,'匿名旧数量继任',jsonb_build_object(?::text,?::text),? FROM "+a.header().table()+" WHERE id=?",a.family(),l.document(),draft,"legacy-quantity-"+UUID.randomUUID(),l.item(),line,current.requireId(),draft);}
     @SuppressWarnings("unchecked") private static <T>T call(Object target,String method,Object...args){return (T)ReflectionTestUtils.invokeMethod(target,method,args);}
@@ -319,7 +403,7 @@ class DocumentQuantitySuccessorEndToEndTest {
             c.commit();c.setAutoCommit(true);
             String[][] specs={{"purchaseOrder","purchase_orders","purchase_order_items","order_id","CD"},{"purchaseReceipt","purchase_receipts","purchase_receipt_items","receipt_id","CJ"},{"purchaseReturn","purchase_returns","purchase_return_items","return_id","CT"},{"subcontractReceipt","subcontract_receipts","subcontract_receipt_items","receipt_id","EJ"},{"subcontractMaterialReturn","subcontract_material_returns","subcontract_material_return_items","material_return_id","ER"},{"salesReturn","sales_returns","sales_return_items","return_id","XT"}};
             var allSpecs=new ArrayList<String[]>();
-            for(String[] spec:specs){allSpecs.add(spec);var negative=spec.clone();negative[0]+="-invalid";allSpecs.add(negative);
+            for(String[] spec:specs){allSpecs.add(spec);
                 if(spec[0].startsWith("purchase")){var missing=spec.clone();missing[0]+="-null-basis";allSpecs.add(missing);}}
 
             for(String[] spec:allSpecs){UUID h=UUID.randomUUID(),i=UUID.randomUUID();String bill=spec[4]+"20260923"+"%06d".formatted(NUMBERS.incrementAndGet());String party=spec[1].equals("sales_returns")?"client_id":"supplier_id";

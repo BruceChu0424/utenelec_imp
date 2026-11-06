@@ -30,6 +30,7 @@ class GoodsClientGoodsNamePostgresTest {
 
     @BeforeEach void open() throws SQLException {
         db = database.openConnection(); db.setAutoCommit(false); actor = UUID.randomUUID();
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db,actor);
     }
 
     @AfterEach void close() throws SQLException { if (db != null) { db.rollback(); db.close(); } }
@@ -172,11 +173,13 @@ class GoodsClientGoodsNamePostgresTest {
     }
 
     private void replay(UUID operation, boolean undo) throws SQLException {
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db,actor);
         long version = number("SELECT version FROM goods_operation_history WHERE id=?", operation);
         execute("SELECT fn_replay_goods_operation(?,?,?,?)", operation, actor, version, undo); db.commit();
     }
 
     private void provenance(String path, String method) throws SQLException {
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(db,actor);
         execute("SELECT set_config('app.actor_id',?,true),set_config('app.audit_request_id',?,true),set_config('app.audit_request_path',?,true),set_config('app.audit_request_method',?,true)",
                 actor.toString(), UUID.randomUUID().toString(), path, method);
     }

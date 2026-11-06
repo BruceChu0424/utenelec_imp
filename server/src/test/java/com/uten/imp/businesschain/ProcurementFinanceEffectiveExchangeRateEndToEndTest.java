@@ -237,7 +237,7 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         assertThat(repeated.getId()).isEqualTo(draft.getId());
         assertThat(receiptQuantityFacts(draft.getId())).isEqualTo(frozenQuantity);
         assertThat(receiptQuantityFacts(original)).isEqualTo(frozenQuantity);
-        assertThat(db.queryForObject("SELECT quantity_successor_source_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId()))
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId()))
                 .isEqualTo(db.queryForObject("SELECT id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,original));
         assertThat(decimal("SELECT coalesce(sum(qty),0) FROM stock_balances WHERE goods_id=?",f.world().goodsD())).isZero();
         assertThat(db.queryForObject("SELECT finance_approval_case_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId())).isNull();
@@ -395,7 +395,10 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         UUID reviewed=approve(f,BigDecimal.ONE); // No current reference choice.
         assertThat(referencePolicy(f)).isEqualTo(savedProof);
         assertThatThrownBy(()->db.update("UPDATE "+f.prefix()+"_order_items SET reference_price_precision_policy=jsonb_set(reference_price_precision_policy,'{mode}','\"EXACT\"') WHERE id=?",f.item()))
-            .hasMessageContaining("policy is frozen");
+            .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class)
+            .hasMessageContaining("saved reference price proof cannot be independently replaced")
+            .rootCause().isInstanceOfSatisfying(java.sql.SQLException.class,
+                sql -> assertThat(sql.getSQLState()).isEqualTo("55000"));
         assertThat(referencePolicy(f)).isEqualTo(savedProof);
         UUID first=precision("money.cumulative-share",24,"DOWN",()->receipt(f,"1"));precision("money.cumulative-share",24,"DOWN",()->{approveReceipt(f,first);return null;});
         UUID tail=receipt(f,"2");approveReceipt(f,tail);
@@ -449,7 +452,7 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         UUID item=db.queryForObject("SELECT id FROM "+f.prefix()+"_order_items WHERE order_id=?",UUID.class,draft);
         Fixture inherited=new Fixture(f.world(),f.reviewer(),f.currency(),f.kind(),draft,item,f.purchaseSource());
         assertThat(referencePolicy(inherited)).isEqualTo(original);
-        assertThat(db.queryForObject("SELECT reference_price_successor_source_id FROM "+f.prefix()+"_order_items WHERE id=?",UUID.class,item)).isEqualTo(f.item());
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM "+f.prefix()+"_order_items WHERE id=?",UUID.class,item)).isEqualTo(f.item());
         unapproval.unapprove(family,f.order(),command);
         assertThat(db.queryForObject("SELECT count(*) FROM document_unapprovals WHERE family=? AND original_id=?",Integer.class,family,f.order())).isEqualTo(1);
         approve(inherited,BigDecimal.ONE);

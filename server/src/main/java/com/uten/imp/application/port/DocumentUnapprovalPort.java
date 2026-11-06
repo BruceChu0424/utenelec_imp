@@ -20,6 +20,9 @@ public interface DocumentUnapprovalPort {
     default void requireSupported(UUID id) { }
     default void afterDraftCreated(UUID originalId, UUID draftId) { }
     default List<SourceSnapshot> sources() { return List.of(); }
+    /** The database verifies and inherits this family's existing numeric facts. */
+    default boolean inheritsFrozenLineFacts() { return false; }
+    /** Family-owned assembly inputs, separate from the database-owned frozen facts. */
     default java.util.Map<String,String> generatedLineInputs() { return java.util.Map.of(); }
     /** Domain-owned draft assembly expressions; final authority is restored by
      * afterDraftCreated after every required child/source row exists. */

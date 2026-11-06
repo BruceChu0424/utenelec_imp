@@ -37,6 +37,9 @@ import static org.assertj.core.api.Assertions.*;
     "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ProcurementUnapprovalEligibilityEndToEndTest {
+    private final AutoCloseable scenarioPrecision=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+            "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")));
+    @AfterEach void releaseScenarioPrecision() throws Exception {scenarioPrecision.close();}
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -69,15 +72,25 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         var draft=receipts.detail(result);assertThat(draft.getStatus()).isZero();assertThat(draft.getItems().getFirst().getQty()).isEqualByComparingTo("10");assertThat(draft.getItems().getFirst().getGiftQty()).isEqualByComparingTo("1");
         assertThat(number("SELECT received_qty+gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
     }
-    @Test @Order(2) void compensatedFreeReturnRetainsOriginalIssueFactsAndMakesReceiptReversible(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    @Order(2) void compensatedFreeReturnPreservesSourceFactsAndActiveReturnGuards(boolean activeDownstream){
         F f=fixture();UUID id=receipt(f,"10","1");receipts.approve(id);passAndStock(f,id);
         UUID returned=returned(f,receipts.detail(id).getItems().getFirst().getId(),"0","1");stockSlice(()->returns.approve(returned));
         assertThat(ap(returned)).isZero();blockedWithoutWrites(()->receipts.unapprovalEligibility(id),"退货");
         allowedWithoutWrites(()->returns.unapprovalEligibility(returned));unapprove("purchaseReturn",returned);
         assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");assertThat(ap(id)).isEqualByComparingTo("100");
+        if (activeDownstream) {
+        allowedWithoutWrites(()->receipts.unapprovalEligibility(id));
+        UUID activeReturn=returned(f,receipts.detail(id).getItems().getFirst().getId(),"0","1");returns.approve(activeReturn);
+        assertThat(stock(f)).isEqualByComparingTo("10");assertThat(ap(id)).isEqualByComparingTo("100");assertThat(ap(activeReturn)).isZero();
+        blockedWithoutWrites(()->receipts.unapprovalEligibility(id),"退货");var before=facts();
+        assertThatThrownBy(()->unapprove("purchaseReceipt",id)).isInstanceOf(com.uten.imp.common.web.ApiException.class);assertThat(facts()).isEqualTo(before);
+        } else {
         allowedWithoutWrites(()->receipts.unapprovalEligibility(id));var original=originalMovements(id,returned);
         unapprove("purchaseReceipt",id);assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(id)).isZero();
         requireOriginalMovements(original);
+        }
     }
     @Test @Order(3) void previousPeriodReturnProjectionBlocksBeforeEitherInventoryOrLedgerChanges(){
         F f;UUID returned;var oldDate=BusinessTime.today().minusMonths(1);
@@ -100,17 +113,24 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         assertThat(ap(f.receipt())).isZero();assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
         assertThat(number("SELECT COALESCE(SUM(amount_local),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
     }
-    @Test @Order(6) void subcontractReturnUsesOriginalActualIssueAndRemainsReversibleWithoutTouchingFeeCredit(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    @Order(6) void subcontractReturnUsesOriginalActualIssueAndRemainsReversibleWithoutTouchingFeeCredit(boolean activeDownstream){
         SC f=subcontractFixture(true);UUID id=subcontractReturned(f);subcontractReturns.approve(id);
         assertThat(ap(id)).isEqualByComparingTo("-50");assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("540");
         blockedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()),"退货");allowedWithoutWrites(()->subcontractReturns.unapprovalEligibility(id));unapprove("subcontractReturn",id);
         assertThat(ap(id)).isZero();assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("600");
+        if (activeDownstream) {
+        UUID activeReturn=subcontractReturned(f);subcontractReturns.approve(activeReturn);
+        blockedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()),"退货");
+        } else {
         allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));var original=originalMovements(f.receipt(),id);
         unapprove("subcontractReceipt",f.receipt());assertThat(ap(f.receipt())).isZero();
         assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
         assertThat(number("SELECT COALESCE(SUM(amount_local),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
         assertThat(number("SELECT SUM(issue.consumed_qty) FROM subcontract_material_issue_items issue WHERE issue.order_item_id=?",f.orderItem())).isZero();
         requireOriginalMovements(original);
+        }
     }
     @Test @Order(7) void viewOnlyAndHiddenOwnerCannotLearnOrExecuteOtherPersonsUnapproval(){
         F f=fixture();UUID id=receipt(f,"10","1");receipts.approve(id);passAndStock(f,id);
@@ -184,8 +204,38 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         }catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
     }
 
+    @Test @Order(12) void subcontractSuccessorCanBeExplicitlySavedAndResubmittedWithoutRepeatingMaterialOrFee(){
+        SC f=subcontractFixture(false);
+        String originalPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_receipt_items WHERE receipt_id=?",String.class,f.receipt());
+        UUID draft=unapprove("subcontractReceipt",f.receipt());
+        var request=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
+        request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
+        var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
+        line.setGoodsId(f.w().goodsE());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.TEN);line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
+            subcontractReceipts.update(draft,request);
+        }catch(RuntimeException failure){throw failure;}catch(Exception failure){throw new IllegalStateException(failure);}
+        assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM subcontract_receipt_items WHERE receipt_id=?",String.class,draft)).isEqualTo("12");
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id IS NULL FROM subcontract_receipt_items WHERE receipt_id=?",Boolean.class,draft)).isTrue();
+        var review=new HashMap<>(com.uten.imp.common.finance.BusinessPrecisionContext.choices());review.put("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(0,"DOWN"));
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(review)){subcontractReceipts.approve(draft);}
+        catch(RuntimeException failure){throw failure;}catch(Exception failure){throw new IllegalStateException(failure);}
+        UUID inspectionId=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,draft);
+        inspection.dispose("SUBCONTRACT",draft,inspectionId,new InspectionDispositionRequest("PASS",null,"新代仍核对同一实际材料和加工费","sc-clone-pass-"+inspectionId));
+        UUID keeper=ReflectionTestUtils.invokeMethod(harness,"createIqcWarehouseConfirmer",f.w(),"sc-clone-keeper-"+draft);harness.loginAs(keeper);
+        var command=ReflectionTestUtils.<com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest>invokeMethod(harness,"latestIqcStockInRequest","SUBCONTRACT",draft,inspectionId,BigDecimal.TEN,"sc-clone-stock-"+inspectionId,"SC-CLONE-BIN");
+        var stored=stockIn.confirm("SUBCONTRACT",draft,command);assertThat(stockIn.confirm("SUBCONTRACT",draft,command).batchId()).isEqualTo(stored.batchId());
+        harness.loginAs(f.w().superAdminUserId());ReflectionTestUtils.invokeMethod(harness,"drainCosts",f.w());
+        assertThat(number("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("10");
+        assertThat(number("SELECT SUM(amount_local) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",f.w().warehouseId(),f.w().goodsE())).isEqualByComparingTo("600");
+        assertThat(ap(f.receipt())).isZero();assertThat(ap(draft)).isEqualByComparingTo("500");
+        assertThat(number("SELECT received_qty FROM subcontract_order_items WHERE id=?",f.orderItem())).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_receipt_items WHERE receipt_id=?",String.class,f.receipt())).isEqualTo(originalPolicy);
+        assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM subcontract_receipt_items WHERE receipt_id=?",String.class,draft)).isEqualTo("12");
+    }
+
     private UUID unapprove(String family,UUID id){
-        unapproval.unapprove(family,id,new DocumentUnapprovalService.UnapproveRequest("procurement-cap-"+UUID.randomUUID(),"真实反审核对"));
+        FrozenUnapprovalInputs.unapprove(db,unapproval,family,id,new DocumentUnapprovalService.UnapproveRequest("procurement-cap-"+UUID.randomUUID(),"真实反审核对"));
         return db.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",UUID.class,family,id);
     }
     private void allowedWithoutWrites(java.util.function.Supplier<com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility> read){

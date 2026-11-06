@@ -41,10 +41,10 @@ class FinanceChartImportPostgresTest {
         try(var input=getClass().getResourceAsStream("/db/migration/V1059__financial_subversion_audit_policy_registration.sql")) {
             main=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
-        try(var input=getClass().getResourceAsStream("/db/migration/V1068__financial_source_audit_policy_forward.sql")) {
+        try(var input=getClass().getResourceAsStream("/db/migration/V1073__financial_source_audit_policy_forward.sql")) {
             delta=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
-        try(var input=getClass().getResourceAsStream("/db/migration/V1083__finance_chart_import_original_intents.sql")) {
+        try(var input=getClass().getResourceAsStream("/db/migration/V1086__finance_chart_import_original_intents.sql")) {
             importDelta=new String(java.util.Objects.requireNonNull(input).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         }
         var calls=java.util.regex.Pattern.compile("(?s)SELECT\\s+public\\.fn_audit_track_table\\('([a-z_]+)'\\s*,\\s*'([A-Z_]+)'\\s*,\\s*'[^']+'\\s*,\\s*(?:true|false)\\s*,\\s*(ARRAY\\[(.*?)\\]|NULL)\\s*,\\s*true\\s*,\\s*NULL\\s*\\);");

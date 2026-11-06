@@ -96,6 +96,7 @@ void main() {
       reason:
           'The shared read mask must actually paint before releasing details',
     );
+    await tester.pump();
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在读取仓库资料'), findsOneWidget);
     expect(warehouses.deletedIds, isEmpty);
@@ -109,6 +110,7 @@ void main() {
       reason:
           'The confirmed delete must reach the held write after its mask paints',
     );
+    await tester.pump();
     expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
     expect(find.text('正在删除仓库'), findsOneWidget);
     expect(warehouses.deletedIds, ['c01']);

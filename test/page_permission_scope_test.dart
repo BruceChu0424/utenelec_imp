@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/finance/config/finance_requirement_names.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
@@ -124,7 +125,7 @@ void main() {
 
       expect(sales?.surfaceKey, 'sales.shipment');
       expect(finance?.surfaceKey, 'finance.sales-shipment-audit');
-      expect(finance?.title, '出货财务审核');
+      expect(finance?.title, FinanceRequirementNames.customerShipmentReview);
       expect(warehouse?.surfaceKey, 'warehouse.sales-outbound');
       expect(warehouse?.title, '仓库销售出库');
     });

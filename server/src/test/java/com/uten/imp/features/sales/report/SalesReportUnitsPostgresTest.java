@@ -272,7 +272,7 @@ class SalesReportUnitsPostgresTest {
         assertThat(result.rows()).hasSize(2);assertThat(result.rows()).allMatch(row->row.get("unitName")==null);
         var total=result.totals().stream().filter(t->t.key().equals("drawQty")).findFirst().orElseThrow();
         assertThat(total.groups()).hasSize(2).allMatch(group->group.unit()==null&&group.value()==null&&group.identity()!=null);
-        assertThat(result.rows().stream().map(row->decimal(row,"drawQty"))).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+        assertThat(result.rows().stream().map(row->decimal(row,"drawQty"))).usingElementComparator(BigDecimal::compareTo).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
     }
     @Test void normalizedCurrencyNamesNeverMergeDifferentCurrencyIdentities(){
         create("ORDER",EACH);Doc other=create("ORDER",EACH);UUID currency=UUID.randomUUID();
@@ -290,7 +290,7 @@ class SalesReportUnitsPostgresTest {
         db.update("INSERT INTO stock_document_items(id,doc_id,bill_type,goods_id,unit_id,unit_rate,qty,base_qty,issued_qty) VALUES (gen_random_uuid(),?,'DRAW',?,?,1,2,2,2),(gen_random_uuid(),?,'DRAW',?,?,1,3,3,3)",doc,GOODS,EACH,doc,GOODS,unit);
         var result=stock.detail("DRAW","REPORT-EQUAL-UNIT",null,null,(Short)null,null,null,null,null,Map.of(),1,50,null,null);
         var groups=result.totals().stream().filter(t->t.key().equals("drawQty")).findFirst().orElseThrow().groups();
-        assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.value())).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+        assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.value())).usingElementComparator(BigDecimal::compareTo).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
         assertThat(groups.toString()).contains(EACH.toString(),unit.toString());
     }
     @Test void productionProjectionUsesEachDeclaredFieldAndItsPlanUnit(){

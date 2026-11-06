@@ -317,7 +317,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('组件乙'), findsOneWidget);
       expect(find.text('组件甲'), findsNothing);
-      expect(find.text('0.10500000000000001'), findsOneWidget);
+      // This existing BOM measurement display contract keeps six statistical
+      // places; displaying it must not mutate the original numeric source.
+      expect(find.text('0.105'), findsOneWidget);
+      expect(repo.tree['root']![1].actual.qty, 0.10500000000000001);
       final export = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );

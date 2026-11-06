@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "scope": "ANONYMOUS_TASK_OWNED_FINANCE_UAT_PERSONAS_ONLY",
+  "base": [
+    "finance_report:view",
+    "finance:view:all",
+    "ar_ap_ledger:view",
+    "supplier_settlement:confirm",
+    "finance_post:execute",
+    "payment_style:edit",
+    "finance_asset:view",
+    "finance_asset:edit",
+    "finance_asset:approve",
+    "finance_asset:post",
+    "finance_asset:reverse",
+    "finance_asset_period:manage"
+  ],
+  "families": [
+    "finance_receipt",
+    "finance_payment",
+    "finance_expense",
+    "finance_other_income",
+    "finance_bank_transfer"
+  ],
+  "controlledActions": [
+    "view",
+    "create",
+    "edit",
+    "approve",
+    "reverse",
+    "delete"
+  ],
+  "roles": {
+    "maker": {
+      "actions": [
+        "view",
+        "create",
+        "edit"
+      ],
+      "additional": [
+        "customer_prepayment:view",
+        "payment_style:create"
+      ]
+    },
+    "reviewer": {
+      "actions": [
+        "view",
+        "approve"
+      ],
+      "additional": [
+        "customer_prepayment:view"
+      ]
+    },
+    "poster": {
+      "actions": [
+        "view",
+        "reverse"
+      ],
+      "additional": [
+        "customer_prepayment:view",
+        "finance_expense:gl_confirm",
+        "account:view",
+        "account:balance:view",
+        "account:flow:view"
+      ]
+    }
+  },
+  "purposeNotes": {
+    "base": "Existing original-statement, material-evidence and asset UAT capabilities remain; receipt approval is no longer shared in this base.",
+    "maker": "Create/edit the five money documents and perform the requested native chart account/target creation; no money approve/reverse.",
+    "reviewer": "Read and independently approve the five money documents; receipt prepayment review retains its explicit extra read guard.",
+    "poster": "Read and reverse the five money documents, confirm expense GL and inspect actual cash/account flows; edit/reapproval returns to maker/reviewer.",
+    "scope": "No wildcard, superadmin-only permission, account/bank adjustment, business state, precision or server guard change."
+  }
+}

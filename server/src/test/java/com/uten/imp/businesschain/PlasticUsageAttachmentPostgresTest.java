@@ -48,7 +48,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
-        "spring.profiles.active=dev", "spring.flyway.target=1080", "uten.audit.retention.enabled=false",
+        "spring.profiles.active=dev", "spring.flyway.target=1083", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false", "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
@@ -134,7 +134,7 @@ class PlasticUsageAttachmentPostgresTest {
         String quantityGuards=quantityGuards();
         assertKgAnnotationDomain(periodLine,false);
         TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
-                .locations("classpath:db/migration").target("1081").load().migrate();
+                .locations("classpath:db/migration").target("1084").load().migrate();
         assertEquals(originalRow,db.queryForObject("SELECT to_jsonb(input)::text FROM finance_plastic_template_inputs input WHERE period_line_id=?",String.class,periodLine));
         assertEquals(originalReceipt,db.queryForObject("SELECT to_jsonb(operation)::text FROM finance_cost_input_operations operation WHERE request_id=?",String.class,originalInput.requestId()));
         assertEquals(originalClose,db.queryForObject("SELECT to_jsonb(period_close)::text FROM workshop_material_period_closes period_close WHERE id=(SELECT source_close_id FROM finance_plastic_template_inputs WHERE period_line_id=?)",String.class,periodLine));
@@ -149,10 +149,24 @@ class PlasticUsageAttachmentPostgresTest {
         assertEquals(List.of("rowNo", "goodsName", "prevBalance", "drawQty", "returnQty", "rejectReturnQty",
                         "rejectIssueQty", "finishedWeight", "bookBalance", "checkQty", "diff", "usageRatio", "reason"),
                 table.columns().stream().map(ReportColumn::key).toList(), "保原13列，来源元数据不挤入原表");
-        assertEquals(List.of("序号", "材料名称", "上月结存", "本月仓库领用", "不良品退注塑车 / 退料",
+        var originalFullHeaders=List.of("序号", "材料名称", "上月结存", "本月仓库领用", "不良品退注塑车 / 退料",
                         "不良品退注塑车 / 安装挑选不良", "不良品退注塑车 / 安装挑选不良", "产品入库数", "账面结存",
-                        "实 际 盘 点 数", "差异", "成品占材料比例%", "原因"),
-                table.columns().stream().map(ReportColumn::label).toList());
+                        "实 际 盘 点 数", "差异", "成品占材料比例%", "原因");
+        assertEquals(List.of("序号", "材料名称", "上月结存", "本月仓库领用", "退料", "安装挑选不良",
+                        "安装挑选不良", "产品入库数", "账面结存", "实 际 盘 点 数", "差异", "成品占材料比例%", "原因"),
+                table.columns().stream().map(ReportColumn::label).toList(),"原表两层表头的叶文字保持原样");
+        var mergedOriginalGroup=new ReportColumn.HeaderGroup("plasticUsage:E3","不良品退注塑车");
+        var separateOriginalGroup=new ReportColumn.HeaderGroup("plasticUsage:G3","不良品退注塑车");
+        assertEquals(List.of(List.of(),List.of(),List.of(),List.of(),List.of(mergedOriginalGroup),
+                        List.of(mergedOriginalGroup),List.of(separateOriginalGroup),List.of(),List.of(),List.of(),
+                        List.of(),List.of(),List.of()),
+                table.columns().stream().map(ReportColumn::headerGroups).toList(),
+                "E3合并组与G3独立原单元格虽同名仍保留不同来源身份");
+        assertEquals(originalFullHeaders,table.columns().stream().map(column->{
+            var parts=new java.util.ArrayList<String>();
+            column.headerGroups().forEach(group->parts.add(group.label()));parts.add(column.label());
+            return String.join(" / ",parts);
+        }).toList(),"分组与叶文字仍精确组成原13个完整名称，未删改父名");
         assertEquals(1, table.rows().size());
         Map<String, Object> row = table.rows().getFirst();
         assertEquals(code, row.get("goodsCode"));

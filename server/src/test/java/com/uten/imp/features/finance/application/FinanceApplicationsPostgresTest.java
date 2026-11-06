@@ -30,6 +30,7 @@ import static com.uten.imp.features.finance.application.FinanceApplicationContra
 class FinanceApplicationsPostgresTest {
     private static final String MIGRATIONS=snapshotMigrations();
     private final Map<String,Prepared> prepared=new LinkedHashMap<>();
+    private boolean seedingOriginal;
     private static FinanceApplicationsPostgresTest historical;
     private static String originalEvents,originalOperations,originalSources,completedHead;
     private static int completedMigrationCount;
@@ -117,14 +118,23 @@ class FinanceApplicationsPostgresTest {
         assertThat(db.queryForObject("SELECT finance_expense_id FROM expense_claims WHERE id=?",UUID.class,nativeClaim)).isEqualTo(doc);assertBalanced(doc);
         assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAID'",Integer.class,nativeClaim)).isEqualTo(1);
         String frozen=db.queryForObject("SELECT source_snapshot::text FROM finance_applications WHERE id=?",String.class,id);
+        Object frozenSource=paid.get("source_snapshot"),frozenFingerprint=paid.get("source_fingerprint");
+        assertThat(((Map<?,?>)frozenSource).get("id")).isEqualTo(nativeClaim.toString());
+        assertThat(frozenFingerprint.toString()).matches("[0-9a-f]{64}");
+        String originalClaimEvents=db.queryForObject("SELECT jsonb_agg(to_jsonb(event) ORDER BY id)::text FROM expense_claim_events event WHERE claim_id=?",String.class,nativeClaim);
         Action reversal=reason(paid,"按真实报销原付款对称撤回");var reversed=applications.reverse(id,reversal);
         assertThat(reversed).containsEntry("status","REVERSED").containsEntry("expenseClaimUnavailable",true)
                 .doesNotContainKeys("expenseClaim","currentDraftSource","currentDraftSourceFingerprint","currentDraftAmountOriginal");
         assertThat(((Map<?,?>)reversed.get("actions")).get("edit")).isEqualTo(false);
         assertThat(reversed.get("source_snapshot")).isEqualTo(applications.decode(frozen));
         assertThat(db.queryForObject("SELECT source_snapshot::text FROM finance_applications WHERE id=?",String.class,id)).isEqualTo(frozen);
-        assertThat(expenseClaims.optionalDetail(nativeClaim)).isEmpty();
-        assertThat(expenseClaims.optionalDetail(UUID.randomUUID())).isEmpty();
+        assertThat(reversed).containsEntry("source_snapshot",frozenSource).containsEntry("source_fingerprint",frozenFingerprint);
+        assertThat(applications.detail(id)).containsEntry("source_snapshot",frozenSource).containsEntry("source_fingerprint",frozenFingerprint)
+                .doesNotContainKey("currentDraftSource");
+        assertThat(applications.receipt(id,reversal.requestId())).containsEntry("found",true);
+        assertNotFound(()->applications.receipt(prepared.get("reject").input().id(),reversal.requestId()));
+        assertThat(expenseClaims.findReadableDetail(nativeClaim)).isEmpty();
+        assertThat(expenseClaims.findReadableDetail(UUID.randomUUID())).isEmpty();
         assertThatThrownBy(()->expenseClaims.detail(nativeClaim)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
                 error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND));
         assertThatThrownBy(()->expenseClaims.applicationBusinessSnapshot(nativeClaim)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
@@ -136,16 +146,30 @@ class FinanceApplicationsPostgresTest {
         assertThat(applications.reverse(id,reversal).get("status")).isEqualTo("REVERSED");
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_events WHERE application_id=? AND event_type='PAYMENT_REVERSED'",Integer.class,id)).isEqualTo(1);
         assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAYMENT_REVERSED'",Integer.class,nativeClaim)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(event) ORDER BY id)::text FROM expense_claim_events event WHERE claim_id=? AND event_type<>'PAYMENT_REVERSED'",String.class,nativeClaim)).isEqualTo(originalClaimEvents);
+        assertThatThrownBy(()->db.update("INSERT INTO expense_claim_events(claim_id,event_type,actor_employee_id,actor_name_snapshot) VALUES(?,'UNKNOWN_EVENT_KIND',?,'拒绝无效事件')",nativeClaim,payer.employee()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class).hasMessageContaining("expense_claim_events_type_chk");
         assertThat(db.queryForObject("SELECT count(*) FROM expense_claim_invoices WHERE claim_id=? AND id=?",Integer.class,nativeClaim,invoiceId)).isEqualTo(1);
         login(w.owner());legacy.requireEditableOriginal(applications.row(id,false));
         var editable=applications.detail(id);
         assertThat(((Map<?,?>)editable.get("actions")).get("edit")).isEqualTo(true);
         assertThat(editable).containsKeys("currentDraftSource","currentDraftSourceFingerprint","currentDraftAmountOriginal");
+        assertThat(((Map<?,?>)editable.get("currentDraftSource")).get("id")).isEqualTo(nativeClaim);
         assertThat(editable.get("expenseClaimUnavailable")).isNull();
         assertThat(expenseClaims.detail(nativeClaim).id()).isEqualTo(nativeClaim);
-        assertThat(expenseClaims.optionalDetail(nativeClaim).orElseThrow().id()).isEqualTo(nativeClaim);
+        assertThat(expenseClaims.findReadableDetail(nativeClaim).orElseThrow().id()).isEqualTo(nativeClaim);
         assertThatThrownBy(()->applications.submit(id,action(editable))).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
                 error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT));
+        Actor outsider=actor("无关只读",Set.of("finance_application:view"));login(outsider);
+        assertNotFound(()->applications.detail(id));assertNotFound(()->applications.receipt(id,reversal.requestId()));
+        new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+            UUID administrator=db.queryForObject("SELECT id FROM users WHERE is_super_admin AND NOT is_deleted ORDER BY created_at LIMIT 1",UUID.class);
+            db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,administrator.toString());
+            db.update("UPDATE user_permission_overrides grant_row SET effect='revoke' FROM permissions permission WHERE permission.id=grant_row.permission_id AND grant_row.user_id=? AND permission.code='finance_application:view'",payer.user());
+        });
+        var revoked=new HashSet<>(payer.permissions());revoked.remove("finance_application:view");
+        login(new Actor(payer.user(),payer.employee(),payer.name(),Set.copyOf(revoked)));
+        assertNotFound(()->applications.detail(id));assertNotFound(()->applications.receipt(id,reversal.requestId()));
     }
     @Test void approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable(){
         Prepared original=prepared.get("prepayment");World w=original.world();Actor payer=payer();UUID id=original.input().id();approvePayment(w,id);
@@ -213,7 +237,7 @@ class FinanceApplicationsPostgresTest {
     private static void prepareOriginalDatabaseBeforeCurrentJpa(){
         var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).locations(MIGRATIONS).target("1039").load().migrate();
-        var old=new FinanceApplicationsPostgresTest();old.data=source;old.db=new JdbcTemplate(source);
+        var old=new FinanceApplicationsPostgresTest();old.data=source;old.db=new JdbcTemplate(source);old.seedingOriginal=true;
         assertThat(old.db.queryForObject("SELECT max(version::numeric)::int FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class)).isEqualTo(1039);
         // Only the anonymous bootstrap identity needed to grant the original
         // fixture's explicit permissions is supplied before the normal app boots.
@@ -339,6 +363,8 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
     private Execute execute(Map<String,Object> app,UUID account,UUID style,String amount){return new Execute(UUID.randomUUID(),((Number)app.get("row_version")).longValue(),app.get("source_fingerprint").toString(),account,BusinessTime.today().toString(),java.time.OffsetDateTime.now().toString(),"真实回单-"+UUID.randomUUID(),amount,"0",null,style,"1","ORDINARY_EXPENSE");}
     private Action reason(Map<String,Object> app,String reason){var action=action(app);return new Action(action.requestId(),action.expectedVersion(),action.sourceFingerprint(),null,reason);}
     private void assertBalanced(UUID doc){assertThat(db.queryForObject("SELECT COALESCE(sum(direction*amount),0) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",java.math.BigDecimal.class,doc)).isZero();}
+    private void assertNotFound(Runnable action){assertThatThrownBy(action::run).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+            failure->assertThat(failure.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND));}
     private UUID proof(UUID owner,String type){UUID id=UUID.randomUUID();db.update("INSERT INTO attachments(id,owner_type,owner_id,storage_key,original_name,content_type,size_bytes,sha256,storage_provider,lifecycle_state,scan_engine,scanned_at,promoted_at) VALUES(?,?,?,?,'匿名原回单.pdf','application/pdf',100,?,'local','CLEAN','fixture',now(),now())",id,type,owner,id+".pdf","a".repeat(64));return id;}
     private UUID account(){return account(null);}
     private UUID account(UUID suppliedStyle){UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);UUID bank=suppliedStyle==null?UUID.randomUUID():suppliedStyle;if(suppliedStyle==null){db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'ACCOUNT','使用')",bank,"FQ-B-"+bank,"匿名银行科目-"+bank);}UUID id=UUID.randomUUID();db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,init_balance,receipts_total,payments_total,balance_current,status,style_id) VALUES(?,?,'匿名实际银行','BANK',?,1000,0,0,1000,'使用',?)",id,"FQ-B-"+id,currency,bank);return id;}
@@ -350,7 +376,20 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
     private World world(){return world(false);}
     private World world(boolean salary){Actor admin=actor("设置",Set.of("expense:settings","finance_application:view")),owner=actor("申请人",salary?Set.of("finance_application:view","finance_application:apply","expense:apply","payroll:generate"):Set.of("finance_application:view","finance_application:apply","expense:apply")),department=reviewer("部门"),finance1=reviewer("财务一"),finance2=reviewer("财务二"),management=reviewer("总经办");login(admin);
         UUID dept=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,owner.employee);
-        seedOriginal1039Configuration(admin,dept,Map.of("DEPARTMENT_REVIEW",department,"TRAVEL_APPROVAL",management,"FINANCE_CUSTODY",finance1,"FINANCE_REVIEW_1",finance1,"FINANCE_REVIEW_2",finance2,"MANAGEMENT_PAYMENT",management));
+        var bindings=Map.of("DEPARTMENT_REVIEW",department,"TRAVEL_APPROVAL",management,"FINANCE_CUSTODY",finance1,"FINANCE_REVIEW_1",finance1,"FINANCE_REVIEW_2",finance2,"MANAGEMENT_PAYMENT",management);
+        if(seedingOriginal)seedOriginal1039Configuration(admin,dept,bindings);
+        else {
+            // Original nodes already froze their actors. Update a real current role
+            // through its public journal rather than bypass its eight-person guard.
+            for(var binding:bindings.entrySet()) {
+                UUID scope=binding.getKey().equals("DEPARTMENT_REVIEW")?dept:null;
+                var existing=db.queryForList("SELECT id,row_version FROM finance_application_role_bindings WHERE role_key=? AND department_id IS NOT DISTINCT FROM ?::uuid ORDER BY id LIMIT 1",binding.getKey(),scope);
+                UUID id=existing.isEmpty()?UUID.randomUUID():(UUID)existing.getFirst().get("id");
+                long version=existing.isEmpty()?-1:((Number)existing.getFirst().get("row_version")).longValue();
+                roles.saveRole(new RoleInput(id,version,binding.getKey(),scope,binding.getValue().employee,"原图岗位明确指派测试依据"));
+            }
+            var settings=roles.settings();roles.saveSettings(new SettingsInput(((Number)settings.get("version")).longValue(),true,"按财务原图启用新申请流程测试依据"));
+        }
         return new World(owner,department,finance1,finance2,management);
     }
     /** This class deliberately captures original 1039 state before migrating to 1040.
@@ -361,6 +400,7 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
      * All application decisions, actual payments, GL and reversals below still use
      * their real services. */
     private void seedOriginal1039Configuration(Actor admin,UUID department,Map<String,Actor> bindings) {
+        assertThat(seedingOriginal).as("Original configuration is seeded only before current JPA boots").isTrue();
         new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
             tx.bind();roles.lockSettings();
             for(var binding:bindings.entrySet()) {
@@ -376,6 +416,7 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
             db.update("UPDATE finance_application_settings SET enabled=true,enabled_at=now(),source_reference=?,row_version=row_version+1,updated_at=now(),updated_by=? WHERE id=1",reference,admin.user);
         });
     }
+
     private Actor reviewer(String name){return actor(name,Set.of("finance_application:view","finance_application:review","attachment:view","attachment:download","notice:read"));}
     private Actor actor(String label,Set<String> permissions){UUID employee=UUID.randomUUID(),user=UUID.randomUUID();String name=label+employee.toString().substring(0,8);UUID department=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"A-"+employee,name,department);

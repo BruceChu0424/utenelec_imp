@@ -732,7 +732,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     List.of("batch_id","source_category","target_category"),
                     "V1015 客户抵销分类更正明细只留批次与前后类别"),
             new ScopedTable("finance_chart_imports", "data_change", true,
-                    List.of("id","actor_id","sha256","applied_at","created_at"),
+                    List.of("id","actor_id","sha256","applied_at","created_at","parent_import_id","review_request_id","cancelled_at"),
                     "V1059 原科目与会计来源保留身份、审批及指纹定位，私有原文与金额不进入通用审计"),
             new ScopedTable("finance_chart_codes", "data_change", true,
                     List.of("code","native_style_id","source_import_id","source_kind","classification","currency_id",
@@ -1921,7 +1921,7 @@ class AuditTriggerCoverageMigrationContractTest {
         String main=Files.readString(MIGRATION_ROOT.resolve(SUBVERSION_AUDIT_FORWARD),StandardCharsets.UTF_8);
         assertEquals("f81b00750f54108c6af9f1ce51a8a78e3f558954c84afa345d31ffce3e8a6d92",HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(MIGRATION_ROOT.resolve(SUBVERSION_AUDIT_FORWARD)))),"Applied Main V1059 bytes remain immutable");
         assertTrue(main.contains("financial_subversion_private_changes_v1")&&main.contains("Private names, amounts"));
-        String delta=stripSqlComments(Files.readString(MIGRATION_ROOT.resolve("V1068__financial_source_audit_policy_forward.sql"),StandardCharsets.UTF_8));
+        String delta=stripSqlComments(Files.readString(MIGRATION_ROOT.resolve("V1073__financial_source_audit_policy_forward.sql"),StandardCharsets.UTF_8));
         Map<String,String> registrations=new HashMap<>();Matcher call=REGISTRATION.matcher(delta);
         while(call.find())assertNull(registrations.put(call.group(1),call.group(2)),"One additive registration per changed table");
         assertEquals(Set.of("finance_accounting_import_batches","finance_gl_entry_allocations","finance_gl_auxiliary_opening_evidence"),registrations.keySet());

@@ -1190,6 +1190,26 @@ public class FinancePaymentService {
         FinancePayment original=require(originalId),draft=require(draftId);
         if(original.getStatus()==null||original.getStatus()!=STATUS_REVERSED||draft.getStatus()==null||draft.getStatus()!=STATUS_DRAFT)
             throw new ApiException(ErrorCode.CONFLICT,"付款反审续稿代次不正确");
+        // Validate the original bank facts before resolving this new draft's
+        // legal posting identities and restoring its original authority family.
+        var unchanged=em.createNativeQuery("""
+            SELECT EXISTS(SELECT 1 FROM finance_payments draft JOIN finance_payments source ON source.id=:original
+            WHERE draft.id=:draft AND draft.status=0 AND source.status=-1
+              AND NOT draft.is_deleted AND NOT source.is_deleted
+              AND draft.amount_authority_version=CASE WHEN source.amount_authority_version=2 THEN 0 ELSE source.amount_authority_version END
+              AND (draft.supplier_id,draft.account_id,draft.currency_id,draft.exchange_rate,
+                   draft.amount_original,draft.amount_local,draft.account_currency_id,draft.account_exchange_rate,
+                   draft.account_amount,draft.account_amount_local,draft.bank_fee_account_amount,draft.bank_fee_local,
+                   draft.bank_reference,draft.bank_booked_at,draft.gl_account_style_id,draft.gl_ap_style_id,
+                   draft.gl_fx_style_id,draft.gl_bank_fee_style_id)
+                  IS NOT DISTINCT FROM
+                  (source.supplier_id,source.account_id,source.currency_id,source.exchange_rate,
+                   source.amount_original,source.amount_local,source.account_currency_id,source.account_exchange_rate,
+                   source.account_amount,source.account_amount_local,source.bank_fee_account_amount,source.bank_fee_local,
+                   source.bank_reference,source.bank_booked_at,source.gl_account_style_id,source.gl_ap_style_id,
+                   source.gl_fx_style_id,source.gl_bank_fee_style_id))
+            """).setParameter("draft",draftId).setParameter("original",originalId).getSingleResult();
+        if(!Boolean.TRUE.equals(unchanged))throw new ApiException(ErrorCode.CONFLICT,"反审付款草稿的银行事实与原来源不一致，本次未生成草稿");
         if(original.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)return;
         var rows=em.createNativeQuery("SELECT style_id FROM accounts WHERE id=:id AND status='使用' AND NOT is_deleted")
                 .setParameter("id",draft.getAccountId()).getResultList();

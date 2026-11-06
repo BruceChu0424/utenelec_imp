@@ -46,7 +46,7 @@ class ProductionDrawDiscoveryRow {
     final input = quantity.text.trim();
     if (input.isEmpty) return '请填写本次领料数量';
     if (positiveDocumentQuantityText(input) == null) {
-      return '数量须大于 0，最多 4 位小数';
+      return '数量须大于 0，整数最多 40 位、小数最多 24 位';
     }
     return null;
   }
@@ -70,7 +70,7 @@ class ProductionDrawDiscoveryRow {
     'unitId': values['unitId'],
     'warehouseId': values['warehouseId'],
     'qty': positiveDocumentQuantityText(quantity.text.trim()) == null
-        ? (throw const FormatException('数量须大于 0，最多 4 位小数'))
+        ? (throw const FormatException('数量须大于 0，整数最多 40 位、小数最多 24 位'))
         : quantity.text.trim(),
   };
 

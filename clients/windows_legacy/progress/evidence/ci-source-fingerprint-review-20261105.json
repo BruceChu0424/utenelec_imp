@@ -230,6 +230,37 @@
         }
       ],
       "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c:clients/windows_legacy/progress/evidence/table-output-selection-20261105.json:generic-api-key:357",
+      "evidenceFile": "clients/windows_legacy/progress/evidence/table-output-selection-20261105.json",
+      "evidenceLine": 357,
+      "sourcePath": "server/src/main/java/com/uten/imp/common/export/ExportPasswordRequest.java",
+      "algorithm": "sha256",
+      "digest": "ff0347b7cbb9480620cba3aea4a695c8003ab610397e239d98bac74048a30525",
+      "verifiedAgainst": [
+        {
+          "commit": "d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c",
+          "encoding": "exact Git UTF-8 blob bytes"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential"
+    },
+    {
+      "fingerprint": "3cbafbf44310842f4f77e092f8d2d09ee9d3f815:docs/99-项目治理/evidence/finance-full-chain-audit-20261104/ledger-reference-price-closeout-20261105.json:generic-api-key:101",
+      "evidenceFile": "docs/99-项目治理/evidence/finance-full-chain-audit-20261104/ledger-reference-price-closeout-20261105.json",
+      "evidenceLine": 101,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementOrderFinanceReviewAccessTest.java",
+      "algorithm": "sha256",
+      "digest": "6e9c47866edd91cbbe5c4e9b1dc0f47b6f3595abc8f6446d3155ec461035c7bd",
+      "verifiedAgainst": [
+        {
+          "commit": "3cbafbf44310842f4f77e092f8d2d09ee9d3f815",
+          "encoding": "exact Git UTF-8 blob bytes"
+        }
+      ],
+      "classification": "identified source checksum/object identity; not a credential",
+      "integrationScope": "Unmerged excluded task; read-only checksum verification does not merge its code"
     }
   ],
   "reviewDate": "2026-11-05",

@@ -68,6 +68,7 @@ class ProductionExecutionSegmentOperationsPostgresTest {
 
             UUID stockEvent = com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(
                     connection,f.drawId(),"ISSUE","issue-"+UUID.randomUUID());
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
             UUID issuePostingId = UUID.randomUUID();
             update(connection,"""
                     UPDATE stock_balances balance SET qty=balance.qty-10
@@ -220,6 +221,8 @@ class ProductionExecutionSegmentOperationsPostgresTest {
                 plan, "PRODUCT-" + planItem, product, unit);
 
         c.setAutoCommit(false);
+
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(c);
         try {
             insert(c, """
                     insert into production_planning_packages(
@@ -399,12 +402,7 @@ class ProductionExecutionSegmentOperationsPostgresTest {
 
     private static int update(
             Connection c, String sql, Object... values) throws Exception {
-        try (PreparedStatement statement = c.prepareStatement(sql)) {
-            for (int index = 0; index < values.length; index++) {
-                statement.setObject(index + 1, values[index]);
-            }
-            return statement.executeUpdate();
-        }
+        return com.uten.imp.testsupport.FixtureAuditTransactions.executeUpdate(c,sql,values);
     }
 
     private static BigDecimal decimal(String value) {

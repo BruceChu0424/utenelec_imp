@@ -507,7 +507,7 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
         if (!_current || !scope.isCurrent) return false;
         return _accept(receipt);
       });
-      if (value?.result == true && _current) {
+      if (value?.result == true && mounted && _current) {
         Navigator.pop(context, true);
       }
     } catch (error) {
@@ -630,7 +630,9 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
         setState(() => _error = '尚未取得原操作回执，不能认定未写入，原请求继续保留。');
         return;
       }
-      if (value.result.close && _current) Navigator.pop(context, true);
+      if (value.result.close && mounted && _current) {
+        Navigator.pop(context, true);
+      }
     } catch (error) {
       _showError(error);
     } finally {

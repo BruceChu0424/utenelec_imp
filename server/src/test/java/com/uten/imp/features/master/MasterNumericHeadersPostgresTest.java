@@ -110,7 +110,7 @@ class MasterNumericHeadersPostgresTest {
         assertThat(page2.getItems().getFirst().getId()).isEqualTo(first);
         assertThat(page2.getItems().getFirst().getStockQty()).isEqualByComparingTo("12");
         assertThat(page2.getItems().getFirst().getPriceDisplayText()).isEqualTo("12.3456");
-        assertThat(page2.getItems().getFirst().getStockQtyDisplayText()).isEqualTo("12.00");
+        assertThat(page2.getItems().getFirst().getStockQtyDisplayText()).isEqualTo("12");
         assertThat(service.locate(filter,first,1,"stockQty","desc").page()).isEqualTo(2);
         assertThat(service.locate(filter,second,1,"stockQty","desc").page()).isEqualTo(1);
         assertThat(service.locate(filter,privateGoods,1,"stockQty","desc").found()).isFalse();

@@ -826,7 +826,7 @@ class GoodsImportHistoryPostgresTest {
         assertEquals("混合导入新货品", scalar("SELECT name FROM goods WHERE id=:id", createdId));
     }
 
-    @Test void numericCellTailsNormalizeAtTheBoundaryWhileExactLargeDecimalsSurviveReviewAndCommit() throws Exception {
+    @Test void rawNumericCellDigitsAndExactLargeDecimalsSurviveReviewAndCommit() throws Exception {
         byte[] file;
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品");
@@ -850,9 +850,9 @@ class GoodsImportHistoryPostgresTest {
         }
         var detected = inTx(() -> importer.detect(file));
         assertTrue(detected.errors().isEmpty(), detected.errors().toString());
-        assertEquals("35.3", detected.previewRows().getFirst().cells().get("price"));
-        assertEquals("0.3", detected.previewRows().getFirst().cells().get("minOrderQty"));
-        assertEquals("1", detected.previewRows().getFirst().cells().get("orderMultipleQty"));
+        assertEquals("35.299999999999997", detected.previewRows().getFirst().cells().get("price"));
+        assertEquals("0.30000000000000004", detected.previewRows().getFirst().cells().get("minOrderQty"));
+        assertEquals("1.0000000000000002", detected.previewRows().getFirst().cells().get("orderMultipleQty"));
         assertEquals("12345678901234.1234", detected.previewRows().get(1).cells().get("price"));
         var priceChange = detected.reviewRows().getFirst().changes().stream()
                 .filter(change -> "price".equals(change.field())).findFirst().orElseThrow();
@@ -860,16 +860,16 @@ class GoodsImportHistoryPostgresTest {
         assertTrue(json.get("oldValue").isTextual());
         assertTrue(json.get("newValue").isTextual());
         assertEquals("12.3400", json.get("oldValue").asText());
-        assertEquals("35.3", json.get("newValue").asText());
+        assertEquals("35.299999999999997", json.get("newValue").asText());
         var imported = commitWithTransientLockRetry(() -> inTx(() -> {
             provenance("/api/master/goods/import/commit", "POST");
             return importer.commit(detected.planId(), file, "numeric-cell-boundary.xlsx", Set.of("goods:2"));
         }));
         assertEquals(1, imported.updatedCount());
         assertEquals(1, imported.createdCount());
-        assertEquals("35.3000", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
-        assertEquals("0.3000", scalar("SELECT min_order_qty::text FROM goods WHERE id=:id", existingId));
-        assertEquals("1.0000", scalar("SELECT order_multiple_qty::text FROM goods WHERE id=:id", existingId));
+        assertEquals("35.299999999999997", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
+        assertEquals("0.30000000000000004", scalar("SELECT min_order_qty::text FROM goods WHERE id=:id", existingId));
+        assertEquals("1.0000000000000002", scalar("SELECT order_multiple_qty::text FROM goods WHERE id=:id", existingId));
         assertEquals("12345678901234.1234", em.createNativeQuery("SELECT price::text FROM goods WHERE code=:code")
                 .setParameter("code", newCode).getSingleResult());
     }

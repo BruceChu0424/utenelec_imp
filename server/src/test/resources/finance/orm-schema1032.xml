@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entity-mappings xmlns="https://jakarta.ee/xml/ns/persistence/orm" version="3.1">
+  <!-- Historical transport only: these seven attributes did not exist at1032.
+       All original entity mappings and Hibernate schema validation remain active.
+       This resource must never configure the normal current-schema application. -->
+  <entity class="com.uten.imp.features.sales.order.SalesOrderItem" access="FIELD">
+    <attributes>
+      <transient name="deliveryPlan"/>
+      <transient name="deliveryBomSnapshot"/>
+    </attributes>
+  </entity>
+  <entity class="com.uten.imp.features.finance.receipt.FinanceReceiptLine" access="FIELD">
+    <attributes>
+      <transient name="requestedSalesOrderId"/>
+      <transient name="appliedSourceDocType"/>
+      <transient name="appliedSourceDocId"/>
+      <transient name="appliedSourceDocNo"/>
+    </attributes>
+  </entity>
+  <entity class="com.uten.imp.features.finance.receipt.FinanceReceipt" access="FIELD">
+    <attributes><transient name="orderSelectionVersion"/></attributes>
+  </entity>
+</entity-mappings>

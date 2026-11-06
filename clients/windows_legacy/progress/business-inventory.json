@@ -16018,30 +16018,30 @@
       "id": "page:applications/pages/business_application_detail_page.dart",
       "feature": "applications",
       "source": "lib/features/applications/pages/business_application_detail_page.dart",
-      "sha256": "08b88489926ab9bf0a61fb17b4010d84c8107f290234287fed53603462b45208",
-      "lineCount": 1610,
+      "sha256": "4111732594198ae52937077f0801b445d2869694b80b4434ebab7ce38b4de3de",
+      "lineCount": 1615,
       "classes": [
         {
           "name": "BusinessApplicationDetailPage",
-          "line": 67,
+          "line": 68,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_BusinessApplicationDetailPageState",
-          "line": 75,
+          "line": 76,
           "role": "state-class",
           "extends": "ConsumerState<BusinessApplicationDetailPage>"
         },
         {
           "name": "_PaymentRecordPicker",
-          "line": 980,
+          "line": 985,
           "role": "supporting-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_PaymentRecordPickerState",
-          "line": 994,
+          "line": 999,
           "role": "state-class",
           "extends": "ConsumerState<_PaymentRecordPicker>\n    with FormDraftMixin<_PaymentRecordPicker>"
         }
@@ -16085,9 +16085,21 @@
         },
         {
           "directive": "import",
+          "uri": "../../../core/router/nav_helpers.dart",
+          "source": "lib/core/router/nav_helpers.dart",
+          "line": 4,
+          "role": "core",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "7a80a87cc59673803adb176de6de036d9f2ba21a54efb90c0efc1dd1f932d7bf"
+        },
+        {
+          "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 4,
+          "line": 5,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16099,7 +16111,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_busy_overlay.dart",
           "source": "lib/components/feedback/uten_busy_overlay.dart",
-          "line": 5,
+          "line": 6,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16111,7 +16123,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_dialog.dart",
           "source": "lib/components/feedback/uten_dialog.dart",
-          "line": 6,
+          "line": 7,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16123,7 +16135,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_hint_icon.dart",
           "source": "lib/components/inputs/uten_field_hint_icon.dart",
-          "line": 7,
+          "line": 8,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16135,7 +16147,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_search_bar.dart",
           "source": "lib/components/inputs/uten_search_bar.dart",
-          "line": 8,
+          "line": 9,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16147,7 +16159,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/paged_read_intent.dart",
           "source": "lib/shared/paging/paged_read_intent.dart",
-          "line": 9,
+          "line": 10,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16159,7 +16171,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_date_field.dart",
           "source": "lib/components/inputs/uten_date_field.dart",
-          "line": 10,
+          "line": 11,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16171,7 +16183,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 11,
+          "line": 12,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -16183,7 +16195,7 @@
           "directive": "import",
           "uri": "../../../shared/models/paged_result.dart",
           "source": "lib/shared/models/paged_result.dart",
-          "line": 12,
+          "line": 13,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -16195,7 +16207,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_adaptive_panel.dart",
           "source": "lib/components/layout/uten_adaptive_panel.dart",
-          "line": 13,
+          "line": 14,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16207,7 +16219,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 14,
+          "line": 15,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16219,7 +16231,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 15,
+          "line": 16,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16231,7 +16243,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_floating_action_group.dart",
           "source": "lib/components/layout/uten_floating_action_group.dart",
-          "line": 16,
+          "line": 17,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16243,7 +16255,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 17,
+          "line": 18,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -16255,7 +16267,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 18,
+          "line": 19,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -16267,7 +16279,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 19,
+          "line": 20,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -16279,7 +16291,7 @@
           "directive": "import",
           "uri": "../../../shared/attachments/attachment_section.dart",
           "source": "lib/shared/attachments/attachment_section.dart",
-          "line": 20,
+          "line": 21,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16291,7 +16303,7 @@
           "directive": "import",
           "uri": "../../../shared/attachments/attachment_service.dart",
           "source": "lib/shared/attachments/attachment_service.dart",
-          "line": 21,
+          "line": 22,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16303,7 +16315,7 @@
           "directive": "import",
           "uri": "../../finance/widgets/finance_native_original_section.dart",
           "source": "lib/features/finance/widgets/finance_native_original_section.dart",
-          "line": 22,
+          "line": 23,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -16315,7 +16327,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 23,
+          "line": 24,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16327,7 +16339,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 24,
+          "line": 25,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16339,7 +16351,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/sensitive_write.dart",
           "source": "lib/shared/auth/sensitive_write.dart",
-          "line": 25,
+          "line": 26,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16351,7 +16363,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/sensitive_read_boundary_provider.dart",
           "source": "lib/shared/providers/sensitive_read_boundary_provider.dart",
-          "line": 26,
+          "line": 27,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16363,7 +16375,7 @@
           "directive": "import",
           "uri": "../../../core/network/read_scope_revision.dart",
           "source": "lib/core/network/read_scope_revision.dart",
-          "line": 27,
+          "line": 28,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -16375,7 +16387,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/authenticated_scope_provider.dart",
           "source": "lib/shared/providers/authenticated_scope_provider.dart",
-          "line": 28,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16387,7 +16399,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/master_name_provider.dart",
           "source": "lib/shared/providers/master_name_provider.dart",
-          "line": 29,
+          "line": 30,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [
@@ -16401,7 +16413,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 31,
+          "line": 32,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16413,7 +16425,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/sensitive_content_boundary.dart",
           "source": "lib/shared/widgets/sensitive_content_boundary.dart",
-          "line": 32,
+          "line": 33,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16425,7 +16437,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_mixin.dart",
           "source": "lib/shared/drafts/form_draft_mixin.dart",
-          "line": 33,
+          "line": 34,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16437,7 +16449,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_catalog.dart",
           "source": "lib/shared/drafts/form_draft_catalog.dart",
-          "line": 34,
+          "line": 35,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16449,7 +16461,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_store.dart",
           "source": "lib/shared/drafts/form_draft_store.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -16461,7 +16473,7 @@
           "directive": "import",
           "uri": "../../finance/models/finance_doc.dart",
           "source": "lib/features/finance/models/finance_doc.dart",
-          "line": 36,
+          "line": 37,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -16473,7 +16485,7 @@
           "directive": "import",
           "uri": "../../finance/repositories/finance_repository.dart",
           "source": "lib/features/finance/repositories/finance_repository.dart",
-          "line": 37,
+          "line": 38,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -16485,7 +16497,7 @@
           "directive": "import",
           "uri": "../models/business_application.dart",
           "source": "lib/features/applications/models/business_application.dart",
-          "line": 38,
+          "line": 39,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -16497,7 +16509,7 @@
           "directive": "import",
           "uri": "../providers/business_application_providers.dart",
           "source": "lib/features/applications/providers/business_application_providers.dart",
-          "line": 39,
+          "line": 40,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -16509,7 +16521,7 @@
           "directive": "import",
           "uri": "../repositories/business_application_repository.dart",
           "source": "lib/features/applications/repositories/business_application_repository.dart",
-          "line": 40,
+          "line": 41,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -16521,7 +16533,7 @@
           "directive": "import",
           "uri": "../widgets/business_application_print.dart",
           "source": "lib/features/applications/widgets/business_application_print.dart",
-          "line": 41,
+          "line": 42,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -16533,7 +16545,7 @@
           "directive": "import",
           "uri": "../widgets/business_application_progress.dart",
           "source": "lib/features/applications/widgets/business_application_progress.dart",
-          "line": 42,
+          "line": 43,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -16547,140 +16559,140 @@
         {
           "symbol": "Perm.applicationApply",
           "literal": "application:apply",
-          "line": 518,
+          "line": 521,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 64
         },
         {
           "symbol": "Perm.applicationKindApplyPermissions",
           "literal": null,
-          "line": 520,
+          "line": 523,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 70
         },
         {
           "symbol": "Perm.applicationApproveDepartment",
           "literal": "application:approve:department",
-          "line": 523,
+          "line": 526,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 77
         },
         {
           "symbol": "Perm.applicationApproveFinanceInitial",
           "literal": "application:approve:finance_initial",
-          "line": 524,
+          "line": 527,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 78
         },
         {
           "symbol": "Perm.applicationApproveFinanceReview",
           "literal": "application:approve:finance_review",
-          "line": 525,
+          "line": 528,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 80
         },
         {
           "symbol": "Perm.applicationApproveExecutive",
           "literal": "application:approve:executive",
-          "line": 526,
+          "line": 529,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 84
         },
         {
           "symbol": "Perm.applicationApproveViceExecutive",
           "literal": "application:approve:vice_executive",
-          "line": 527,
+          "line": 530,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 82
         },
         {
           "symbol": "Perm.applicationApproveProcurement",
           "literal": "application:approve:procurement",
-          "line": 528,
+          "line": 531,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 85
         },
         {
           "symbol": "Perm.applicationReceive",
           "literal": "application:receive",
-          "line": 529,
+          "line": 532,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 87
         },
         {
           "symbol": "Perm.applicationPay",
           "literal": "application:pay",
-          "line": 530,
+          "line": 533,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 88
         },
         {
           "symbol": "Perm.applicationReceive",
           "literal": "application:receive",
-          "line": 544,
+          "line": 547,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 87
         },
         {
           "symbol": "Perm.applicationPay",
           "literal": "application:pay",
-          "line": 548,
+          "line": 551,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 88
         },
         {
           "symbol": "Perm.applicationPay",
           "literal": "application:pay",
-          "line": 552,
+          "line": 555,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 88
         },
         {
           "symbol": "Perm.applicationPrepaymentLinkFinance",
           "literal": "application:prepayment:link_finance",
-          "line": 556,
+          "line": 559,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 89
         },
         {
           "symbol": "Perm.applicationPay",
           "literal": "application:pay",
-          "line": 559,
+          "line": 565,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 88
         },
         {
           "symbol": "Perm.applicationPrepaymentLinkFinance",
           "literal": "application:prepayment:link_finance",
-          "line": 560,
+          "line": 566,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 89
         },
         {
           "symbol": "Perm.financePaymentView",
           "literal": "finance_payment:view",
-          "line": 1258,
+          "line": 1263,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 487
         },
         {
           "symbol": "Perm.financeExpenseView",
           "literal": "finance_expense:view",
-          "line": 1259,
+          "line": 1264,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 489
         },
         {
           "symbol": "Perm.financePaymentView",
           "literal": "finance_payment:view",
-          "line": 1433,
+          "line": 1438,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 487
         },
         {
           "symbol": "Perm.financeExpenseView",
           "literal": "finance_expense:view",
-          "line": 1452,
+          "line": 1457,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 489
         }
@@ -16769,7 +16781,7 @@
         {
           "symbol": "save",
           "receiver": null,
-          "line": 245,
+          "line": 246,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -16779,7 +16791,7 @@
         {
           "symbol": "complete",
           "receiver": null,
-          "line": 282,
+          "line": 283,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -16789,7 +16801,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 328,
+          "line": 329,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -16799,7 +16811,7 @@
         {
           "symbol": "save",
           "receiver": null,
-          "line": 331,
+          "line": 332,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -16809,7 +16821,7 @@
         {
           "symbol": "close",
           "receiver": "subscription",
-          "line": 350,
+          "line": 351,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -16819,7 +16831,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 360,
+          "line": 361,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -16829,7 +16841,7 @@
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 382,
+          "line": 383,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reject"
@@ -16839,7 +16851,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 429,
+          "line": 430,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -16849,7 +16861,7 @@
         {
           "symbol": "_pay",
           "receiver": null,
-          "line": 437,
+          "line": 438,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "pay"
@@ -16859,7 +16871,7 @@
         {
           "symbol": "remove",
           "receiver": "selected",
-          "line": 481,
+          "line": 484,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -16869,7 +16881,7 @@
         {
           "symbol": "remove",
           "receiver": "selected",
-          "line": 483,
+          "line": 486,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -16879,7 +16891,7 @@
         {
           "symbol": "remove",
           "receiver": "selected",
-          "line": 485,
+          "line": 488,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -16889,7 +16901,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 566,
+          "line": 573,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -16899,7 +16911,7 @@
         {
           "symbol": "_pay",
           "receiver": null,
-          "line": 568,
+          "line": 575,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "pay"
@@ -16909,7 +16921,7 @@
         {
           "symbol": "showBusinessApplicationPrintPreview",
           "receiver": null,
-          "line": 602,
+          "line": 607,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -16919,7 +16931,7 @@
         {
           "symbol": "businessApplicationAuditLines",
           "receiver": null,
-          "line": 813,
+          "line": 818,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "audit"
@@ -16929,7 +16941,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 845,
+          "line": 850,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -16939,7 +16951,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 862,
+          "line": 867,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -16949,7 +16961,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 880,
+          "line": 885,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -16959,7 +16971,7 @@
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 888,
+          "line": 893,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -16969,7 +16981,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 895,
+          "line": 900,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -16979,7 +16991,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 902,
+          "line": 907,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -16989,7 +17001,7 @@
         {
           "symbol": "_pay",
           "receiver": null,
-          "line": 909,
+          "line": 914,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "pay"
@@ -16999,7 +17011,7 @@
         {
           "symbol": "_pay",
           "receiver": null,
-          "line": 916,
+          "line": 921,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "pay"
@@ -17009,7 +17021,7 @@
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 924,
+          "line": 929,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -17019,7 +17031,7 @@
         {
           "symbol": "restoreFormDraft",
           "receiver": null,
-          "line": 1082,
+          "line": 1087,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "restore"
@@ -17029,7 +17041,7 @@
         {
           "symbol": "_confirmSelection",
           "receiver": null,
-          "line": 1116,
+          "line": 1121,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -17039,7 +17051,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 1131,
+          "line": 1136,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -17049,7 +17061,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 1195,
+          "line": 1200,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -17059,7 +17071,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 1228,
+          "line": 1233,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -17069,7 +17081,7 @@
         {
           "symbol": "save",
           "receiver": null,
-          "line": 1231,
+          "line": 1236,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -17079,7 +17091,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 1262,
+          "line": 1267,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -19549,8 +19561,8 @@
       "id": "page:applications/pages/business_application_list_page.dart",
       "feature": "applications",
       "source": "lib/features/applications/pages/business_application_list_page.dart",
-      "sha256": "54c8e45b77e1feb8bf50bdb1c4179c52428d15492a518092d533a7af7c6e98b1",
-      "lineCount": 763,
+      "sha256": "33434271f3c82bce00a0e831a8d203f61b059e8c6c6787db46eebf36b91f2591",
+      "lineCount": 764,
       "classes": [
         {
           "name": "BusinessApplicationListPage",
@@ -20477,7 +20489,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "54c8e45b77e1feb8bf50bdb1c4179c52428d15492a518092d533a7af7c6e98b1"
+          "targetSha256": "33434271f3c82bce00a0e831a8d203f61b059e8c6c6787db46eebf36b91f2591"
         },
         {
           "directive": "import",
@@ -20745,8 +20757,8 @@
       "id": "page:approvals/pages/approval_policy_settings_page.dart",
       "feature": "approvals",
       "source": "lib/features/approvals/pages/approval_policy_settings_page.dart",
-      "sha256": "c911079d12169ba248576bcc5e6982186aced7c3a78c10ab5528199f6d8c424c",
-      "lineCount": 446,
+      "sha256": "972e3b9eb0b6e03606167a6836a29491517d1014dd1f1ffad0f2c05e734e0a94",
+      "lineCount": 447,
       "classes": [
         {
           "name": "ApprovalPolicySettingsPage",
@@ -22189,7 +22201,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -28040,7 +28052,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -29482,7 +29494,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -39327,7 +39339,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -47533,7 +47545,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -49221,7 +49233,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac"
+          "targetSha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564"
         },
         {
           "directive": "import",
@@ -62734,7 +62746,7 @@
       "id": "page:expense/pages/expense_approval_detail_page.dart",
       "feature": "expense",
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "1367a96548623fd03b84d35a612359cb84eb09fa931c0faf40015f952a08b447",
+      "sha256": "c52dcffcc4d68eef1dca102cb98118bf7b4c528f586bcc58911a9f5d17bfe0f0",
       "lineCount": 964,
       "classes": [
         {
@@ -69202,7 +69214,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "600f4706a35bbe2189801540680302116af3d607e40e156947033bef60226012"
+          "targetSha256": "fbe9da51a48b2fc03e0c758c50e2d5560d8f0e93a46a465041573d0ee9bb9b94"
         }
       ],
       "partUnits": [],
@@ -78200,7 +78212,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c"
+          "targetSha256": "1892f7ab7a8627a2fa48635dfd808c42bf7a46b06f9cb9cb4e2f9c4627b6a38c"
         },
         {
           "directive": "import",
@@ -128432,7 +128444,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ceb87234b2f5e32c355e6731e2551b235d4b8d8cca57d3095674cd12a47380cf"
+          "targetSha256": "7feb7d5d76ceaab618478eb293208aabb37f1b038da3b86d04adba7f3f6966ef"
         },
         {
           "directive": "import",
@@ -141666,7 +141678,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ceb87234b2f5e32c355e6731e2551b235d4b8d8cca57d3095674cd12a47380cf"
+          "targetSha256": "7feb7d5d76ceaab618478eb293208aabb37f1b038da3b86d04adba7f3f6966ef"
         },
         {
           "directive": "import",
@@ -218431,7 +218443,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -222723,7 +222735,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -226432,7 +226444,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -227739,7 +227751,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -238209,7 +238221,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -238971,7 +238983,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444"
+          "targetSha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d"
         },
         {
           "directive": "import",
@@ -273119,8 +273131,8 @@
     },
     {
       "source": "lib/components/feedback/uten_task_progress_dialog.dart",
-      "sha256": "98f9b41ab3ee7215f5db0f54f06cdb2ee9331bf4c310fc361c15fddf77c091ac",
-      "lineCount": 81
+      "sha256": "952251b462bd4b0b4d8cff7bcb87600bcbb5d7ab502b78c30d4fb5a5e7de9564",
+      "lineCount": 83
     },
     {
       "source": "lib/components/feedback/uten_toast.dart",
@@ -274319,8 +274331,8 @@
     },
     {
       "source": "lib/features/applications/pages/business_application_detail_page.dart",
-      "sha256": "08b88489926ab9bf0a61fb17b4010d84c8107f290234287fed53603462b45208",
-      "lineCount": 1610
+      "sha256": "4111732594198ae52937077f0801b445d2869694b80b4434ebab7ce38b4de3de",
+      "lineCount": 1615
     },
     {
       "source": "lib/features/applications/pages/business_application_edit_page.dart",
@@ -274329,8 +274341,8 @@
     },
     {
       "source": "lib/features/applications/pages/business_application_list_page.dart",
-      "sha256": "54c8e45b77e1feb8bf50bdb1c4179c52428d15492a518092d533a7af7c6e98b1",
-      "lineCount": 763
+      "sha256": "33434271f3c82bce00a0e831a8d203f61b059e8c6c6787db46eebf36b91f2591",
+      "lineCount": 764
     },
     {
       "source": "lib/features/applications/pages/my_applications_page.dart",
@@ -274364,8 +274376,8 @@
     },
     {
       "source": "lib/features/approvals/pages/approval_policy_settings_page.dart",
-      "sha256": "c911079d12169ba248576bcc5e6982186aced7c3a78c10ab5528199f6d8c424c",
-      "lineCount": 446
+      "sha256": "972e3b9eb0b6e03606167a6836a29491517d1014dd1f1ffad0f2c05e734e0a94",
+      "lineCount": 447
     },
     {
       "source": "lib/features/approvals/repositories/approval_policy_repository.dart",
@@ -275444,7 +275456,7 @@
     },
     {
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "1367a96548623fd03b84d35a612359cb84eb09fa931c0faf40015f952a08b447",
+      "sha256": "c52dcffcc4d68eef1dca102cb98118bf7b4c528f586bcc58911a9f5d17bfe0f0",
       "lineCount": 964
     },
     {
@@ -275879,8 +275891,8 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_application_detail.dart",
-      "sha256": "600f4706a35bbe2189801540680302116af3d607e40e156947033bef60226012",
-      "lineCount": 1069
+      "sha256": "fbe9da51a48b2fc03e0c758c50e2d5560d8f0e93a46a465041573d0ee9bb9b94",
+      "lineCount": 1070
     },
     {
       "source": "lib/features/finance/widgets/finance_application_intake_notice.dart",
@@ -276094,7 +276106,7 @@
     },
     {
       "source": "lib/features/finance/widgets/receipt_order_collection_panel.dart",
-      "sha256": "8fcd19e67ffc108c45975aba7c85426709a6e0b7cb17cec066f53e7a6a62037c",
+      "sha256": "1892f7ab7a8627a2fa48635dfd808c42bf7a46b06f9cb9cb4e2f9c4627b6a38c",
       "lineCount": 300
     },
     {
@@ -277014,8 +277026,8 @@
     },
     {
       "source": "lib/features/production/widgets/production_overproduction_rate_field.dart",
-      "sha256": "ceb87234b2f5e32c355e6731e2551b235d4b8d8cca57d3095674cd12a47380cf",
-      "lineCount": 138
+      "sha256": "7feb7d5d76ceaab618478eb293208aabb37f1b038da3b86d04adba7f3f6966ef",
+      "lineCount": 142
     },
     {
       "source": "lib/features/production/widgets/production_overproduction_rate_request_dialog.dart",
@@ -278959,8 +278971,8 @@
     },
     {
       "source": "lib/shared/auth/page_permission_scope.dart",
-      "sha256": "a385e302889cf6900acbb782c6c512a334a86eb8b4b1e17d0ef638e26313ac41",
-      "lineCount": 1175
+      "sha256": "d01301178bf9a6a803925ec5af2deebfe7f38ed8f7069e5c8f02c67deb9054f4",
+      "lineCount": 1182
     },
     {
       "source": "lib/shared/auth/permissions.dart",
@@ -279314,7 +279326,7 @@
     },
     {
       "source": "lib/shared/measurement/widgets/weight_grid_column.dart",
-      "sha256": "a12b3f10bdf7a045b7b66f6e995c90841b0c6cb655f7538b6950399c755e0444",
+      "sha256": "e76b432891831642448e668a07d870e9ab7e03b0e31ba1ac71998199270fc28d",
       "lineCount": 1231
     },
     {

@@ -48,7 +48,7 @@ class FlutterEvidenceTests(unittest.TestCase):
         (self.root / "test/nested/b_test.dart").write_text("void main() {}", encoding="utf-8")
         (self.root / ".gitignore").write_text("/test/.uten-ci-codec-worker.js\n", encoding="utf-8")
         self.events_file = self.root / "machine.jsonl"
-        self.reports = self.root / "reports"
+        self.reports = self.root / runner.REPORT_ROOT
         self.addCleanup(patch.stopall)
         patch.object(runner, "source_identity", return_value=SOURCE).start()
         patch.object(runner, "ci_identity", return_value=CI).start()
@@ -78,15 +78,25 @@ class FlutterEvidenceTests(unittest.TestCase):
             skips = [row["path"] for row in plan["files"] if mode == "vm" and row["vm_platform_skip"] and row["path"] in shard["files"]]
             raw.write_text("\n".join(json.dumps(row) for row in events([file for file in shard["files"] if file not in skips], self.root, mode)) + "\n", encoding="utf-8")
             (directory / "stderr.log").write_text("", encoding="utf-8")
+            (directory / "stdout.log").write_text("00:01 +1: All tests passed!\n", encoding="utf-8")
             report = {"schema_version": runner.VERSION, "source": SOURCE, "source_after": SOURCE, "ci": CI, "mode": mode,
                       "plan_hash": plan["plan_hash"], "shard": shard["id"], "files": shard["files"],
-                      "command": ["flutter", *options, *shard["files"]],
+                      "command": ["flutter", *options, runner.file_reporter_option(shard["id"]), *shard["files"]],
                       "sdk": {"frameworkVersion": runner.FLUTTER_VERSION}, "exit_code": 0, "complete": True,
-                      "machine_sha256": runner.sha256(raw), "stderr_sha256": runner.sha256(directory / "stderr.log"),
+                      "machine_sha256": runner.sha256(raw), "stdout_sha256": runner.sha256(directory / "stdout.log"), "stderr_sha256": runner.sha256(directory / "stderr.log"),
                       "results": runner.parse_events(raw, shard["files"], self.root, skips, mode)}
             if mode == "chrome":
                 report["worker"] = {**runner.verify_worker(self.root), "verified_after": True}
             runner.write_json(directory / "report.json", report)
+
+    def native_process_output(self, command, options, raw):
+        reporter = [argument for argument in command if argument.startswith("--file-reporter=")]
+        self.assertEqual(1, len(reporter))
+        self.assertNotIn("--machine", command)
+        self.assertEqual(["--reporter", "expanded"], command[command.index("--reporter"):command.index("--reporter") + 2])
+        machine = self.root / reporter[0].removeprefix("--file-reporter=json:")
+        machine.write_text(raw, encoding="utf-8")
+        options["stdout"].write(b"00:01 +1: Native expanded diagnostics and stack trace\n")
 
     def test_exact_sdk_file_suffix_recursion_and_non_test_files(self):
         (self.root / "test/nested/helper.dart").write_text("", encoding="utf-8")
@@ -320,13 +330,79 @@ class FlutterEvidenceTests(unittest.TestCase):
         self.assertIsNone(result["exit_code"])
         self.assertTrue((self.reports / "shard-0/report.json").is_file())
 
+    def test_one_execution_keeps_expanded_stdout_and_native_json_with_independent_hashes(self):
+        plan = self.plan()
+        def process(command, **options):
+            if "--version" in command:
+                return subprocess.CompletedProcess(command, 0, json.dumps({"frameworkVersion": runner.FLUTTER_VERSION}), "")
+            raw = "\n".join(json.dumps(row) for row in events(plan["shards"][0]["files"], self.root)) + "\n"
+            self.native_process_output(command, options, raw)
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(runner.subprocess, "run", side_effect=process) as launches:
+            report = runner.run_shard(plan, 0, self.reports, root=self.root)
+        self.assertTrue(report["complete"], report)
+        self.assertEqual(1, sum("--version" not in call.args[0] for call in launches.call_args_list))
+        self.assertEqual(1, report["results"]["testcase_count"])
+        directory = self.reports / "shard-0"
+        self.assertIn("stack trace", (directory / "stdout.log").read_text())
+        self.assertEqual(runner.sha256(directory / "stdout.log"), report["stdout_sha256"])
+        self.assertNotEqual(report["stdout_sha256"], report["machine_sha256"])
+
+    def test_reporter_arguments_cannot_be_removed_redirected_duplicated_or_filtered(self):
+        plan = self.plan(); self.save_reports(plan)
+        path = self.reports / "shard-0/report.json"; original = runner.read_json(path)
+        for reporter in ([], ["--file-reporter=json:../../source"],
+                         [runner.file_reporter_option(1)], [runner.file_reporter_option(0)] * 2,
+                         [runner.file_reporter_option(0), "--name", "fast"]):
+            command = ["flutter", *runner.COMMAND_OPTIONS, *reporter, *original["files"]]
+            with self.subTest(command=command):
+                runner.write_json(path, {**original, "command": command})
+                with self.assertRaises(ValueError): runner.verify_reports(plan, self.reports, self.root)
+
+    def test_output_path_cannot_escape_the_fixed_ignored_report_root(self):
+        plan = self.plan()
+        for output in (self.root / "outside", "build/other", "build/flutter-ci-reports/../outside",
+                       "build/flutter-ci-reports&filter", "../outside"):
+            with self.subTest(output=output), patch.object(runner.subprocess, "run") as launch:
+                with self.assertRaisesRegex(ValueError, "fixed report root"):
+                    runner.run_shard(plan, 0, output, root=self.root)
+                launch.assert_not_called()
+        self.assertFalse(self.reports.exists())
+
+    def test_missing_tampered_or_linked_stdout_cannot_supply_evidence(self):
+        plan = self.plan(); self.save_reports(plan)
+        directory = self.reports / "shard-0"; stdout = directory / "stdout.log"
+        original = stdout.read_bytes(); stdout.unlink()
+        with self.assertRaises(ValueError): runner.verify_reports(plan, self.reports, self.root)
+        stdout.write_text("forged human success", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "tampered"): runner.verify_reports(plan, self.reports, self.root)
+        stdout.write_bytes(original)
+        target = self.root / "forged.log"; target.write_bytes(original); stdout.unlink()
+        try:
+            stdout.symlink_to(target)
+        except OSError as error:
+            self.skipTest(str(error))
+        with self.assertRaisesRegex(ValueError, "linked/special"): runner.verify_reports(plan, self.reports, self.root)
+
+    def test_linked_output_parent_is_rejected_before_the_sdk_runs(self):
+        plan = self.plan(); target = self.root / "outside"; target.mkdir()
+        try:
+            (self.root / "build").symlink_to(target, target_is_directory=True)
+        except OSError as error:
+            self.skipTest(str(error))
+        with patch.object(runner.subprocess, "run") as launch:
+            with self.assertRaisesRegex(ValueError, "linked/special"):
+                runner.run_shard(plan, 0, self.reports, root=self.root)
+            launch.assert_not_called()
+        self.assertEqual([], list(target.iterdir()))
+
     def test_nonzero_tool_exit_cannot_become_success_even_with_complete_native_events(self):
         plan = self.plan()
         def process(command, **options):
             if "--version" in command:
                 return subprocess.CompletedProcess(command, 0, json.dumps({"frameworkVersion": runner.FLUTTER_VERSION}), "")
             raw = "\n".join(json.dumps(row) for row in events(plan["shards"][0]["files"], self.root)) + "\n"
-            options["stdout"].write(raw.encode())
+            self.native_process_output(command, options, raw)
             return subprocess.CompletedProcess(command, 7)
         with patch.object(runner.subprocess, "run", side_effect=process):
             report = runner.run_shard(plan, 0, self.reports, root=self.root)
@@ -335,7 +411,7 @@ class FlutterEvidenceTests(unittest.TestCase):
         self.assertTrue(report["results"]["complete"])
 
     def test_cli_has_no_test_name_tag_run_skipped_or_case_shard_bypass(self):
-        for flag in ("--name", "--plain-name", "--tags", "--exclude-tags", "--run-skipped", "--total-shards"):
+        for flag in ("--name", "--plain-name", "--tags", "--exclude-tags", "--run-skipped", "--total-shards", "--reporter", "--file-reporter", "--machine"):
             with patch.object(sys, "argv", ["tool", "run", "--plan", "x", "--shard", "0", flag, "value"]), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as failure:
                 runner.main()
             self.assertEqual(2, failure.exception.code)
@@ -412,9 +488,9 @@ class FlutterEvidenceTests(unittest.TestCase):
         def process(command, **options):
             if "--version" in command:
                 return subprocess.CompletedProcess(command, 0, json.dumps({"frameworkVersion": runner.FLUTTER_VERSION}), "")
-            self.assertEqual([*runner.BROWSER_OPTIONS, *plan["browser_files"]], command[1:])
+            self.assertEqual([*runner.BROWSER_OPTIONS, runner.file_reporter_option("browser"), *plan["browser_files"]], command[1:])
             raw = "\n".join(json.dumps(row) for row in events(plan["browser_files"], self.root, "chrome")) + "\n"
-            options["stdout"].write(raw.encode())
+            self.native_process_output(command, options, raw)
             (self.root / runner.WORKER_PATH).write_text("tampered", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0)
         with patch.object(runner.subprocess, "run", side_effect=process):

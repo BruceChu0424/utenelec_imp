@@ -41,6 +41,7 @@ class SubcontractMaterialReturnOriginalCostEndToEndTest {
  @Autowired SubcontractMaterialIssueService issues;
  @Autowired SubcontractMaterialReturnService returns;
  @Autowired StockDocService stock;
+ @Autowired com.uten.imp.features.documents.DocumentUnapprovalService unapproval;
  SubcontractStepDrawEndToEndTest fixture;
  @BeforeEach void setup(){fixture=new SubcontractStepDrawEndToEndTest();beans.autowireBean(fixture);fixture.setup();}
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
@@ -74,6 +75,61 @@ class SubcontractMaterialReturnOriginalCostEndToEndTest {
    assertThat(db.queryForObject("SELECT COUNT(*) FROM stock_value_events WHERE source_doc_type='SUBCONTRACT_MATERIAL_RETURN' AND source_doc_id=? AND operation='POSITION_STORE_REVERSE'",Integer.class,s.returnId())).isZero();
  }
 
+ @Test void unapprovalKeepsFrozenInputsThenAnExplicitDraftSaveCanRepostTheOriginalSourceCost(){
+   Scenario s=scenario();
+   String originalPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE material_return_id=?",String.class,s.returnId());
+   var command=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("material-return-clone-"+s.returnId(),"保留原已采用数量并重提同源材料退货");
+   var draft=(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"subcontractMaterialReturn",s.returnId(),command);
+   pool(s,"6","120");assertThat(supplierValue(s)).isEqualByComparingTo("100");
+   assertThat(draft.getStatus()).isZero();assertThat(draft.getItems().getFirst().getQty()).isEqualByComparingTo("4");
+   var original=draft.getItems().getFirst();
+   UUID originalSource=db.queryForObject("SELECT unapproval_source_item_id FROM subcontract_material_return_items WHERE id=?",UUID.class,original.getId());
+   assertThat(originalSource).isEqualTo(db.queryForObject("SELECT id FROM subcontract_material_return_items WHERE material_return_id=?",UUID.class,s.returnId()));
+   String inheritedQuantity=quantityFacts(original.getId());
+   assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE id=?",String.class,original.getId())).isEqualTo(originalPolicy);
+   var request=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest();
+   request.setBillDate(draft.getBillDate());request.setSupplierId(draft.getSupplierId());request.setWarehouseId(draft.getWarehouseId());
+   request.setWorkerId(draft.getWorkerId());request.setBStyle(draft.getBStyle());request.setRemark(draft.getRemark());
+   var line=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine();
+   line.setId(original.getId());line.setLineNo(original.getLineNo());line.setGoodsId(original.getGoodsId());line.setColorId(original.getColorId());
+   line.setUnitId(original.getUnitId());line.setUnitRate(original.getUnitRate());line.setQty(original.getQty());
+   line.setMaterialIssueItemId(original.getMaterialIssueItemId());line.setOrderItemId(original.getOrderItemId());
+   line.setParentGoodsId(original.getParentGoodsId());line.setParentColorId(original.getParentColorId());line.setWeight(original.getWeight());
+   line.setSourceDocNo(original.getSourceDocNo());line.setRemark(original.getRemark());line.setGirthQty(original.getGirthQty());
+   line.setIssueNo(original.getIssueNo());line.setOrderNo(original.getOrderNo());request.setItems(List.of(line));
+   try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
+     // V1033 and the shared save plan retain an unchanged original quantity
+     // intent. A later selected precision cannot re-adopt this frozen row.
+     var same=returns.update(draft.getId(),request);
+     assertThat(same.getItems().getFirst().getId()).isEqualTo(original.getId());
+     assertThat(quantityFacts(original.getId())).isEqualTo(inheritedQuantity);
+     assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE id=?",String.class,original.getId())).isEqualTo(originalPolicy);
+     assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM subcontract_material_return_items WHERE id=?",UUID.class,original.getId())).isEqualTo(originalSource);
+     // Real draft operand changes create new adoption intents. Use the actual
+     // returned row identity at each step and restore four only by a second
+     // explicit edit; draft saves alone must not post stock or supplier value.
+     line.setQty(new BigDecimal("3"));
+     var reduced=returns.update(draft.getId(),request);
+     var reducedLine=reduced.getItems().getFirst();
+     assertThat(reducedLine.getId()).isNotEqualTo(original.getId());
+     assertThat(reducedLine.getQty()).isEqualByComparingTo("3");
+     line.setId(reducedLine.getId());line.setQty(new BigDecimal("4"));
+     var restored=returns.update(draft.getId(),request);
+     assertThat(restored.getItems().getFirst().getId()).isNotEqualTo(reducedLine.getId());
+     assertThat(restored.getItems().getFirst().getQty()).isEqualByComparingTo("4");
+   }catch(RuntimeException failure){throw failure;}catch(Exception failure){throw new IllegalStateException(failure);}
+   pool(s,"6","120");assertThat(supplierValue(s)).isEqualByComparingTo("100");
+   assertThat(decimal("SELECT returned_qty FROM subcontract_material_issue_items WHERE id=?",s.issueItem())).isEqualByComparingTo("0");
+   assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM subcontract_material_return_items WHERE material_return_id=?",String.class,draft.getId())).isEqualTo("12");
+   assertThat(db.queryForObject("SELECT unapproval_source_item_id IS NULL FROM subcontract_material_return_items WHERE material_return_id=?",Boolean.class,draft.getId())).isTrue();
+   returns.approve(draft.getId());pool(s,"10","160");assertThat(supplierValue(s)).isEqualByComparingTo("60");
+   assertThat(decimal("SELECT known_value_local FROM stock_value_events WHERE source_doc_type='SUBCONTRACT_MATERIAL_RETURN' AND source_doc_id=? AND operation='POSITION_STORE'",draft.getId())).isEqualByComparingTo("40");
+   assertThat(decimal("SELECT returned_qty FROM subcontract_material_issue_items WHERE id=?",s.issueItem())).isEqualByComparingTo("4");
+   assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE material_return_id=?",String.class,s.returnId())).isEqualTo(originalPolicy);
+   var replay=(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail)unapproval.unapprove("subcontractMaterialReturn",s.returnId(),command);
+   assertThat(replay.getId()).isEqualTo(draft.getId());pool(s,"10","160");
+ }
+
  private Scenario scenario(){
    String tag="sc-return-value-"+UUID.randomUUID();var w=fixture.fixture.seedWorld(tag);fixture.fixture.loginAs(w.superAdminUserId());
    call(fixture,"grantAuthorities",w.superAdminUserId(),new String[]{"subcontract_order:view","subcontract_order:draw","subcontract:view:all"});
@@ -97,6 +153,7 @@ class SubcontractMaterialReturnOriginalCostEndToEndTest {
    assertThat(db.queryForObject("SELECT head.basis_value_local FROM stock_value_pools p JOIN stock_value_nodes head ON head.id=p.head_node_id WHERE p.goods_id=? AND p.warehouse_id=? AND p.color_id IS NULL",BigDecimal.class,s.material(),s.world().warehouseId())).isEqualByComparingTo(value);
  }
  private BigDecimal decimal(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}
+ private String quantityFacts(UUID id){return db.queryForObject("SELECT jsonb_build_object('qty',qty,'unit_id',unit_id,'unit_rate',unit_rate,'adopted_base_qty',adopted_base_qty,'quantity_adoption_version',quantity_adoption_version,'quantity_precision_policy',quantity_precision_policy,'unapproval_source_item_id',unapproval_source_item_id)::text FROM subcontract_material_return_items WHERE id=?",String.class,id);}
  @SuppressWarnings("unchecked") private static <T>T call(Object target,String method,Object...args){return (T)ReflectionTestUtils.invokeMethod(target,method,args);}
  private record Scenario(FullChainEndToEndTest.World world,UUID material,UUID orderItem,UUID issueItem,UUID returnId){}
 }

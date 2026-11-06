@@ -26,4 +26,5 @@ public class FinancePaymentUnapprovalAdapter implements DocumentUnapprovalPort {
         List.of("bill_date","applied_ledger_id","applied_bill_no","supplier_id","line_no","amount_original","amount_local",
             "cash_rate","recognition_rate","applied_amount_local","exchange_diff","bank_basis_before_original","bank_basis_before_local",
             "bank_basis_after_original","bank_basis_after_local","remark"),true,true); }
+
 }

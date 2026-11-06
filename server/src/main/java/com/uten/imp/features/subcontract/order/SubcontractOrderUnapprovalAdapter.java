@@ -21,11 +21,9 @@ public class SubcontractOrderUnapprovalAdapter implements DocumentUnapprovalPort
     @Override public TableSnapshot header() { return new TableSnapshot("subcontract_orders",null,
         List.of("bill_date","supplier_id","warehouse_id","currency_id","exchange_rate","settlement_method_id","tax_rate","purchaser_id","maker_id","deliver_date","remark","total_original","total_local","source_doc_no"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("subcontract_order_items","order_id",
-        List.of("bill_date","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","price","total_amount_input","reference_price_precision_policy","amount_original","amount_local","application_item_id","deliver_date","weight","source_doc_no","remark","allowed_loss_pct","extra_columns"),true,true); }
-    @Override public java.util.Map<String,String> generatedLineInputs() {
-        return java.util.Map.of("reference_price_successor_source_id","source.id");
-    }
+        List.of("bill_date","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","price","total_amount_input","amount_original","amount_local","application_item_id","deliver_date","weight","source_doc_no","remark","allowed_loss_pct","extra_columns"),true,true); }
     @Override public List<SourceSnapshot> sources() {
         return List.of(new SourceSnapshot("subcontract_order_item_sources","order_item_id",List.of("application_item_id","alloc_qty","line_no")));
     }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

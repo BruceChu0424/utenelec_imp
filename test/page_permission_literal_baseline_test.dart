@@ -316,7 +316,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     tokens: {
       'Perm.salesShipmentFinanceApprove': 4,
       'Perm.salesShipmentFinanceReject': 4,
-      'Perm.salesShipmentFinanceView': 3,
+      // Frozen/current receivable references and refreshes use the same native
+      // finance read grant; claims and approve/reject/reverse checks stay intact.
+      'Perm.salesShipmentFinanceView': 9,
       'Perm.salesShipmentFinanceReverse': 2,
       'Perm.salesShipmentView': 1,
     },
@@ -340,11 +342,16 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 3,
     tokens: {
       'Perm.salesOrderCreate': 1,
-      'Perm.salesOrderPriceView': 3,
+      'Perm.salesOrderPriceView': 5,
       'Perm.salesQuoteConvert': 1,
       'Perm.salesQuoteFinanceView': 1,
       'Perm.salesShipmentCreate': 1,
-      'Perm.salesShipmentFinanceView': 1,
+      'Perm.salesShipmentFinanceView': 2,
+      // SalesOrderService.list returns order money only for these exact native
+      // finance grants, or all-finance + customer-prepayment + original price.
+      'Perm.salesOrderFinanceView': 1,
+      'Perm.financeViewAll': 2,
+      'Perm.customerPrepaymentView': 2,
     },
   ),
   // Bulk permission work keeps authorization:manage AND superadmin, matching the controller/service and step-up write contract.
@@ -427,7 +434,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsEdit': 1,
       'Perm.goodsExport': 1,
       // 2026-10-28：AppBar 右上角新增不依赖分类选中的导入入口（工具条入口保留）。
-      'Perm.goodsImport': 2,
+      // Both existing entrances share an async click guard which rechecks the
+      // original goods:import grant. The import service remains authoritative.
+      'Perm.goodsImport': 3,
     },
   ),
   'lib/features/basic_data/widgets/goods_operation_history_panel.dart': (
@@ -932,6 +941,118 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.financeOrderApprovalView': 1},
   ),
+  // AttachmentService requires attachment:view AND the native owner's view
+  // scope. The new retained-reference section adds that exact conjunction;
+  // its other 22 references already belonged to the unchanged global baseline.
+  'lib/features/sales/pages/sales_doc_detail_page.dart': (
+    legacyCount: 22,
+    tokens: {
+      'Perm.salesShipmentReject': 1,
+      'Perm.salesOrderChangeQty': 1,
+      'Perm.salesOrderStop': 1,
+      'Perm.salesOrderChangePlanned': 1,
+      'Perm.salesOrderCancel': 1,
+      'Perm.warehouseSalesOutboundExecute': 1,
+      'Perm.salesReturnQualityView': 1,
+      'Perm.salesReturnQualityCorrect': 1,
+      'Perm.salesReturnQualityDispose': 1,
+      'Perm.salesQuoteView': 3,
+      'Perm.salesOrderPriority': 1,
+      'Perm.salesOrderReallocate': 1,
+      'Perm.financeViewAll': 1,
+      'Perm.customerPrepaymentView': 1,
+      'Perm.salesShipmentFinanceView': 1,
+      'Perm.attachmentView': 1,
+      'Perm.salesShipmentView': 1,
+      'Perm.purchaseOrderView': 1,
+      'Perm.subcontractOrderView': 1,
+      'Perm.productionPlanView': 1,
+      'Perm.productionMaterialAnalysisView': 1,
+    },
+  ),
+  // WarehouseSalesOutboundController keeps view+execute on each physical
+  // processing action; the returned native header capability is also required.
+  'lib/features/warehouse/widgets/warehouse_component_processing_actions.dart':
+      (
+        legacyCount: 0,
+        tokens: {
+          'Perm.warehouseSalesOutboundExecute': 2,
+          'Perm.warehouseSalesOutboundView': 1,
+        },
+      ),
+  // 2026-11-05 durable finance commands: current identity/read/write fences
+  // preserve original receipts after write withdrawal. These exact native
+  // contracts are reviewed in 权限体系总设计 §二; global cap remains 835.
+  'lib/features/finance/pages/finance_application_settings_page.dart': (
+    legacyCount: 0,
+    // FinanceApplicationSettingsController applies expense:settings to settings,
+    // role commands and their original operation receipts; the service owns
+    // role eligibility/version checks, never this local callback fence.
+    tokens: {'Perm.expenseSettings': 1},
+  ),
+  'lib/features/finance/widgets/finance_chart_command_dialog.dart': (
+    legacyCount: 0,
+    // The optional native-category editor mirrors FinanceChartService's
+    // category!=null create authority, not catalogue-only creation.
+    tokens: {'Perm.paymentStyleCreate': 1},
+  ),
+  'lib/features/finance/widgets/finance_chart_dialog.dart': (
+    legacyCount: 6,
+    // Main's six references become five: the old new-account editor's create
+    // check moved to the typed editor above. Pin remaining original source
+    // identities, including the -1 source delta, rather than granting budget.
+    tokens: {
+      'Perm.paymentStyleCreate': 1,
+      'Perm.financeReportExport': 2,
+      'Perm.financeReportView': 1,
+      'Perm.financeViewAll': 1,
+    },
+  ),
+  'lib/features/finance/widgets/finance_chart_import_workbench.dart': (
+    legacyCount: 0,
+    // FinanceChartController: report:view + finance:view:all reads; edit adds
+    // payment_style:edit. Excluding only edit from the read boundary retains
+    // original GET/cancel recovery while the current write fence stays closed.
+    tokens: {
+      'Perm.financeReportView': 1,
+      'Perm.financeViewAll': 1,
+      'Perm.paymentStyleEdit': 2,
+    },
+  ),
+  'lib/features/finance/widgets/finance_chart_metadata_dialog.dart': (
+    legacyCount: 0,
+    // The same FinanceChartController metadata read/write/receipt authorities;
+    // write withdrawal cannot erase the immutable original metadata command.
+    tokens: {
+      'Perm.financeReportView': 1,
+      'Perm.financeViewAll': 1,
+      'Perm.paymentStyleEdit': 2,
+    },
+  ),
+  'lib/features/finance/widgets/finance_document_review_command.dart': (
+    legacyCount: 0,
+    // FinanceExpenseController/FinanceDocumentActions require gl_confirm and
+    // the original snapshot/version. One current write fence and one exclusion
+    // from read ownership preserve recovery without a replacement approval.
+    tokens: {'Perm.financeExpenseGlConfirm': 2},
+  ),
+  'lib/features/finance/widgets/finance_durable_command_dialog.dart': (
+    legacyCount: 0,
+    // Registry matches ProcurementPayableRecognitionController/Service,
+    // GlController/GlReportLineBindingService, InventoryCostPostingController/
+    // Service and FinanceChartController/Service. Read receipts, current write
+    // fences and optional body-dependent native creation remain distinct.
+    tokens: {
+      'Perm.financePostExecute': 2,
+      'Perm.paymentStyleEdit': 1,
+      'Perm.supplierSettlementConfirm': 1,
+      'Perm.paymentStyleCreate': 3,
+      'Perm.financeReportView': 1,
+      'Perm.arApLedgerView': 1,
+      'Perm.financeViewAll': 2,
+      'Perm.goodsCostView': 1,
+    },
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -1030,9 +1151,61 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      306, // +37 exact source-reviewed references; retired guards stay removed.
+      348, // Prior 325 + 23 net exact finance recovery references above;
+      // the global 835 cap and wrong-token/copied-file rejection stay fixed.
     );
   });
+
+  test(
+    'finance recovery source maps retain exact identities and retired checks',
+    () {
+      const sources = {
+        'lib/features/finance/pages/finance_application_settings_page.dart': 0,
+        'lib/features/finance/widgets/finance_chart_command_dialog.dart': 0,
+        'lib/features/finance/widgets/finance_chart_dialog.dart': 6,
+        'lib/features/finance/widgets/finance_chart_import_workbench.dart': 0,
+        'lib/features/finance/widgets/finance_chart_metadata_dialog.dart': 0,
+        'lib/features/finance/widgets/finance_document_review_command.dart': 0,
+        'lib/features/finance/widgets/finance_durable_command_dialog.dart': 0,
+      };
+      var difference = 0;
+      for (final source in sources.entries) {
+        final reviewed = _reviewedSourceGuards[source.key]!;
+        expect(reviewed.legacyCount, source.value, reason: source.key);
+        difference += _reviewedIncrementFor(source.key, reviewed.tokens);
+        final extra = Map<String, int>.from(reviewed.tokens);
+        extra.update(extra.keys.first, (count) => count + 1);
+        expect(
+          () => _reviewedIncrementFor(source.key, extra),
+          throwsStateError,
+        );
+        final changed = Map<String, int>.from(reviewed.tokens)
+          ..remove(reviewed.tokens.keys.first)
+          ..['Perm.authorizationManage'] = 1;
+        expect(
+          () => _reviewedIncrementFor(source.key, changed),
+          throwsStateError,
+        );
+        expect(
+          _reviewedIncrementFor(
+            source.key.replaceFirst('.dart', '_copied.dart'),
+            reviewed.tokens,
+          ),
+          0,
+        );
+      }
+      expect(difference, 23);
+      expect(
+        _reviewedIncrementFor(
+          'lib/features/finance/widgets/finance_chart_dialog.dart',
+          _reviewedSourceGuards['lib/features/finance/widgets/finance_chart_dialog.dart']!
+              .tokens,
+        ),
+        -1,
+        reason: '移出的旧新增科目权限检查不留可复用的空额度',
+      );
+    },
+  );
 
   test('history entry guards cannot restore the retired page undo check', () {
     const page = 'lib/features/basic_data/pages/product_category_page.dart';

@@ -28,19 +28,12 @@ class MaterialReturnQuantityLegacyValueUpgradePostgresTest {
             postgres.start();
             TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).locations("classpath:db/migration").target("1024").load().migrate();
             Facts facts;
-            try(ConfigurableApplicationContext before=call(stages,"start",postgres,logs,"1024","before")){
-                var fixture=new SubcontractStepDrawEndToEndTest();before.getAutowireCapableBeanFactory().autowireBean(fixture);fixture.setup();
-                String tag="old-issue-quantity-"+UUID.randomUUID();var world=fixture.fixture.seedWorld(tag);fixture.fixture.loginAs(world.superAdminUserId());
-                call(fixture,"grantAuthorities",world.superAdminUserId(),new String[]{"subcontract_order:view","subcontract_order:draw","subcontract:view:all"});
-                UUID parent=call(fixture,"goods",world,tag,"P","委外"),material=call(fixture,"goods",world,tag,"M","采购");
-                fixture.fixture.insertBom(parent,material,"1");call(fixture,"otherIn",world,world.warehouseId(),material,null,"10","10");
-                UUID order=call(fixture,"subcontractOrder",world,parent,"10",BusinessTime.today().plusDays(5),null);call(fixture,"approveSubcontract",world,order);
-                UUID orderItem=call(fixture,"itemOf",order);
-                var issued=before.getBean(SubcontractDrawCommandService.class).submit(new DrawSubmitRequest(List.of(new DrawItemRequest(orderItem,null)),"old-native-return-"+orderItem));
-                issued.issueIds().forEach(before.getBean(SubcontractMaterialIssueService.class)::approve);
-                var db=before.getBean(JdbcTemplate.class);UUID issueItem=db.queryForObject("SELECT id FROM subcontract_material_issue_items WHERE issue_id=? AND NOT is_deleted",UUID.class,issued.issueIds().getFirst());
-                facts=new Facts(world,parent,material,orderItem,issueItem,issued.issueIds().getFirst(),originalMovements(db,issued.issueIds().getFirst()));
-            }
+            try{
+                var before=new HistoricalInventoryJdbc(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()),"old-issue-quantity-"+UUID.randomUUID());
+                var issued=before.subcontractIssue();
+                facts=new Facts(before.world,issued.parent(),issued.material(),issued.orderItem(),issued.item(),issued.document(),originalMovements(before.db,issued.document()));
+            } finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
             TestFlyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).locations("classpath:db/migration").load().migrate();
             try(ConfigurableApplicationContext after=call(stages,"start",postgres,logs,"latest","after")){
                 var db=after.getBean(JdbcTemplate.class);var fixture=new SubcontractStepDrawEndToEndTest();after.getAutowireCapableBeanFactory().autowireBean(fixture);fixture.setup();

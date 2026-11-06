@@ -485,12 +485,12 @@ void main() {
       expect(requiredAnyPermFor('/expense/claim-1'), const [Perm.expenseApply]);
       expect(requiredAnyPermFor('/expense/approval'), const [
         Perm.expenseView,
-        Perm.expenseApprove,
+        ...Perm.expenseApprovalPermissions,
         Perm.expensePay,
       ]);
       expect(requiredAnyPermFor('/expense/approval/claim-1'), const [
         Perm.expenseView,
-        Perm.expenseApprove,
+        ...Perm.expenseApprovalPermissions,
         Perm.expensePay,
       ]);
     });

@@ -221,7 +221,7 @@ class WarehouseInsightPostgresTest {
         assertThat(page.getItems()).hasSize(1);assertThat(page.getTotal()).isEqualTo(2);
         var groups=page.getTotals().stream().filter(t->t.key().equals("qty")).findFirst().orElseThrow().groups();
         assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.identity())).containsExactlyInAnyOrder(unitA.toString(),unitB.toString());
-        assertThat(groups.stream().map(g->g.value())).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+        assertThat(groups.stream().map(g->g.value())).usingElementComparator(BigDecimal::compareTo).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
     }
 
     @Test
@@ -250,7 +250,7 @@ class WarehouseInsightPostgresTest {
         var page=(com.uten.imp.common.web.TotaledPageResponse<?>)response;
         var groups=page.getTotals().stream().filter(t->t.key().equals("qty")).findFirst().orElseThrow().groups();
         assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.identity())).containsExactlyInAnyOrder(unitA.toString(),unitB.toString());
-        assertThat(groups.stream().map(g->g.value())).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+        assertThat(groups.stream().map(g->g.value())).usingElementComparator(BigDecimal::compareTo).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
         assertThat(page.getTotals()).noneMatch(t->t.key().equals("cost_amount"));
     }
 

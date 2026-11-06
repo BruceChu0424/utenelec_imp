@@ -234,7 +234,7 @@ class SecurityPermissionMigrationTest {
                           'idx_suggestion_likes_user'
                       )
                     """));
-            assertEquals("numeric(18,4)", scalarString(statement, """
+            assertEquals("numeric", scalarString(statement, """
                     select format_type(a.atttypid, a.atttypmod)
                     from pg_attribute a
                     join pg_class c on c.oid = a.attrelid

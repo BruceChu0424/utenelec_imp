@@ -20,10 +20,10 @@ class DocumentQuantityAdoptionPostgresTest {
     @BeforeAll static void start(){
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);tx=new TransactionTemplate(new DataSourceTransactionManager(source));
-        MigratedProjectionSchema.createCurrentTables(db,"purchase_receipt_items","purchase_return_items","purchase_returns","subcontract_material_return_items","subcontract_receipt_items","purchase_order_items","business_numeric_input_evidence");
+        MigratedProjectionSchema.createCurrentTables(db,"purchase_receipt_items","purchase_return_items","purchase_returns","subcontract_material_return_items","subcontract_receipt_items","purchase_order_items","business_numeric_input_evidence","document_unapprovals");
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_precision_snapshot",
                 "fn_financial_amount_is_exact","fn_document_quantity_to_base","fn_document_return_quantity_slice",
-                "fn_document_successor_scope","fn_document_successor_source_id","fn_guard_document_quantity_adoption","fn_document_material_return_base","fn_validate_receipt_weight_adoption");
+                "fn_unapproval_source_item","fn_unapproval_frozen_fields","fn_guard_document_quantity_adoption","fn_document_material_return_base","fn_validate_receipt_weight_adoption");
         for(String table:new String[]{"purchase_receipt_items","purchase_return_items","subcontract_material_return_items","subcontract_receipt_items","purchase_order_items"})
             db.execute("CREATE TRIGGER quantity_adoption BEFORE INSERT OR UPDATE ON "+table+" FOR EACH ROW EXECUTE FUNCTION fn_guard_document_quantity_adoption()");
         for(String table:new String[]{"purchase_receipt_items","subcontract_receipt_items"})

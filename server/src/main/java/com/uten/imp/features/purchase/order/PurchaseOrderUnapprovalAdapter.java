@@ -21,11 +21,9 @@ public class PurchaseOrderUnapprovalAdapter implements DocumentUnapprovalPort {
     @Override public TableSnapshot header() { return new TableSnapshot("purchase_orders",null,
         List.of("quantity_semantics","bill_date","supplier_id","warehouse_id","currency_id","exchange_rate","tax_rate","purchaser_id","maker_id","deliver_date","remark","total_original","total_local","settlement_style_legacy","settlement_method_id","source_doc_no"),true,false); }
     @Override public TableSnapshot lines() { return new TableSnapshot("purchase_order_items","order_id",
-        List.of("quantity_semantics","bill_date","request_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","price","total_amount_input","reference_price_precision_policy","amount_original","amount_local","gift_qty","charged_base_qty","gift_base_qty","quantity_adoption_version","quantity_precision_policy","deliver_date","weight","source_doc_no","sales_order_no","production_plan_no","remark","allowed_over_receipt_pct","extra_columns"),false,true); }
-    @Override public java.util.Map<String,String> generatedLineInputs() {
-        return java.util.Map.of("reference_price_successor_source_id","source.id");
-    }
+        List.of("quantity_semantics","bill_date","request_item_id","line_no","goods_id","goods_code_snapshot","goods_name_snapshot","goods_snapshot_source","color_id","unit_id","unit_rate","qty","price","total_amount_input","amount_original","amount_local","gift_qty","deliver_date","weight","source_doc_no","sales_order_no","production_plan_no","remark","allowed_over_receipt_pct","extra_columns"),true,true); }
     @Override public List<SourceSnapshot> sources() {
         return List.of(new SourceSnapshot("purchase_order_item_sources","order_item_id",List.of("request_item_id","alloc_qty","allocated_gift_qty","line_no")));
     }
+    @Override public boolean inheritsFrozenLineFacts() { return true; }
 }

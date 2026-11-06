@@ -19,6 +19,8 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         .withDatabaseName("receipt_quantity_history").withUsername("quantity_fixture")
         .withPassword("anonymous-quantity-only");
     private static Fixture historical;
+    private static Fixture historicalNullBasis;
+    private static UUID historicalDeletedLine;
     private static final java.util.Map<String,UUID> HISTORICAL_ORDER_ITEMS=new java.util.LinkedHashMap<>();
     private static final java.util.Map<String,String> HISTORICAL_ORDER_FACTS=new java.util.LinkedHashMap<>();
     private static final java.util.concurrent.atomic.AtomicInteger BILL_SEQUENCE=new java.util.concurrent.atomic.AtomicInteger(800000);
@@ -31,6 +33,9 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         String original,audit;
         try(var c=connection(DB.getDatabaseName())) {
             historical=seed(c,false,(short)-1);
+            historicalNullBasis=seed(c,false,(short)-1,true);
+            historicalDeletedLine=UUID.randomUUID();
+            execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source,is_deleted) SELECT ?,bill_no,bill_date,receipt_id,2,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source,true FROM purchase_receipt_items WHERE id=?",historicalDeletedLine,historical.item());
             seedHistoricalOrders(c);
             assertThat(scalar(c,"SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_receipt_items' AND column_name='quantity_adoption_version'")).isEqualTo("0");
             original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",historical.item());
@@ -38,13 +43,13 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         }
         migrate(DB.getDatabaseName(),null);
         try(var c=connection(DB.getDatabaseName())) {
-            assertThat(scalar(c,"SELECT quantity_successor_source_id IS NULL AND successor_copy_txid IS NULL FROM purchase_receipt_items WHERE id=?",historical.item())).isEqualTo("t");
-            assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['quantity_adoption_version','quantity_precision_policy','quantity_successor_source_id','successor_copy_txid'])::text FROM purchase_receipt_items i WHERE id=?",historical.item())).isEqualTo(original);
+            assertThat(scalar(c,"SELECT unapproval_source_item_id IS NULL FROM purchase_receipt_items WHERE id=?",historical.item())).isEqualTo("t");
+            assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['quantity_adoption_version','quantity_precision_policy','unapproval_source_item_id'])::text FROM purchase_receipt_items i WHERE id=?",historical.item())).isEqualTo(original);
             assertThat(scalar(c,"SELECT quantity_adoption_version||':'||(quantity_precision_policy IS NULL) FROM purchase_receipt_items WHERE id=?",historical.item())).isEqualTo("1:true");
             assertThat(audit(c,historical.item())).isEqualTo(audit);
             for(var legacy:HISTORICAL_ORDER_ITEMS.entrySet()){
-                assertThat(scalar(c,"SELECT reference_price_precision_policy IS NULL AND reference_price_successor_source_id IS NULL AND successor_copy_txid IS NULL FROM "+legacy.getKey()+" WHERE id=?",legacy.getValue())).isEqualTo("t");
-                assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['charged_base_qty','gift_base_qty','quantity_adoption_version','quantity_precision_policy','reference_price_precision_policy','reference_price_successor_source_id','successor_copy_txid'])::text FROM "+legacy.getKey()+" i WHERE id=?",legacy.getValue()))
+                assertThat(scalar(c,"SELECT reference_price_precision_policy IS NULL AND unapproval_source_item_id IS NULL FROM "+legacy.getKey()+" WHERE id=?",legacy.getValue())).isEqualTo("t");
+                assertThat(scalar(c,"SELECT (to_jsonb(i)-ARRAY['charged_base_qty','gift_base_qty','quantity_adoption_version','quantity_precision_policy','reference_price_precision_policy','unapproval_source_item_id'])::text FROM "+legacy.getKey()+" i WHERE id=?",legacy.getValue()))
                     .isEqualTo(HISTORICAL_ORDER_FACTS.get(legacy.getKey()));
             }
         }
@@ -56,12 +61,15 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         try(var c=cloneConnection()) {
             Fixture f=current?seed(c,true,(short)-1):historical;
             String before=quantity(c,f.item()),original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item());
-            c.setAutoCommit(false);UUID draft=draft(c,f),line=copy(c,f,draft,true,null);lineage(c,f,draft,line);c.commit();c.setAutoCommit(true);
+            c.setAutoCommit(false);UUID draft=draft(c,f),line=copy(c,f,draft,true,null);c.commit();c.setAutoCommit(true);
             assertThat(quantity(c,line)).isEqualTo(before);
-            assertThat(scalar(c,"SELECT quantity_successor_source_id::text FROM purchase_receipt_items WHERE id=?",line)).isEqualTo(f.item().toString());
+            // The historical original includes one deleted detail; its mapping
+            // and deferred proof cover exactly the single live detail.
+            if(!current)assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND NOT is_deleted",draft)).isEqualTo("1");
+            assertThat(scalar(c,"SELECT unapproval_source_item_id::text FROM purchase_receipt_items WHERE id=?",line)).isEqualTo(f.item().toString());
             assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item())).isEqualTo(original);
-            assertThatThrownBy(()->execute(c,"UPDATE purchase_receipt_items SET quantity_successor_source_id=NULL WHERE id=?",line))
-                .isInstanceOf(SQLException.class).hasMessageContaining("successor source is immutable");
+            assertThatThrownBy(()->execute(c,"UPDATE purchase_receipt_items SET unapproval_source_item_id=NULL WHERE id=?",line))
+                .isInstanceOf(SQLException.class).hasMessageContaining("unapproval source identity cannot be replaced");
             UUID unrelated=draft(c,f);
             assertThatThrownBy(()->execute(c,"UPDATE purchase_receipt_items SET receipt_id=? WHERE id=?",unrelated,line))
                 .isInstanceOf(SQLException.class).hasMessageContaining("retained record identity cannot move");
@@ -72,7 +80,7 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             execute(c,"UPDATE purchase_receipt_items SET qty=4,charged_base_qty=4,gift_base_qty=0 WHERE id=?",line);
             assertThat(scalar(c,"SELECT quantity_adoption_version||':'||charged_base_qty FROM purchase_receipt_items WHERE id=?",line)).isEqualTo("2:4");
             assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item())).isEqualTo(original);
-            assertThat(scalar(c,"SELECT quantity_successor_source_id::text FROM purchase_receipt_items WHERE id=?",line)).isEqualTo(f.item().toString());
+            assertThat(scalar(c,"SELECT unapproval_source_item_id::text FROM purchase_receipt_items WHERE id=?",line)).isEqualTo(f.item().toString());
         }
     }
 
@@ -92,11 +100,10 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             Fixture f=historical;
             String original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item());
             String count=scalar(c,"SELECT count(*) FROM purchase_receipts"),audit=scalar(c,"SELECT count(*) FROM audit_log");
-            c.setAutoCommit(false);UUID draft=draft(c,f),line=copy(c,f,draft,true,null);
-            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE id=?",line)).isEqualTo("1");
+            c.setAutoCommit(false);UUID draft=draft(c,f),line=UUID.randomUUID();
             if(wrongMapping)lineage(c,f,draft,UUID.randomUUID());
-            assertThatThrownBy(c::commit).isInstanceOf(SQLException.class)
-                .hasMessageContaining("immutable unapproval line mapping");
+            assertThatThrownBy(()->copyRow(c,f,draft,line,true,null)).isInstanceOf(SQLException.class)
+                .hasMessageContaining("clone lacks its actual same-transaction source lineage");
             c.rollback();c.setAutoCommit(true);
             assertThat(scalar(c,"SELECT count(*) FROM purchase_receipts")).isEqualTo(count);
             assertThat(scalar(c,"SELECT count(*) FROM audit_log")).isEqualTo(audit);
@@ -108,16 +115,92 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
     @Test void falseSourceChangedInputsAndDuplicateSuccessorsAreRejected()throws Exception {
         try(var c=cloneConnection()) {
             Fixture live=seed(c,true,(short)0);UUID liveDraft=draft(c,live);
+            c.setAutoCommit(false);
             assertThatThrownBy(()->copy(c,live,liveDraft,true,null)).isInstanceOf(SQLException.class)
-                .hasMessageContaining("reversed original line");
-            UUID changed=draft(c,historical);
+                .hasMessageContaining("mutable reversed original and draft successor");
+            c.rollback();c.setAutoCommit(true);
+            String original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",historical.item());
+            c.setAutoCommit(false);UUID changed=draft(c,historical);
             assertThatThrownBy(()->copy(c,historical,changed,true,"4")).isInstanceOf(SQLException.class)
-                .hasMessageContaining("preserve original input and adoption field qty");
-            c.setAutoCommit(false);UUID first=draft(c,historical),line=copy(c,historical,first,true,null);lineage(c,historical,first,line);c.commit();c.setAutoCommit(true);
-            UUID another=draft(c,historical);
+                .hasMessageContaining("quantity clone differs from its original identity or operands");
+            c.rollback();c.setAutoCommit(true);
+            c.setAutoCommit(false);UUID first=draft(c,historical),line=copy(c,historical,first,true,null);c.commit();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT unapproval_source_item_id::text FROM purchase_receipt_items WHERE id=?",line)).isEqualTo(historical.item().toString());
+            c.setAutoCommit(false);UUID another=draft(c,historical);
             assertThatThrownBy(()->copy(c,historical,another,true,null)).isInstanceOf(SQLException.class)
-                .hasMessageContaining("purchase_receipt_quantity_successor_source_unique");
-            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE quantity_successor_source_id=?",historical.item())).isEqualTo("1");
+                .hasMessageContaining("document_unapprovals_original_unique");
+            c.rollback();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE unapproval_source_item_id=?",historical.item())).isEqualTo("1");
+            assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",historical.item())).isEqualTo(original);
+        }
+    }
+
+    @Test void softDeletedSourceCannotBeRevivedAsAnInheritedDraft()throws Exception {
+        try(var c=cloneConnection()) {
+            Fixture deleted=new Fixture(historical.actor(),historical.receipt(),historicalDeletedLine);
+            String source=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",historicalDeletedLine);
+            c.setAutoCommit(false);UUID draft=draft(c,deleted);
+            assertThatThrownBy(()->copy(c,deleted,draft,true,null)).isInstanceOf(SQLException.class)
+                .hasMessageContaining("quantity clone differs from its original identity or operands");
+            c.rollback();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",historicalDeletedLine)).isEqualTo(source);
+            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE unapproval_source_item_id=?",historicalDeletedLine)).isEqualTo("0");
+        }
+    }
+
+    @Test void initialCloneCannotBeSoftDeletedToEvadeCompleteMapping()throws Exception {
+        try(var c=cloneConnection()) {
+            c.setAutoCommit(false);UUID draft=draft(c,historical),line=copy(c,historical,draft,true,null);
+            assertThatThrownBy(()->execute(c,"UPDATE purchase_receipt_items SET is_deleted=true WHERE id=?",line))
+                .isInstanceOf(SQLException.class).hasMessageContaining("initial successor copy inputs cannot change");
+            c.rollback();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE id=?",line)).isEqualTo("0");
+            assertThat(scalar(c,"SELECT count(*) FROM document_unapprovals WHERE draft_id=?",draft)).isEqualTo("0");
+        }
+    }
+
+    @Test void provedV1UnknownBasisCopiesOriginalNullsWithoutNativeReadoption()throws Exception {
+        try(var c=cloneConnection()) {
+            Fixture f=historicalNullBasis;
+            String original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item());
+            String before=quantity(c,f.item());c.setAutoCommit(false);
+            UUID draft=draft(c,f),line=copy(c,f,draft,true,null);c.commit();c.setAutoCommit(true);
+            assertThat(quantity(c,line)).isEqualTo(before);
+            assertThat(scalar(c,"SELECT unit_id IS NULL AND unit_rate IS NULL AND quantity_adoption_version=1 AND quantity_precision_policy IS NULL FROM purchase_receipt_items WHERE id=?",line)).isEqualTo("t");
+            assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item())).isEqualTo(original);
+            UUID ordinary=draft(c,f);
+            assertThatThrownBy(()->copy(c,f,ordinary,false,null)).isInstanceOf(SQLException.class)
+                .hasMessageContaining("new quantity adoption requires the current exact operation proof");
+            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=?",ordinary)).isEqualTo("0");
+        }
+    }
+
+    @Test void inheritedUnknownBasisCannotSilentlySupplyRateOne()throws Exception {
+        try(var c=cloneConnection()) {
+            Fixture f=historicalNullBasis;
+            String original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item());
+            c.setAutoCommit(false);UUID draft=draft(c,f),line=UUID.randomUUID();lineage(c,f,draft,line);
+            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unit_rate',1))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item()))
+                .isInstanceOf(SQLException.class).hasMessageContaining("quantity clone differs from its original identity or operands");
+            c.rollback();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item())).isEqualTo(original);
+            assertThat(scalar(c,"SELECT count(*) FROM document_unapprovals WHERE draft_id=?",draft)).isEqualTo("0");
+        }
+    }
+
+    @Test void currentV2SourceCannotBorrowTheV1UnknownBasisPath()throws Exception {
+        try(var c=cloneConnection()) {
+            Fixture f=seed(c,true,(short)-1);
+            c.setAutoCommit(false);UUID draft=draft(c,f),line=UUID.randomUUID();lineage(c,f,draft,line);
+            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unit_id',NULL,'unit_rate',NULL))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item()))
+                .isInstanceOf(SQLException.class).hasMessageContaining("quantity clone differs from its original identity or operands");
+            c.rollback();c.setAutoCommit(true);
+            assertThat(scalar(c,"SELECT unit_id IS NOT NULL AND unit_rate=1 AND quantity_adoption_version=2 FROM purchase_receipt_items WHERE id=?",f.item())).isEqualTo("t");
+            assertThat(scalar(c,"SELECT count(*) FROM document_unapprovals WHERE draft_id=?",draft)).isEqualTo("0");
+            UUID ordinary=draft(c,f);
+            assertThatThrownBy(()->execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) SELECT ?,?,bill_date,?,1,goods_id,NULL,NULL,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source FROM purchase_receipt_items WHERE id=?",UUID.randomUUID(),bill(ordinary),ordinary,f.item()))
+                .isInstanceOf(SQLException.class).hasMessageContaining("quantity adoption requires its actual positive unit rate and original unit");
+            assertThat(scalar(c,"SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=?",ordinary)).isEqualTo("0");
         }
     }
 
@@ -175,9 +258,9 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             UUID source=HISTORICAL_ORDER_ITEMS.get(table);String header=table.replace("_items","s");
             String before=scalar(c,"SELECT to_jsonb(i)::text FROM "+table+" i WHERE id=?",source);
             String count=scalar(c,"SELECT count(*) FROM "+header);c.setAutoCommit(false);
-            UUID draft=orderDraft(c,table,source),line=orderCopy(c,table,source,draft,true);
-            assertThat(scalar(c,"SELECT count(*) FROM "+table+" WHERE id=?",line)).isEqualTo("1");
-            assertThatThrownBy(c::commit).isInstanceOf(SQLException.class).hasMessageContaining("immutable unapproval line mapping");
+            UUID draft=orderDraft(c,table,source);
+            assertThatThrownBy(()->orderCopy(c,table,source,draft,true)).isInstanceOf(SQLException.class)
+                .hasMessageContaining("clone lacks its actual same-transaction source lineage");
             c.rollback();c.setAutoCommit(true);
             assertThat(scalar(c,"SELECT count(*) FROM "+header)).isEqualTo(count);
             assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM "+table+" i WHERE id=?",source)).isEqualTo(before);
@@ -214,10 +297,11 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             columns+=",quantity_semantics,gift_qty";
             if(inherited)columns+=",charged_base_qty,gift_base_qty,quantity_adoption_version,quantity_precision_policy";
         }
-        execute(c,"INSERT INTO "+table+"(id,bill_no,bill_date,order_id,line_no,goods_snapshot_source,"+columns+(inherited?",reference_price_successor_source_id":"")+") SELECT ?,?,bill_date,?,1,goods_snapshot_source,"+columns+(inherited?",id":"")+" FROM "+table+" WHERE id=?",line,BILLS.get(draft),draft,source);return line;
+        execute(c,"INSERT INTO "+table+"(id,bill_no,bill_date,order_id,line_no,goods_snapshot_source,"+columns+(inherited?",unapproval_source_item_id":"")+") SELECT ?,?,bill_date,?,1,goods_snapshot_source,"+columns+(inherited?",id":"")+" FROM "+table+" WHERE id=?",line,BILLS.get(draft),draft,source);return line;
     }
 
-    private static Fixture seed(Connection c,boolean current,short state)throws SQLException {
+    private static Fixture seed(Connection c,boolean current,short state)throws SQLException {return seed(c,current,state,false);}
+    private static Fixture seed(Connection c,boolean current,short state,boolean nullBasis)throws SQLException {
         UUID actor=UUID.randomUUID(),employee=UUID.randomUUID(),supplier=UUID.randomUUID(),warehouse=UUID.randomUUID(),unit=UUID.randomUUID(),goods=UUID.randomUUID(),receipt=UUID.randomUUID(),item=UUID.randomUUID();
         execute(c,"INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',(SELECT id FROM departments WHERE code='DEPT_FIN'),DATE '2026-01-01','active','regular')",employee,"QTY-"+employee,"匿名数量继任员工-"+employee);
         execute(c,"INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status)VALUES(?,?,?,'test-not-used',false,'active')",actor,employee,"quantity-"+actor);
@@ -226,7 +310,7 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         execute(c,"INSERT INTO units(id,code,name)VALUES(?,?,'匿名数量继任单位')",unit,"QTY-"+unit);
         execute(c,"INSERT INTO goods(id,code,name,unit_id,code_sequence)VALUES(?,?,'匿名数量继任物料',?,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))",goods,"QTY-"+goods,unit);
         execute(c,"INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,warehouse_id,currency_id,exchange_rate,total_original,total_local,status,created_by,updated_by) VALUES(?,?,DATE '2026-09-23',?,?,(SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted LIMIT 1),1,41.010803125,41.010803125,?,?,?)",receipt,bill(receipt),supplier,warehouse,state,actor,actor);
-        execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES(?,?,DATE '2026-09-23',?,1,?,?,1,3.125,3.125,0,13.123457,41.010803125,41.010803125,'NORMAL','MASTER_AT_SAVE')",item,bill(receipt),receipt,goods,unit);
+        execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES(?,?,DATE '2026-09-23',?,1,?,?,?,3.125,3.125,0,13.123457,41.010803125,41.010803125,'NORMAL','MASTER_AT_SAVE')",item,bill(receipt),receipt,goods,nullBasis?null:unit,nullBasis?null:java.math.BigDecimal.ONE);
         if(current)assertThat(scalar(c,"SELECT quantity_adoption_version FROM purchase_receipt_items WHERE id=?",item)).isEqualTo("2");
         return new Fixture(actor,receipt,item);
     }
@@ -236,10 +320,14 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         return id;
     }
     private static UUID copy(Connection c,Fixture f,UUID draft,boolean source,String changedQty)throws SQLException {
-        UUID id=UUID.randomUUID();String columns=QUANTITY_COLUMNS;
+        UUID id=UUID.randomUUID();
+        if(source)lineage(c,f,draft,id);
+        copyRow(c,f,draft,id,source,changedQty);return id;
+    }
+    private static void copyRow(Connection c,Fixture f,UUID draft,UUID id,boolean source,String changedQty)throws SQLException {
+        String columns=QUANTITY_COLUMNS;
         String values=java.util.Arrays.stream(columns.split(",")).map(name->name.equals("qty")&&changedQty!=null?changedQty:"source."+name).collect(java.util.stream.Collectors.joining(","));
-        execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_snapshot_source,"+columns+(source?",quantity_successor_source_id":"")+") SELECT ?,?,source.bill_date,?,1,source.goods_snapshot_source,"+values+(source?",source.id":"")+" FROM purchase_receipt_items source WHERE source.id=?",id,bill(draft),draft,f.item());
-        return id;
+        execute(c,"INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_snapshot_source,updated_by,"+columns+(source?",unapproval_source_item_id":"")+") SELECT ?,?,source.bill_date,?,1,source.goods_snapshot_source,?,"+values+(source?",source.id":"")+" FROM purchase_receipt_items source WHERE source.id=?",id,bill(draft),draft,f.actor(),f.item());
     }
     private static void lineage(Connection c,Fixture f,UUID draft,UUID line)throws SQLException {
         execute(c,"INSERT INTO document_unapprovals(family,original_id,draft_id,draft_bill_no,request_key,reason,line_id_map,created_by)VALUES('purchaseReceipt',?,?,?,?,'匿名继任采用核对',jsonb_build_object(?::text,?::text),?)",f.receipt(),draft,bill(draft),"quantity-"+UUID.randomUUID(),f.item(),line,f.actor());

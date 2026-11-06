@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
@@ -25,29 +27,56 @@ void main() {
     ({'shipmentKind': 'DIRECT_CUSTOMER', 'salesConfirmed': true}, true),
     ({'salesConfirmed': true, 'priceMasked': true}, false),
   ]) {
-    testWidgets(
-      'finance-only shipment attachment visibility follows submitted state $state',
-      (tester) async {
-        await _pumpDetail(
-          tester,
-          type: SalesDocType.shipment,
-          detail: {
-            'id': 'finance-file-shipment',
-            'status': 0,
-            'items': <Map<String, dynamic>>[],
-            ...state,
-          },
-          permissions: const {Perm.salesShipmentFinanceView},
-        );
-        final section = tester.widget<BusinessAttachmentSection>(
-          find.byType(BusinessAttachmentSection),
-        );
-        expect(section.ownerType, 'SALES_SHIPMENT');
-        expect(section.canView, expected);
-        expect(section.canManage, isFalse);
-        expect(find.text('添加文件'), findsNothing);
-      },
-    );
+    for (final attachmentGrant in [false, true]) {
+      testWidgets(
+        'finance shipment attachment visibility retains source state $state and attachment grant $attachmentGrant',
+        (tester) async {
+          final api = await _pumpDetail(
+            tester,
+            type: SalesDocType.shipment,
+            detail: {
+              'id': 'finance-file-shipment',
+              'status': 0,
+              'items': <Map<String, dynamic>>[],
+              ...state,
+            },
+            permissions: {
+              Perm.salesShipmentFinanceView,
+              if (attachmentGrant) Perm.attachmentView,
+            },
+          );
+          expect(find.byType(UtenDetailSummaryCard), findsOneWidget);
+          final reference = find.byKey(
+            const ValueKey('shipment-attachments-reference'),
+          );
+          // The current document keeps source files in a deliberately folded
+          // reference section. Global attachment:view never substitutes for
+          // the owner's submitted/unmasked finance scope, or vice versa.
+          expect(find.byType(BusinessAttachmentSection), findsNothing);
+          if (attachmentGrant && expected) {
+            expect(reference, findsOneWidget);
+            await tester.ensureVisible(reference);
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('资料与附件'));
+            await tester.pumpAndSettle();
+            final section = tester.widget<BusinessAttachmentSection>(
+              find.byType(BusinessAttachmentSection),
+            );
+            expect(section.ownerType, 'SALES_SHIPMENT');
+            expect(section.ownerId, 'finance-file-shipment');
+            expect(section.canView, isTrue);
+            expect(section.canManage, isFalse);
+          } else {
+            expect(reference, findsNothing);
+            expect(find.text('资料与附件'), findsNothing);
+            expect(find.byType(BusinessAttachmentSection), findsNothing);
+          }
+          expect(find.text('添加文件'), findsNothing);
+          expect(api.postPaths, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   }
 
   testWidgets('new shipment shows warehouse actions and hides legacy approve', (
@@ -103,7 +132,7 @@ void main() {
     );
 
     expect(find.text('确认出库'), findsNothing);
-    expect(find.textContaining('等待财务审核放行'), findsOneWidget);
+    await _expectShipmentHint(tester, '等待财务审核放行；放行前仓库不能确认出库。');
   });
 
   testWidgets('legacy shipment fails closed without either approval path', (
@@ -126,7 +155,7 @@ void main() {
     expect(find.byKey(const ValueKey('finance-audit')), findsNothing);
     expect(find.byKey(const ValueKey('legacy-sales-approve')), findsNothing);
     expect(find.text('确认出库'), findsNothing);
-    expect(find.textContaining('历史直接审核流程已停用'), findsOneWidget);
+    await _expectShipmentHint(tester, '历史直接审核流程已停用');
   });
 
   testWidgets('order approval describes order activation without AR wording', (
@@ -204,14 +233,16 @@ void main() {
     expect(find.textContaining('如需修改出货内容，请先财务反审'), findsNothing);
     // 2026-09-12 拆分：财务反审入口移入财务专用审核页，本页只展示状态横幅。
     expect(find.byKey(const ValueKey('finance-audit-reverse')), findsNothing);
-    expect(find.textContaining('财务已放行'), findsOneWidget);
+    _expectSummaryFact(tester, '财务审核', '已审发货');
+    _expectSummaryFact(tester, '仓库作业', '待出库');
   });
 
   testWidgets(
-    'shipment waiting for finance audit shows status strip, not audit buttons',
+    'shipment waiting for finance audit keeps native summary facts and no audit buttons',
     (tester) async {
-      // 2026-09-12 拆分：本页只显示「正在等待财务审核」横幅 + 销售/仓库操作；
-      // 财务认领/放行/反审全部在 /finance/sales-shipment-audits/:id 专页办理。
+      // Native summary fields and their adjacent hint retain the current
+      // finance/warehouse stage; the retired independent strip is not restored.
+      // Claims and finance decisions remain in their dedicated review page.
       await _pumpDetail(
         tester,
         type: SalesDocType.shipment,
@@ -236,9 +267,11 @@ void main() {
 
       expect(
         find.byKey(const Key('shipment-finance-status-strip')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.textContaining('正在等待财务审核'), findsOneWidget);
+      _expectSummaryFact(tester, '财务审核', '待财务审核');
+      _expectSummaryFact(tester, '仓库作业', '待出库');
+      await _expectShipmentHint(tester, '等待财务审核放行；放行前仓库不能确认出库。');
       expect(find.byKey(const ValueKey('finance-audit')), findsNothing);
       expect(find.byKey(const ValueKey('finance-audit-reverse')), findsNothing);
       // 销售操作仍在（编辑）；出货草稿的删除入口按用户口径显示为「取消」。
@@ -265,7 +298,7 @@ void main() {
 
     expect(find.text('红冲'), findsNothing);
     expect(find.text('反审'), findsNothing);
-    expect(find.textContaining('仅价款有误须财务调整，不能虚做退货'), findsOneWidget);
+    await _expectShipmentHint(tester, '仅价款有误须财务调整，不能虚做退货');
   });
 
   for (final type in [SalesDocType.shipment, SalesDocType.customerShipment]) {
@@ -462,6 +495,42 @@ void main() {
       expect(find.text('160.00 美元'), findsNothing);
     },
   );
+}
+
+void _expectSummaryFact(WidgetTester tester, String label, String value) {
+  final field = find.byWidgetPredicate(
+    (widget) => widget is UtenSummaryField && widget.label == label,
+  );
+  expect(field, findsOneWidget);
+  expect(tester.widget<UtenSummaryField>(field).value, value);
+}
+
+Future<void> _expectShipmentHint(WidgetTester tester, String message) async {
+  final hint = find.descendant(
+    of: find.byType(UtenDetailSummaryCard),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon && widget.info?.contains(message) == true,
+    ),
+  );
+  expect(hint, findsOneWidget);
+  expect(find.textContaining(message), findsNothing);
+  await tester.ensureVisible(hint);
+  await tester.tap(hint);
+  await tester.pumpAndSettle();
+  expect(find.textContaining(message), findsOneWidget);
+  Tooltip.dismissAllToolTips();
+  await tester.pumpAndSettle();
+  tester
+      .widget<IconButton>(
+        find.descendant(of: hint, matching: find.byType(IconButton)),
+      )
+      .focusNode!
+      .requestFocus();
+  await tester.pumpAndSettle();
+  expect(find.textContaining(message), findsOneWidget);
+  Tooltip.dismissAllToolTips();
+  await tester.pumpAndSettle();
 }
 
 Future<_DetailApi> _pumpDetail(

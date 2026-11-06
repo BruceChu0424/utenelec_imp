@@ -22,6 +22,28 @@ import java.util.UUID;
 public final class HistoricalExpenseSourceJdbc {
     private HistoricalExpenseSourceJdbc() { }
 
+    /** Original capture can read actual facts, never run a pre-upgrade workflow. */
+    public static FinanceApplicationExpensePort readOnlyPort(JdbcTemplate db,ObjectMapper json) {
+        return new FinanceApplicationExpensePort() {
+            @Override public Source source(UUID id,boolean forUpdate) {
+                if(forUpdate)throw unsupported();
+                return HistoricalExpenseSourceJdbc.source(db,json,id);
+            }
+            @Override public void verifyInvoice(UUID claim,UUID invoice,Long version,String result,String remark){throw unsupported();}
+            @Override public Map<String,Object> detail(UUID claim){throw unsupported();}
+            @Override public java.util.Optional<Map<String,Object>> optionalDetail(UUID claim){throw unsupported();}
+            @Override public void submit(UUID id){throw unsupported();}
+            @Override public void withdraw(UUID id){throw unsupported();}
+            @Override public void decideFromApplication(UUID id,boolean approved,String reason){throw unsupported();}
+            @Override public UUID pay(UUID id,UUID account,UUID style,java.time.LocalDate date,com.uten.imp.common.finance.AccountingExpensePurpose purpose){throw unsupported();}
+            @Override public void paymentReversed(UUID id,UUID payment,String reason){throw unsupported();}
+        };
+    }
+
+    private static UnsupportedOperationException unsupported() {
+        return new UnsupportedOperationException("Historical claim capture cannot execute business commands");
+    }
+
     public static String snapshot(JdbcTemplate db,UUID id) {
         var claim=db.queryForObject("""
                 SELECT id,title,expense_kind,applicant_department_id,applicant_name_snapshot,remark,total_amount
@@ -42,8 +64,20 @@ public final class HistoricalExpenseSourceJdbc {
         if(custom==null||custom!=0)throw new IllegalArgumentException("Historical plain claim fixture contains custom values");
         var itemFields=new LinkedHashMap<UUID,PlatformColumnContracts.Row>();
         items.forEach(item->itemFields.put(item.getId(),new PlatformColumnContracts.Row(item.getId(),0,false,List.of())));
-        return ExpenseClaimSubmissionSnapshot.capture(claim,items,invoices,itemFields,
+        String captured=ExpenseClaimSubmissionSnapshot.capture(claim,items,invoices,itemFields,
                 new PlatformColumnContracts.Row(id,0,false,List.of()));
+        // Golden checks observe the owning codec's actual output. They do not
+        // duplicate its monetary conversion or serialized field construction.
+        try {
+            var json=com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper().readTree(captured);
+            org.assertj.core.api.Assertions.assertThat(json.path("title").asText()).isEqualTo(claim.getTitle());
+            org.assertj.core.api.Assertions.assertThat(json.path("totalAmount").asText()).isEqualTo(claim.getTotalAmount().toPlainString());
+            org.assertj.core.api.Assertions.assertThat(json.path("items").size()).isEqualTo(items.size());
+            org.assertj.core.api.Assertions.assertThat(json.path("invoices").size()).isEqualTo(invoices.size());
+            for(int i=0;i<items.size();i++)org.assertj.core.api.Assertions.assertThat(json.path("items").get(i).path("amount").asText()).isEqualTo(items.get(i).getAmount().toPlainString());
+            for(int i=0;i<invoices.size();i++)org.assertj.core.api.Assertions.assertThat(json.path("invoices").get(i).path("attachmentId").asText()).isEqualTo(invoices.get(i).getAttachmentId().toString());
+        } catch(java.io.IOException failure) {throw new IllegalStateException("Owning original snapshot codec returned invalid JSON",failure);}
+        return captured;
     }
 
     public static FinanceApplicationExpensePort.Source source(JdbcTemplate db,ObjectMapper json,UUID id) {

@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -21,271 +19,21 @@ import 'package:uten_imp/features/finance/widgets/finance_entry_file_picker.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
-import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../support/finance_command_test_support.dart';
+import '../../support/finance_chart_import_test_support.dart';
 import '../../support/native_detail_reader_overrides.dart';
 
 // Java/Postgres UUID identities may have non-RFC version bits. These are
 // server-owned preview identities, not replacement client-generated intents.
-const _root = '00000000-0000-0000-0000-000000000801';
-const _child = '00000000-0000-0000-0000-000000000802';
-final _bytes = Uint8List.fromList(
-  utf8.encode('anonymous-original-chart-bytes'),
-);
-final _sha = sha256.convert(_bytes).toString();
+const _root = financeChartImportTestRoot, _child = financeChartImportTestChild;
+final _bytes = financeChartImportTestBytes, _sha = financeChartImportTestSha;
 final _grants = StateProvider<Set<String>>((_) => {});
 
-class _Session extends SessionNotifier {
-  @override
-  SessionState build() => const SessionState(
-    status: AuthStatus.authenticated,
-    user: AppUser(id: financeCommandTestActor, code: 'fixture', name: '匿名测试人员'),
-  );
-}
-
-class _Call {
-  _Call(this.method, this.path, this.body);
-  final String method, path;
-  final Map<String, dynamic> body;
-}
-
-class _Transport implements HttpClientAdapter {
-  bool uploaded = false,
-      loseUpload = false,
-      loseApply = true,
-      rejectApply = false,
-      loseReview = false,
-      loseCancel = false,
-      lookupMissing = false,
-      forbidRead = false;
-  bool wrongReview = false;
-  Completer<void>? holdApply;
-  int uploads = 0, applied = 0, reviews = 0, currentVersion = 5;
-  String storedName = '原始目录.xls';
-  final calls = <_Call>[], applyCalls = <_Call>[], reviewCalls = <_Call>[];
-  final applyReceipts = <String, Map<String, dynamic>>{},
-      reviewReceipts = <String, Map<String, dynamic>>{};
-  final previews = <String, Map<String, dynamic>>{};
-  void Function()? beforeUpload;
-  Map<String, dynamic> preview(String id) => previews.putIfAbsent(
-    id,
-    () => {
-      'importId': id,
-      'sourceName': storedName,
-      'sha256': _sha,
-      'rows': [
-        {
-          'code': '1001',
-          'name': '原件字面科目名称',
-          'currencyName': '',
-          'sourceRow': 1,
-          'existingVersion': id == _root ? 5 : currentVersion,
-        },
-      ],
-      'issues': <Object>[],
-      'applied': false,
-      'cancelled': false,
-      'applyOutcome': null,
-      'parentImportId': id == _root ? null : _root,
-      'sourceImportId': _root,
-    },
-  );
-  ResponseBody json(Object? value, [int status = 200]) =>
-      ResponseBody.fromString(
-        jsonEncode(value),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
-  Map<String, dynamic> proof(
-    _Call call,
-    String operation,
-    Object result, {
-    bool stopped = false,
-  }) => {
-    'found': true,
-    'actorId': financeCommandTestActor,
-    'requestId':
-        call.body[operation == 'CHART_IMPORT_APPLY' ? 'importId' : 'requestId'],
-    'operation': operation,
-    'method': 'POST',
-    'path': call.path,
-    'requestBody': call.body,
-    'outcome': stopped ? 'CANCELLED_UNWRITTEN' : 'SUCCEEDED',
-    'result': result,
-  };
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions o,
-    Stream<Uint8List>? stream,
-    Future<void>? cancel,
-  ) async {
-    final bytes = stream == null
-        ? <int>[]
-        : await stream.expand((chunk) => chunk).toList();
-    final body = o.data is FormData || bytes.isEmpty
-        ? <String, dynamic>{}
-        : Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
-    final call = _Call(o.method, o.path, body);
-    calls.add(call);
-    if (o.path == '/finance/chart/import-preview' && o.method == 'POST') {
-      uploads++;
-      beforeUpload?.call();
-      uploaded = true;
-      preview(_root);
-      if (loseUpload) {
-        throw DioException(
-          requestOptions: o,
-          type: DioExceptionType.receiveTimeout,
-        );
-      }
-      return json(preview(_root));
-    }
-    if (o.method == 'GET') {
-      if (forbidRead && o.path.contains('/finance/chart/import')) {
-        return json({'code': 'FORBIDDEN', 'message': '读取权限已撤销'}, 403);
-      }
-      if (o.path == '/finance/chart/imports/by-sha/$_sha') {
-        return json(
-          !uploaded || lookupMissing
-              ? {'found': false}
-              : {
-                  'found': true,
-                  'importId': _root,
-                  'sha256': _sha,
-                  'sourceName': storedName,
-                  'storageSize': _bytes.length,
-                  'applied': preview(_root)['applied'],
-                  'cancelled': preview(_root)['cancelled'],
-                },
-        );
-      }
-      if (o.path.endsWith('/operations/apply')) {
-        return json(applyReceipts[o.path.split('/')[4]] ?? {'found': false});
-      }
-      if (o.path.startsWith('/finance/chart/operations/')) {
-        return json(reviewReceipts[o.path.split('/').last] ?? {'found': false});
-      }
-      if (o.path == '/finance/chart/imports') {
-        return json({
-          'items': [
-            if (uploaded)
-              {
-                'importId': _root,
-                'sourceName': storedName,
-                'applied': preview(_root)['applied'],
-                'cancelled': preview(_root)['cancelled'],
-              },
-          ],
-        });
-      }
-      if (o.path == '/finance/chart/imports/$_root') {
-        return json(preview(_root));
-      }
-      if (o.path == '/finance/chart/imports/$_child') {
-        return json(preview(_child));
-      }
-      return json({
-        'items': <Object>[],
-        'total': 0,
-        'page': 1,
-        'size': 100,
-        'totalPages': 0,
-      });
-    }
-    if (o.path.endsWith('/cancel')) {
-      final original = Map<String, dynamic>.from(body['requestBody'] as Map);
-      final apply = body['operation'] == 'CHART_IMPORT_APPLY';
-      final id = original[apply ? 'importId' : 'requestId'] as String;
-      final stored = apply ? applyReceipts : reviewReceipts;
-      expect(body['requestId'], id);
-      expect(body['actorId'], financeCommandTestActor);
-      final originalCall = _Call('POST', body['path'] as String, original);
-      final response = stored.putIfAbsent(
-        id,
-        () => proof(originalCall, body['operation'] as String, {
-          'cancelled': true,
-        }, stopped: true),
-      );
-      if (apply && response['outcome'] == 'CANCELLED_UNWRITTEN') {
-        preview(id)['cancelled'] = true;
-        preview(id)['applyOutcome'] = 'CANCELLED_UNWRITTEN';
-      }
-      if (loseCancel) {
-        throw DioException(
-          requestOptions: o,
-          type: DioExceptionType.receiveTimeout,
-        );
-      }
-      return json(response);
-    }
-    if (o.path == '/finance/chart/import-apply') {
-      applyCalls.add(call);
-      expect(body.keys, ['importId']);
-      final id = body['importId'] as String;
-      if (holdApply != null) await holdApply!.future;
-      if (applyReceipts[id] != null) {
-        return json(applyReceipts[id]);
-      }
-      if (rejectApply) {
-        return json({'code': 'CONFLICT', 'message': '原预览版本已过期'}, 409);
-      }
-      applied++;
-      preview(id)['applied'] = true;
-      preview(id)['applyOutcome'] = 'SUCCEEDED';
-      final response = proof(call, 'CHART_IMPORT_APPLY', {
-        'importId': id,
-        'imported': 1,
-        'status': 'APPLIED',
-      });
-      applyReceipts[id] = response;
-      if (loseApply) {
-        throw DioException(
-          requestOptions: o,
-          type: DioExceptionType.receiveTimeout,
-        );
-      }
-      return json(response);
-    }
-    if (o.path == '/finance/chart/imports/$_root/repreview') {
-      reviewCalls.add(call);
-      expect(body.keys, ['requestId']);
-      final id = body['requestId'] as String;
-      if (reviewReceipts[id] != null) {
-        return json(reviewReceipts[id]);
-      }
-      reviews++;
-      preview(_child);
-      final response = proof(call, 'CHART_IMPORT_REPREVIEW', {
-        'requestId': id,
-        'importId': _child,
-        'parentImportId': wrongReview
-            ? '00000000-0000-0000-0000-000000000899'
-            : _root,
-        'sourceImportId': _root,
-        'sha256': _sha,
-        'status': 'PREVIEWED',
-      });
-      reviewReceipts[id] = response;
-      if (loseReview) {
-        throw DioException(
-          requestOptions: o,
-          type: DioExceptionType.receiveTimeout,
-        );
-      }
-      return json(response);
-    }
-    return json({});
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
+typedef _Transport = FinanceChartImportTestTransport;
 
 class _Env {
   _Env(this.container, this.dio, this.router);
@@ -322,7 +70,7 @@ Future<_Env> _open(
         includeSession: false,
         includeServer: false,
       ),
-      sessionProvider.overrideWith(_Session.new),
+      sessionProvider.overrideWith(FinanceChartImportTestSession.new),
       authenticatedScopeProvider.overrideWithValue(
         const AuthenticatedScope(userId: financeCommandTestActor),
       ),

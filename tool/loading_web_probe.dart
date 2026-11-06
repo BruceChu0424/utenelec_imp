@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
@@ -72,11 +73,28 @@ class _ProbeState extends State<_Probe> {
   var _pageRequests = 0, _mounts = 0, _liveMounts = 0, _toolbarTaps = 0;
   var _mode = 'anonymous-duplicates';
   List<Map<String, String?>> _captured = const [];
+  final _mountFrames = <int, int>{};
   @override
   void initState() {
     super.initState();
     _probeReader = (() => jsonEncode(_state()).toJS).toJS;
     _probeAction = ((JSString command) {
+      final action = command.toDart;
+      if (action == 'rows:200' || action == 'rows:20000') {
+        final count = int.parse(action.substring(5));
+        setState(() {
+          _mode = 'complete-$count';
+          _captured = const [];
+          _data = List.generate(
+            count,
+            (index) => {
+              '__lineId': 'edit-$index',
+              'code': 'ROW-${index.toString().padLeft(5, '0')}',
+              'name': '原始记录 $index',
+            },
+          );
+        });
+      }
       if (command.toDart == 'lineIds') {
         setState(() {
           _mode = 'line-identities';
@@ -104,10 +122,39 @@ class _ProbeState extends State<_Probe> {
   Map<String, Object?> _state() {
     var placeholders = 0, checked = 0, bodyOwners = 0, bodyPositions = 0;
     int? header;
+    final cells = <Map<String, Object?>>[];
+    double? windowViewport, estimatedRowExtent;
     double? pixels, maximum;
     final checkboxes = <List<double>>[];
     void visit(Element element) {
       final widget = element.widget;
+      if (element is StatefulElement && element.state is _MountedCellState) {
+        final state = element.state as _MountedCellState;
+        if (state.widget.editable) {
+          cells.add({
+            'value': state.widget.value,
+            'text': state.controller.text,
+            'selection': [
+              state.controller.selection.baseOffset,
+              state.controller.selection.extentOffset,
+            ],
+            'focus': state.focus.hasFocus,
+            'identity': identityHashCode(state),
+            'rect': _rect(element),
+          });
+        }
+      }
+      if (widget is UtenAncestorRowWindow) {
+        final position = Scrollable.maybeOf(
+          element,
+          axis: Axis.vertical,
+        )?.position;
+        windowViewport = position?.hasViewportDimension == true
+            ? position!.viewportDimension
+            : null;
+        estimatedRowExtent = widget.estimatedRowExtent;
+      }
+
       if (widget is UtenRowMountPlaceholder) placeholders++;
       if (widget is Text && widget.data == '编号') {
         header ??= identityHashCode(element);
@@ -137,6 +184,13 @@ class _ProbeState extends State<_Probe> {
     if (element is Element) visit(element);
     return {
       'mode': _mode,
+      'cells': cells,
+      'windowViewport': windowViewport,
+      'estimatedRowExtent': estimatedRowExtent,
+      'mountFrames': [
+        for (final frame in _mountFrames.entries)
+          {'micros': frame.key, 'mounts': frame.value},
+      ],
       'loadedRows': _rows.items.length,
       'equalDuplicateOccurrences': _rows.items
           .where((row) => row['code'] == 'Equal duplicate')
@@ -194,6 +248,7 @@ class _ProbeState extends State<_Probe> {
         // Default bounded admission: no business identity or virtualization opt-in.
         totalPages: 1800,
         onPageChange: (_) => _pageRequests++,
+        onLoadMore: () => _pageRequests++,
         toolbarActions: [
           UtenExportButton(
             key: _outputKey,
@@ -212,8 +267,18 @@ class _ProbeState extends State<_Probe> {
             value: (row) => '${row['code']}',
             cellBuilder: (_, row) => _MountedCell(
               value: '${row['code']}',
+              editable: _mode.startsWith('complete-'),
               onMount: () {
                 _mounts++;
+                final frame = SchedulerBinding
+                    .instance
+                    .currentFrameTimeStamp
+                    .inMicroseconds;
+                _mountFrames.update(
+                  frame,
+                  (value) => value + 1,
+                  ifAbsent: () => 1,
+                );
                 _liveMounts++;
               },
               onDispose: () => _liveMounts--,
@@ -242,14 +307,18 @@ class _MountedCell extends StatefulWidget {
     required this.value,
     required this.onMount,
     required this.onDispose,
+    this.editable = false,
   });
   final String value;
+  final bool editable;
   final VoidCallback onMount, onDispose;
   @override
   State<_MountedCell> createState() => _MountedCellState();
 }
 
 class _MountedCellState extends State<_MountedCell> {
+  late final controller = TextEditingController(text: widget.value);
+  final focus = FocusNode();
   @override
   void initState() {
     super.initState();
@@ -259,9 +328,13 @@ class _MountedCellState extends State<_MountedCell> {
   @override
   void dispose() {
     widget.onDispose();
+    controller.dispose();
+    focus.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Text(widget.value);
+  Widget build(BuildContext context) => widget.editable
+      ? TextField(controller: controller, focusNode: focus)
+      : Text(widget.value);
 }

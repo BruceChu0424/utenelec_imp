@@ -1,0 +1,150 @@
+{
+  "count": 200,
+  "phase": "front",
+  "inputSamples": [
+    {
+      "count": 200,
+      "label": "resize-1440",
+      "live": 19,
+      "mounts": 1723,
+      "windowViewport": 805,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          103,
+          195.5,
+          32
+        ]
+      }
+    },
+    {
+      "count": 200,
+      "label": "tail-1440",
+      "live": 20,
+      "mounts": 1747,
+      "windowViewport": 805,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          -7362,
+          195.5,
+          32
+        ]
+      }
+    },
+    {
+      "count": 200,
+      "label": "top-1440",
+      "live": 19,
+      "mounts": 1764,
+      "windowViewport": 805,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          103,
+          195.5,
+          32
+        ]
+      }
+    },
+    {
+      "count": 200,
+      "label": "resize-390",
+      "live": 14,
+      "mounts": 1764,
+      "windowViewport": 799,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          109,
+          195.5,
+          48
+        ]
+      }
+    },
+    {
+      "count": 200,
+      "label": "tail-390",
+      "live": 16,
+      "mounts": 1785,
+      "windowViewport": 799,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          -7954,
+          195.5,
+          48
+        ]
+      }
+    },
+    {
+      "count": 200,
+      "label": "top-390",
+      "live": 14,
+      "mounts": 1797,
+      "windowViewport": 799,
+      "estimatedRowExtent": 37,
+      "editor": {
+        "value": "ROW-00000",
+        "text": "未提交原文 0.0001",
+        "selection": [
+          0,
+          4
+        ],
+        "focus": true,
+        "identity": 689433920,
+        "rect": [
+          60,
+          109,
+          195.5,
+          48
+        ]
+      }
+    }
+  ]
+}

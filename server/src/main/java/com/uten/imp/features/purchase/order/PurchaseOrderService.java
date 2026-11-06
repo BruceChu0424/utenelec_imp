@@ -182,17 +182,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private Specification<PurchaseOrder> orderSpec(OrderQueryFilter originalFilter) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         var readScope = access.scope();
-        // 财务审批态切片（financeApproval）：财务通过前 status 保持 0，草稿段与
-        // 「等待财务审核」段同为 status=0，按 PENDING case 集合区分。待审队列很小，
-        // 整集预取后用 IN 谓词，避免逐行子查询。
         String financeApproval = normalizeFinanceApprovalSlice(f.financeApproval());
-        Set<UUID> pendingFinanceIds = financeApproval == null
-                ? null
-                : approvalProjection.pendingOrderIds(orderType());
-        // 财务退回件(最新 case=REJECTED): 「财务已退回」段圈定; 草稿段(NONE)同时排除在审与退回.
-        Set<UUID> rejectedFinanceIds = financeApproval == null
-                ? null
-                : approvalProjection.rejectedOrderIds(orderType());
+        // Keep qualification in SQL: no whole-company approval ID lists before paging.
         return (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -225,40 +216,30 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             if (financeApproval != null) {
-                if (Set.of("PENDING", "REJECTED").contains(financeApproval)) {
-                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
+                if (java.util.Set.of("PENDING", "REJECTED").contains(financeApproval)) {
+                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,
+                            root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
                 }
+                java.util.function.Supplier<Predicate> pending = () ->
+                        com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.pending(
+                                root.get("id"), q, cb, orderType());
+                java.util.function.Supplier<Predicate> rejected = () ->
+                        com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.latestRejected(
+                                root.get("id"), q, cb, orderType());
                 if ("IN_PROGRESS".equals(financeApproval)) {
-                    // 实物已收齐后仍可能有改量财审，必须继续保留在活动队列。
-                    Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
-                    financeIds.addAll(rejectedFinanceIds);
-                    Predicate financePending = financeIds.isEmpty() ? cb.disjunction()
-                            : cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED), root.get("id").in(financeIds));
+                    // Closed physical execution can still carry a live financial amendment.
+                    Predicate financePending = cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED),
+                            cb.or(pending.get(), rejected.get()));
                     Predicate executing = cb.and(cb.equal(root.get("status"), STATUS_APPROVED),
                             cb.isFalse(root.get("closed")), cb.notEqual(cb.coalesce(root.get("isStopped"), false), true));
                     ps.add(cb.or(financePending, executing));
                 } else if ("PENDING".equals(financeApproval)) {
-                    // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
-                    if (pendingFinanceIds.isEmpty()) {
-                        ps.add(cb.disjunction());
-                    } else {
-                        ps.add(root.get("id").in(pendingFinanceIds));
-                    }
+                    ps.add(pending.get());
                 } else if ("REJECTED".equals(financeApproval)) {
-                    // 财务已退回段: 无退回件 → 恒假.
-                    if (rejectedFinanceIds.isEmpty()) {
-                        ps.add(cb.disjunction());
-                    } else {
-                        ps.add(root.get("id").in(rejectedFinanceIds));
-                    }
+                    ps.add(rejected.get());
                 } else {
-                    // NONE: 排除在审单与财务退回件(2026-09-21 起退回件有自己的段); 空集无需谓词.
-                    if (!pendingFinanceIds.isEmpty()) {
-                        ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
-                    }
-                    if (!rejectedFinanceIds.isEmpty()) {
-                        ps.add(cb.not(root.get("id").in(rejectedFinanceIds)));
-                    }
+                    ps.add(cb.not(pending.get()));
+                    ps.add(cb.not(rejected.get()));
                 }
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseOrder(), null, false, null, false);

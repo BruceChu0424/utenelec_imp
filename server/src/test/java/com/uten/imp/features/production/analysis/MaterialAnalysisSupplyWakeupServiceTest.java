@@ -178,7 +178,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         assertThat(statements.getFirst())
                 .contains("inspection.receipt_type = 'SUBCONTRACT'")
                 .contains("FROM (SELECT * FROM subcontract_receipts archive_origin")
-                .contains("NOT fn_imported_business_document('subcontract_receipts',archive_origin.id)) receipt")
+                .contains("NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt")
                 .contains("receipt.status = 1");
         verify(candidates).setParameter("subcontractReceiptIds", receiptId.toString());
         verify(candidates).setParameter("purchaseReceiptIds", "");

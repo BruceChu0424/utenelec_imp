@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/formatters/exact_number_text.dart';
 // 采购报表页（采购管理，purchase_report:view）：月度汇总（货品×供应商×类型，MV 上卷）
 // + 待交货订货汇总。明细报表复用 4 单据列表页（带日期/供应商/状态过滤）。
@@ -94,18 +95,24 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
     final names = ref.read(masterNameServiceProvider);
     try {
       // 月度汇总与待交货互不依赖，并行拉取（此前串行两趟往返）。
-      final results = await Future.wait([
-        api.getList(
-          ApiEndpoints.purchaseReportMonthly,
-          query: {
-            'docType': _docType,
-            'dateFrom': _fmt(_from),
-            'dateTo': _fmt(_to),
-            'limit': 200,
-          },
-        ),
-        api.getList(ApiEndpoints.purchaseReportPending, query: {'limit': 200}),
-      ]);
+      final results = await PagedReadIntent.scopedRead(
+        () => mounted && _requests.isCurrent(generation),
+        () => Future.wait([
+          api.getList(
+            ApiEndpoints.purchaseReportMonthly,
+            query: {
+              'docType': _docType,
+              'dateFrom': _fmt(_from),
+              'dateTo': _fmt(_to),
+              'limit': 200,
+            },
+          ),
+          api.getList(
+            ApiEndpoints.purchaseReportPending,
+            query: {'limit': 200},
+          ),
+        ]),
+      );
       final m = results[0];
       final p = results[1];
       if (!mounted || !_requests.isCurrent(generation)) return;

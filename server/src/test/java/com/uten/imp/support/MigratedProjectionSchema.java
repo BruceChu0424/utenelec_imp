@@ -127,6 +127,25 @@ public final class MigratedProjectionSchema {
         }
     }
 
+    /** Exact original table DDL for forward-migration oracles, including its
+     * original constraints. Current identity/query projections use createCurrentTables.
+     * Only an explicitly named committed migration resource can supply SQL. */
+    public static void createOriginalTables(JdbcTemplate target, String migrationFile, String... tables)
+            throws java.io.IOException {
+        if (!migrationFile.matches("V[0-9]+(?:_[0-9]+)*__[a-z0-9_]+\\.sql")) {
+            throw new IllegalArgumentException("Explicit migration SQL resource required");
+        }
+        String sql = new org.springframework.core.io.ClassPathResource("db/migration/" + migrationFile)
+                .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        for (String table : tables) {
+            identifier(table);
+            int start = sql.indexOf("CREATE TABLE " + table + " (");
+            int end = start < 0 ? -1 : sql.indexOf("\n);", start);
+            if (start < 0 || end < 0) throw new IllegalArgumentException("Original table missing: " + table);
+            target.execute(sql.substring(start, end + 3));
+        }
+    }
+
     /** Query fixtures follow the compiled migration resources without a hard-coded head. */
     public static void createCurrentTables(JdbcTemplate target, String... tables) {
         createTables(target, CURRENT, tables);

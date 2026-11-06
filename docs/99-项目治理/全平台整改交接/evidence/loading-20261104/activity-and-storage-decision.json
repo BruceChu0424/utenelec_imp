@@ -1,0 +1,84 @@
+{
+  "state": "local_decision_no_activity_projection_or_business_heat_exit",
+  "fixtureObservations": [
+    {
+      "path": "server/build/loading-validation/backend-final-growth/workbench-page-detail-history-1000000.json",
+      "sha256": "6b92d4542cf23c2506928ada4d2b5dab7e25169f0163af9ed5ba8ad8fca9bc9e",
+      "scenario": "workbench-page-detail",
+      "historicalRows": 1000000,
+      "activeRows": 50,
+      "before": {
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 2454.7587,
+        "p50Millis": 2152.9845,
+        "millis": [
+          2454.7587,
+          2109.129499,
+          2152.9845
+        ],
+        "samples": 3
+      },
+      "after": {
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 884.595,
+        "p50Millis": 856.731401,
+        "millis": [
+          884.595,
+          856.731401,
+          806.5041
+        ],
+        "samples": 3
+      },
+      "scope": "Disposable PostgreSQL structural fixture, production SQL builder, no shared database or company-network SLA",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/workbench-page-detail-history-1000000.json"
+    },
+    {
+      "path": "server/build/loading-validation/backend-final-growth/warehouse-metadata-history-1000000.json",
+      "sha256": "2a2e504dc3f1069ac94b4b27f21e8d99304114d368d29d3449ca99b29062a808",
+      "scenario": "warehouse-metadata",
+      "historicalRows": 1000000,
+      "activeRows": 50,
+      "before": {
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 2256.113499,
+        "p50Millis": 1979.177301,
+        "millis": [
+          1945.564901,
+          1979.177301,
+          2256.113499
+        ],
+        "samples": 3
+      },
+      "after": {
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 967.9262,
+        "p50Millis": 826.8944,
+        "millis": [
+          967.9262,
+          826.8944,
+          762.5376
+        ],
+        "samples": 3
+      },
+      "scope": "Disposable PostgreSQL structural fixture, production SQL builder, no shared database or company-network SLA",
+      "durablePath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/warehouse-metadata-history-1000000.json"
+    }
+  ],
+  "productionCountsAreEstimates": true,
+  "noConstantTimeClaim": true,
+  "noProductionSlaClaim": true,
+  "physicalBusinessRowsMoved": false,
+  "perPackageBusinessRestoreAccepted": false,
+  "conditionalItemsNotExecuted": [
+    "E02",
+    "E03",
+    "new-business-cross-layer-F03",
+    "business-heat-exit-F04"
+  ],
+  "provenance": {
+    "sourceWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+    "sourceBase": "0c23563d419ed262f517deb51524b718e4e2077d",
+    "durableFixtureManifest": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/historical-growth-0c/manifest.json",
+    "interpretation": "Historical OLD structural PostgreSQL fixtures and actual plans. These are not NEW combined validation, company SLA, or runtime evidence for every current caller. No shared production data was changed."
+  }
+}

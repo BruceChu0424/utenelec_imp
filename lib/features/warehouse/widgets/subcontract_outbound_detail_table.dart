@@ -43,6 +43,8 @@ const String subcontractOutboundQuantityHint =
 
 /// 实称重量格里有看不懂的输入。
 const String subcontractOutboundWeightInvalid = '实称重量看不懂，请改成如 12.5 或 850g';
+const String subcontractOutboundWeightUnsupported =
+    '出仓实称重量必须为非负数，最多 14 位整数和 4 位小数(千克)';
 
 /// 审核出仓确认弹窗里说明的效果(单张拣货页与批量出库页同一口径)。
 const String subcontractOutboundApproveEffects =
@@ -70,6 +72,8 @@ class SubcontractOutboundLineDraft {
       colorId: item.colorId,
       qtyOf: () => double.tryParse(qty.text.trim()),
       qtyController: qty,
+      qtyBaseExactOf: () =>
+          outboundExactBaseQuantityText(qty.text, item.recordedUnitRateText),
       unitRate: item.unitRate ?? 1,
       unitRateExact: item.unitRateText,
       kg: item.weight,
@@ -120,6 +124,35 @@ class SubcontractOutboundLineDraft {
   /// 填了 0 = 本次不发这条物料(保存时不回传这一行)。
   bool get skipped => quantityText == '0';
 
+  ({String? kg, String? error}) get _weightCapture {
+    if (weight.weight.hasError) {
+      return (kg: null, error: subcontractOutboundWeightInvalid);
+    }
+    final kg = weight.kgText;
+    if (kg == null) return (kg: null, error: null);
+    final captured = nonNegativeDocumentQuantityText(
+      kg,
+      integerDigits: 14,
+      fractionDigits: 4,
+    );
+    if (captured == null) {
+      return (kg: null, error: subcontractOutboundWeightUnsupported);
+    }
+    return (kg: captured == '0' ? null : captured, error: null);
+  }
+
+  /// This write route retains its own kilogram boundary. Display estimates and
+  /// the general document 40/24 contract cannot enlarge this server field.
+  String? get capturedWeightKgText {
+    final capture = _weightCapture;
+    if (capture.error case final error?) {
+      throw FormatException(error);
+    }
+    return capture.kg;
+  }
+
+  String? get _weightError => _weightCapture.error;
+
   String? validate() {
     if (!selected) return null;
     if (quantitySourceUnknown) return '领料数量或单位换算原文缺失，请刷新核对后再出库';
@@ -127,8 +160,7 @@ class SubcontractOutboundLineDraft {
       return subcontractOutboundQuantityInvalid;
     }
     if (skipped) return null;
-    if (weight.weight.hasError) return subcontractOutboundWeightInvalid;
-    return null;
+    return _weightError;
   }
 
   /// 按出仓单草稿原行回传: 货品/颜色/单位/来源链 UUID 不由客户端重选, 只改数量、
@@ -137,6 +169,7 @@ class SubcontractOutboundLineDraft {
     if (quantityInvalid || quantitySourceUnknown || exceedsMaximum) {
       throw const FormatException(subcontractOutboundQuantityInvalid);
     }
+    final capturedWeight = skipped ? null : capturedWeightKgText;
     return {
       'id': draftItemId,
       if (item.lineNo != null) 'lineNo': item.lineNo,
@@ -145,7 +178,7 @@ class SubcontractOutboundLineDraft {
       'unitId': item.unitId,
       'unitRate': item.unitRateText,
       'qty': quantityText!,
-      'weight': ?weight.kgText,
+      'weight': ?capturedWeight,
       'qtyFromWeight': weight.qtyFromWeight,
       'orderItemId': item.orderItemId,
       'planItemId': line.planItemId,

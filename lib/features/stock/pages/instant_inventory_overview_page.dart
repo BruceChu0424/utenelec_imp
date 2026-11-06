@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +11,8 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_pagination.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -44,7 +46,10 @@ class InstantInventoryOverviewPage extends ConsumerStatefulWidget {
 }
 
 class _InstantInventoryOverviewPageState
-    extends ConsumerState<InstantInventoryOverviewPage> {
+    extends ConsumerState<InstantInventoryOverviewPage>
+    with ReadViewActivityMixin<InstantInventoryOverviewPage> {
+  @override
+  Future<void> onReadViewResumed() => _refresh(background: _summary != null);
   final _summaryRequests = LatestRequestGuard();
   final _riskRequests = LatestRequestGuard();
   final _riskDetailsAnchor = GlobalKey();
@@ -52,6 +57,7 @@ class _InstantInventoryOverviewPageState
   InstantInventorySummary? _summary;
   DateTime? _updatedAt;
   bool _loading = true;
+  final _riskRows = UtenAncestorRowWindowController<InstantInventoryRow>();
   bool _backgroundRefresh = false;
   String? _error;
   String? _selectedRisk;
@@ -161,7 +167,10 @@ class _InstantInventoryOverviewPageState
       _riskError = null;
     });
     try {
-      final page = await _fetch();
+      final page = await readViewActivity.runRead(
+        () => mounted && _summaryRequests.isCurrent(generation),
+        () => _fetch(),
+      );
       if (!mounted || !_summaryRequests.isCurrent(generation)) return;
       final summary = InstantInventorySummary(
         totals: page.totals,
@@ -194,6 +203,15 @@ class _InstantInventoryOverviewPageState
         setState(() => _backgroundRefresh = false);
       }
     } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (mounted && _summaryRequests.isCurrent(generation)) {
+          setState(() {
+            _loading = false;
+            _backgroundRefresh = false;
+          });
+        }
+        return;
+      }
       if (!mounted || !_summaryRequests.isCurrent(generation)) return;
       setState(() {
         if (_accessDenied(error)) {
@@ -221,6 +239,13 @@ class _InstantInventoryOverviewPageState
   }) async {
     if (_loading || !_riskCounts.containsKey(risk)) return;
     final generation = _riskRequests.begin();
+    final owner = captureReadOwner(ref);
+    final scope = widget.scope;
+    bool current() =>
+        mounted &&
+        owner() &&
+        _riskRequests.isCurrent(generation) &&
+        scope == widget.scope;
     setState(() {
       _selectedRisk = risk;
       _requestedRiskPage = page;
@@ -229,16 +254,25 @@ class _InstantInventoryOverviewPageState
       if (!background) _riskPage = null;
     });
     try {
-      final result = await _fetch(page: page, size: 8, attention: risk);
-      if (!mounted || !_riskRequests.isCurrent(generation)) return;
-      if (result.totalPages > 0 && page > result.totalPages) {
-        return _loadRisk(risk, result.totalPages, background: background);
-      }
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<InstantInventoryRow>(
+          isCurrent: current,
+          idOf: (row) => row.readIdentity,
+          loadPage: (page, size) =>
+              _fetch(page: page, size: size, attention: risk),
+        ),
+      );
+      if (!current()) return;
       setState(() {
         _riskPage = result;
         _riskLoading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (current()) setState(() => _riskLoading = false);
+        return;
+      }
       if (!mounted || !_riskRequests.isCurrent(generation)) return;
       setState(() {
         if (_accessDenied(error)) {
@@ -288,7 +322,7 @@ class _InstantInventoryOverviewPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '库存总览与分析',
-        subtitle: _updatedAt == null
+        info: _updatedAt == null
             ? null
             : '最近更新 ${ChinaDateTime.formatTime(ChinaDateTime.fromInstant(_updatedAt!), seconds: true)} · 当前筛选范围',
         leading: UtenBackButton(
@@ -468,70 +502,68 @@ class _InstantInventoryOverviewPageState
                   padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
                   child: Text('暂无符合条件的货品，数据可能已更新。可刷新总览重新核对。'),
                 ),
-              for (final row in page.items) ...[
-                const Divider(height: UtenSpacing.s24),
-                Text(
-                  row.name ?? row.goodsCode ?? '未命名货品',
-                  style: theme.textTheme.titleSmall,
-                ),
-                Text(
-                  [
-                    if (row.goodsCode?.isNotEmpty == true) row.goodsCode!,
-                    if (row.colorName?.isNotEmpty == true) row.colorName!,
-                  ].join(' · '),
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Wrap(
-                  spacing: UtenSpacing.s16,
-                  runSpacing: UtenSpacing.s8,
+              UtenAncestorRowWindow<InstantInventoryRow>(
+                controller: _riskRows,
+                rows: page.items,
+                estimatedRowExtent: 160,
+                expensiveRows: false,
+                deferRowMounts: false,
+                rowBuilder: (context, row, index) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Divider(height: UtenSpacing.s24),
                     Text(
-                      row.measurementPending
-                          ? '账面库存 ${qty(row.qty, null)}'
-                          : '库存 ${qty(row.qty, row.unitName)}',
+                      row.name ?? row.goodsCode ?? '未命名货品',
+                      style: theme.textTheme.titleSmall,
                     ),
-                    if (row.measurementPending) Text(row.measurementNotice),
-                    if (risk == 'AWAITING_STOCK_IN')
-                      Text(
-                        '合格待入库 ${qty(row.pendingStockInQty, row.measurementPending ? null : row.unitName)}',
-                      ),
-                    if (risk == 'AWAITING_INSPECTION')
-                      Text(
-                        '待检 ${qty(row.pendingQty, row.measurementPending ? null : row.unitName)}',
-                      ),
-                    if (risk == 'UNKNOWN_WEIGHT')
-                      WeightText(
-                        kg: row.weightText,
-                        estimated: row.weightEstimated,
-                      ),
-                    TextButton.icon(
-                      key: ValueKey(
-                        'inventory-risk-open-${row.goodsId}-${row.colorId}',
-                      ),
-                      onPressed: row.goodsId == null
-                          ? null
-                          : () => context.push(
-                              RouteName.stockItemDetail(row.goodsId!),
-                            ),
-                      icon: const Icon(Icons.arrow_forward, size: 16),
-                      label: const Text('查看各仓与流水'),
+                    Text(
+                      [
+                        if (row.goodsCode?.isNotEmpty == true) row.goodsCode!,
+                        if (row.colorName?.isNotEmpty == true) row.colorName!,
+                      ].join(' · '),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    Wrap(
+                      spacing: UtenSpacing.s16,
+                      runSpacing: UtenSpacing.s8,
+                      children: [
+                        Text(
+                          row.measurementPending
+                              ? '账面库存 ${qty(row.qty, null)}'
+                              : '库存 ${qty(row.qty, row.unitName)}',
+                        ),
+                        if (row.measurementPending) Text(row.measurementNotice),
+                        if (risk == 'AWAITING_STOCK_IN')
+                          Text(
+                            '合格待入库 ${qty(row.pendingStockInQty, row.measurementPending ? null : row.unitName)}',
+                          ),
+                        if (risk == 'AWAITING_INSPECTION')
+                          Text(
+                            '待检 ${qty(row.pendingQty, row.measurementPending ? null : row.unitName)}',
+                          ),
+                        if (risk == 'UNKNOWN_WEIGHT')
+                          WeightText(
+                            kg: row.weightText,
+                            estimated: row.weightEstimated,
+                          ),
+                        TextButton.icon(
+                          key: ValueKey(
+                            'inventory-risk-open-${row.goodsId}-${row.colorId}',
+                          ),
+                          onPressed: row.goodsId == null
+                              ? null
+                              : () => context.push(
+                                  RouteName.stockItemDetail(row.goodsId!),
+                                ),
+                          icon: const Icon(Icons.arrow_forward, size: 16),
+                          label: const Text('查看各仓与流水'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-              if (page.totalPages > 1) ...[
-                const Divider(height: UtenSpacing.s24),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: UtenPagination(
-                    currentPage: page.page,
-                    totalPages: page.totalPages,
-                    busy: _riskLoading,
-                    onPageChanged: (target) => _loadRisk(risk, target),
-                  ),
-                ),
-              ],
+              ),
             ],
           ],
         ],

@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 采购订单归档试点（V955）真库验证：
@@ -66,10 +67,13 @@ class BusinessArchivePilotPostgresTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private com.uten.imp.application.port.ProcurementArchiveEligibilityPort financeFacts;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     private BusinessArchiveEligibilityService service() {
-        return new BusinessArchiveEligibilityService(jdbc, mapper, 24);
+        return new BusinessArchiveEligibilityService(jdbc, mapper, financeFacts, 24);
     }
 
     private UUID supplier() {
@@ -177,6 +181,143 @@ class BusinessArchivePilotPostgresTest {
                 SELECT gen_random_uuid(), 'PURCHASE', ?, ?, 'STANDARD', ?, ?, ?, ?, ?,
                        (SELECT id FROM users ORDER BY created_at LIMIT 1)
                 """, receipt, itemId, baseQty, nominal, nominal, nominal, nominal);
+    }
+
+    private UUID attachment(UUID order, String key) {
+        UUID attachment = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO attachments(
+                    id, owner_type, owner_id, storage_key, storage_provider, original_name,
+                    size_bytes, sha256)
+                VALUES (?, 'PURCHASE_ORDER', ?, ?, 'legacy_unknown', '归档原件.bin', 12, 'abc123')
+                """, attachment, order, key);
+        return attachment;
+    }
+
+    @Test
+    @Transactional
+    void boundedScansReachEveryCandidateBeforeRepeatingTheOldestBatch() {
+        UUID supplierId = supplier();
+        UUID goodsId = goods();
+        var orders = new java.util.HashSet<UUID>();
+        for (int index = 0; index < 5; index++) {
+            orders.add(closedOrder(supplierId, goodsId, cdNo()));
+        }
+        var reached = new java.util.HashSet<UUID>();
+        for (int pass = 0; pass < 3; pass++) {
+            var batch = service().evaluatePurchaseOrders(2);
+            assertThat(batch).hasSize(2);
+            long unseen = batch.stream().filter(row -> !reached.contains(row.objectId())).count();
+            assertThat(unseen).isEqualTo(pass < 2 ? 2 : 1);
+            batch.forEach(row -> reached.add(row.objectId()));
+        }
+        assertThat(reached).containsExactlyInAnyOrderElementsOf(orders);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM purchase_orders WHERE id IN (SELECT object_id "
+                        + "FROM business_archive_eligibility WHERE object_family = 'PURCHASE_ORDER')",
+                Long.class)).isEqualTo(5L);
+    }
+
+    @Test
+    @Transactional
+    void previouslyEligibleReopenedOrdersAreRecheckedAndCannotBePackaged() {
+        UUID supplierId = supplier();
+        UUID goodsId = goods();
+        UUID order = closedOrder(supplierId, goodsId, cdNo());
+        settledReceipt(order, goodsId, cjNo(), "25 months");
+        assertThat(service().evaluatePurchaseOrders(1).get(0).eligible()).isTrue();
+
+        jdbc.update("UPDATE purchase_orders SET is_closed = FALSE WHERE id = ?", order);
+        var rechecked = service().evaluatePurchaseOrders(1);
+        assertThat(rechecked).singleElement().satisfies(row -> {
+            assertThat(row.objectId()).isEqualTo(order);
+            assertThat(row.eligible()).isFalse();
+            assertThat(row.blockedReasons()).contains("NOT_CLOSED_OR_APPROVED");
+        });
+        assertThat(jdbc.queryForObject(
+                "SELECT eligible FROM business_archive_eligibility WHERE object_id = ?",
+                Boolean.class, order)).isFalse();
+        assertThat(service().packagePurchaseOrder(order).outcome()).isEqualTo("SKIPPED_NOT_ELIGIBLE");
+    }
+
+    @Test
+    @Transactional
+    void attachmentAdditionsAndLifecycleChangesCreateNewVersionsWithoutChangingPayloadChecksum() throws Exception {
+        UUID supplierId = supplier();
+        UUID goodsId = goods();
+        UUID order = closedOrder(supplierId, goodsId, cdNo());
+        settledReceipt(order, goodsId, cjNo(), "25 months");
+        UUID original = attachment(order, "manifest-original.bin");
+        var first = service().packagePurchaseOrder(order);
+        assertThat(first.outcome()).isEqualTo("PACKAGED");
+
+        attachment(order, "manifest-added.bin");
+        var added = service().packagePurchaseOrder(order);
+        assertThat(added.outcome()).isEqualTo("PACKAGED");
+        assertThat(added.payloadSha256()).isEqualTo(first.payloadSha256());
+        assertThat(added.lineCounts()).containsEntry("attachments", 2L);
+
+        jdbc.update("UPDATE attachments SET lifecycle_state = 'DELETE_PENDING' WHERE id = ?", original);
+        var lifecycle = service().packagePurchaseOrder(order);
+        assertThat(lifecycle.outcome()).isEqualTo("PACKAGED");
+        assertThat(lifecycle.payloadSha256()).isEqualTo(first.payloadSha256());
+        Map<String, Object> latest = service().latestPackage("PURCHASE_ORDER", order);
+        JsonNode refs = mapper.readTree((String) latest.get("attachment_refs"));
+        assertThat(refs.size()).isEqualTo(2);
+        assertThat(java.util.stream.StreamSupport.stream(refs.spliterator(), false)
+                .filter(ref -> original.toString().equals(ref.get("attachmentId").asText()))
+                .findFirst().orElseThrow().get("lifecycleState").asText()).isEqualTo("DELETE_PENDING");
+        assertThat(latest.get("package_version")).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM business_archive_packages "
+                + "WHERE object_id = ? AND status = 'SUPERSEDED'", Long.class, order)).isEqualTo(2L);
+        assertThat(service().packagePurchaseOrder(order).outcome()).isEqualTo("UNCHANGED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachments WHERE owner_id = ?",
+                Long.class, order)).isEqualTo(2L);
+    }
+
+    @Test
+    @Transactional
+    void corruptExistingPayloadIsRejectedInsteadOfBeingReportedUnchanged() {
+        UUID supplierId = supplier();
+        UUID goodsId = goods();
+        UUID order = closedOrder(supplierId, goodsId, cdNo());
+        settledReceipt(order, goodsId, cjNo(), "25 months");
+        service().packagePurchaseOrder(order);
+        jdbc.update("UPDATE business_archive_packages SET payload = payload || '{\"corrupt\":true}'::jsonb "
+                + "WHERE object_id = ?", order);
+
+        assertThatThrownBy(() -> service().packagePurchaseOrder(order))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("摘要不一致");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM business_archive_packages WHERE object_id = ?",
+                Long.class, order)).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM purchase_orders WHERE id = ? AND is_closed",
+                Long.class, order)).isEqualTo(1L);
+    }
+
+    @Test
+    @Transactional
+    void financeOwnerFactsBlockPendingUnsettledAndUnrepresentedObjectFamilies() {
+        UUID supplierId = supplier();
+        UUID goodsId = goods();
+        UUID order = closedOrder(supplierId, goodsId, cdNo());
+        settledReceipt(order, goodsId, cjNo(), "25 months");
+        for (var evidence : List.of(
+                new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(1, 1, 0),
+                new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(1, 0, 1),
+                new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(1, 0, 0))) {
+            var guarded = new BusinessArchiveEligibilityService(jdbc, mapper,
+                    ids -> Map.of(order, evidence), 24);
+            var row = guarded.evaluatePurchaseOrders(1).get(0);
+            assertThat(row.eligible()).isFalse();
+            assertThat(row.blockedReasons()).contains("UNPACKAGED_FINANCE_REFERENCES");
+            assertThat(row.blockedReasons().contains("PENDING_PAYABLE_RECOGNITION"))
+                    .isEqualTo(evidence.pendingRecognition() > 0);
+            assertThat(row.blockedReasons().contains("UNSETTLED_RECOGNIZED_PAYABLES"))
+                    .isEqualTo(evidence.unsettledPayables() > 0);
+            assertThat(guarded.packagePurchaseOrder(order).outcome()).isEqualTo("SKIPPED_NOT_ELIGIBLE");
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM business_archive_packages WHERE object_id = ?",
+                Long.class, order)).isZero();
     }
 
     /**

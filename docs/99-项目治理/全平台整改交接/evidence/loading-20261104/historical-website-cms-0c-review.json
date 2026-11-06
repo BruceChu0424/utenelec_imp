@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "workstream": "C09 website CMS continuous complete scopes",
+  "status": "old-source-sealed-awaiting-new-main-combined-integration",
+  "generatedAt": "2026-11-05T08:32:14.748865+00:00",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+  "head": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "newMainReported": "8e940dc55f5e74185f3d8825dc1b559fd9ac6b80",
+  "integration": {
+    "mainWritten": false,
+    "conflictingTrackedSources": 12,
+    "rule": "Do not overwrite new main grants, fields, revision or unknown-command contracts; rebase these12callers/modules and rerun in combined tree."
+  },
+  "runtime": {
+    "nextInstalled": "16.4.2",
+    "nextLock": "16.4.2",
+    "nodeUsed": "24.22.1 via absolute Codex runtime path",
+    "systemNodeNotChanged": "22.12.0",
+    "dependencies": "Read-only cache junctions; private task Prisma client generated; Next copied to task D drive to avoid cross-drive Webpack entry normalization. No package/lock/SDK/main/cache mutation.",
+    "docsRead": [
+      "next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md",
+      "next/dist/docs/01-app/01-getting-started/06-fetching-data.md",
+      "next/dist/docs/01-app/03-api-reference/01-directives/use-client.md",
+      "next/dist/docs/01-app/03-api-reference/01-directives/use-server.md",
+      "next/dist/docs/01-app/03-api-reference/02-components/link.md"
+    ],
+    "privateNextReady": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104\\website\\node_modules\\next",
+    "cacheProof": {
+      "nextPackageSha256": "E84ADA0A68191FED192392BFB8EE35AD4ED8E7439F645A40DD48CF139588DDC5",
+      "originalCachePrismaSchemaSha256": "29FD9C6F875EA9213F61B15FDE74C7DDD0927D06865316F7268505D7C113E283",
+      "globalCacheNotModified": true
+    }
+  },
+  "commonPlan": {
+    "loader": "completeCmsRows: one real count,100-row batches, no terminal probe, strict cardinality/unique immutable ID checks, no truncation or cross-request data cache",
+    "database": "readCmsSnapshot: same-provider Serializable read transaction, original scope/order with stable ID tie,60s bounded transaction",
+    "view": "CmsContinuousTable is a native server-rendered table with stable original row keys/actions. No window unmount of pending/unknown/focus state. Large5k/10k feasibility is still pending real browser measurement.",
+    "summary": "Only existing list captions/fields retained, original editable i18n/snapshots remain in DB; forms do not receive the pruned caption as a saved source.",
+    "prefetch": "Existing row edit/version detail Links prefetch=false, product/scene images native lazy; public SEO card pagination unchanged.",
+    "busy": "Existing form/command logic retained. Read-route loading boundary uses existing brand tokens; necessary heading explanations use native hover + keyboard/touch disclosure."
+  },
+  "callers": [
+    {
+      "path": "website/app/admin/(protected)/products/page.tsx",
+      "sourceSha256": "fa399a887fd935c8e80e3aff786c2ab6fb3cdca95753d4f2fd91bb9c0bb942dd",
+      "grant": "website:view",
+      "order": "featured desc/sortOrder asc/id asc; searched IDs retain exact/prefix/contains order",
+      "summary": "product minimal fields + one thumbnail + authoritative variant count; full series caption options",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/inquiries/page.tsx",
+      "sourceSha256": "7909ee9fb3dcc2a2004398117d7f46a3f2ce80db17f4fa65e9d524c6e083c7de",
+      "grant": "webinquiry:view",
+      "order": "createdAt desc/id asc",
+      "summary": "original receipt/contact/message; delivery state and ERP ID only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/media/page.tsx",
+      "sourceSha256": "dea5f9744c4bbbad62459bd57f915c1a3001867bcc0705fa60976d37fd597ab1",
+      "grant": "website:media_manage",
+      "order": "legacy id asc; committed createdAt desc/publicPath asc",
+      "summary": "selected source only, original path/bytes; no PENDING/upload-store commands touched",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/releases/page.tsx",
+      "sourceSha256": "cd423eb16910388102bc86ba6b4d86c77cad75cf2a6e93438ea0db7cb093792d",
+      "grant": "website:view + original allowed entity types from edit/publish/rollback grants",
+      "order": "createdAt desc/id asc",
+      "summary": "title/type/status/operation/time only; no payload/beforeState/afterState",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/resources/page.tsx",
+      "sourceSha256": "aae571a4e605a12d58113c7d208c0a63f7365027b2a1f4dc6f19b7cf7bbc9111",
+      "grant": "website:media_manage",
+      "order": "updatedAt desc/id asc",
+      "summary": "title/locale/version/published/file originalName; no storageKey or bytes",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/cases/page.tsx",
+      "sourceSha256": "d56911ba97a6b29304f7824b1c69d19b37cbcd7e1c21ecad29fcd49739b6ef7f",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "displayed title/location only; original edit/delete action by immutable ID",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/jobs/page.tsx",
+      "sourceSha256": "d65555d50a43f9bf57f506d5c48546d028a636e0a0a24cc046295df1604c5602",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "title/department/location only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/news/page.tsx",
+      "sourceSha256": "2449838d5ae782c7bcc91651812ecfc33775d9d48c34f6ed83a8ccfcd1b798c2",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "publishedAt desc/id asc",
+      "summary": "title/category/date only",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/series/page.tsx",
+      "sourceSha256": "e60ef213d749523c02498a63c0b48f0e3198f20e62e0ca4beccb99dfe290ce42",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/id asc",
+      "summary": "code/slug/name/catalogRole/version/published and original relation counts",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    },
+    {
+      "path": "website/app/admin/(protected)/scenes/page.tsx",
+      "sourceSha256": "1d2d8661282133b2f26d8c0305d7d7e1c3055f6b52251d9b645d119ebce6b99b",
+      "grant": "website:view (same original protected-layout grant)",
+      "order": "sortOrder asc/createdAt asc/id asc",
+      "summary": "name/description/background/sort/published; config and detail body not copied",
+      "publicLoader": "website/lib/cms-list-queries.ts",
+      "sourceGate": "Fresh request; existing permission checked before current-scope snapshot; original row commands remain in admin/actions and CmsRevisionService",
+      "externalPaging": false
+    }
+  ],
+  "otherReviewed": [
+    {
+      "path": "website/components/admin/CmsRevisionPreview.tsx",
+      "decision": "Already complete immutable differences; shared native table, no command/body mutation"
+    }
+  ],
+  "qualificationFinding": {
+    "description": "Existing raw product other scope included NULL/unknown values while CMS hydration re-filtered exact other, dropping matches counted by SQL. CMS Prisma where now matches the existing canonical raw other scope.",
+    "tests": "250 records spread acrossNULL/other/legacy-other, hidden draft and exact last SKU on SQLite/PostgreSQL; original JSON preserved."
+  },
+  "validation": [
+    {
+      "log": "build-loading-cms-typecheck-first.log",
+      "status": "initial-generic-inference-failure",
+      "reason": "idOf callback contextualized generic rows as unknown; replaced unnecessary accessor with constrained immutable{id:string}CMS rows"
+    },
+    {
+      "log": "build-loading-cms-typecheck-corrections.log",
+      "status": "passed",
+      "exitCode": 0,
+      "scope": "all website TypeScript production source before standalone probe/fixture final additions"
+    },
+    {
+      "log": "build-loading-cms-eslint.log",
+      "status": "passed",
+      "exitCode": 0,
+      "scope": "all website source and initial CMS tests, before standalone probe added"
+    },
+    {
+      "log": "build-loading-cms-read-tests-first.log",
+      "status": "retained-fixture-failure",
+      "reason": "Synthetic authority label was not a legal UUID; production CHECK remained intact"
+    },
+    {
+      "log": "build-loading-cms-contract-regressions.log",
+      "status": "46 passed/1 fixture failed",
+      "files": 6,
+      "passed": 46,
+      "failed": 1,
+      "skipped": 0,
+      "reason": "PostgreSQL migration leaves authority row for operator initialization; fixture incorrectly assumed row existed"
+    },
+    {
+      "log": "build-loading-cms-read-tests-final.log",
+      "status": "passed",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "providers": [
+        "fully migrated isolated SQLite",
+        "new owned local PostgreSQL database"
+      ],
+      "rule": "These5replace overlapping CMS file results in the47-case ledger; do not sum46+5 as51"
+    },
+    {
+      "log": "build-loading-cms-browser-first.log",
+      "status": "test-runner transform failure",
+      "reason": "Standalone probe top-level await in CJS tsx mode; wrapped async main, no product change"
+    },
+    {
+      "log": "build-loading-cms-browser-second.log",
+      "status": "probe-startup-readiness-fixture-failure",
+      "reason": "Proxy502 was incorrectly treated ready; actual app not yet tested"
+    },
+    {
+      "log": "build-loading-cms-browser-third.log",
+      "status": "environment-compilation-failure",
+      "reason": "Cross-drive Next junction madeWebpack entry ./C:/...; no browser rows or operations asserted. Task-only package copy is being completed."
+    },
+    {
+      "log": "build-loading-cms-old-source-final-typecheck.log",
+      "status": "passed-old-source-seal",
+      "exitCode": 0,
+      "scope": "all website production/types/tests/standalone probe after authored files, before integration with8enewmain"
+    },
+    {
+      "log": "build-loading-cms-old-source-final-eslint.log",
+      "status": "passed-old-source-seal",
+      "exitCode": 0,
+      "maxWarnings": 0,
+      "scope": "all website source/tests/probe before new-main integration"
+    }
+  ],
+  "latestUniqueContractLedger": {
+    "uniqueCases": 47,
+    "allPassedAfterLatestCmsFileReplacement": true,
+    "oneJointGreenRound": false,
+    "rootBroadCurrentMain": false
+  },
+  "publicNecessaryDifferences": [
+    {
+      "path": "website/components/products/ProductExplorer.tsx",
+      "reason": "Public catalog cards keep SEO previous/next links and rel navigation; original public publication and verified-fact guards unchanged"
+    },
+    {
+      "path": "website/components/products/PublicResourceList.tsx",
+      "reason": "Public resource cards keep approved public-only24page/SEO navigation"
+    },
+    {
+      "path": "website/lib/catalog-query.ts",
+      "reason": "Public card query window/bounds retained; not an administrative business table"
+    },
+    {
+      "path": "website/app/admin/actions.ts",
+      "reason": "take2 proves exactly one website authority; it is an integrity guard, not a hidden business list"
+    },
+    {
+      "path": "website/lib/imp-portal.ts",
+      "reason": "Bounded server-to-server cursor protocol retains continuation and authorization, not visible CMS table pagination"
+    },
+    {
+      "path": "website/lib/inquiry-delivery.ts",
+      "reason": "Bounded delivery worker batch retains all durable pending work across runs, not user-visible list truncation"
+    },
+    {
+      "path": "website/app/admin/(protected)/products/page.tsx",
+      "reason": "take1variant is only the selected thumbnail; original total variant count and full edit form remain separate"
+    }
+  ],
+  "unverified": [
+    "Actual new-main8egrants/fields/unknown-command merging has not been performed by this child.",
+    "True browser5k/10k first-frame/scroll/unknown-response proof has not yet run; loading is not a pass.",
+    "No website production environment, deployment, publication or real company database was changed.",
+    "Native HTML performance sample is not a company SLA or production UAT; choose any further row rendering only after actual measurement."
+  ],
+  "sourceSha256": {
+    "website/app/admin/(protected)/products/page.tsx": "fa399a887fd935c8e80e3aff786c2ab6fb3cdca95753d4f2fd91bb9c0bb942dd",
+    "website/app/admin/(protected)/inquiries/page.tsx": "7909ee9fb3dcc2a2004398117d7f46a3f2ce80db17f4fa65e9d524c6e083c7de",
+    "website/app/admin/(protected)/media/page.tsx": "dea5f9744c4bbbad62459bd57f915c1a3001867bcc0705fa60976d37fd597ab1",
+    "website/app/admin/(protected)/releases/page.tsx": "cd423eb16910388102bc86ba6b4d86c77cad75cf2a6e93438ea0db7cb093792d",
+    "website/app/admin/(protected)/resources/page.tsx": "aae571a4e605a12d58113c7d208c0a63f7365027b2a1f4dc6f19b7cf7bbc9111",
+    "website/app/admin/(protected)/cases/page.tsx": "d56911ba97a6b29304f7824b1c69d19b37cbcd7e1c21ecad29fcd49739b6ef7f",
+    "website/app/admin/(protected)/jobs/page.tsx": "d65555d50a43f9bf57f506d5c48546d028a636e0a0a24cc046295df1604c5602",
+    "website/app/admin/(protected)/news/page.tsx": "2449838d5ae782c7bcc91651812ecfc33775d9d48c34f6ed83a8ccfcd1b798c2",
+    "website/app/admin/(protected)/series/page.tsx": "e60ef213d749523c02498a63c0b48f0e3198f20e62e0ca4beccb99dfe290ce42",
+    "website/app/admin/(protected)/scenes/page.tsx": "1d2d8661282133b2f26d8c0305d7d7e1c3055f6b52251d9b645d119ebce6b99b",
+    "website/lib/cms-read.ts": "c1b82d4cc798ab8463f6cdf8d7b48d8b060a7765dd05c938fee285efe79c1762",
+    "website/lib/cms-list-queries.ts": "040af76ed10b5c19126f8a138f5c86ddf0c11f3b0f6a7419afa26a478953fbe0",
+    "website/lib/product-search.ts": "1d38ce0fb4539d1891b32216ed8a190a836a865454beb3e87fc63e0f9cac1e1b",
+    "website/components/admin/CmsContinuousTable.tsx": "8d203ba57fe191ca000e50bb274375961059187a7c9a8ee0317824cf840f7e89",
+    "website/components/admin/AdminHint.tsx": "eb2950938d2ea388773c11477a4767233220651e2d84a8ed482e3cc8c0cd3556",
+    "website/components/admin/CmsRevisionPreview.tsx": "ff729d96f858c6723d645ce94af9531eb7aa235013420d15e922b8d96a79fe40",
+    "website/app/admin/(protected)/loading.tsx": "3d1173b8f4ed1c7500a95c677963abdbcc5876dbd190cd9144a59d71e351eeb9",
+    "website/tests/cms-continuous-read.test.ts": "83cd39a6609c5506aa5e37dc83f1410eb2e52a1d82371cab97ec0fbfe689c365",
+    "website/scripts/probe-cms-continuous.ts": "c5482b5cb08084789cd7b14ab34c032b686803699a521b2d6811819813d0b7f5"
+  }
+}

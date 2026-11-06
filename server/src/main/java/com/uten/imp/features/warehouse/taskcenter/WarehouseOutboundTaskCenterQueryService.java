@@ -58,15 +58,18 @@ public class WarehouseOutboundTaskCenterQueryService {
     private static final Map<String, State> STATES = states();
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public Page list(Filter requested) {
+    public Page list(Filter requested) { return list(requested,true); }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Page list(Filter requested,boolean includeMetadata) {
         Filter filter = normalize(requested);
         if (currentUser.get().isEmpty() || currentUser.get().orElseThrow().isVisitor()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权查看仓库出库任务");
         }
-        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter));
+        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter,includeMetadata));
     }
 
-    private Page listScoped(Filter filter) {
+    private Page listScoped(Filter filter,boolean includeMetadata) {
         var scope = warehouseScopes.currentForRead(filter.scopeWarehouseId());
         var access = access(scope);
         Set<String> allowed = allowedSources(access);
@@ -76,18 +79,18 @@ public class WarehouseOutboundTaskCenterQueryService {
         String ownDraftMaker = filter.scopeWarehouseId() == null
                 ? currentUser.employeeId().map(UUID::toString).orElse("") : "";
         var sql = WarehouseOutboundTaskCenterSql.build(filter, access, scope, ownDraftMaker);
-        long total = ((Number) bind(em.createNativeQuery(sql.countSql()), sql).getSingleResult()).longValue();
+        var metadata = includeMetadata?WarehouseTaskPageMetadata.from(NativeQueryResults.objectArrayRows(
+                bind(em.createNativeQuery(sql.metadataSql()), sql))):null;
+        long total = metadata==null?((Number)bind(em.createNativeQuery(sql.countSql()),sql).getSingleResult()).longValue():metadata.total();
         int totalPages = (int) Math.min(Integer.MAX_VALUE, (total + filter.size() - 1L) / filter.size());
         int page = totalPages == 0 ? 1 : Math.min(filter.page(), totalPages);
-        Query rows = bind(em.createNativeQuery(sql.rowsSql()), sql)
-                .setParameter("limit", filter.size()).setParameter("offset", (long) (page - 1) * filter.size());
-        List<Row> items = NativeQueryResults.objectArrayRows(rows).stream()
-                .map(row -> map(row, access)).toList();
+        List<Row> items = total == 0 ? List.of() : NativeQueryResults.objectArrayRows(
+                bind(em.createNativeQuery(sql.rowsSql()), sql)
+                        .setParameter("limit", filter.size()).setParameter("offset", (long) (page - 1) * filter.size()))
+                .stream().map(row -> map(row, access)).toList();
         items=physicalCommandRows(items,filter,ownDraftMaker);
-        Map<String, Long> counts = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(bind(em.createNativeQuery(sql.facetsSql()), sql))) {
-            counts.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
-        }
+        if (!includeMetadata) return new Page(items,page,filter.size(),total,totalPages,null,false);
+        Map<String, Long> counts = metadata.statuses();
         List<StatusFacet> facets = new ArrayList<>();
         STATES.forEach((key, value) -> {
             if (!WarehouseOutboundTaskCenterSql.visibleStatus(key,filter.view())) return;
@@ -97,8 +100,7 @@ public class WarehouseOutboundTaskCenterQueryService {
             if (key.startsWith("DRAW_DISCOVERY_") && !access.production()) return;
             facets.add(new StatusFacet(key, value.label(), counts.getOrDefault(key, 0L)));
         });
-        List<StatusFacet> billNumbers = NativeQueryResults.objectArrayRows(bind(em.createNativeQuery(sql.billNoFacetsSql()), sql))
-                .stream().map(row -> new StatusFacet(String.valueOf(row[0]), String.valueOf(row[0]), ((Number) row[1]).longValue())).toList();
+        List<StatusFacet> billNumbers = metadata.bills();
         return new Page(items, page, filter.size(), total, totalPages, Map.of("status", facets, "billNo", billNumbers));
     }
 

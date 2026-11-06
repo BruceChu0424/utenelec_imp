@@ -1,0 +1,16 @@
+{
+  "atUtc": "2026-11-05T21:24:55.431810+00:00",
+  "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "copied": [
+    {
+      "path": "contracts/table-output-cost-identities.json",
+      "sha256": "63e8d996a50d5c578f9aee35e5503532eb6709394a563548cc1b1dcc97d30422"
+    },
+    {
+      "path": "contracts/table-output-selection/v1.json",
+      "sha256": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6"
+    }
+  ],
+  "existingContractsChanged": false,
+  "mainWritten": false
+}

@@ -1,3 +1,6 @@
+import '../../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../../shared/paging/versioned_summary_read.dart';
+import '../../../../core/network/api_exception.dart';
 // 车间内料仓 (ADR-131/147) 仓储: 开通与整批领料、机台与容器、领料 / 退回 / 其它耗用、
 // 期间与盘点、自动结算状态、上线准备。
 //
@@ -212,6 +215,28 @@ class WorkshopMaterialRepository {
   }
 
   /// 申请只表达需要哪些料，不要求提前将货品配置为期间领料。
+  /// Reuse the one complete-reader contract for exact requisition materials.
+  /// Warehouse/colour facts and original write caps remain repository-owned.
+  Future<List<WmMaterialOption>> completeRequestMaterialsForGoods(
+    String workshopId, {
+    required List<String> goodsIds,
+    required bool Function() isCurrent,
+  }) async {
+    final requestedGoods = List<String>.unmodifiable(goodsIds);
+    if (requestedGoods.isEmpty) return const [];
+    final result = await loadCompletePagedResult<WmMaterialOption>(
+      isCurrent: isCurrent,
+      idOf: (row) => row.key,
+      loadPage: (page, size) => requestMaterials(
+        workshopId,
+        goodsIds: requestedGoods,
+        page: page,
+        size: size,
+      ),
+    );
+    return result.items;
+  }
+
   Future<PagedResult<WmMaterialOption>> requestMaterials(
     String workshopId, {
     String keyword = '',
@@ -562,6 +587,164 @@ class WorkshopMaterialRepository {
       body: {'idempotencyKey': idempotencyKey},
     );
     return WmCloseStatus.fromJson(json);
+  }
+
+  Future<VersionedSummarySnapshot<Map<String, dynamic>>> preparationSummaries(
+    String workshopId, {
+    required bool Function() isCurrent,
+  }) => _summaries(
+    '${ApiEndpoints.goodsPeriodicBomPreparation}/summaries',
+    {'workshopId': workshopId},
+    isCurrent: isCurrent,
+    idOf: (row) => row['productGoodsId'],
+  );
+
+  Future<List<WmPreparationRow>> preparationProduct(
+    String workshopId,
+    String productId, {
+    required VersionedSummarySnapshot<Map<String, dynamic>> summary,
+    required bool Function() isCurrent,
+  }) async {
+    final raw = await _summaryDetail(
+      '${ApiEndpoints.goodsPeriodicBomPreparation}/products/$productId',
+      {'workshopId': workshopId, 'size': 1000},
+      summary,
+      isCurrent,
+    );
+    final rows = _listIn(
+      raw,
+      'rows',
+    ).map(WmPreparationRow.fromJson).toList(growable: false);
+    if (rows.isEmpty || rows.any((row) => row.productGoodsId != productId)) {
+      throw ApiException('INCOMPLETE_READ', '产品准备明细不完整，请重新读取');
+    }
+    return rows;
+  }
+
+  Future<VersionedSummarySnapshot<WmMaterialOption>> preparationMaterialCatalog(
+    String workshopId, {
+    required bool Function() isCurrent,
+  }) => _typedSummaries<WmMaterialOption>(
+    '${ApiEndpoints.goodsPeriodicBomPreparation}/material-options',
+    {'workshopId': workshopId},
+    isCurrent: isCurrent,
+    decode: (row) => WmMaterialOption.fromJson({
+      ...row,
+      'goodsName': row['goodsName'] ?? row['name'],
+      'goodsCode': row['goodsCode'] ?? row['code'],
+    }),
+    idOf: (row) => row.key,
+  );
+
+  Future<VersionedSummarySnapshot<Map<String, dynamic>>>
+  inProgressPendingSummaries(
+    List<String> workshopIds, {
+    required bool Function() isCurrent,
+  }) => _summaries(
+    '${ApiEndpoints.workshopMaterialSettingsInProgressPending}/summaries',
+    {'workshopIds': _workshopQuery(workshopIds)},
+    isCurrent: isCurrent,
+    idOf: (row) => row['productGoodsId'],
+  );
+
+  Future<WmPendingProductChoice> inProgressPendingProduct(
+    List<String> workshopIds,
+    String productId, {
+    required VersionedSummarySnapshot<Map<String, dynamic>> summary,
+    required bool Function() isCurrent,
+  }) async => WmPendingProductChoice.fromJson(
+    await _summaryDetail(
+      '${ApiEndpoints.workshopMaterialSettingsInProgressPending}/products/$productId',
+      {'workshopIds': _workshopQuery(workshopIds), 'size': 1000},
+      summary,
+      isCurrent,
+    ),
+  );
+
+  Future<VersionedSummarySnapshot<WmMaterialRef>> inProgressMaterialCatalog(
+    List<String> workshopIds, {
+    required bool Function() isCurrent,
+  }) => _typedSummaries<WmMaterialRef>(
+    '${ApiEndpoints.workshopMaterialChoices}/material-options',
+    {'workshopIds': _workshopQuery(workshopIds)},
+    isCurrent: isCurrent,
+    decode: (row) => WmMaterialRef.fromJson({
+      ...row,
+      'goodsName': row['goodsName'] ?? row['name'],
+      'goodsCode': row['goodsCode'] ?? row['code'],
+    }),
+    idOf: (row) => row.key,
+  );
+
+  String _workshopQuery(List<String> values) =>
+      (values.toSet().toList()..sort()).join(',');
+
+  Future<VersionedSummarySnapshot<Map<String, dynamic>>> _summaries(
+    String endpoint,
+    Map<String, dynamic> query, {
+    required bool Function() isCurrent,
+    required Object? Function(Map<String, dynamic>) idOf,
+  }) => _typedSummaries<Map<String, dynamic>>(
+    endpoint,
+    query,
+    isCurrent: isCurrent,
+    decode: Map<String, dynamic>.unmodifiable,
+    idOf: idOf,
+  );
+
+  Future<VersionedSummarySnapshot<T>> _typedSummaries<T>(
+    String endpoint,
+    Map<String, dynamic> query, {
+    required bool Function() isCurrent,
+    required T Function(Map<String, dynamic>) decode,
+    required Object? Function(T) idOf,
+  }) {
+    final frozenQuery = Map<String, dynamic>.unmodifiable(query);
+    Object? windowAsOf;
+    return readVersionedSummarySnapshot<T>(
+      isCurrent: isCurrent,
+      batchSize: 1000,
+      loadPage: (page, size, revision) async {
+        final raw = await api.get(
+          endpoint,
+          query: {
+            ...frozenQuery,
+            'page': page,
+            'size': size,
+            'readSnapshotRevision': ?revision,
+            'windowAsOf': ?windowAsOf,
+          },
+        );
+        if (page == 1) windowAsOf = raw['windowAsOf'];
+        return raw;
+      },
+      decode: decode,
+      idOf: idOf,
+    );
+  }
+
+  Future<Map<String, dynamic>> _summaryDetail(
+    String endpoint,
+    Map<String, dynamic> query,
+    VersionedSummarySnapshot<Map<String, dynamic>> summary,
+    bool Function() isCurrent,
+  ) async {
+    if (!isCurrent()) throw ApiException('REQUEST_STALE', '读取已取消');
+    final raw = await api.get(
+      endpoint,
+      query: {
+        ...query,
+        'readSnapshotRevision': summary.revision,
+        if (summary.metadata['windowAsOf'] != null)
+          'windowAsOf': summary.metadata['windowAsOf'],
+      },
+    );
+    if (!isCurrent()) throw ApiException('REQUEST_STALE', '读取已取消');
+    if (raw['readSnapshotRevision'] != summary.revision ||
+        raw['readScopeVersion'] != summary.readScopeVersion) {
+      throw ApiException('SNAPSHOT_CHANGED', '列表已变化，请重新读取后再编辑');
+    }
+    return raw;
   }
 
   // ---------------------------------------------------------------- 上线准备

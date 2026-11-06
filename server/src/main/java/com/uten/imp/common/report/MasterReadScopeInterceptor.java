@@ -17,11 +17,14 @@ public class MasterReadScopeInterceptor implements HandlerInterceptor {
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
         if(authority==null||users==null)return true;
         String path=SecurityRequestPath.withinApplication(request);
-        if("GET".equals(request.getMethod())&&path.equals("/api/master/goods/cost-sheets/actual")) {
+        if("GET".equals(request.getMethod())&&path.matches("^/api/master/goods/cost-sheets/(?:actual|production-output)$")) {
             ReadScopePublication.capture(request,authority,users,"master_goods");return true;
         }
-        if("GET".equals(request.getMethod())&&path.matches("^/api/master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates)?$")) {
+        if("GET".equals(request.getMethod())&&path.matches("^/api/master/goods/cost-sheets(?:/versions(?:/summary)?|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates(?:/summary|/[0-9a-fA-F-]{36})?)?$")) {
             ReadScopePublication.capture(request,authority,users,"master_goods_cost");return true;
+        }
+        if("GET".equals(request.getMethod())&&path.matches("^/api/master/goods/periodic-bom/preparation(?:/summaries|/products/[0-9a-fA-F-]{36}|/material-options)?$")) {
+            ReadScopePublication.capture(request,authority,users,"master_goods");return true;
         }
         if("GET".equals(request.getMethod())&&path.matches("^/api/master/reference-methods/settlement-admin(?:/page)?$")) {
             ReadScopePublication.capture(request,authority,users,"master_settlement_method");return true;

@@ -1,0 +1,39 @@
+--- Main/server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalHistoryQueryTest.java
++++ Task/server/src/test/java/com/uten/imp/features/finance/procurement/ProcurementApprovalHistoryQueryTest.java
+@@ -19,10 +19,36 @@
+ import static org.junit.jupiter.api.Assertions.*;
+ import static org.mockito.ArgumentMatchers.*;
+ import static org.mockito.Mockito.*;
+ 
+ class ProcurementApprovalHistoryQueryTest {
++    @org.junit.jupiter.params.ParameterizedTest
++    @org.junit.jupiter.params.provider.ValueSource(strings={"RETURNED","HISTORY"})
++    @SuppressWarnings("unchecked")
++    void workAndHistoryUseTheSameNarrowPredicateForRowsCountFacetsAndTypeCounts(String status) {
++        JdbcTemplate jdbc = mock(JdbcTemplate.class);
++        when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(0L);
++        when(jdbc.query(anyString(), any(RowMapper.class), any(Object[].class))).thenReturn(List.of());
++        var service = service(jdbc);
++        service.tasks(1, 20, "", "", null, null, null, status);
++        service.taskFacets("", "", status);
++        service.countTasksByType(status);
++        var counts = ArgumentCaptor.forClass(String.class);
++        verify(jdbc).queryForObject(counts.capture(), eq(Long.class), any(Object[].class));
++        var selects = ArgumentCaptor.forClass(String.class);
++        verify(jdbc, times(2)).query(selects.capture(), any(RowMapper.class), any(Object[].class));
++        var typeCounts = ArgumentCaptor.forClass(String.class);
++        verify(jdbc).query(typeCounts.capture(), any(org.springframework.jdbc.core.RowCallbackHandler.class));
++        String predicate=org.springframework.test.util.ReflectionTestUtils.invokeMethod(ProcurementFinanceApprovalService.class,"queueStatusFilter",status);
++        for (var statement : java.util.stream.Stream.concat(
++                java.util.stream.Stream.of(counts.getValue(), typeCounts.getValue()), selects.getAllValues().stream()).toList()) {
++            assertTrue(statement.contains(predicate), statement);
++            assertFalse(statement.contains("WHERE TRUE"));
++        }
++        assertEquals("ALL", ProcurementFinanceApprovalService.normalizeQueueStatus("ALL"));
++    }
++
+     @Test
+     @SuppressWarnings("unchecked")
+     void approvedRoundsAreReadonlyEvenForAnEligibleApproverAndUseOneStatusInCountAndList() throws Exception {
+         JdbcTemplate jdbc = mock(JdbcTemplate.class);
+         when(jdbc.queryForObject(anyString(), eq(Long.class), any(Object[].class))).thenReturn(1L);

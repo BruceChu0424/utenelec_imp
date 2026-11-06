@@ -17,6 +17,12 @@ class LocalSourceFreezeTest(unittest.TestCase):
         self.migration = self.root / 'server/src/main/resources/db/migration/V1__test.sql'
         self.migration.parent.mkdir(parents=True)
         self.migration.write_text('SELECT 1;', encoding='utf-8')
+        self.version_helper = self.root / 'deploy/contracts/flyway_version_contract.py'
+        self.version_helper.parent.mkdir(parents=True)
+        self.version_helper.write_text('# reviewed shared version authority', encoding='utf-8')
+        for relative in ('contracts/flyway-version/fixtures.json','tool/sync_flyway_version_contract.py'):
+            path=self.root/relative;path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text('# reviewed source dependency',encoding='utf-8')
         self.output = Path(self.temp.name) / 'freeze.json'
         self.parent = patch.object(freeze, 'parent', return_value='a' * 40)
         self.parent.start()
@@ -55,6 +61,18 @@ class LocalSourceFreezeTest(unittest.TestCase):
         self.capture()
         with self.assertRaises(ValueError):
             self.capture()
+
+    def test_changed_shared_version_authority_retires_the_same_source_ticket(self):
+        digest = self.capture()
+        self.version_helper.write_text('# changed authority', encoding='utf-8')
+        with self.assertRaises(ValueError):
+            freeze.verify(self.root, self.output, digest)
+
+    def test_missing_shared_version_authority_cannot_be_frozen_or_reused(self):
+        digest = self.capture()
+        self.version_helper.unlink()
+        with self.assertRaises(ValueError):
+            freeze.verify(self.root, self.output, digest)
 
 
 if __name__ == '__main__':

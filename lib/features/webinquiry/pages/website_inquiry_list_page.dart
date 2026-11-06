@@ -15,7 +15,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -31,6 +30,7 @@ class WebsiteInquiryListPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(websiteInquiryReadActivityProvider).bindView(context);
     final list = ref.watch(websiteInquiryListProvider);
     final status = ref.watch(websiteInquiryStatusFilterProvider);
     final history = ref.watch(websiteInquiryHistoryProvider);
@@ -106,26 +106,6 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                           ),
                         ),
                       ),
-                      if (page.totalPages > 1)
-                        UtenGridPager(
-                          currentPage: page.page,
-                          totalPages: page.totalPages,
-                          totalItems: page.total,
-                          busy: list.isLoading,
-                          onPageChanged: (target) => ref
-                              .read(websiteInquiryListProvider.notifier)
-                              .goToPage(target),
-                          onPrev: !list.isLoading && page.page > 1
-                              ? () => ref
-                                    .read(websiteInquiryListProvider.notifier)
-                                    .previousPage()
-                              : null,
-                          onNext: !list.isLoading && page.page < page.totalPages
-                              ? () => ref
-                                    .read(websiteInquiryListProvider.notifier)
-                                    .nextPage()
-                              : null,
-                        ),
                     ],
                   ),
                 );

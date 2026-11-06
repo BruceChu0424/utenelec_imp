@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import rehearse_local_import as rehearsal
 from rehearse_local_import import Database, csv_record, digest, verify_layers,prepare_inputs,read_mapping_version
 
 
@@ -93,6 +94,20 @@ class LocalRehearsalSafetyTest(unittest.TestCase):
                 prepare_inputs(base/'raw',clean,overlay,base/'hr',base/'final',base/'excel',
                                base/'reference',base/'people.xls',base/'masters')
             self.assertFalse((base/'final'/'purchase_orders.csv').exists())
+
+    def test_committed_source_gate_includes_the_shared_version_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            here = root / 'server/legacy_migration'
+            here.mkdir(parents=True)
+            (here / 'loader.py').write_text('# reviewed loader', encoding='utf-8')
+            with patch.object(rehearsal, 'ROOT', root), patch.object(rehearsal, 'HERE', here), \
+                    patch.dict('os.environ', {}, clear=True), \
+                    patch.object(rehearsal.verify_candidate, 'require_reviewed_files', return_value='a' * 40) as gate:
+                self.assertEqual('a' * 40, rehearsal.verify_frozen_source())
+            self.assertEqual(root, gate.call_args.args[0])
+            for relative in rehearsal.verify_candidate.VERSION_CONTRACT_INPUTS:
+                self.assertIn(root / relative, gate.call_args.args[1])
 
 
 if __name__=='__main__':

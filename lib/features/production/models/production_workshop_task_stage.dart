@@ -7,7 +7,7 @@ import 'production_flow_stage.dart';
 ProductionFlowStage workshopTaskFlowStage(
   ProductionExecutionWorkbenchSegment task, {
   required AppLocalizations l10n,
-  double draftReportedQty = 0,
+  Object? draftReportedQty = 0,
 }) =>
     _binMaterialStageOf(task, l10n) ??
     _orderFlowStageOf(task, l10n, draftReportedQty);
@@ -48,7 +48,7 @@ ProductionFlowStage? _binMaterialStageOf(
 ProductionFlowStage _orderFlowStageOf(
   ProductionExecutionWorkbenchSegment task,
   AppLocalizations l10n,
-  double draftReportedQty,
+  Object? draftReportedQty,
 ) => task.materialDiscoveryRequired
     ? ProductionFlowStage(
         route: ProductionFlowRoute.make,
@@ -83,7 +83,7 @@ ProductionFlowStage _orderFlowStageOf(
         plannedQty: task.plannedQty,
         // 草稿承接的数量占住待报额度：阶段词表按扣减后的事实判定
         //（全部被承接=「报工草稿待审核」，部分承接仍显示可报）。
-        remainingReportQty: task.remainingReportQty,
+        remainingReportQty: task.remainingReportQtyText,
         draftReportedQty: draftReportedQty,
         fqcPendingQty: task.fqcPendingQty,
         fqcFailedQty: task.fqcFailedQty,

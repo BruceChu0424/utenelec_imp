@@ -22,6 +22,9 @@ import static com.uten.imp.application.port.FinancialAuxiliaryValidationPort.*;
 /** A reviewed, atomic opening + complete-month continuation. It never overlays existing business GL. */
 @Service @RequiredArgsConstructor
 public class FinanceAccountingImportService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
     private final JdbcTemplate db;private final EntityManager em;private final ObjectMapper json;
     private final ImmutableDocumentStore files;private final SecurityContextCurrentUser current;private final TxSessionVars tx;
     private final FinanceDocumentAccessPolicy access;private final FinancialAuxiliaryValidationPort auxiliary;
@@ -354,4 +357,19 @@ public class FinanceAccountingImportService {
     private <T>T decode(String value,Class<T> type){try{return json.readValue(value,type);}catch(Exception error){throw new IllegalStateException("原账套来源读取失败",error);}}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
+
+    /** Full selected lifecycle range through bounded summary batches; original detail/write contracts are unchanged. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(String requestedScope,int page,int size,String revision) {
+        authorize();UUID actor=current.requireId();
+        String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
+        String where="(actor_id=? OR status<>'PREVIEW')"+switch(scope) {
+            case "active" -> " AND (status IN ('PREVIEW','SUBMITTED'))";
+            case "history" -> " AND (status='POSTED')";
+            default -> "";
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-accounting-imports","finance",Map.of("actor",actor),scope,page,size,1000,revision);
+        return summaryPages.page(request,()->{authorize();},
+                ()->db.queryForObject("SELECT count(*) FROM finance_accounting_import_batches WHERE "+where,Long.class,actor),
+                (readPage,readSize)->db.queryForList("SELECT id,kind,source_name AS \"sourceName\",source_system AS \"sourceSystem\",status,row_version AS version,actor_id AS \"actorId\",submitted_by AS \"submittedBy\" FROM finance_accounting_import_batches WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",actor,readSize,Math.multiplyExact((long)readPage-1,readSize)));
+    }
 }

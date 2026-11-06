@@ -132,6 +132,7 @@ class _AdminAuditSessionDetailPageState
       .read(auditLogRepositoryProvider)
       .sessionEvents(
         sessionId: widget.sessionId,
+        size: 100,
         cursorAt: cursorAt,
         cursorId: cursorId,
         snapshotAuditId: snapshotAuditId,

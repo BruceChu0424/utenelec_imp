@@ -452,7 +452,9 @@ public class ExpenseClaimService {
                 new Sort.Order(direction, "id"));
     }
 
-    @Transactional(readOnly = true)
+    // The application response may intentionally omit a private claim after its state
+    // changes. Keep the read denial, without poisoning that authorized write transaction.
+    @Transactional(readOnly = true, noRollbackFor = ApiException.class)
     public ExpenseClaimDto detail(UUID id) { return readDetail(id, false); }
 
     /** Optional native detail for an independently authorized application view.

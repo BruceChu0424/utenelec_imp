@@ -1,0 +1,503 @@
+{
+  "receipt": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\runtime-web-final-receipt.json",
+  "receiptSha256": "0548a710077b32b481607e5488911d2f411f417ebcd7c28786a283c80368107a",
+  "archive": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\runtime-web-final-evidence.zip",
+  "archiveBytes": 973881,
+  "archiveSha256": "d5233ab9f9948f54377ce3ae4fd5daf25130fa4a0188821ef3849fccf38b7636",
+  "crcVerified": true,
+  "allMemberSha256Verified": true,
+  "members": [
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\prepare_runtime_web_final_snapshot.py",
+      "archiveMember": "build/loading-validation/prepare_runtime_web_final_snapshot.py",
+      "bytes": 5651,
+      "sha256": "d358fa89feab50726ce6a4f4637724a26376a6ee3e5adf53f248a16eecdd2025"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\cleanup-process-proof.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/cleanup-process-proof.json",
+      "bytes": 1397,
+      "sha256": "0aa03d9ee3102d83159ddbf43f14830d54bec063fbbe4fb852865e7a8426c511"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\metadata-preimages\\.flutter-plugins-dependencies",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/metadata-preimages/.flutter-plugins-dependencies",
+      "bytes": 20386,
+      "sha256": "c67196bd01f336b1ee5a8f498e05e6f50df87d8d38b1085934a0460fb23d50c0"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\prepare_compact_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/prepare_compact_runtime.py",
+      "bytes": 916,
+      "sha256": "8833550b8363a63197364b82271b11e882a1be9302c4181a417b4cfc6609c6ec"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\prepare_extended_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/prepare_extended_runtime.py",
+      "bytes": 4687,
+      "sha256": "011a6fe67ebc95e58cdb077a1fc605c47edd6f8aed6a76826b540c8fbebb729b"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\.dart_tool\\package_config.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/.dart_tool/package_config.json",
+      "bytes": 38665,
+      "sha256": "0c206c08675a9066eb9db2e2e875db6b7bcd3265bb72cdd834fb14417371802f"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\.dart_tool\\package_graph.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/.dart_tool/package_graph.json",
+      "bytes": 25346,
+      "sha256": "66e2d6cbddf59648d1cc64699aee088d34fb7d9c8f451218fbbdc9a7a0cfd130"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\.flutter-plugins-dependencies",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/.flutter-plugins-dependencies",
+      "bytes": 21048,
+      "sha256": "94f67e0ff6a55fc2007588b660dab5a898a7eb3da10ff51dda82db84a30a920f"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\capture_current_validation.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/capture_current_validation.py",
+      "bytes": 3576,
+      "sha256": "4e4d56d2163077c370b4606c5297f9a92560e60c7ebea304dfe8ca2df61c6aa1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\final-f6-web-entry.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/final-f6-web-entry.log",
+      "bytes": 692,
+      "sha256": "e2933ef4ed9f4a8457daedbd54da2e2c97318239868f8b0999d1c9752d07c3e9"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\final-f6-web-execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/final-f6-web-execution.json",
+      "bytes": 2067,
+      "sha256": "87167ad86f442a01dd0def1015e5f2d7a67f2276fa051ce1b90559673b5b2a71"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\final-f6-web-inputs.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/final-f6-web-inputs.json",
+      "bytes": 342812,
+      "sha256": "9e4d8bfd3f664e620d833b2c2658a9a38fa505656672d465eb5f653f7361a820"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\final-f6-web-probe.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/final-f6-web-probe.log",
+      "bytes": 692,
+      "sha256": "0497acb1c7e2ac626531a1d1e9ef1082973934987f37be56369fa4263c719135"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\loading_web_probe_extended_driver.mjs",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/loading_web_probe_extended_driver.mjs",
+      "bytes": 7839,
+      "sha256": "4cb4d3d81962018f5c9af93fec21a48b0d673bdcc81537baa8f8a4050c5d14c3"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\run_final_web_compact_extended_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/run_final_web_compact_extended_runtime.py",
+      "bytes": 6493,
+      "sha256": "c02edaae7c6cb7f916490d776a47ad0ea20982dcb6a450ac6b5738c61cbc99d4"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\run_final_web_compact_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/run_final_web_compact_runtime.py",
+      "bytes": 6381,
+      "sha256": "21127d281bca7d8d72b6c35406a4603ad73d3561efcc16a793b69a7ece39c58b"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\run_final_web_extended_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/run_final_web_extended_runtime.py",
+      "bytes": 6460,
+      "sha256": "c6f36e8c326670f14905a2fcc6d4250da6dddacd6ccbb3a870bf5183e7afc3e5"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\run_final_web_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/run_final_web_runtime.py",
+      "bytes": 6143,
+      "sha256": "8a1c1a4fb6a983c9dd829f1f37c5e70f5633439bd2ba6b6c02caab5ea528133b"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\run_final_web_short_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/run_final_web_short_runtime.py",
+      "bytes": 6360,
+      "sha256": "9cafd4998885ec5639242506eca309da5efc2739a66adb663f6a3cb7c84309f0"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\chrome.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/chrome.log",
+      "bytes": 100,
+      "sha256": "4552a13beda74a305840240b83da7374327632cc00183706a8eaf634598df34f"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\cleanup.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/cleanup.json",
+      "bytes": 220,
+      "sha256": "bda2163fbc2c7c2fe4fc7229cca054bea9902ca8ab2218ce50b73f5c36306e6a"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\driver.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/driver.log",
+      "bytes": 12841,
+      "sha256": "93c7ca35abe4fc896e525a65923b2ecf8530118aadcda10cb4a8815e73eb4606"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/execution.json",
+      "bytes": 1243,
+      "sha256": "2cd3e682265e91c523e0ee2ee10bb49e5010e773682f07dfcacb2078e100ae99"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\server.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/server.log",
+      "bytes": 216,
+      "sha256": "b592e3a20efbe729782e97b238404c5386d45adf1da697a7f7e3563a4bb9f6a6"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-1440-tail.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-1440-tail.png",
+      "bytes": 75259,
+      "sha256": "b2fb3cc74723c71fa4ef5641742053f1493e911be4ebfd7a4b55ca96d356bf58"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-1440-top.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-1440-top.png",
+      "bytes": 64697,
+      "sha256": "29962c68fe9a366e68337064f3a59ff018514b650f1c148f80843e2a2b4f2c09"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-720-tail.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-720-tail.png",
+      "bytes": 70089,
+      "sha256": "5314d03f747b06de3cc10a77d1f9fd64ef8f1a39f4b7c7d5d93c2bbcd9fc86d1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-720-top.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-720-top.png",
+      "bytes": 60080,
+      "sha256": "2a201477f49e02ce47541648da99704b03fa698ebbada912be7a0055a7588289"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-browser-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-browser-owner.json",
+      "bytes": 402,
+      "sha256": "6bcafdfcb0aaeacd82e808c914f9e6e9958b2746ee5ce6a52a9bbca477a1bb69"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-continuous-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-continuous-receipt.json",
+      "bytes": 19237,
+      "sha256": "8c2b9f35f1e28aaece4116db17e9ce1e168191fb8bf7d7102f58f98eda31e54f"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-continuous-table.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-continuous-table.png",
+      "bytes": 60080,
+      "sha256": "2a201477f49e02ce47541648da99704b03fa698ebbada912be7a0055a7588289"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-extended-runtime\\web-server-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-extended-runtime/web-server-owner.json",
+      "bytes": 232,
+      "sha256": "7caf7758f674d048624542a1251d4779ea7b24a21734effeb73545fa172c81e3"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\chrome.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/chrome.log",
+      "bytes": 100,
+      "sha256": "e1a7c840e1d3262211b146de7f67af65d09ce65b0d6897619f48baca77115719"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\cleanup.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/cleanup.json",
+      "bytes": 221,
+      "sha256": "797a29565fa5e70d607ba142ba346f7d70521cdbcdb226b0cf900c866e2d20cf"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\driver.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/driver.log",
+      "bytes": 1794,
+      "sha256": "350818d32e5839e4c15fffdddc5a45e0b278b49e5389f24b9ae5edc5bc23f1c4"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/execution.json",
+      "bytes": 1096,
+      "sha256": "62a45d6b3f72dcf16a959a447011fa6d631bc5654756e0071bcc4934713715d8"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\server.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/server.log",
+      "bytes": 217,
+      "sha256": "d0aeec41e76c456fae62f77524e5b6650be41b85e4f016ceb19a710e2b599965"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\web-browser-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/web-browser-owner.json",
+      "bytes": 403,
+      "sha256": "e84ccdae1655a3be85d2b90f002e478397f685a92fc860c1eae8fee03455436b"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\web-continuous-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/web-continuous-receipt.json",
+      "bytes": 2433,
+      "sha256": "6207ad58faa3cd13b05cd61693ce682209258cac8313f250d312d34fd040c9e4"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\web-continuous-table.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/web-continuous-table.png",
+      "bytes": 64697,
+      "sha256": "29962c68fe9a366e68337064f3a59ff018514b650f1c148f80843e2a2b4f2c09"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-compact-runtime\\web-server-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-compact-runtime/web-server-owner.json",
+      "bytes": 233,
+      "sha256": "20627f04e5e6afce6442f5bd27c4828b1c4123e5be19552db4accf4415735738"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\chrome.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/chrome.log",
+      "bytes": 552,
+      "sha256": "70c301a599b9f430f48ea0e32d00fb0fa70a37925d2975a2a39ccd5f9d60905d"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\cleanup.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/cleanup.json",
+      "bytes": 221,
+      "sha256": "047feec25d773cb591d8ea2744c09bc4975ebedaf0b88fa6c698960cbb530be7"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\driver.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/driver.log",
+      "bytes": 15753,
+      "sha256": "3c52501b97d4fec44864dce7e16e6c38c898e822cfdeee615b09c4bb32c9776e"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/execution.json",
+      "bytes": 1236,
+      "sha256": "02ae34d5a115254f144465c233bd150d39920ce4eb6f0760acf2c35764967810"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\server.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/server.log",
+      "bytes": 217,
+      "sha256": "955c438d609559bd86ed51697ef8c7c8da1cf994e5e85d7069491ff0179c524a"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-1440-tail.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-1440-tail.png",
+      "bytes": 75259,
+      "sha256": "b2fb3cc74723c71fa4ef5641742053f1493e911be4ebfd7a4b55ca96d356bf58"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-1440-top.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-1440-top.png",
+      "bytes": 64697,
+      "sha256": "29962c68fe9a366e68337064f3a59ff018514b650f1c148f80843e2a2b4f2c09"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-720-tail.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-720-tail.png",
+      "bytes": 70089,
+      "sha256": "5314d03f747b06de3cc10a77d1f9fd64ef8f1a39f4b7c7d5d93c2bbcd9fc86d1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-720-top.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-720-top.png",
+      "bytes": 60080,
+      "sha256": "2a201477f49e02ce47541648da99704b03fa698ebbada912be7a0055a7588289"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-browser-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-browser-owner.json",
+      "bytes": 469,
+      "sha256": "0b9dc694e687fda565a7125dae8c60065159f2a611c2c34fe00ff9d6ee24c975"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-continuous-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-continuous-receipt.json",
+      "bytes": 23841,
+      "sha256": "b3cf91dab66eb415ab882ce3bb64439dc8678924810ddefa81b5fcd658e60dc9"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-continuous-table.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-continuous-table.png",
+      "bytes": 60080,
+      "sha256": "2a201477f49e02ce47541648da99704b03fa698ebbada912be7a0055a7588289"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-extended-runtime\\web-server-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-extended-runtime/web-server-owner.json",
+      "bytes": 233,
+      "sha256": "480f587801c0ee464b614f8654cdf1affcc2167a61c365d7bac2855252b88bcc"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\chrome.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/chrome.log",
+      "bytes": 5432,
+      "sha256": "ba71ada176d62a8e8fcab2c44ebbc7ffb4bae420b72740e4e6361eed75d5fff1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\cleanup.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/cleanup.json",
+      "bytes": 219,
+      "sha256": "3ddc614e0fa24152b7bbd01496bca9753fdb886a6d3cf1350fd1fd4ff28c58c1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\driver.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/driver.log",
+      "bytes": 1786,
+      "sha256": "154d099da4fd0713322542daca53b4819bc04a37b685e98e06cf13fbf75a6936"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/execution.json",
+      "bytes": 960,
+      "sha256": "84aee3a2aac48d5b92632bbd8210389ab4c29b4a381ab77d5653c2328dbea8e1"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\server.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/server.log",
+      "bytes": 215,
+      "sha256": "a4a293fa74a53123fed804c8f4f1cecdf7fa8a700b98e1ed4cc1f13f010d28b3"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\web-browser-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/web-browser-owner.json",
+      "bytes": 488,
+      "sha256": "1f5e744d917b6db60c85f0e0184d4b875291f402a89e00c64c42979f5bd8b6fd"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\web-continuous-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/web-continuous-receipt.json",
+      "bytes": 2425,
+      "sha256": "e2f71ec70fc86f5e6a63c3862fb9ad9529252afd6858cfad0167588dc64a78e6"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\web-continuous-table.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/web-continuous-table.png",
+      "bytes": 64697,
+      "sha256": "29962c68fe9a366e68337064f3a59ff018514b650f1c148f80843e2a2b4f2c09"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-runtime\\web-server-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-runtime/web-server-owner.json",
+      "bytes": 231,
+      "sha256": "98676f1e58a7cb6afe4f92f8ccde2af183e3a7c98162841116e12d5b9cce1d93"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\chrome.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/chrome.log",
+      "bytes": 558,
+      "sha256": "975c7d8df1849eb4e760fc377dc6573674beb2166a2c31fa2c4e62dd3ef246bc"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\cleanup.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/cleanup.json",
+      "bytes": 220,
+      "sha256": "c75efb1583c2eb5f9d1193e562e7960eac0d0179f58e92b1c7368e6b8ca02dda"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\driver.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/driver.log",
+      "bytes": 1792,
+      "sha256": "87bdee09ad1fb69aa1400a16e71e915674d72b26bf097378534689b31f3cf5f6"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\execution.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/execution.json",
+      "bytes": 1093,
+      "sha256": "18f1fa3a13d42fc51f5ded8069108b276b0b10bda8dfef740b4461145f9d950c"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\server.log",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/server.log",
+      "bytes": 217,
+      "sha256": "18900c1deee348105164582161ed68bf3ec5ef9727766f77fb29ce64d24820bd"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\web-browser-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/web-browser-owner.json",
+      "bytes": 465,
+      "sha256": "dde4cafb708832e21abf86f4852a35ed3d29c47f1ecefeb73c807b004b60bcd8"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\web-continuous-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/web-continuous-receipt.json",
+      "bytes": 2431,
+      "sha256": "b5fcd445809bf0de5d7cd7b36230ffcc34850d361a86f6bf5950e170f82b4996"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\web-continuous-table.png",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/web-continuous-table.png",
+      "bytes": 64697,
+      "sha256": "29962c68fe9a366e68337064f3a59ff018514b650f1c148f80843e2a2b4f2c09"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\build\\loading-validation\\web-final-owned-short-runtime\\web-server-owner.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/build/loading-validation/web-final-owned-short-runtime/web-server-owner.json",
+      "bytes": 233,
+      "sha256": "5bf71edfc7e8dd5f1968de19501889f8f4f9b8cb029ee56a33390ec16eca98d5"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\l10n.yaml",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/l10n.yaml",
+      "bytes": 241,
+      "sha256": "a1c93ee10335fb84bf8485c49af84aae8246094b23d63e0920c64234f4b52bc3"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\pubspec.lock",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/pubspec.lock",
+      "bytes": 32446,
+      "sha256": "1f8b96cd8bbca9792278a19b82426eb0458870b7d5af9fd86ae3dbc468b576f5"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\pubspec.yaml",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/pubspec.yaml",
+      "bytes": 4452,
+      "sha256": "468b38059cf08ac8316a4026aa9f745a5f9b206bdc7b655410ca209274c66eb9"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\tool\\loading_web_probe.dart",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/tool/loading_web_probe.dart",
+      "bytes": 3094,
+      "sha256": "35aeaf777c385e10e11a7598f6239dee097e496d4e98c2628fadaf4ae8678ca8"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\tool\\loading_web_probe_driver.mjs",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/tool/loading_web_probe_driver.mjs",
+      "bytes": 5131,
+      "sha256": "f757429610a781ca624bc93723599503ec0f8f501a5ea27142a5eb3bd172e5ac"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\root\\tool\\loading_web_probe_server.mjs",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/root/tool/loading_web_probe_server.mjs",
+      "bytes": 1579,
+      "sha256": "fee1edb7e0ea56345810d2d0fc122ae50d7671d012e78fea225749ff4c01a47a"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\runtime-web-final-receipt.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/runtime-web-final-receipt.json",
+      "bytes": 435345,
+      "sha256": "0548a710077b32b481607e5488911d2f411f417ebcd7c28786a283c80368107a"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\seal_final_runtime.py",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/seal_final_runtime.py",
+      "bytes": 9906,
+      "sha256": "f3ddddb9b1791ee824e5452d8861c55e83821dec48f9e1630b97a7fdb292f09f"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\snapshot-inputs.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/snapshot-inputs.json",
+      "bytes": 492793,
+      "sha256": "df804db4c3e627ee346ccc80632897dfb22772ccd6f19ddd0b61234470867db5"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\runtime-web-final-snapshot\\visual-review.json",
+      "archiveMember": "build/loading-validation/runtime-web-final-snapshot/visual-review.json",
+      "bytes": 1685,
+      "sha256": "339c45070cf1655b1c7af7bf550cc9b48aef027501f0b23362b32dff3bc420ec"
+    }
+  ]
+}

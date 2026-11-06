@@ -23,6 +23,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/production_material_discovery.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -68,13 +69,9 @@ class DiscoveryMaterialRow extends EditableGridRow {
 
   String? get quantityError {
     final input = qty.text.trim();
-    final amount = double.tryParse(input);
     if (input.isEmpty) return '需要填写领料数量';
-    if (amount == null ||
-        !amount.isFinite ||
-        amount <= 0 ||
-        !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(input)) {
-      return '数量须大于 0，最多 4 位小数';
+    if (positiveMaterialCommandQuantityText(input) == null) {
+      return '数量须大于 0，最多 4 位小数且小于 100000000000000';
     }
     return null;
   }

@@ -6,6 +6,7 @@
 
 import '../../basic_data/models/master_facet.dart';
 import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/models/paged_result.dart';
 import 'report_column.dart';
 import 'report_total.dart';
 
@@ -43,6 +44,21 @@ class ReportData {
   /// Explicit server-supported column queries; a partial page never infers these.
   final Set<String> columnSearchKeys;
   final Map<String, dynamic> documentMetadata;
+
+  ReportData withPage(PagedResult<Map<String, dynamic>> combined) => ReportData(
+    columns: columns,
+    rows: combined.items,
+    facets: facets,
+    page: combined.page,
+    totalPages: combined.totalPages,
+    total: combined.total,
+    meta: meta,
+    totals: totals,
+    readScopeVersion: readScopeVersion,
+    statisticsGeneratedAt: statisticsGeneratedAt,
+    columnSearchKeys: columnSearchKeys,
+    documentMetadata: documentMetadata,
+  );
 
   /// A new query can retain trusted controls; old facts/counts never describe it.
   ReportData pendingQuery() => ReportData(

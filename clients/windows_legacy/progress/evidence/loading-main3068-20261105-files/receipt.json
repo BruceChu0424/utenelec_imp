@@ -1,0 +1,151 @@
+{
+  "startedAtUtc": "2026-11-05T21:38:45.377518+00:00",
+  "endedAtUtc": "2026-11-05T21:40:42.918532+00:00",
+  "sourceInputs": 186,
+  "sourceDrift": [],
+  "phases": [
+    {
+      "name": "build-x64",
+      "startedAtUtc": "2026-11-05T21:38:45.379696+00:00",
+      "command": [
+        "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "/nologo",
+        "/m:1",
+        "/verbosity:minimal",
+        "/t:Build",
+        "/warnaserror",
+        "/p:Configuration=Debug",
+        "/p:Platform=x64",
+        "/p:UtenBuildScope=loading3068-final",
+        "/p:OutDir=D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:02.017609+00:00",
+      "logSha256": "0fd25323cf556a9f8cba795925ef392946fc7313349b2f9f1a860cc03007cbec"
+    },
+    {
+      "name": "unit-history-contracts-x64",
+      "startedAtUtc": "2026-11-05T21:39:02.224821+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+        "--unit-history-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:12.537199+00:00",
+      "logSha256": "5600bc9292759cb858d3661a78f85f67f455dddfb0c303bed62f240a02d90a38"
+    },
+    {
+      "name": "continuous-list-contracts-x64",
+      "startedAtUtc": "2026-11-05T21:39:12.800893+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+        "--continuous-list-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:26.615192+00:00",
+      "logSha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602"
+    },
+    {
+      "name": "search-input-contracts-x64",
+      "startedAtUtc": "2026-11-05T21:39:26.925604+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+        "--search-input-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:41.010996+00:00",
+      "logSha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6"
+    },
+    {
+      "name": "table-output-contracts-x64",
+      "startedAtUtc": "2026-11-05T21:39:41.373018+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+        "--table-output-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:47.563545+00:00",
+      "logSha256": "c97ead845689cb2aaa01835890cdda563d01d7f99f09b4699c0f5588e36c274f"
+    },
+    {
+      "name": "build-x86",
+      "startedAtUtc": "2026-11-05T21:39:47.806532+00:00",
+      "command": [
+        "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "/nologo",
+        "/m:1",
+        "/verbosity:minimal",
+        "/t:Build",
+        "/warnaserror",
+        "/p:Configuration=Debug",
+        "/p:Platform=x86",
+        "/p:UtenBuildScope=loading3068-final",
+        "/p:OutDir=D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:39:57.871910+00:00",
+      "logSha256": "4232806c0d76d1aa2ecaa7f8bcb076291148adeb2116f757d53bc26583b5bd21"
+    },
+    {
+      "name": "unit-history-contracts-x86",
+      "startedAtUtc": "2026-11-05T21:39:58.112677+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\Uten.Legacy.Tests.exe",
+        "--unit-history-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:40:11.810320+00:00",
+      "logSha256": "fff6ec23ff46cf7549b3232e7700c644d9d39506cc85f6d4decbcb0a9a6156a9"
+    },
+    {
+      "name": "continuous-list-contracts-x86",
+      "startedAtUtc": "2026-11-05T21:40:12.131434+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\Uten.Legacy.Tests.exe",
+        "--continuous-list-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:40:23.499782+00:00",
+      "logSha256": "e0025513b1348bf6c51e353ac1810b534e18a081d2921f41ccc9fdf402b74977"
+    },
+    {
+      "name": "search-input-contracts-x86",
+      "startedAtUtc": "2026-11-05T21:40:23.798141+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\Uten.Legacy.Tests.exe",
+        "--search-input-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:40:35.836049+00:00",
+      "logSha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+    },
+    {
+      "name": "table-output-contracts-x86",
+      "startedAtUtc": "2026-11-05T21:40:36.144356+00:00",
+      "command": [
+        "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x86\\Uten.Legacy.Tests.exe",
+        "--table-output-contracts"
+      ],
+      "exitCode": 0,
+      "endedAtUtc": "2026-11-05T21:40:42.455993+00:00",
+      "logSha256": "f469ee19cc2dfc70f4ad9fb0888d8524eb3b2b8ad1a67566e023699e81c7909c"
+    }
+  ],
+  "buildWarningAsError": true,
+  "architectures": [
+    "x64",
+    "x86"
+  ],
+  "actualLocalNativeScopes": [
+    "history",
+    "continuous lists",
+    "search",
+    "table output selection/capabilities"
+  ],
+  "fullErpAcceptance": false,
+  "win7TargetPcAcceptance": false,
+  "formalPackageOrDeployment": false,
+  "mainWritten": false
+}

@@ -10,6 +10,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/finance/widgets/finance_payable_statement_adjustment_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -26,6 +27,137 @@ const _capture = bool.fromEnvironment('UTEN_CAPTURE_FINANCE_PARTY_UI');
 final _boundary = GlobalKey();
 
 void main() {
+  testWidgets(
+    'adjustment permission rejection hides accepted facts while keeping exact entered amount',
+    (tester) async {
+      final api = _Api();
+      final environment = await _pump(tester, api);
+      await tester.tap(find.text('AP-ORIGINAL-80').first);
+      await tester.pumpAndSettle();
+      await _input(tester, 'amount', '0.000000000000000000000001');
+      final input = tester
+          .widget<UtenInput>(_editor('amount').first)
+          .controller!;
+      final table = tester
+          .widgetList<MasterDataTableView<Map<String, dynamic>>>(
+            find.byWidgetPredicate(
+              (w) => w is MasterDataTableView<Map<String, dynamic>>,
+            ),
+          )
+          .singleWhere((w) => w.onSelectedIdsChanged != null);
+      api.readError = ApiException(
+        'FORBIDDEN',
+        'adjustment read revoked',
+        httpStatus: 403,
+      );
+      await Future<void>.sync(table.onRetry!);
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+        findsNothing,
+      );
+      table.onSelectedIdsChanged!({});
+      await tester.pump();
+      expect(input.text, '0.000000000000000000000001');
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFieldHintIcon &&
+              w.errorMessage == 'adjustment read revoked',
+        ),
+        findsOneWidget,
+      );
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      environment.dispose();
+    },
+  );
+  testWidgets(
+    'target and adjustment directories collect both axes once without a Cartesian read',
+    (tester) async {
+      final api = _CompleteApi();
+      final environment = await _pump(tester, api);
+      final tables = tester
+          .widgetList<MasterDataTableView<Map<String, dynamic>>>(
+            find.byWidgetPredicate(
+              (w) => w is MasterDataTableView<Map<String, dynamic>>,
+            ),
+          )
+          .toList();
+      final targets = tables.singleWhere((w) => w.items.length == 251);
+      final records = tables.singleWhere((w) => w.items.length == 151);
+      expect(targets.items.last['billNo'], 'AP-COMPLETE-250');
+      expect(records.items.last['source_reference'], 'record-150');
+      expect(targets.onPageChange, isNull);
+      expect(records.onPageChange, isNull);
+      expect(
+        api.queries.map((q) => (q['page'], q['size'], q['adjustmentPage'])),
+        [
+          (1, 100, 1),
+          (2, 100, 1),
+          (3, 100, 1),
+          (1, 1, 2),
+          (1, 1, 3),
+          (1, 1, 4),
+        ],
+      );
+      final before = api.queries.length;
+      await tester.drag(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+        const Offset(0, -900),
+      );
+      await tester.pumpAndSettle();
+      expect(api.queries, hasLength(before));
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      environment.dispose();
+    },
+  );
+  for (final drift in [false, true]) {
+    testWidgets(
+      'later record ${drift ? 'scope change' : 'denial'} publishes neither directory nor write',
+      (tester) async {
+        final api = _CompleteApi()
+          ..scopeDrift = drift
+          ..denyRecordTail = !drift;
+        final environment = await _pump(tester, api);
+        final tables = tester
+            .widgetList<MasterDataTableView<Map<String, dynamic>>>(
+              find.byWidgetPredicate(
+                (w) => w is MasterDataTableView<Map<String, dynamic>>,
+              ),
+            );
+        expect(tables, isNotEmpty);
+        final targets = tables.singleWhere(
+          (w) => w.tableKey == 'finance.payable-statement-adjustments.targets',
+        );
+        expect(targets.items, isEmpty);
+        expect(targets.error, isNotNull);
+        expect(
+          tables
+              .where(
+                (w) =>
+                    w.tableKey ==
+                    'finance.payable-statement-adjustments.records',
+              )
+              .every((w) => w.items.isEmpty),
+          isTrue,
+        );
+        final original = tables.singleWhere(
+          (w) => w.tableKey == 'finance.payable-statement-adjustments.original',
+        );
+        expect(original.items.single['periodAmountOriginal'], isNull);
+        expect(original.items.single['releasedOriginal'], isNull);
+        expect(original.items.single['currency'], '待核');
+        expect(api.saved, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        environment.dispose();
+      },
+    );
+  }
   testWidgets(
     'document fee has no default decision and unknown result replays exactly one original request',
     (tester) async {
@@ -314,30 +446,39 @@ class _Api extends ApiClient {
   bool loseFirst = false;
   Completer<void>? gate;
   int actual = 0;
+  ApiException? readError;
   final saved = <Map<String, dynamic>>[];
   final _seen = <String>{};
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => {
-    'original': {'periodAmountOriginal': '80.0000'},
-    'currency': {'code': 'TEST', 'name': '匿名原币'},
-    'targets': [
-      {
-        'ledgerId': '00000000-0000-4000-8000-000000000222',
-        'billNo': 'AP-ORIGINAL-80',
-        'sourceDocNo': 'RC-ORIGINAL',
-        'fingerprint': 'b' * 64,
-        'balanceOriginal': '60.0000',
-        'balanceLocal': '420.0000',
-      },
-    ],
-    'accounts': <Map<String, dynamic>>[],
-    'adjustments': <Map<String, dynamic>>[],
-    'page': 1,
-    'totalPages': 1,
-  };
+  }) async {
+    if (readError != null) throw readError!;
+    return {
+      'original': {'periodAmountOriginal': '80.0000'},
+      'currency': {'code': 'TEST', 'name': '匿名原币'},
+      'targets': [
+        {
+          'ledgerId': '00000000-0000-4000-8000-000000000222',
+          'billNo': 'AP-ORIGINAL-80',
+          'sourceDocNo': 'RC-ORIGINAL',
+          'fingerprint': 'b' * 64,
+          'balanceOriginal': '60.0000',
+          'balanceLocal': '420.0000',
+        },
+      ],
+      'accounts': <Map<String, dynamic>>[],
+      'adjustments': <Map<String, dynamic>>[],
+      'page': 1,
+      'size': query?['size'] ?? 100,
+      'total': 1,
+      'totalPages': 1,
+      'adjustmentPage': 1,
+      'adjustmentPages': 0,
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> postCancellable(
     String path, {
@@ -426,6 +567,8 @@ class _RecordApi extends _Api {
     }
     return {
       ...await super.get(path, query: query),
+      'adjustmentPage': 1,
+      'adjustmentPages': 1,
       'adjustments': [
         {
           'id': id,
@@ -452,5 +595,57 @@ class _RecordApi extends _Api {
     return [
       {'adjustmentId': id, 'status': 'APPROVED'},
     ];
+  }
+}
+
+class _CompleteApi extends _Api {
+  final queries = <Map<String, dynamic>>[];
+  bool denyRecordTail = false, scopeDrift = false;
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    queries.add(Map.of(query ?? {}));
+    final page = query?['page'] as int? ?? 1;
+    final size = query?['size'] as int? ?? 100;
+    final recordPage = query?['adjustmentPage'] as int? ?? 1;
+    if (denyRecordTail && recordPage == 2) {
+      throw ApiException('FORBIDDEN', 'record tail forbidden', httpStatus: 403);
+    }
+    final start = (page - 1) * size, recordStart = (recordPage - 1) * 50;
+    return {
+      ...await super.get(path, query: query),
+      'page': page,
+      'size': size,
+      'total': 251,
+      'totalPages': (251 + size - 1) ~/ size,
+      'readScopeVersion': scopeDrift && recordPage > 1
+          ? 'changed-owner'
+          : 'same-owner',
+      'targets': [
+        for (var i = start; i < start + size && i < 251; i++)
+          {
+            'ledgerId':
+                '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+            'billNo': 'AP-COMPLETE-$i',
+            'fingerprint': 'b' * 64,
+            'balanceOriginal': '0.000000000000000000000001',
+            'balanceLocal': '90071992547409.0001',
+          },
+      ],
+      'adjustmentPage': recordPage,
+      'adjustmentPages': 4,
+      'adjustments': [
+        for (var i = recordStart; i < recordStart + 50 && i < 151; i++)
+          {
+            'id': 'record-$i',
+            'status': 'DRAFT',
+            'source_reference': 'record-$i',
+            'released_original': '0.000000000000000000000001',
+            'released_local': '90071992547409.0001',
+          },
+      ],
+    };
   }
 }

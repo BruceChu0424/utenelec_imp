@@ -26,6 +26,9 @@ import java.util.function.Supplier;
 /** Original-document decisions. A release owns one negative AP and its exact native offset, never a cash payment. */
 @Service @RequiredArgsConstructor
 public class FinancePayableStatementAdjustmentService implements FinancePayableStatementAdjustmentPort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
     private final JdbcTemplate db;
     private final EntityManager em;
     private final ObjectMapper json;
@@ -75,7 +78,7 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
         result.put("targets",targets);result.put("accounts",accounts);result.put("page",p);result.put("totalPages",(total+s-1)/s);result.put("total",total);
         result.put("currency",db.queryForMap("SELECT code,name FROM currencies WHERE id=?",original.currencyId()));
         int ap=Math.max(1,adjustmentPage);long adjustmentCount=db.queryForObject("SELECT count(*) FROM finance_payable_statement_adjustments WHERE statement_review_id=? AND source_fingerprint=?",Long.class,original.reviewId(),original.sourceFingerprint());
-        result.put("adjustments",adjustmentRows(context,ap));result.put("adjustmentPage",ap);result.put("adjustmentPages",(adjustmentCount+49)/50);return result;
+        result.put("adjustments",adjustmentRows(context,ap));result.put("adjustmentPage",ap);result.put("adjustmentPages",(adjustmentCount+49)/50);result.put("adjustmentTotal",adjustmentCount);result.put("adjustmentSize",50);result.put("size",s);return result;
     }
     @Override @Transactional(readOnly=true)
     public Preview preview(Context context,List<Line> lines){read();return previewOf(plan(context,lines,false,null));}
@@ -284,4 +287,21 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
     private static void reference(String v,String label){if(v==null||v.isBlank()||v.length()>2000)throw invalid("请填写"+label+"（最多2000字）");}
     private static ApiException invalid(String v){return new ApiException(ErrorCode.VALIDATION_FAILED,v);}
     private static ApiException conflict(String v){return new ApiException(ErrorCode.CONFLICT,v);}
+
+    /** Independent target/record complete reads share the mutable business domain, not an auth-only epoch. */
+    public Map<String,Object> versionedChoices(Context context,int page,int size,int adjustmentPage,String part,String revision) {
+        if(context==null||!Set.of("targets","adjustments").contains(part)||page<1||size<1||size>100||adjustmentPage<1)
+            throw invalid("完整摘要读取条件无效");
+        int selectedPage=part.equals("targets")?page:adjustmentPage;
+        int selectedSize=part.equals("targets")?size:50;
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-payable-statement-choices","finance",
+                Map.of("statementReviewId",context.statementReviewId(),"sourceFingerprint",context.expectedSourceFingerprint(),"part",part),
+                "all",selectedPage,selectedSize,100,revision);
+        var snapshot=summaryPages.read(request,this::read,()->choices(context,page,size,adjustmentPage));
+        var result=new LinkedHashMap<String,Object>(snapshot.value());
+        result.put("scope","all");result.put("readScopeVersion",snapshot.readScopeVersion());
+        result.put("readSnapshotRevision",snapshot.readSnapshotRevision());
+        result.put("readDataVersion",snapshot.readDataVersion());
+        return result;
+    }
 }

@@ -1,0 +1,11 @@
+{
+  "target": "lib/main.dart",
+  "output": "build/loading-entry-current",
+  "startedAtUtc": "2026-11-05T11:28:59.758965+00:00",
+  "endedAtUtc": "2026-11-05T11:36:15.515694+00:00",
+  "exitCode": 0,
+  "log": "build\\loading-validation\\web-current-entry-build.log",
+  "logSha256": "abb749aa3ea3d31f75b312896605c4a1a63ca7e3bf79f9e3457c0d6ea2f1af78",
+  "localValidationOnly": true,
+  "formalDistribution": false
+}

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +8,14 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/pages/finance_applications_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -35,6 +39,10 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
 
   final List<({String path, Map<String, dynamic>? query})> queries = [];
+  Completer<Map<String, dynamic>>? catalogGate, nextRows;
+  bool catalogFails = false;
+  int total = 1;
+  final rowOwners = <bool Function()?>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -42,18 +50,38 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     queries.add((path: path, query: query));
-    if (path.endsWith('/catalog')) return <String, dynamic>{};
+    if (path.endsWith('/catalog')) {
+      if (catalogFails) throw StateError('catalog offline');
+      if (catalogGate != null) return catalogGate!.future;
+      return <String, dynamic>{};
+    }
+    rowOwners.add(PagedReadIntent.currentRead);
+    if (nextRows case final pending?) {
+      nextRows = null;
+      return pending.future;
+    }
     return <String, dynamic>{
       'rows': [
-        {
-          'id': 'fa-1',
-          'application_no': 'FK20261104000001',
-          'kindLabel': '付款申请',
-          'title': '样例付款',
-          'status': 'PENDING',
-        },
+        for (
+          var index = 0;
+          index <
+              (total -
+                      (((query?['page'] as int? ?? 1) - 1) *
+                          (query?['size'] as int? ?? 100)))
+                  .clamp(0, query?['size'] as int? ?? 100);
+          index++
+        )
+          {
+            'id': 'fa-${query?['page']}-$index',
+            'application_no': 'FK20261104${query?['page']}-$index',
+            'kindLabel': '付款申请',
+            'title': index == 0 ? '样例付款' : '分页样例-$index',
+            'status': 'PENDING',
+          },
       ],
-      'total': 1,
+      'total': total,
+      'page': query?['page'],
+      'size': query?['size'],
     };
   }
 }
@@ -90,6 +118,99 @@ Future<void> _pump(WidgetTester tester, _Api api) async {
 }
 
 void main() {
+  testWidgets(
+    'slow or failed catalog never blocks rows or grants create from an old catalog',
+    (tester) async {
+      final api = _Api()..catalogGate = Completer<Map<String, dynamic>>();
+      await _pump(tester, api);
+      expect(find.text('样例付款'), findsOneWidget);
+      UtenButton create() =>
+          tester.widget<UtenButton>(find.widgetWithText(UtenButton, '新增'));
+      expect(create().onPressed, isNull);
+      api.catalogGate!.complete({'types': <dynamic>[]});
+      await tester.pumpAndSettle();
+      expect(create().onPressed, isNotNull);
+      api.catalogFails = true;
+      await tester.tap(find.widgetWithText(UtenButton, '刷新'));
+      await tester.pumpAndSettle();
+      expect(find.text('样例付款'), findsOneWidget);
+      expect(create().onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'complete application rows reuse one catalog, scroll without reads, and retire the previous query',
+    (tester) async {
+      final api = _Api()..total = 90;
+      await _pump(tester, api);
+      expect(
+        api.queries.where((q) => q.path.endsWith('/catalog')),
+        hasLength(1),
+      );
+      expect(
+        api.queries.where((q) => q.path == financeApplicationsApi),
+        hasLength(1),
+        reason: 'Ninety summaries fit one bounded one-hundred-row request',
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.items, hasLength(90));
+      expect(
+        api.queries
+            .lastWhere((query) => query.path == financeApplicationsApi)
+            .query?['size'],
+        100,
+      );
+      final reads = api.queries.length;
+      final scroll = find
+          .descendant(
+            of: find.byType(MasterDataTableView<Map<String, dynamic>>),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first;
+      await tester.drag(scroll, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      await tester.drag(scroll, const Offset(0, 500));
+      await tester.pumpAndSettle();
+      expect(api.queries.length, reads);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      final pending = api.nextRows = Completer<Map<String, dynamic>>();
+      final refreshingRows = Future<void>.sync(table.onRetry!);
+      await tester.pump();
+      final oldOwner = api.rowOwners.last!;
+      expect(oldOwner(), true);
+      final toolbar = tester.widget<UtenFilterToolbar<String>>(
+        find.byType(UtenFilterToolbar<String>).first,
+      );
+      toolbar.onSelectionChanged!('history');
+      await tester.pumpAndSettle();
+      expect(oldOwner(), false);
+      expect(
+        api.queries.where((q) => q.path.endsWith('/catalog')),
+        hasLength(1),
+      );
+      pending.complete({
+        'rows': [
+          {'id': 'old', 'title': '旧队列晚到'},
+        ],
+        'total': 1,
+      });
+      await refreshingRows;
+      await tester.pumpAndSettle();
+      expect(find.text('旧队列晚到'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'refresh sits in the app bar and the category row keeps only create',
     (tester) async {

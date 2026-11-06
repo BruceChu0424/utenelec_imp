@@ -29,6 +29,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/editor_identity_notice.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -80,13 +81,11 @@ class DiscoveryRequestMaterialRow {
       throw const FormatException('请选择材料，并确认货品已设置基本单位');
     }
     final input = qty.text.trim();
-    final amount = double.tryParse(input);
     if (input.isNotEmpty &&
-        (amount == null ||
-            !amount.isFinite ||
-            amount <= 0 ||
-            !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(input))) {
-      throw const FormatException('领料数量须大于 0，最多 4 位小数；暂不确定时可以留空');
+        positiveMaterialCommandQuantityText(input) == null) {
+      throw const FormatException(
+        '领料数量须大于 0，最多 4 位小数且小于 100000000000000；暂不确定时可以留空',
+      );
     }
     return {
       'goodsId': values['goodsId'],

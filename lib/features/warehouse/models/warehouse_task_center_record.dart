@@ -216,8 +216,29 @@ class WarehouseTaskCenterPageResult
     required super.total,
     required super.totalPages,
     super.facets,
+    super.readScopeVersion,
+    this.metadataIncluded = true,
   });
+  final bool metadataIncluded;
   List<MasterFacetBucket> get statusFacets => facets['status'] ?? const [];
+
+  @override
+  WarehouseTaskCenterPageResult withRows(
+    List<WarehouseTaskCenterRecord> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => WarehouseTaskCenterPageResult(
+    items: freezePagedRows(rows),
+    page: page,
+    size: size ?? rows.length,
+    total: total ?? this.total,
+    totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+    facets: facets,
+    readScopeVersion: readScopeVersion,
+    metadataIncluded: metadataIncluded,
+  );
 
   factory WarehouseTaskCenterPageResult.fromJson(Map<String, dynamic> json) {
     final Map<Object?, Object?> facets = json['facets'] is Map
@@ -232,6 +253,8 @@ class WarehouseTaskCenterPageResult
       size: (json['size'] as num?)?.toInt() ?? 20,
       total: (json['total'] as num?)?.toInt() ?? 0,
       totalPages: (json['totalPages'] as num?)?.toInt() ?? 0,
+      readScopeVersion: json['readScopeVersion'] as String?,
+      metadataIncluded: json['metadataIncluded'] != false,
       facets: {
         for (final key in const ['status', 'billNo'])
           key: (facets[key] as List? ?? const [])

@@ -1,0 +1,10 @@
+{
+  "atUtc": "2026-11-06T02:19:06.816200+00:00",
+  "sourceAggregateSha256": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "sourceFiles": 7411,
+  "sourcePathsetAndBytesDrift": [],
+  "mainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "committedMainSqlRawEqual": 1009,
+  "migrations": 1013,
+  "fourSemanticPinsSha256": "aa5fa4419fdeb95c96acafe7268c8726e0f7fe35a31300c0413d39f513dbd37d"
+}

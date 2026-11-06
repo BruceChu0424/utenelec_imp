@@ -9,6 +9,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -318,7 +319,15 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                     ),
                   ),
                   Step(
-                    title: Text(l10n.payrollStepPreview),
+                    title: Row(
+                      children: [
+                        Flexible(child: Text(l10n.payrollStepPreview)),
+                        const UtenFieldHintIcon(
+                          info: '金额由服务器计算。草稿已经保存，提交后进入审核流程。',
+                          dense: true,
+                        ),
+                      ],
+                    ),
                     isActive: _step >= 2,
                     state: _step > 2
                         ? StepState.complete
@@ -480,15 +489,22 @@ class _PayrollItemSwitch extends StatelessWidget {
   );
 }
 
-class _ServerBatchPreview extends StatelessWidget {
+class _ServerBatchPreview extends StatefulWidget {
   const _ServerBatchPreview({required this.batch});
 
   final PayrollBatch batch;
 
   @override
+  State<_ServerBatchPreview> createState() => _ServerBatchPreviewState();
+}
+
+class _ServerBatchPreviewState extends State<_ServerBatchPreview> {
+  final _rows = UtenAncestorRowWindowController<PayrollSlip>();
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final visibleSlips = batch.slips.take(20).toList(growable: false);
+    final batch = widget.batch;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -531,7 +547,7 @@ class _ServerBatchPreview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: UtenSpacing.s12),
-        if (visibleSlips.isEmpty)
+        if (batch.slips.isEmpty)
           Text(
             '这批工资没有任何员工明细，请不要提交。',
             style: TextStyle(color: theme.colorScheme.error),
@@ -539,33 +555,22 @@ class _ServerBatchPreview extends StatelessWidget {
         else
           UtenCard(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-            child: Column(
-              children: [
-                for (var index = 0; index < visibleSlips.length; index++) ...[
-                  _SlipPreviewRow(slip: visibleSlips[index]),
-                  if (index != visibleSlips.length - 1)
+            child: UtenAncestorRowWindow<PayrollSlip>(
+              key: ValueKey('payroll-batch-preview-${batch.id}'),
+              controller: _rows,
+              rows: batch.slips,
+              expensiveRows: false,
+              deferRowMounts: false,
+              estimatedRowExtent: 56,
+              rowBuilder: (context, slip, index) => Column(
+                children: [
+                  _SlipPreviewRow(slip: slip),
+                  if (index != batch.slips.length - 1)
                     Divider(height: 1, color: theme.colorScheme.outlineVariant),
                 ],
-                if (batch.slips.length > visibleSlips.length)
-                  Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Text(
-                      '仅预览前 ${visibleSlips.length} 人，完整明细请在审核页查看。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '以上金额均来自服务器计算。草稿已经保存，提交后进入审核流程。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ],
     );
   }

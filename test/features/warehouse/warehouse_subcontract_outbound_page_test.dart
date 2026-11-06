@@ -4,6 +4,7 @@
 // ADR-184 起勾选批量核对出库的动作权由服务端逐行 canHandle 下发。
 import '../../support/table_read_status.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -252,7 +253,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('窄屏仍是表格, 搜索 / 翻页 / 加载失败照常', (tester) async {
+  testWidgets('窄屏完整摘要仍是表格, 搜索 / 本地滚动 / 加载失败照常', (tester) async {
     await setUtenTestSurfaceSize(tester, const Size(375, 900));
     addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
@@ -279,9 +280,39 @@ void main() {
     await tester.enterText(searchField, '');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    _table(tester).onPageChange!(2);
+    final table = _table(tester);
+    expect(table.currentPage, 1);
+    expect(table.totalPages, 1);
+    expect(find.byType(UtenPagination), findsNothing);
+    expect(table.items, hasLength(api.taskHeaders.length));
+    expect(table.items.map(table.idOf!), [
+      for (final issue in api.taskHeaders.keys)
+        'SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:$issue',
+    ]);
+    expect(api.taskQueries.every((query) => query['page'] == 1), isTrue);
+    final readsBeforeScroll = api.listRequests;
+    final tableFinder = find.byWidgetPredicate(
+      (widget) => widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+    );
+    final horizontal = find
+        .descendant(
+          of: tableFinder,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.right,
+          ),
+        )
+        .first;
+    final position = tester.state<ScrollableState>(horizontal).position;
+    expect(position.maxScrollExtent, greaterThan(0));
+    position.jumpTo(position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(api.taskQueries.last['page'], 2);
+    expect(position.pixels, greaterThan(0));
+    expect(api.listRequests, readsBeforeScroll);
+    expect(table.items, hasLength(api.taskHeaders.length));
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
 
     api.failNextList = true;
     final listRequests = api.listRequests;
@@ -301,6 +332,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.listRequests, listRequests + 1);
     await expectTableReadFailureDetails(tester, '仓库单据加载失败，请重试');
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
     expect(tester.takeException(), isNull);
   });
 }

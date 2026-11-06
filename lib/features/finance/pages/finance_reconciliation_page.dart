@@ -70,6 +70,9 @@ class FinanceReconciliationPage extends ConsumerStatefulWidget {
 class _FinanceReconciliationPageState
     extends ConsumerState<FinanceReconciliationPage>
     with ScopedPagedReadViewMixin<FinanceReconciliationPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   PagedResult<ReconciliationItem>? _page;
   int _pageNum = 1;
   final _tableRows = MasterDataTableRowsController<ReconciliationItem>();
@@ -179,11 +182,17 @@ class _FinanceReconciliationPageState
     try {
       final r = await readScopedPage<ReconciliationItem>(
         page,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
-        fetchPage: (target) =>
-            repo.list(page: target, filter: filter, sort: sort, order: order),
+        fetchPage: (target) => repo.list(
+          page: target,
+          size: 100,
+          filter: filter,
+          sort: sort,
+          order: order,
+        ),
       );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
@@ -191,12 +200,14 @@ class _FinanceReconciliationPageState
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载流水失败';

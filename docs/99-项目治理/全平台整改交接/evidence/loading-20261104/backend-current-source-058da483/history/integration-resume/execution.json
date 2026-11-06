@@ -1,0 +1,26 @@
+{
+  "label": "integration-resume",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-integration-resume-selection.txt",
+  "selected": "FinanceApplicationsPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,MaterialAnalysisSupplyWakeupQueryPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,SalesDeliveryMixedScenarioEndToEndTest,SalesDeliveryOrderClaimEndToEndTest,SalesDeliveryPrivateSourceEndToEndTest,SalesDeliveryRevisionEndToEndTest,SalesDeliverySourceReverseUnitsEndToEndTest,SalesDeliveryWarehouseScopeEndToEndTest,SalesShipmentCurrencyFilterTest,SalesShipmentFinanceReleaseRateEndToEndTest,SalesShipmentOwnerBoundaryTest",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=FinanceApplicationsPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,MaterialAnalysisSupplyWakeupQueryPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,SalesDeliveryMixedScenarioEndToEndTest,SalesDeliveryOrderClaimEndToEndTest,SalesDeliveryPrivateSourceEndToEndTest,SalesDeliveryRevisionEndToEndTest,SalesDeliverySourceReverseUnitsEndToEndTest,SalesDeliveryWarehouseScopeEndToEndTest,SalesShipmentCurrencyFilterTest,SalesShipmentFinanceReleaseRateEndToEndTest,SalesShipmentOwnerBoundaryTest",
+    "surefire:test"
+  ],
+  "environment": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_RUN_DB_TESTS": "true"
+  },
+  "sourceInputSha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+  "startedAtUtc": "2026-11-05T09:19:46.2497741Z",
+  "wrapperPid": 31080,
+  "log": "build/loading-validation/combined-integration-resume.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T10:03:21.3702230Z",
+  "actualExitCode": 1
+}

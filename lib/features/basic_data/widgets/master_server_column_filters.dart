@@ -4,6 +4,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/master_facet.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 
 /// 服务端表头列筛选/排序的页面侧共享状态（2026-09-25 单号列统一）。
 ///
@@ -103,9 +104,10 @@ class MasterServerColumnFilters {
     bool Function()? isCurrent,
   }) async {
     final gen = ++generation;
+    bool current() => gen == generation && (isCurrent?.call() ?? true);
     try {
-      final result = await fetch();
-      if (gen != generation || isCurrent?.call() == false) return;
+      final result = await PagedReadIntent.scopedRead(current, fetch);
+      if (!current()) return;
       buckets = result;
       onLoaded();
     } catch (_) {

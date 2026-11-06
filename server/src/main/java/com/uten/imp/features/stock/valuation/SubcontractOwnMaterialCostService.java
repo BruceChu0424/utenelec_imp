@@ -239,7 +239,7 @@ public class SubcontractOwnMaterialCostService implements com.uten.imp.applicati
         var materials=db.queryForList("""
                 SELECT c.*,issue.goods_id,issue.color_id FROM subcontract_receipt_material_consumptions c
                 JOIN subcontract_material_issue_items issue ON issue.id=c.issue_item_id
-                WHERE c.receipt_item_id=:item AND c.reversal_of IS NULL
+                WHERE c.receipt_item_id=:item AND c.reversal_of IS NULL AND c.qty_doc>0
                   AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=c.id)
                 ORDER BY c.id
                 """,Map.of("item",receiptItem));
@@ -292,12 +292,8 @@ public class SubcontractOwnMaterialCostService implements com.uten.imp.applicati
                        WHERE plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE)
                    AND NOT EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
                        WHERE plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE
-                         AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions c
-                             JOIN subcontract_material_issue_items issue ON issue.id=c.issue_item_id
-                             WHERE c.receipt_item_id=item.id AND issue.plan_item_id=plan.id
-                               AND c.reversal_of IS NULL AND c.qty_doc>0
-                               AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed
-                                   WHERE reversed.reversal_of=c.id)))
+                         AND NOT fn_subcontract_receipt_material_line_proven(item.id,plan.id))
+                   AND (item.material_consumption_version=1 OR fn_subcontract_receipt_material_complete(item.id))
                 FROM subcontract_receipt_items item WHERE item.id=:id
                 """,Map.of("id",receiptItem,"target",target),Boolean.class));
     }
@@ -373,7 +369,7 @@ public class SubcontractOwnMaterialCostService implements com.uten.imp.applicati
             SELECT c.*,issue.goods_id,issue.color_id FROM subcontract_receipt_material_consumptions c
             JOIN subcontract_receipt_items item ON item.id=c.receipt_item_id
             JOIN subcontract_material_issue_items issue ON issue.id=c.issue_item_id
-            WHERE item.receipt_id=:id AND c.reversal_of IS NULL ORDER BY c.id
+            WHERE item.receipt_id=:id AND c.reversal_of IS NULL AND c.qty_doc>0 ORDER BY c.id
             """,Map.of("id",receipt));}
     private void lockSources(List<Map<String,Object>> rows){mutex.lockAll(rows.stream().map(row->new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))).toList());}
     private List<Slice> take(Owner owner,UUID ownerId,BigDecimal qty){

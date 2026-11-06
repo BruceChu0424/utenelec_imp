@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 class _Harness extends StatefulWidget {
   const _Harness({super.key, this.primary = false, this.virtualized = false});
@@ -55,9 +54,6 @@ class _HarnessState extends State<_Harness> {
       totalPages: 4,
       onPageChange: (next) {
         update(page: next);
-        // This fixture's in-memory page is already delivered. A real pager
-        // read, including an identical cached DTO, acknowledges its intent.
-        PagedReadIntent.accepted(next);
       },
       scrollToEndRequest: request,
     );
@@ -275,9 +271,9 @@ void main() {
       key.currentState!.rows.goToPage(1);
       await tester.pumpAndSettle();
       expect(
-        find.text('ROW-0').hitTestable(),
+        find.text('ROW-79').hitTestable(),
         findsOneWidget,
-        reason: 'Ordinary pagination must retain reset-to-top.',
+        reason: 'Retired page navigation must not move a continuous list.',
       );
       expect(tester.takeException(), isNull);
     });

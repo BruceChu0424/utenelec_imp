@@ -1,4 +1,5 @@
 import '../../../core/formatters/exact_number_text.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
 // 客户/供应商详情整页（V579，2026-09-14；2026-09-17 布局改版）。
 //
 // 改版对齐员工详情/我的页的家族范式（用户 2026-09-17 口径：原五张全宽大卡片
@@ -96,6 +97,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
 
   /// ADR-098 供应商「委外损耗」汇总（有委外订货查看权限才拉；失败静默不影响主档）。
   SubcontractSupplierLossSummary? _lossSummary;
+  final _lossRows = UtenAncestorRowWindowController<SubcontractGoodsLossRow>();
   List<PartyContactMethod> _contacts = const [];
   List<PartyAddress> _addresses = const [];
   List<PartyActivityRecord> _activities = const [];
@@ -984,8 +986,15 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
             ),
           ),
           const SizedBox(height: UtenSpacing.s8),
-          for (final g in s.byGoods.take(8))
-            Padding(
+          UtenAncestorRowWindow<SubcontractGoodsLossRow>(
+            key: const Key('supplier-loss-goods'),
+            controller: _lossRows,
+            rows: s.byGoods,
+            expensiveRows: false,
+            deferRowMounts: false,
+            estimatedRowExtent: 48,
+            rowBuilder: (context, g, index) => Padding(
+              key: ValueKey('supplier-loss-goods-${g.goodsId}'),
               padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
               child: Text(
                 '${g.goodsName ?? ''} ${g.goodsCode ?? ''}：'
@@ -995,6 +1004,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                 style: theme.textTheme.bodyMedium,
               ),
             ),
+          ),
         ],
         if (s.recentCases.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s16),

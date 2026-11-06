@@ -1,0 +1,87 @@
+{
+  "createdAtUtc": "2026-11-05T16:24:08.656823+00:00",
+  "scope": "Durable completed41 historical round, not final all-current-green. Raw RED invocation and all failures remain present.",
+  "actualExitCode": 1,
+  "cases": {
+    "passed": 632,
+    "failed": 56,
+    "skipped": 0
+  },
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceRemoved": [],
+  "metadataDrift": [],
+  "archive": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/dart-41-6d6efcb-20261105.zip",
+  "archiveSha256": "0a9f4306ee596f372e417d08824f3ad8a790d64f52c97b321f31f30eecbfd0be",
+  "archiveBytes": 282910,
+  "memberCount": 11,
+  "crcAndMemberSha256Verified": true,
+  "entries": [
+    {
+      "repoSourcePath": "build/loading-validation/all-activity-manual-final-whole.jsonl",
+      "archiveEntry": "build/loading-validation/all-activity-manual-final-whole.jsonl",
+      "sha256": "35e10bb7f54c3b9c495cc91ac62cdc8e0aab4692d6e6702f3090519e3b28fd04",
+      "bytes": 641269
+    },
+    {
+      "repoSourcePath": "build/loading-validation/all-activity-manual-final-whole-inputs.json",
+      "archiveEntry": "build/loading-validation/all-activity-manual-final-whole-inputs.json",
+      "sha256": "0cc6c8fdd11c7069e468c9dde6df8a922a78fe2c11efc241b67e3efa01293278",
+      "bytes": 672893
+    },
+    {
+      "repoSourcePath": "build/loading-validation/all-activity-manual-final-whole-execution.json",
+      "archiveEntry": "build/loading-validation/all-activity-manual-final-whole-execution.json",
+      "sha256": "4eedaf21c52ad170e140a83906f2619fefa30ffea3f06d474b35f374c5dc405c",
+      "bytes": 3635
+    },
+    {
+      "repoSourcePath": "build/loading-validation/all-activity-manual-final-whole-case-ledger.json",
+      "archiveEntry": "build/loading-validation/all-activity-manual-final-whole-case-ledger.json",
+      "sha256": "bf5988f64877b617002b86fab9c28ad79a3e1144e087748da9e7811df16ecd17",
+      "bytes": 175305
+    },
+    {
+      "repoSourcePath": "build/loading-validation/all-activity-manual-final-whole-process-owner.json",
+      "archiveEntry": "build/loading-validation/all-activity-manual-final-whole-process-owner.json",
+      "sha256": "cf8eec180680a8209d68f4db4f37fd10940c6a12e83546ffa990332d5064c99e",
+      "bytes": 4408
+    },
+    {
+      "repoSourcePath": "build/loading-validation/run_locked_dart_validation.py",
+      "archiveEntry": "build/loading-validation/run_locked_dart_validation.py",
+      "sha256": "14930a043fd7f9cb32b2fe3e88518b6a4bda0e5d203eafb8d1d5f8e25cf6b8cb",
+      "bytes": 3215
+    },
+    {
+      "repoSourcePath": "build/loading-validation/summarize_current_dart_run.py",
+      "archiveEntry": "build/loading-validation/summarize_current_dart_run.py",
+      "sha256": "dbe14b2e8ee4ce421ff643e69391b1a75b42ea885d6444ff60c69d8f0823163f",
+      "bytes": 3590
+    },
+    {
+      "repoSourcePath": "build/loading-validation/final-report-schema-review.json",
+      "archiveEntry": "build/loading-validation/final-report-schema-review.json",
+      "sha256": "afdc9de77d30d7ac46c58c93b39cc5cd6363d9232660892ad437f3508ad12c0f",
+      "bytes": 2441
+    },
+    {
+      "repoSourcePath": "build/loading-validation/final-finance-leaf-command-preservation.json",
+      "archiveEntry": "build/loading-validation/final-finance-leaf-command-preservation.json",
+      "sha256": "c12e00de45500eac7c5be133a2b2ac302dd7b47e4dfe6ac671bab706396eb064",
+      "bytes": 2946
+    },
+    {
+      "repoSourcePath": "build/loading-validation/final-finance-membership-analysis.log",
+      "archiveEntry": "build/loading-validation/final-finance-membership-analysis.log",
+      "sha256": "195a2518fa842ebea4a30b823b8b66a0acae97249f9dec0608ffda958a5092e4",
+      "bytes": 203
+    },
+    {
+      "repoSourcePath": "build/loading-validation/final-strict-dependencies.json",
+      "archiveEntry": "build/loading-validation/final-strict-dependencies.json",
+      "sha256": "5aa01c6852de1f4db7ac99dd9360fa0edd3566545f433b0f7df7639bc92ae568",
+      "bytes": 1250
+    }
+  ]
+}

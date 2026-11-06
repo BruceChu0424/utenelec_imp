@@ -977,6 +977,9 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("summary_read_freshness",
+                    "V1095 完整列表的域字典与事务变化标记仅维护读取新鲜度；不保存原单、业务内容或授权决定，业务事实仍由原表审计，不重复复制技术协调态",
+                    Set.of("summary_read_domains", "summary_read_markers")),
             new NoneGroup("financial_source_coordination",
                     "V999 子版本财务来源的期间修订计数与结果回执属于技术协调态；原始证据和实际人工决定由各自入口及元数据审计保留",
                     Set.of("finance_gl_period_versions", "finance_cost_input_operations",

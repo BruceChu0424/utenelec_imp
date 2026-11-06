@@ -1,105 +1,142 @@
-import 'dart:async';
-
+// Only reader ownership survives the retired read-ahead/window protocol.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/data_display/paged_list_controller.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
-import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
-import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 
-PagedResult<int> _page(int page) => PagedResult(
-  items: [page * 10, page * 10 + 1],
-  page: page,
-  size: 2,
-  total: 40,
-  totalPages: 20,
+PagedResult<int> _result(List<int> rows) => PagedResult(
+  items: rows,
+  page: 1,
+  size: rows.length,
+  total: rows.length,
+  totalPages: rows.isEmpty ? 0 : 1,
 );
-
 void main() {
-  for (final controller in [false, true]) {
-    test(
-      '${controller ? 'controller' : 'scoped reader'} prepares from projected reading position and retires late cache data',
-      () async {
-        final reader = ScopedPagedRead<int>();
-        final list = PagedListController<int>();
-        addTearDown(reader.dispose);
-        addTearDown(list.dispose);
-        final reads = <int>[];
-        var scope = 'A';
-        Completer<PagedResult<int>>? gate;
-        final reverseStarted = Completer<void>();
-        Future<PagedResult<int>> fetch(int page) async {
-          reads.add(page);
-          if (page == 9 && !reverseStarted.isCompleted) {
-            reverseStarted.complete();
-          }
-          return gate?.future ?? _page(page);
-        }
+  test(
+    'a Base owner proof remains attached when the same response rows are viewed through their Child type',
+    () {
+      final session = PagedReadWindowSession<num>(isCurrent: () => true);
+      final List<int> rows = [1, 2];
+      session.bindResult(
+        PagedResult<num>(
+          items: rows,
+          page: 1,
+          size: 2,
+          total: 2,
+          totalPages: 1,
+        ),
+      );
+      final proof = readWindowBindingOf<int>(rows);
+      expect(proof, isNotNull);
+      expect(proof!.isCurrent, isTrue);
+      session.invalidate();
+      expect(proof.isCurrent, isFalse);
+    },
+  );
 
-        Future<PagedResult<int>> read(int page) async {
-          final owner = scope;
-          if (controller) {
-            await list.load(
-              page,
-              queryScope: scope,
-              fetch: () => fetch(page),
-              fetchPage: fetch,
-              isCurrent: () => owner == scope,
-              useCachedPage: true,
-              canPrefetch: () => false,
-            );
-            return list.page!;
-          }
-          return reader.read(
-            page,
-            scope: scope,
-            fetchPage: fetch,
-            isCurrent: () => owner == scope,
-            useCache: true,
-            canPrefetch: () => false,
-          );
-        }
-
-        final result = await read(1);
-        await PagedReadIntent.bufferSeed(() => read(2));
-        final projected = result.items.map((row) => 'row-$row').toList();
-        projectReadWindowBinding<int, String>(
-          result.items,
-          projected,
-          project: (rows) => rows.map((row) => 'row-$row').toList(),
-          projectionKey: 'labels',
-        );
-        final binding = readWindowBindingOf<String>(projected)!;
-        await binding.prepareAround(5, canPrepare: () => true);
-        expect(reads, [1, 2, 6, 7, 4, 3]);
-        expect(result.page, 1, reason: 'Preparation never publishes a UI page');
-        await read(3);
-        expect(reads, [
-          1,
-          2,
-          6,
-          7,
-          4,
-          3,
-        ], reason: 'Return adopts the cached page');
-
-        gate = Completer<PagedResult<int>>();
-        final pending = binding.prepareAround(
-          10,
-          prepend: true,
-          canPrepare: () => true,
-        );
-        await reverseStarted.future;
-        expect(reads.last, 9, reason: 'Reverse scroll prepares behind first');
-        scope = 'B';
-        gate.complete(_page(9));
-        await pending;
-        gate = null;
-        expect(reads, isNot(contains(8)));
-        await read(9);
-        expect(reads.where((page) => page == 9), hasLength(2));
-        expect(binding.isCurrent, isFalse);
+  test(
+    'business projection retains live ownership without fetching or maintaining replacement pages',
+    () {
+      var current = true;
+      final session = PagedReadWindowSession<int>(isCurrent: () => current);
+      final raw = <int>[1, 2];
+      session.bindResult(_result(raw));
+      final view = raw.map((row) => 'row-$row').toList();
+      projectReadWindowBinding(
+        raw,
+        view,
+        project: (rows) => rows.map((row) => 'row-$row').toList(),
+        projectionKey: 'labels',
+      );
+      final proof = readWindowBindingOf(view)!;
+      expect(proof.isCurrent, isTrue);
+      current = false;
+      expect(proof.isCurrent, isFalse);
+      expect(view, ['row-1', 'row-2']);
+    },
+  );
+  test(
+    'pending and ordinary failure retain ownership while access rejection retires every projection',
+    () {
+      final session = PagedReadWindowSession<int>(isCurrent: () => true);
+      final raw = <int>[1];
+      session.bindResult(_result(raw));
+      final view = <String>['one'];
+      projectReadWindowBinding(
+        raw,
+        view,
+        project: (rows) => ['one'],
+        projectionKey: 'labels',
+      );
+      final proof = readWindowBindingOf(view)!;
+      session.bindResult(_result(raw), pending: true);
+      expect(proof.pending, isTrue);
+      session.fail();
+      expect(proof.pending, isFalse);
+      expect(proof.failed, isTrue);
+      expect(proof.isCurrent, isTrue);
+      session.fail(accessDenied: true);
+      expect(proof.isCurrent, isFalse);
+    },
+  );
+  test(
+    'an empty result clears the existing owner session without binding a shared const empty list',
+    () {
+      final session = PagedReadWindowSession<int>(isCurrent: () => true);
+      final rows = <int>[1];
+      session.bindResult(_result(rows));
+      final proof = readWindowBindingOf(rows)!;
+      final empty = session.bindResult(_result(const []));
+      expect(proof.empty, isTrue);
+      expect(session.empty, isTrue);
+      expect(readWindowBindingOf(const <int>[]), isNull);
+      expect(readWindowBindingOf(empty.items)!.isCurrent, isTrue);
+      final other = PagedReadWindowSession<int>(isCurrent: () => true);
+      final otherEmpty = other.bindResult(_result(const []));
+      expect(identical(empty.items, otherEmpty.items), isFalse);
+      session.invalidate();
+      expect(readWindowBindingOf(empty.items)!.isCurrent, isFalse);
+      expect(readWindowBindingOf(otherEmpty.items)!.isCurrent, isTrue);
+      final projected = projectReadWindowBinding(
+        otherEmpty.items,
+        const <String>[],
+        project: (_) => const <String>[],
+        projectionKey: 'empty labels',
+      );
+      expect(readWindowBindingOf(projected)!.isCurrent, isTrue);
+      expect(readWindowBindingOf(const <String>[]), isNull);
+    },
+  );
+  test('sameSession includes an immutable structural projection identity', () {
+    final session = PagedReadWindowSession<int>(isCurrent: () => true);
+    final raw = <int>[1];
+    session.bindResult(_result(raw));
+    final key = {
+      'kind': <int>[1],
+    };
+    final a = <String>['a'];
+    projectReadWindowBinding(
+      raw,
+      a,
+      project: (rows) => ['a'],
+      projectionKey: key,
+    );
+    key['kind']!.add(2);
+    final b = <String>['b'];
+    projectReadWindowBinding(
+      raw,
+      b,
+      project: (rows) => ['b'],
+      projectionKey: {
+        'kind': [1],
       },
     );
-  }
+    expect(readWindowBindingOf(a)!.sameSession(readWindowBindingOf(b)), isTrue);
+    final other = PagedReadWindowSession<int>(isCurrent: () => true);
+    final otherRows = <int>[1];
+    other.bindResult(_result(otherRows));
+    expect(
+      readWindowBindingOf(raw)!.sameSession(readWindowBindingOf(otherRows)),
+      isFalse,
+    );
+  });
 }

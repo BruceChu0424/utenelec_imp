@@ -1,0 +1,14 @@
+{
+  "atUtc": "2026-11-06T07:21:56.737771+00:00",
+  "status": "backend_final_doc_handoff_archive_complete",
+  "source": "52be87ef98d6baaaba0dec16e0aabc659a1d184e70fd2834bd3fbccf3702e794",
+  "finalDoc": "docs/99-项目治理/全平台整改交接/2026-11-06-搜索加载专项-后端Main4ee最终收口.md",
+  "finalDocSha256": "b9a99ea04841491fd338f9d7927aaf22a6feed5bdad54c8aceb560c60739e04f",
+  "currentHandoffSha256": "257c34e98ce54cb3c6a81b8f489b6ed3e8b2f664fbbc94575b748ee3f236fe0e",
+  "acceptanceSha256": "430d613244ba5e2810f7110c9e38af894405a30e826674e1908d8bc791f811a8",
+  "archiveSha256": "49f0604d51a5c4fb805bb3eba25f4b48f2c47af1462c322506694e52a4522d3b",
+  "sourcePathAndBytesFinalDrift": [],
+  "governanceDocsNotMavenRuntimeResources": true,
+  "activeOwnedSessions": [],
+  "mainWritten": false
+}

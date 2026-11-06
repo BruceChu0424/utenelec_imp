@@ -354,6 +354,9 @@ class _UtenDocLinkPickerSheet<D, I, N> extends ConsumerStatefulWidget {
 class _UtenDocLinkPickerSheetState<D, I, N>
     extends ConsumerState<_UtenDocLinkPickerSheet<D, I, N>>
     with ScopedPagedReadViewMixin<_UtenDocLinkPickerSheet<D, I, N>> {
+  @override
+  Future<void> onReadViewResumed() => _loadDocs(1);
+
   final _readViewportRows = MasterDataTableRowsController<D>();
   int get _visibleReadPage => _docPage == null
       ? (_docPage?.page ?? 1)
@@ -500,12 +503,14 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         _loadingDocs = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
         _docsError = e.message;
         _loadingDocs = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
         _docsError = '加载上游单据失败'; // TODO(l10n): 补 arb

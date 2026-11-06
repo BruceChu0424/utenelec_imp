@@ -1,6 +1,8 @@
 package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.application.port.WorkshopMaterialChoicePort;
+import com.uten.imp.common.inventory.PeriodicMaterialCandidateSql;
+import com.uten.imp.common.inventory.PeriodicMaterialUnits;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -223,8 +225,12 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
     // ------------------------------------------------------------------ 开工确认表
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<PendingChoice> pending(Collection<UUID> segmentIds) {
+        return pending(segmentIds,true);
+    }
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public List<PendingChoice> pending(Collection<UUID> segmentIds,boolean includeOptions) {
         if (segmentIds == null || segmentIds.isEmpty()) return List.of();
         MapSqlParameterSource params = new MapSqlParameterSource("ids", List.copyOf(new LinkedHashSet<>(segmentIds)));
         String inScope = scope.predicate("segment.workshop_department_id", params);
@@ -249,7 +255,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
             UUID product = (UUID) rows.getFirst().get("product_goods_id");
             List<UUID> segments = rows.stream().map(row -> (UUID) row.get("id")).toList();
             boolean choiceRequired = rows.stream().anyMatch(row -> STATE_NEED_CHOICE.equals(row.get("state")));
-            out.add(pendingRow(workshop, product, segments, choiceRequired));
+            out.add(pendingRow(workshop, product, segments, choiceRequired,includeOptions));
         }
         return out;
     }
@@ -301,9 +307,13 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
     private static final String STATE_NEED_BIN = "NEED_BIN";
 
     private PendingChoice pendingRow(UUID workshop, UUID product, List<UUID> segments, boolean choiceRequired) {
+        return pendingRow(workshop,product,segments,choiceRequired,true);
+    }
+
+    PendingChoice pendingRow(UUID workshop,UUID product,List<UUID> segments,boolean choiceRequired,boolean includeOptions) {
         MaterialInfo info = bins.material(product);
         Settings settings = workshop == null ? null : bins.settings(workshop);
-        List<MaterialOption> options = options(settings);
+        List<MaterialOption> options = includeOptions?options(settings):List.of();
         List<MaterialRef> prefill = new ArrayList<>();
         String prefillSource = null;
         for (Map<String, Object> row : db.queryForList("""
@@ -371,17 +381,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
         MapSqlParameterSource params = new MapSqlParameterSource("bin",
                 settings == null || settings.binWarehouseId() == null ? null : settings.binWarehouseId().toString());
         List<MaterialOption> out = new ArrayList<>();
-        for (Map<String, Object> row : db.queryForList("""
-                SELECT material.id, material.color_id, material.code, material.name, color.name AS color_name,
-                       EXISTS (SELECT 1 FROM v_workshop_material_bin_ledger ledger
-                               WHERE ledger.bin_warehouse_id = CAST(:bin AS uuid) AND ledger.goods_id = material.id) AS used
-                FROM goods material
-                LEFT JOIN colors color ON color.id = material.color_id
-                WHERE material.issue_method = 'PERIODIC' AND material.periodic_cost_basis = 'OWN'
-                  AND NOT material.is_deleted
-                ORDER BY used DESC, material.code, material.id
-                LIMIT 300
-                """, params)) {
+        for (Map<String, Object> row : db.queryForList("SELECT material.id,material.color_id,material.code,material.name,color.name AS color_name,EXISTS (SELECT 1 FROM v_workshop_material_bin_ledger ledger WHERE ledger.bin_warehouse_id=CAST(:bin AS uuid) AND ledger.goods_id=material.id) AS used "+PeriodicMaterialCandidateSql.FROM+" ORDER BY used DESC,material.code,material.id", params)) {
             out.add(new MaterialOption((UUID) row.get("id"), (UUID) row.get("color_id"), (String) row.get("code"),
                     (String) row.get("name"), (String) row.get("color_name")));
         }
@@ -391,9 +391,8 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
     /** BOM 单个重量换算成克: 基本单位是千克/公斤时乘 1000, 其它质量单位原样。 */
     static BigDecimal grams(BigDecimal qty, String unitName) {
         if (qty == null) return null;
-        String unit = unitName == null ? "" : unitName.strip().toLowerCase(java.util.Locale.ROOT);
-        if (Set.of("千克", "公斤", "kg", "kgs").contains(unit)) return qty.multiply(BigDecimal.valueOf(1000));
-        return qty;
+        BigDecimal factor = PeriodicMaterialUnits.gramsPerUnit(unitName);
+        return factor == null ? qty : qty.multiply(factor);
     }
 
     // ------------------------------------------------------------------ 换料 (段级)
@@ -532,8 +531,12 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
      * 换料对话框的底稿: 这张工单现在用的料 (含已换下的)、可换的料、最早可以从哪天起改、段的最新版本。
      * 车间成员只能看本车间的工单 (对象范围); 读不改。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public SegmentMaterials segmentMaterials(UUID segmentId) {
+        return segmentMaterials(segmentId,true);
+    }
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public SegmentMaterials segmentMaterials(UUID segmentId,boolean includeOptions) {
         if (segmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择工单");
         List<Map<String, Object>> segments = db.queryForList("""
                 SELECT workshop_department_id FROM production_execution_segments WHERE id = :id AND NOT is_deleted
@@ -552,7 +555,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                 LIMIT 1
                 """, Map.of("segment", segmentId), UUID.class);
         UUID bin = !rowBins.isEmpty() ? rowBins.getFirst() : settings == null ? null : settings.binWarehouseId();
-        return segmentMaterials(segmentId, bin, settings, true);
+        return segmentMaterials(segmentId, bin, settings, includeOptions);
     }
 
     SegmentMaterials segmentMaterials(UUID segmentId, UUID bin, Settings settings, boolean withOptions) {
@@ -588,19 +591,16 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                     Map.of("bin", bin), LocalDate.class);
             earliest = closedThrough == null ? null : closedThrough.plusDays(1);
         }
+        var identity=db.queryForMap("SELECT product_goods_id,workshop_department_id FROM production_execution_segments WHERE id=:id",Map.of("id",segmentId));
         return new SegmentMaterials(segmentId, bin, lockVersion, earliest, rows,
-                withOptions ? options(settings) : List.of());
+                withOptions ? options(settings) : List.of(),(UUID)identity.get("product_goods_id"),(UUID)identity.get("workshop_department_id"));
     }
 
     /** 单个重量换算成克; 只认千克、克两类质量单位 (按单位名), 其它单位给空, 不猜。 */
     static BigDecimal gramsOrNull(BigDecimal qty, String unitName) {
-        if (qty == null || unitName == null) return null;
-        String unit = unitName.strip().toLowerCase(java.util.Locale.ROOT);
-        if (Set.of("千克", "公斤", "kg", "kgs").contains(unit)) {
-            return qty.multiply(BigDecimal.valueOf(1000));
-        }
-        if (Set.of("克", "g", "公克").contains(unit)) return qty;
-        return null;
+        if (qty == null) return null;
+        BigDecimal factor = PeriodicMaterialUnits.gramsPerUnit(unitName);
+        return factor == null ? null : qty.multiply(factor);
     }
 
     private Boolean flag(String function, UUID goods) {

@@ -24,6 +24,17 @@ class FinanceSeedBaselineTests(unittest.TestCase):
         self.assertEqual(self.validate(snapshot())['schema_version'],914)
         self.assertIn('READ ONLY',capture.SQL)
 
+    def test_semantic_complete_source_head_keeps_old_compounds_and_integer_protocol(self):
+        value=snapshot();value['schema_version']=1079;value['successful_migration_count']=3
+        migrations={'V990_1__old.sql':1,'V999_13__old.sql':2,'V1079__head.sql':3}
+        value['applied_sql']=[dict(script=name,checksum=checksum) for name,checksum in migrations.items()]
+        self.assertEqual(1079,capture.validate_snapshot(value,DB,1079,migrations)['schema_version'])
+        for bad in (1079.0,True,'1079'):
+            changed=copy.deepcopy(value);changed['schema_version']=bad
+            with self.subTest(schema=bad),self.assertRaises(ValueError):capture.validate_snapshot(changed,DB,1079,migrations)
+        with self.assertRaises(ValueError):capture.validate_snapshot(value,DB,1079,{'V1079_1__dotted.sql':1})
+        self.assertNotIn('max(version::int)',capture.SQL)
+
     def test_cannot_relabel_an_older_schema(self):
         value=snapshot();value['schema_version']=913
         with self.assertRaises(ValueError):self.validate(value)

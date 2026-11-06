@@ -7,13 +7,50 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/features/admin/models/server_storage.dart';
 import 'package:uten_imp/features/admin/pages/server_storage_page.dart';
 import 'package:uten_imp/features/admin/providers/server_operations_access.dart';
 import 'package:uten_imp/features/admin/providers/server_storage_request_store.dart';
 import 'package:uten_imp/features/admin/repositories/server_storage_repository.dart';
 
+Finder _hint(String text) => find.byWidgetPredicate(
+  (widget) =>
+      widget is UtenFieldHintIcon && widget.info?.contains(text) == true,
+);
+
 void main() {
+  testWidgets(
+    'a complete storage category is read once and its virtual resource scroll never fetches another batch',
+    (tester) async {
+      final repository = _Repository()..allResourceCount = 105;
+      await _pump(tester, repository);
+      await _open(tester, 'LOGS');
+      final finder = find.byType(UtenAncestorRowWindow<ServerStorageResource>);
+      final window = tester
+          .widget<UtenAncestorRowWindow<ServerStorageResource>>(finder);
+      expect(window.rows.length, 105);
+      expect(window.controller.mountedRowCount, lessThan(105));
+      expect(repository.resourceCalls, 2);
+      expect(find.text('加载更多'), findsNothing);
+      for (final index in [104, 0, 70, 104]) {
+        final reveal = window.controller.reveal(window.rows[index]);
+        await tester.pumpAndSettle();
+        expect(await reveal, isTrue);
+        expect(
+          find.byKey(ValueKey('storage-select-resource-$index')),
+          findsOneWidget,
+        );
+      }
+      expect(repository.resourceCalls, 2);
+      expect(repository.previews, isEmpty);
+      expect(repository.cleanups, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets(
     'legacy uploads have a distinct readable category and protected original files',
     (tester) async {
@@ -22,9 +59,9 @@ void main() {
       expect(find.text('当前上传目录'), findsOneWidget);
       expect(find.text('兼容旧上传目录'), findsOneWidget);
       await _open(tester, 'LEGACY_UPLOADS');
-      expect(find.text('兼容旧上传目录'), findsNWidgets(2));
-      expect(find.text('旧上传原件永不物理清理；目录可能同卷或重叠，不应与当前目录直接相加。'), findsOneWidget);
-      expect(find.text('兼容旧上传原件永不物理清理'), findsOneWidget);
+      expect(find.textContaining('兼容旧上传目录'), findsNWidgets(2));
+      expect(_hint('旧上传原件永不物理清理；目录可能同卷或重叠，不应与当前目录直接相加。'), findsOneWidget);
+      expect(_hint('兼容旧上传原件永不物理清理'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('storage-select-legacy-original')),
         findsNothing,
@@ -164,7 +201,7 @@ void main() {
       expect(repository.summaryCalls, 1);
       expect(repository.previews, isEmpty);
       await _open(tester, 'LOGS');
-      expect(find.text('正在使用或受保留规则保护'), findsOneWidget);
+      expect(_hint('正在使用或受保留规则保护'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('storage-select-protected')),
         findsNothing,
@@ -264,25 +301,20 @@ void main() {
   );
 
   testWidgets(
-    'changing inventory revision during paging clears stale selection and asks to reload',
+    'changing inventory revision during complete reading rejects partial rows without enabling cleanup',
     (tester) async {
       final repository = _Repository()..nextRevision = true;
       await _pump(tester, repository);
       await _open(tester, 'LOGS');
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('storage-select-cleanable')),
-      );
-      await tester.tap(find.byKey(const ValueKey('storage-select-cleanable')));
-      await tester.pump();
-      await tester.ensureVisible(find.text('加载更多'));
-      await tester.tap(find.text('加载更多'));
-      await tester.pumpAndSettle();
-      expect(find.text('存储内容已变化，请重新读取此分类后再选择。'), findsOneWidget);
+      expect(find.textContaining('读取范围已变化'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('storage-select-cleanable')),
         findsNothing,
       );
+      expect(find.text('加载更多'), findsNothing);
+      expect(repository.resourceCalls, 2);
       expect(repository.previews, isEmpty);
+      expect(repository.cleanups, isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -298,8 +330,14 @@ void main() {
     await tester.ensureVisible(
       find.byKey(const ValueKey('storage-category-DATABASE')),
     );
-    await tester.tap(find.byKey(const ValueKey('storage-category-DATABASE')));
-    await tester.pumpAndSettle();
+    tester
+        .widget<ListTile>(
+          find.byKey(const ValueKey('storage-category-DATABASE')),
+        )
+        .onTap!();
+    for (var frame = 0; frame < 8; frame++) {
+      await tester.pump(const Duration(milliseconds: 1));
+    }
     expect(find.text('数据库只读快照'), findsOneWidget);
     first.complete(_resources('LOGS'));
     await tester.pumpAndSettle();
@@ -415,9 +453,11 @@ ServerStorageResources _resources(
   'revision': revision,
   'kind': kind,
   'nextCursor': cursor,
-  'total': 2,
+  'total': kind == 'LOGS' ? 2 : 1,
   'items': kind == 'LOGS'
-      ? [_resource('cleanable'), _resource('protected', canDelete: false)]
+      ? (cursor == null
+            ? [_resource('protected', canDelete: false)]
+            : [_resource('cleanable')])
       : [_resource('db', canDelete: false, kind: kind, label: '数据库只读快照')],
 });
 
@@ -431,6 +471,7 @@ class _Repository implements ServerStorageRepository {
       nextRevision = false;
   Future<ServerStorageResources>? firstResources;
   int summaryCalls = 0, resourceCalls = 0;
+  int allResourceCount = 0;
   final previews = <List<String>>[], cleanups = <Map<String, String>>[];
   final receiptReads = <String>[];
   @override
@@ -479,6 +520,20 @@ class _Repository implements ServerStorageRepository {
     String? cursor,
   }) async {
     resourceCalls++;
+    if (kind == 'LOGS' && allResourceCount > 0) {
+      final offset = int.tryParse(cursor ?? '') ?? 0;
+      final end = (offset + 100).clamp(0, allResourceCount);
+      return ServerStorageResources.fromJson({
+        'revision': 'r1',
+        'kind': kind,
+        'total': allResourceCount,
+        'nextCursor': end < allResourceCount ? '$end' : null,
+        'items': [
+          for (var index = offset; index < end; index++)
+            _resource('resource-$index'),
+        ],
+      });
+    }
     if (kind == 'LEGACY_UPLOADS') {
       return ServerStorageResources.fromJson({
         'revision': 'r1',
@@ -500,7 +555,7 @@ class _Repository implements ServerStorageRepository {
     return _resources(
       kind,
       revision: cursor != null && nextRevision ? 'r2' : 'r1',
-      cursor: cursor == null ? 'next' : null,
+      cursor: kind == 'LOGS' && cursor == null ? 'next' : null,
     );
   }
 

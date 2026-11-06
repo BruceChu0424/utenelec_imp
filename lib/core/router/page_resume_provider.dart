@@ -195,9 +195,14 @@ extension PageResumeX on WidgetRef {
           },
           onError: (Object error, StackTrace stack) {
             state.refreshing = false;
+            final newerSignal = state.signalled != signalled;
             // The page owns its error presentation. Do not turn a failed read
             // into apparently fresh data or retry in a tight loop.
             if (state.signalled == signalled) state.signalled++;
+            // A real return/write queued during the failed/canceled read still
+            // needs one fresh attempt. The failure's own dirty marker alone
+            // must never create an automatic retry loop.
+            if (mounted() && onTop() && newerSignal) run(force: false);
           },
         );
       });

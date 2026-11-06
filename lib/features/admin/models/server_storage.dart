@@ -154,15 +154,17 @@ class ServerStorageResources {
   final String? nextCursor;
   final int? total;
 
-  ServerStorageResources withItems(List<ServerStorageResource> rows) =>
-      ServerStorageResources._(
-        revision: revision,
-        kind: kind,
-        sampledAt: sampledAt,
-        items: rows,
-        nextCursor: nextCursor,
-        total: total,
-      );
+  ServerStorageResources withItems(
+    List<ServerStorageResource> rows, {
+    bool complete = false,
+  }) => ServerStorageResources._(
+    revision: revision,
+    kind: kind,
+    sampledAt: sampledAt,
+    items: rows,
+    nextCursor: complete ? null : nextCursor,
+    total: complete ? (total ?? rows.length) : total,
+  );
 }
 
 class ServerStoragePreview {

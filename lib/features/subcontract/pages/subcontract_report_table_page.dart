@@ -283,6 +283,7 @@ class _SubcontractReportTablePageState
       fetch: () => fetchPage(requestedPage),
       fetchPage: fetchPage,
       isCurrent: current,
+      ownerIsCurrent: queryCurrent,
     );
     setState(() {
       _loading = _reportPages.loading;
@@ -411,10 +412,10 @@ class _SubcontractReportTablePageState
     });
     // 返回即刷新：行点击 push 的委外单据详情里审核/取消/改量后返回，重拉报表。
     _myLocation ??= currentLocationOr(context, SubcontractRoute.hub);
-    ref.onPageResume(
-      _myLocation!,
-      () => _reportPages.revalidate(_load(background: true)),
-    );
+    Future<void> visibleReadReturn() =>
+        _reportPages.revalidate(_load(background: true));
+    _reportRead.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: _title,
@@ -560,7 +561,6 @@ class _SubcontractReportTablePageState
       isRefreshing: _reportPages.refreshing,
       refreshError: _reportPages.refreshError,
       refreshedPages: _reportPages.refreshedPages,
-      onRetainedPagesChanged: _reportPages.retainPages,
       paginationRevision: _reportPages.paginationRevision,
       error: _reportPages.error,
       onRetry: () => _load(background: _data != null),

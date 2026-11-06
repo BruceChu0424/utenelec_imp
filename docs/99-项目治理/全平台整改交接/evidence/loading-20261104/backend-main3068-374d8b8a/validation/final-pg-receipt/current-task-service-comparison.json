@@ -1,0 +1,12 @@
+{
+  "acceptedTaskSegments" : 1,
+  "globalPublicServiceMillis" : 10950.9806,
+  "selectedHeaderBatches" : 1,
+  "scope" : "Real public service, 1001 current draft headers under the same original owner, one accepted task segment; isolated structural fixture, no production SLA",
+  "activeDraftHeaders" : 1001,
+  "globalHeaderBatches" : 11,
+  "selectedPublicServiceMillis" : 707.934701,
+  "globalReturnedHeaders" : 1001,
+  "sameRealDraftClaimRetained" : true,
+  "selectedReturnedHeaders" : 1
+}

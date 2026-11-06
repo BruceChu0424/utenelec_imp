@@ -1,0 +1,568 @@
+{
+  "primarySourceAggregateSha256": "0d49fabceb36b97e6c871ab47762231f59bf4533e1bbdb46deab690c75377bbb",
+  "nativeRunsAllGreen": false,
+  "originalFocusedWholeRun": {
+    "actualExitCode": 1,
+    "tests": 67,
+    "passed": 66,
+    "errors": 1,
+    "failed": 0,
+    "skipped": 0
+  },
+  "correctedOriginalCliCase": {
+    "actualExitCode": 0,
+    "tests": 1,
+    "passed": 1,
+    "skipped": 0
+  },
+  "privatePostgresWholeRun": {
+    "actualExitCode": 0,
+    "tests": 18,
+    "passed": 18,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "qualification": "The directly launched embedded interpreter did not restore sys.executable to its runnable launcher, so CreateProcess failed before the one CLI case could evaluate its original assertions. Only that exact case was rerun using the established launcher; no production/test source or safety assertion changed. The 67-case native run remains RED and is never relabelled exit0.",
+  "selectedUniqueCaseCoverage": 85,
+  "caseLedger": [
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryContractTest.test_actual_flyway_seed_metadata_is_preserved_without_clearing_it",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryContractTest.test_new_projection_assignments_and_sealed_identity_evidence_are_never_seed_exemptions",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryContractTest.test_readonly_guard_is_independent_of_retired_runtime_reset",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_configuration_history_cannot_hide_actors_corruption_or_other_permissions",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_configuration_identity_is_preserved_without_allowing_business_identity",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_empty_reviewed_schema_passes_without_any_reset_function",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_existing_business_fact_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_historical_business_without_a_live_row_still_rejects_bootstrap",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_missing_reviewed_table_fails_closed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_new_command_and_storage_facts_are_rejected_without_changing_persistent_rows",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_new_unclassified_root_table_fails_closed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_only_exact_identity_bound_v958_configuration_history_is_preserved",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_bootstrap_target_inventory.BootstrapInventoryPostgresTest.test_sealed_role_declarations_reject_missing_extra_and_modified_rows",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_any_casing_indentation_or_interleaved_comments_cannot_end_the_transaction",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_carriage_return_comments_cannot_hide_transaction_control",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_cleanup_preserves_only_the_exact_shared_evidence_tables",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_cli_rejects_before_emitting_any_partial_module",
+      "status": "passed",
+      "qualifiedRun": "legacy-cli-launcher",
+      "qualification": "Exact original CLI case rerun with established executable launcher; original failure preserved"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_crlf_unicode_strings_identifiers_and_nested_comments_are_byte_exact",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_direct_procedural_transaction_commands_are_rejected_without_rewriting",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_dollar_delimiters_are_case_sensitive_and_malformed_quotes_fail_closed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_escape_strings_and_doubled_identifier_quotes_are_not_commands",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_every_current_loader_has_explicit_caller_owned_transactions",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_function_and_procedure_programs_use_the_same_control_guard",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_on_commit_drop_and_case_end_are_sql_syntax_not_transaction_commands",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_only_static_reviewed_csv_copy_and_key_include_are_allowed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_owner_modules_initialize_helper_then_flush_before_cleanup",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_procedural_quoted_and_nested_dollar_values_remain_literal_data",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_compose_bootstrap.BootstrapComposerTest.test_psql_connection_shell_execution_and_dynamic_file_commands_are_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_accepts_original_overages_as_review_counts_without_approving_them",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_explicit_v908_cannot_silently_skip_v13_or_missing_mapping",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_inventory_derives_each_family_count_and_exact_identity_set",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_pre_v14_does_not_query_unavailable_counter_tables",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_return_inventory_binds_the_real_csv_names_and_every_original_id",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_target_count_source_id_set_or_each_snapshot_invariant_fails_closed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v22_adds_both_exact_return_families_without_reinterpreting_old_counter_runs",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v908_mapping14_is_required_in_same_full_fact_snapshot",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_v908_mapping14_missing_sealed_inventory_is_rejected_before_facts",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_counter_baseline.CounterBaselineTests.test_wrong_run_extra_or_unregistered_proof_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_bom_graph_quantity_or_parent_change_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_changed_cluster_is_rejected_even_when_the_run_identity_matches",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_consumed_file_and_structural_check_mismatch_are_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_database_rename_needs_explicit_matching_declaration",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_disabled_bom_material_nonpending_or_real_bom_identity_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_dynamic_counts_do_not_accept_a_fixed_previous_population",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_explicit_rename_never_waives_manifest_account_or_graph_proof",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_extra_login_user_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_manifest_commit_and_reconciliation_identity_are_required",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_missing_clean_media_and_wrong_schema_are_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_password_login_account_uuid_and_eligibility_changes_are_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_pre_rename_receipt_different_run_or_counts_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_real_query_adapter_has_readonly_repeatable_transaction_and_no_credentials_in_command",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_run_identity_is_rechecked_in_business_snapshot",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_running_run_stops_before_account_or_business_query",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_same_cluster_copy_with_a_different_database_oid_is_rejected_after_rename",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_server_error_does_not_emit_raw_sql_or_private_stderr",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.DatabaseTests.test_success_projects_only_counts_and_safe_proofs",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_admin_cannot_be_duplicated_in_hr_csv",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_any_csv_sha_drift_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_different_frozen_commit_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_dynamic_counts_include_only_separate_admin_once",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_hr_duplicated_code_is_rejected_even_when_resealed",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_manifest_drift_is_rejected_before_parsing",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_nonpending_material_csv_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_offline_cli_never_queries_target_or_emits_snapshot_values",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_resealed_nonconserved_graph_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_topology_parent_sha_must_match_final_csv",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_verify_rehearsal_result.InputTests.test_topology_summary_drift_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-focused-67",
+      "qualification": "Actually passed in the 67-case native exit1 run; no failed case is counted here"
+    },
+    {
+      "id": "test_legacy_bom_disabled_components.LegacyBomDisabledComponentsPostgresTest.test_disabled_components_are_excluded_with_quantities_and_disabled_parent_recipe_is_preserved",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_legacy_bom_disabled_components.LegacyBomDisabledComponentsPostgresTest.test_duplicate_source_edge_identity_is_rejected",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_legacy_bom_disabled_components.LegacyBomDisabledComponentsPostgresTest.test_loader_remains_accepted_by_transaction_composition_guard",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_clean_balances_null_color_exclusions_and_known_weight_pass",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_cross_key_amount_swap_fails_despite_same_total",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_cross_key_quantity_swap_fails_despite_same_total",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_duplicate_exclusion_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_duplicate_null_color_key_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_estimated_weight_is_not_accepted_as_exact",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_exclusion_changed_color_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_extra_zero_key_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_loader_stage_tampering_fails_independent_reconstruction",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_mass_unit_weight_mismatch_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_missing_exclusion_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_missing_key_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_source_nonzero_color_without_identity_fails",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_validator_is_accepted_by_composition_guard",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    },
+    {
+      "id": "test_rehearsal_stock_checks.RehearsalStockChecksPostgresTest.test_weight_without_mass_evidence_is_not_invented",
+      "status": "passed",
+      "qualifiedRun": "legacy-private-current",
+      "qualification": "Whole real private PostgreSQL module run, original safety gate and validation asserts"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-private-current.log",
+      "sha256": "491f926ba225547761207f21dc977e4f6ab0590f95aa99180a69908cd891dd7e"
+    },
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-private-current-execution.json",
+      "sha256": "b5e1d0897d075f780ff27c9bfa30c798962e7d0c0250d3e3302bdb552ec30882"
+    },
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-focused-67.log",
+      "sha256": "7c3a19cdf566ea0ef3bcc30472203ba6d7481281d43085897e1f6ff9111d198e"
+    },
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-focused-67-execution.json",
+      "sha256": "2e293ba267586047f4a3d7d866bf1f5080f3bf389531a55e5065be25534ec5d5"
+    },
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-cli-launcher.log",
+      "sha256": "232f31c1e330fa7e608c76151234305c0c8f79d746f8b22ac307fed78d6e8ae1"
+    },
+    {
+      "path": "server/build/loading-validation/main-f6e-metadata/legacy-cli-launcher-execution.json",
+      "sha256": "1dc705d74fd6af4c3f4490efe4d22c9a9797b53f011120bc220df051e41c9b94"
+    }
+  ],
+  "full684DiscoveryGreen": false,
+  "companyDatabaseWritten": false
+}

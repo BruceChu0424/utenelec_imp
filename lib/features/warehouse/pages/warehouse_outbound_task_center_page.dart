@@ -84,17 +84,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      onPrepare: (keyword, scope, refreshTick, canPrepare) =>
-          prepareWarehouseTaskPages(
-            ref,
-            context,
-            direction: WarehouseTaskDirection.outbound,
-            sources: sources.keys,
-            scope: scope,
-            keyword: keyword,
-            refreshTick: refreshTick,
-            canPrepare: () => canPrepare,
-          ),
+
       trailingBuilder: !can(Perm.workshopMaterialIssue)
           ? null
           : (source) => source != 'DRAW'

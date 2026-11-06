@@ -16,6 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/master_detail_card.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../employee/models/employee_api_models.dart';
@@ -75,8 +76,11 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
       _DepartmentOverviewPaneState();
 }
 
-class _DepartmentOverviewPaneState
-    extends ConsumerState<DepartmentOverviewPane> {
+class _DepartmentOverviewPaneState extends ConsumerState<DepartmentOverviewPane>
+    with ReadViewActivityMixin<DepartmentOverviewPane> {
+  @override
+  Future<void> onReadViewResumed() => _refreshCurrentScope(_scopeVersion);
+
   DepartmentInfo? _info;
   WorkforceOverview? _overview;
   List<EmployeeSummary> _employees = const [];
@@ -185,13 +189,20 @@ class _DepartmentOverviewPaneState
       // 换部门后表头筛选口径随之变化，一并复位（搜索/排序口径保留由各自交互管理）。
       _filters = {};
     });
+    await _refreshCurrentScope(scope);
+  }
+
+  Future<void> _refreshCurrentScope(int scope) async {
     try {
-      final info = await ref
-          .read(departmentRepositoryProvider)
-          .detail(widget.node.id);
+      final info = await readViewActivity.runRead(
+        () => mounted && scope == _scopeVersion,
+        () => ref.read(departmentRepositoryProvider).detail(widget.node.id),
+        slot: 'department-info',
+      );
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _info = info;
+        _error = null;
         _loading = false;
       });
       if (widget.canViewEmployees) {
@@ -199,12 +210,14 @@ class _DepartmentOverviewPaneState
         unawaited(_reloadEmployees(scope: scope));
       }
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _error = AppLocalizations.of(context).departmentLoadFailed;
@@ -220,21 +233,27 @@ class _DepartmentOverviewPaneState
       _overviewError = null;
     });
     try {
-      final overview = await ref
-          .read(departmentRepositoryProvider)
-          .workforceOverview(widget.node.id);
+      final overview = await readViewActivity.runRead(
+        () => mounted && scope == _scopeVersion,
+        () => ref
+            .read(departmentRepositoryProvider)
+            .workforceOverview(widget.node.id),
+        slot: 'department-overview',
+      );
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _overview = overview;
         _overviewLoading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _overviewError = e.message;
         _overviewLoading = false;
       });
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || scope != _scopeVersion) return;
       setState(() {
         _overviewError = '人员统计加载失败，请稍后重试';
@@ -247,6 +266,11 @@ class _DepartmentOverviewPaneState
     if (!widget.canViewEmployees) return;
     final targetScope = scope ?? _scopeVersion;
     final request = ++_employeeRequest;
+    bool current() =>
+        mounted &&
+        targetScope == _scopeVersion &&
+        request == _employeeRequest &&
+        widget.canViewEmployees;
     setState(() {
       _employeesLoading = true;
       _employeesError = null;
@@ -255,29 +279,30 @@ class _DepartmentOverviewPaneState
       _employeeTotal = 0;
     });
     try {
-      await loadEmployeeRoster(
-        repository: ref.read(employeeRepositoryProvider),
-        isCurrent: () =>
-            mounted &&
-            targetScope == _scopeVersion &&
-            request == _employeeRequest &&
-            widget.canViewEmployees,
-        departmentId: widget.node.id,
-        includeSubtree: true,
-        statuses: currentDepartmentEmployeeStatuses,
-        search: _keyword.trim().isEmpty ? null : _keyword.trim(),
-        sort: _sortColumn,
-        order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-        onBatch: (items, total, hasMore) {
-          setState(() {
-            _employees = items;
-            _employeeTotal = total;
-            _employeesLoading = false;
-            _employeesLoadingMore = hasMore;
-          });
-        },
+      await readViewActivity.runRead(
+        current,
+        () => loadEmployeeRoster(
+          repository: ref.read(employeeRepositoryProvider),
+          isCurrent: current,
+          departmentId: widget.node.id,
+          includeSubtree: true,
+          statuses: currentDepartmentEmployeeStatuses,
+          search: _keyword.trim().isEmpty ? null : _keyword.trim(),
+          sort: _sortColumn,
+          order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          onBatch: (items, total, hasMore) {
+            setState(() {
+              _employees = items;
+              _employeeTotal = total;
+              _employeesLoading = false;
+              _employeesLoadingMore = hasMore;
+            });
+          },
+        ),
+        slot: 'department-employees',
       );
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           targetScope != _scopeVersion ||
           request != _employeeRequest) {
@@ -288,7 +313,8 @@ class _DepartmentOverviewPaneState
         _employeesLoading = false;
         _employeesLoadingMore = false;
       });
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           targetScope != _scopeVersion ||
           request != _employeeRequest) {

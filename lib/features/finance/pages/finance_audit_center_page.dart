@@ -34,7 +34,6 @@ import '../../procurement_iqc_rejection/pages/procurement_iqc_rejection_list_pag
 import '../../sales/widgets/sales_shipment_task_workbench.dart';
 import '../../warehouse/pages/finance_arrival_exception_pages.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
-import '../providers/finance_audit_preparation_provider.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import 'finance_procurement_approval_tasks_page.dart';
 import 'finance_sales_order_confirmation_page.dart';
@@ -70,6 +69,8 @@ class FinanceAuditCenterPage extends ConsumerStatefulWidget {
 class _FinanceAuditCenterPageState
     extends ConsumerState<FinanceAuditCenterPage> {
   String? _segment;
+  bool _history = false;
+  String? _historySegment;
   int _refreshTick = 0;
   bool _refreshing = false;
   String? _visibleSegment;
@@ -82,12 +83,19 @@ class _FinanceAuditCenterPageState
     _segment = widget.initialSegment == 'salesChanges'
         ? 'salesConfirm'
         : widget.initialSegment;
+    _history =
+        widget.initialSegment == 'history' ||
+        widget.initialSalesState == 'confirmed' ||
+        const {
+          'ALL',
+          'APPROVED',
+          'HISTORY',
+        }.contains(widget.initialProcurementStatus);
+    if (_history && _segment != 'history') _historySegment = _segment;
   }
 
   Future<void> _refresh() async {
     if (_refreshing) return;
-    ref.invalidate(financeAuditPreparedPagesProvider);
-    ref.read(financeAuditPreparationProvider).retire();
     final completion = _visibleSegment == null ? null : Completer<void>();
     setState(() {
       _refreshing = true;
@@ -169,24 +177,11 @@ class _FinanceAuditCenterPageState
         ),
     ];
 
-    _visibleSegment = segments.any((segment) => segment.value == _segment)
-        ? _segment
-        : null;
-    if (segments.isNotEmpty && !_refreshing) {
-      final group = _visibleSegment ?? segments.first.value;
-      final jobs = ref.watch(financeAuditPreparationJobsProvider(group));
-      ref
-          .watch(financeAuditPreparationProvider)
-          .prepare(
-            [group, jobs],
-            jobs,
-            canPrepare: () =>
-                mounted &&
-                !_refreshing &&
-                TickerMode.valuesOf(context).enabled &&
-                (ModalRoute.of(context)?.isCurrent ?? true),
-          );
-    }
+    final selected = _history ? _historySegment : _segment;
+    _visibleSegment = segments.any((segment) => segment.value == selected)
+        ? selected
+        : (_history ? segments.firstOrNull?.value : null);
+
     if (_visibleSegment == null) {
       final completion = _refreshCompletion;
       if (completion != null && !completion.isCompleted) {
@@ -217,9 +212,7 @@ class _FinanceAuditCenterPageState
                   ),
                   // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中分段后它随
                   // 正文一起进折叠头滚走；未选分段时仍钉在占位区上方。
-                  child:
-                      _segment == null ||
-                          !segments.any((segment) => segment.value == _segment)
+                  child: _visibleSegment == null
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -234,7 +227,7 @@ class _FinanceAuditCenterPageState
                           ],
                         )
                       : _buildSegment(
-                          _segment!,
+                          _visibleSegment!,
                           externalHeader: _categoryBar(segments),
                         ),
                 ),
@@ -257,10 +250,32 @@ class _FinanceAuditCenterPageState
               count: segment.count,
               countForm: UtenSegmentCountForm.actionable,
             ),
+          const UtenFilterSegment(value: 'history', label: '历史记录'),
         ],
-        selected: _segment == null ? const <String>{} : {_segment!},
-        onSelectionChanged: (value) => setState(() => _segment = value),
+        selected: _history
+            ? {'history'}
+            : (_segment == null ? const <String>{} : {_segment!}),
+        onSelectionChanged: (value) => setState(() {
+          _history = value == 'history';
+          if (_history) _historySegment ??= _segment;
+          if (!_history) _segment = value;
+        }),
       ),
+      if (_history) ...[
+        const SizedBox(height: UtenFilterRow.rowGap),
+        UtenFilterToolbar<String>(
+          autoSelectBadge: false,
+          segments: [
+            for (final segment in segments)
+              UtenFilterSegment(value: segment.value, label: segment.label),
+          ],
+          selected: _visibleSegment == null
+              ? const <String>{}
+              : {_visibleSegment!},
+          onSelectionChanged: (value) =>
+              setState(() => _historySegment = value),
+        ),
+      ],
       const TaskDraftRecoveryNotice(
         scope: FormDraftCategoryScope(
           module: BadgeModule.finance,
@@ -278,6 +293,8 @@ class _FinanceAuditCenterPageState
   Widget _buildSegment(String value, {Widget? externalHeader}) =>
       switch (value) {
         'salesConfirm' => FinanceSalesOrderConfirmationPage(
+          key: ValueKey(('salesConfirm', _history)),
+          historyOnly: _history,
           initialState:
               widget.initialSalesState ??
               (widget.initialSegment == 'salesChanges' ? 'changes' : null),
@@ -287,6 +304,8 @@ class _FinanceAuditCenterPageState
           externalHeader: externalHeader,
         ),
         'shipment' => SalesShipmentTaskWorkbench(
+          key: ValueKey(('shipment', _history)),
+          historyOnly: _history,
           mode: SalesShipmentTaskWorkbenchMode.financeAudit,
           embedded: true,
           refreshTick: _refreshTick,
@@ -294,6 +313,8 @@ class _FinanceAuditCenterPageState
           externalHeader: externalHeader,
         ),
         'procurement' => FinanceProcurementApprovalTasksPage(
+          key: ValueKey(('procurement', _history)),
+          historyOnly: _history,
           initialStatus: widget.initialProcurementStatus,
           embedded: true,
           refreshTick: _refreshTick,
@@ -301,12 +322,16 @@ class _FinanceAuditCenterPageState
           externalHeader: externalHeader,
         ),
         'arrival' => FinanceArrivalExceptionTasksPage(
+          key: ValueKey(('arrival', _history)),
+          historyOnly: _history,
           embedded: true,
           refreshTick: _refreshTick,
           refreshCompletion: _refreshCompletion,
           externalHeader: externalHeader,
         ),
         _ => ProcurementIqcRejectionListPage(
+          key: ValueKey(('iqc', _history)),
+          historyOnly: _history,
           source: 'finance',
           embedded: true,
           refreshTick: _refreshTick,

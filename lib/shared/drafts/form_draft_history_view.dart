@@ -1,4 +1,4 @@
-import 'package:uten_imp/components/layout/uten_page_layout.dart';
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:flutter/material.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/buttons/uten_back_button.dart';
@@ -10,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/data_display/uten_status_badge.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
-import '../../components/layout/uten_pagination.dart';
+import '../paging/complete_paged_snapshot.dart';
 import '../../core/network/server_config.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
@@ -21,14 +21,41 @@ import 'form_draft_history.dart';
 import 'form_draft_history_projection.dart';
 import 'form_draft_store.dart';
 
-final _historyPageProvider = FutureProvider.autoDispose
-    .family<FormDraftHistoryPage, String?>((ref, cursor) {
-      ref.watch(authenticatedScopeProvider);
-      ref.watch(apiBaseUrlProvider);
-      ref.watch(currentPermissionsProvider);
-      ref.watch(formDraftsProvider);
-      return ref.read(formDraftsProvider.notifier).historyPage(before: cursor);
-    });
+final _historyActivityProvider = Provider.autoDispose<ReadViewActivity>((ref) {
+  final activity = ReadViewActivity(onResume: ref.notifyListeners);
+  ref.onDispose(activity.dispose);
+  return activity;
+});
+
+final _historyPageProvider = FutureProvider.autoDispose<FormDraftHistoryPage>((
+  ref,
+) {
+  ref.watch(authenticatedScopeProvider);
+  ref.watch(apiBaseUrlProvider);
+  ref.watch(currentPermissionsProvider);
+  ref.watch(formDraftsProvider);
+  var current = true;
+  ref.onDispose(() => current = false);
+  final store = ref.read(formDraftsProvider.notifier);
+  final activity = ref.watch(_historyActivityProvider);
+  return activity.runRead(
+    () => current,
+    () =>
+        loadCompleteCursorSnapshot<
+          FormDraftHistoryEntry,
+          FormDraftHistoryPage,
+          String
+        >(
+          isCurrent: () => current,
+          idOf: (entry) => entry.id,
+          loadPage: (cursor, size) =>
+              store.historyPage(before: cursor, limit: size),
+          rowsOf: (page) => page.entries,
+          nextCursorOf: (page) => page.nextCursor,
+          rebuildSnapshot: (_, rows) => FormDraftHistoryPage(entries: rows),
+        ),
+  );
+});
 
 final _historyRecordProvider = FutureProvider.autoDispose
     .family<FormDraftHistoryRecord?, String>((ref, id) {
@@ -89,23 +116,15 @@ class _FormDraftHistoryPage extends ConsumerStatefulWidget {
 }
 
 class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
-  final _cursors = <String?>[null];
-  Object? _identity;
-
   @override
   Widget build(BuildContext context) {
     final identity = (
       ref.watch(authenticatedScopeProvider),
       ref.watch(apiBaseUrlProvider),
     );
-    if (_identity != identity) {
-      _identity = identity;
-      _cursors
-        ..clear()
-        ..add(null);
-    }
     final permissions = ref.watch(currentPermissionsProvider);
-    final page = ref.watch(_historyPageProvider(_cursors.last));
+    ref.watch(_historyActivityProvider).bindView(context);
+    final page = ref.watch(_historyPageProvider);
     return Scaffold(
       appBar: UtenAppBar(
         title: '本机草稿历史',
@@ -119,14 +138,9 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
             tooltip: '刷新历史',
             busy: page.isLoading,
             onRefresh: () async {
-              setState(
-                () => _cursors
-                  ..clear()
-                  ..add(null),
-              );
               ref.invalidate(_historyPageProvider);
               try {
-                await ref.read(_historyPageProvider(null).future);
+                await ref.read(_historyPageProvider.future);
               } catch (error) {
                 if (context.mounted) context.appApiError(error);
               }
@@ -143,8 +157,7 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
               child: TextButton.icon(
                 icon: const Icon(Icons.refresh),
                 label: const Text('历史读取失败，重试'),
-                onPressed: () =>
-                    ref.invalidate(_historyPageProvider(_cursors.last)),
+                onPressed: () => ref.invalidate(_historyPageProvider),
               ),
             ),
             data: (value) {
@@ -158,7 +171,7 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
                 children: [
                   Expanded(
                     child: entries.isEmpty
-                        ? const Center(child: Text('此页没有当前类别可查看的历史'))
+                        ? const Center(child: Text('当前类别没有可查看的历史'))
                         : ListView.builder(
                             itemCount: entries.length,
                             itemBuilder: (context, index) {
@@ -194,25 +207,6 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
                               );
                             },
                           ),
-                  ),
-                  UtenPageEdgePadding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: UtenPagination(
-                      currentPage: _cursors.length,
-                      totalPages: value.nextCursor == null
-                          ? _cursors.length
-                          : null,
-                      maxPage:
-                          _cursors.length + (value.nextCursor == null ? 0 : 1),
-                      onPageChanged: (target) => setState(() {
-                        if (target < _cursors.length) {
-                          _cursors.removeRange(target, _cursors.length);
-                        } else if (target > _cursors.length &&
-                            value.nextCursor != null) {
-                          _cursors.add(value.nextCursor);
-                        }
-                      }),
-                    ),
                   ),
                 ],
               );

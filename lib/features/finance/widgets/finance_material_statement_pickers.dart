@@ -26,10 +26,13 @@ class _MaterialReferencePicker extends ConsumerStatefulWidget {
 }
 
 class _MaterialReferencePickerState
-    extends ConsumerState<_MaterialReferencePicker> {
+    extends ConsumerState<_MaterialReferencePicker>
+    with ReadViewActivityMixin<_MaterialReferencePicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _search = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _pages = 0, _read = 0;
+  int _read = 0;
   bool _busy = true, _retired = false;
   String? _error;
   late final bool Function() _owner;
@@ -55,7 +58,7 @@ class _MaterialReferencePickerState
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
     setState(() => _busy = true);
@@ -64,17 +67,23 @@ class _MaterialReferencePickerState
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final result = await scope.run(
-        () => api.get(
-          widget.kind == 'contexts'
-              ? _materialBase
-              : '$_materialBase/options/${widget.kind}',
-          query: {
-            ...?_scopeQuery(),
-            'q': _search.text.trim(),
-            'page': page,
-            'size': 30,
-          },
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            fetch: (batch, size) => api.get(
+              widget.kind == 'contexts'
+                  ? _materialBase
+                  : '$_materialBase/options/${widget.kind}',
+              query: {
+                ...?_scopeQuery(),
+                'q': _search.text.trim(),
+                'page': batch,
+                'size': size,
+              },
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
@@ -90,12 +99,16 @@ class _MaterialReferencePickerState
               )
               .toList();
         }
-        _page = page;
-        _pages = _mi(result['totalPages']);
         _error = null;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) {
+        setState(() {
+          _error = _problem(e);
+          if (pagedReadAccessDenied(e)) _rows = [];
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
@@ -149,11 +162,14 @@ class _MaterialReferencePickerState
             ],
             busy: _busy,
             error: _error,
-            retry: () => _load(page: _page),
-            page: _page,
-            pages: _pages,
-            onPage: (p) => _load(page: p),
-            onOpen: _current ? (row) => Navigator.of(context).pop(row) : null,
+            retry: () => _load(),
+            onOpen: _current
+                ? (row) {
+                    if (_current && !_busy && _rows.contains(row)) {
+                      Navigator.of(context).pop(row);
+                    }
+                  }
+                : null,
           ),
         ),
       ],
@@ -199,13 +215,16 @@ class _MaterialMovementPicker extends ConsumerStatefulWidget {
 }
 
 class _MaterialMovementPickerState
-    extends ConsumerState<_MaterialMovementPicker> {
+    extends ConsumerState<_MaterialMovementPicker>
+    with ReadViewActivityMixin<_MaterialMovementPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _from = TextEditingController(),
       _to = TextEditingController(),
       _search = TextEditingController();
   List<Map<String, dynamic>> _rules = [], _rows = [];
   Map<String, dynamic>? _rule;
-  int _page = 1, _pages = 0, _read = 0;
+  int _read = 0;
   bool _busy = true, _retired = false;
   String? _error;
   late final bool Function() _owner;
@@ -264,7 +283,7 @@ class _MaterialMovementPickerState
     }
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load() async {
     if (!_current) return;
     if (_rule == null) {
       setState(() {
@@ -280,20 +299,27 @@ class _MaterialMovementPickerState
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final result = await scope.run(
-        () => api.get(
-          '$_materialBase/sources',
-          query: {
-            'contextId': widget.contextId,
-            'kind': _rule!['sourceKind'],
-            'sourceGoodsId': _rule!['goodsId'],
-            'sourceColorId': _rule!['colorId'],
-            'dateFrom': _from.text.trim(),
-            'dateTo': _to.text.trim(),
-            'q': _search.text.trim(),
-            'page': page,
-            'size': 30,
-          },
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            identity: (row) => row['key'],
+            fetch: (batch, size) => api.get(
+              '$_materialBase/sources',
+              query: {
+                'contextId': widget.contextId,
+                'kind': _rule!['sourceKind'],
+                'sourceGoodsId': _rule!['goodsId'],
+                'sourceColorId': _rule!['colorId'],
+                'dateFrom': _from.text.trim(),
+                'dateTo': _to.text.trim(),
+                'q': _search.text.trim(),
+                'page': batch,
+                'size': size,
+              },
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
@@ -319,12 +345,16 @@ class _MaterialMovementPickerState
       }
       setState(() {
         _rows = rows;
-        _page = page;
-        _pages = _mi(result['totalPages']);
         _error = null;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) {
+        setState(() {
+          _error = _problem(e);
+          if (pagedReadAccessDenied(e)) _rows = [];
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
@@ -409,15 +439,18 @@ class _MaterialMovementPickerState
             ],
             busy: _busy,
             error: _error,
-            retry: () => _load(page: _page),
-            page: _page,
-            pages: _pages,
-            onPage: (p) => _load(page: p),
+            retry: () => _load(),
             canOpen: (r) =>
                 _current &&
                 r['approved'] == true &&
                 r['identityComplete'] == true,
-            onOpen: _current ? (r) => Navigator.of(context).pop(r) : null,
+            onOpen: _current
+                ? (r) {
+                    if (_current && !_busy && _rows.contains(r)) {
+                      Navigator.of(context).pop(r);
+                    }
+                  }
+                : null,
           ),
         ),
       ],
@@ -457,12 +490,15 @@ class _MaterialGlPicker extends ConsumerStatefulWidget {
   ConsumerState<_MaterialGlPicker> createState() => _MaterialGlPickerState();
 }
 
-class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker> {
+class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker>
+    with ReadViewActivityMixin<_MaterialGlPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _from = TextEditingController(),
       _to = TextEditingController(),
       _search = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _pages = 0, _read = 0;
+  int _read = 0;
   bool _busy = true, _retired = false;
   String? _error;
   late final bool Function() _owner;
@@ -492,7 +528,7 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker> {
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
     setState(() => _busy = true);
@@ -501,42 +537,56 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker> {
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final value = await scope.run(
-        () => api.get(
-          widget.receivable == null
-              ? '$_materialBase/gl-sources'
-              : '$_materialBase/adjustment-sources',
-          query: {
-            if (widget.receivable != null) ...{
-              'receivableEntry': widget.receivable!['entryId'],
-              'receivableAllocation': widget.receivable!['allocationNo'],
-              'purpose': widget.purpose,
-            },
-            'contextId': widget.contextId,
-            'dateFrom': _from.text.trim(),
-            'dateTo': _to.text.trim(),
-            'q': _search.text.trim(),
-            'page': page,
-            'size': 30,
-          },
+      final value = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            identity: (row) =>
+                row['entry_id'] == null || row['allocation_no'] == null
+                ? null
+                : (row['entry_id'], row['allocation_no']),
+            fetch: (batch, size) => api.get(
+              widget.receivable == null
+                  ? '$_materialBase/gl-sources'
+                  : '$_materialBase/adjustment-sources',
+              query: {
+                if (widget.receivable != null) ...{
+                  'receivableEntry': widget.receivable!['entryId'],
+                  'receivableAllocation': widget.receivable!['allocationNo'],
+                  'purpose': widget.purpose,
+                },
+                'contextId': widget.contextId,
+                'dateFrom': _from.text.trim(),
+                'dateTo': _to.text.trim(),
+                'q': _search.text.trim(),
+                'page': batch,
+                'size': size,
+              },
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _rows = _ml(value['items']);
-        _page = page;
-        _pages = _mi(value['totalPages']);
         _error = null;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) {
+        setState(() {
+          _error = _problem(e);
+          if (pagedReadAccessDenied(e)) _rows = [];
+        });
+      }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
   }
 
   Future<void> _choose(Map<String, dynamic> row) async {
-    if (_busy || !_current) return;
+    if (_busy || !_current || !_rows.contains(row)) return;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
@@ -557,7 +607,15 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker> {
       if (!mounted) return;
       if (_current && scope.isCurrent) Navigator.of(context).pop(value);
     } catch (e) {
-      if (mounted && _current) context.appApiError(e);
+      if (mounted && _current) {
+        if (pagedReadAccessDenied(e)) {
+          setState(() {
+            _rows = [];
+            _error = _problem(e);
+          });
+        }
+        context.appApiError(e);
+      }
     } finally {
       if (_current) setState(() => _busy = false);
     }
@@ -619,10 +677,7 @@ class _MaterialGlPickerState extends ConsumerState<_MaterialGlPicker> {
             ],
             busy: _busy,
             error: _error,
-            retry: () => _load(page: _page),
-            page: _page,
-            pages: _pages,
-            onPage: (p) => _load(page: p),
+            retry: () => _load(),
             onOpen: _busy ? null : _choose,
           ),
         ),

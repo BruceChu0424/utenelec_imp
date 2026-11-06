@@ -111,7 +111,6 @@ class _FinanceReportTablePageState
   int _contextGeneration = 0;
   String? _contextError;
   bool _loadingContexts = false;
-  int _page = 1;
   final int _size = 50;
   final Map<String, String> _filters = {};
 
@@ -126,6 +125,7 @@ class _FinanceReportTablePageState
   ReportData? _data;
   bool _preparingTemplate = false;
   Object? _acceptedReadQuery;
+  String? _retainedSchemaVersion;
   bool _loading = false;
   int _loadGeneration = 0;
   String? _error;
@@ -166,7 +166,6 @@ class _FinanceReportTablePageState
         _data = null;
         _acceptedReadQuery = null;
         _loading = false;
-        _page = 1;
         _keyword = '';
         _filters.clear();
         _clientId = null;
@@ -202,7 +201,6 @@ class _FinanceReportTablePageState
     _data = null;
     _acceptedReadQuery = null;
     _loading = true;
-    _page = 1;
     _keyword = '';
     _filters.clear();
     _sortKey = null;
@@ -266,7 +264,6 @@ class _FinanceReportTablePageState
   /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
   Future<void> _persistAndReload() {
     _persistPrefs();
-    _page = 1;
     return _load();
   }
 
@@ -539,10 +536,7 @@ class _FinanceReportTablePageState
       ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  Future<void> _load({
-    bool background = false,
-    bool reuseMetadata = false,
-  }) async {
+  Future<void> _load({bool background = false}) async {
     if (!mounted) return;
     if ((_partyStatement || _auxiliaryReport) && _currencies.isEmpty ||
         _exportReport == 'cost/plastic' && _bins.isEmpty) {
@@ -567,11 +561,36 @@ class _FinanceReportTablePageState
         mounted &&
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
-    final requestedPage = _page;
     final api = ref.read(apiClientProvider);
     final endpoint = _readEndpoint;
     final query = _readQuery;
     final readIdentity = [endpoint, query, readEpoch, api];
+    final previousSchema = _data;
+    final previousIdentity = _acceptedReadQuery;
+    Map<String, dynamic> schemaQuery(Map<dynamic, dynamic> values) => {
+      for (final entry in values.entries)
+        if (entry.key is String &&
+            !(entry.key as String).startsWith('f.search.') &&
+            !const {'sort', 'order', 'page'}.contains(entry.key))
+          entry.key as String: entry.value,
+    };
+    final mayKeepSchema =
+        previousSchema != null &&
+        (previousSchema.readScopeVersion ?? _retainedSchemaVersion)
+                ?.isNotEmpty ==
+            true &&
+        previousIdentity is List &&
+        previousIdentity.length == 4 &&
+        previousIdentity[0] == endpoint &&
+        previousIdentity[2] == readEpoch &&
+        identical(previousIdentity[3], api) &&
+        previousIdentity[1] is Map &&
+        const DeepCollectionEquality().equals(
+          schemaQuery(previousIdentity[1] as Map),
+          schemaQuery(query),
+        );
+    Object? readFailure;
+
     bool queryCurrent() =>
         mounted &&
         readEpoch == ref.read(exportContextEpochProvider) &&
@@ -582,14 +601,10 @@ class _FinanceReportTablePageState
       endpoint: endpoint,
       query: query,
       readerEpoch: readEpoch,
-      reusePages: reuseMetadata && !background,
+      reusePages: false,
       revalidatingWindow: background,
       fetch: (parameters) => api.get(endpoint, query: parameters),
       isCurrent: queryCurrent,
-      canPrefetch: () =>
-          mounted &&
-          TickerMode.valuesOf(context).enabled &&
-          (ModalRoute.of(context)?.isCurrent ?? true),
       onPrefetchError: (error) {
         if (!queryCurrent() ||
             error is! ApiException ||
@@ -602,20 +617,30 @@ class _FinanceReportTablePageState
         ++_loadGeneration;
         setState(() {
           _data = null;
+          _acceptedReadQuery = null;
+          _retainedSchemaVersion = null;
+          _error = error.message;
           _loading = false;
         });
       },
       failureMessage: AppLocalizations.of(context).financeReportLoadFailed,
     );
-    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) =>
-        read.read(targetPage);
+    Future<PagedResult<Map<String, dynamic>>> fetchPage(int targetPage) async {
+      try {
+        return await read.read(targetPage);
+      } catch (error) {
+        readFailure = error;
+        rethrow;
+      }
+    }
 
     final pending = _reportPages.load(
-      requestedPage,
+      1,
       silent: background && _data != null,
-      fetch: () => fetchPage(requestedPage),
+      fetch: () => fetchPage(1),
       fetchPage: fetchPage,
       isCurrent: current,
+      ownerIsCurrent: queryCurrent,
     );
     setState(() {
       _loading = _reportPages.loading;
@@ -628,11 +653,25 @@ class _FinanceReportTablePageState
       _loading = false;
       _error = failure;
       if (_reportPages.page == null) {
-        _data = null;
+        final failureCause = readFailure;
+        final ownerRetired =
+            failureCause != null &&
+            (pagedReadAccessDenied(failureCause) ||
+                failureCause is ApiException &&
+                    failureCause.code == 'SESSION_CHANGED');
+        // An ordinary failed search can keep previously authorized controls;
+        // it never inherits old facts, aggregates or proof for the new query.
+        _data = failure != null && mayKeepSchema && !ownerRetired
+            ? previousSchema.pendingQuery()
+            : null;
+        if (ownerRetired) {
+          _acceptedReadQuery = null;
+          _retainedSchemaVersion = null;
+        }
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
         _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
+        _retainedSchemaVersion = _data!.readScopeVersion;
         _acceptedReadQuery = readIdentity;
-        _page = _reportPages.pageNum;
       }
     });
     if (failure != null && !background) {
@@ -644,6 +683,8 @@ class _FinanceReportTablePageState
       showUtenClientPicker(context, ref, selectableOnly: false);
 
   bool get _acceptedQueryCurrent =>
+      _data != null &&
+      _reportPages.page != null &&
       const DeepCollectionEquality().equals(_acceptedReadQuery, [
         _readEndpoint,
         _readQuery,
@@ -655,7 +696,6 @@ class _FinanceReportTablePageState
     setState(() {
       _clientId = id;
       if (id == null) _clientName = null;
-      _page = 1;
       _data = null;
     });
     _load();
@@ -670,7 +710,6 @@ class _FinanceReportTablePageState
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
-      _page = 1;
     });
     _persistPrefs();
     _load();
@@ -696,7 +735,6 @@ class _FinanceReportTablePageState
           }
         }
       }
-      _page = 1;
     });
     _persistPrefs();
     _load();
@@ -715,7 +753,6 @@ class _FinanceReportTablePageState
       _contextError = null;
       _loadingContexts = false;
       ++_contextGeneration;
-      _page = 1;
       _filters.clear();
       _data = null;
       _sortKey = null;
@@ -733,7 +770,6 @@ class _FinanceReportTablePageState
       _contextError = null;
       _loadingContexts = false;
       ++_contextGeneration;
-      _page = 1;
       _filters.clear();
       _data = null;
       _sortKey = null;
@@ -751,7 +787,6 @@ class _FinanceReportTablePageState
       ref.listen(_prefsProvider, (prev, next) {
         if (!_dirty && prev != next && !next.isEmpty && mounted) {
           _applyPrefs(next);
-          _page = 1;
           _load();
         }
       });
@@ -759,10 +794,10 @@ class _FinanceReportTablePageState
     // 返回即刷新：行点击 push 的钱流单据详情里做过审核/红冲后返回，重拉报表
     // （此前报表无任何返回刷新，已红冲单据的旧金额一直挂在页上）。
     _myLocation ??= currentLocationOr(context, RouteName.finance);
-    ref.onPageResume(
-      _myLocation!,
-      () => _reportPages.revalidate(_load(background: true)),
-    );
+    Future<void> visibleReadReturn() =>
+        _reportPages.revalidate(_load(background: true));
+    _reportRead.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
@@ -1183,7 +1218,6 @@ class _FinanceReportTablePageState
           _keyword = '';
           _filters.clear();
           _sortKey = null;
-          _page = 1;
         });
         await _load();
       },
@@ -1219,7 +1253,6 @@ class _FinanceReportTablePageState
       _keyword = '';
       _filters.clear();
       _sortKey = null;
-      _page = 1;
     });
     _persistAndReload();
   }
@@ -1680,7 +1713,6 @@ class _FinanceReportTablePageState
                   onPressed: () {
                     setState(() {
                       _statementReviewId = null;
-                      _page = 1;
                       _filters.clear();
                       _sortKey = null;
                     });
@@ -1884,7 +1916,6 @@ class _FinanceReportTablePageState
             isRefreshing: _reportPages.refreshing,
             refreshError: _reportPages.refreshError,
             refreshedPages: _reportPages.refreshedPages,
-            onRetainedPagesChanged: _reportPages.retainPages,
             paginationRevision: _reportPages.paginationRevision,
             error: _acceptedQueryCurrent ? _reportPages.error : _error,
             onRetry: () => _load(background: _data != null),
@@ -1924,10 +1955,6 @@ class _FinanceReportTablePageState
               _sortKey,
               _sortAsc,
             ),
-            onPageChange: (p) {
-              _page = p;
-              _load(reuseMetadata: true);
-            },
           ),
     );
   }

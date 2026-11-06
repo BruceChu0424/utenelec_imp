@@ -40,7 +40,7 @@
 
 ## W7-BIZ-123 · lib/features/purchase/pages/purchase_doc_list_page.dart
 
-模块 `purchase`；1097 行；SHA256 `fb16201a7155d6a3c053976202b2722848fee197e897e986681c784633d01679`。
+模块 `purchase`；1108 行；SHA256 `696412278d02a110dd77f127d0a526b61f9a622278e6a038c5aedd7b2a57d9fd`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -50,7 +50,7 @@
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/purchase/repositories/purchase_repository.dart；接口：/purchase/{doc}、/purchase/{doc}/{id}、/purchase/{doc}/{id}/approve |
-| 动作处理 | addPostFrameCallback @282 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @300 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @328 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_draftDeleteButton @374 [action-ui-factory] 提示 ['delete']；Widget _draftDeleteButton() {<br>delete @408 [action-like-invocation] 提示 ['delete']；await repo.delete(id);<br>addPostFrameCallback @582 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @798 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>_createButton @850 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @1003 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_draftDeleteButton @1004 [action-like-invocation] 提示 ['delete']；_draftDeleteButton(),<br>draftDeleteBusy @998 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
+| 动作处理 | addPostFrameCallback @282 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @300 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @328 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_draftDeleteButton @374 [action-ui-factory] 提示 ['delete']；Widget _draftDeleteButton() {<br>delete @408 [action-like-invocation] 提示 ['delete']；await repo.delete(id);<br>addPostFrameCallback @587 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @803 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>_createButton @862 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @1015 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_draftDeleteButton @1016 [action-like-invocation] 提示 ['delete']；_draftDeleteButton(),<br>draftDeleteBusy @1010 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/request/PurchaseRequestController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -94,35 +94,35 @@
 
 ## W7-BIZ-126 · lib/features/purchase/pages/purchase_report_page.dart
 
-模块 `purchase`；344 行；SHA256 `3b396a095cc674bf8125f05422a44cf95d9513747b5d18f8ffef110977233e71`。
+模块 `purchase`；351 行；SHA256 `d4d0f99952255cfb8cd87a07398f9479e87711bb3388e4bffbb8c6f6f4bea7e1`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | _Monthly @29 (supporting-class)<br>_Pending @46 (supporting-class)<br>PurchaseReportPage @54 (page-class)<br>_PurchaseReportPageState @61 (state-class) |
+| 页面/状态类 | _Monthly @30 (supporting-class)<br>_Pending @47 (supporting-class)<br>PurchaseReportPage @55 (page-class)<br>_PurchaseReportPageState @62 (state-class) |
 | 真实路由绑定 | /purchase/report；router @1299；builder ['PurchaseReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
-| 接口常量 | ApiEndpoints.purchaseReportMonthly @99 → /purchase/reports/monthly<br>ApiEndpoints.purchaseReportPending @107 → /purchase/reports/pending |
+| 接口常量 | ApiEndpoints.purchaseReportMonthly @102 → /purchase/reports/monthly<br>ApiEndpoints.purchaseReportPending @111 → /purchase/reports/pending |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @84 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>copyWith @278 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @290 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
+| 动作处理 | addPostFrameCallback @85 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>copyWith @285 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @297 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/formatters/exact_number_text.dart` (core)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_endpoints.dart` (core)；`lib/core/network/latest_request_guard.dart` (core)；`lib/shared/auth/read_owner_fence.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/action_feedback.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)。
+直接源依赖：`lib/shared/paging/paged_read_intent.dart` (sharedComponents)；`lib/core/formatters/exact_number_text.dart` (core)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_endpoints.dart` (core)；`lib/core/network/latest_request_guard.dart` (core)；`lib/shared/auth/read_owner_fence.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/action_feedback.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)。
 
 ## W7-BIZ-127 · lib/features/purchase/pages/purchase_report_table_page.dart
 
-模块 `purchase`；593 行；SHA256 `d8a77121783a85ca365cffdd0a010fc9989c39aba3c4d4e9ec4cb5dee70f41ec`。
+模块 `purchase`；593 行；SHA256 `71bcd07be97135e0dcecb6f62e63b884577efead71d1176dcfac259cf1eb5ba6`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseReportTablePage @58 (page-class)<br>_PurchaseReportTablePageState @67 (state-class) |
 | 真实路由绑定 | /purchase/report/:kind；router @1241；builder ['PurchaseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | purchase_report:export @520；定义 lib/shared/auth/permissions.dart:582<br>purchase_report:export @529；定义 lib/shared/auth/permissions.dart:582 |
+| 权限 | purchase_report:export @521；定义 lib/shared/auth/permissions.dart:582<br>purchase_report:export @530；定义 lib/shared/auth/permissions.dart:582 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @130 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @160 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @205 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @315 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @368 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @372 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @515 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @527 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @585 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
+| 动作处理 | addPostFrameCallback @130 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @160 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @205 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @316 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @369 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @373 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @516 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @528 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @585 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

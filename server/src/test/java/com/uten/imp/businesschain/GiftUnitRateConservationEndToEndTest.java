@@ -121,6 +121,14 @@ class GiftUnitRateConservationEndToEndTest {
         assertThatThrownBy(()->receipts.reverse(received)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThat(stock(f)).isEqualByComparingTo("1.00005");assertThat(value(f)).isEqualByComparingTo("5");assertThat(ap(received)).isEqualByComparingTo("10");
         evidence(f,received,activeReturn,"USED_RECEIPT_REVERSAL_REFUSED_WITH_NO_EFFECT",Map.of("stockQty","1.00005","stockValue","5","AP","10","domainReversal","409 active return source","canReverseHint","observed separately from domain"));
+        FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",activeReturn,
+                new DocumentUnapprovalService.UnapproveRequest("gift-rate-active-unapprove-"+activeReturn,"原退货撤回后验证同源收货恢复"));
+        assertThat(receipts.unapprovalEligibility(received).eligible()).isTrue();
+        receipts.reverse(received);
+        assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(received)).isZero();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",received)).isPositive();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",returned)).isPositive();
+        evidence(f,received,returnDraft.getId(),"COMPLETED_SAME_ISSUE_RETURN_REVERSES_ORIGINAL_RECEIPT",Map.of("stockQty","0","stockValue","0","AP","0","domainReversal","V1008 proved original issue/pool identity; history retained"));
         } else {
         // A fully compensated issue retains its exact original store ancestry.
         // The real reverse must withdraw that source, while retaining every old movement.

@@ -37,6 +37,43 @@ class ReadScopePublicationTest {
             verify(authority,times(2)).scopeFor(domain,subject);
         }
     }
+    @Test void completeSummaryAndOriginalRoutesPublishTheirOwnAuthorityAndOriginalBodyUsesTheSamePlan() {
+        var routes=java.util.Map.ofEntries(
+                java.util.Map.entry("/api/master/goods/periodic-bom/preparation/summaries","master_goods"),
+                java.util.Map.entry("/api/master/goods/periodic-bom/preparation/products/00000000-0000-4000-8000-000000000001","master_goods"),
+                java.util.Map.entry("/api/master/goods/periodic-bom/preparation/material-options","master_goods"),
+                java.util.Map.entry("/api/workshop-material/settings/in-progress-pending/summaries","native_workshop_tasks"),
+                java.util.Map.entry("/api/workshop-material/settings/in-progress-pending/products/00000000-0000-4000-8000-000000000001","native_workshop_tasks"),
+                java.util.Map.entry("/api/workshop-material/choices/material-options","native_workshop_tasks"),
+                java.util.Map.entry("/api/workshop-material/choices/pending","native_workshop_tasks"),
+                java.util.Map.entry("/api/workshop-material/segments/00000000-0000-4000-8000-000000000001/material-changes","native_workshop_tasks"),
+                java.util.Map.entry("/api/finance/asset-opening-groups/summaries","finance"),
+                java.util.Map.entry("/api/finance/accounting-imports/summaries","finance"),
+                java.util.Map.entry("/api/finance/auxiliary-imports/summaries","finance"),
+                java.util.Map.entry("/api/finance/chart/imports/summaries","finance"),
+                java.util.Map.entry("/api/finance/payable-statement-adjustments","finance"),
+                java.util.Map.entry("/api/finance/statement-documents/reviews/00000000-0000-4000-8000-000000000001/summary","finance"),
+                java.util.Map.entry("/api/finance/statement-documents/reviews/00000000-0000-4000-8000-000000000001/original-table","finance"));
+        for(var route:routes.entrySet()) {
+            reset(authority);String domain=route.getValue();String proofText="e".repeat(64);
+            when(authority.scopeFor(domain,subject)).thenReturn(proofText);
+            when(authority.scopeFor(domain,subject,false)).thenReturn(proofText);
+            var request=new MockHttpServletRequest("GET",route.getKey());var response=new MockHttpServletResponse();
+            new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            new MasterReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            new BusinessDocumentReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            boolean original=route.getKey().endsWith("/original-table");
+            try {
+                if(original)interceptor.preHandle(request,response,null);
+                var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+                assertNotNull(proof,route.getKey());assertEquals(domain,proof.domain(),route.getKey());
+                if(original)assertEquals(proofText,ReportReadPlan.current().readScopeVersion());
+                new ReportReadScopeAdvice(authority).beforeBodyWrite(Map.of("items",List.of(),"readScopeVersion",proofText),null,MediaType.APPLICATION_JSON,null,
+                        new ServletServerHttpRequest(request),new ServletServerHttpResponse(response));
+                assertEquals(proofText,response.getHeader(ReadScopePublication.HEADER),route.getKey());
+            } finally {if(original)interceptor.afterCompletion(request,response,null,null);}
+        }
+    }
     @Test void typedWhereUsedKeepsTheFirstNativeProfileAndRechecksItBeforePublishing() {
         when(authority.scopeFor("native_warehouse_tasks",subject,false)).thenReturn("a".repeat(64),"b".repeat(64));
         var request=new MockHttpServletRequest("GET","/api/production/reports/where-used/trace");

@@ -15,6 +15,7 @@ import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -25,7 +26,6 @@ import 'package:uten_imp/features/basic_data/repositories/master_status_reposito
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
-import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _Row {
@@ -128,6 +128,8 @@ Future<_Counters> _pump(
   Future<PagedResult<_Row>> Function(MasterPaneQuery)? loadPage,
   Future<_Row> Function(String)? loadDetail,
   bool supportsReferencedHide = false,
+  bool settle = true,
+  void Function(MasterEntityPaneController<_Row, _Row> pane)? onPane,
 }) async {
   final counters = _Counters();
   SharedPreferences.setMockInitialValues({});
@@ -150,6 +152,10 @@ Future<_Counters> _pump(
     statusOf: (r) => r.status,
     versionOf: (r) => r.version,
     labelOf: (r) => r.name,
+    toolbarLeadingActions: (pane) {
+      onPane?.call(pane);
+      return const [];
+    },
     loadCategory: (id) async => ProductCategoryDetail(
       id: id,
       code: 'C1',
@@ -214,7 +220,11 @@ Future<_Counters> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 1));
+  }
   return counters;
 }
 
@@ -242,6 +252,51 @@ Future<void> _statusAction(WidgetTester tester, UtenMenuItem entry) async {
 }
 
 void main() {
+  testWidgets(
+    'reveal uses the complete local result and only refreshes when the identity is missing',
+    (tester) async {
+      late MasterEntityPaneController<_Row, _Row> pane;
+      final queries = <MasterPaneQuery>[];
+      var count = 250;
+      await _pump(
+        tester,
+        _FakeBatchRepository(),
+        _FakeStatusRepository(),
+        onPane: (value) => pane = value,
+        loadPage: (query) async {
+          queries.add(query);
+          final size = query.size!;
+          return PagedResult(
+            items: [
+              for (
+                var index = (query.page - 1) * size;
+                index < query.page * size && index < count;
+                index++
+              )
+                _Row('p$index', '资料$index', '使用', index),
+            ],
+            page: query.page,
+            size: size,
+            total: count,
+            totalPages: (count / size).ceil(),
+          );
+        },
+      );
+      expect(_table(tester).items, hasLength(250));
+      final local = pane.reveal('p249');
+      await tester.pumpAndSettle();
+      expect(await local, isTrue);
+      expect(queries, hasLength(3));
+      count = 251;
+      final fresh = pane.reveal('p250');
+      await tester.pumpAndSettle();
+      expect(await fresh, isTrue);
+      expect(queries, hasLength(6));
+      expect(queries.every((query) => query.size == 100), isTrue);
+      expect(_table(tester).items, hasLength(251));
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final stale in [false, true]) {
     testWidgets('共享主档详情读取显示等待，${stale ? '范围变化后丢弃旧详情' : '完成后进入原编辑动作'}', (
       tester,
@@ -278,184 +333,176 @@ void main() {
     });
   }
 
-  testWidgets('主档viewport仍在1且最新DTO为3时显式跳3走缓存并完成同DTO导航', (tester) async {
-    final reads = <int>[];
+  testWidgets('主档首轮完整读取250条且所有批次固定100，滚动不重查', (tester) async {
+    final data = [
+      for (var i = 0; i < 250; i++) _Row('s$i', '整范围$i', '使用', i + 1),
+    ];
+    final reads = <MasterPaneQuery>[];
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       loadPage: (query) async {
-        reads.add(query.page);
-        return PagedResult<_Row>(
-          items: _rows.skip((query.page - 1) * 20).take(20).toList(),
-          page: query.page,
-          size: 20,
-          total: 60,
-          totalPages: 3,
-        );
+        reads.add(query);
+        return _fullBatch(data, query);
       },
     );
-    final rows = _table(tester).rowsController!;
-    await rows.loadNextPage();
-    await tester.pumpAndSettle();
-    await rows.loadNextPage();
-    await tester.pumpAndSettle();
-    expect(rows.visiblePage, 1);
-    rows.goToPage(3);
-    await tester.pumpAndSettle();
-    expect(rows.visiblePage, 3);
-    expect(reads.where((page) => page == 3), hasLength(1));
+    final table = _table(tester);
+    expect(table.items, hasLength(250));
+    expect(table.totalPages, 1);
+    expect(table.currentPage, 1);
+    expect(reads.map((q) => q.page), [1, 2, 3]);
+    expect(reads.every((q) => q.size == 100), isTrue);
+    final count = reads.length;
+    final viewport = find
+        .byWidgetPredicate(
+          (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+        )
+        .first;
+    final position = tester.state<ScrollableState>(viewport).position;
+    for (final fraction in [.8, .0, 1.0, .0]) {
+      position.jumpTo(position.maxScrollExtent * fraction);
+      await tester.pumpAndSettle();
+    }
+    expect(reads, hasLength(count));
+    expect(_table(tester).items, hasLength(250));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('主档跳到79并补78后默认返回刷新及写后刷新仍鲜读79', (tester) async {
+  testWidgets('主档显式刷新重新读取整个当前查询并更新原行版本', (tester) async {
     final reads = <int>[];
+    var revision = 1;
     await _pump(
       tester,
       _FakeBatchRepository(),
       _FakeStatusRepository(),
       loadPage: (query) async {
         reads.add(query.page);
-        return PagedResult<_Row>(
-          items: [
-            for (var i = 0; i < 20; i++)
-              _Row(
-                'p${query.page}-$i',
-                '第${query.page}页货品$i',
-                '使用',
-                query.page,
-              ),
-          ],
-          page: query.page,
-          size: 20,
-          total: 2000,
-          totalPages: 100,
-        );
-      },
-    );
-    final rows = _table(tester).rowsController!;
-    rows.goToPage(79);
-    await tester.pumpAndSettle();
-    final settled = rows.settled;
-    await tester.pumpAndSettle();
-    await settled;
-    expect(rows.pagination.value?.currentPage, 79);
-    expect(reads, containsAll([79, 78, 77, 80, 81]));
-    expect(reads, isNot(contains(76)));
-    final pane =
-        tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
-            as MasterEntityPaneController<_Row, _Row>;
-    await pane.reload();
-    await tester.pumpAndSettle();
-    expect(_table(tester).currentPage, 79);
-    expect(reads.where((page) => page == 79), hasLength(2));
-    await pane.reload();
-    await tester.pumpAndSettle();
-    expect(_table(tester).currentPage, 79);
-    expect(reads.where((page) => page == 79), hasLength(3));
-  });
-
-  testWidgets('主档补齐缓冲页不会把缓冲页继续当作新的预测中心', (tester) async {
-    final reads = <int>[];
-    await _pump(
-      tester,
-      _FakeBatchRepository(),
-      _FakeStatusRepository(),
-      loadPage: (query) async {
-        reads.add(query.page);
-        return PagedResult<_Row>(
-          items: _rows.skip((query.page - 1) * 30).take(30).toList(),
-          page: query.page,
-          size: 30,
-          total: 90,
-          totalPages: 3,
-        );
-      },
-    );
-    expect(reads, [1, 2, 3]);
-    await PagedReadIntent.bufferSeed(() => _table(tester).onPageChange!(2));
-    await tester.pumpAndSettle();
-    expect(reads, [1, 2, 3]);
-    await _table(tester).onPageChange!(2);
-    await tester.pumpAndSettle();
-    expect(reads, [1, 2, 3]);
-  });
-
-  testWidgets('主档首屏预取后两页且往返分页复用数据，显式刷新重取', (tester) async {
-    final reads = <int>[];
-    await _pump(
-      tester,
-      _FakeBatchRepository(),
-      _FakeStatusRepository(),
-      loadPage: (query) async {
-        reads.add(query.page);
-        return PagedResult<_Row>(
-          items: _rows.skip((query.page - 1) * 30).take(30).toList(),
-          page: query.page,
-          size: 30,
-          total: 90,
-          totalPages: 3,
-        );
-      },
-    );
-    expect(reads, [1, 2, 3], reason: '首屏只准备后两页');
-    expect(_table(tester).currentPage, 1);
-    expect(_table(tester).expensiveRowMounts, isFalse);
-    await _table(tester).onPageChange!(2);
-    await tester.pumpAndSettle();
-    expect(_table(tester).currentPage, 2);
-    expect(reads, [1, 2, 3], reason: '后续两页已准备，翻页复用缓存');
-    await _table(tester).onPageChange!(1);
-    await tester.pumpAndSettle();
-    expect(_table(tester).currentPage, 1);
-    expect(reads, [1, 2, 3], reason: '返回已看过的第一页无需重新请求');
-    final pane =
-        tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
-            as MasterEntityPaneController<_Row, _Row>;
-    await pane.reload();
-    await tester.pumpAndSettle();
-    expect(reads.where((page) => page == 1).length, 2);
-    expect(reads.where((page) => page == 2).length, 2);
-  });
-
-  testWidgets('主档进入仍在预取的页只接管一个请求，预取不改变加载状态', (tester) async {
-    final next = Completer<PagedResult<_Row>>();
-    final reads = <int>[];
-    await _pump(
-      tester,
-      _FakeBatchRepository(),
-      _FakeStatusRepository(),
-      loadPage: (query) async {
-        reads.add(query.page);
-        if (query.page == 2) return next.future;
-        return PagedResult<_Row>(
-          items: _rows.take(30).toList(),
-          page: 1,
-          size: 30,
-          total: 60,
-          totalPages: 2,
-        );
+        return _fullBatch([
+          for (var i = 0; i < 130; i++)
+            _Row('r$i', '修订$revision-$i', '使用', revision),
+        ], query);
       },
     );
     expect(reads, [1, 2]);
+    revision = 2;
+    final pane =
+        tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
+            as MasterEntityPaneController<_Row, _Row>;
+    final refresh = pane.reload();
+    await tester.pumpAndSettle();
+    await refresh;
+    expect(reads, [1, 2, 1, 2]);
+    expect(_table(tester).items, hasLength(130));
+    expect(
+      _table(
+        tester,
+      ).items.every((row) => row.version == 2 && row.name.startsWith('修订2-')),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('主档后续内部批未完成时不把首批当完整列表', (tester) async {
+    final data = [
+      for (var i = 0; i < 150; i++) _Row('w$i', '等待$i', '使用', i + 1),
+    ];
+    final gate = Completer<PagedResult<_Row>>();
+    final reads = <int>[];
+    await _pump(
+      tester,
+      _FakeBatchRepository(),
+      _FakeStatusRepository(),
+      settle: false,
+      loadPage: (query) async {
+        reads.add(query.page);
+        return query.page == 2 ? gate.future : _fullBatch(data, query);
+      },
+    );
+    for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 1));
+    }
+    expect(reads, [1, 2]);
+    expect(_table(tester).items, isEmpty);
+    expect(_table(tester).isLoading, isTrue);
+    gate.complete(
+      _fullBatch(data, const MasterPaneQuery(categoryId: 'cat-1', page: 2)),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).items, hasLength(150));
     expect(_table(tester).isLoading, isFalse);
-    expect(_table(tester).loadingMore, isFalse);
-    expect(_table(tester).currentPage, 1);
-    final navigation = _table(tester).onPageChange!(2);
-    await tester.pump();
+    expect(_table(tester).totalPages, 1);
     expect(reads, [1, 2]);
-    next.complete(
-      PagedResult<_Row>(
-        items: _rows.skip(30).take(30).toList(),
-        page: 2,
-        size: 30,
-        total: 60,
-        totalPages: 2,
-      ),
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('主档离开后旧完整读取不发布也不继续请求后批', (tester) async {
+    final data = [
+      for (var i = 0; i < 250; i++) _Row('z$i', '已离开$i', '使用', i + 1),
+    ];
+    final gate = Completer<PagedResult<_Row>>();
+    final reads = <int>[];
+    await _pump(
+      tester,
+      _FakeBatchRepository(),
+      _FakeStatusRepository(),
+      settle: false,
+      loadPage: (query) async {
+        reads.add(query.page);
+        return query.page == 2 ? gate.future : _fullBatch(data, query);
+      },
     );
-    await navigation;
-    await tester.pumpAndSettle();
-    expect(_table(tester).currentPage, 2);
+    for (var frame = 0; reads.length < 2 && frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 1));
+    }
     expect(reads, [1, 2]);
+    await tester.pumpWidget(const SizedBox.shrink());
+    gate.complete(
+      _fullBatch(data, const MasterPaneQuery(categoryId: 'cat-1', page: 2)),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, [1, 2]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('完整列表超过写入上限时不截断选择、不拆分或发送命令', (tester) async {
+    final data = [
+      for (var i = 0; i < 501; i++) _Row('b$i', '批量$i', '使用', i + 1),
+    ];
+    final batch = _FakeBatchRepository();
+    await _pump(
+      tester,
+      batch,
+      _FakeStatusRepository(),
+      loadPage: (query) async => _fullBatch(data, query),
+    );
+    final selected = data.map((row) => row.id).toSet();
+    _table(tester).onSelectedIdsChanged!(selected);
+    await tester.pumpAndSettle();
+    final pane =
+        tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
+            as MasterEntityPaneController<_Row, _Row>;
+    await pane.batchSetStatus(selected, '禁用');
+    await pane.batchDelete(selected);
+    await tester.pump();
+    expect(batch.statusCalls, isEmpty);
+    expect(batch.deleteCalls, isEmpty);
+    expect(pane.selectedIds, selected);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MasterEntityDetailPane<_Row, _Row>)),
+      listen: false,
+    );
+    expect(
+      container
+          .read(appNotificationProvider)
+          .any(
+            (notice) =>
+                notice.kind == AppNotificationKind.error &&
+                notice.message.contains('一次最多操作 500 条'),
+          ),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('批量禁用 100 条只发 1 次请求，带上每行版本，不逐条拉详情', (tester) async {
@@ -707,4 +754,15 @@ void main() {
       reason: '分类卡片标题 = 名称（备注）(数量: N)，与左侧列表同形',
     );
   });
+}
+
+PagedResult<_Row> _fullBatch(List<_Row> data, MasterPaneQuery query) {
+  final size = query.size ?? 100;
+  return PagedResult<_Row>(
+    items: data.skip((query.page - 1) * size).take(size).toList(),
+    page: query.page,
+    size: size,
+    total: data.length,
+    totalPages: (data.length / size).ceil(),
+  );
 }

@@ -105,6 +105,8 @@ OutboundWeightEntry drawIssueWeightEntry(
   warehouseId: warehouseId,
   qtyOf: () => double.tryParse(qty.text.trim()),
   qtyController: qty,
+  qtyBaseExactOf: () =>
+      outboundExactBaseQuantityText(qty.text, item.recordedUnitRateText),
   unitRate: item.unitRate ?? 1,
   unitRateExact: item.unitRateText,
   unit: unit,
@@ -120,6 +122,10 @@ OutboundWeightEntry drawRemainingWeightEntry(
   colorId: item.colorId,
   warehouseId: warehouseId,
   qtyOf: () => double.tryParse(item.remainingQtyText ?? ''),
+  qtyBaseExactOf: () => outboundExactBaseQuantityText(
+    item.remainingQtyText,
+    item.recordedUnitRateText,
+  ),
   unitRate: item.unitRate ?? 1,
   unitRateExact: item.unitRateText,
   unit: unit,

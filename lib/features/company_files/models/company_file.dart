@@ -94,6 +94,7 @@ class CompanyFileListing {
     this.page = 0,
     this.size = 100,
     this.canReorder = false,
+    this.readScopeVersion,
   });
   final CompanyFile? folder;
   final List<CompanyFileBreadcrumb> breadcrumbs;
@@ -103,7 +104,18 @@ class CompanyFileListing {
   final int page;
   final int size;
   final bool canReorder;
+  final String? readScopeVersion;
   bool allows(String action) => allowedActions.contains(action);
+  CompanyFileListing withEntries(List<CompanyFile> rows) => CompanyFileListing(
+    folder: folder,
+    breadcrumbs: breadcrumbs,
+    entries: List.unmodifiable(rows),
+    allowedActions: allowedActions,
+    total: total,
+    size: rows.isEmpty ? size : rows.length,
+    canReorder: canReorder,
+    readScopeVersion: readScopeVersion,
+  );
   factory CompanyFileListing.fromJson(
     Map<String, dynamic> json,
   ) => CompanyFileListing(
@@ -128,6 +140,7 @@ class CompanyFileListing {
     page: (json['page'] as num?)?.toInt() ?? 0,
     size: (json['size'] as num?)?.toInt() ?? 100,
     canReorder: json['canReorder'] == true,
+    readScopeVersion: json['readScopeVersion'] as String?,
   );
 }
 

@@ -1,0 +1,12 @@
+{
+  "capturedAtUtc": "2026-11-05T22:02:09.425756+00:00",
+  "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "sampleProducerModifiedAtUtc": "2026-11-05T21:38:54.393965+00:00",
+  "producerPath": "server/build/loading-validation/daily-report-draft-claims/current-task-service-comparison.json",
+  "sampleSha256": "1b36f1d0b7e9e4ac91172430dda0bd2aa1fb5d0ef3e3c489454c61a2a4b10e79",
+  "qualifiedClassTests": 10,
+  "qualifiedClassFailedErrorsSkipped": 0,
+  "originalObservedWholeRunState": "running",
+  "originalObservedWholeRunNativeExit": null,
+  "scope": "Same current source real public service fixture. Observation occurred while PG22 whole run was still active; its completed native receipt is required independently. Not HTTP/client/SLA; no substitution of earlier sample times."
+}

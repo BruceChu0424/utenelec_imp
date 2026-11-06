@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import '../../../support/production_daily_report_fixture.dart';
+import '../../../support/master_dictionary_fixture.dart';
 // 车间任务页「批量报工 -> 日报新建页保存 -> 详情页返回」的真实导航链路回归。
 //
 // 2026-09-20 用户反馈：从生产日报详情页返回「我的车间任务」不刷新，已报完工的
@@ -77,6 +81,8 @@ void main() {
         );
         final container = ProviderContainer(
           overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -192,6 +198,8 @@ void main() {
       addTearDown(router.dispose);
       final container = ProviderContainer(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           localServerReachableProvider.overrideWith(
             (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
           ),
@@ -306,6 +314,8 @@ void main() {
       addTearDown(router.dispose);
       final container = ProviderContainer(
         overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
           localServerReachableProvider.overrideWith(
             (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
           ),
@@ -414,6 +424,8 @@ void main() {
     addTearDown(router.dispose);
     final container = ProviderContainer(
       overrides: [
+        emptyServerReportDraftsFixture(),
+        emptyMasterDictionaryFixture(),
         localServerReachableProvider.overrideWith(
           (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
         ),
@@ -475,9 +487,10 @@ void main() {
     container.dispose();
   });
   // 草稿保留原任务行与生产中计数，数量仍扣减以免重复报工。
-  for (final (initialClaim, expectedRemaining) in [
-    (8000.0, '0'),
-    (3000.0, '5000'),
+  for (final (initialClaim, baseQty, expectedRemaining) in [
+    ('8000', '8000', '0'),
+    ('3000', '8000', '5000'),
+    ('90071992547409.1235', '90071992547409.1236', '0.0001'),
   ]) {
     testWidgets(
       'draft claim $initialClaim deducts the reportable quantity (remaining $expectedRemaining)',
@@ -485,9 +498,14 @@ void main() {
         var claim = initialClaim;
         await tester.binding.setSurfaceSize(const Size(1600, 1000));
         addTearDown(() => tester.binding.setSurfaceSize(null));
-        final api = _draftClaimingApi(claimedQty: () => claim);
+        final api = _draftClaimingApi(
+          claimedQty: () => double.parse(claim),
+          claimedQtyExact: () => claim,
+          remainingQtyExact: baseQty,
+        );
         final container = ProviderContainer(
           overrides: [
+            emptyMasterDictionaryFixture(),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -540,7 +558,7 @@ void main() {
           find.byKey(const ValueKey('workshop-task-draft-segment-a')),
           findsOneWidget,
         );
-        if (claim < 8000) {
+        if (expectedRemaining != '0') {
           await tester.tap(selectAll);
           await tester.pumpAndSettle();
           expect(find.text('批量报工(1)'), findsOneWidget, reason: '部分承接保留分批报工');
@@ -579,21 +597,18 @@ void main() {
             ),
             findsOneWidget,
           );
-          expect(
-            find.text('草稿待审核 ${claim.toStringAsFixed(0)} 件'),
-            findsOneWidget,
-          );
+          expect(find.text('草稿待审核 $claim 件'), findsOneWidget);
           await tester.tap(find.byType(UtenCloseButton).last);
           await tester.pumpAndSettle();
           // 部分承接变体此刻勾着行：先清掉，让「恢复」阶段从空勾选开始。
-          if (claim < 8000) {
+          if (expectedRemaining != '0') {
             await tester.tap(selectAll);
             await tester.pumpAndSettle();
           }
         }
 
         // 删除草稿后原行恢复业务状态与原待报额度，任务数始终保持 3。
-        claim = 0;
+        claim = '0';
         await tester.tap(find.byTooltip('刷新'));
         await tester.pumpAndSettle();
         expect(find.textContaining('生产中 · 可报工'), findsOneWidget);
@@ -607,7 +622,7 @@ void main() {
             of: find.byKey(
               const ValueKey('workshop-detail-quantity-remaining'),
             ),
-            matching: find.text('8000 件'),
+            matching: find.text('$baseQty 件'),
           ),
           findsOneWidget,
         );
@@ -631,6 +646,7 @@ void main() {
     final api = _draftFailingApi();
     final container = ProviderContainer(
       overrides: [
+        emptyMasterDictionaryFixture(),
         localServerReachableProvider.overrideWith(
           (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
         ),
@@ -684,7 +700,11 @@ void main() {
 
 /// 车间任务 + 未审核报工草稿的假 API：GD-a 计划/待报 8000，草稿按 [claimedQty]
 /// 闭包实时承接（测试里改闭包变量即可模拟删除草稿后的下一次刷新）。
-ApiClient _draftClaimingApi({required double Function() claimedQty}) {
+ApiClient _draftClaimingApi({
+  required double Function() claimedQty,
+  String Function()? claimedQtyExact,
+  String remainingQtyExact = '8000',
+}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -705,7 +725,8 @@ ApiClient _draftClaimingApi({required double Function() claimedQty}) {
                 'productUnitName': '件',
                 'plannedQty': 8000,
                 'reportedQty': 0,
-                'remainingReportQty': 8000,
+                'remainingReportQty': double.parse(remainingQtyExact),
+                'remainingReportQtyExact': remainingQtyExact,
                 'segmentStatus': 'IN_PROGRESS',
                 'materialStatus': 'KIT_READY',
                 'preparationStatus': 'PREPARED',
@@ -725,12 +746,34 @@ ApiClient _draftClaimingApi({required double Function() claimedQty}) {
             'totalPages': 1,
           },
           '/production/workshop-tasks/count' => {'count': 1},
-          '/production/daily-reports' => () {
+          '/production/daily-reports/draft-claims/query' => () {
             final claim = claimedQty();
             return {
               'items': claim > 0
                   ? [
-                      {'id': 'draft-1', 'billNo': 'SR-DRAFT-1', 'status': 0},
+                      {
+                        'id': 'draft-1',
+                        'billNo': 'SR-DRAFT-1',
+                        'status': 0,
+                        'closed': false,
+                        'canceled': false,
+                        'rowVersion': '1',
+                        'draftClaimsVersion': 1,
+                        'draftClaimsFingerprint': sha256
+                            .convert(
+                              utf8.encode(
+                                claimedQtyExact?.call() ?? claim.toString(),
+                              ),
+                            )
+                            .toString(),
+                        'draftClaims': [
+                          {
+                            'executionSegmentId': 'segment-a',
+                            'qty': claimedQtyExact?.call() ?? claim.toString(),
+                            'actualSurplus': false,
+                          },
+                        ],
+                      },
                     ]
                   : <Map<String, dynamic>>[],
               'page': 1,
@@ -774,7 +817,7 @@ ApiClient _draftFailingApi() {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) {
-        if (request.path == '/production/daily-reports') {
+        if (request.path == '/production/daily-reports/draft-claims/query') {
           handler.reject(
             DioException.connectionError(
               requestOptions: request,

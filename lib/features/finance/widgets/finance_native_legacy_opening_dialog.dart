@@ -11,6 +11,11 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 import '../../../core/network/business_precision.dart';
 import '../../../core/network/business_submission_headers.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -56,7 +61,9 @@ class _Share extends EditableGridRow {
 }
 
 class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
-    with FormDraftMixin<_LegacyOpening> {
+    with FormDraftMixin<_LegacyOpening>, ReadViewActivityMixin<_LegacyOpening> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
   late final int _epoch;
   final _reference = TextEditingController();
@@ -68,8 +75,8 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
   Map<String, dynamic> _pendingHeaders = {}, _actionHeaders = {};
   String? _pendingActor, _actionActor;
   BusinessPrecisionTransport? _sentTransport;
-  int _page = 1, _pages = 1, _generation = 0;
-  bool _busy = false, _unknown = false;
+  int _generation = 0;
+  bool _busy = false, _unknown = false, _readDenied = false;
   String? _error, _unknownAction;
   bool get _read => ref.read(currentPermissionsProvider).containsAll({
     'finance_report:view',
@@ -88,6 +95,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
       ref.read(currentPermissionsProvider).contains('finance_post:execute');
   bool get _editable =>
       _current &&
+      !_readDenied &&
       _write &&
       !_busy &&
       !_frozen &&
@@ -127,8 +135,6 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
     'data': _data,
     'rows': _rows,
     'currencyLabels': _currencyLabels,
-    'page': _page,
-    'pages': _pages,
     'pendingHeaders': businessSubmissionHeaders(_pendingHeaders),
     'actionHeaders': businessSubmissionHeaders(_actionHeaders),
     'pendingActor': _pendingActor,
@@ -159,8 +165,6 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
     for (final e in (data['currencyLabels'] as Map? ?? {}).entries) {
       _currencyLabels[e.key.toString()] = e.value.toString();
     }
-    _page = (data['page'] as num?)?.toInt() ?? 1;
-    _pages = (data['pages'] as num?)?.toInt() ?? 1;
     _pendingHeaders = businessSubmissionHeaders(data['pendingHeaders']);
     _actionHeaders = businessSubmissionHeaders(data['actionHeaders']);
     _pendingActor =
@@ -228,7 +232,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
         setState(() {});
         return;
       }
-      await _load(1);
+      await _load();
     });
   }
 
@@ -239,41 +243,84 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy || _unknown || _frozen || _unknownAction != null) {
       return;
     }
     final generation = ++_generation;
+    bool current() => _current && generation == _generation;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final result = await _api.get(
-        '$_path/targets/${widget.ledgerId}',
-        query: {'page': '$page', 'size': '50'},
-      );
-      if (_currencyLabels.isEmpty) {
-        final choices = await _api.get(
-          '/finance/native-posting-accounts/choices',
+      final loaded = await readViewActivity.runRead(current, () async {
+        Map<String, dynamic> first = {};
+        final complete = await loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) {
+            final ref = row['reference'];
+            return ref is Map &&
+                    ref['entryId']?.toString().isNotEmpty == true &&
+                    ref['allocationNo'] != null
+                ? (ref['entryId'], ref['allocationNo'])
+                : null;
+          },
+          loadPage: (batch, size) async {
+            final value = await _api.get(
+              '$_path/targets/${widget.ledgerId}',
+              query: {'page': batch, 'size': size},
+            );
+            if (batch == 1) first = value;
+            final sources = value['sources'];
+            if (sources is! Map) {
+              if (value['binding'] == null) {
+                throw const FormatException('原期初来源读取不完整');
+              }
+              return PagedResult(
+                items: const [],
+                page: batch,
+                size: size,
+                total: 0,
+                totalPages: 0,
+              );
+            }
+            return PagedResult.fromJsonResponsive({
+              ...Map<String, dynamic>.from(sources),
+              'readScopeVersion': value['readScopeVersion'],
+            }, (row) => row);
+          },
         );
-        if (!_current || generation != _generation) return;
-        for (final currency in _maps(choices['currencies'])) {
-          _currencyLabels['${currency['id']}'] =
-              '${currency['code']} ${currency['name']}';
+        Map<String, String> currencies = {};
+        if (_currencyLabels.isEmpty) {
+          final choices = await _api.get(
+            '/finance/native-posting-accounts/choices',
+          );
+          currencies = {
+            for (final currency in _maps(choices['currencies']))
+              '${currency['id']}': '${currency['code']} ${currency['name']}',
+          };
         }
-      }
+        return (data: first, rows: complete.items, currencies: currencies);
+      });
       if (!_current || generation != _generation) return;
       setState(() {
-        _data = result;
-        final source = result['sources'] as Map?;
-        _rows = _maps(source?['items']);
-        _page = page;
-        _pages = (source?['totalPages'] as num?)?.toInt() ?? 1;
+        _data = loaded.data;
+        _rows = loaded.rows;
+        _currencyLabels.addAll(loaded.currencies);
+        _readDenied = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (_current && generation == _generation) {
-        setState(() => _error = _message(e));
+        setState(() {
+          _error = _message(e);
+          if (pagedReadAccessDenied(e)) {
+            _readDenied = _data.isNotEmpty || _grid.rows.isNotEmpty;
+            _data = {};
+            _rows = [];
+          }
+        });
       }
     } finally {
       if (_current && generation == _generation) setState(() => _busy = false);
@@ -317,6 +364,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
 
   Future<void> _submit() async {
     if (!_current ||
+        (_readDenied && _pending == null) ||
         !_write ||
         _busy ||
         _unknownAction != null ||
@@ -390,7 +438,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
   }
 
   Future<void> _act(Map<String, dynamic> review, bool withdraw) async {
-    if (!_current || _busy || _unknown || !_write) return;
+    if (!_current || _readDenied || _busy || _unknown || !_write) return;
     final id = '${review['id']}';
     if (_unknownAction != null && _unknownAction != id) return;
     if (_unknownAction == id && _actionPending != null) {
@@ -617,17 +665,20 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
     ref.watch(exportContextEpochProvider);
     ref.watch(apiClientProvider);
     ref.watch(currentPermissionsProvider);
-    if (!_current) {
+    if (!_current || _readDenied) {
       return withFormDraft(
         UtenAlertDialog(
           showCloseButton: true,
           onClose: () => Navigator.pop(context),
 
-          title: const Row(
+          title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('旧未结接续'),
-              UtenFieldHintIcon(info: '身份、权限或公司数据范围已变化。原私有草稿保留，请重新进入。'),
+              const Text('旧未结接续'),
+              UtenFieldHintIcon(
+                info: '身份、权限或公司数据范围已变化。原私有草稿保留，请重新进入。',
+                errorMessage: _error,
+              ),
             ],
           ),
         ),
@@ -775,10 +826,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
                       idOf: _key,
                       busy: _busy,
                       error: _rows.isEmpty ? _error : null,
-                      retry: () => _load(_page),
-                      page: _page,
-                      pages: _pages,
-                      onPage: _load,
+                      retry: _load,
                       scope: (_epoch, widget.ledgerId),
                       selectable: _editable && _write,
                       selectedIds: _grid.rows.map((r) => r.key).toSet(),
@@ -850,7 +898,7 @@ class _LegacyOpeningState extends ConsumerState<_LegacyOpening>
                     UtenButton(
                       onPressed: _busy || _unknown || _frozen
                           ? null
-                          : () => _load(_page),
+                          : () => _load(),
                       child: const Text('刷新核对'),
                     ),
 

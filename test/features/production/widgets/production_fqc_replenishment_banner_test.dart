@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
@@ -81,50 +82,98 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('server paging loads the requested material-task page', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _ReplenishmentApi(status: 'AWAITING_CONFIRMATION', pages: 2);
-    final router = _router();
-    addTearDown(router.dispose);
-
-    await _pump(
-      tester,
-      api: api,
-      router: router,
-      permissions: const {Perm.productionFqcReplenishmentView},
-    );
-    await tester.tap(find.text('处理待办'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('PLAN-1'), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-
-    expect(api.requestedPages, containsAllInOrder([1, 2]));
-    expect(find.textContaining('PLAN-2'), findsOneWidget);
-    expect(
-      tester
+  testWidgets(
+    'material tasks complete a clamped scope before opening with zero scroll reads',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ReplenishmentApi(status: 'AWAITING_CONFIRMATION', pages: 2);
+      final router = _router();
+      addTearDown(router.dispose);
+      await _pump(
+        tester,
+        api: api,
+        router: router,
+        permissions: const {Perm.productionFqcReplenishmentView},
+      );
+      expect(api.requestedPages, [1, 2]);
+      expect(api.requestedSizes, [100, 100]);
+      await tester.tap(find.text('处理待办'));
+      await tester.pumpAndSettle();
+      final finder = find.byKey(const Key('fqc-replenishment-task-list'));
+      final list = tester
           .widget<UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>>(
-            find.byKey(const Key('fqc-replenishment-task-list')),
-          )
-          .rowsController!
-          .visiblePage,
-      2,
-    );
-    expect(tester.takeException(), isNull);
-  });
+            finder,
+          );
+      expect(list.items.map((row) => row.authorizationId), [
+        'authorization-1',
+        'authorization-2',
+      ]);
+      expect(list.rowsController!.visiblePage, 1);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      await _scrollTaskList(tester, toEnd: true);
+      expect(find.textContaining('PLAN-2'), findsOneWidget);
+      await _scrollTaskList(tester, toEnd: false);
+      expect(find.textContaining('PLAN-1'), findsOneWidget);
+      expect(api.requestedPages, [1, 2]);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-    'FQC task sheet appends, retries, and prepends with stable task identities',
+    '251 material tasks reach the tail in three size100 batches and scroll locally',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(720, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _ReplenishmentApi(
         status: 'AWAITING_CONFIRMATION',
-        pages: 3,
+        totalRows: 251,
+        serverBatchSize: 100,
+      );
+      final router = _router();
+      addTearDown(router.dispose);
+      await _pump(
+        tester,
+        api: api,
+        router: router,
+        permissions: const {Perm.productionFqcReplenishmentView},
+      );
+      expect(api.requestedPages, [1, 2, 3]);
+      expect(api.requestedSizes, [100, 100, 100]);
+      await tester.tap(find.text('处理待办'));
+      await tester.pumpAndSettle();
+      final list = tester
+          .widget<UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>>(
+            find.byKey(const Key('fqc-replenishment-task-list')),
+          );
+      expect(list.items, hasLength(251));
+      expect(
+        list.items.map((row) => row.authorizationId).toSet(),
+        hasLength(251),
+      );
+      expect(list.items.last.authorizationId, 'authorization-251');
+      await _scrollTaskList(tester, toEnd: true);
+      expect(find.textContaining('PLAN-251'), findsOneWidget);
+      await _scrollTaskList(tester, toEnd: false);
+      expect(find.textContaining('PLAN-1'), findsWidgets);
+      expect(api.requestedPages, [1, 2, 3]);
+      expect(find.text('确认用料并生成领料'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'later task failure publishes no partial set and retries the whole query from one',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(720, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ReplenishmentApi(
+        status: 'AWAITING_CONFIRMATION',
+        totalRows: 251,
+        serverBatchSize: 100,
         failFirstPageTwo: true,
         pageTwoGate: Completer<void>(),
       );
@@ -136,36 +185,44 @@ void main() {
         router: router,
         permissions: const {Perm.productionFqcReplenishmentView},
       );
+      for (var i = 0; i < 80 && api.requestedPages.length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.requestedPages, [1, 2]);
+      expect(find.text('处理待办'), findsNothing);
+      expect(find.textContaining('PLAN-1'), findsNothing);
+      api.pageTwoGate!.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('重试'), findsOneWidget);
+      expect(find.text('处理待办'), findsNothing);
+      api.pageTwoGate = Completer<void>();
+      await tester.tap(find.text('重试'));
+      for (var i = 0; i < 80 && api.requestedPages.length < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.requestedPages, [1, 2, 1, 2]);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.text('处理待办'), findsNothing);
+      api.pageTwoGate!.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
       await tester.tap(find.text('处理待办'));
       await tester.pumpAndSettle();
-      final finder = find.byKey(const Key('fqc-replenishment-task-list'));
-      UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask> list() =>
-          tester.widget<
-            UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>
-          >(finder);
-      final next = list().rowsController!.loadNextPage();
-      api.pageTwoGate!.complete();
-      await tester.pumpAndSettle();
-      await next;
-      expect(list().rowsController!.items.map((row) => row.authorizationId), [
-        'authorization-1',
-      ]);
-      await tester.tap(find.descendant(of: finder, matching: find.text('重试')));
-      await tester.pumpAndSettle();
-      expect(list().rowsController!.items.map((row) => row.authorizationId), [
-        'authorization-1',
-        'authorization-2',
-      ]);
-      await list().onPageChange(3);
-      await tester.pumpAndSettle();
-      final previous = list().rowsController!.loadPreviousPage();
-      await tester.pumpAndSettle();
-      await previous;
-      expect(list().rowsController!.items.map((row) => row.authorizationId), [
-        'authorization-2',
-        'authorization-3',
-      ]);
-      expect(api.requestedPages, [1, 2, 2, 3]);
+      final list = tester
+          .widget<UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>>(
+            find.byKey(const Key('fqc-replenishment-task-list')),
+          );
+      expect(
+        list.items.map((row) => row.authorizationId).toSet(),
+        hasLength(251),
+      );
+      expect(list.items.last.authorizationId, 'authorization-251');
+      await _scrollTaskList(tester, toEnd: true);
+      expect(find.textContaining('PLAN-251'), findsOneWidget);
+      expect(api.requestedPages, [1, 2, 1, 2, 3]);
+      expect(api.requestedSizes, everyElement(100));
       expect(find.text('确认用料并生成领料'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -264,6 +321,21 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+Future<void> _scrollTaskList(WidgetTester tester, {required bool toEnd}) async {
+  final list = find.byKey(const Key('fqc-replenishment-task-list'));
+  final scrollable = find
+      .descendant(of: list, matching: find.byType(Scrollable))
+      .first;
+  final position = tester.state<ScrollableState>(scrollable).position;
+  for (var i = 0; i < 3; i++) {
+    position.jumpTo(
+      toEnd ? position.maxScrollExtent : position.minScrollExtent,
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+  }
+}
+
 Future<void> _confirmRetry(WidgetTester tester) async {
   await tester.tap(find.text('库存补齐后重试确认'));
   await tester.pumpAndSettle();
@@ -310,6 +382,8 @@ class _ReplenishmentApi extends ApiClient {
   _ReplenishmentApi({
     required this.status,
     this.pages = 1,
+    this.totalRows,
+    this.serverBatchSize,
     this.failFirstConfirmation = false,
     this.becomeReadyAfterFirstLoad = false,
     this.failFirstPageTwo = false,
@@ -318,14 +392,17 @@ class _ReplenishmentApi extends ApiClient {
 
   final String status;
   final int pages;
+  final int? totalRows;
+  final int? serverBatchSize;
   final bool failFirstConfirmation;
   final bool becomeReadyAfterFirstLoad;
   final bool failFirstPageTwo;
-  final Completer<void>? pageTwoGate;
+  Completer<void>? pageTwoGate;
   bool _pageTwoFailed = false;
   String? createdAuthorizationId;
   int materialTaskLoads = 0;
   final List<int> requestedPages = [];
+  final List<int> requestedSizes = [];
   final List<String> confirmationKeys = [];
 
   Map<String, dynamic> planningTask({String? analysisId}) => {
@@ -390,23 +467,31 @@ class _ReplenishmentApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.endsWith('/material-tasks/count')) {
-      return {'count': status == 'READY' ? 0 : 1};
+      return {'count': status == 'READY' ? 0 : totalRows ?? pages};
     }
     if (path.endsWith('/material-tasks')) {
       materialTaskLoads += 1;
       final page = (query?['page'] as num?)?.toInt() ?? 1;
       requestedPages.add(page);
+      final requestedSize = (query?['size'] as num?)?.toInt() ?? 40;
+      requestedSizes.add(requestedSize);
+      final count = totalRows ?? pages;
+      final size = serverBatchSize ?? (pages > 1 ? 1 : requestedSize);
+      final start = (page - 1) * size;
       if (page == 2 && pageTwoGate != null) await pageTwoGate!.future;
       if (page == 2 && failFirstPageTwo && !_pageTwoFailed) {
         _pageTwoFailed = true;
         throw NetworkException();
       }
       return {
-        'items': [materialTask(page: page)],
+        'items': [
+          for (var i = start; i < count && i < start + size; i++)
+            materialTask(page: i + 1),
+        ],
         'page': page,
-        'size': 40,
-        'total': pages == 1 ? 1 : 41,
-        'totalPages': pages,
+        'size': size,
+        'total': count,
+        'totalPages': (count + size - 1) ~/ size,
       };
     }
     if (path.endsWith('/quality-replenishments')) {

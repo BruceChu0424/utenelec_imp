@@ -154,39 +154,28 @@ void main() {
     expect(find.text('登录身份已变化，请返回重新查看'), findsOneWidget);
   });
 
-  testWidgets('narrow large text supports bounded cursor navigation and back', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final storage = _HistoryStorage();
-    await _mount(tester, storage, textScale: 2);
-    expect(tester.takeException(), isNull);
-    expect(find.text('下一页'), findsNothing);
-    expect(find.text('/ ?'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    expect(storage.cursors.last, '2');
-    expect(
-      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-      2,
-    );
-    await tester.tap(find.byKey(const ValueKey('master-table-page-previous')));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-      1,
-    );
-    await tester.tap(
-      find.descendant(
-        of: find.byType(UtenBackButton),
-        matching: find.byType(IconButton),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(FormDraftHistoryButton), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'narrow large text reads the complete cursor history once and can return',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = _HistoryStorage();
+      await _mount(tester, storage, textScale: 2);
+      expect(tester.takeException(), isNull);
+      expect(find.text('下一页'), findsNothing);
+      expect(storage.cursors.sublist(storage.cursors.length - 2), [null, '2']);
+      expect(find.byType(UtenPagination), findsNothing);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(FormDraftHistoryButton), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

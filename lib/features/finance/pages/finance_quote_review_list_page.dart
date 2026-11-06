@@ -47,9 +47,7 @@ import '../../../shared/auth/native_read_view_scope_mixin.dart'
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_quote_finance_review.dart';
 import '../repositories/sales_quote_finance_review_repository.dart';
-import '../providers/finance_audit_preparation_provider.dart';
 import '../../../shared/paging/scoped_category_read.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 
 /// 核价详情办结(确认/退回)后 bump 的列表刷新键。
@@ -69,6 +67,9 @@ class FinanceQuoteReviewListPage extends ConsumerStatefulWidget {
 class _FinanceQuoteReviewListPageState
     extends ConsumerState<FinanceQuoteReviewListPage>
     with ScopedPagedReadViewMixin<FinanceQuoteReviewListPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(1, forceCounts: true);
+
   late SalesQuoteFinanceState _state;
   PagedResult<SalesQuoteFinanceListItem>? _result;
   final _tableRows = MasterDataTableRowsController<SalesQuoteFinanceListItem>();
@@ -94,7 +95,7 @@ class _FinanceQuoteReviewListPageState
       orElse: () => SalesQuoteFinanceState.pending,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load(1, preferPrepared: true);
+      if (mounted) _load(1);
     });
   }
 
@@ -128,7 +129,7 @@ class _FinanceQuoteReviewListPageState
     if (changedOwner) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && epoch == ref.read(exportContextEpochProvider)) {
-          _load(1, preferPrepared: true);
+          _load(1);
         }
       });
     }
@@ -146,7 +147,6 @@ class _FinanceQuoteReviewListPageState
   Future<void> _load(
     int page, {
     bool useCache = false,
-    bool preferPrepared = false,
     bool forceCounts = false,
   }) async {
     final cacheQuery = _cacheQuery;
@@ -163,32 +163,25 @@ class _FinanceQuoteReviewListPageState
       _loading = true;
       _error = null;
     });
-    if (_state != SalesQuoteFinanceState.returned || _keyword.isNotEmpty) {
+    if (_state != SalesQuoteFinanceState.confirmed &&
+        (_state != SalesQuoteFinanceState.returned || _keyword.isNotEmpty)) {
       unawaited(_loadReturnedCount(version, force: forceCounts));
     }
     try {
       final result = await readScopedPage<SalesQuoteFinanceListItem>(
         page,
+        idOf: (row) => row.quoteId,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
         fetchPage: (target) {
-          Future<PagedResult<SalesQuoteFinanceListItem>> fetch() =>
-              repo.list(state: state, page: target, keyword: keyword);
-          if (target != 1) return fetch();
-          return ref
-              .read(financeAuditPreparedPagesProvider)
-              .quotes
-              .read(
-                financeQuoteReadKey(
-                  repo,
-                  state: state,
-                  page: target,
-                  keyword: keyword,
-                ),
-                fetch,
-                preferPrepared: preferPrepared,
-              );
+          Future<PagedResult<SalesQuoteFinanceListItem>> fetch() => repo.list(
+            state: state,
+            page: target,
+            size: 100,
+            keyword: keyword,
+          );
+          return fetch();
         },
       );
       if (!mounted || version != _requestVersion) return;
@@ -205,6 +198,7 @@ class _FinanceQuoteReviewListPageState
         }
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || version != _requestVersion) {
         return;
       }
@@ -216,7 +210,8 @@ class _FinanceQuoteReviewListPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _error = AppLocalizations.of(context).quoteFinanceLoadFailed;
@@ -279,7 +274,7 @@ class _FinanceQuoteReviewListPageState
       _error = null;
       _activeItem = null;
     });
-    _load(1, preferPrepared: next != SalesQuoteFinanceState.confirmed);
+    _load(1);
   }
 
   void _applyKeyword(String value) {
@@ -321,24 +316,7 @@ class _FinanceQuoteReviewListPageState
   @override
   Widget build(BuildContext context) {
     ref.watch(formDraftsProvider);
-    if (!_loading &&
-        (ref.watch(isSuperAdminProvider) ||
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.salesQuoteFinanceView))) {
-      final repo = _repo;
-      ref
-          .watch(financeAuditPreparationProvider)
-          .prepare(
-            ['quote-review', repo],
-            ref.watch(financeQuotePreparationJobsProvider),
-            canPrepare: () =>
-                mounted &&
-                !_loading &&
-                TickerMode.valuesOf(context).enabled &&
-                (ModalRoute.of(context)?.isCurrent ?? true),
-          );
-    }
+
     final l10n = AppLocalizations.of(context);
     _hostLocation ??= currentLocationOr(context, RouteName.financeQuoteReview);
     // 详情页办结 bump：本页在栈顶时立即重拉，被盖着时返回再拉(ADR-108)。

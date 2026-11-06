@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/workshop_task_stock_readiness.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
+import '../../../core/network/api_exception.dart';
 
 /// 认料种类: 用内料仓里的料。
 const workshopMaterialChoiceKindMaterial = 'MATERIAL';
@@ -349,17 +351,110 @@ class WorkshopMaterialChoiceRepository {
   );
 
   /// 开工确认表的行 (按车间 + 产品聚合); 不需要确认的段不出现。
+
   Future<List<WorkshopMaterialPendingChoice>> pending(
-    List<String> segmentIds,
-  ) async {
-    if (segmentIds.isEmpty) return const [];
-    final list = await _api.getList(
+    List<String> segmentIds, {
+    bool Function()? isCurrent,
+  }) async {
+    final current = isCurrent ?? () => true;
+    final ids = List<String>.unmodifiable(segmentIds);
+    if (ids.isEmpty) return const [];
+    _checkRead(current);
+    final raw = await _api.getList(
       ApiEndpoints.workshopMaterialChoicesPending,
-      query: {'segmentIds': segmentIds.join(',')},
+      query: {'segmentIds': ids.join(','), 'includeOptions': false},
     );
-    return list
+
+    final pendingRows = raw
         .map(WorkshopMaterialPendingChoice.fromJson)
         .toList(growable: false);
+    final workshopIds = {
+      for (final row in pendingRows)
+        if (row.choiceRequired) row.workshopDepartmentId,
+    }.toList()..sort();
+    final catalogs = <String, List<WorkshopMaterialOption>>{};
+    String? acceptedData, acceptedAuthority;
+    // Read batching is independent of the selected segment/write limits. Each
+    // actual workshop appears in one bounded scope; no per-product fanout.
+    for (var start = 0; start < workshopIds.length; start += 50) {
+      final chunk = workshopIds.sublist(
+        start,
+        (start + 50).clamp(0, workshopIds.length),
+      );
+      final catalog = await _completeOptions(chunk, current);
+      if (catalog.dataVersion == null) {
+        throw ApiException('INCOMPLETE_READ_PROTOCOL', '服务端未提供选料目录版本，请更新后重试');
+      }
+      if (acceptedData != null &&
+          (catalog.dataVersion != acceptedData ||
+              catalog.readScopeVersion != acceptedAuthority)) {
+        throw ApiException('SNAPSHOT_CHANGED', '选料范围在读取期间已变化，请重试');
+      }
+      acceptedData ??= catalog.dataVersion;
+      acceptedAuthority ??= catalog.readScopeVersion;
+      for (final workshop in chunk) {
+        catalogs[workshop] = catalog.items;
+      }
+    }
+    final result = <WorkshopMaterialPendingChoice>[];
+    for (final pending in pendingRows) {
+      _checkRead(current);
+      final options = pending.choiceRequired
+          ? catalogs[pending.workshopDepartmentId]!
+          : const <WorkshopMaterialOption>[];
+      result.add(
+        WorkshopMaterialPendingChoice(
+          workshopDepartmentId: pending.workshopDepartmentId,
+          workshopName: pending.workshopName,
+          productGoodsId: pending.productGoodsId,
+          productCode: pending.productCode,
+          productName: pending.productName,
+          segmentIds: pending.segmentIds,
+          taskCount: pending.taskCount,
+          choiceRequired: pending.choiceRequired,
+          prefill: pending.prefill,
+          prefillSource: pending.prefillSource,
+          options: options,
+          bomWeights: pending.bomWeights,
+          alsoOrderMaterialsAllowed: pending.alsoOrderMaterialsAllowed,
+        ),
+      );
+    }
+    _checkRead(current);
+    return result;
+  }
+
+  void _checkRead(bool Function() current) {
+    if (!current()) throw ApiException('REQUEST_STALE', '读取已取消');
+  }
+
+  Future<VersionedSummarySnapshot<WorkshopMaterialOption>> _completeOptions(
+    List<String> workshopIds,
+    bool Function() current,
+  ) async {
+    final ids = workshopIds.toSet().toList()..sort();
+    if (ids.isEmpty || ids.any((id) => id.isEmpty)) {
+      throw ApiException('INCOMPLETE_READ_PROTOCOL', '服务端未提供选料范围，请更新服务端后重试');
+    }
+    return readVersionedSummarySnapshot<WorkshopMaterialOption>(
+      isCurrent: current,
+      batchSize: 1000,
+      loadPage: (page, size, revision) => _api.get(
+        '${ApiEndpoints.workshopMaterialChoices}/material-options',
+        query: {
+          'workshopIds': ids.join(','),
+          'page': page,
+          'size': size,
+          'readSnapshotRevision': ?revision,
+        },
+      ),
+      decode: (row) => WorkshopMaterialOption.fromJson({
+        ...row,
+        'goodsName': row['goodsName'] ?? row['name'],
+        'goodsCode': row['goodsCode'] ?? row['code'],
+      }),
+      idOf: (option) => option.ref.key,
+    );
   }
 
   /// 一次写入一个车间里多个产品的认料 (一个原子请求, 同键重放不重复写)。
@@ -380,11 +475,29 @@ class WorkshopMaterialChoiceRepository {
   }
 
   /// 换料对话框的底稿 (这张工单现在用的料与可换的料)。
+
   Future<WorkshopMaterialSegmentMaterials> segmentMaterials(
-    String segmentId,
-  ) async => WorkshopMaterialSegmentMaterials.fromJson(
-    await _api.get(ApiEndpoints.workshopMaterialSegmentChange(segmentId)),
-  );
+    String segmentId, {
+    bool Function()? isCurrent,
+  }) async {
+    final current = isCurrent ?? () => true;
+    _checkRead(current);
+    final raw = await _api.get(
+      ApiEndpoints.workshopMaterialSegmentChange(segmentId),
+      query: {'includeOptions': false},
+    );
+    _checkRead(current);
+    final options = await _completeOptions([
+      raw['workshopDepartmentId'] as String? ?? '',
+    ], current);
+    final original = WorkshopMaterialSegmentMaterials.fromJson(raw);
+    return WorkshopMaterialSegmentMaterials(
+      rows: original.rows,
+      options: options.items,
+      lockVersion: original.lockVersion,
+      earliestEffectiveFrom: original.earliestEffectiveFrom,
+    );
+  }
 
   /// 这张工单从 [effectiveFrom] 起改用别的料; [fromRowId] 为空 = 加一种料。
   /// 返回段最新的期间料行 (服务端回 {segmentId, binWarehouseId, rows:[...]})。

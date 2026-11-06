@@ -18,7 +18,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   testWidgets(
-    'later target pages remain reachable and preserve exact selected input',
+    'complete positive target result preserves exact input without scroll requests',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1400, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -50,20 +50,17 @@ void main() {
       );
       await tester.tap(find.text('打开贷项'));
       await tester.pumpAndSettle();
-      expect(
-        api.pages,
-        [1, 2, 3],
-        reason: 'two successor DTOs are prepared without publishing them',
-      );
+      expect(api.pages, [1, 2, 3]);
+      expect(api.requestedSizes, everyElement(200));
+      expect(api.statuses, everyElement('OPEN'));
       expect(
         find.byKey(const ValueKey('supplier-offset-target-payable-1')),
-        findsNothing,
-        reason:
-            'prepared successor rows are not published into the current target list',
+        findsOneWidget,
       );
-      expect(find.textContaining('当前页暂无符合条件'), findsOneWidget);
-      await _scrollOffsetTargetsToNextPage(tester);
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('supplier-offset-target-payable-2')),
+        findsOneWidget,
+      );
       await tester.tap(
         find.byKey(const ValueKey('supplier-offset-target-payable-1')),
       );
@@ -73,7 +70,7 @@ void main() {
         const ValueKey('supplier-offset-amount-payable-1'),
       );
       await tester.enterText(amount, exact);
-      await _scrollOffsetTargetsToNextPage(tester);
+      await _scrollOffsetTargets(tester);
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(amount).controller!.text, exact);
       expect(api.pages, [1, 2, 3]);
@@ -91,15 +88,13 @@ void main() {
   );
 
   testWidgets(
-    'credit picker speculative rejection clears accepted targets and retains raw draft',
+    'credit picker fresh-read rejection clears accepted targets and retains raw draft',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1400, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final gate = Completer<void>();
-      final api = _PagedOffsetApi()
-        ..nextGate = gate
-        ..denyNext = true
-        ..firstEligible = true;
+      final api = _PagedOffsetApi()..firstEligible = true;
+      final navigatorKey = GlobalKey<NavigatorState>();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -108,6 +103,7 @@ void main() {
             ),
           ],
           child: MaterialApp(
+            navigatorKey: navigatorKey,
             home: Builder(
               builder: (context) => Scaffold(
                 body: FilledButton(
@@ -124,7 +120,7 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      expect(api.pages, [1, 2]);
+      expect(api.pages, [1, 2, 3]);
       await tester.tap(
         find.byKey(const ValueKey('supplier-offset-target-payable-1')),
       );
@@ -139,6 +135,20 @@ void main() {
       );
       await tester.enterText(amount, '1.00000000000000000001');
       final amountController = tester.widget<TextField>(amount).controller!;
+      api.nextGate = gate;
+      api.denyNext = true;
+      final navigator = navigatorKey.currentState!;
+      navigator.push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('opaque offset cover')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      navigator.pop();
+      for (var i = 0; i < 30 && api.pages.length < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(api.pages, [1, 2, 3, 1, 2]);
       gate.complete();
       await tester.pumpAndSettle();
       expect(
@@ -150,7 +160,9 @@ void main() {
       expect(reasonController.text, '  原始原因  ');
       expect(amountController.text, '1.00000000000000000001');
       await tester.pump(const Duration(seconds: 1));
-      expect(api.pages, [1, 2]);
+      expect(api.pages, [1, 2, 3, 1, 2]);
+      expect(api.statuses, everyElement('OPEN'));
+      expect(api.requestedSizes, everyElement(200));
       expect(tester.takeException(), isNull);
     },
   );
@@ -390,7 +402,7 @@ const _payableItem = <String, dynamic>{
   'status': 'OPEN',
 };
 
-Future<void> _scrollOffsetTargetsToNextPage(WidgetTester tester) async {
+Future<void> _scrollOffsetTargets(WidgetTester tester) async {
   final list = find.byType(ListView).last;
   final scrollable = tester.state<ScrollableState>(
     find.descendant(of: list, matching: find.byType(Scrollable)).first,
@@ -429,6 +441,8 @@ class _PagedOffsetApi extends ApiClient {
   _PagedOffsetApi() : super(Dio());
   final pages = <int>[];
   final currencies = <String>[];
+  final statuses = <String?>[];
+  final requestedSizes = <int>[];
   Completer<void>? nextGate;
   bool denyNext = false;
   bool firstEligible = false;
@@ -440,6 +454,8 @@ class _PagedOffsetApi extends ApiClient {
     final page = query!['page'] as int;
     pages.add(page);
     currencies.add(query['currencyId'] as String);
+    statuses.add(query['status'] as String?);
+    requestedSizes.add(query['size'] as int);
     if (page == 2 && nextGate != null) await nextGate!.future;
     if (page == 2 && denyNext) {
       throw ApiException('FORBIDDEN', 'offset read revoked', httpStatus: 403);
@@ -447,15 +463,17 @@ class _PagedOffsetApi extends ApiClient {
     return {
       'summary': <String, dynamic>{},
       'page': page,
-      'size': 200,
-      'total': 401,
+      'size': 1,
+      'total': 3,
       'totalPages': 3,
       'items': [
         if (page == 1)
           {
             ..._payableItem,
-            'status': firstEligible ? 'OPEN' : 'SETTLED',
-            'outstandingOriginal': firstEligible ? '200' : '0',
+            'id': 'seed-payable',
+            'status': 'PARTIAL',
+            'bookingRate': firstEligible ? '7.200000' : '8.000000',
+            'outstandingOriginal': '200',
           },
         if (page == 2)
           {

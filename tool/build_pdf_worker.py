@@ -66,7 +66,7 @@ def main():
         "flags": FLAGS, "sources": sources, "workerSha256": digest(OUTPUT), "workerBytes": OUTPUT.stat().st_size,
         "protocolVersion": 3, "supportedProtocolVersions": [1, 2, 3], "sourceTextNormalization": "LF",
     }
-    RECEIPT.write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    RECEIPT.write_text(json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"PDF_WORKER_BUILT bytes={OUTPUT.stat().st_size} sha256={receipt['workerSha256']}")
 
 

@@ -36,6 +36,28 @@ class _NoNetworkApi extends Fake implements ApiClient {}
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
+    'delegated staff directory reads all 101 authorized rows once without a more button',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1450, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _Repository()..bulkCount = 101;
+      await tester.pumpWidget(_app(repository));
+      await tester.pumpAndSettle();
+      final table = tester
+          .widget<MasterDataTableView<PagePermissionStaffSummary>>(
+            find.byKey(const ValueKey('page-permission-staff-table')),
+          );
+      expect(table.items, hasLength(101));
+      expect(table.items.last.employeeId, 'bulk-100');
+      expect(repository.pages, [1, 2]);
+      expect(repository.sizes, [100, 100]);
+      expect(find.text('加载更多'), findsNothing);
+      expect(repository.detailCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'staff headers query the full managed scope and preserve choices through sorting',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1450, 950));
@@ -361,6 +383,8 @@ class _Repository implements PagePermissionDelegationRepository {
   final headerQueries = <Map<String, String?>>[];
   final sorts = <String?>[];
   final pages = <int>[];
+  final sizes = <int>[];
+  int bulkCount = 0;
   bool emptyHeaders = false;
   var detailCalls = 0;
 
@@ -398,6 +422,32 @@ class _Repository implements PagePermissionDelegationRepository {
     headerQueries.add(Map.of(columnQuery));
     sorts.add(sort);
     pages.add(page);
+    sizes.add(size);
+    if (bulkCount > 0) {
+      final all = [
+        for (var i = 0; i < bulkCount; i++)
+          PagePermissionStaffSummary(
+            employeeId: 'bulk-$i',
+            departmentId: 'sales',
+            departmentName: '销售部',
+            departmentManager: false,
+            hasAccount: true,
+            accountActive: true,
+            code: 'E$i',
+            fullName: '员工$i',
+          ),
+      ];
+      return PagePermissionStaffPage(
+        surfaceKey: surfaceKey,
+        departmentId: departmentId,
+        departmentName: departmentId == null ? null : '销售部',
+        items: all.skip((page - 1) * size).take(size).toList(),
+        page: page,
+        size: size,
+        total: bulkCount,
+        totalPages: (bulkCount / size).ceil(),
+      );
+    }
     return PagePermissionStaffPage(
       surfaceKey: surfaceKey,
       departmentId: departmentId,
@@ -421,8 +471,8 @@ class _Repository implements PagePermissionDelegationRepository {
       ],
       page: page,
       size: size,
-      total: 2,
-      totalPages: 1,
+      total: emptyHeaders ? 0 : 2,
+      totalPages: emptyHeaders ? 0 : 1,
     );
   }
 

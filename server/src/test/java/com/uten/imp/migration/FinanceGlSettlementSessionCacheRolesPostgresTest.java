@@ -3,6 +3,9 @@ package com.uten.imp.migration;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedProjectionSchema;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
@@ -53,17 +56,19 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
                 GRANT USAGE ON SCHEMA public TO cache_runtime,cache_active,cache_outsider,
                   cache_voucher_owner,cache_entry_owner,cache_allocation_owner,cache_reservation_owner,
                   cache_legacy_owner,cache_scope_owner,cache_function_owner;
-                CREATE TABLE cache_fk_roots(id uuid PRIMARY KEY);
-                CREATE TABLE gl_vouchers(id uuid PRIMARY KEY,root_id uuid REFERENCES cache_fk_roots ON DELETE CASCADE,is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE gl_entries(id uuid PRIMARY KEY,voucher_id uuid REFERENCES gl_vouchers ON DELETE CASCADE,
-                  style_id uuid NOT NULL,entry_date date DEFAULT current_date,is_deleted boolean NOT NULL DEFAULT false,direction smallint DEFAULT 1);
-                CREATE TABLE finance_gl_entry_allocations(entry_id uuid REFERENCES gl_entries ON DELETE CASCADE,allocation_no integer,
-                  account_code text,auxiliary_id uuid,currency_id uuid,original_currency_id uuid,auxiliary_role text,party_id_snapshot uuid,
-                  amount_local numeric,amount_original numeric,PRIMARY KEY(entry_id,allocation_no));
-                CREATE TABLE finance_gl_settlement_scopes(id uuid PRIMARY KEY,style_id uuid);
-                CREATE TABLE finance_gl_settlement_reservations(id uuid PRIMARY KEY,scope_id uuid,status text,as_of date);
-                CREATE TABLE finance_native_legacy_opening_parts(entry_id uuid REFERENCES gl_entries ON DELETE CASCADE);
-                CREATE TABLE cache_invocations(table_name text,actor text);
+                -- This trace is private callback bookkeeping, not a financial relation.
+                CREATE UNLOGGED TABLE cache_invocations(table_name text,actor text);
+                """);
+            var jdbc=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
+            MigratedProjectionSchema.createCurrentTables(jdbc,"finance_expenses","gl_vouchers","gl_entries",
+                    "finance_gl_entry_allocations","finance_gl_settlement_scopes",
+                    "finance_gl_settlement_reservations","finance_native_legacy_opening_parts");
+            execute(connection,"""
+                -- Keep the original adversarial RI-owner callback graph on real source columns.
+                ALTER TABLE gl_vouchers ADD FOREIGN KEY(source_doc_id) REFERENCES finance_expenses ON DELETE CASCADE;
+                ALTER TABLE gl_entries ADD FOREIGN KEY(voucher_id) REFERENCES gl_vouchers ON DELETE CASCADE;
+                ALTER TABLE finance_gl_entry_allocations ADD FOREIGN KEY(entry_id) REFERENCES gl_entries ON DELETE CASCADE;
+                ALTER TABLE finance_native_legacy_opening_parts ADD FOREIGN KEY(entry_id) REFERENCES gl_entries ON DELETE CASCADE;
                 CREATE FUNCTION cache_trace() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN
                   INSERT INTO public.cache_invocations VALUES(TG_TABLE_NAME,current_user); RETURN OLD; END$$;
                 -- RI actions run BEFORE row callbacks while the referenced
@@ -81,7 +86,7 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
                   cache_voucher_owner,cache_entry_owner,cache_allocation_owner,cache_reservation_owner,cache_legacy_owner;
                 GRANT INSERT ON cache_invocations TO cache_runtime,cache_active,
                   cache_voucher_owner,cache_entry_owner,cache_allocation_owner,cache_reservation_owner,cache_legacy_owner;
-                GRANT DELETE ON cache_fk_roots,gl_vouchers TO cache_runtime,cache_active;
+                GRANT DELETE ON finance_expenses,gl_vouchers TO cache_runtime,cache_active;
                 """);
             String original=resource("V1006__payroll_original_fact_payment_bridge.sql");
             for(String signature:FUNCTIONS) {
@@ -105,9 +110,9 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
                 var matcher=Pattern.compile("(?m)^CREATE(?: CONSTRAINT)? TRIGGER "+Pattern.quote(name)+"\\b[\\s\\S]*?;").matcher(original);
                 assertTrue(matcher.find(),name);execute(connection,matcher.group());
             }
-            insert(connection,"INSERT INTO cache_fk_roots(id)VALUES(?)",ROOT);
-            insert(connection,"INSERT INTO gl_vouchers(id,root_id)VALUES(?,?)",VOUCHER,ROOT);
-            insert(connection,"INSERT INTO gl_entries(id,voucher_id,style_id)VALUES(?,?,?)",ENTRY,VOUCHER,STYLE);
+            insert(connection,"INSERT INTO finance_expenses(id)VALUES(?)",ROOT);
+            insert(connection,"INSERT INTO gl_vouchers(id,source_doc_id)VALUES(?,?)",VOUCHER,ROOT);
+            insert(connection,"INSERT INTO gl_entries(id,voucher_id,style_id,entry_date,direction)VALUES(?,?,?,current_date,1)",ENTRY,VOUCHER,STYLE);
             insert(connection,"INSERT INTO finance_gl_entry_allocations(entry_id,allocation_no)VALUES(?,1)",ENTRY);
         }
     }
@@ -150,7 +155,7 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
         patch();
         try(Connection connection=runtime()) {
             connection.setAutoCommit(false);
-            insert(connection,"DELETE FROM cache_fk_roots WHERE id=?",ROOT);
+            insert(connection,"DELETE FROM finance_expenses WHERE id=?",ROOT);
             assertEquals("cache_voucher_owner",text(connection,"SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='pg_temp.finance_gl_settlement_dirty'::regclass"));
             assertEquals("cache_voucher_owner",text(connection,"SELECT actor FROM cache_invocations WHERE table_name='gl_vouchers'"));
             assertEquals("cache_entry_owner",text(connection,"SELECT actor FROM cache_invocations WHERE table_name='gl_entries'"));
@@ -176,7 +181,7 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
             execute(connection,"SET ROLE cache_active");
             assertEquals("cache_runtime",text(connection,"SELECT session_user"));
             assertEquals("cache_active",text(connection,"SELECT current_user"));
-            insert(connection,"DELETE FROM cache_fk_roots WHERE id=?",ROOT);
+            insert(connection,"DELETE FROM finance_expenses WHERE id=?",ROOT);
             call(connection,false);
             for(String privilege:List.of("SELECT","INSERT","UPDATE")) {
                 assertTrue(truth(connection,"SELECT has_table_privilege('cache_active','pg_temp.finance_gl_settlement_dirty','"+privilege+"')"),privilege);

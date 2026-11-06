@@ -1,3 +1,6 @@
+import '../../../shared/paging/read_view_activity.dart';
+import '../repositories/finance_application_source_repository.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,12 +20,23 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/providers/retain_read_snapshot.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../core/network/data_write_revision.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/finance_requirement_names.dart';
 import '../config/finance_application_routes.dart';
 import '../widgets/finance_application_detail.dart';
 
 const financeApplicationsApi = '/finance/applications';
+final financeApplicationCatalogProvider = FutureProvider.autoDispose((ref) {
+  ref.watch(exportContextEpochProvider);
+  ref.watch(dataWriteRevisionProvider);
+  retainReadSnapshot(ref);
+  return ref.watch(apiClientProvider).get('$financeApplicationsApi/catalog');
+}, dependencies: [exportContextEpochProvider]);
 List<Map<String, dynamic>> financeApplicationRows(Object? value) =>
     value is List
     ? [
@@ -77,24 +91,62 @@ class FinanceApplicationsPage extends ConsumerStatefulWidget {
       _FinanceApplicationsState();
 }
 
-class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
+class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
+    with ScopedPagedReadViewMixin<FinanceApplicationsPage> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _reads = LatestRequestGuard();
   Map<String, dynamic> _catalog = {};
   List<Map<String, dynamic>> _rows = [];
   String _queue = 'mine', _search = '';
   String? _error;
   bool _loading = true;
-  int _page = 1, _total = 0, _epoch = -1;
+  int _total = 0, _epoch = -1;
+  int? _activeRead;
+  Object? _activeReadQuery;
   @override
   void initState() {
     super.initState();
     if (widget.applicationId == null) unawaited(_load());
   }
 
+  @override
+  void dispose() {
+    _reads.begin();
+    super.dispose();
+  }
+
+  Future<void> _refresh() {
+    ref.invalidate(financeApplicationCatalogProvider);
+    return _load();
+  }
+
+  Object get _query => (ref.read(apiClientProvider), _queue, _search);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _reads.begin();
+    setState(() {
+      _rows = [];
+      _total = 0;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+    if (scopedPagedReadRejection == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
+  }
+
   Future<void> _load() async {
     final token = _reads.begin();
     final epoch = ref.read(exportContextEpochProvider);
     final api = ref.read(apiClientProvider);
+    final query = _query;
+    _activeRead = token;
+    _activeReadQuery = query;
+    final queue = _queue, search = _search;
     setState(() {
       _loading = true;
       _error = null;
@@ -102,30 +154,46 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
       _rows = [];
     });
     try {
-      final result = await Future.wait([
-        api.get('$financeApplicationsApi/catalog'),
-        api.get(
-          financeApplicationsApi,
-          query: {
-            'queue': _queue,
-            'search': _search,
-            'page': _page,
-            'size': 30,
-          },
-        ),
-      ]);
+      final result = await readScopedPage<Map<String, dynamic>>(
+        1,
+        idOf: (row) => row['id'],
+        query: query,
+        currentQuery: () => _query,
+        fetchPage: (target) async {
+          final json = await api.get(
+            financeApplicationsApi,
+            query: {
+              'queue': queue,
+              'search': search,
+              'page': target,
+              'size': 100,
+            },
+          );
+          final total = (json['total'] as num?)?.toInt() ?? 0;
+          final size = (json['size'] as num?)?.toInt() ?? 100;
+          return PagedResult(
+            items: financeApplicationRows(json['rows']),
+            page: (json['page'] as num?)?.toInt() ?? target,
+            size: size,
+            total: total,
+            totalPages:
+                (json['totalPages'] as num?)?.toInt() ??
+                (size > 0 ? (total / size).ceil() : 0),
+          );
+        },
+      );
       if (!mounted ||
           !_reads.isCurrent(token) ||
           epoch != ref.read(exportContextEpochProvider)) {
         return;
       }
       setState(() {
-        _catalog = result[0];
-        _rows = financeApplicationRows(result[1]['rows']);
-        _total = (result[1]['total'] as num?)?.toInt() ?? 0;
+        _rows = result.items;
+        _total = result.total;
         _loading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (mounted &&
           _reads.isCurrent(token) &&
           epoch == ref.read(exportContextEpochProvider)) {
@@ -133,6 +201,11 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
           _error = humanErrorMessage(e) ?? '申请读取未完成';
           _loading = false;
         });
+      }
+    } finally {
+      if (_activeRead == token) {
+        _activeRead = null;
+        _activeReadQuery = null;
       }
     }
   }
@@ -193,6 +266,11 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
         invoiceId: widget.invoiceId,
       );
     }
+    final catalog = ref.watch(financeApplicationCatalogProvider);
+    ref.onPageResume('/finance/applications', _load);
+    final catalogReady =
+        catalog.hasValue && !catalog.isLoading && !catalog.hasError;
+    _catalog = catalogReady ? catalog.requireValue : const {};
     final current = epoch == _epoch;
     final actionable = perms.contains(Perm.financeApplicationReview);
     return Scaffold(
@@ -208,7 +286,7 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
             ),
           // 2026-11-04 刷新按钮归位：不再放分类栏行尾，与其他任务中心同位
           // 右上角 AppBar（UtenRefreshButton 自带 busy 转圈与防重入）。
-          UtenRefreshButton(busy: _loading, onRefresh: _load),
+          UtenRefreshButton(busy: _loading, onRefresh: _refresh),
         ],
       ),
       body: UtenContentContainer(
@@ -235,22 +313,50 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
                   autoSelectBadge: false,
                   onSelectionChanged: (v) {
                     _queue = v;
-                    _page = 1;
                     unawaited(_load());
                   },
                   searchHint: '申请单号、事由、申请人',
+                  onSearchInputChanged: (value) {
+                    _reads.begin();
+                    invalidateScopedPageReads();
+                    setState(() {
+                      _search = value.trim();
+                      _loading = true;
+                      _rows = [];
+                    });
+                  },
                   onSearchChanged: (v) {
-                    _search = v;
-                    _page = 1;
+                    _search = v.trim();
+                    unawaited(_load());
+                  },
+                  onSearchSubmitted: (value) {
+                    _search = value.trim();
+                    final active = _activeRead;
+                    if (active != null &&
+                        _reads.isCurrent(active) &&
+                        _activeReadQuery == _query) {
+                      return;
+                    }
                     unawaited(_load());
                   },
                   trailing:
                       (perms.contains(Perm.financeApplicationApply) ||
                           perms.contains(Perm.expenseApply) ||
                           perms.contains(Perm.payrollGenerate))
-                      ? UtenButton(
-                          onPressed: current && !_loading ? _new : null,
-                          child: const Text('新增'),
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (catalog.hasError)
+                              const UtenFieldHintIcon(
+                                info: '申请类型目录读取失败，请点击右上角刷新后重试',
+                              ),
+                            UtenButton(
+                              onPressed: current && !_loading && catalogReady
+                                  ? _new
+                                  : null,
+                              child: const Text('新增'),
+                            ),
+                          ],
                         )
                       : null,
                 ),
@@ -319,19 +425,14 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage> {
             isLoading: _loading,
             error: _error,
             onRetry: _load,
-            currentPage: _page,
-            totalPages: (_total / 30).ceil().clamp(1, 1 << 30),
-            onPageChange: (p) {
-              _page = p;
-              unawaited(_load());
-            },
+            paginationScope: (_queue, _search),
             onRowTap: (r) {
               if (_epoch == ref.read(exportContextEpochProvider)) {
                 context.push('/finance/applications/${r['id']}');
               }
             },
             rowKeyOf: (r) => r['id'].toString(),
-            headerFilterScopeDescription: '搜索及分页由服务端按当前参与范围查询；行内查看原申请和节点历史',
+            headerFilterScopeDescription: '搜索和筛选限当前参与范围；行内查看原申请和节点历史',
             summaryBar: Text('共 $_total 张申请'),
             emptyMessage: '当前分类没有申请',
             primary: true,
@@ -377,14 +478,20 @@ class _ApplicationSourcePicker extends ConsumerStatefulWidget {
 }
 
 class _ApplicationSourcePickerState
-    extends ConsumerState<_ApplicationSourcePicker> {
+    extends ConsumerState<_ApplicationSourcePicker>
+    with ReadViewActivityMixin<_ApplicationSourcePicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   final _reads = LatestRequestGuard();
   List<Map<String, dynamic>> _rows = [];
   String? _error;
   String _search = '';
-  bool _loading = true, _more = false;
+  bool _loading = true;
+  int? _activeRead;
+  String? _activeSearch;
   int _epoch = -1;
   bool _retired = false;
+  bool _picked = false;
   ProviderSubscription<int>? _boundary;
   @override
   void initState() {
@@ -410,36 +517,49 @@ class _ApplicationSourcePickerState
   }
 
   Future<void> _load() async {
-    if (_retired) return;
+    if (_retired || _isQueryPending(_search)) return;
     final token = _reads.begin(), epoch = ref.read(exportContextEpochProvider);
+    _activeRead = token;
+    _activeSearch = _search;
+    final search = _search;
+    bool current() =>
+        mounted &&
+        !_retired &&
+        _reads.isCurrent(token) &&
+        epoch == ref.read(exportContextEpochProvider);
     setState(() {
       _epoch = epoch;
       _loading = true;
       _rows = [];
     });
     try {
-      final result = await ref
-          .read(apiClientProvider)
-          .get(
-            '$financeApplicationsApi/sources',
-            query: {
-              'kind': widget.kind,
-              'search': _search,
-              'supplierId': ?widget.supplierId,
-              'currencyId': ?widget.currencyId,
-            },
-          );
+      final repository = ref.read(financeApplicationSourceRepositoryProvider);
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) => financeApplicationSourceIdentity(row, widget.kind),
+          loadPage: (page, size) => repository.page(
+            kind: widget.kind,
+            search: search,
+            supplierId: widget.supplierId,
+            currencyId: widget.currencyId,
+            page: page,
+            size: size,
+          ),
+        ),
+      );
       if (mounted &&
           _reads.isCurrent(token) &&
           epoch == ref.read(exportContextEpochProvider)) {
         setState(() {
-          _rows = financeApplicationRows(result['items']);
-          _more = result['more'] == true;
+          _rows = result.items;
           _error = null;
           _loading = false;
         });
       }
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (mounted &&
           _reads.isCurrent(token) &&
           epoch == ref.read(exportContextEpochProvider)) {
@@ -448,8 +568,18 @@ class _ApplicationSourcePickerState
           _loading = false;
         });
       }
+    } finally {
+      if (_activeRead == token) {
+        _activeRead = null;
+        _activeSearch = null;
+      }
     }
   }
+
+  bool _isQueryPending(String text) =>
+      _activeRead != null &&
+      _reads.isCurrent(_activeRead!) &&
+      _activeSearch == text.trim();
 
   @override
   Widget build(BuildContext context) {
@@ -464,16 +594,26 @@ class _ApplicationSourcePickerState
               Row(
                 children: [
                   const Expanded(child: Text('选择原始来源')),
-                  if (_more)
-                    const UtenFieldHintIcon(info: '结果超过100条，请填写单号或名称缩小范围。'),
                   UtenCloseButton(onPressed: () => Navigator.pop(context)),
                 ],
               ),
               const SizedBox(height: 12),
               UtenFilterToolbar<String>(
                 searchHint: '单号、名称',
+                onSearchInputChanged: (value) {
+                  _reads.begin();
+                  setState(() {
+                    _search = value.trim();
+                    _rows = [];
+                    _loading = true;
+                  });
+                },
                 onSearchChanged: (v) {
-                  _search = v;
+                  _search = v.trim();
+                  unawaited(_load());
+                },
+                onSearchSubmitted: (v) {
+                  _search = v.trim();
                   unawaited(_load());
                 },
                 trailing: UtenButton(
@@ -504,7 +644,11 @@ class _ApplicationSourcePickerState
                   onRetry: _load,
                   onRowTap: (r) {
                     if (!_retired &&
+                        !_loading &&
+                        !_picked &&
+                        _rows.contains(r) &&
                         _epoch == ref.read(exportContextEpochProvider)) {
+                      _picked = true;
                       Navigator.pop(context, r);
                     }
                   },

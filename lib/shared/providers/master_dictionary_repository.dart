@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/data_write_revision.dart';
 import 'master_name_provider.dart' show masterDataSessionKeyProvider;
@@ -23,10 +24,25 @@ import 'master_party_lookup.dart';
 const masterAccountsDictKey = '/master/accounts/dict';
 
 class MasterDictionaryRepository {
-  MasterDictionaryRepository(this._api);
+  MasterDictionaryRepository(this._api, {this.isCurrent});
 
   final ApiClient _api;
-  late final partyReferences = MasterPartyLookup(_api);
+  final bool Function()? isCurrent;
+  bool _disposed = false;
+  final _generations = <String, int>{};
+  bool get _current {
+    if (_disposed) return false;
+    try {
+      return isCurrent?.call() ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  late final partyReferences = MasterPartyLookup(
+    _api,
+    isCurrent: () => _current,
+  );
   final Map<String, List<Map<String, dynamic>>> _cache = {};
   final Map<String, Future<List<Map<String, dynamic>>>> _loads = {};
   final StreamController<String> _invalidations =
@@ -34,6 +50,7 @@ class MasterDictionaryRepository {
 
   /// 某字典的原始行(单飞; 只缓存成功结果, 失败下次再拉)。
   Future<List<Map<String, dynamic>>> load(String dictKey) {
+    if (!_current) return Future.error(StateError('字典读取作用域已结束'));
     final cached = _cache[dictKey];
     if (cached != null) return Future.value(cached);
     final pending = _loads[dictKey];
@@ -41,18 +58,27 @@ class MasterDictionaryRepository {
     final completer = Completer<List<Map<String, dynamic>>>();
     final future = completer.future;
     _loads[dictKey] = future;
+    final generation = _generations[dictKey] ?? 0;
+    bool current() =>
+        _current &&
+        generation == (_generations[dictKey] ?? 0) &&
+        identical(_loads[dictKey], future);
     unawaited(() async {
       try {
         final rows = List<Map<String, dynamic>>.unmodifiable(
-          await _api.getList(switch (dictKey) {
-            masterAccountsDictKey => ApiEndpoints.businessReferenceAccounts,
-            ApiEndpoints.warehousesDict =>
-              ApiEndpoints.businessReferenceWarehouses,
-            ApiEndpoints.departmentsTree =>
-              ApiEndpoints.businessReferenceDepartments,
-            _ => dictKey,
-          }),
+          await AuthenticatedRequestScope.sharedRead(
+            current,
+            () => _api.getList(switch (dictKey) {
+              masterAccountsDictKey => ApiEndpoints.businessReferenceAccounts,
+              ApiEndpoints.warehousesDict =>
+                ApiEndpoints.businessReferenceWarehouses,
+              ApiEndpoints.departmentsTree =>
+                ApiEndpoints.businessReferenceDepartments,
+              _ => dictKey,
+            }),
+          ),
         );
+        if (!current()) throw StateError('字典读取已被新的会话或写后刷新取代');
         // 在途期间被写后失效的结果不入缓存(下一次取会重新拉)。
         if (identical(_loads[dictKey], future)) _cache[dictKey] = rows;
         completer.complete(rows);
@@ -66,13 +92,16 @@ class MasterDictionaryRepository {
   }
 
   /// 已在内存里的字典(没拉过返回 null)。
-  List<Map<String, dynamic>>? cached(String dictKey) => _cache[dictKey];
+  List<Map<String, dynamic>>? cached(String dictKey) =>
+      _current ? _cache[dictKey] : null;
 
   /// 字典作废通知(已加载该字典的名称服务据此重取)。
   Stream<String> get invalidations => _invalidations.stream;
 
   /// 写后失效: 丢弃缓存与在途请求, 通知订阅方。
   void invalidate(String dictKey) {
+    if (_disposed) return;
+    _generations[dictKey] = (_generations[dictKey] ?? 0) + 1;
     if (dictKey == ApiEndpoints.clientsDict) {
       partyReferences.invalidate(MasterPartyKind.client);
     }
@@ -85,6 +114,10 @@ class MasterDictionaryRepository {
   }
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _loads.clear();
+    _cache.clear();
     partyReferences.dispose();
     _invalidations.close();
   }
@@ -92,8 +125,15 @@ class MasterDictionaryRepository {
 
 final masterDictionaryRepositoryProvider = Provider<MasterDictionaryRepository>(
   (ref) {
-    ref.watch(masterDataSessionKeyProvider);
-    final repository = MasterDictionaryRepository(ref.watch(apiClientProvider));
+    final session = ref.watch(masterDataSessionKeyProvider);
+    final api = ref.watch(apiClientProvider);
+    final repository = MasterDictionaryRepository(
+      api,
+      isCurrent: () =>
+          ref.mounted &&
+          ref.read(masterDataSessionKeyProvider) == session &&
+          identical(ref.read(apiClientProvider), api),
+    );
     ref.onDispose(repository.dispose);
     // 本端对主档的写请求成功 → 作废对应字典(路径由网络层记下, 见 lastDataWriteProvider)。
     ref.listen(lastDataWriteProvider, (_, write) {

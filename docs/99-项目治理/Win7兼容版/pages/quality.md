@@ -58,17 +58,17 @@
 
 ## W7-BIZ-131 · lib/features/quality/pages/quality_inspection_records_page.dart
 
-模块 `quality`；1321 行；SHA256 `0eb8b31aafda141f814e706f7dedf1bbc69b53456266bf4b3d3138013392472c`。
+模块 `quality`；1335 行；SHA256 `22da1eb2fe2bb9049e4e34a0936839282fc05b74d72f9b563f25851ae9fc2268`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | QualityInspectionRecordsPage @42 (page-class)<br>_QualityInspectionRecordsPageState @82 (state-class)<br>_QualityInspectionRecordDetailPanel @864 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @874 (state-class)<br>_DetailSection @1165 (supporting-class)<br>_DetailField @1195 (supporting-class)<br>_DetailFieldTable @1206 (supporting-class)<br>_DetailQuantityRow @1245 (supporting-class)<br>_InlineRecordError @1257 (supporting-class) |
+| 页面/状态类 | QualityInspectionRecordsPage @42 (page-class)<br>_QualityInspectionRecordsPageState @82 (state-class)<br>_QualityInspectionRecordDetailPanel @878 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @888 (state-class)<br>_DetailSection @1179 (supporting-class)<br>_DetailField @1209 (supporting-class)<br>_DetailFieldTable @1220 (supporting-class)<br>_DetailQuantityRow @1259 (supporting-class)<br>_InlineRecordError @1271 (supporting-class) |
 | 真实路由绑定 | /quality/inspection-records；router @1500；builder ['QualityInspectionRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | procurement_inspection:view @140；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @143；定义 lib/shared/auth/permissions.dart:468 |
+| 权限 | procurement_inspection:view @145；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @148；定义 lib/shared/auth/permissions.dart:468 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/quality/repositories/quality_inspection_record_repository.dart；接口：/procurement/inspection/records、/procurement/inspection/records/{recordId}、/production/quality-inspections/records、/production/quality-inspections/records/{recordId} |
-| 动作处理 | update @99 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @133 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @567 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @934 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @991 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1002 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1185 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
+| 动作处理 | update @104 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @138 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @581 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @948 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @1005 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1016 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1199 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

@@ -75,7 +75,7 @@ STORAGE_AUTHORITY = Path("/etc/uten-imp/storage-authority.json")
 BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 UPDATER_GROUP = "uten-imp-updater"
 RELEASE_GUARD_SHA256 = (
-    "1288e528b839c2c6e9ba0f77f7103f93af243bb3d57d10ab4f78b4a524fb3359"
+    "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
 )
 DATABASE_VERIFIER_SHA256 = (
     "3aed5823241988ac2271c1378b6c1a8ca1223e37b8d14a8b0e50a5be746429dc"
@@ -937,7 +937,11 @@ def _verified_current_release(guard: Any) -> tuple[Path, dict[str, Any], str]:
     return target, info, _sha256(manifest_path)
 
 
-def _canonical_live_flyway(rows: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+def _canonical_live_flyway(
+    rows: Any, manifest: dict[str, Any], version_guard: Any = None
+) -> dict[str, Any]:
+    # Compatibility context is already verified by the caller; the generated
+    # local contract remains the sole version implementation, without rereads.
     if not isinstance(rows, list) or not rows:
         fail("live Flyway history is empty or malformed")
     expected_keys = {
@@ -1094,7 +1098,7 @@ def _internal_test_role_acl_contract() -> dict[str, Any]:
 
 
 def _query_live_database(
-    manifest: dict[str, Any], *, require_internal_role_acl: bool
+    manifest: dict[str, Any], *, require_internal_role_acl: bool, version_guard: Any = None
 ) -> dict[str, Any]:
     _require_root_file(STABLE_DATABASE_VERIFIER, mode=0o644)
     if _sha256(STABLE_DATABASE_VERIFIER) != DATABASE_VERIFIER_SHA256:
@@ -1186,7 +1190,7 @@ def _query_live_database(
     if not system_identifier.isdigit() or not 10 <= len(system_identifier) <= 24:
         fail("live PostgreSQL system identifier is malformed")
     timeline = _integer(value.get("timeline"), "PostgreSQL timeline", minimum=1, maximum=0xFFFFFFFF)
-    flyway = _canonical_live_flyway(value.get("flywayHistory"), manifest)
+    flyway = _canonical_live_flyway(value.get("flywayHistory"), manifest, version_guard)
     if _flyway_head_key(flyway["headVersion"]) != _flyway_version_key(manifest["flywayHeadVersion"]):
         fail("live Flyway head differs from the signed release")
     expected_role_acl = _internal_test_role_acl_contract()
@@ -1577,7 +1581,9 @@ def verify_runtime_boot() -> None:
     guard = _load_release_guard()
     _target, manifest, manifest_sha = _verified_current_release(guard)
     live = _query_live_database(
-        manifest, require_internal_role_acl=runtime_contract is not None
+        manifest,
+        require_internal_role_acl=runtime_contract is not None,
+        version_guard=guard,
     )
     transaction_markers = [
         marker

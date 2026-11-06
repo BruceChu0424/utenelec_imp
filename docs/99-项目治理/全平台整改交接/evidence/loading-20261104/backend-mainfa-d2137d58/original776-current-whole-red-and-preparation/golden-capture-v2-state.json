@@ -1,0 +1,39 @@
+{
+  "state": "captured",
+  "startedAtUtc": "2026-11-06T01:50:58.255601+00:00",
+  "observedAtUtc": "2026-11-06T01:52:04.154519+00:00",
+  "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "receipt": {
+    "capturedAtUtc": "2026-11-06T01:52:04.151645+00:00",
+    "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+    "mainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+    "observedRunState": "running",
+    "containerId": "b3751954be7cb934e0e0cdc7ac313bf99fd54d7d136d98634706cb2b2fc58c8f",
+    "image": "postgres:16-alpine",
+    "testcontainersLabelVerified": true,
+    "database": "uten_imp",
+    "databaseOwnership": "Exact current-PG run ordinary fixture only; never shared TEMPLATE/company",
+    "query": "BEGIN READ ONLY;\nSELECT jsonb_agg(jsonb_build_object('installedRank',installed_rank,'version',version,'description',description,'type',type,'script',script,'checksum',checksum,'success',success) ORDER BY installed_rank)::text FROM public.flyway_schema_history;\nROLLBACK;",
+    "transaction": "BEGIN READ ONLY/ROLLBACK",
+    "migrationCount": 1013,
+    "compoundCount": 14,
+    "integerHead": 1074,
+    "rawFirstNine": [
+      "01",
+      "02",
+      "03",
+      "04",
+      "05",
+      "06",
+      "07",
+      "08",
+      "09"
+    ],
+    "actualEveryVersionChecksumAndDescriptionMatchesAdmittedFilename": true,
+    "canonicalHistorySha256": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+    "rawProjectionSha256": "95f91eacfed0db0dd7e2069228f9358616614f265fe603bcfcebdbe3c88182ac",
+    "rawAuditNormalized": false,
+    "companyDbWritten": false,
+    "mainWritten": false
+  }
+}

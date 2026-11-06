@@ -1,0 +1,45 @@
+{
+  "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "groups": {
+    "current-fast": {
+      "classes": [
+        "ExpenseClaimServiceTest",
+        "DocumentUnapprovalCapabilityTest",
+        "SelectedDocumentProjectionTest",
+        "ForwardMigrationSequenceContractTest",
+        "LegacyMigrationSafetyContractTest",
+        "FlywayChecksumManifestExporterTest",
+        "AiUsageAuditControllerSecurityTest",
+        "ProcurementApprovalHistoryQueryTest",
+        "FulfillmentWorkbenchQueryServiceTest",
+        "WarehouseTaskCenterOutputIdentityTest"
+      ],
+      "scope": "Whole classes, no method filtering. Actual XML methods/classes and natural native exit authoritative."
+    },
+    "current-pg": {
+      "classes": [
+        "LegacyQuantityUnapprovalCompositionPostgresTest",
+        "LegacyQuantityAdoptionCompatibilityPostgresTest",
+        "UnapprovalFrozenAdoptionPostgresTest",
+        "ProcurementUnapprovalEligibilityEndToEndTest",
+        "GiftUnitRateConservationEndToEndTest",
+        "GiftPhysicalConservationEndToEndTest",
+        "FinanceApplicationsPostgresTest",
+        "FinanceUnapprovalEligibilityEndToEndTest",
+        "SubcontractMaterialReturnOriginalCostEndToEndTest",
+        "InventoryValueOutputRefreshContinuationPostgresTest",
+        "DirectMakeDeliveryClosedCreditPostgresTest",
+        "ProductionExecutionWorkbenchQueryPostgresTest",
+        "LegacyFlywayVersionIdentityPostgresTest",
+        "NonFinanceUnapprovalEligibilityEndToEndTest",
+        "FinanceDocumentMutationConcurrencyPostgresTest"
+      ],
+      "scope": "Whole classes, no method filtering. Actual XML methods/classes and natural native exit authoritative."
+    }
+  },
+  "rationale": {
+    "fast": "All actually composed fa callers and exact migration producer/safety/sequence contracts.",
+    "pg": "New legacy/unapproval SQL definition and five-loader composition, all six frozen families, actually composed procurement/gift/finance lifecycles, changed adapters in finance/nonfinance/subcontract, original never-executed inventory continuation, immutable closedMAKE and workbench view after full new migration chain, true raw history producer consumer."
+  },
+  "historicalFailuresRetained": true
+}

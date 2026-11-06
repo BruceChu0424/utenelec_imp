@@ -39,6 +39,10 @@ class WarehouseSalesPickingDraft {
           colorId: line.colorId,
           warehouseIdOf: () => warehouses[line.id],
           qtyOf: () => double.tryParse(line.quantity ?? ''),
+          qtyBaseExactOf: () => outboundExactBaseQuantityText(
+            line.recordedQuantityText,
+            line.unitRateText,
+          ),
           unitRate: line.unitRate,
           unit: weightUnit,
         );

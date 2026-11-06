@@ -1,0 +1,676 @@
+{
+  "label": "current-pg",
+  "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "actualExitCode": 1,
+  "classes": 15,
+  "tests": 132,
+  "counts": {
+    "passed": 131,
+    "failed": 0,
+    "error": 1,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[7]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[8]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[9]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[10]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[11]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "unknownCurrentCapacityDoesNotBecomeANewRightFromHistoricalShipments",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "restoredOriginalMakeKeepsItsExactProofAndOnlyTheUnrestoredHandoffCredits",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "originalFourPlaceQuantitiesAreAddedWithoutRoundingOrAChangedSourceTotal",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "exactClosedMakeAddsBackOnlyTheAlreadyAttributedPartOfThePrivateTotal",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "fullyDeliveredAndAlreadyAttributedQuantityLeavesNoNewAdmission",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "previousPeriodGeneralCashDocumentsExposeTheSameBlockAsTheWriterWithoutChangingMoney",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aReceiptWithLaterRealSourceAllocationMustReverseInLifoOrder",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "repeatedOriginalDoesNotCreateASecondSuccessorAndTheApprovedSuccessorCanUnapproveAgain",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aNormallyFrozenSupplierMonthBlocksPaymentReversalOnTheActualClosingBusinessDay",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "appliedCustomerPrepaymentIsBlockedUntilItsRealApplicationIsReversed",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "inactiveAccountIsBlockedBySharedReadAndLockedReversalGuards",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "confirmedExpenseIsBlockedBeforeAndAfterAttemptedUnapproval",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aReadableDocumentWithoutReversePermissionNeverExposesAReadyActionOrRelatedReferences",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "allFiveReadyPreflightsAreReadOnlyAndMatchActualAtomicUnapproval",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "directPostedGiftReplacementIntentTamperingIsRejectedWithoutChangingOriginalFacts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "freeOneCanArriveAfterAllTenChargedUnitsWithoutChangingApOrChargingAnOverage",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce",
+      "status": "error"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "legacyGiftAnnotationKeepsRecordedTenOnReverseAndCloneUnlessOwnerExplicitlyUpgradesDraft",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "chargedTenAndFreeOneCreateTwoQualityIdentitiesStockElevenAndOnlyOneHundredPayable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "combinedReceiptUsesItsFrozenGiftBaseForClosureFreeReturnAndUnapprovalReplay",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "paidFirstAndPartialGiftReceiptsCloseByTheirOwnFrozenBasesAndFreeReturnsRemainSeparate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "anIncompleteSuccessorRollsBackTheOriginalReversalAndEveryPosting",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.InventoryValueOutputRefreshContinuationPostgresTest",
+      "case": "sameConfirmedDocumentResumesItsOriginalRootWithoutRepricingOrInventingSourceFacts",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "customerReturnBeforeQualityDispositionCanReverseButAConfirmedCustomerDecisionCannot",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "reportWithActualMaterialUseHasPureSourceChecksAndAStaffReaderCannotWithdrawAnotherOwnersReport",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "originalStockCostReadinessChangesWithLaterReceiptOrActualUseAndRetiredMaterialReturnIsNotCloneable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractIssueCanBeWithdrawnBeforeConsumptionButItsOrderCannotIgnoreTheActualIssue",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "manualPlanAndInquiryOnlyBecomeReadyWhenApprovedAndPureReadsDoNotChangeAnyLedger",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "missingReversePermissionAndHiddenOwnerReadDoNotBecomeAReadinessOracle",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "untouchedSupplierWasteRestoresTheOriginalMaterialAndRetiredOtherShipmentNeverCreatesADraft",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "salesWarehouseDraftBlocksAnOtherwiseUnusedOrderAndDeletingItRestoresReadiness",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "purchaseReceiptDraftIsARealReversalDependencyEvenBeforeReceivedCountersAdvance",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "directQualityPreflightMissingAndPartialFactsAllowCallerToCatchConflictAndCommit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "fullyDisposedCustomerQualityReturnsBlockedHttpCapabilityAndConflictPostWithoutEffects",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "pendingIqcBlocksWithoutWritesThenExactChargedAndGiftSourcesCanUnapprove",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "freeReturnUnapprovalRestoresTheSourceAndAnotherActiveReturnBlocksWithoutWrites",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "previousPeriodReturnProjectionBlocksBeforeEitherInventoryOrLedgerChanges",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractPassedButUnstoredReceiptCanRestoreTheExactOriginalMaterialCustody",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractStoredMaterialAndFeeCanUnapproveThroughTheProvenCostReleasePlan",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractReturnUsesOriginalActualIssueAndRemainsReversibleWithoutTouchingFeeCredit",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "viewOnlyAndHiddenOwnerCannotLearnOrExecuteOtherPersonsUnapproval",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "multipleSubcontractWarehouseBatchesUseOneProvenCostReleaseAndAllOriginalStoreSlices",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "confirmedAllFreeReceiptKeepsZeroMoneyProofWhileExactPhysicalQuantityUnapproves",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "unstartedReadyProductionKitCanDemoteThroughTheSamePureUnwindPlan",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "forwardMigrationRetainsAllOriginalCustodyAndZeroMoneyDispatchGuards",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractSuccessorCanBeExplicitlySavedAndResubmittedWithoutRepeatingMaterialOrFee",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "unapprovalKeepsFrozenInputsThenAnExplicitDraftSaveCanRepostTheOriginalSourceCost",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "reverseRestoresOriginalFortyToSupplierAndRetainsLaterOneHundredTwentyInWarehouse",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "laterActualConsumptionBlocksWithdrawalEvenWhenPhysicalStockStillExceedsTheReturnedBatch",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "totalPriceReferenceProofIsInheritedWithoutRepricingTheAgreedTotal(Owner)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "totalPriceReferenceProofIsInheritedWithoutRepricingTheAgreedTotal(Owner)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aCommittedLineageCannotBeReplayedForAnotherInsert",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "anotherFamilyHeaderOrSourceLineCannotBorrowTheProof",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[3]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[4]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[5]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[6]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritedReceiptWeightKeepsTheOriginalRawEvidenceWithoutInventingAnotherInput",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "noLineageOrRolledBackLineageCannotAuthorizeAnOrigin",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "duplicateMappingsAndCallerWrittenTransactionProofAreRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "incompleteLineageCannotCommitAndMetadataCannotBeRetagged",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalTravelPathHasThreeDistinctStepsNoCashAndFrozenSignaturesAndDurableReplay",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[1]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[2]",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "guessingAnOriginalPayableUuidDoesNotBypassItsExistingReadPermission",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalPayrollHrFinanceManagementPathPaysOnceConfirmsAndReversesOnlyActualPayment",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "confirmedExpenseSurvivesRejectedPeriodRegenerationByteForByte",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "approveWinsAndWaitingDeletesObserveTheApprovedStateAcrossAllDocuments",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "pendingExpenseConfirmationStaysActiveAcrossPagingFacetsScopeAndRealConfirmation",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "localOnlyExpenseAndIncomeRejectHeaderCurrencyOrRateContradictingTheBaseAccount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "localOnlyExpenseAndIncomeRejectAnActiveForeignCurrencyAccount",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "receiptGlAndAccountFlowsFinalizeThenReverseWithoutMutableBypasses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "deleteWinsAndWaitingApprovalsObserveTheSoftDeleteAcrossAllDocuments",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "multiCurrencyReceiptPostsNetAndReverses",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "reportInspectionSplitsFullyReportedSegmentsOutOfInProgress",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "superAdminSeesAllWorkshopsOnReadSide",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fixedSupplementUsesProvenSharedMaterialAndOnlyOffersRealQualityRecovery",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "historySegmentIncludesCancelledAndReversedWithinTheDateGate",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparingAndInProgressFiltersExecuteWithAndWithoutKeyword",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQueryUsesExactStateAndLiteralProductFilter",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyFlywayVersionIdentityPostgresTest",
+      "case": "completeCompoundHistoryAndEverySignificantIdentityStillFailClosed",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "allFiveProductionLegacySqlEntrypointsKeepOriginalFactsWithoutNewAdoptions",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "exactSourceTamperingAndIndependentAdoptionUpdatesRemainRejected",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "verifiedHistoricalUnknownUnitAndRateStayUnknownInsteadOfBecomingOneOrAComputedBase",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "realRuntimeSessionCannotForgeLegacyContextAndNativeVersionTwoStillWorks",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "evenTrustedBootstrapNeedsTheExactRowProofAndCannotAttachANewPrecisionPolicy",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "replayedSourceProofFromAnEarlierTransactionCannotAuthorizeAnInsert",
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityUnapprovalCompositionPostgresTest",
+      "case": "actualForwardDefinitionsRetainEveryUnapprovalAndNativeGuardAfterRemovingOnlyLegacyBranches",
+      "status": "passed"
+    }
+  ],
+  "green": false
+}

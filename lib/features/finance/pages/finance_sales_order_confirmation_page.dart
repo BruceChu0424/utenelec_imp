@@ -72,6 +72,7 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
     this.changesOnly = false,
     this.initialState,
     this.embedded = false,
+    this.historyOnly = false,
     this.externalHeader,
     this.refreshTick = 0,
     this.refreshCompletion,
@@ -80,6 +81,7 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
   final bool changesOnly;
   final String? initialState;
   final bool embedded;
+  final bool historyOnly;
 
   /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
   /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
@@ -97,6 +99,9 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
 class _FinanceSalesOrderConfirmationPageState
     extends ConsumerState<FinanceSalesOrderConfirmationPage>
     with ScopedPagedReadViewMixin<FinanceSalesOrderConfirmationPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(1, forceCounts: true);
+
   /// 宿主页路径(创建时捕获), 精准刷新信号只在它就在栈顶时立即重拉。
   String? _hostLocation;
 
@@ -177,7 +182,7 @@ class _FinanceSalesOrderConfirmationPageState
       // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
       ref.read(financeNameServiceProvider).ensureLoaded();
       final completion = widget.refreshCompletion;
-      _load(1, preferPrepared: true).whenComplete(() {
+      _load(1).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -229,7 +234,7 @@ class _FinanceSalesOrderConfirmationPageState
         if (mounted &&
             _canView &&
             epoch == ref.read(exportContextEpochProvider)) {
-          _load(1, preferPrepared: true);
+          _load(1);
         }
       });
     }
@@ -251,7 +256,6 @@ class _FinanceSalesOrderConfirmationPageState
   Future<void> _load(
     int page, {
     bool useCache = false,
-    bool preferPrepared = false,
     bool forceCounts = false,
   }) async {
     final cacheQuery = _cacheQuery;
@@ -280,12 +284,13 @@ class _FinanceSalesOrderConfirmationPageState
     });
     // 「已驳回」段全量数(不带关键字)先于列表请求发出, 列表请求始终是本轮最后一个请求;
     // 已驳回段下且未搜索时本页 total 就是全量驳回数, 不另发。
-    if (!rejected || keyword != null || billNo != null) {
+    if (!confirmed && (!rejected || keyword != null || billNo != null)) {
       unawaited(_loadHistoryCounts(requestVersion, force: forceCounts));
     }
     try {
       final cachedPage = await readScopedPage<SalesOrderFinancePendingItem>(
         page,
+        idOf: (row) => row.orderId,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -293,6 +298,7 @@ class _FinanceSalesOrderConfirmationPageState
           Future<PagedResult<SalesOrderFinancePendingItem>> fetch() async {
             final response = await repo.pending(
               page: target,
+              size: 100,
               rejected: rejected,
               keyword: keyword,
               changesOnly: changesOnly,
@@ -304,25 +310,7 @@ class _FinanceSalesOrderConfirmationPageState
             return financeConfirmationSnapshot(response);
           }
 
-          if (target != 1) return fetch();
-          return ref
-              .read(financeAuditPreparedPagesProvider)
-              .confirmations
-              .read(
-                financeConfirmationReadKey(
-                  repo,
-                  page: target,
-                  rejected: rejected,
-                  keyword: keyword,
-                  changesOnly: changesOnly,
-                  confirmed: confirmed,
-                  sort: sort,
-                  order: order,
-                  billNo: billNo,
-                ),
-                fetch,
-                preferPrepared: preferPrepared,
-              );
+          return fetch();
         },
       );
       final result =
@@ -356,6 +344,7 @@ class _FinanceSalesOrderConfirmationPageState
         }
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || requestVersion != _requestVersion) {
         return;
       }
@@ -367,7 +356,8 @@ class _FinanceSalesOrderConfirmationPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _error = '待确认任务加载失败，请检查网络后重试';
@@ -450,6 +440,7 @@ class _FinanceSalesOrderConfirmationPageState
   /// （不含单号列自身值筛选）。
 
   ({String state, String? kind}) get _initialSelection {
+    if (widget.historyOnly) return (state: 'confirmed', kind: null);
     final requested =
         const {
           'pending',
@@ -480,7 +471,7 @@ class _FinanceSalesOrderConfirmationPageState
       _columnFilters.reset();
       _clearSelectionState();
     });
-    _load(1, preferPrepared: state != 'confirmed');
+    _load(1);
   }
 
   void _filterConfirmationKind(String? value) {
@@ -1244,19 +1235,22 @@ class _FinanceSalesOrderConfirmationPageState
         // 也不用财务现在动手 -> 黄色进行中徽章(ADR-100 判定顺序第二问)。
         // 注意与销售自己的出货/订货列表页相反: 在那边这批单是「本人要改单重报」的活,
         // 必须红; 同一批单在两条链上各答各的问题, 不是双计。
-        UtenFilterSegment(
-          value: 'pending',
-          label: '待确认',
-          count: pendingCount,
-          countForm: UtenSegmentCountForm.actionable,
-        ),
-        UtenFilterSegment(
-          value: 'rejected',
-          label: '已驳回',
-          count: _rejectedCount,
-          countForm: UtenSegmentCountForm.inProgress,
-        ),
-        const UtenFilterSegment(value: 'confirmed', label: '历史单据'),
+        if (!widget.historyOnly)
+          UtenFilterSegment(
+            value: 'pending',
+            label: '待确认',
+            count: pendingCount,
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+        if (!widget.historyOnly)
+          UtenFilterSegment(
+            value: 'rejected',
+            label: '已驳回',
+            count: _rejectedCount,
+            countForm: UtenSegmentCountForm.inProgress,
+          ),
+        if (widget.historyOnly || !widget.embedded)
+          const UtenFilterSegment(value: 'confirmed', label: '历史单据'),
       ],
       selected: {_state},
       onSelectionChanged: (value) {

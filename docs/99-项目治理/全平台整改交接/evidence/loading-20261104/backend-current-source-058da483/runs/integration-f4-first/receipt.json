@@ -1,0 +1,670 @@
+{
+  "label": "integration-f4-first",
+  "createdAtUtc": "2026-11-05T11:47:04.661120+00:00",
+  "log": "build/loading-validation/combined-integration-final.log",
+  "selected": [
+    "FinanceApplicationsPostgresTest",
+    "LegacyQuantityAdoptionCompatibilityPostgresTest",
+    "ProductionExecutionWorkbenchQueryPostgresTest",
+    "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+    "SalesShipmentOwnerBoundaryTest",
+    "SalesBomDeliveryEndToEndTest",
+    "SalesDeliveryMakeSourceEndToEndTest",
+    "SalesDeliveryMixedScenarioEndToEndTest",
+    "SalesDeliveryOrderClaimEndToEndTest",
+    "SalesDeliveryPrivateSourceEndToEndTest",
+    "SalesDeliveryRevisionEndToEndTest",
+    "SalesDeliverySourceReverseUnitsEndToEndTest",
+    "SalesDeliveryWarehouseScopeEndToEndTest",
+    "SalesShipmentFinanceReleaseRateEndToEndTest",
+    "SalesShipmentCurrencyFilterTest",
+    "ArchitectureBoundaryTest"
+  ],
+  "missingClasses": [],
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceMissing": [],
+  "legacyInputs": [],
+  "legacyInputDrift": [],
+  "counts": {
+    "passed": 82,
+    "failure": 1,
+    "error": 0,
+    "skipped": 0,
+    "flakyFailure": 0,
+    "flakyError": 0
+  },
+  "uniqueCases": 83,
+  "suites": [
+    {
+      "name": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "tests": "11",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "10.614"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "tests": "6",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "406.046"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "81.482"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "356.375"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "tests": "3",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "445.627"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "tests": "5",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "175.509"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "55.33"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "73.334"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "36.556"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "tests": "4",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "35.372"
+    },
+    {
+      "name": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "1",
+      "time": "184.62"
+    },
+    {
+      "name": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "tests": "8",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "268.023"
+    },
+    {
+      "name": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "tests": "25",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "141.544"
+    },
+    {
+      "name": "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest",
+      "tests": "2",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "3.436"
+    },
+    {
+      "name": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "tests": "4",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "0.555"
+    },
+    {
+      "name": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "tests": "6",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "131.753"
+    }
+  ],
+  "cases": [
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "businessCodeNeverReadsTheAuditLog",
+      "status": "passed",
+      "seconds": "3.0"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "foundationPackagesDoNotDependOnBusinessFeatures",
+      "status": "passed",
+      "seconds": "0.316"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "highRiskAuthorizationWritesRequireStepUp",
+      "status": "passed",
+      "seconds": "0.028"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource",
+      "status": "passed",
+      "seconds": "2.345"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "endpointsReturningPlaintextCredentialsDeclareStepUp",
+      "status": "passed",
+      "seconds": "1.037"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "featureDependencyGraphDoesNotGrow",
+      "status": "passed",
+      "seconds": "0.849"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "controllersDoNotDependDirectlyOnRepositories",
+      "status": "passed",
+      "seconds": "0.13"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "privateMethodsDoNotCarryTransactional",
+      "status": "passed",
+      "seconds": "1.13"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "expenseClaimNeverReachesTheSharedAiPlatform",
+      "status": "passed",
+      "seconds": "0.018"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "moneyRoundingOnlyLivesInMoneyPolicy",
+      "status": "passed",
+      "seconds": "0.846"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "adminWriteEndpointsDeclareStepUpOrReasonedExemption",
+      "status": "passed",
+      "seconds": "0.796"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "requiredProcessingCannotBeAcknowledgedByWarehouseOrOmittedFromFullSelection",
+      "status": "passed",
+      "seconds": "11.999"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "changedBomCannotSilentlyReplaceTheApprovedPhysicalFrontier",
+      "status": "passed",
+      "seconds": "13.231"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "shortageAndIncompleteSelectionRollBackEveryComponentAndCommercialFact",
+      "status": "passed",
+      "seconds": "13.177"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "publicBOMLaserFlow",
+      "status": "passed",
+      "seconds": "18.632"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "componentStockAndCommercialRootArePostedOnceAndPhysicalHandoverCannotBeDirectlyReversed",
+      "status": "passed",
+      "seconds": "8.74"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "nonzeroComponentCostsMapOnceToTheCommercialParentAndKeepLateCostPendingUntilRealPropagation",
+      "status": "passed",
+      "seconds": "11.603"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest",
+      "name": "wholeFrontierIsReallyManufacturedAndQualifiedBeforeItsPrivateStockShipsWithoutParentAssembly",
+      "status": "passed",
+      "seconds": "35.893"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "name": "partialManufactureAndPhysicalChildProcessingThenTwoKitShipmentsRefreshOnlyTheTrueRemainder",
+      "status": "passed",
+      "seconds": "119.059"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "name": "sameProductKeepsAssembledWholeAndChildrenOrdersIndependentInOneAnalysisAndShipment",
+      "status": "passed",
+      "seconds": "55.286"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest",
+      "name": "restoredOriginalMakeReceiptKeepsItsPrivateBudgetWhenItIsReissuedAndActuallyShipped",
+      "status": "passed",
+      "seconds": "114.914"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "name": "roundedPhysicalClaimConsumesOnlyItsFrozenMarginalOrderCreditAndCannotUseAnotherWarehouse",
+      "status": "passed",
+      "seconds": "26.722"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "name": "rootOutputOrderReservationIsClaimedOnceAndConsumedOnlyByItsRealProcessedShipment",
+      "status": "passed",
+      "seconds": "19.439"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest",
+      "name": "mixedOriginalClaimAndPublicRemainderDoNotDebitThePublicPartAsOrderReservation",
+      "status": "passed",
+      "seconds": "24.824"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "name": "returnedPrivateProcessingLotCanBeIssuedAgainAndShipsItsOriginalKitOnlyOnce",
+      "status": "passed",
+      "seconds": "41.57"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "name": "splitAssemblyForwardsDepthTwoPrivateSupplyAndShipsOnlyItsActualChildren",
+      "status": "passed",
+      "seconds": "34.431"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "name": "unprocessedWarehouseCustodyReturnsToTheExactPrivateReceiptAfterWorkerCancelsStart",
+      "status": "passed",
+      "seconds": "26.612"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "name": "qualifiedPrivateComponentShipsWithoutBorrowingPublicAndDirectReversalCannotInventReturnedStock",
+      "status": "passed",
+      "seconds": "25.708"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest",
+      "name": "customerFrontierIncludesPeriodicGoodsOnlyThroughTransparentDeliveryAncestors",
+      "status": "passed",
+      "seconds": "7.487"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest",
+      "name": "reviewedOrdinaryToBomRevisionReleasesOriginalStockAndShipsOnlyTheNewPhysicalFrontier",
+      "status": "passed",
+      "seconds": "11.209"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest",
+      "name": "cancelledUnprocessedBoxCustodyAllowsItsReceiptToReverseInRowUnits",
+      "status": "passed",
+      "seconds": "23.722"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest",
+      "name": "reportedOrShippedBoxKeepsItsOriginalReceiptAndCannotInventReturnedStock",
+      "status": "passed",
+      "seconds": "18.048"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest",
+      "name": "actualWarehouseAndAssignedWorkerCanFinishWithoutSalesOrGoodsPickerAndRevokedWritesStayBlocked",
+      "status": "passed",
+      "seconds": "8.537"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "name": "baseCurrencyReleaseIsAlwaysOneAndRejectsAnyOtherRate",
+      "status": "passed",
+      "seconds": "3.276"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "name": "financeFillsTheRecognitionRateAtReleaseAndTheWarehousePostsReceivablesWithIt",
+      "status": "passed",
+      "seconds": "4.087"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "name": "financeAuditInfoCarriesTheActionsTheCurrentUserCanTakeNow",
+      "status": "passed",
+      "seconds": "2.457"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest",
+      "name": "standardPaymentMethodsAreSeededWhenNoConfirmedLegacyMethodExists",
+      "status": "passed",
+      "seconds": "0.029"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "",
+      "status": "failure",
+      "seconds": "184.62"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "mixedResolvedReportUsesTheSameReceiptContractAndRejectsPartialReversedOrForeignType",
+      "status": "passed",
+      "seconds": "4.506"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "unrelatedHistoryIsExcludedBeforeExpensivePredicatesWithRepeatedExplainEvidence",
+      "status": "passed",
+      "seconds": "19.105"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "mixedStockInBatchUsesEachApprovedReceiptAndDeduplicatesSharedAnalysis",
+      "status": "passed",
+      "seconds": "5.2"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "partialIqcUsesOnlyActuallyStockedSelectedRowsOfTheApprovedReceipt",
+      "status": "passed",
+      "seconds": "11.952"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "actualImportedSourceReceiptsKeepTheirImmutableFactsAndNeverWakeNativeAnalyses",
+      "status": "passed",
+      "seconds": "13.676"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "finishedInboundKeepsStatusNullColorSameMainAndReopenedCompletion",
+      "status": "passed",
+      "seconds": "13.763"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "purchaseAndSubcontractKeepApprovalReverseAndLegacyDimensions",
+      "status": "passed",
+      "seconds": "25.364"
+    },
+    {
+      "class": "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest",
+      "name": "finishedInboundBatchCombinesApprovedDocumentsWithoutAdmittingDraftOrReversedRows",
+      "status": "passed",
+      "seconds": "2.625"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope",
+      "status": "passed",
+      "seconds": "1.931"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "reportInspectionSplitsFullyReportedSegmentsOutOfInProgress",
+      "status": "passed",
+      "seconds": "0.289"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages",
+      "status": "passed",
+      "seconds": "1.201"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope",
+      "status": "passed",
+      "seconds": "2.203"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "superAdminSeesAllWorkshopsOnReadSide",
+      "status": "passed",
+      "seconds": "0.338"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute",
+      "status": "passed",
+      "seconds": "0.534"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity",
+      "status": "passed",
+      "seconds": "0.21"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders",
+      "status": "passed",
+      "seconds": "0.685"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities",
+      "status": "passed",
+      "seconds": "0.311"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch",
+      "status": "passed",
+      "seconds": "0.139"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable",
+      "status": "passed",
+      "seconds": "0.486"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "fixedSupplementUsesProvenSharedMaterialAndOnlyOffersRealQualityRecovery",
+      "status": "passed",
+      "seconds": "0.369"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized",
+      "status": "passed",
+      "seconds": "0.065"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable",
+      "status": "passed",
+      "seconds": "0.417"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "historySegmentIncludesCancelledAndReversedWithinTheDateGate",
+      "status": "passed",
+      "seconds": "0.24"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport",
+      "status": "passed",
+      "seconds": "0.284"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+      "status": "passed",
+      "seconds": "0.302"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders",
+      "status": "passed",
+      "seconds": "0.536"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment",
+      "status": "passed",
+      "seconds": "0.355"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "preparingAndInProgressFiltersExecuteWithAndWithoutKeyword",
+      "status": "passed",
+      "seconds": "0.23"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory",
+      "status": "passed",
+      "seconds": "0.842"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions",
+      "status": "passed",
+      "seconds": "0.282"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases",
+      "status": "passed",
+      "seconds": "0.411"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "actualInProgressQueryUsesExactStateAndLiteralProductFilter",
+      "status": "passed",
+      "seconds": "0.301"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "name": "operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory",
+      "status": "passed",
+      "seconds": "0.569"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest",
+      "name": "currencyIdFiltersByEqualOnCurrencyColumn",
+      "status": "passed",
+      "seconds": "3.42"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest",
+      "name": "financeHistoryKeepsProcessedTerminalAndLegacyRecordsWithoutReadingPendingDrafts",
+      "status": "passed",
+      "seconds": "0.014"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "name": "newSalesShipmentCannotBypassOrderPolicyWithUnlinkedLine",
+      "status": "passed",
+      "seconds": "0.257"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "name": "noRateOrdersCanOpenDraftsWithoutMergingAcrossOwners",
+      "status": "passed",
+      "seconds": "0.237"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "name": "linkedDraftIgnoresForgedClientLocalAmount",
+      "status": "passed",
+      "seconds": "0.012"
+    },
+    {
+      "class": "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest",
+      "name": "unauthorizedKeyedBatchIsRejectedBeforeReadingPhysicalSourceCapacity",
+      "status": "passed",
+      "seconds": "0.045"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "allFiveProductionLegacySqlEntrypointsKeepOriginalFactsWithoutNewAdoptions",
+      "status": "passed",
+      "seconds": "1.848"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "exactSourceTamperingAndIndependentAdoptionUpdatesRemainRejected",
+      "status": "passed",
+      "seconds": "2.219"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "verifiedHistoricalUnknownUnitAndRateStayUnknownInsteadOfBecomingOneOrAComputedBase",
+      "status": "passed",
+      "seconds": "1.508"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "realRuntimeSessionCannotForgeLegacyContextAndNativeVersionTwoStillWorks",
+      "status": "passed",
+      "seconds": "1.557"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "evenTrustedBootstrapNeedsTheExactRowProofAndCannotAttachANewPrecisionPolicy",
+      "status": "passed",
+      "seconds": "1.948"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "name": "replayedSourceProofFromAnEarlierTransactionCannotAuthorizeAnInsert",
+      "status": "passed",
+      "seconds": "1.477"
+    }
+  ],
+  "note": "Each receipt is independent. Never sum repeated cases across receipts; final unique ledger uses the final whole selection only."
+}

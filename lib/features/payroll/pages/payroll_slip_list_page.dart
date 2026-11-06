@@ -83,7 +83,7 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
         isLoading: list.isLoading && !list.hasValue,
         loadingMore: list.isLoading && list.hasValue,
         error: list.hasError
-            ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
+            ? (humanErrorMessage(list.error!) ?? '读取完整列表失败，请重试')
             : null,
         onRetry: () => ref.read(payrollListProvider.notifier).retry(),
         columns: _columns,

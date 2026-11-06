@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -37,6 +38,11 @@ class ProductionFqcReplenishmentBanner extends ConsumerStatefulWidget {
 class _ProductionFqcReplenishmentBannerState
     extends ConsumerState<ProductionFqcReplenishmentBanner>
     with ScopedPagedReadViewMixin<ProductionFqcReplenishmentBanner> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   final _navigation = PageNavigationSession();
 
   @override
@@ -51,7 +57,7 @@ class _ProductionFqcReplenishmentBannerState
     super.dispose();
   }
 
-  static const _pageSize = 40;
+  static const _pageSize = 100;
 
   PagedResult<ProductionFqcReplenishmentMaterialTask>? _result;
   String? _error;
@@ -151,30 +157,49 @@ class _ProductionFqcReplenishmentBannerState
     });
     try {
       final repository = ref.read(productionFqcReplenishmentRepositoryProvider);
-      final result = await readScopedPage<ProductionFqcReplenishmentMaterialTask>(
-        targetPage,
-        query: (repository,),
-        currentQuery: () =>
-            (ref.read(productionFqcReplenishmentRepositoryProvider),),
-        useCache: useCache,
-        canPrefetch: () {
-          final sheet = _taskSheetContext;
-          final visible = sheet != null && sheet.mounted ? sheet : context;
-          return visible.mounted &&
-              TickerMode.valuesOf(visible).enabled &&
-              (ModalRoute.of(visible)?.isCurrent ?? true);
-        },
-        fetchPage: (page) async {
-          final rows = await repository.materialTasks(page: page);
-          var count = rows.items.where((item) => !item.isTerminal).length;
+      int? authoritativeCount;
+      Future<PagedResult<ProductionFqcReplenishmentMaterialTask>> fetchRows(
+        int page,
+        int size,
+      ) async {
+        final rows = await repository.materialTasks(page: page, size: size);
+        if (page == 1) {
           try {
-            count = await repository.materialTaskCount();
+            authoritativeCount = await repository.materialTaskCount();
           } catch (_) {
-            // The original row-derived badge fallback survives count outages.
+            // Only a complete authorized row set supplies the existing fallback.
           }
-          return PagedReadSnapshot(page: rows, snapshot: count);
-        },
-      );
+        }
+        return PagedReadSnapshot(
+          page: rows,
+          snapshot:
+              authoritativeCount ??
+              rows.items.where((item) => !item.isTerminal).length,
+          rebuildSnapshot: (combined) =>
+              authoritativeCount ??
+              combined.items.where((item) => !item.isTerminal).length,
+        );
+      }
+
+      final result =
+          await readScopedPage<ProductionFqcReplenishmentMaterialTask>(
+            targetPage,
+            query: (repository, _pageSize),
+            currentQuery: () => (
+              ref.read(productionFqcReplenishmentRepositoryProvider),
+              _pageSize,
+            ),
+            useCache: useCache,
+            canPrefetch: () {
+              final sheet = _taskSheetContext;
+              final visible = sheet != null && sheet.mounted ? sheet : context;
+              return visible.mounted &&
+                  TickerMode.valuesOf(visible).enabled &&
+                  (ModalRoute.of(visible)?.isCurrent ?? true);
+            },
+            fetchPage: (page) => fetchRows(page, _pageSize),
+            fetchPageSized: fetchRows,
+          );
       final pendingCount =
           (result
                   as PagedReadSnapshot<
@@ -190,12 +215,14 @@ class _ProductionFqcReplenishmentBannerState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _error = 'FQC 补产物料任务加载失败，请刷新重试';
@@ -241,7 +268,10 @@ class _ProductionFqcReplenishmentBannerState
       RouteName.productionMaterialAnalysis,
       extra: ProductionMaterialAnalysisSeed(analysisId: analysisId),
     );
-    if (mounted) await _load();
+    if (mounted &&
+        await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      await _load();
+    }
   }
 
   Future<void> _createAndOpenAnalysis(
@@ -389,7 +419,10 @@ class _ProductionFqcReplenishmentBannerState
     if (drawId == null || drawId.isEmpty) return;
     Navigator.of(sheetContext).pop();
     await _navigation.push(RoutePath.stockDocDetail('DRAW', drawId));
-    if (mounted) await _load();
+    if (mounted &&
+        await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      await _load();
+    }
   }
 
   Future<void> _openPlan(
@@ -399,7 +432,10 @@ class _ProductionFqcReplenishmentBannerState
     if (task.planId.isEmpty) return;
     Navigator.of(sheetContext).pop();
     await _navigation.push(RoutePath.productionPlanDetail(task.planId));
-    if (mounted) await _load();
+    if (mounted &&
+        await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      await _load();
+    }
   }
 
   Future<void> _showTasks() {
@@ -536,10 +572,14 @@ class _ProductionFqcReplenishmentBannerState
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.productionSchedule, () async {
+    Future<void> visibleReadReturn() async {
       if (_navigation.consumeReturnedVisit()) return;
       await _load();
-    });
+    }
+
+    // A retired-read fallback must not consume a navigation-only dedup flag.
+    _activityReturnRead = _load;
+    ref.onPageResume(RouteName.productionSchedule, visibleReadReturn);
     final result = _result;
     if (!_canView) return const SizedBox.shrink();
     if (result == null && _loading) return const SizedBox.shrink();
@@ -550,7 +590,16 @@ class _ProductionFqcReplenishmentBannerState
           child: ListTile(
             leading: const Icon(Icons.error_outline_rounded),
             title: Text(_error!),
-            trailing: TextButton(onPressed: _load, child: const Text('重试')),
+            trailing: TextButton(
+              onPressed: _loading
+                  ? null
+                  : () => UtenBusyOverlay.run<void>(
+                      context,
+                      title: '正在重新读取补产任务',
+                      action: _load,
+                    ),
+              child: const Text('重试'),
+            ),
           ),
         ),
       );

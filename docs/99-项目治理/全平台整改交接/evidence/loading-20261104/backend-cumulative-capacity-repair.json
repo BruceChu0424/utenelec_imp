@@ -1,0 +1,124 @@
+{
+  "createdAtUtc": "2026-11-05T12:37:03.782411+00:00",
+  "originalSourceAggregate": {
+    "sha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+    "algorithm": "Original generator opaque; authoritative comparison uses the file table."
+  },
+  "finalSourceAggregate": {
+    "sha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+    "algorithm": "SHA256 UTF-8 concatenation sorted by path: path + NUL + lowercase file SHA256 + LF"
+  },
+  "changed": [
+    {
+      "path": "server/legacy_migration/test_verify_rehearsal_counter_baseline.py",
+      "beforeSha256": "bc952dae21bb2a8a743757e0f93e4a992a5572a33a29897937b520a914e4edc4",
+      "afterSha256": "77e78d83a1b0adbd8ad5a942caae74801918de66bb8eb0a01c091b1e3e8e1ae7"
+    },
+    {
+      "path": "server/legacy_migration/verify_rehearsal_result.py",
+      "beforeSha256": "0aa128938b89b7ef6f5adeadc9920d26d7b1573372f99dda8c6243380665f7ce",
+      "afterSha256": "5f9a3a23afb55a7cddf1874305ac286e44e9883421b41d18ca48719062b05875"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/PreplanAnalysisStockPegService.java",
+      "beforeSha256": "77e2dda4a22054467d9fecd0767d3c8d43073776a1de9ffe16bda431674daa9b",
+      "afterSha256": "5c446797a6b7a4cc7a5730da47796b3bcc03284e2cf85ba50a4178dcaa04799b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "beforeSha256": "3bd39e8a26d3453ed791224795f4c9a2f9fbcff83b1ec3cc64ccee6656ca472e",
+      "afterSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java",
+      "beforeSha256": "ab6477aab865c96e3a664dd362f2fd577fec78fcc552e58b35df4ab4cd4c8bd9",
+      "afterSha256": "feec5490aca18d57490e5f3b98243476e70775ea8c7432fa3fd8276fecb381ca"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+      "beforeSha256": "197c464cbe4b7ced005f6420955670fbd121261de7eacb3e48180b02d9942ae7",
+      "afterSha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "beforeSha256": "6019dc7e556f6f7f34ba3c4dc71b97df8cf653ab8af6f82c5d93060f477a98d6",
+      "afterSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b"
+    }
+  ],
+  "added": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/util/InteractiveTaskReadScope.java",
+      "sha256": "8b09218e84d4964caafd62d23079f8771b8e3f8353d0cbb6bde2863ffc634572"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1058__direct_make_closed_delivery_credit.sql",
+      "sha256": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1059__verified_legacy_quantity_adoption.sql",
+      "sha256": "8ac700039933f5dbec8c8c0974ae224ce712d31f135013536fbd6073c3d0b9a2"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1060__legacy_return_quantity_source_proofs.sql",
+      "sha256": "2a4afbe922092b3441cba2db7357cc8f14ed02e493bd80a05de4d07f1aa53486"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1061__direct_make_closed_delivery_capacity_branches.sql",
+      "sha256": "76dea0c8f7980171e58adc5ce0c3919984ffc200e72cae13be4263d5d44904bf"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1062__expense_payment_reversal_event_contract.sql",
+      "sha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "sha256": "60e13e69cff910f3f60bce9032b1ae3267cdb7afc526210dab734e0cd0becffd"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java",
+      "sha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847"
+    }
+  ],
+  "renamedLegacyBodiesByteEqual": true,
+  "priorMigrationBodiesByteEqual": true,
+  "main1058": {
+    "commit": "6493cadb7c967223334dc660dd8076bd53d0ceec",
+    "sha256": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a",
+    "byteEqualCommittedBlob": true
+  },
+  "sourceComposition": {
+    "PreplanAnalysisStockPegService": "Reversing only committed main1058 function-name adoption exactly restores original f619 file hash; prior verified physical-row classifier changes remain.",
+    "ProductionExecutionWorkbenchService": "Removing only the scoped wrapper and extracted method header exactly restores original f619 file hash. Business SQL, predicates, ordering, projection, permission and calculations are byte-preserved."
+  },
+  "finding": {
+    "test": "SalesDeliveryMixedScenarioEndToEndTest.partialManufactureAndPhysicalChildProcessingThenTwoKitShipmentsRefreshOnlyTheTrueRemainder",
+    "expectedCumulativePrivateHandoff": "10",
+    "observedBeforeMain1058Adoption": "6.0000",
+    "cause": "After first4 private delivery and refresh, remaining demand6 was used as cumulative receipt budget, then historical exact4 was subtracted again. Second6 obtained private2/public4.",
+    "resolution": "Reuse exact already-committed main1058 Java/common SQL proof and its original14 boundary cases; never replace the same fix with a second budget helper.",
+    "aliasMax": "Original shared capacity includes a greatest(frozen alias maximum) branch.1061 credits closed slices only to current required+valid alias qty, then takes greatest with the unchanged original capacity; unknown original capacity stays unknown.",
+    "restoredGeneration": "Real new MAKE E2E on frozen5a proved report4 -> issue/start/cancel/return/delete -> new shipment from RESTORE -> actual shipment/remaining6, but closed credit0 instead of4.1061 accepts only ORIGIN_MAKE or RESTORE through the unchanged exact receipt/plan/movement/order/path/held/counter proof. Current active handoffs10/history14 preserve the restored prior generation.",
+    "unchanged": "No object/read permission, source graph, native/legacy write guard, stock/value precision, original Mixed total10 assertion or prior committed migration is relaxed."
+  },
+  "outdatedFixture": {
+    "class": "FinanceApplicationsPostgresTest",
+    "cause": "Historical1039 rehearsal cannot boot current main delivery JPA columns, while simply booting current schema would pre-run1040 capture.",
+    "repair": "Fully validate current bootstrap DB A; only preparation thread seeds true1039 DB B, apply real1040 capture then all current migrations, validate every mapped table on B, then publish B to all replay workers and real independently bounded scan journal. Original business assertions are preserved by exact file-hash inversion; no DDL validation or guard is disabled."
+  },
+  "expenseEventContract": {
+    "migration": 1062,
+    "cause": "V999_11 admitted PAYMENT_REVERSED, but later1000/1002 CHECK rewrites omitted it while the real service and existing Flutter decoder kept that original contract.",
+    "change": "Precise current9-type anchor, retain all9, add only PAYMENT_REVERSED, no data/permission/monetary change; actual PG rejects unknown with23514.",
+    "originalErrorHistory": "Real current Finance8 cases reached6pass and2check-constraint errors after the rollback-only repair; old error receipt remains separate."
+  },
+  "legacyProtocol": {
+    "counterMigration": 1059,
+    "returnProofMigration": 1060,
+    "verificationGate": 1060,
+    "mapping": "bootstrap-v22",
+    "reasonNoVersionBump": "Unpublished v22 protocol families/payload semantics are unchanged. An old1059/v22 artifact is rejected by the new actual-schema1060 gate; both sealed return inventories are still mandatory."
+  },
+  "independentReview": "Read-only child review found the frozen alias MAX double-addition risk; source-exact child, private/nonalias and restoration boundaries were retained. Review does not substitute for runtime acceptance.",
+  "jitRepair": "Separate backend-jit-diagnostic.json and real public/scope runtime receipts record the confirmed optimizer compilation cost and bounded transaction-local remedy.",
+  "acceptance": "Only backend-combined-acceptance.json contains the final-source runtime verdict and deduplicated case ledger."
+}

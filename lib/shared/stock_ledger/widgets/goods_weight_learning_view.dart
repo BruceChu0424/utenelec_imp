@@ -87,6 +87,9 @@ class _GoodsWeightLearningViewState
     with
         UtenRefreshParticipant<GoodsWeightLearningView>,
         ScopedPagedReadViewMixin<GoodsWeightLearningView> {
+  @override
+  Future<void> onReadViewResumed() => _loadRecords(1);
+
   final _readViewportRows = MasterDataTableRowsController<WeightObservation>();
   int get _visibleReadPage => _records == null
       ? (_records?.page ?? 1)
@@ -222,6 +225,7 @@ class _GoodsWeightLearningViewState
         _recordsLoading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || version != _recordsVersion) return;
       setState(() {
         _recordsError = e is ApiException ? e.message : '称重记录加载失败，请稍后重试';

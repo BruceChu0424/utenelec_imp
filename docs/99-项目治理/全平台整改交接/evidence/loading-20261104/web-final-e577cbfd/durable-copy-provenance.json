@@ -1,0 +1,22 @@
+{
+  "source": "e577cbfd35ba38e61291a34ba0a027143bd64442f15058ef95ad9a06d68d8fc2",
+  "members": [
+    {
+      "name": "runtime-web-final-receipt.json",
+      "bytes": 435345,
+      "sha256": "0548a710077b32b481607e5488911d2f411f417ebcd7c28786a283c80368107a"
+    },
+    {
+      "name": "runtime-web-final-evidence-index.json",
+      "bytes": 40115,
+      "sha256": "71274e1568eab361d759dfe7a9ea6a75c926f791bd63d9a0bc4e6997510ba581"
+    },
+    {
+      "name": "runtime-web-final-evidence.zip",
+      "bytes": 973881,
+      "sha256": "d5233ab9f9948f54377ce3ae4fd5daf25130fa4a0188821ef3849fccf38b7636"
+    }
+  ],
+  "scope": "Earlier accepted immutable Web snapshot, preceding current Main composition and new public row-window fix. Do not relabel as final current source.",
+  "copiedByteExact": true
+}

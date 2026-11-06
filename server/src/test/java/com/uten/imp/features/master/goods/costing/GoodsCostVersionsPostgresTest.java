@@ -32,38 +32,49 @@ class GoodsCostVersionsPostgresTest {
     private static NamedParameterJdbcTemplate named;
     private final UUID actor=UUID.randomUUID(),goods=UUID.randomUUID(),client=UUID.randomUUID(),hiddenClient=UUID.randomUUID(),
             unit=UUID.randomUUID(),currency=UUID.randomUUID(),euro=UUID.randomUUID(),privateMaterial=UUID.randomUUID();
-    private final GoodsCostJson json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());
+    private final GoodsCostJson json=spy(new GoodsCostJson(new ObjectMapper().findAndRegisterModules()));
     private MasterReferenceValidationPort references;
     private SecurityContextCurrentUser current;
     private OwnerVisibility owners;
     private GoodsCostSheetService service;
+    private com.uten.imp.features.master.reference.MasterReferenceValidationAdapter referenceAuthority;
     private TransactionTemplate transactions;
     @BeforeAll static void start(){
         PG.start();source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
         MigratedProjectionSchema.createCurrentTables(db,"goods","clients","client_co_owners","client_visibility_grants",
                 "units","currencies","goods_cost_sheets");
+        GoodsCostSummaryReadFixture.initialize(db);
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void setup(){
-        db.update("INSERT INTO goods(id,code,name,unit_id,source_type) VALUES(?,?,?,?,'自制')",goods,"COST-V-"+goods,"版本货品",unit);
+        db.update("INSERT INTO goods(id,code,name,unit_id,source_type,owner_employee_id) VALUES(?,?,?,?,'自制',?)",goods,"COST-V-"+goods,"版本货品",unit,actor);
+        db.update("INSERT INTO goods(id,code,name,unit_id,source_type,owner_employee_id) VALUES(?,?,?,?,'采购',?)",privateMaterial,"COST-PRIVATE-"+privateMaterial,"私有材料",unit,UUID.randomUUID());
         db.update("INSERT INTO clients(id,code,name,owner_employee_id) VALUES(?,?,?,?),(?,?,?,?)",
                 client,"COST-C-"+client,"可见客户",actor,hiddenClient,"COST-C-"+hiddenClient,"不可见客户",UUID.randomUUID());
         references=mock(MasterReferenceValidationPort.class);doCallRealMethod().when(references).requireVisibleGoodsBatch(anyCollection());
         current=mock(SecurityContextCurrentUser.class);permissions(Set.of("goods:view","goods:cost:view"));
         owners=mock(OwnerVisibility.class);when(owners.evaluate("client","client:view:all"))
                 .thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(actor)));
+        when(owners.evaluate("goods","goods:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(actor)));
         EntityManager em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
             String sql=invocation.getArgument(0);Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
             when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
-            when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->new Object[]{rs.getObject(1)}));
+            when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
+                Object[] result=new Object[rs.getMetaData().getColumnCount()];
+                for(int at=0;at<result.length;at++)result[at]=rs.getObject(at+1);return result;
+            }));
             return query;
         });
         var clients=new ClientAccessPolicy(owners,current,em);
+        referenceAuthority=new com.uten.imp.features.master.reference.MasterReferenceValidationAdapter(em,owners,clients);
+        org.springframework.test.util.ReflectionTestUtils.setField(referenceAuthority,"goodsOwnerScopeEnabled",true);
+        doAnswer(call->{referenceAuthority.requireVisibleGoods(call.getArgument(0));return null;}).when(references).requireVisibleGoods(any(UUID.class));
+        when(references.goodsReadScopeFacts()).thenAnswer(call->referenceAuthority.goodsReadScopeFacts());
         var mask=mock(GoodsCostMasker.class);when(mask.canView()).thenReturn(true);
         service=new GoodsCostSheetService(named,mock(GoodsCostCalculator.class),json,mask,references,clients,current,
-                mock(TxSessionVars.class),mock(CostImportEvidenceGuard.class));
+                mock(TxSessionVars.class),mock(CostImportEvidenceGuard.class),GoodsCostSummaryReadFixture.reader(db,current));
         transactions=new TransactionTemplate(new DataSourceTransactionManager(source));
         transactions.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
@@ -98,9 +109,14 @@ class GoodsCostVersionsPostgresTest {
         for(int i=0;i<300;i++)seed("近期方案"+i,client,currency,"1",1,"1",newer.plusSeconds(i),false);
         UUID target=seed("唯一 旧版_%",client,currency,"0.1234567890123456789",9007199254740993L,
                 "9007199254740993.0001",OffsetDateTime.parse("2026-10-27T16:15:00Z"),false);
+        clearInvocations(json);
         var first=page(1,50,null,Map.of(),null,null);assertThat(first.total()).isEqualTo(301);assertThat(first.items()).hasSize(50);
+        assertThat(first.items()).noneMatch(row->Objects.equals(row.clientId(),hiddenClient));
+        verify(json,never()).read(anyString(),eq(GoodsCostContracts.DraftInput.class));
+        verify(json,never()).read(anyString(),eq(GoodsCostContracts.Calculation.class));
         var last=page(7,50,null,Map.of(),null,null);assertThat(last.total()).isEqualTo(301);assertThat(last.items()).singleElement().satisfies(row->assertThat(row.id()).isEqualTo(target));
-        var recent=transactions.execute(status->service.list(goods));assertThat(recent).hasSize(250).noneMatch(row->row.clientId().equals(hiddenClient)||row.id().equals(target));
+        assertThatThrownBy(()->transactions.execute(status->service.list(goods)))
+                .isInstanceOf(ApiException.class).hasMessageContaining("完整版本摘要");
         var searches=Map.of("name","唯一 旧版_%","version",">9007199254740992","batchQty","9007199254740993.0001",
                 "knownTotal",">=0.1234567890123456789","updatedAt","2026-10-28","unitName","历史 件","currencyName","历史 美金");
         var filtered=page(1,1,currency.toString(),searches,"knownTotal","desc");
@@ -124,9 +140,29 @@ class GoodsCostVersionsPostgresTest {
         assertThat(page(1,50,currency.toString(),Map.of("name","可比较","knownTotal","99"),null,null).total()).isZero();
         var missing=page(1,50,"__null__",Map.of(),null,null);
         assertThat(missing.items()).singleElement().satisfies(row->{assertThat(row.id()).isEqualTo(unknown);assertThat(row.knownTotal()).isNull();});
-        doThrow(new ApiException(ErrorCode.PRIMARY_UNAVAILABLE)).when(references).requireVisibleGoods(privateMaterial);
+        when(references.goodsReadScopeFacts()).thenThrow(new ApiException(ErrorCode.PRIMARY_UNAVAILABLE));
         assertThatThrownBy(()->page(1,50,null,Map.of(),null,null)).isInstanceOfSatisfying(ApiException.class,
                 error->assertThat(error.getCode()).isEqualTo(ErrorCode.PRIMARY_UNAVAILABLE));
+    }
+    @Test void setBasedSummaryAclMatchesTheOriginalJavaAuthorityForPrivateAndHistoricalComponents() {
+        OffsetDateTime at=OffsetDateTime.parse("2026-10-28T00:00:00Z");
+        seed("普通来源",client,currency,"12",1,"1",at,false);
+        UUID hidden=seed("私有材料来源",client,currency,"99",1,"1",at,true);
+        var legacy=transactions.execute(status->service.list(goods));
+        var summary=page(1,50,null,Map.of(),null,null);
+        assertThat(summary.items()).extracting(GoodsCostContracts.VersionSummary::id)
+                .containsExactlyElementsOf(legacy.stream().map(GoodsCostContracts.SheetSummary::id).toList()).doesNotContain(hidden);
+        // The owning historical-read authority deliberately keeps deleted/inactive goods readable.
+        db.update("UPDATE goods SET owner_employee_id=?,is_deleted=true,status='禁用' WHERE id=?",actor,privateMaterial);
+        legacy=transactions.execute(status->service.list(goods));summary=page(1,50,null,Map.of(),null,null);
+        assertThat(summary.items()).extracting(GoodsCostContracts.VersionSummary::id)
+                .containsExactlyElementsOf(legacy.stream().map(GoodsCostContracts.SheetSummary::id).toList()).contains(hidden);
+        // Disabled feature flag has its original meaning; SQL must not accidentally enable owner filtering.
+        db.update("UPDATE goods SET owner_employee_id=? WHERE id=?",UUID.randomUUID(),privateMaterial);
+        org.springframework.test.util.ReflectionTestUtils.setField(referenceAuthority,"goodsOwnerScopeEnabled",false);
+        legacy=transactions.execute(status->service.list(goods));summary=page(1,50,null,Map.of(),null,null);
+        assertThat(summary.items()).extracting(GoodsCostContracts.VersionSummary::id)
+                .containsExactlyElementsOf(legacy.stream().map(GoodsCostContracts.SheetSummary::id).toList()).contains(hidden);
     }
     @Test void costAuthorityPrecedesHeaderParsingAndAnyVersionProbe(){
         permissions(Set.of("goods:view"));

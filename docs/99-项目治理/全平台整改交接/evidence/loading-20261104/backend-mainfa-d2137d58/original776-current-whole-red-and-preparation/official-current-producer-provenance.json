@@ -1,0 +1,19 @@
+{
+  "atUtc": "2026-11-06T01:40:35.355030+00:00",
+  "source": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "producerWholeClassTests": 2,
+  "producerWholeClassAllPassed": true,
+  "nativeFastGroupActualExitCode": 0,
+  "nativeFastTests": 126,
+  "producerXmlSha256": "5c23b8e2afbbd4e88f19979cc2b5bc662f8a898a2d4e4e0555a5a00ab85df401",
+  "sqlRecords": 1013,
+  "head": 1074,
+  "compoundVersions": 14,
+  "canonicalJavaPythonExactlyEqual": true,
+  "sha256": "3b41577abb65c05a9595808cc4125f254a99e1305cb17986860fdb65f99dde5c",
+  "metadataSha256": "275884071498753e5314c71435c3c2cfcc1c99f50a523d52daeb1a62aac794f9",
+  "rawIntegerHeaderAndFormattingPreserved": true,
+  "actualCurrentPgStillPending": true,
+  "mainWritten": false,
+  "companyDbWritten": false
+}

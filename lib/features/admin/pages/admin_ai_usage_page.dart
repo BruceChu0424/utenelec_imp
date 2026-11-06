@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 // AdminAiUsagePage - AI 用量看板(ADR-164; 页面文档 docs/03-页面/AI服务设置页.md)
 //
 // 超级管理员看全站 AI 消耗: 今日 token/调用/活跃人数/停用人数(预算进度双通道)、
@@ -9,7 +10,6 @@
 //     页内再叠 _settingsOwner 同款门禁(会话/快照/服务器/权限任一变化即失效)。
 //   * 读端点不写数据; 限额编辑走独立面板(保存要求再认证)。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
-import 'dart:math' as math;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
@@ -107,11 +107,12 @@ class _AdminAiUsageSession extends ConsumerStatefulWidget {
   ConsumerState<_AdminAiUsageSession> createState() => _AdminAiUsagePageState();
 }
 
-class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
+class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession>
+    with ReadViewActivityMixin<_AdminAiUsageSession> {
+  @override
+  Future<void> onReadViewResumed() => _load(quiet: _data != null);
   late final Object? _owner;
   bool get _current => mounted && _owner != null && _owner == _usageOwner(ref);
-
-  static const _pageSize = 20;
 
   AiUsageWindow _window = AiUsageWindow.day;
   AiUsageDashboard? _data;
@@ -120,11 +121,10 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
   bool _noAccess = false;
   int _loadSeq = 0;
 
-  // 人员表的客户端查询态(数据 ≤500 全量拉取, 就地筛选/排序/分页)。
+  // 完整统计人员结果的客户端筛选与排序，滚动不再切片。
   String? _statusFilter;
   String? _sortColumn;
   bool _sortAscending = false;
-  int _page = 0;
 
   AiUsageDashboardRepository get _repository =>
       ref.read(aiUsageDashboardRepositoryProvider);
@@ -146,17 +146,23 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
       });
     }
     try {
-      final data = await _repository.dashboard(_window);
+      final data = await readViewActivity.runRead(
+        () => _current && seq == _loadSeq,
+        () => _repository.dashboard(_window),
+      );
       if (!_current || seq != _loadSeq) return;
       setState(() {
         _data = data;
         _loading = false;
         _error = null;
         _noAccess = false;
-        _page = _page.clamp(0, _totalPages(data) - 1);
       });
     } on ApiException catch (error) {
       if (!_current || seq != _loadSeq) return;
+      if (isRetiredViewRead(error)) {
+        setState(() => _loading = false);
+        return;
+      }
       _onLoadFailed(
         error.message,
         noAccess:
@@ -164,8 +170,12 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
             error.httpStatus == 403 ||
             error.code == 'FORBIDDEN',
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted || !_current || seq != _loadSeq) return;
+      if (isRetiredViewRead(error)) {
+        setState(() => _loading = false);
+        return;
+      }
       _onLoadFailed(AppLocalizations.of(context).aiUsageLoadFailed);
     }
   }
@@ -177,7 +187,6 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
         _loading = false;
         _error = message;
         _noAccess = true;
-        _page = 0;
         _statusFilter = null;
         _sortColumn = null;
       });
@@ -205,9 +214,9 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
     if (window == _window) return;
     setState(() {
       _window = window;
+      _data = null;
       _statusFilter = null;
       _sortColumn = null;
-      _page = 0;
     });
     _load();
   }
@@ -225,9 +234,6 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
   }
 
   // ---- 人员表的就地查询 ----
-
-  static int _totalPages(AiUsageDashboard data) =>
-      math.max(1, (data.people.length + _pageSize - 1) ~/ _pageSize);
 
   static String _statusKey(AiUsagePerson person) => person.disabled
       ? 'disabled'
@@ -409,12 +415,6 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
   Widget _peopleCard(AppLocalizations l10n, AiUsageDashboard? data) {
     final theme = Theme.of(context);
     final people = _visiblePeople;
-    final totalPages = math.max(
-      1,
-      (people.length + _pageSize - 1) ~/ _pageSize,
-    );
-    final page = _page.clamp(0, totalPages - 1);
-    final pageRows = people.skip(page * _pageSize).take(_pageSize).toList();
     return UtenCard(
       key: const ValueKey('ai-usage-people-card'),
       showBorder: false,
@@ -445,13 +445,6 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
-          Text(
-            aiUsageWindowLabel(l10n, _window),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
           MasterDataTableView<AiUsagePerson>(
             expensiveRowMounts: false,
             tableKey:
@@ -459,14 +452,13 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
             key: const Key('ai-usage-people-table'),
             embedded: true,
             isLoading: _loading && data == null,
-            items: pageRows,
+            items: people,
             columns: _columns(l10n),
             facets: {'status': _statusFacets},
             nullCounts: const {},
             filters: {if (_statusFilter != null) 'status': _statusFilter},
             onFilterChanged: (key, value) => setState(() {
               if (key == 'status') _statusFilter = value;
-              _page = 0;
             }),
             onRowTap: (person) {
               // 已删除员工: 统计行保留但不可再进详情/改限额(users 行已不存在)。
@@ -479,11 +471,7 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
             onSortChange: (column, ascending) => setState(() {
               _sortColumn = column;
               _sortAscending = ascending;
-              _page = 0;
             }),
-            currentPage: page + 1,
-            totalPages: totalPages,
-            onPageChange: (target) => setState(() => _page = target - 1),
             paginationScope: (_window, _statusFilter, _sortColumn),
             paginationRevision: data,
             emptyMessage: l10n.aiUsageEmpty,

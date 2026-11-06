@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'dart:async';
@@ -38,7 +39,11 @@ class _Snapshot extends SessionSnapshotNotifier {
 
 Map<String, Object?> _entry(RecordHistoryArea area) => {
   'id': '1',
-  'entityType': area == RecordHistoryArea.companyFiles ? 'files' : 'users',
+  'entityType': switch (area) {
+    RecordHistoryArea.companyFiles => 'files',
+    RecordHistoryArea.master => 'goods',
+    RecordHistoryArea.permissions => 'users',
+  },
   'recordId': 'record-1',
   'recordLabel': area == RecordHistoryArea.companyFiles
       ? '产品装配说明.pdf'
@@ -107,6 +112,8 @@ class _Api {
                           : [
                               {
                                 ..._entry(area),
+                                if (request.queryParameters['cursor'] != null)
+                                  'id': '2',
                                 if (request.queryParameters['cursor'] != null)
                                   'recordLabel': '第二页文件.pdf',
                                 if (request.queryParameters['cursor'] != null)
@@ -255,21 +262,54 @@ void main() {
       );
     },
   );
+  for (final area in [
+    RecordHistoryArea.companyFiles,
+    RecordHistoryArea.master,
+  ]) {
+    testWidgets(
+      '${area.name} history revalidates once on a go return without a restoration',
+      (tester) async {
+        final api = _Api(area);
+        await _pump(tester, api, grants: {area.viewPermissions.values.first});
+        final label = area == RecordHistoryArea.companyFiles
+            ? '产品装配说明.pdf'
+            : '张师傅（000123）';
+        final row = find.text(label).first;
+        final router = GoRouter.of(tester.element(row));
+        await tester.tap(row);
+        await tester.pump(const Duration(milliseconds: 30));
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        api.hideEntries = true;
+        router.go(area.routePath);
+        await tester.pumpAndSettle();
+        expect(find.text(label), findsNothing);
+        expect(api.requests.where((r) => r.path == area.apiPath), hasLength(2));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
-    'company history revisiting a page rechecks object ACL instead of replaying cached rows',
+    'complete company history rechecks object ACL on explicit refresh without cursor navigation',
     (tester) async {
       final api = _Api(RecordHistoryArea.companyFiles)
         ..nextCursor = 'opaque-next';
       await _pump(tester, api);
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
+      expect(find.text('产品装配说明.pdf'), findsOneWidget);
       expect(find.text('第二页文件.pdf'), findsOneWidget);
-      api.hideEntries = true;
-      await tester.tap(
-        find.byKey(const ValueKey('master-table-page-previous')),
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
       );
+      expect(
+        api.requests.where((r) => r.path == api.area.apiPath),
+        hasLength(2),
+      );
+      api.hideEntries = true;
+      await tester.tap(find.byType(UtenRefreshButton));
       await tester.pumpAndSettle();
       expect(find.text('产品装配说明.pdf'), findsNothing);
+      expect(find.text('第二页文件.pdf'), findsNothing);
       expect(
         api.requests.where(
           (r) =>
@@ -279,6 +319,7 @@ void main() {
       );
     },
   );
+
   test(
     'history list and deep-link routes require their owning module permission',
     () {

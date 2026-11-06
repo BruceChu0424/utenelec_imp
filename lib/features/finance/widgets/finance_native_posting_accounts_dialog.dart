@@ -13,6 +13,10 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'finance_auxiliary_dialog.dart';
 import 'finance_source_table.dart';
@@ -31,11 +35,14 @@ class _Directory extends ConsumerStatefulWidget {
   ConsumerState<_Directory> createState() => _DirectoryState();
 }
 
-class _DirectoryState extends ConsumerState<_Directory> {
+class _DirectoryState extends ConsumerState<_Directory>
+    with ReadViewActivityMixin<_Directory> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
   late final int _epoch;
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _pages = 1, _generation = 0;
+  int _generation = 0;
   bool _busy = false;
   String? _error, _pendingApproval;
   bool get _current =>
@@ -49,10 +56,10 @@ class _DirectoryState extends ConsumerState<_Directory> {
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     final generation = ++_generation;
     setState(() {
@@ -60,18 +67,21 @@ class _DirectoryState extends ConsumerState<_Directory> {
       _error = null;
     });
     try {
-      final result = await _api.get(
-        _path,
-        query: {'page': '$page', 'size': '50'},
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _generation,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: () => _current && generation == _generation,
+          idOf: (row) => row['id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(_path, query: {'page': page, 'size': size}),
+                (row) => row,
+              ),
+        ),
       );
       if (!_current || generation != _generation) return;
       setState(() {
-        _rows = [
-          for (final r in result['items'] as List? ?? [])
-            if (r is Map<String, dynamic>) r,
-        ];
-        _page = page;
-        _pages = (result['totalPages'] as num?)?.toInt() ?? 1;
+        _rows = result.items;
         if (_rows.any(
           (r) => r['id'] == _pendingApproval && r['status'] == 'APPROVED',
         )) {
@@ -79,8 +89,12 @@ class _DirectoryState extends ConsumerState<_Directory> {
         }
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (_current && generation == _generation) {
-        setState(() => _error = _message(e));
+        setState(() {
+          if (pagedReadAccessDenied(e)) _rows = [];
+          _error = _message(e);
+        });
       }
     } finally {
       if (_current && generation == _generation) setState(() => _busy = false);
@@ -94,7 +108,7 @@ class _DirectoryState extends ConsumerState<_Directory> {
       barrierDismissible: false,
       builder: (_) => _Editor(epoch: _epoch),
     );
-    if (_current && saved == true) await _load(1);
+    if (_current && saved == true) await _load();
   }
 
   Future<void> _approve(Map<String, dynamic> row) async {
@@ -149,7 +163,7 @@ class _DirectoryState extends ConsumerState<_Directory> {
     } finally {
       if (_current) setState(() => _busy = false);
     }
-    if (_current && _pendingApproval == null) await _load(_page);
+    if (_current && _pendingApproval == null) await _load();
   }
 
   @override
@@ -199,10 +213,7 @@ class _DirectoryState extends ConsumerState<_Directory> {
                 idOf: (r) => '${r['id']}',
                 busy: _busy,
                 error: _error,
-                retry: () => _load(_page),
-                page: _page,
-                pages: _pages,
-                onPage: changed ? null : _load,
+                retry: _load,
                 onOpen: changed ? null : _approve,
                 scope: _epoch,
                 actions: [
@@ -214,7 +225,7 @@ class _DirectoryState extends ConsumerState<_Directory> {
                       child: const Text('新增对应版本'),
                     ),
                   UtenButton(
-                    onPressed: _busy || changed ? null : () => _load(_page),
+                    onPressed: _busy || changed ? null : _load,
                     child: const Text('刷新'),
                   ),
                 ],

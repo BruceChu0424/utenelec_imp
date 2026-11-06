@@ -28,12 +28,15 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../support/audit_screenshot_support.dart';
 import '../support/document_scope_capability_overrides.dart';
+import '../support/finance_document_command_fixture.dart';
 import '../support/pump_until.dart';
 import '../support/owned_provider_widget_tests.dart';
+import '../shared/drafts/memory_form_draft_storage.dart';
 
 final _providerTests = OwnedProviderWidgetTests();
 
@@ -103,7 +106,11 @@ class _DetailApi extends ApiClient {
     return _snapshot;
   }
 
-  Map<String, dynamic> get _snapshot => {
+  Map<String, dynamic> get _snapshot => family == _Family.finance
+      ? financeReviewedDetailFixture(_detailSnapshot, FinanceDocType.receipt)
+      : _detailSnapshot;
+
+  Map<String, dynamic> get _detailSnapshot => {
     'id': _id,
     'billNo': 'DOC-${family.name}',
     'billDate': '2026-09-30',
@@ -113,6 +120,7 @@ class _DetailApi extends ApiClient {
     'createdAt': '2026-09-30T01:00:00Z',
     'status': status,
     'rowVersion': 1,
+    'version': 1,
     'closed': false,
     'canEdit': true,
     'canDelete': true,
@@ -141,7 +149,14 @@ class _DetailApi extends ApiClient {
     if (path == '${family.detailPath}/approve') {
       writes++;
       status = 1;
-      return _snapshot;
+      return family == _Family.finance
+          ? financeReviewReceiptFixture(
+              path: path,
+              command: Map<String, dynamic>.from(body! as Map),
+              result: _snapshot,
+              operation: 'FINANCE_DOCUMENT_APPROVE',
+            )
+          : _snapshot;
     }
     return {};
   }
@@ -163,6 +178,7 @@ Future<ProviderContainer> _pump(
   final container = ProviderContainer(
     overrides: [
       ...nativeDetailReaderOverrides(),
+      formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       sharedPreferencesProvider.overrideWithValue(prefs),
       apiClientProvider.overrideWithValue(api),
       localServerReachableProvider.overrideWith(
@@ -275,7 +291,7 @@ void main() {
         if (family == _Family.finance) {
           await tester.tap(find.widgetWithText(UtenButton, '审核'));
           await tester.pumpAndSettle();
-          await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
+          await tester.tap(find.widgetWithText(UtenButton, '确认审核'));
         } else {
           container.read(pageRefreshRequestProvider.notifier).state++;
         }

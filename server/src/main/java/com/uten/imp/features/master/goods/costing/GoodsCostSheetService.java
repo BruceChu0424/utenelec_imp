@@ -2,6 +2,7 @@ package com.uten.imp.features.master.goods.costing;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.readsnapshot.VersionedSummaryPages;
 import com.uten.imp.common.finance.CostFraction;
 import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ApiException;
@@ -39,6 +40,7 @@ public class GoodsCostSheetService {
     private final SecurityContextCurrentUser current;
     private final TxSessionVars tx;
     private final CostImportEvidenceGuard imports;
+    private final VersionedSummaryPages summaryPages;
 
     public List<SheetSummary> list(UUID goodsId) {
         require(VIEW);references.requireVisibleGoods(goodsId);
@@ -48,7 +50,7 @@ public class GoodsCostSheetService {
             statement.setFetchSize(100);
             List<SheetSummary> result=new ArrayList<>();
             try(var rows=statement.executeQuery()) {
-                while(result.size()<250&&rows.next()) {
+                while(result.size()<251&&rows.next()) {
                     if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
                     Sheet sheet=sheet(mapper.mapRow(rows,0));if(!visibleVersion(sheet))continue;
                     result.add(new SheetSummary(sheet.id(),sheet.input().goodsId(),sheet.input().clientId(),sheet.input().name(),sheet.status(),sheet.version(),
@@ -56,56 +58,119 @@ public class GoodsCostSheetService {
                             sheet.calculation().totals().valueState(),sheet.confirmedSnapshotId(),sheet.updatedAt()));
                 }
             }
+            if(result.size()>250)throw invalid("成本版本超过兼容读取范围，请使用完整版本摘要入口");
             return List.copyOf(result);
         });
     }
     public Sheet get(UUID id) {require(VIEW);Sheet s=load(id,false);assertScope(s.input(),s.calculation());return s;}
 
-    /** The version table reads every authorized summary before count/page; the
-     * bootstrap's recent-choice list remains a separate, bounded contract. */
+    /** Compatibility route keeps its original maximum network batch100. */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
     public VersionPage versions(UUID goodsId,int page,int size,String status,String currencyId,
             Map<String,String> searches,String sort,String order) {
+        return readVersionSummaries(goodsId,page,Math.clamp(size,1,100),status,currencyId,searches,sort,order,null);
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
+    public VersionPage versions(UUID goodsId,int page,int size,String status,String currencyId,
+            Map<String,String> searches,String sort,String order,String readSnapshotRevision) {
+        return readVersionSummaries(goodsId,page,Math.clamp(size,1,100),status,currencyId,searches,sort,order,readSnapshotRevision);
+    }
+    /** The new lean-only route may use1000 rows per transport, never a total cap. */
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
+    public VersionPage versionSummaries(UUID goodsId,int page,int size,String status,String currencyId,
+            Map<String,String> searches,String sort,String order,String readSnapshotRevision) {
+        return readVersionSummaries(goodsId,page,Math.clamp(size,1,1000),status,currencyId,searches,sort,order,readSnapshotRevision);
+    }
+    private VersionPage readVersionSummaries(UUID goodsId,int page,int size,String status,String currencyId,
+            Map<String,String> searches,String sort,String order,String expectedRevision) {
         require(VIEW);references.requireVisibleGoods(goodsId);
         var query=new GoodsCostVersionQuery(searches,status,currencyId,sort,order);
-        var source=versionReadSource(goodsId,query.ordering());
-        int currentPage=Math.max(1,page),limit=Math.clamp(size,1,100);
-        long start=(long)(currentPage-1)*limit;
-        var rowMapper=new org.springframework.jdbc.core.ColumnMapRowMapper();
-        return db.execute(source.sql(),source.parameters(),(org.springframework.jdbc.core.PreparedStatementCallback<VersionPage>) statement->{
-            statement.setFetchSize(100);
-            long total=0;
-            List<VersionSummary> selected=new ArrayList<>();
-            Map<UUID,CurrencyVersionFacet> currencies=new LinkedHashMap<>();
-            try(var records=statement.executeQuery()) {
-                while(records.next()) {
-                    if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
-                    Sheet original=sheet(rowMapper.mapRow(records,0));
-                    // Preserve full input/material authorization before any price predicate.
-                    if(!visibleVersion(original))continue;
-                    var input=original.input();var calculation=original.calculation();var totals=calculation.totals();
-                    var summary=new VersionSummary(original.id(),input.goodsId(),input.clientId(),input.name(),original.status(),original.version(),
-                            input.batchQty(),totals.knownTotal(),totals.unitCost(),totals.valueState(),original.confirmedSnapshotId(),original.updatedAt(),
-                            input.currencyId(),calculation.currencyName(),calculation.unitId(),calculation.unitName());
-                    if(query.matches(summary,true)) {
-                        var previous=currencies.get(summary.currencyId());
-                        boolean newer=previous==null||summary.updatedAt()!=null&&(previous.at()==null||summary.updatedAt().isAfter(previous.at()));
-                        currencies.put(summary.currencyId(),new CurrencyVersionFacet(previous==null?1:previous.count()+1,
-                                newer?summary.currencyName():previous.label(),newer?summary.updatedAt():previous.at()));
-                    }
-                    if(!query.matches(summary,false))continue;
-                    if(total>=start&&selected.size()<limit)selected.add(summary);
-                    total++;
-                }
-            }
+        var request=new VersionedSummaryPages.Request("goods-cost-versions","master_goods_cost",
+                Arrays.asList("cost-version-summary-v1",goodsId,status,currencyId,searches,sort,order),
+                "all",Math.max(1,page),size,1000,expectedRevision);
+        var snapshot=summaryPages.read(request,()->{require(VIEW);references.requireVisibleGoods(goodsId);},()->{
+            var facts=Objects.requireNonNull(references.goodsReadScopeFacts(),"Goods read-scope facts are unavailable");
+            var source=versionSummarySource(goodsId,facts);
+            // Malformed stored snapshots previously failed while being parsed.
+            // They must not turn into a silently shorter authorized summary.
+            long malformed=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+source.headerFromWhere()
+                    +" AND (jsonb_typeof(s.input) IS DISTINCT FROM 'object' OR jsonb_typeof(s.calculation) IS DISTINCT FROM 'object'"
+                    +" OR jsonb_typeof(s.calculation->'lines') IS DISTINCT FROM 'array'"
+                    +" OR jsonb_typeof(s.calculation->'totals') IS DISTINCT FROM 'object'"
+                    +" OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(s.calculation->'lines')='array'"
+                    +" THEN s.calculation->'lines' ELSE '[]'::jsonb END) item WHERE jsonb_typeof(item) IS DISTINCT FROM 'object'))",source.parameters(),Long.class));
+            if(malformed>0)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"成本版本原快照结构不完整，请核对原件");
+            String predicate=query.sql(source.parameters(),false);
+            long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+source.fromWhere()
+                    +" AND ("+predicate+")",source.parameters(),Long.class));
+            var parameters=copyParameters(source.parameters()).addValue("costVersionSize",size)
+                    .addValue("costVersionOffset",Math.multiplyExact((long)request.page()-1,size));
+            var selected=db.queryForList(VERSION_SUMMARY_COLUMNS+source.fromWhere()+" AND ("+predicate+")"
+                    +" ORDER BY "+query.ordering()+" LIMIT :costVersionSize OFFSET :costVersionOffset",parameters)
+                    .stream().map(this::versionSummary).toList();
+            long expected=Math.max(0,Math.min(size,total-Math.multiplyExact((long)request.page()-1,size)));
+            if(selected.size()!=expected)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"完整成本摘要读取未完成");
+            var facetParameters=copyParameters(source.parameters());String facetWhere=query.sql(facetParameters,true);
             List<com.uten.imp.common.web.FacetBucket> buckets=new ArrayList<>();
-            currencies.forEach((id,facet)->buckets.add(new com.uten.imp.common.web.FacetBucket(id==null?"__null__":id.toString(),facet.count(),
-                    facet.label()==null||facet.label().isBlank()?"待核验":facet.label())));
+            for(var row:db.queryForList("SELECT (s.input->>'currencyId')::uuid AS currency_id,count(*) AS count,"
+                    +"(array_agg(s.calculation->>'currencyName' ORDER BY s.updated_at DESC NULLS LAST,"+query.ordering()+"))[1] AS label"
+                    +source.fromWhere()+" AND ("+facetWhere+") GROUP BY (s.input->>'currencyId')::uuid",facetParameters)) {
+                String label=(String)row.get("label");Object id=row.get("currency_id");
+                buckets.add(new com.uten.imp.common.web.FacetBucket(id==null?"__null__":id.toString(),((Number)row.get("count")).longValue(),
+                        label==null||label.isBlank()?"待核验":label));
+            }
             buckets.sort(Comparator.comparing(com.uten.imp.common.web.FacetBucket::label).thenComparing(com.uten.imp.common.web.FacetBucket::value));
-            return new VersionPage(List.copyOf(selected),currentPage,limit,total,(int)Math.min(Integer.MAX_VALUE,(total+limit-1)/limit),
+            long pages=total==0?0:1+(total-1)/size;if(pages>Integer.MAX_VALUE)throw invalid("成本摘要总数超过读取范围");
+            return new VersionPage(selected,request.page(),size,total,(int)pages,
                     Map.of("currencyName",List.copyOf(buckets)),GoodsCostVersionQuery.KEYS);
         });
+        var value=snapshot.value();
+        return new VersionPage(value.items(),value.page(),value.size(),value.total(),value.totalPages(),
+                value.facets(),value.columnSearchKeys(),snapshot.readScopeVersion(),snapshot.readSnapshotRevision(),snapshot.readDataVersion());
     }
+    private static MapSqlParameterSource copyParameters(MapSqlParameterSource source) {return new MapSqlParameterSource(source.getValues());}
+    private static final String VERSION_SUMMARY_COLUMNS="SELECT s.id,s.status,s.row_version,s.confirmed_snapshot_id,s.updated_at,"
+            +"(s.input->>'goodsId')::uuid AS input_goods_id,(s.input->>'clientId')::uuid AS input_client_id,"
+            +"s.input->>'name' AS input_name,s.input->>'batchQty' AS batch_qty,(s.input->>'currencyId')::uuid AS currency_id,"
+            +"s.calculation->>'currencyName' AS currency_name,(s.calculation->>'unitId')::uuid AS unit_id,"
+            +"s.calculation->>'unitName' AS unit_name,s.calculation->'totals'->>'knownTotal' AS known_total,"
+            +"s.calculation->'totals'->>'unitCost' AS unit_cost,s.calculation->'totals'->>'valueState' AS value_state";
+    private VersionSummary versionSummary(Map<String,Object> row) {
+        return new VersionSummary((UUID)row.get("id"),(UUID)row.get("input_goods_id"),(UUID)row.get("input_client_id"),
+                (String)row.get("input_name"),(String)row.get("status"),((Number)row.get("row_version")).longValue(),
+                (String)row.get("batch_qty"),(String)row.get("known_total"),(String)row.get("unit_cost"),
+                (String)row.get("value_state"),(UUID)row.get("confirmed_snapshot_id"),offset(row.get("updated_at")),
+                (UUID)row.get("currency_id"),(String)row.get("currency_name"),(UUID)row.get("unit_id"),(String)row.get("unit_name"));
+    }
+    private VersionSummarySource versionSummarySource(UUID goodsId,MasterReferenceValidationPort.GoodsReadScopeFacts facts) {
+        var clientScope=clients.evaluate();
+        if(clientScope==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围不可用");
+        var headerClient=clients.nativeReadScope("version_client",clientScope);
+        var inputClient=clients.nativeReadScope("input_client",clientScope);
+        var parameters=new MapSqlParameterSource("goods",goodsId);
+        if(headerClient.ownerParameter()!=null)parameters.addValue(headerClient.ownerParameter(),headerClient.ownerEmployees());
+        if(headerClient.viewerParameter()!=null)parameters.addValue(headerClient.viewerParameter(),headerClient.viewerEmployeeId());
+        String goodsOwner="TRUE";
+        if(facts.ownerScopeEnabled()&&!facts.seeAll()) {
+            goodsOwner="qualified_goods.owner_employee_id IS NULL";
+            if(!facts.visibleOwners().isEmpty()) {
+                parameters.addValue("costVersionGoodsOwners",facts.visibleOwners());
+                goodsOwner="("+goodsOwner+" OR qualified_goods.owner_employee_id IN (:costVersionGoodsOwners))";
+            }
+        }
+        String visibleGoods="EXISTS(SELECT 1 FROM goods qualified_goods WHERE qualified_goods.id=%s AND "+goodsOwner+")";
+        String header=" FROM goods_cost_sheets s WHERE s.goods_id=:goods AND (s.client_id IS NULL OR EXISTS"
+                +"(SELECT 1 FROM clients version_client WHERE version_client.id=s.client_id AND NOT version_client.is_deleted AND "+headerClient.predicate()+"))";
+        String where=header
+                +" AND (s.input->>'clientId' IS NULL OR EXISTS(SELECT 1 FROM clients input_client"
+                +" WHERE input_client.id=(s.input->>'clientId')::uuid AND NOT input_client.is_deleted AND "+inputClient.predicate()+"))"
+                +" AND (s.input->>'goodsId' IS NULL OR "+visibleGoods.formatted("(s.input->>'goodsId')::uuid")+")"
+                // No deleted/active filter: the owning reference authority keeps historical goods readable.
+                +" AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(s.calculation->'lines') version_line"
+                +" WHERE version_line->>'goodsId' IS NULL OR NOT "+visibleGoods.formatted("(version_line->>'goodsId')::uuid")+")";
+        return new VersionSummarySource(header,where,parameters);
+    }
+    private record VersionSummarySource(String headerFromWhere,String fromWhere,MapSqlParameterSource parameters) {}
     private VersionReadSource versionReadSource(UUID goodsId,String ordering) {
         var clientScope=clients.evaluate();
         if(clientScope==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围不可用");
@@ -291,14 +356,82 @@ public class GoodsCostSheetService {
         if(!snapshot.sheetId().equals(sheetId))throw new ApiException(ErrorCode.NOT_FOUND,"成本版本不存在");
         return snapshot;
     }
+    private static final String TEMPLATE_SCOPE_SQL = " WHERE (goods_id IS NULL OR goods_id=CAST(:goods AS uuid))"
+            + " AND (client_id IS NULL OR client_id=CAST(:client AS uuid))";
+
+    /** Legacy shape is retained only within its original payload budget. It must
+     * fail explicitly rather than claim the first250 templates are complete. */
     public List<Template> templates(UUID goodsId,UUID clientId) {
-        require(VIEW);if(goodsId!=null){ references.requireVisibleGoods(goodsId); }requireClient(clientId);
-        List<Template> result=new ArrayList<>();
-        for(var row:db.queryForList("""
-                SELECT * FROM goods_cost_templates WHERE (goods_id IS NULL OR goods_id=CAST(:goods AS uuid))
-                  AND (client_id IS NULL OR client_id=CAST(:client AS uuid)) ORDER BY name,id LIMIT 250
-                """,new MapSqlParameterSource().addValue("goods",goodsId).addValue("client",clientId))) { result.add(template(row)); }
-        return List.copyOf(result);
+        require(VIEW);scope(goodsId,clientId);
+        var rows=db.queryForList("SELECT * FROM goods_cost_templates"+TEMPLATE_SCOPE_SQL
+                +" ORDER BY name,id LIMIT 251",templateScope(goodsId,clientId));
+        if(rows.size()>250)throw invalid("成本模板超过兼容读取范围，请使用完整模板摘要入口");
+        return rows.stream().map(this::template).toList();
+    }
+
+    /** Complete-reader transport is bounded; full fee/price JSON is never a
+     * summary row. The shared helper owns auth/reset/data/query revision. */
+    public VersionedSummaryPages.Page<TemplateSummary> templateSummaries(UUID goodsId,UUID clientId,
+            int page,int size,String readSnapshotRevision) {
+        require(VIEW);scope(goodsId,clientId);
+        var request=new VersionedSummaryPages.Request("goods-cost-templates","master_goods_cost",
+                Arrays.asList("template-summary-v1",goodsId,clientId),"all",page,size,1000,readSnapshotRevision);
+        return summaryPages.page(request,()->{require(VIEW);scope(goodsId,clientId);},
+                ()->Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM goods_cost_templates"
+                        +TEMPLATE_SCOPE_SQL,templateScope(goodsId,clientId),Long.class)),
+                (batch,batchSize)->{
+                    var parameters=templateScope(goodsId,clientId).addValue("size",batchSize)
+                            .addValue("offset",(long)(batch-1)*batchSize);
+                    return db.queryForList("SELECT id,name,goods_id,client_id,row_version,updated_at,"
+                            +"input->>'validFrom' AS valid_from,input->>'validTo' AS valid_to,"
+                            +"input->>'minBatchQty' AS min_batch_qty,input->>'maxBatchQty' AS max_batch_qty,"
+                            +"(input->>'currencyId')::uuid AS template_currency_id,"
+                            +"input->>'exchangeRateToLocal' AS template_exchange_rate"
+                            +" FROM goods_cost_templates"+TEMPLATE_SCOPE_SQL
+                            +" ORDER BY name,id LIMIT :size OFFSET :offset",parameters).stream()
+                            .map(row->new TemplateSummary((UUID)row.get("id"),((Number)row.get("row_version")).longValue(),
+                                    (String)row.get("name"),(UUID)row.get("goods_id"),(UUID)row.get("client_id"),
+                                    (String)row.get("valid_from"),(String)row.get("valid_to"),
+                                    (String)row.get("min_batch_qty"),(String)row.get("max_batch_qty"),
+                                    (UUID)row.get("template_currency_id"),(String)row.get("template_exchange_rate"),
+                                    offset(row.get("updated_at")))).toList();
+                });
+    }
+
+    public Template templateDetail(UUID id,UUID goodsId,UUID clientId) {
+        require(VIEW);scope(goodsId,clientId);
+        var rows=db.queryForList("SELECT * FROM goods_cost_templates"+TEMPLATE_SCOPE_SQL
+                +" AND id=:id",templateScope(goodsId,clientId).addValue("id",id));
+        if(rows.size()!=1)throw invalid("成本模板不在本产品或客户范围");
+        Template result=template(rows.getFirst());scope(result.input().goodsId(),result.input().clientId());
+        return result;
+    }
+
+    private MapSqlParameterSource templateScope(UUID goodsId,UUID clientId) {
+        return new MapSqlParameterSource().addValue("goods",goodsId).addValue("client",clientId);
+    }
+
+    /** Server calculation streams every scoped fact in stable order, retaining
+     * only its existing resolved fee/column/authority maps. An explicit ID is
+     * fetched directly within that same scope, never searched in a capped list. */
+    private void forEachCalculationTemplate(UUID goodsId,UUID clientId,UUID templateId,
+            java.util.function.Consumer<Template> consume) {
+        require(VIEW);scope(goodsId,clientId);
+        var parameters=templateScope(goodsId,clientId).addValue("template",templateId);
+        var mapper=new org.springframework.jdbc.core.ColumnMapRowMapper();
+        db.execute("SELECT * FROM goods_cost_templates"+TEMPLATE_SCOPE_SQL
+                        +" AND (CAST(:template AS uuid) IS NULL OR id=CAST(:template AS uuid)) ORDER BY name,id",
+                parameters,(org.springframework.jdbc.core.PreparedStatementCallback<Void>)statement->{
+                    statement.setFetchSize(100);boolean found=false;
+                    try(var records=statement.executeQuery()) {
+                        while(records.next()) {
+                            if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
+                            found=true;consume.accept(template(mapper.mapRow(records,0)));
+                        }
+                    }
+                    if(templateId!=null&&!found)throw invalid("成本模板不在本产品或客户范围");
+                    return null;
+                });
     }
     @Transactional
     public Template saveTemplate(UUID id,TemplateSave request) {
@@ -368,21 +501,16 @@ public class GoodsCostSheetService {
         BigDecimal quantity=positive(raw.batchQty()==null?"1":raw.batchQty(),"成本批量");
         String sheetRateText=calculator.normalizeExchangeRate(raw.currencyId(),raw.exchangeRateToLocal());
         BigDecimal sheetRate=new BigDecimal(sheetRateText);
-        List<Template> candidates=new ArrayList<>(templates(raw.goodsId(),raw.clientId()));
-        if(raw.templateId()!=null) {
-            candidates.removeIf(t->!t.id().equals(raw.templateId()));
-            if(candidates.isEmpty())throw invalid("成本模板不在本产品或客户范围");
-        }
         Map<String,Integer> priorities=new HashMap<>();
         Map<String,Integer> columnPriorities=new HashMap<>();
         Map<String,Long> templateVersions=new LinkedHashMap<>();
         Map<String,Map<String,Object>> templateFeeSources=new LinkedHashMap<>();
-        for(Template template:candidates) {
+        forEachCalculationTemplate(raw.goodsId(),raw.clientId(),raw.templateId(),template->{
             TemplateInput in=template.input();
             if(in.validFrom()!=null&&date.isBefore(in.validFrom())||in.validTo()!=null&&date.isAfter(in.validTo())
                     ||in.minBatchQty()!=null&&quantity.compareTo(nonnegative(in.minBatchQty(),"最小批量"))<0
                     ||in.maxBatchQty()!=null&&quantity.compareTo(positive(in.maxBatchQty(),"最大批量"))>0) {
-                if(raw.templateId()!=null)throw invalid("模板不适用于成本日期或批量");continue;
+                if(raw.templateId()!=null)throw invalid("模板不适用于成本日期或批量");return;
             }
             int priority=(in.clientId()!=null?2:0)+(in.goodsId()!=null?1:0);
             String templateRateText=calculator.normalizeExchangeRate(in.currencyId(),in.exchangeRateToLocal());
@@ -410,7 +538,7 @@ public class GoodsCostSheetService {
                 if(previousPriority!=null&&previousPriority==priority&&!previous.equals(c))throw invalid("同一价格列命中相同优先级模板："+c.name());
                 if(previousPriority==null||priority>previousPriority){columns.put(c.key(),c);columnPriorities.put(c.key(),priority);}
             }
-        }
+        });
         for(FeeInput f:manual){fees.put(f.key(),f);templateFeeSources.remove(f.key());}
         Set<String> resolvedAutoColumns=new HashSet<>(columns.keySet());
         for(PriceColumn previous:previousColumns.values()) {

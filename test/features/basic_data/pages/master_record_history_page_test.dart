@@ -38,7 +38,7 @@ final _identity = StateProvider<AuthenticatedScope?>(
 Map<String, dynamic> _defaultDatedQuery() {
   final range = UtenHistoryTimeValue.lastMonth().range!;
   return {
-    'size': 50,
+    'size': 100,
     'dateFrom': ChinaDateTime.formatDate(range.start),
     'dateTo': ChinaDateTime.formatDate(range.end),
   };
@@ -595,7 +595,7 @@ void main() {
       expect(wire.queries.last, containsPair('entityType', 'goods'));
       expect(wire.queries.last, containsPair('recordId', 'object-1'));
       expect(wire.queries.last, containsPair('categoryId', 'cat-original'));
-      expect(wire.queries.last['size'], 50);
+      expect(wire.queries.last['size'], 100);
       expect(find.byType(UtenFilterToolbar<String>), findsNothing);
       expect(find.byType(UtenSearchBar), findsNothing);
       await _selectHeader(tester, 'action', '删除');
@@ -652,88 +652,35 @@ void main() {
   );
 
   testWidgets(
-    'opaque cursors move one page at a time and previous reuses its known cursor',
+    'opaque cursors complete one immutable query and local scrolling never replays it',
     (tester) async {
       final wire = _Transport();
       await _pump(tester, wire);
-      final initial = wire.queries.length;
-      // 初始查询即带历史门默认的近一个月（2026-11-03 口径）。
       expect(wire.queries, [
         _defaultDatedQuery(),
         {..._defaultDatedQuery(), 'cursor': 'opaque-next-token'},
       ]);
       expect(find.text('第一页货品'), findsOneWidget);
-      expect(find.byType(UtenPagination), findsOneWidget);
-      expect(find.text('/ ?'), findsOneWidget);
-      expect(find.text('上一页'), findsNothing);
-      expect(find.text('下一页'), findsNothing);
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byKey(const ValueKey('master-table-page-previous')),
-            )
-            .onPressed,
-        isNull,
-      );
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
-      expect(wire.queries.length, initial);
-      expect(wire.queries.last['cursor'], 'opaque-next-token');
-      expect(find.text('第一页货品'), findsNothing);
       expect(find.text('第二页货品'), findsOneWidget);
+      expect(find.byType(UtenPagination), findsNothing);
       expect(
-        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        2,
-      );
-      expect(find.text('/ 2'), findsOneWidget);
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byKey(const ValueKey('master-table-page-next')),
-            )
-            .onPressed,
-        isNull,
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
       );
       final table = tester
           .widget<MasterDataTableView<history.MasterRecordRevision>>(
             find.byKey(const Key('master-record-history-table')),
           );
-      expect(table.showPaginationControls, isFalse);
-      expect(table.items, hasLength(1));
+      expect(table.items, hasLength(2));
+      expect(table.showPaginationControls, false);
+      expect(table.onLoadMore, isNull);
       expect(
         table.columns.any((column) => column.key == 'affectedCount'),
-        isFalse,
-        reason:
-            'Summary responses do not establish a real affected-record count',
+        false,
       );
-      expect(
-        table.columns.every((column) => !column.sortable),
-        isTrue,
-        reason:
-            'A chronological server cursor cannot offer full-history sorting through only the loaded page',
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('master-table-page-previous')),
-      );
-      await tester.pumpAndSettle();
-      expect(wire.queries.length, initial);
-      expect(wire.queries.first.containsKey('cursor'), isFalse);
-      expect(find.text('第一页货品'), findsOneWidget);
-      expect(find.text('/ 2'), findsOneWidget);
-      final pageInput = find.descendant(
-        of: find.byType(UtenPagination),
-        matching: find.byType(TextFormField),
-      );
-      await tester.enterText(pageInput, '99');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pumpAndSettle();
-      expect(find.text('第二页货品'), findsOneWidget);
-      expect(
-        wire.queries.length,
-        initial,
-        reason:
-            'Page input clamps to known terminal page and uses the scoped cache',
-      );
+      expect(table.columns.every((column) => !column.sortable), true);
+      await tester.pump();
+      expect(wire.queries, hasLength(2));
       expect(tester.takeException(), isNull);
     },
   );
@@ -773,8 +720,10 @@ void main() {
     (tester) async {
       final wire = _Transport();
       await _pump(tester, wire);
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordLabel', '通过摘要匹配');
       expect(wire.queries.last['keyword'], '通过摘要匹配');
@@ -784,11 +733,7 @@ void main() {
         )['keyword'],
         '通过摘要匹配',
       );
-      expect(
-        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        1,
-      );
-      expect(find.text('/ ?'), findsOneWidget);
+      expect(find.byType(UtenPagination), findsNothing);
       // The server may match an immutable before-value/summary that is absent
       // from visible identity cells. A local current-page search would hide it.
       expect(find.text('第一页货品'), findsOneWidget);
@@ -897,7 +842,7 @@ void main() {
         find.byKey(const Key('master-record-history-table')),
       );
       for (final column in table.columns) {
-        final cell = column.cellBuilder!(context, table.items.single) as Text;
+        final cell = column.cellBuilder!(context, table.items.first) as Text;
         expect(cell.maxLines, 1, reason: column.key);
         expect(cell.softWrap, isFalse, reason: column.key);
         expect(cell.overflow, TextOverflow.ellipsis, reason: column.key);
@@ -911,8 +856,10 @@ void main() {
     (tester) async {
       final wire = _Transport();
       await _pump(tester, wire);
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordCode', ' V8 ');
       expect(wire.queries.last['keyword'], 'V8');
@@ -927,7 +874,7 @@ void main() {
             find.byKey(const Key('master-record-history-table')),
           );
       expect(table.filters['search.recordCode'], 'V8');
-      expect(table.items, hasLength(1));
+      expect(table.items, hasLength(2));
       expect(tester.takeException(), isNull);
     },
   );

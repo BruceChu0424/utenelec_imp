@@ -123,6 +123,23 @@ class AuditSessionPage extends PagedResult<AuditSessionSummary> {
 
   final int snapshotAuditId;
 
+  @override
+  AuditSessionPage withRows(
+    List<AuditSessionSummary> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => AuditSessionPage(
+    items: freezePagedRows(rows),
+    page: page,
+    size: size ?? rows.length,
+    total: total ?? this.total,
+    totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+    snapshotAuditId: snapshotAuditId,
+    readScopeVersion: readScopeVersion,
+  );
+
   factory AuditSessionPage.fromJson(Map<String, dynamic> json) {
     final page = AuditSessionSummary._parseInt(json['page']) ?? 1;
     final size = AuditSessionSummary._parseInt(json['size']) ?? 10;

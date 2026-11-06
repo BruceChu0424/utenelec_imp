@@ -19,7 +19,8 @@ class BusinessArchiveEligibilityPageTest {
     void boundedPagesBindTheCorrectOffsetWithoutIntegerWraparound(
             int page, int size, int expectedSize, long expectedOffset) {
         var jdbc = mock(JdbcTemplate.class);
-        var service = new BusinessArchiveEligibilityService(jdbc, new ObjectMapper(), 24);
+        var service = new BusinessArchiveEligibilityService(jdbc, new ObjectMapper(),
+                mock(com.uten.imp.application.port.ProcurementArchiveEligibilityPort.class), 24);
 
         service.eligibilityPage("PURCHASE_ORDER", null, page, size);
 

@@ -57,6 +57,12 @@ public class AiUsageDashboardService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, timeout = 20)
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public AiUsageDtos.Dashboard dashboard(String window) {
+        return dashboard(window, true);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, timeout = 20)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public AiUsageDtos.Dashboard dashboard(String window, boolean includePeople) {
         var actor = access.require();
         Window w = parse(window);
         AiUsageDtos.DashboardKpi kpi = jdbc.queryForObject("""
@@ -68,7 +74,7 @@ public class AiUsageDashboardService {
                 rs.getLong("tokens"), rs.getLong("calls"), rs.getLong("active_users")));
         var result = new AiUsageDtos.Dashboard(w.name().toLowerCase(Locale.ROOT), kpi.todayTokens(),
                 properties.getDailyTokenBudget(), kpi.todayCalls(), kpi.activeUsersToday(), limits.countDisabled(),
-                series(w, null), people(w));
+                series(w, null), includePeople ? people(w) : List.of());
         audit.logExplicit(actor.getId(), actor.getLoginAccount(), "view_ai_usage_dashboard", "ai_usage_daily",
                 actor.getId().toString(), "查看 AI 用量看板：窗口=" + w.name().toLowerCase(Locale.ROOT));
         return result;
@@ -240,8 +246,40 @@ public class AiUsageDashboardService {
      * deleted=users 行已删(展示名回退「已删除员工」); rowVersion 下发 COALESCE(row_version,-1) 供乐观锁。
      */
     private List<AiUsageDtos.DashboardPerson> people(Window w) {
+        return people(w, peopleParameters(w, 500, 0));
+    }
+
+    private MapSqlParameterSource peopleParameters(Window w, int size, long offset) {
+        var parameters = new MapSqlParameterSource("peopleLimit", size).addValue("peopleOffset", offset);
         if (w == Window.HOUR) {
-            OffsetDateTime endHour = shanghaiNow().truncatedTo(ChronoUnit.HOURS).toOffsetDateTime();
+            return parameters.addValue("windowStart", shanghaiNow().truncatedTo(ChronoUnit.HOURS).minusHours(23).toOffsetDateTime());
+        }
+        var start = dailyWindowStart(w);
+        return parameters.addValue("windowStart", start)
+                .addValue("lastUseStart", start.atStartOfDay(SHANGHAI).toOffsetDateTime());
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, timeout = 20)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public com.uten.imp.common.web.PageResponse<AiUsageDtos.DashboardPerson> peoplePage(String window, int page, int size) {
+        var actor = access.require();
+        Window w = parse(window);
+        var paging = com.uten.imp.common.web.Pageables.of(page, size);
+        var parameters = peopleParameters(w, paging.getPageSize(), paging.getOffset());
+        String source = w == Window.HOUR ? "ai_call_logs" : "ai_usage_daily";
+        String date = w == Window.HOUR ? "created_at" : "usage_date";
+        long total = jdbc.queryForObject("SELECT count(*) FROM (SELECT user_id FROM " + source
+                + " WHERE " + date + ">=:windowStart AND user_id IS NOT NULL GROUP BY user_id"
+                + " UNION SELECT user_id FROM ai_user_limits) candidates", parameters, Long.class);
+        var rows = total == 0 ? List.<AiUsageDtos.DashboardPerson>of() : people(w, parameters);
+        audit.logExplicit(actor.getId(), actor.getLoginAccount(), "view_ai_usage_dashboard", "ai_usage_daily",
+                actor.getId().toString(), "查看 AI 用量看板人员：窗口=" + w.name().toLowerCase(Locale.ROOT));
+        return new com.uten.imp.common.web.PageResponse<>(rows, paging.getPageNumber() + 1, paging.getPageSize(),
+                total, (int) Math.min(Integer.MAX_VALUE, (total + paging.getPageSize() - 1) / paging.getPageSize()));
+    }
+
+    private List<AiUsageDtos.DashboardPerson> people(Window w, MapSqlParameterSource parameters) {
+        if (w == Window.HOUR) {
             return jdbc.query("""
                     WITH window_usage AS (
                       SELECT user_id, sum(coalesce(input_tokens,0) + coalesce(output_tokens,0)) AS tokens,
@@ -278,8 +316,8 @@ public class AiUsageDashboardService {
                     LEFT JOIN today_usage t ON t.user_id = c.user_id
                     LEFT JOIN last_use x ON x.user_id = c.user_id
                     ORDER BY coalesce(w.tokens,0) DESC, c.user_id
-                    LIMIT 500
-                    """, new MapSqlParameterSource("windowStart", endHour.minusHours(23)),
+                    LIMIT :peopleLimit OFFSET :peopleOffset
+                    """, parameters,
                     AiUsageDashboardService::person);
         }
         return jdbc.query("""
@@ -317,9 +355,8 @@ public class AiUsageDashboardService {
                 LEFT JOIN today_usage t ON t.user_id = c.user_id
                 LEFT JOIN last_use x ON x.user_id = c.user_id
                 ORDER BY coalesce(w.tokens,0) DESC, c.user_id
-                LIMIT 500
-                """, new MapSqlParameterSource("windowStart", dailyWindowStart(w))
-                .addValue("lastUseStart", dailyWindowStart(w).atStartOfDay(SHANGHAI).toOffsetDateTime()),
+                LIMIT :peopleLimit OFFSET :peopleOffset
+                """, parameters,
                 AiUsageDashboardService::person);
     }
 

@@ -14,10 +14,10 @@ class _PreparationOrderPage extends StatefulWidget {
 class _PreparationOrderPageState extends State<_PreparationOrderPage> {
   _MaterialAnalysisChildShortageState get _host => widget.host;
   bool _submitting = false;
-  int _page = 1;
+  String? _revealItemId;
+  int _revealRequest = 0;
   ProductionMaterialAnalysisView? _rowsAnalysis;
   List<_MaterialTableRow> _rowsCache = const [];
-  static const _pageSize = 100;
   late final _changes = Listenable.merge([
     _host._childShortageRevision,
     _host.materialDetailRevision,
@@ -134,7 +134,12 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
       final index = rows.indexWhere(
         (row) => row.group?.key == missingAssignment.key,
       );
-      if (index >= 0) setState(() => _page = index ~/ _pageSize + 1);
+      if (index >= 0) {
+        setState(() {
+          _revealItemId = rows[index].key;
+          _revealRequest++;
+        });
+      }
       context.appWarning(
         _host._l10n.materialPreparationMissingAssignment(
           _host._tableGroupLabel(missingAssignment),
@@ -156,13 +161,6 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
     builder: (context, _) {
       final theme = Theme.of(context);
       final rows = _rows();
-      final pages = rows.isEmpty ? 1 : (rows.length / _pageSize).ceil();
-      final page = _page.clamp(1, pages);
-      final start = (page - 1) * _pageSize;
-      final shown = rows.sublist(
-        start,
-        (start + _pageSize).clamp(0, rows.length),
-      );
       bool selectedRow(_MaterialTableRow row) =>
           row.group != null &&
           _host._selectedMaterialGroupKeys.contains(row.group!.key);
@@ -195,12 +193,12 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   columns: _host._materialTableColumns(
                     theme,
                     revealAssignmentKeys: false,
-                    identityMaxDepth: shown.fold<int>(
+                    identityMaxDepth: rows.fold<int>(
                       0,
                       (depth, row) => math.max(depth, row.depth),
                     ),
                   ),
-                  items: shown,
+                  items: rows,
                   facets: const {},
                   filters: const {},
                   nullCounts: const {},
@@ -219,9 +217,8 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   onSelectedIdsChanged: (ids) =>
                       _host._changeMaterialTableSelection(rows, ids),
                   paginationScope: (widget.host, _rowsAnalysis),
-                  currentPage: page,
-                  totalPages: pages,
-                  onPageChange: (next) => setState(() => _page = next),
+                  revealItemId: _revealItemId,
+                  revealRequest: _revealRequest,
                   emptyMessage: _host._l10n.materialPreparationNoActions,
                   toolbarLeadingActions: [
                     ?_host._preparationSupplyUsageAction(),

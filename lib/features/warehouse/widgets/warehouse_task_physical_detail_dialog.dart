@@ -1,10 +1,13 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../components/layout/uten_pagination.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -60,7 +63,10 @@ class WarehouseTaskPhysicalDetailDialog extends ConsumerStatefulWidget {
 }
 
 class _WarehouseTaskPhysicalDetailDialogState
-    extends ConsumerState<WarehouseTaskPhysicalDetailDialog> {
+    extends ConsumerState<WarehouseTaskPhysicalDetailDialog>
+    with ReadViewActivityMixin<WarehouseTaskPhysicalDetailDialog> {
+  @override
+  Future<void> onReadViewResumed() => _load(1, preserveDetail: true);
   Map<String, dynamic>? _detail;
   String? _error;
   bool _loading = true;
@@ -282,12 +288,15 @@ class _WarehouseTaskPhysicalDetailDialogState
         : 'inbound';
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool preserveDetail = false}) async {
     if (!mounted || _invalidated) return;
     final revision = ++_revision;
+    final readOwner = captureReadOwner(ref);
+    bool current() =>
+        mounted && !_invalidated && revision == _revision && readOwner();
     setState(() {
       _loading = true;
-      _detail = null;
+      if (!preserveDetail) _detail = null;
       _error = null;
     });
     try {
@@ -296,22 +305,47 @@ class _WarehouseTaskPhysicalDetailDialogState
               widget.row.action == 'FINISHED_ARRIVAL_DETAIL'
           ? widget.row.documentRowKey
           : widget.row.rowKey;
-      final detail = await ref
-          .read(apiClientProvider)
-          .get(
-            '/warehouse/task-center/$_direction/${Uri.encodeComponent(detailRowKey)}/detail',
-            query: {
-              ...widget.warehouseScope.queryParameters,
-              'linePage': page,
-              'lineSize': 100,
-              ...tableColumnParameters(
-                _columns.searches,
-                _columns.sort,
-                _columns.ascending,
-              ),
-            },
-          );
-      if (!mounted || _invalidated || revision != _revision) return;
+      Map<String, dynamic>? metadata;
+      final api = ref.read(apiClientProvider);
+      final complete = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          loadPage: (page, size) async {
+            final detail = await api.get(
+              '/warehouse/task-center/$_direction/${Uri.encodeComponent(detailRowKey)}/detail',
+              query: {
+                ...widget.warehouseScope.queryParameters,
+                'linePage': page,
+                'lineSize': size,
+                ...tableColumnParameters(
+                  _columns.searches,
+                  _columns.sort,
+                  _columns.ascending,
+                ),
+              },
+            );
+            metadata ??= detail;
+            return PagedResult.fromJson({
+              ...detail,
+              'items':
+                  detail['lines'] ??
+                  detail['items'] ??
+                  const <Map<String, dynamic>>[],
+            }, (line) => line);
+          },
+        ),
+      );
+      if (!current()) return;
+      final detail = {
+        ...metadata!,
+        'lines': complete.items,
+        'items': complete.items,
+        'page': 1,
+        'size': complete.size,
+        'total': complete.total,
+        'totalPages': complete.totalPages,
+      };
       if (widget.allowFinishedRegistrationReversal) {
         final row = _registrationRow(detail);
         final lines = detail['lines'] ?? detail['items'];
@@ -339,6 +373,10 @@ class _WarehouseTaskPhysicalDetailDialogState
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (current()) setState(() => _loading = false);
+        return;
+      }
       if (!mounted || revision != _revision) return;
       setState(() {
         _loading = false;
@@ -531,16 +569,6 @@ class _WarehouseTaskPhysicalDetailDialogState
                               emptyMessage: '当前记录没有物料明细',
                             ),
                     ),
-                    if (pages > 1)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: UtenPagination(
-                          currentPage: page,
-                          totalPages: pages,
-                          busy: _loading || _reversing || _invalidated,
-                          onPageChanged: _load,
-                        ),
-                      ),
                   ],
                 ),
         ),

@@ -1,0 +1,41 @@
+{
+  "scope": "Feature animation call-site reverse audit after removal of row-admission animation; not a claim of whole-product motion redesign.",
+  "entries": [
+    {
+      "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "retained": "Opacity only for an actively dragged business row, not row entrance on scroll.",
+      "sha256": "d1802b57fedc6f7586fa53d45f614ef3990088e849a20caf67b4ec2fa8dea8c1"
+    },
+    {
+      "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+      "retained": "Selected-items panel backdrop opens/closes explicitly; scrolling does not replay it.",
+      "sha256": "2223869006a3601c6f40b40192fe6d301386c08508b12885be7cf11d411de3bc"
+    },
+    {
+      "source": "lib/features/basic_data/widgets/category_page_shell.dart",
+      "retained": "Scope-control expansion is a UI state transition, not data-row admission.",
+      "sha256": "3fefe480ca4ede1da0e6825330dba4c31befcd633cdab17aada675637e339fe1"
+    },
+    {
+      "source": "lib/features/production/widgets/material_reallocation_dialog.dart",
+      "retained": "Selection summary panel appears on selection changes, not candidate scrolling.",
+      "sha256": "ba12033fc3037b1b2c2aebb7c8a9353ec2a0a9613808668cf42961ef4d430c38"
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_bom_tree.dart",
+      "retained": "View-switch wrapper opacity is fixed at 1; pending overlay preserves body.",
+      "sha256": "f1d52d87ab57765697e0842956af7b46944673efe8833bfa2ff6bbfd5238337b"
+    },
+    {
+      "source": "lib/features/client_update/software_downloads_page.dart",
+      "retained": "Numeric download progress; not business table rows.",
+      "sha256": "f59de655371a1c67d1f0723379c5cdb0b55d14ad18f6f0a85d1a1105449cad07"
+    },
+    {
+      "source": "lib/features/auth/pages/login_page.dart",
+      "retained": "Login presentation transition; not table scrolling.",
+      "sha256": "1211b2af1259163e904f974507674205a651f236cab5632cb438e656078785c3"
+    }
+  ],
+  "removedCoreMechanism": "Master/Editable/Grid continuous tables explicitly deferRowMounts=false; independent heavy-form staging remains."
+}

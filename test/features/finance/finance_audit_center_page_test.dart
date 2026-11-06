@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/pages/finance_audit_center_page.dart';
+import 'package:uten_imp/features/finance/config/finance_requirement_names.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -18,9 +19,11 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
+import '../../support/master_dictionary_fixture.dart';
 
 late SharedPreferences _preferences;
 final _repositorySource =
@@ -31,6 +34,71 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+
+  for (final scenario in [
+    (
+      group: 'shipment',
+      permission: Perm.salesShipmentFinanceView,
+      path: '/sales/shipments',
+      field: 'stage',
+      value: 'FINANCE_HISTORY',
+    ),
+    (
+      group: 'procurement',
+      permission: Perm.financeOrderApprovalView,
+      path: '/finance/procurement-approvals/history',
+      field: 'status',
+      value: 'HISTORY',
+    ),
+    (
+      group: 'arrival',
+      permission: Perm.financeOrderApprovalView,
+      path: '/finance/procurement-arrival-exceptions/tasks',
+      field: 'status',
+      value: 'PROCESSED',
+    ),
+    (
+      group: 'iqc',
+      permission: Perm.procurementIqcRejectionView,
+      path: '/procurement/iqc-rejections',
+      field: 'status',
+      value: 'TERMINAL',
+    ),
+  ]) {
+    testWidgets(
+      '${scenario.group} history selects the completed server query without preloading working rows',
+      (tester) async {
+        final api = _EmptyAuditApi();
+        await tester.pumpWidget(
+          _app(
+            FinanceAuditCenterPage(initialSegment: scenario.group),
+            {scenario.permission},
+            api: api,
+            emptyCounts: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        api.requests.clear();
+        await selectFilterSegment(tester, '历史记录');
+        await tester.pumpAndSettle();
+        final rows = api.requests
+            .where((request) => request.path == scenario.path)
+            .toList();
+        expect(rows, hasLength(1));
+        expect(rows.single.query?[scenario.field], scenario.value);
+        expect(
+          api.requests.where(
+            (request) =>
+                request.query?['status'] == 'PENDING' ||
+                request.query?['status'] == 'ACTIVE' ||
+                request.query?['financeAudit'] == 0,
+          ),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('a fast category click adopts the prepared default queue once', (
     tester,
@@ -238,12 +306,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text(help), findsOneWidget);
         expect(find.text(instruction), findsOneWidget);
-        expect(repository.pendingQueries, contains((false, false, null)));
         expect(
-          repository.pendingQueries.every((query) => !query.$2),
-          isTrue,
+          repository.pendingQueries,
+          isEmpty,
           reason:
-              'Preparation reads working queues without selecting or loading completed history',
+              'An unselected category must not fetch unseen working or historical rows',
         );
         expect(
           find.byKey(const Key('sales-order-finance-desktop-table')),
@@ -346,7 +413,10 @@ void main() {
 
     expect(find.text('销售订单确认'), findsOneWidget);
     expect(find.text('订单修改确认'), findsNothing);
-    expect(find.text('客户发货审核'), findsOneWidget);
+    expect(
+      find.text(FinanceRequirementNames.customerShipmentReview),
+      findsOneWidget,
+    );
     // 无权限的队列不出现。
     expect(find.text('订货审批'), findsNothing);
     expect(find.text('超量到货审批'), findsNothing);
@@ -422,11 +492,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('已驳回'), findsOneWidget);
     expect(repository.pendingQueries.last, (true, false, null));
-    await selectFilterSegment(tester, '历史单据');
+    expect(find.text('历史单据'), findsNothing);
+    final beforeHistory = repository.pendingQueries.length;
+    await selectFilterSegment(tester, '历史记录');
     await tester.pumpAndSettle();
     expect(find.text('历史单据'), findsOneWidget);
     expect(repository.pendingQueries.last, (false, true, null));
-    await selectFilterSegment(tester, '待确认');
+    expect(
+      repository.pendingQueries.skip(beforeHistory),
+      [(false, true, null)],
+      reason: 'History does not also reload the working or returned queues',
+    );
+    expect(find.text('待确认'), findsNothing);
+    tester
+        .widget<UtenSegmentRow<String>>(
+          find.byKey(const Key('finance-audit-center-segments')),
+        )
+        .onSelectionChanged!({'salesConfirm'});
     await tester.pumpAndSettle();
     expect(repository.pendingQueries.last, (false, false, null));
     // 嵌入形态不渲染队列页自己的 AppBar（只有审核中心一个标题）。
@@ -445,6 +527,7 @@ Widget _app(
 }) {
   return ProviderScope(
     overrides: [
+      emptyMasterDictionaryFixture(),
       sharedPreferencesProvider.overrideWithValue(_preferences),
       if (api != null) apiClientProvider.overrideWithValue(api),
       currentPermissionsProvider.overrideWithValue(permissions),
@@ -558,11 +641,16 @@ class _EmptyConfirmationRepository
 
 class _EmptyAuditApi extends ApiClient {
   _EmptyAuditApi() : super(Dio());
+  final requests = <({String path, Map<String, dynamic>? query})>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => {'items': <dynamic>[], 'total': 0, 'totalPages': 1, 'page': 1};
+  }) async {
+    requests.add((path: path, query: query));
+    return {'items': <dynamic>[], 'total': 0, 'totalPages': 1, 'page': 1};
+  }
+
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {

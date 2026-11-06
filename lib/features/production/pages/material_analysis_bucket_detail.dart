@@ -180,12 +180,7 @@ class _MaterialAnalysisBucketPageState
     _PreparationTaskFilter.blocked => false,
   };
 
-  /// 只读桶（MasterDataTableView）的分页：每页 [_pageSize] 行，只构建当页。
-  /// 几百上千产品的分析里 waiting/buy 桶动辄数千行——一次性构建在网页端
-  /// （CanvasKit 布局更慢）是分钟级卡死；分页后翻页即切页。勾选按业务 id
-  /// 由本页持有，跨页天然保留。
-  static const int _pageSize = 200;
-  int _pageNo = 1;
+  // The complete current result uses the shared virtual table; selection stays keyed by business ID.
 
   _MaterialAnalysisProductTasksState get _host => widget.host;
   _AnalysisBucket get _bucket => widget.bucket;
@@ -307,7 +302,6 @@ class _MaterialAnalysisBucketPageState
     // 按进页那一刻的快照重新给默认值)。
     setState(() {
       _selectedIds.clear();
-      _pageNo = 1;
     });
   }
 
@@ -644,7 +638,6 @@ class _MaterialAnalysisBucketPageState
                   if (_actionsLocked || value == _taskFilter) return;
                   setState(() {
                     _taskFilter = value;
-                    _pageNo = 1;
                     _selectedIds.clear();
                     _tableFilters.clear();
                   });
@@ -660,18 +653,6 @@ class _MaterialAnalysisBucketPageState
         ),
       ),
     );
-  }
-
-  /// 分页切片：只构建当页行(大分析数千行一次性构建在网页端是分钟级卡死)。
-  int _pageTotal(List<_BucketRow> rows) =>
-      rows.length <= _pageSize ? 1 : (rows.length / _pageSize).ceil();
-
-  List<_BucketRow> _pageRows(List<_BucketRow> rows, int page) {
-    if (rows.length <= _pageSize) return rows;
-    final start = (page - 1) * _pageSize;
-    if (start >= rows.length) return rows.sublist(0);
-    final end = (start + _pageSize).clamp(0, rows.length);
-    return rows.sublist(start, end);
   }
 
   /// 三个桶共用的只读清单(2026-09-22 用户口径「外面的不填数值，得进到详情页
@@ -787,8 +768,6 @@ class _MaterialAnalysisBucketPageState
               })
               .map((entry) => entry.row)
               .toList(growable: false);
-    final filteredTotalPages = _pageTotal(filtered);
-    final filteredPage = _pageNo.clamp(1, filteredTotalPages);
     // 已下达段只在真有可追加的行时才出勾选列与动作组(ADR-099)。
     final selectable = _canAct && (!_appendMode || rows.any(_canSelectTask));
     return MasterDataTableView<_BucketRow>(
@@ -796,7 +775,7 @@ class _MaterialAnalysisBucketPageState
       tableKey:
           'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
       columns: columns,
-      items: _pageRows(filtered, filteredPage),
+      items: filtered,
       facets: {
         ...textFacets,
         if (progressFacets.isNotEmpty) 'taskState': progressFacets,
@@ -812,7 +791,6 @@ class _MaterialAnalysisBucketPageState
       },
       onFilterChanged: (key, value) => setState(() {
         _tableFilters[key] = value;
-        _pageNo = 1;
       }),
       selectable: selectable,
       idOf: (row) => _canSelectTask(row) ? row.id : null,
@@ -834,14 +812,11 @@ class _MaterialAnalysisBucketPageState
           (_host._canViewPlans &&
               (row.product?.latestPlanId?.trim().isNotEmpty ?? false)),
       emptyMessage: _host._l10n.materialTaskEmpty,
-      currentPage: filteredPage,
-      totalPages: filteredTotalPages,
       paginationScope: (_host._analysis?.analysisId, _bucket, _taskFilter),
-      onPageChange: (next) => setState(() => _pageNo = next),
     );
   }
 
-  /// 底部动作组：跨页全选 + 一颗「进下单页」按钮。省略号 = 这一下不是提交，
+  /// 底部动作组：完整结果选择 + 一颗「进下单页」按钮。省略号 = 这一下不是提交，
   /// 是进「父件 + 下层一起下单」页；真正的提交在那一页的「一键下单 / 下单」里。
   /// 文案不能更长：悬浮动作组在窄屏下会溢出。
   List<Widget> _batchActions(BuildContext context, Set<String> selectedIds) {
@@ -855,28 +830,7 @@ class _MaterialAnalysisBucketPageState
         append ? '追加生产计划($count)…' : '创建生产计划($count)…',
     };
     final canAct = _canAct && !_actionsLocked && count > 0;
-    // 跨页全选放悬浮区（与已选胶囊/提交按钮同框）；表头复选框只选当页。
-    final allRows = _filterRows(_host._bucketRows(_bucket));
-    final selectableCount = allRows.where(_canSelectTask).length;
     return [
-      if (_taskFilter == _PreparationTaskFilter.pending &&
-          allRows.length > _pageSize)
-        UtenButton(
-          key: const Key('material-analysis-bucket-select-all'),
-          type: UtenButtonType.ghost,
-          size: UtenButtonSize.large,
-          icon: Icons.select_all_rounded,
-          onPressed: _actionsLocked
-              ? null
-              : () => setState(() {
-                  _selectedIds
-                    ..clear()
-                    ..addAll(
-                      allRows.where(_canSelectTask).map((row) => row.id),
-                    );
-                }),
-          child: Text('全选全部 $selectableCount 条'),
-        ),
       UtenButton(
         // 下达车间沿用既有键名(一批用例按它定位)。
         key: Key(
@@ -928,7 +882,6 @@ class _MaterialAnalysisBucketPageState
           // 认领改了缺口/在途：重建行集（与调拨返回后的处理同口径）。
           setState(() {
             _selectedIds.clear();
-            _pageNo = 1;
           });
         },
       ),

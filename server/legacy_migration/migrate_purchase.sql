@@ -419,26 +419,32 @@ SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT name FROM operator_ref_stage op WHERE op.legacy_id = s.approver_legacy)
 FROM return_stage s;
 
-INSERT INTO purchase_return_items (
-    legacy_id, bill_no, bill_date, return_id, receipt_item_id, order_item_id, line_no, goods_id, color_id,
-    unit_id, unit_rate, qty, price, amount_original, amount_local, weight, source_doc_no,
-    receipt_no, order_no, sales_order_no, production_plan_no,
-    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-SELECT s.legacy_id, a.bill_no, a.bill_date,
-       (SELECT id FROM purchase_returns WHERE legacy_id = s.bill_legacy_id),
-       (SELECT id FROM purchase_receipt_items WHERE legacy_id = s.receipt_item_legacy_id),
-       (SELECT id FROM purchase_order_items WHERE legacy_id = s.order_item_legacy_id),
-       ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
-       (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
-       (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
-       s.unit_rate, s.qty, s.price, s.amount_original, fn_legacy_source_book_amount(s.amount_original,a.exchange_rate),
-       s.weight, NULLIF(s.source_doc_no, ''),
-       NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.sales_order_no, ''), NULLIF(s.production_plan_no, ''),
-       (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
-       (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
-       'LEGACY_IMPORT', CASE WHEN a.status <> 0 THEN now() ELSE NULL END
+-- Register the complete typed original return CSV row before its first insert.
+SELECT count(fn_register_legacy_quantity_counter_source(
+    current_setting('uten.bootstrap_run_id')::uuid,'PURCHASE_RETURN_ITEM',to_jsonb(s.*)))
 FROM return_item_stage s JOIN return_stage a ON a.legacy_id = s.bill_legacy_id;
+INSERT INTO purchase_return_items (
+    id, legacy_counter_import_run_id, legacy_id, bill_no, bill_date, return_id, receipt_item_id, order_item_id,
+    line_no, goods_id, color_id, unit_id, unit_rate, qty, price, amount_original, amount_local, weight, source_doc_no,
+    receipt_no, order_no, sales_order_no, production_plan_no, quantity_semantics, gift_qty,
+    charged_base_qty, gift_base_qty, quantity_adoption_version, quantity_precision_policy, quantity_source_proof,
+    goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
+SELECT proof.target_id, proof.run_id, projected.legacy_id, projected.bill_no, projected.bill_date,
+       projected.return_id, projected.receipt_item_id, projected.order_item_id,
+       ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
+       projected.goods_id, projected.color_id, projected.unit_id, projected.unit_rate, projected.qty, projected.price,
+       projected.amount_original, projected.amount_local, projected.weight, projected.source_doc_no,
+       projected.receipt_no, projected.order_no, projected.sales_order_no, projected.production_plan_no,
+       projected.quantity_semantics, projected.gift_qty, projected.charged_base_qty, projected.gift_base_qty,
+       projected.quantity_adoption_version, projected.quantity_precision_policy, projected.quantity_source_proof,
+       (SELECT code FROM goods WHERE id=projected.goods_id), (SELECT name FROM goods WHERE id=projected.goods_id),
+       projected.goods_snapshot_source, CASE WHEN a.status <> 0 THEN now() ELSE NULL END
+FROM return_item_stage s JOIN return_stage a ON a.legacy_id = s.bill_legacy_id
+JOIN legacy_quantity_counter_import_sources proof
+  ON proof.run_id=current_setting('uten.bootstrap_run_id')::uuid
+ AND proof.source_kind='PURCHASE_RETURN_ITEM' AND proof.source_legacy_id=s.legacy_id
+CROSS JOIN LATERAL jsonb_populate_record(NULL::purchase_return_items,
+    fn_legacy_quantity_counter_source_projection('PURCHASE_RETURN_ITEM',to_jsonb(s.*))) projected;
 
 UPDATE purchase_orders d SET settlement_method_id = m.id
 FROM settlement_methods m WHERE m.legacy_id = d.settlement_style_legacy;

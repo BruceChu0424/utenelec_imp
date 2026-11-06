@@ -1,0 +1,12 @@
+{
+  "startedAtUtc": "2026-11-05T10:05:58.3404742Z",
+  "endedAtUtc": "2026-11-05T10:10:38.4921140Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+  "sourceManifest": "build/loading-validation/combined-receipts/source-f619/combined-source-input.json",
+  "diagnosticSourceSha256": "77f24ccffa9c0679bf010cf5b47361389694e4a8c80e99aa6ae7392f1f568b23",
+  "command": "java -Xmx2g -cp diagnostic-classes;originalSurefireClasspath com.uten.imp.features.production.execution.ExecutionReadPlanDiagnostic --measure build/loading-validation/execution-plan-diagnostic-f619",
+  "log": "build/loading-validation/execution-f619-diagnostic.log",
+  "scope": "Owned disposable PostgreSQL fixture only; compiled f619 classes/resources; JIT changes are transaction-local read-only A/B, no shared database or global configuration change."
+}

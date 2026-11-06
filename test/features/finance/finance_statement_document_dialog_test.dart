@@ -32,6 +32,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'finance_requirement_test_ui.dart';
+import '../../support/uten_test_actions.dart';
 
 const _scope = {
   'templateKey': 'supplierStatement',
@@ -42,6 +43,256 @@ const _scope = {
   'dateTo': '2026-09-30',
 };
 void main() {
+  testWidgets(
+    'frozen original accepts changing per-request generatedAt and retains all251 duplicate anonymous exact rows with local scroll',
+    (tester) async {
+      final api = _Api()
+        ..originalRowCount = 251
+        ..changingGeneratedAt = true;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        mode: 'DIRECTORY',
+      );
+      await tester.tap(find.text('实际提交人').first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('实际提交人').first);
+      await tester.pumpAndSettle();
+      final finder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<Map<String, dynamic>> &&
+            widget.tableKey?.startsWith('finance-statement-original-') == true,
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, hasLength(251));
+      expect(
+        table.items.every(
+          (row) =>
+              row['qty'] == '12345678901234567890.1234' &&
+              row['amount'] == '12345678901234567890.1234',
+        ),
+        isTrue,
+      );
+      expect(table.items.map(table.idOf!).toSet(), hasLength(251));
+      expect(api.originalQueries.map((q) => q['page']), [1, 2, 3]);
+      expect(api.originalQueries.every((q) => q['size'] == 100), isTrue);
+      expect(table.currentPage, 1);
+      expect(table.totalPages, 1);
+      final body = utenTestTableBodyController(tester, finder);
+      body.position.jumpTo(body.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(body.position.pixels, greaterThan(0));
+      expect(api.originalQueries, hasLength(3));
+      expect(api.commands, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+
+  testWidgets(
+    'same-State frozen anonymous refresh preserves native old-row identity and all duplicate raw facts',
+    (tester) async {
+      final api = _Api()
+        ..originalRowCount = 251
+        ..changingGeneratedAt = true;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        mode: 'DIRECTORY',
+      );
+      await tester.tap(find.text('实际提交人').first);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('实际提交人').first);
+      await tester.pumpAndSettle();
+      final finder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<Map<String, dynamic>> &&
+            widget.tableKey?.startsWith('finance-statement-original-') == true,
+      );
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(finder);
+      final state = tester.state(finder);
+      final oldRow = table().items.first;
+      final ids = table().items.map(table().idOf!).toList();
+      expect(ids.toSet(), hasLength(251));
+      final refresh = Future<void>.sync(table().onRetry!);
+      await tester.pumpAndSettle();
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.state(finder), same(state));
+      expect(table().items, hasLength(251));
+      expect(table().items.map(table().idOf!), ids);
+      expect(
+        table().idOf!(oldRow),
+        ids.first,
+        reason:
+            'the new identity callback must accept the still-live native old raw map',
+      );
+      expect(
+        table().items.every(
+          (row) =>
+              !row.containsKey('__lineId') &&
+              row['qty'] == '12345678901234567890.1234' &&
+              row['amount'] == '12345678901234567890.1234',
+        ),
+        isTrue,
+      );
+      expect(api.originalQueries.map((query) => query['page']), [
+        1,
+        2,
+        3,
+        1,
+        2,
+        3,
+      ]);
+      expect(
+        api.originalQueries.every((query) => query['size'] == 100),
+        isTrue,
+      );
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
+      expect(api.commands, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+
+  for (final failure in ['network', 'metadata']) {
+    testWidgets(
+      'frozen original tail $failure publishes no partial data, ends waiting and retries the complete immutable source',
+      (tester) async {
+        final tail = Completer<void>();
+        final api = _Api()
+          ..originalRowCount = 251
+          ..changingGeneratedAt = true
+          ..originalTailGate = tail
+          ..originalTailFailure = failure;
+        final container = await _mount(
+          tester,
+          api,
+          MemoryFormDraftStorage(),
+          mode: 'DIRECTORY',
+        );
+        await tester.tap(find.text('实际提交人').first);
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.text('实际提交人').first);
+        for (
+          var frame = 0;
+          frame < 100 && api.originalQueries.length < 2;
+          frame++
+        ) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(api.originalQueries, hasLength(2));
+        final finder = find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey?.startsWith('finance-statement-original-') ==
+                  true,
+        );
+        expect(
+          tester
+              .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+              .items,
+          isEmpty,
+        );
+        tail.complete();
+        await tester.pumpAndSettle();
+        final failed = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          finder,
+        );
+        expect(failed.isLoading, isFalse);
+        expect(failed.items, isEmpty);
+        expect(failed.error, isNotNull);
+        expect(api.originalQueries.map((q) => q['page']), [1, 2]);
+        expect(api.commands, isEmpty);
+        api.originalTailGate = null;
+        api.originalTailFailure = null;
+        final retry = find.byKey(
+          const ValueKey('master-table-initial-read-retry'),
+        );
+        expect(retry, findsOneWidget);
+        await tester.ensureVisible(retry);
+        await tester.tap(retry);
+        await tester.pumpAndSettle();
+        final accepted = tester
+            .widget<MasterDataTableView<Map<String, dynamic>>>(finder);
+        expect(accepted.items, hasLength(251));
+        expect(accepted.error, isNull);
+        expect(api.originalQueries.map((q) => q['page']), [1, 2, 1, 2, 3]);
+        expect(api.commands, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'live original preview keeps all rows and exact source facts while scrolling locally',
+    (tester) async {
+      final api = _Api()
+        ..previewRows = [
+          for (var index = 0; index < 120; index++)
+            {'reference': 'SRC-$index', 'amount': '12345678901234567890.1234'},
+        ];
+      final original = jsonEncode(api.previewRows);
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        mode: 'PREVIEW',
+      );
+      try {
+        final tableFinder = find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey == 'finance-statement-live-preview',
+        );
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          tableFinder,
+        );
+        expect(table.items, hasLength(120));
+        expect(table.items.last['reference'], 'SRC-119');
+        expect(table.items.last['amount'], '12345678901234567890.1234');
+        final position = tester
+            .stateList<ScrollableState>(
+              find.descendant(
+                of: tableFinder,
+                matching: find.byType(Scrollable),
+              ),
+            )
+            .where(
+              (state) =>
+                  state.position.axis == Axis.vertical &&
+                  state.position.hasContentDimensions,
+            )
+            .map((state) => state.position)
+            .reduce(
+              (left, right) =>
+                  left.maxScrollExtent > right.maxScrollExtent ? left : right,
+            );
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        expect(find.text('SRC-119'), findsOneWidget);
+        position.jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(find.text('SRC-0'), findsOneWidget);
+        expect(api.previewReads, 1);
+        expect(api.commands, isEmpty);
+        expect(jsonEncode(api.previewRows), original);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        container.dispose();
+      }
+    },
+  );
   testWidgets(
     'settlement original requires explicit preview and retains its exact unknown submission on hard restore',
     (tester) async {
@@ -633,8 +884,15 @@ class _Session extends SessionNotifier {
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
+  List<Map<String, dynamic>> previewRows = const [];
+  int previewReads = 0;
   bool loseFirst = false, reject = false, loseUpload = false;
   Completer<void>? gate;
+  int originalRowCount = 1;
+  bool changingGeneratedAt = false;
+  Completer<void>? originalTailGate;
+  String? originalTailFailure;
+  final originalQueries = <Map<String, dynamic>>[];
   int commits = 0, uploads = 0;
   final commands = <Map<String, dynamic>>[];
   Map<String, dynamic>? uploadInput;
@@ -645,6 +903,16 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.endsWith('/original-table')) {
+      final page = (query?['page'] as num?)?.toInt() ?? 1;
+      final size = (query?['size'] as num?)?.toInt() ?? 50;
+      originalQueries.add({...?query});
+      if (page == 2) {
+        final pending = originalTailGate;
+        if (pending != null) await pending.future;
+        if (originalTailFailure == 'network') {
+          throw ApiException('NETWORK', '原件尾批读取失败');
+        }
+      }
       return {
         'columns': [
           {'key': 'date', 'label': '原日期', 'type': 'date', 'width': 150},
@@ -661,21 +929,36 @@ class _Api extends ApiClient {
           {'key': 'amount', 'label': '原金额', 'type': 'money', 'width': 180},
         ],
         'rows': [
-          {
-            'date': '2026-09-30',
-            'order': '000000123',
-            'qty': '12345678901234567890.1234',
-            'amount': '12345678901234567890.1234',
-          },
+          for (
+            var row = (page - 1) * size;
+            row < page * size && row < originalRowCount;
+            row++
+          )
+            {
+              'date': '2026-09-30',
+              'order': '000000123',
+              'qty': '12345678901234567890.1234',
+              'amount': '12345678901234567890.1234',
+            },
         ],
-        'page': 1,
-        'size': 50,
-        'total': 1,
-        'totalPages': 1,
+        'page': page,
+        'size': size,
+        'total': originalRowCount,
+        'totalPages': (originalRowCount + size - 1) ~/ size,
+        if (changingGeneratedAt)
+          'statisticsGeneratedAt':
+              '2026-11-06T00:00:00.${originalQueries.length.toString().padLeft(3, '0')}Z',
         'facets': <String, dynamic>{},
         'totals': <Object?>[],
         'documentMetadata': {
           'reviewId': 'original',
+          if (changingGeneratedAt) 'documentSha256': 'a' * 64,
+          if (changingGeneratedAt)
+            'confirmationMetadata': {
+              'status': page == 2 && originalTailFailure == 'metadata'
+                  ? 'CHANGED'
+                  : 'INTERNAL_CONFIRMED',
+            },
           'title': '原对账单',
           'headerLines': [
             {'label': '客户名称：', 'value': '真实原客户'},
@@ -689,7 +972,8 @@ class _Api extends ApiClient {
     if (path.endsWith('/profiles')) {
       return {'items': <Object?>[]};
     }
-    if (path.endsWith('/reviews/original')) {
+    if (path.endsWith('/reviews/original') ||
+        path.endsWith('/reviews/original/summary')) {
       return {
         'status': confirmed ? 'BOTH_CONFIRMED' : 'INTERNAL_CONFIRMED',
         'document_sha256': 'a' * 64,
@@ -709,6 +993,18 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/preview')) {
+      previewReads++;
+      return {
+        'sourceFingerprint': 'd' * 64,
+        'columns': [
+          {'key': 'reference', 'label': '来源单号', 'type': 'text', 'width': 180},
+          {'key': 'amount', 'label': '原币金额', 'type': 'money', 'width': 300},
+        ],
+        'rows': previewRows,
+        'documentMetadata': <String, dynamic>{},
+      };
+    }
     if (path.endsWith('/settlement-preview')) {
       final input = Map<String, dynamic>.from(body as Map);
       return {

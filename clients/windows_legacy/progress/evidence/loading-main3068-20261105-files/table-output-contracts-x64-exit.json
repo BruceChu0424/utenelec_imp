@@ -1,0 +1,11 @@
+{
+  "name": "table-output-contracts-x64",
+  "startedAtUtc": "2026-11-05T21:39:41.373018+00:00",
+  "command": [
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+    "--table-output-contracts"
+  ],
+  "exitCode": 0,
+  "endedAtUtc": "2026-11-05T21:39:47.563545+00:00",
+  "logSha256": "c97ead845689cb2aaa01835890cdda563d01d7f99f09b4699c0f5588e36c274f"
+}

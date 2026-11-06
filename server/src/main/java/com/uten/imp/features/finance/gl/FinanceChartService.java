@@ -21,6 +21,9 @@ import static com.uten.imp.features.finance.gl.FinanceChartContracts.*;
 @Service
 @RequiredArgsConstructor
 public class FinanceChartService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
     private final JdbcTemplate db;
     private final EntityManager em;
     private final ObjectMapper json;
@@ -677,4 +680,19 @@ public class FinanceChartService {
     private <T>T decode(String value,Class<T> type){try{return com.uten.imp.common.finance.FinancialJsonResults.value(json,value,type);}catch(Exception e){throw new IllegalStateException("科目批次记录无效",e);}}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
+
+    /** Full selected lifecycle range through bounded summary batches; original detail/write contracts are unchanged. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(String requestedScope,int page,int size,String revision) {
+        readAccess();UUID actor=current.requireId();
+        String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
+        String where="actor_id=?"+switch(scope) {
+            case "active" -> " AND (applied_at IS NULL AND cancelled_at IS NULL)";
+            case "history" -> " AND (applied_at IS NOT NULL OR cancelled_at IS NOT NULL)";
+            default -> "";
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-chart-imports","finance",Map.of("actor",actor),scope,page,size,1000,revision);
+        return summaryPages.page(request,()->{readAccess();},
+                ()->db.queryForObject("SELECT count(*) FROM finance_chart_imports WHERE "+where,Long.class,actor),
+                (readPage,readSize)->db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\",cancelled_at AS \"cancelledAt\" FROM finance_chart_imports WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",actor,readSize,Math.multiplyExact((long)readPage-1,readSize)));
+    }
 }

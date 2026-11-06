@@ -14,10 +14,14 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -85,6 +89,34 @@ int _mi(Object? v) =>
     v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
 String _id(Map<String, dynamic>? v) =>
     (v?['id'] ?? v?['contextId'] ?? '').toString();
+
+// The material APIs use ordinary page envelopes but different source identities.
+// Only this projection differs; complete collection/retirement stays public.
+Future<Map<String, dynamic>> _readMaterialPages({
+  required bool Function() current,
+  required Future<Map<String, dynamic>> Function(int, int) fetch,
+  Object? Function(Map<String, dynamic>)? identity,
+}) async {
+  Map<String, dynamic> first = {};
+  final result = await loadCompletePagedResult<Map<String, dynamic>>(
+    isCurrent: current,
+    idOf: identity ?? _id,
+    loadPage: (page, size) async {
+      final value = await fetch(page, size);
+      if (page == 1) first = value;
+      return PagedResult.fromJsonResponsive(value, (row) => row);
+    },
+  );
+  return {
+    ...first,
+    'items': result.items,
+    'page': 1,
+    'size': result.size,
+    'total': result.total,
+    'totalPages': result.totalPages,
+  };
+}
+
 String _problem(Object e) => humanErrorMessage(e) ?? '资料未处理完成，原输入已保留';
 Map<String, dynamic> _effective(Map<String, dynamic> row) {
   final saved = _mm(row['source_snapshot']);
@@ -138,8 +170,18 @@ class FinanceMaterialStatementSurface extends ConsumerStatefulWidget {
       _MaterialDirectory();
 }
 
-class _MaterialDirectory
-    extends ConsumerState<FinanceMaterialStatementSurface> {
+class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
+    with ReadViewActivityMixin<FinanceMaterialStatementSurface> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_context == null) {
+      await _load();
+    } else {
+      await _openContext(_id(_context), preserveSelection: true);
+      if (_current && _rule != null) await _sourceLoad();
+    }
+  }
+
   final _search = TextEditingController(),
       _from = TextEditingController(),
       _to = TextEditingController();
@@ -151,15 +193,8 @@ class _MaterialDirectory
   List<Map<String, dynamic>> _sidebar = [], _sideActual = [];
   bool _showSideActual = false;
   Map<String, dynamic>? _context, _rule;
-  int _tab = 0,
-      _page = 1,
-      _pages = 0,
-      _historyPage = 1,
-      _historyPages = 0,
-      _sourcePage = 1,
-      _sourcePages = 0,
-      _read = 0;
-  bool _busy = true, _retired = false, _changed = false;
+  int _tab = 0, _read = 0;
+  bool _busy = true, _retired = false, _changed = false, _readDenied = false;
   String? _error;
   late final bool Function() _owner;
   bool get _current => mounted && !_retired && _owner();
@@ -230,7 +265,25 @@ class _MaterialDirectory
     }
   }
 
-  Future<void> _load({int page = 1}) async {
+  void _readFailed(Object error) {
+    _error = _problem(error);
+    if (!pagedReadAccessDenied(error)) return;
+    _readDenied =
+        _context != null ||
+        _contexts.isNotEmpty ||
+        _history.isNotEmpty ||
+        _sources.isNotEmpty;
+    _contexts = [];
+    _history = [];
+    _sources = [];
+    _rules = [];
+    _sidebar = [];
+    _sideActual = [];
+    _context = null;
+    _rule = null;
+  }
+
+  Future<void> _load() async {
     if (!_current) return;
     final generation = ++_read;
     setState(() => _busy = true);
@@ -239,59 +292,84 @@ class _MaterialDirectory
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final result = await scope.run(
-        () => api.get(
-          _materialBase,
-          query: {'q': _search.text.trim(), 'page': page, 'size': 30},
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            fetch: (batch, size) => api.get(
+              _materialBase,
+              query: {'q': _search.text.trim(), 'page': batch, 'size': size},
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _contexts = _ml(result['items']);
-        _page = page;
-        _pages = _mi(result['totalPages']);
         _error = null;
+        _readDenied = false;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) setState(() => _readFailed(e));
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
   }
 
-  Future<void> _openContext(String id) async {
+  Future<void> _openContext(String id, {bool preserveSelection = false}) async {
     if (!_current) return;
     final generation = ++_read;
+    final oldRule = preserveSelection && _rule != null
+        ? _rule!['evidenceId']
+        : null;
     setState(() => _busy = true);
     try {
       final api = ref.read(apiClientProvider),
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final value = await scope.run(() => api.get('$_materialBase/$id'));
+      final loaded = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(() async {
+          final context = await api.get('$_materialBase/$id');
+          final history = await _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            fetch: (page, size) => api.get(
+              '$_materialBase/evidence',
+              query: {'contextId': id, 'page': page, 'size': size},
+            ),
+          );
+          return (context: context, history: history);
+        }),
+      );
       if (!_current || !scope.isCurrent || generation != _read) return;
+      final value = loaded.context;
       setState(() {
         _context = value;
-        _lookup.text = id;
-        _history = _ml(value['evidence']);
+        if (!preserveSelection) _lookup.text = id;
+        _history = _ml(loaded.history['items']);
         _sidebar = [
           for (final evidence in _ml(value['sidebar']))
             {...evidence, ..._effective(evidence)},
         ];
         _sideActual = [];
-        _historyPage = 1;
-        _historyPages = (_mi(value['historyTotal']) + 29) ~/ 30;
         _rules = [
           for (final e in _ml(value['approved']))
             if (e['kind'] == 'GOODS' && _effective(e)['enabled'] != false)
               {..._effective(e), 'evidenceId': e['id']},
         ];
-        _rule = _rules.firstOrNull;
+        _rule = preserveSelection && oldRule != null
+            ? _rules.where((row) => row['evidenceId'] == oldRule).firstOrNull
+            : _rules.firstOrNull;
         _sources = [];
         _error = null;
+        _readDenied = false;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) setState(() => _readFailed(e));
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
@@ -328,7 +406,7 @@ class _MaterialDirectory
     if (!_current) return;
     if (changed == true) {
       _changed = true;
-      await _load(page: _page);
+      await _load();
       if (_current && _context != null) await _openContext(_id(_context));
     }
   }
@@ -358,7 +436,7 @@ class _MaterialDirectory
     mode: action,
     evidenceId: row['id'].toString(),
   );
-  Future<void> _historyLoad(int page) async {
+  Future<void> _historyLoad() async {
     if (!_current || _context == null) return;
     final generation = ++_read;
     setState(() => _busy = true);
@@ -367,27 +445,33 @@ class _MaterialDirectory
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final value = await scope.run(
-        () => api.get(
-          '$_materialBase/evidence',
-          query: {'contextId': _id(_context), 'page': page, 'size': 30},
+      final value = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            fetch: (batch, size) => api.get(
+              '$_materialBase/evidence',
+              query: {'contextId': _id(_context), 'page': batch, 'size': size},
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
       setState(() {
         _history = _ml(value['items']);
-        _historyPage = page;
-        _historyPages = _mi(value['totalPages']);
         _error = null;
+        _readDenied = false;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) setState(() => _readFailed(e));
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
   }
 
-  Future<void> _sourceLoad({int page = 1}) async {
+  Future<void> _sourceLoad() async {
     if (!_current || _context == null || _rule == null) return;
     final generation = ++_read;
     setState(() => _busy = true);
@@ -396,19 +480,26 @@ class _MaterialDirectory
           scope = await api.captureRequestScope(
             isCurrent: () => _current && generation == _read,
           );
-      final result = await scope.run(
-        () => api.get(
-          '$_materialBase/sources',
-          query: {
-            'contextId': _id(_context),
-            'kind': _rule!['sourceKind'],
-            'sourceGoodsId': _rule!['goodsId'],
-            'sourceColorId': _rule!['colorId'],
-            'dateFrom': _from.text.trim(),
-            'dateTo': _to.text.trim(),
-            'page': page,
-            'size': 30,
-          },
+      final result = await readViewActivity.runRead(
+        () => _current && generation == _read,
+        () => scope.run(
+          () => _readMaterialPages(
+            current: () => _current && generation == _read && scope.isCurrent,
+            identity: (row) => row['key'],
+            fetch: (batch, size) => api.get(
+              '$_materialBase/sources',
+              query: {
+                'contextId': _id(_context),
+                'kind': _rule!['sourceKind'],
+                'sourceGoodsId': _rule!['goodsId'],
+                'sourceColorId': _rule!['colorId'],
+                'dateFrom': _from.text.trim(),
+                'dateTo': _to.text.trim(),
+                'page': batch,
+                'size': size,
+              },
+            ),
+          ),
         ),
       );
       if (!_current || !scope.isCurrent || generation != _read) return;
@@ -434,12 +525,12 @@ class _MaterialDirectory
       }
       setState(() {
         _sources = rows;
-        _sourcePage = page;
-        _sourcePages = _mi(result['totalPages']);
         _error = null;
+        _readDenied = false;
       });
     } catch (e) {
-      if (_current && generation == _read) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _read) setState(() => _readFailed(e));
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
     }
@@ -479,10 +570,7 @@ class _MaterialDirectory
     idOf: _id,
     busy: _busy,
     error: _error,
-    retry: () => _load(page: _page),
-    page: _page,
-    pages: _pages,
-    onPage: (p) => _load(page: p),
+    retry: () => _load(),
     onOpen: (row) => _openContext(_id(row)),
   );
   Widget _recordTable() => _context == null
@@ -490,9 +578,8 @@ class _MaterialDirectory
       : financeSourceTable(
           tableKey: 'finance.material.evidence.${_id(_context)}',
           rows: _history,
-          page: _historyPage,
-          pages: _historyPages,
-          onPage: _historyLoad,
+          error: _error,
+          retry: _historyLoad,
           idOf: _id,
           busy: _busy,
           columns: [
@@ -616,10 +703,11 @@ class _MaterialDirectory
         _sideActual = _ml(result['cells']);
         _showSideActual = true;
         _error = null;
+        _readDenied = false;
       });
     } catch (error) {
       if (_current && generation == _read) {
-        setState(() => _error = _problem(error));
+        setState(() => _readFailed(error));
       }
     } finally {
       if (_current && generation == _read) setState(() => _busy = false);
@@ -741,9 +829,6 @@ class _MaterialDirectory
           idOf: (r) => r['movementId'].toString(),
           busy: _busy,
           error: _error,
-          page: _sourcePage,
-          pages: _sourcePages,
-          onPage: (p) => _sourceLoad(page: p),
           columns: [
             financeSourceColumn('billNo', '原单号', width: 170),
             financeSourceColumn('businessDate', '原表日期'),
@@ -815,9 +900,22 @@ class _MaterialDirectory
 
   @override
   Widget build(BuildContext context) {
-    if (!_current) {
-      return const Material(
-        child: Center(child: Text('登录身份、权限或服务器已变化，请重新进入；原草稿仍属于原账号。')),
+    if (!_current || _readDenied) {
+      return Material(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _readDenied
+                  ? (_error ?? '数据访问范围已变化，请重新进入。')
+                  : '登录身份、权限或服务器已变化，请重新进入；原草稿仍属于原账号。',
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(_changed),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
       );
     }
     return Material(
@@ -899,7 +997,7 @@ class _MaterialDirectory
                                   context,
                                   canEdit: true,
                                 );
-                                if (_current) await _load(page: _page);
+                                if (_current) await _load();
                               },
                         child: const Text('科目代码对应'),
                       ),
@@ -913,14 +1011,14 @@ class _MaterialDirectory
                                   canEdit: _can(Perm.paymentStyleEdit),
                                   selection: false,
                                 );
-                                if (_current) await _load(page: _page);
+                                if (_current) await _load();
                               },
                         child: const Text('辅助项目'),
                       ),
                       UtenRefreshButton(
                         busy: _busy,
                         onRefresh: () async {
-                          await _load(page: _page);
+                          await _load();
                           if (_context != null) {
                             await _openContext(_id(_context));
                           }

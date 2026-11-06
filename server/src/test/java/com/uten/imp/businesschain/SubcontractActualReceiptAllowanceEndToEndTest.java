@@ -92,6 +92,56 @@ class SubcontractActualReceiptAllowanceEndToEndTest extends SubcontractFullChain
         if("1050".equals(actual))assertActualValueConservation(c,receipt);
     }
 
+    @ParameterizedTest
+    @MethodSource("actualMaterialCases")
+    void nativeActualSourcePrecisionSurvivesPartialWarehouseIssueConsumptionAndCost(JsonNode vector) {
+        Case c=readyActualPartial(vector,"actual-grid-"+vector.path("id").asText());
+        UUID receipt=receive(c,vector.path("outputQty").asText(),"actual");
+        amount(vector.path("outputQty").asText(),"SELECT qty FROM subcontract_receipt_items WHERE receipt_id=?",receipt);
+        amount(vector.path("consumedQty").asText(),"SELECT SUM(consumed_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        amount(vector.path("consumedQty").asText(),"SELECT SUM(source.qty_doc) FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.receipt_id=? AND source.reversal_of IS NULL",receipt);
+        amount(vector.path("remainingMaterialQty").asText(),"SELECT SUM(supplier_ending) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        amount(vector.path("physicalOutputQty").asText(),"SELECT fn_subcontract_physical_receipt_capacity(?)",c.item());
+        amount("0","SELECT COUNT(*) FROM procurement_arrival_exceptions WHERE receipt_id=?",receipt);
+        stockIn(c,receipt,"actual");
+        amount(vector.path("outputQty").asText(),"SELECT SUM(qty) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",c.product(),c.world().warehouseId());
+        assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(id) FROM subcontract_receipt_items WHERE receipt_id=?",Boolean.class,receipt));
+        assertFinal(receipt);
+    }
+
+    @Test
+    void cumulativeRoundCreditHasExplicitZeroProofAndMustReverseAfterItsFundingSource() throws Exception {
+        JsonNode vector=StreamSupport.stream(actualMaterialContract().spliterator(),false)
+                .filter(v->"actual-cumulative-round-credit".equals(v.path("id").asText())).findFirst().orElseThrow();
+        Case c=readyActualPartial(vector,"actual-round-credit");
+        UUID first=receive(c,vector.path("outputQty").asText(),"first");
+        acknowledgePartial(c);
+        stockIn(c,first,"first");
+        amount("0","SELECT SUM(supplier_ending) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        amount(vector.path("physicalOutputQty").asText(),"SELECT fn_subcontract_physical_receipt_capacity(?)",c.item());
+        UUID last=receive(c,vector.path("subsequentOutputQty").asText(),"last");
+        amount("1","SELECT COUNT(*) FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.receipt_id=? AND source.qty_doc=0 AND source.qty_base=0 AND source.round_credit_source_id IS NOT NULL AND source.reversal_of IS NULL",last);
+        amount(vector.path("consumedQty").asText(),"SELECT SUM(consumed_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        stockIn(c,last,"last");
+        assertFinal(first);assertFinal(last);
+        amount(vector.path("finishedTargetQty").asText(),"SELECT SUM(qty) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",c.product(),c.world().warehouseId());
+        amount("0","SELECT COUNT(*) FROM stock_value_events event JOIN subcontract_receipt_material_consumptions source ON source.id=event.source_item_id JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.receipt_id=? AND event.source_doc_type IN('SUBCONTRACT_CONSUMED_MATERIAL','SUBCONTRACT_RECEIPT_MATERIAL')",last);
+        String originals=db.queryForObject("SELECT jsonb_agg(to_jsonb(source) ORDER BY source.id)::text FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.order_item_id=? AND source.reversal_of IS NULL",String.class,c.item());
+        ApiException blocked=org.junit.jupiter.api.Assertions.assertThrows(ApiException.class,()->receipts.reverse(first));
+        assertEquals(ErrorCode.CONFLICT,blocked.getCode());
+        assertTrue(blocked.getMessage().contains("零增量回厂"),"the real material-credit dependency must be the refusal reason");
+        assertEquals(originals,db.queryForObject("SELECT jsonb_agg(to_jsonb(source) ORDER BY source.id)::text FROM subcontract_receipt_material_consumptions source JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id WHERE item.order_item_id=? AND source.reversal_of IS NULL",String.class,c.item()));
+        receipts.reverse(last);
+        InventoryValueWorkTestSupport.drain(h.inventoryValueWork,db,List.of(c.product(),c.material()));
+        receipts.reverse(first);
+        InventoryValueWorkTestSupport.drain(h.inventoryValueWork,db,List.of(c.product(),c.material()));
+        amount("0","SELECT received_qty FROM subcontract_order_items WHERE id=?",c.item());
+        amount("0","SELECT SUM(consumed_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        amount(vector.path("issuedQty").asText(),"SELECT SUM(supplier_ending) FROM subcontract_material_issue_items WHERE order_item_id=?",c.item());
+        amount("2","SELECT COUNT(*) FROM subcontract_receipt_material_consumptions reversal JOIN subcontract_receipt_items item ON item.id=reversal.receipt_item_id WHERE item.order_item_id=? AND reversal.reversal_of IS NOT NULL",c.item());
+        assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,c.order()));
+    }
+
     @Test
     void targetThenUnusedAllowanceCanReturnAsAnotherActualBatchWithoutReplayingTheFirst() {
         Case c = ready("actual-batch", false);
@@ -310,6 +360,34 @@ class SubcontractActualReceiptAllowanceEndToEndTest extends SubcontractFullChain
         return new Case(w,order,item,p,a,b,tag);
     }
 
+    private Case readyActualPartial(JsonNode vector,String tag) {
+        var w=h.fixture.seedWorld(tag);h.fixture.loginAs(w.superAdminUserId());
+        db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code IN('subcontract_order:view','subcontract_order:draw','subcontract:view:all')",w.superAdminUserId());
+        UUID product=ReflectionTestUtils.invokeMethod(h,"goods",w,tag,"P","委外");
+        UUID material=ReflectionTestUtils.invokeMethod(h,"goods",w,tag,"A","自制");
+        h.fixture.insertBom(product,material,vector.path("baseBomQty").asText());
+        UUID order=ReflectionTestUtils.invokeMethod(h,"subcontractOrder",w,product,vector.path("finishedTargetQty").asText(),BusinessTime.today().plusDays(5),new BigDecimal(vector.path("lossPct").asText()));
+        ReflectionTestUtils.invokeMethod(h,"approveSubcontract",w,order);
+        UUID item=ReflectionTestUtils.invokeMethod(h,"itemOf",order);
+        ReflectionTestUtils.invokeMethod(h,"otherIn",w,w.warehouseId(),material,null,vector.path("stockBeforeIssueQty").asText(),"10");
+        UUID issue=draws.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,null)),tag+"-draw-"+item)).issueIds().getFirst();
+        amount(vector.path("plannedMaterialQty").asText(),"SELECT qty FROM subcontract_material_issue_items WHERE issue_id=?",issue);
+        ReflectionTestUtils.invokeMethod(h,"warehousePick",issue,material,vector.path("issuedQty").asText());
+        issues.approve(issue);
+        InventoryValueWorkTestSupport.drain(h.inventoryValueWork,db,List.of(product,material));
+        amount(vector.path("issuedQty").asText(),"SELECT qty FROM subcontract_material_issue_items WHERE issue_id=?",issue);
+        return new Case(w,order,item,product,material,null,tag);
+    }
+    private void acknowledgePartial(Case c) {
+        var open=db.queryForList("SELECT id,version FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status IN('PENDING_OWNER','WAITING_MORE') ORDER BY detected_at DESC",c.item());
+        if(!open.isEmpty()) h.shortDelivery.decide((UUID)open.getFirst().get("id"),new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                "WAIT_MORE",BusinessTime.today().plusDays(1),"确认分批回厂，继续等待原成品目标",((Number)open.getFirst().get("version")).longValue()));
+        amount("0","SELECT fn_subcontract_settled_loss_qty(?)",c.item());
+    }
+    private void assertFinal(UUID receipt) {
+        assertEquals("FINAL",db.queryForObject("SELECT cost.state FROM stock_value_production_cost_objects cost JOIN subcontract_receipt_items item ON item.id=cost.execution_segment_id WHERE item.receipt_id=?",String.class,receipt));
+    }
+
     private UUID receive(Case c,String actual,String suffix) {
         var original=request(c,actual,suffix);
         Long receiptCountBefore=db.queryForObject("SELECT COUNT(*) FROM subcontract_receipt_items WHERE order_item_id=?",Long.class,c.item());
@@ -377,6 +455,13 @@ class SubcontractActualReceiptAllowanceEndToEndTest extends SubcontractFullChain
         JsonNode vectors=new ObjectMapper().readTree(Files.readString(Path.of("../contracts/subcontract-actual-receipt/v1.json"))).path("vectors");
         return StreamSupport.stream(vectors.spliterator(),false)
                 .filter(v->List.of("minimum","variable-loss","no-loss").contains(v.path("id").asText()));
+    }
+    private static JsonNode actualMaterialContract() throws Exception {
+        return new ObjectMapper().readTree(Files.readString(Path.of("../contracts/subcontract-actual-receipt/v1.json"))).path("actualMaterialVectors");
+    }
+    private static Stream<JsonNode> actualMaterialCases() throws Exception {
+        return StreamSupport.stream(actualMaterialContract().spliterator(),false)
+                .filter(v->!"actual-cumulative-round-credit".equals(v.path("id").asText()));
     }
     private record Case(FullChainEndToEndTest.World world,UUID order,UUID item,UUID product,UUID material,UUID second,String tag) {}
 }

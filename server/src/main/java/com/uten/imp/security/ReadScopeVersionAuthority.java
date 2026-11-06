@@ -176,6 +176,15 @@ public class ReadScopeVersionAuthority {
         } finally { SecurityContextHolder.setContext(previous); }
     }
 
+    /** Called only within the summary owner's explicit REQUIRES_NEW/RR boundary. */
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    public String scopeForCurrentSnapshot(String domain, AuthUser subject) {
+        if (!java.util.Objects.equals(org.springframework.transaction.support.TransactionSynchronizationManager.getCurrentTransactionIsolationLevel(),
+                org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ))
+            throw new IllegalStateException("Summary authorization requires the owning REPEATABLE_READ snapshot");
+        return scopeFor(domain, subject, false);
+    }
+
     private static ApiException changed() {
         return new ApiException(ErrorCode.READ_SCOPE_CHANGED, "身份或可见范围已变化，请重新读取");
     }

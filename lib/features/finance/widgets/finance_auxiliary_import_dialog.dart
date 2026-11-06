@@ -1,3 +1,5 @@
+import '../shared/finance_complete_summary_read.dart';
+import 'finance_summary_scope_field.dart';
 import '../shared/finance_workbench_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -67,6 +69,8 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
   final _book = TextEditingController();
   Map<String, dynamic>? _preview;
   List<Map<String, dynamic>> _recent = [], _comparisons = [];
+  FinanceSummaryScope _recentScope = FinanceSummaryScope.active;
+  int _recentRead = 0;
   bool _busy = false,
       _unknownUpload = false,
       _unknownApply = false,
@@ -220,30 +224,67 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
 
   Future<void> _loadRecent() async {
     if (!_current || _busy) return;
+    final generation = ++_recentRead, range = _recentScope;
+    final kind = widget.receivable
+        ? 'AUXILIARY_RECEIVABLE'
+        : 'AUXILIARY_PAYABLE';
+    final scope = await captureFormDraftRequestScope();
+    bool current() =>
+        _current &&
+        scope.isCurrent &&
+        generation == _recentRead &&
+        range == _recentScope &&
+        kind ==
+            (widget.receivable ? 'AUXILIARY_RECEIVABLE' : 'AUXILIARY_PAYABLE');
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final data = await _api.get('/finance/auxiliary-imports');
-      if (_current) {
+      final rows = await scope.run(
+        () => readCompleteFinanceSummaries(
+          isCurrent: current,
+          idOf: (row) => row['importId'],
+          loadPage: (page, size, revision) => _api.get(
+            '/finance/auxiliary-imports/summaries',
+            query: {
+              'scope': range.name,
+              'page': page,
+              'size': size,
+              'readSnapshotRevision': ?revision,
+            },
+          ),
+        ),
+      );
+      if (current()) {
         setState(
-          () => _recent = _maps(data['items'])
-              .where(
-                (item) =>
-                    item['kind'] ==
-                    (widget.receivable
-                        ? 'AUXILIARY_RECEIVABLE'
-                        : 'AUXILIARY_PAYABLE'),
-              )
-              .toList(),
+          () => _recent = rows
+              .where((row) => row['kind'] == kind)
+              .toList(growable: false),
         );
       }
     } catch (error) {
-      if (_current) setState(() => _error = _message(error));
+      if (current()) setState(() => _error = _message(error));
     } finally {
-      if (_current) setState(() => _busy = false);
+      if (mounted && generation == _recentRead) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _changeRecentScope(FinanceSummaryScope value) async {
+    if (!_current ||
+        _busy ||
+        _loading ||
+        _unknownUpload ||
+        _unknownApply ||
+        _preview != null ||
+        value == _recentScope) {
+      return;
+    }
+    setState(() {
+      _recentScope = value;
+      _recent = [];
+    });
+    await _loadRecent();
   }
 
   Future<void> _pick() async {
@@ -792,6 +833,18 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
                   _loadRecent();
                 },
           child: const Text('返回批次'),
+        ),
+      );
+    }
+    if (_preview == null) {
+      actions.insert(
+        0,
+        FinanceSummaryScopeField(
+          key: const Key('finance-aux-import-record-scope'),
+          value: _recentScope,
+          enabled: !_busy && !_loading && !_unknownUpload && !_unknownApply,
+          info: '待办理保留未应用辅助目录的原件；已应用记录在历史保留查看，仍可作为账套接续的合法来源。',
+          onChanged: _changeRecentScope,
         ),
       );
     }

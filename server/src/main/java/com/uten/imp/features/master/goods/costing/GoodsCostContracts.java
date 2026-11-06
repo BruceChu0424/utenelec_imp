@@ -46,7 +46,13 @@ public final class GoodsCostContracts {
         public String versionExact(){return Long.toString(version);}
     }
     public record VersionPage(List<VersionSummary> items,int page,int size,long total,int totalPages,
-            Map<String,List<com.uten.imp.common.web.FacetBucket>> facets,java.util.Set<String> columnSearchKeys) {}
+            Map<String,List<com.uten.imp.common.web.FacetBucket>> facets,java.util.Set<String> columnSearchKeys,
+            String readScopeVersion,String readSnapshotRevision,String readDataVersion) {
+        public VersionPage(List<VersionSummary> items,int page,int size,long total,int totalPages,
+                Map<String,List<com.uten.imp.common.web.FacetBucket>> facets,java.util.Set<String> columnSearchKeys) {
+            this(items,page,size,total,totalPages,facets,columnSearchKeys,null,null,null);
+        }
+    }
     public record Sheet(UUID id, String sheetNo, String status, long version, DraftInput input,
             Calculation calculation, UUID confirmedSnapshotId, OffsetDateTime updatedAt,
             boolean canEdit, boolean canConfirm, boolean canExport) {}
@@ -95,6 +101,11 @@ public final class GoodsCostContracts {
     }
     public record TemplateSave(Long expectedVersion, String idempotencyKey, TemplateInput input) {}
     public record Template(UUID id, long version, TemplateInput input, OffsetDateTime updatedAt) {}
+    /** Exact display/eligibility metadata only; full template input is a separate selected-ID read. */
+    public record TemplateSummary(UUID id,long version,String name,UUID goodsId,UUID clientId,
+            String validFrom,String validTo,String minBatchQty,String maxBatchQty,
+            UUID currencyId,String exchangeRateToLocal,OffsetDateTime updatedAt) {}
+
     public record ConvertCurrencyRequest(DraftInput input,UUID targetCurrencyId,String targetExchangeRateToLocal) {}
     public record ConvertedCurrency(DraftInput input,Calculation calculation) {}
 }

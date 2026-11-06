@@ -55,6 +55,11 @@ class ProductionOverLimitListPage extends ConsumerStatefulWidget {
 
 class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
     with ScopedPagedReadViewMixin<ProductionOverLimitListPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   PagedResult<ProductionOverLimitDisposition>? _data;
   final _tableRows =
       MasterDataTableRowsController<ProductionOverLimitDisposition>();
@@ -158,8 +163,10 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
         });
       }
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (current()) setState(() => _error = error.message);
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (current()) setState(() => _error = '超限产出列表读取失败，请重试');
     } finally {
       if (current()) setState(() => _loading = false);
@@ -170,9 +177,13 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
   Widget build(BuildContext context) {
     ref.listen(authenticatedScopeProvider, (_, _) => _identityChanged());
     ref.listen(apiBaseUrlProvider, (_, _) => _identityChanged());
+    Future<void> visibleReadReturn() => _load();
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
     ref.onPageResume(
       RouteName.productionOverLimitDispositions,
-      () => _load(),
+      visibleReadReturn,
       refreshKeys: [productionOverLimitRefreshKey],
     );
     return Scaffold(

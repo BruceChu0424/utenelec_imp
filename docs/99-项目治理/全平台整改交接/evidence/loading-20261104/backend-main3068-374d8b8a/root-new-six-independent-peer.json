@@ -1,0 +1,67 @@
+{
+  "reviewedAtUtc": "2026-11-05T21:08:14.495031+00:00",
+  "mode": "Root independent source-bound static review; no runtime claim or server source writes",
+  "mainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryService.java",
+      "baseSha256": "fff20f700a26ebb99e26f6afc46006f98d423a42352dd01dbb1fb24c8e12bec3",
+      "mainSha256": "904a566b6922b54c2c6557e06672286d6fdd70aa15417c943272e91389564026",
+      "taskSha256": "480b1719176a8b4924129825d97bfc1150086a98d0b14f50d5895280fa0ad9f9",
+      "stagedSha256": "af8466e3a44fdb045567db424811240a44e4b0191f91a45373ddd02be5791802",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+      "baseSha256": "5c89dcece77370f81034d3eb521812fef28580d72b27be14c840fe796562a8ac",
+      "mainSha256": "826609a8b4f5f3c3967b43d0011ae34a09c0b9094369f7c2f40552aac618e7df",
+      "taskSha256": "42a6592e659e3ab495e3e01b3faf816e23343c131030de534b1144529c3cccc2",
+      "stagedSha256": "4ac01e7fe3cf57f02bcedbcbbc8996524606dc730f88ee7891c58866b28357ea",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
+      "baseSha256": "2ae432e8362b17900d515bd0de30c9c09cc886f491edd654c4821456bac3a174",
+      "mainSha256": "6e4a45df0a5475a4d60ad838a8dbdd627e04d7fe43f9c953dea736cddad105e6",
+      "taskSha256": "6255e1ede6d2ce766ca0245f3472eedcae9cbb4548963fe05357db8d1cdba315",
+      "stagedSha256": "65d1cc9f21b92ccd23856fe8cead3391f508ae30e9536cc795129a54f8772022",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
+      "baseSha256": "9c2479e4c023735342a6ec1b12ff3958884b5919a179c3b5d705141aa75edf43",
+      "mainSha256": "cbbaadf571941d39f795c2d6bd178db138649119dedd4b9f03e3ce5916d03d30",
+      "taskSha256": "0e9314139d10aa71d5501fcafce5dde2dc84a0af05729b2151c8bd0113e3b55b",
+      "stagedSha256": "955fdcdfa9e0d836f25759b155d112927df9034ec154d1bee0e6c5d689c13a0e",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java",
+      "baseSha256": "652d128e741daec8b77c573be13a4cce3c5a382794aa9f242edb726586301a29",
+      "mainSha256": "53622f921b102df7c1c0edad0477903d8fd4d9a1d6492c3903d069ec29f0f5b5",
+      "taskSha256": "fdf7bf6b8554f1b7dae1ae3b38deda88b1ee919ae8ab34a68b217e97101b8405",
+      "stagedSha256": "d0a4079c3e5e68113f95b6b47fafea03e78d0aaa7c8a11eb0d35fda6cc4b52ac",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchQueryServiceTest.java",
+      "baseSha256": "98f7fb833815c0249be3a1dcfe4d9165a74c716a4cecc4dc93c3501328434908",
+      "mainSha256": "2791330d14ad2d8ae2d1ebc2520f55c1f28f06073efcad7d5615af429d4edd56",
+      "taskSha256": "c1ff46bc358c19798a3836bdd13130612b71570e9ac60611ee16edc9044a57db",
+      "stagedSha256": "8c9436fd65f4025f960e6bec951754b733e37b15c21e57183279787f15a98040",
+      "taskToStagedChangesExactlyMainDelta": true,
+      "mainToStagedChangesExactlyTaskDelta": true,
+      "review": "Only taskId output facts (2), hidden __lineId column/select identity (4 reports), original-export body limit annotation (2), rowKey output fact (1), and two exact test identity assertions are transferred. No permissions, normal filters, candidate/materialized metadata, money, precision, streaming limits or lifecycle behavior changed beyond the already-reviewed source delta."
+    }
+  ]
+}

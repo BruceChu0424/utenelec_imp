@@ -1,0 +1,11 @@
+{
+  "source": "3c4971d02f38b69f411a9ad760776cfb51419d2d48e942def026101e337d6300",
+  "paths": 7410,
+  "mainJava": 3211,
+  "testJava": 2593,
+  "SQL": 1013,
+  "head": 1074,
+  "gate": 1073,
+  "external": 296,
+  "fourPinSha256": "aa5fa4419fdeb95c96acafe7268c8726e0f7fe35a31300c0413d39f513dbd37d"
+}

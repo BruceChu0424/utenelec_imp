@@ -4,9 +4,27 @@
 // 的端点会下发，其余端点解析成空列表、合计条整条不渲染。合计一律由服务端在**整个结果集**
 // 上算（见 shared/report/report_total.dart）——列表是服务端分页的，前端对当前页
 // 求和会得出一个看着像总计、其实只覆盖一页的数，比不显示更糟。
+import 'dart:collection';
+
 import '../../features/basic_data/models/master_facet.dart';
 import '../../core/performance/ui_work_budget.dart';
 import '../report/report_total.dart';
+
+/// Optional immutable proof carried by a typed response across internal batches.
+abstract interface class PagedResultRevision {
+  Object? get snapshotRevision;
+}
+
+List<T> freezePagedRows<T>(Iterable<T> rows) => _IndependentPagedRows<T>(rows);
+bool isIndependentPagedRows(Object? rows) =>
+    rows is _IndependentPagedRows<Object?>;
+
+/// Unique response identity even when there are no rows. Never bind a shared
+/// const empty list to a reader; its authorization belongs to this response.
+class _IndependentPagedRows<T> extends UnmodifiableListView<T> {
+  _IndependentPagedRows(Iterable<T> rows)
+    : super(List<T>.of(rows, growable: false));
+}
 
 class PagedResult<T> {
   const PagedResult({
@@ -39,6 +57,64 @@ class PagedResult<T> {
 
   /// 各 facet 字段的空值行数（"(空)(N)" 桶用）；与 [facets] 成对出现。
   final Map<String, int> facetNullCounts;
+
+  /// The response's reified row type builds the typed list. A Base reader may
+  /// legally receive a Child page without passing `List<Base>` to `List<Child>`.
+  PagedResult<T> withRowsFrom(
+    Iterable<Object?> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => withRows(
+    List<T>.of(rows.cast<T>()),
+    page: page,
+    size: size,
+    total: total,
+    totalPages: totalPages,
+  );
+
+  Future<PagedResult<T>> withRowsFromResponsive(
+    Iterable<Object?> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+    UiWorkBudget? budget,
+  }) async {
+    final typed = await mapInUiSlices<Object?, T>(
+      rows,
+      (row) => row as T,
+      budget: budget,
+    );
+    return withRows(
+      typed,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: totalPages,
+    );
+  }
+
+  /// A continuous local result keeps the first response's authoritative metadata.
+  /// Typed subclasses override this constructor to preserve their own fields.
+  PagedResult<T> withRows(
+    List<T> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => PagedResult<T>(
+    items: freezePagedRows<T>(rows),
+    page: page,
+    size: size ?? rows.length,
+    total: total ?? this.total,
+    totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+    totals: totals,
+    facets: facets,
+    facetNullCounts: facetNullCounts,
+    readScopeVersion: readScopeVersion,
+  );
 
   /// Network-facing variant: large rows and facet dictionaries are decoded in
   /// bounded UI work slices. Totals remain the server's complete-result totals.

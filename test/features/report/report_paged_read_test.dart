@@ -16,11 +16,10 @@ Map<String, dynamic> _response(
   'columns': [
     {'key': 'amount', 'label': schema, 'type': 'money', 'width': 240},
   ],
-  'rows': total == 0
-      ? <Map<String, dynamic>>[]
-      : [
-          {'id': '$prefix-$page', 'amount': '999999999999.000001'},
-        ],
+  'rows': [
+    for (var index = 0; index < 20 && (page - 1) * 20 + index < total; index++)
+      {'id': '$prefix-$page-$index', 'amount': '999999999999.000001'},
+  ],
   'page': page,
   'total': omitted ? -1 : total,
   'totalPages': omitted ? -1 : (total / 20).ceil(),
@@ -51,98 +50,96 @@ Map<String, dynamic> _response(
 
 void main() {
   test(
-    'fresh statistics replace the snapshot without resetting the table schema',
+    'fresh statistics replace a complete snapshot without resetting its table schema',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
       var stamp = '2026-10-26T00:00:00Z';
       ReportPageRead fresh() => reader.begin(
+        reusePages: false,
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
+        isCurrent: () => true,
         fetch: (query) async => {
           ..._response(query['page'] as int),
           'statisticsGeneratedAt': stamp,
         },
-        isCurrent: () => true,
-        reusePages: false,
-        revalidatingWindow: true,
       );
       final first = await fresh().read(1) as ReportPageSnapshot;
-      reader.accept(first);
+      expect(reader.accept(first), isTrue);
       final schema = reader.snapshotRevision;
       stamp = '2026-10-26T00:01:00Z';
-      final refreshed = await fresh().read(1) as ReportPageSnapshot;
-      reader.accept(refreshed);
-      expect(refreshed.pageCacheRevision, isNot(first.pageCacheRevision));
+      final next = await fresh().read(1) as ReportPageSnapshot;
+      expect(reader.accept(next), isTrue);
+      expect(next.pageCacheRevision, isNot(first.pageCacheRevision));
       expect(reader.snapshotRevision, schema);
-      expect(refreshed.snapshot.statisticsGeneratedAt, stamp);
+      expect(next.snapshot.statisticsGeneratedAt, stamp);
+      expect(next.snapshot.rows.length, 40);
     },
   );
-
   test(
-    'navigation after a background refresh resumes adjacent preparation',
+    'a complete result is reused locally without adjacent preparation and explicit refresh reads the whole query',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
-      final reads = <int>[];
-      Future<Map<String, dynamic>> fetch(Map<String, dynamic> query) async {
-        final page = query['page'] as int;
-        reads.add(page);
-        return _response(
-          page,
-          total: 60,
-          omitted: query['includeCount'] == false,
-        );
-      }
-
-      ReportPageRead begin({required bool refresh}) => reader.begin(
+      final calls = <int>[];
+      ReportPageRead begin(bool reuse) => reader.begin(
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
-        fetch: fetch,
         isCurrent: () => true,
-        reusePages: !refresh,
-        revalidatingWindow: refresh,
+        reusePages: reuse,
+        fetch: (query) async {
+          final page = query['page'] as int;
+          calls.add(page);
+          return _response(
+            page,
+            total: 60,
+            omitted: query['includeCount'] == false,
+          );
+        },
       );
-      final refresh = begin(refresh: true);
-      reader.accept(await refresh.read(1));
+      final first = begin(false);
+      expect(reader.accept(await first.read(1)), isTrue);
+      expect(calls, [1, 2, 3]);
+      final reuse = begin(true);
+      expect(identical(first, reuse), isTrue);
+      expect((await reuse.read(99)).items.length, 60);
       await Future<void>.delayed(Duration.zero);
-      expect(reads, [1]);
-      final browse = begin(refresh: false);
-      reader.accept(await browse.read(2));
-      await Future<void>.delayed(Duration.zero);
-      expect(reads, [1, 2, 3]);
+      expect(calls, [1, 2, 3]);
+      expect(reader.accept(await begin(false).read(1)), isTrue);
+      expect(calls, [1, 2, 3, 1, 2, 3]);
     },
   );
-
   test(
-    'changed server read proof retires the complete accepted report snapshot',
+    'changed server read proof rejects the entire refresh and retires the former report authority',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
-      final session = reader.begin(
+      var changed = false;
+      ReportPageRead begin() => reader.begin(
+        reusePages: false,
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
+        isCurrent: () => true,
         fetch: (query) async {
           final page = query['page'] as int;
           return {
             ..._response(page, omitted: query['includeCount'] == false),
-            if (page == 2) 'readScopeVersion': 'changed-scope-v2',
+            if (changed && page == 2) 'readScopeVersion': 'changed-scope-v2',
           };
         },
-        isCurrent: () => true,
-        reusePages: false,
-        canPrefetch: () => false,
       );
-      final old = await session.read(1);
-      reader.accept(old);
+      final old = await begin().read(1);
+      expect(reader.accept(old), isTrue);
+      changed = true;
       await expectLater(
-        session.read(2),
+        begin().read(1),
         throwsA(
           isA<ApiException>().having(
-            (error) => error.code,
+            (e) => e.code,
             'code',
             'READ_SCOPE_CHANGED',
           ),
@@ -152,213 +149,197 @@ void main() {
       expect(reader.snapshotRevision, isNull);
     },
   );
-
   test(
-    'cached report restores rows, schema, exact totals and page metadata together',
+    'complete typed report keeps first schema, exact totals, facets and metadata without summing batches',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
       final queries = <Map<String, dynamic>>[];
-      Future<Map<String, dynamic>> fetch(Map<String, dynamic> query) async {
-        queries.add(query);
-        return _response(
-          query['page'] as int,
-          omitted: query['includeCount'] == false,
-        );
-      }
-
-      ReportPageRead begin(bool cached) => reader.begin(
+      ReportPageRead begin(bool reuse) => reader.begin(
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
-        fetch: fetch,
         isCurrent: () => true,
-        reusePages: cached,
-      );
-      final initial = begin(false);
-      final first = await initial.read(1);
-      expect(reader.accept(first), isTrue);
-      await Future<void>.delayed(Duration.zero);
-      final navigation = begin(true);
-      expect(identical(initial, navigation), isTrue);
-      final second = await navigation.read(2) as ReportPageSnapshot;
-      expect(reader.accept(second), isTrue);
-      expect(second.snapshot.rows.single['id'], 'row-2');
-      expect(second.snapshot.columns.single.label, '金额');
-      expect(second.snapshot.facets['amount']!.single.label, '服务端来源');
-      expect(
-        second.snapshot.totals.single.groups.single.valueText,
-        '999999999999.000001',
-      );
-      expect(second.snapshot.meta['pageProof'], 2);
-      expect(second.snapshot.statisticsGeneratedAt, '2026-10-26T00:00:00Z');
-      expect(queries.where((q) => q['page'] == 2), hasLength(1));
-      expect(queries.last['includeCount'], isFalse);
-      final back = await begin(true).read(1) as ReportPageSnapshot;
-      expect(back.snapshot.meta['pageProof'], 1);
-      expect(queries.where((q) => q['page'] == 1), hasLength(1));
-    },
-  );
-
-  test(
-    'same row count with changed schema retires the old cached page',
-    () async {
-      final reader = ReportPagedRead(ReportMetadataReuse());
-      addTearDown(reader.dispose);
-      final reads = <int>[];
-      var schema = '旧金额';
-      final session = reader.begin(
-        endpoint: '/reports/example',
-        query: {'size': 20},
-        readerEpoch: 1,
+        reusePages: reuse,
         fetch: (query) async {
-          final page = query['page'] as int;
-          reads.add(page);
-          if (page == 2) schema = '新金额';
+          queries.add(query);
           return _response(
-            page,
-            schema: schema,
+            query['page'] as int,
             omitted: query['includeCount'] == false,
           );
         },
-        isCurrent: () => true,
-        reusePages: false,
       );
-      final first = await session.read(1);
-      reader.accept(first);
-      final before = reader.snapshotRevision;
-      await Future<void>.delayed(Duration.zero);
-      final second = await session.read(2) as ReportPageSnapshot;
-      reader.accept(second);
-      expect(reader.snapshotRevision, isNot(before));
-      final back = await session.read(1) as ReportPageSnapshot;
-      expect(back.snapshot.columns.single.label, '新金额');
-      expect(reads.where((page) => page == 1), hasLength(2));
+      final first = await begin(false).read(1) as ReportPageSnapshot;
+      expect(reader.accept(first), isTrue);
+      final reused = await begin(true).read(2) as ReportPageSnapshot;
+      expect(reused.snapshot.rows.length, 40);
+      expect(reused.snapshot.rows.first['id'], 'row-1-0');
+      expect(reused.snapshot.rows.last['id'], 'row-2-19');
+      expect(reused.snapshot.rows, same(reused.items));
+      expect(reused.snapshot.columns.single.label, '金额');
+      expect(reused.snapshot.facets['amount']!.single.label, '服务端来源');
+      expect(
+        reused.snapshot.totals.single.groups.single.valueText,
+        '999999999999.000001',
+      );
+      expect(reused.snapshot.meta['pageProof'], 1);
+      expect(reused.snapshot.statisticsGeneratedAt, '2026-10-26T00:00:00Z');
+      expect(queries.length, 2);
+      expect(queries.last['includeCount'], isFalse);
     },
   );
-
   test(
-    'foreground adopts pending speculative response with complete metadata',
+    'a schema change inside internal batches is rejected and a stable fresh schema can recover',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
-      final next = Completer<Map<String, dynamic>>();
-      var secondReads = 0;
-      final session = reader.begin(
+      var stable = false;
+      ReportPageRead begin() => reader.begin(
+        reusePages: false,
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
+        isCurrent: () => true,
+        fetch: (query) async {
+          final page = query['page'] as int;
+          return _response(
+            page,
+            schema: stable || page == 2 ? '新金额' : '旧金额',
+            omitted: query['includeCount'] == false,
+          );
+        },
+      );
+      await expectLater(begin().read(1), throwsA(isA<ApiException>()));
+      stable = true;
+      final recovered = await begin().read(1) as ReportPageSnapshot;
+      expect(reader.accept(recovered), isTrue);
+      expect(recovered.snapshot.columns.single.label, '新金额');
+      expect(recovered.snapshot.rows.length, 40);
+    },
+  );
+  test(
+    'concurrent consumers adopt the one complete in-flight result with its metadata',
+    () async {
+      final reader = ReportPagedRead(ReportMetadataReuse());
+      addTearDown(reader.dispose);
+      final held = Completer<Map<String, dynamic>>(),
+          started = Completer<void>();
+      var secondReads = 0;
+      final session = reader.begin(
+        reusePages: false,
+        endpoint: '/reports/example',
+        query: {'size': 20},
+        readerEpoch: 1,
+        isCurrent: () => true,
         fetch: (query) async {
           final page = query['page'] as int;
           if (page == 2) {
             secondReads++;
-            return next.future;
+            started.complete();
+            return held.future;
           }
           return _response(page);
         },
-        isCurrent: () => true,
-        reusePages: false,
       );
-      reader.accept(await session.read(1));
-      await Future<void>.delayed(Duration.zero);
-      final foreground = session.read(2);
+      final first = session.read(1);
+      await started.future;
+      final adopt = session.read(2);
       expect(secondReads, 1);
-      next.complete(_response(2, omitted: true));
-      final accepted = await foreground as ReportPageSnapshot;
-      expect(reader.accept(accepted), isTrue);
-      expect(accepted.snapshot.meta['pageProof'], 2);
-      expect(accepted.snapshot.totals, isNotEmpty);
+      held.complete(_response(2, omitted: true));
+      final a = await first as ReportPageSnapshot;
+      final b = await adopt as ReportPageSnapshot;
+      expect(reader.accept(a), isTrue);
+      expect(b.snapshot.rows.length, 40);
+      expect(b.snapshot.meta['pageProof'], 1);
+      expect(b.snapshot.totals, isNotEmpty);
       expect(secondReads, 1);
     },
   );
-
   test(
-    'owner A to B to A and fresh writes cannot revive old snapshots',
+    'owner A to B to A and a fresh write cannot revive old complete snapshots',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       addTearDown(reader.dispose);
-      final oldNext = Completer<Map<String, dynamic>>();
-      var owner = 1;
-      ReportPageRead begin(int epoch, {bool reuse = false}) => reader.begin(
+      var owner = 1, hold = false;
+      final held = Completer<Map<String, dynamic>>(),
+          started = Completer<void>();
+      ReportPageRead begin(int epoch) => reader.begin(
+        reusePages: false,
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: epoch,
+        isCurrent: () => owner == epoch,
         fetch: (query) async {
           final page = query['page'] as int;
-          if (epoch == 1 && page == 2) return oldNext.future;
-          return _response(page, prefix: 'reader-$epoch');
+          if (epoch == 1 && hold && page == 2) {
+            started.complete();
+            return held.future;
+          }
+          return _response(
+            page,
+            prefix: 'reader-$epoch',
+            omitted: query['includeCount'] == false,
+          );
         },
-        isCurrent: () => owner == epoch,
-        reusePages: reuse,
       );
-      final old = begin(1);
-      final oldSnapshot = await old.read(1);
+      final oldSnapshot = await begin(1).read(1);
       reader.accept(oldSnapshot);
-      await Future<void>.delayed(Duration.zero);
+      hold = true;
+      final old = begin(1).read(1);
+      final rejected = expectLater(old, throwsA(anything));
+      await started.future;
       owner = 2;
       reader.accept(await begin(2).read(1));
       owner = 3;
       final fresh = begin(3);
-      final accepted = await fresh.read(1) as ReportPageSnapshot;
-      reader.accept(accepted);
-      oldNext.complete(_response(2, prefix: 'private-old'));
-      final next = await fresh.read(2) as ReportPageSnapshot;
-      expect(next.snapshot.rows.single['id'], 'reader-3-2');
+      final current = await fresh.read(1) as ReportPageSnapshot;
+      reader.accept(current);
+      held.complete(_response(2, prefix: 'private-old', omitted: true));
+      await rejected;
+      expect(current.snapshot.rows.first['id'], 'reader-3-1-0');
       expect(reader.accept(oldSnapshot), isFalse);
-      await expectLater(old.read(1), throwsStateError);
       final afterWrite = begin(3);
       expect(identical(fresh, afterWrite), isFalse);
-      expect(
-        (await afterWrite.read(1) as ReportPageSnapshot)
-            .snapshot
-            .rows
-            .single['id'],
-        'reader-3-1',
-      );
+      expect((await afterWrite.read(1)).items.length, 40);
     },
   );
-
   test(
-    'empty retained-window refresh preserves its complete snapshot subtype',
+    'an empty whole-query refresh preserves the report subtype and clears old totals and facets',
     () async {
       final reader = ReportPagedRead(ReportMetadataReuse());
       final pages = PagedListController<Map<String, dynamic>>();
       addTearDown(reader.dispose);
       addTearDown(pages.dispose);
-      final initial = reader.begin(
+      ReportPageRead begin(int total) => reader.begin(
+        reusePages: false,
         endpoint: '/reports/example',
         query: {'size': 20},
         readerEpoch: 1,
-        fetch: (q) async => _response(q['page'] as int),
         isCurrent: () => true,
-        reusePages: false,
-        canPrefetch: () => false,
+        fetch: (query) async => _response(
+          query['page'] as int,
+          total: total,
+          omitted: query['includeCount'] == false,
+        ),
       );
-      pages.page = await initial.read(2);
+      final initial = begin(40);
+      pages.page = await initial.read(1);
       reader.accept(pages.page);
-      pages.retainPages([2]);
-      final refresh = reader.begin(
-        endpoint: '/reports/example',
-        query: {'size': 20},
-        readerEpoch: 1,
-        fetch: (_) async => _response(1, total: 0),
-        isCurrent: () => true,
-        reusePages: false,
-        revalidatingWindow: true,
-      );
+      final fresh = begin(0);
       await pages.load(
-        2,
+        1,
         silent: true,
-        fetch: () => refresh.read(2),
-        fetchPage: refresh.read,
+        fetch: () => fresh.read(1),
+        fetchPage: fresh.read,
       );
       expect(pages.page, isA<ReportPageSnapshot>());
       expect(reader.accept(pages.page), isTrue);
-      final snapshot = pages.page! as ReportPageSnapshot;
-      expect(snapshot.snapshot.page, 1);
-      expect(snapshot.snapshot.total, 0);
-      expect(snapshot.snapshot.totals, isEmpty);
-      expect(snapshot.snapshot.facets, isEmpty);
+      final result = pages.page as ReportPageSnapshot;
+      expect(result.snapshot.rows, isEmpty);
+      expect(result.snapshot.page, 1);
+      expect(result.snapshot.total, 0);
+      expect(result.snapshot.totals, isEmpty);
+      expect(result.snapshot.facets, isEmpty);
     },
   );
 }

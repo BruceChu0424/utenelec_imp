@@ -1,4 +1,5 @@
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/delivery/delivery_processing_target.dart';
 
 const Set<String> warehouseSalesOutboundForbiddenKeys = {
@@ -283,7 +284,9 @@ class WarehouseSalesOutboundLine {
     this.unitId,
     this.unitName,
     this.unitRate,
+    this.unitRateText,
     this.quantity,
+    this.quantityIsRecorded = true,
     this.weightKg,
     this.weightKgExact,
     this.weightSource,
@@ -313,7 +316,10 @@ class WarehouseSalesOutboundLine {
   /// 1 个行单位 = 多少基本单位 (称重偏差按 数量 x 它 的基本数量核对); 服务端必给 (空按 1),
   /// 缺失时不核对偏差 (只记重量, 不误报)。
   final double? unitRate;
+  final String? unitRateText;
   final String? quantity;
+  final bool quantityIsRecorded;
+  String? get recordedQuantityText => quantityIsRecorded ? quantity : null;
 
   /// 出库重量 (千克): 已出库行取销售出库流水的重量 (ADR-135 §3.7), 待出库行为空;
   /// 仓库称重只落出库流水, 从不写回销售出货明细。
@@ -361,7 +367,11 @@ class WarehouseSalesOutboundLine {
       unitId: _text(json['unitId']),
       unitName: _text(json['unitName']),
       unitRate: _number(json['unitRate']),
+      unitRateText: recordedDocumentDecimal(json, 'unitRate'),
       quantity: _decimalText(json['quantityExact'] ?? json['quantity']),
+      quantityIsRecorded:
+          json['quantityIsRecorded'] != false &&
+          recordedDocumentDecimal(json, 'quantity') != null,
       weightKg: double.tryParse(
         (json['weightKgExact'] ?? json['weightKg'])?.toString() ?? '',
       ),

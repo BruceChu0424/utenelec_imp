@@ -91,8 +91,8 @@ void main() {
               fixedBadgeSummaryOverride(),
               formDraftsProvider.overrideWith(_Drafts.new),
               for (final kind in formDraftsPageCategories['finance']!.kinds)
-                draftWorkspaceRowsProvider(kind).overrideWith(
-                  (ref) async => [
+                draftWorkspaceReadProvider(kind).overrideWith(
+                  (ref) => DraftWorkspaceRead.fromRows([
                     if (kind == DraftDocKind.financeReceipt ||
                         kind == DraftDocKind.financePayment)
                       DraftWorkspaceRow(
@@ -110,7 +110,7 @@ void main() {
                         amount: '12800.00',
                         deletable: true,
                       ),
-                  ],
+                  ]),
                 ),
             ],
             child: MaterialApp(

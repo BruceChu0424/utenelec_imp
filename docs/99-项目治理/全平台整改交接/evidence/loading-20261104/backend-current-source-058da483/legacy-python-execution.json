@@ -1,0 +1,14 @@
+{
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "startedAtUtc": "2026-11-05T12:38:02.2581747Z",
+  "endedAtUtc": "2026-11-05T12:39:25.1168062Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "log": "server/build/loading-validation/combined-v1062-legacy-python-tests.log",
+  "suites": [
+    "test_verify_rehearsal_counter_baseline",
+    "test_bootstrap_target_inventory",
+    "test_compose_bootstrap",
+    "test_verify_rehearsal_result"
+  ]
+}

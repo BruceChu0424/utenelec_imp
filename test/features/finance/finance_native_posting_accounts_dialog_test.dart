@@ -7,10 +7,124 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/finance/widgets/finance_native_posting_accounts_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'finance_requirement_test_ui.dart';
 
 void main() {
+  for (final rejection in [
+    (code: 'UNAUTHORIZED', status: 401),
+    (code: 'FORBIDDEN', status: 403),
+    (code: 'READ_SCOPE_CHANGED', status: 403),
+  ]) {
+    testWidgets('accepted mapping projection retires on ${rejection.code}', (
+      tester,
+    ) async {
+      final api = _Api()..directoryTotal = 101;
+      await _pump(tester, api);
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      for (
+        var attempt = 0;
+        attempt < 60 &&
+            tester
+                    .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+                    .items
+                    .length !=
+                101;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        hasLength(101),
+      );
+      expect(find.text('ACCOUNT-0'), findsOneWidget);
+      api.failDirectoryPage = 2;
+      api.directoryReadError = ApiException(
+        rejection.code,
+        '原读取已被拒绝',
+        httpStatus: rejection.status,
+        hasResponseCode: true,
+      );
+      await tapFinanceAction(tester, '刷新');
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, '原读取已被拒绝');
+      expect(find.text('ACCOUNT-0'), findsNothing);
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets(
+    'mapping directory accepts every bounded batch and scroll reads nothing',
+    (tester) async {
+      final api = _Api()..directoryTotal = 101;
+      await _pump(tester, api);
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, hasLength(101));
+      expect(table.items.last['id'], 'version-100');
+      expect(table.totalPages, 1);
+      expect(table.onPageChange, isNull);
+      expect(api.directoryReads.map((q) => q['size']), everyElement(100));
+      expect(
+        api.directoryReads
+            .map((q) => q['page'])
+            .toList()
+            .sublist(api.directoryReads.length - 2),
+        [1, 2],
+      );
+      final reads = api.directoryReads.length;
+      await tester.drag(finder, const Offset(0, -6000));
+      await tester.pumpAndSettle();
+      expect(find.text('ACCOUNT-100'), findsOneWidget);
+      expect(api.directoryReads, hasLength(reads));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('mapping continuation denial never publishes its first batch', (
+    tester,
+  ) async {
+    final api = _Api()
+      ..directoryTotal = 101
+      ..failDirectoryPage = 2;
+    await _pump(tester, api);
+    await _waitForReadError(
+      tester,
+      find.byType(MasterDataTableView<Map<String, dynamic>>),
+    );
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      find.byType(MasterDataTableView<Map<String, dynamic>>),
+    );
+    expect(table.items, isEmpty);
+    expect(api.directoryReads.any((query) => query['page'] == 2), isTrue);
+    expect(table.error, '后批无权限');
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(MasterDataTableView<Map<String, dynamic>>),
+            matching: find.byKey(
+              const ValueKey('master-table-initial-read-details'),
+            ),
+          )
+          .hitTestable(),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == '后批无权限',
+      ),
+      findsOneWidget,
+    );
+    expect(api.saved, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'unknown mapping submission freezes the reviewed UUIDs and replays the same request',
     (tester) async {
@@ -52,6 +166,22 @@ void main() {
       expect(find.text('请选择用途及已核验币别的财务科目，并填写依据。'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
+  );
+}
+
+Future<void> _waitForReadError(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 60; attempt++) {
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    if (!table.isLoading && table.error != null) return;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(
+    tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).error,
+    isNotNull,
+    reason:
+        'The actual continuation rejection must finish and remain observable.',
   );
 }
 
@@ -114,11 +244,50 @@ class _Api extends ApiClient {
   bool loseFirst = false;
   int actual = 0;
   final saved = <Map<String, dynamic>>[];
+  int? directoryTotal, failDirectoryPage;
+  ApiException? directoryReadError;
+  final directoryReads = <Map<String, dynamic>>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/native-posting-accounts' && directoryTotal != null) {
+      final page = query!['page'] as int, size = query['size'] as int;
+      directoryReads.add(Map<String, dynamic>.from(query));
+      if (page == failDirectoryPage) {
+        throw directoryReadError ??
+            ApiException(
+              'FORBIDDEN',
+              '后批无权限',
+              httpStatus: 403,
+              hasResponseCode: true,
+            );
+      }
+      return {
+        'items': [
+          for (
+            var i = (page - 1) * size;
+            i < page * size && i < directoryTotal!;
+            i++
+          )
+            {
+              'id': 'version-$i',
+              'role_key': 'AP_CONTROL',
+              'account_code': 'ACCOUNT-$i',
+              'effective_from': '2026-11-03',
+              'configuration_version': i,
+              'status': 'DRAFT',
+              'enabled': true,
+              'source_reference': '原始依据$i',
+            },
+        ],
+        'page': page,
+        'size': size,
+        'total': directoryTotal,
+        'totalPages': (directoryTotal! / size).ceil(),
+      };
+    }
     if (path.endsWith('/choices')) {
       return {
         'roles': [

@@ -295,7 +295,7 @@ WPF 当前未完成完整 ERP 迁移、Win7 真机 UAT 或正式发布；独立�
 1. 冻结同一审核提交、版本、真实构建号、平台/运行时/架构矩阵。Windows 每个已支持组合使用 `Release`，显式固化批准的正式 HTTPS 配置；Flutter 显式编入公司及可信云端
    两个 HTTPS API；本地 Debug/Profile、localhost 和 `--local-test` 产物不能进入正式渠道。
 2. 按[Windows 构建与发布清单](../client/README.zh-CN.md#每次正式发布windows-安装包和更新-zip-一起交付)，
-   `flutter` 使用现有 `build_windows_installer.py --compile --update-output` 从同一完整应用输出生成 Setup.exe 和更新 ZIP；其他运行时须使用各自已验收的打包及更新合同，不直接套用 Flutter 打包器。
+   `flutter` 正式双包统一通过 `build_windows_release.py` 生成并独立复验；`build_windows_installer.py` 是其内部安装器步骤。需使用受审自建引擎时，先从同一干净提交生成完整 Release，再按客户端手册的同源载荷核对使用 `--skip-build`；其他运行时须使用各自已验收的打包及更新合同，不直接套用 Flutter 打包器。
    逐组核对版本、构建号、运行时、架构及两个摘要。首次安装使用 EXE，运行中软件的更新使用同组 ZIP。
 3. 完成服务器应用版本与健康验收后，由有 `client_release:publish` 的人员通过现有发布界面或授权 API
    分别上传、发布两份，完成发布再认证。实际写入配置的 `UTEN_CLIENT_RELEASES_DIR`：Simple 默认

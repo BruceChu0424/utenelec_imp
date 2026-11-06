@@ -3,7 +3,6 @@ import 'package:flutter/rendering.dart';
 import '../../core/responsive/compact_presentation.dart';
 
 import '../data_display/master_data_table_rows_controller.dart';
-import 'uten_pagination.dart';
 
 /// Selection, paging, and confirmation share one footer on wide panels.
 /// Narrow panels wrap without shrinking text or touch targets.
@@ -167,21 +166,5 @@ class UtenPickerPageControls<T> extends StatelessWidget {
   final MasterDataTableRowsController<T> controller;
 
   @override
-  Widget build(BuildContext context) =>
-      ValueListenableBuilder<MasterDataPagination?>(
-        valueListenable: controller.pagination,
-        builder: (context, page, _) {
-          if (page == null || page.totalPages <= 1) {
-            return const SizedBox.shrink();
-          }
-          return UtenPagination(
-            key: const Key('picker-footer-pagination'),
-            currentPage: page.currentPage,
-            totalPages: page.totalPages,
-            busy: page.busy,
-            onPageChanged: controller.goToPage,
-            inputOutlineKey: const Key('picker-page-input-outline'),
-          );
-        },
-      );
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

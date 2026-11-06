@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
 
@@ -110,4 +111,28 @@ Future<void> scrollUtenTestTableItemIntoView(
   await tester.ensureVisible(item);
   await tester.pumpAndSettle();
   expect(item.hitTestable(), findsOneWidget);
+}
+
+/// The one vertical body owned by a particular table, excluding toolbar or
+/// surrounding-page scrollables. Used when preserving a real table offset.
+ScrollController utenTestTableBodyController(
+  WidgetTester tester,
+  Finder table,
+) {
+  final body = find.descendant(
+    of: table,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenPageScrollbarSource &&
+          widget.debugLabel == 'master-table-body',
+    ),
+  );
+  expect(body, findsOneWidget);
+  final controller = tester.widget<UtenPageScrollbarSource>(body).controller;
+  expect(controller.hasClients, isTrue);
+  expect(controller.positions, hasLength(1));
+  expect(controller.position.axis, Axis.vertical);
+  expect(controller.position.viewportDimension, greaterThan(0));
+  expect(controller.position.maxScrollExtent, greaterThan(0));
+  return controller;
 }

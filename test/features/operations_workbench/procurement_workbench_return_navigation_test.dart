@@ -189,11 +189,14 @@ void main() {
             skipOffstage: false,
           );
           final tableState = tester.state(tableFinder);
-          // The table reports its bounded loaded window after scrolling. Exercise
-          // that same host callback without relying on viewport-dependent scrolling.
-          tester
-              .widget<MasterDataTableView<OperationsWorkbenchTask>>(tableFinder)
-              .onRetainedPagesChanged!([1, 2]);
+          expect(
+            tester
+                .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+                  tableFinder,
+                )
+                .onPageChange,
+            isNull,
+          );
           await tester.tap(find.text('PLAN-A'));
           await tester.pump(const Duration(milliseconds: 100));
           await tester.tap(find.text('PLAN-A'));
@@ -212,6 +215,13 @@ void main() {
           first.complete(_data(subcontract, 'FIRST-NEW', totalPages: 2));
           await tester.pump();
           await tester.pump();
+          for (
+            var frame = 0;
+            frame < 100 && fixture.gateway.loads < initialLoads + 2;
+            frame++
+          ) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
           expect(fixture.gateway.loads, initialLoads + 2);
           expect(find.text('FIRST-NEW'), findsNothing);
           expect(find.text('PLAN-A'), findsOneWidget);
@@ -259,7 +269,7 @@ void main() {
                   )
                   .refreshedPages
                   .keys,
-              [1, 2],
+              [1],
             );
           }
           expect(tester.takeException(), isNull);
@@ -366,11 +376,13 @@ OperationsWorkbenchData _data(
   return OperationsWorkbenchData(
     department: department,
     summary: OperationsWorkbenchSummary(
-      totalTasks: includeCreatedRow ? 2 : 1,
+      totalTasks: includeCreatedRow || totalPages > 1 ? 2 : 1,
       overdueTasks: 0,
-      openTasks: includeCreatedRow ? 2 : 1,
-      openQty: includeCreatedRow ? 8 : 4,
-      statusCounts: {'IN_PROGRESS': includeCreatedRow ? 2 : 1},
+      openTasks: includeCreatedRow || totalPages > 1 ? 2 : 1,
+      openQty: includeCreatedRow || totalPages > 1 ? 8 : 4,
+      statusCounts: {
+        'IN_PROGRESS': includeCreatedRow || totalPages > 1 ? 2 : 1,
+      },
     ),
     items: [
       OperationsWorkbenchTask.fromJson({

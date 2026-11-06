@@ -8,7 +8,7 @@ import 'package:uten_imp/features/admin/widgets/audit_session_card.dart';
 
 void main() {
   testWidgets(
-    'timeline loads first page, appends composite cursor and opens event',
+    'timeline completes one snapshot through composite cursor and opens event',
     (tester) async {
       tester.view.physicalSize = const Size(375, 812);
       tester.view.devicePixelRatio = 1;
@@ -39,10 +39,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(calls, [(null, null, 9001)]);
+      expect(calls, [(null, null, 9001), ('2026-08-29T16:00:00Z', 42, 9001)]);
       expect(find.text('查看销售订单历史单据'), findsOneWidget);
       expect(find.text('查看了销售订单历史单据：SO-2026-001(旧系统编号 86)'), findsOneWidget);
-      expect(find.textContaining('业务对象 销售订单'), findsOneWidget);
+      expect(find.textContaining('业务对象 销售订单'), findsNWidgets(2));
       expect(find.textContaining('对象名称 销售订货单'), findsOneWidget);
       expect(find.textContaining('业务编号 SO-2026-001'), findsOneWidget);
       expect(
@@ -52,15 +52,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('成功'), findsOneWidget);
-
-      await tester.tap(
+      expect(find.text('成功'), findsNWidgets(2));
+      expect(
         find.byKey(
           ValueKey('audit-session-load-more-${sessionFixture.sessionId}'),
         ),
+        findsNothing,
       );
-      await tester.pumpAndSettle();
-      expect(calls, [(null, null, 9001), ('2026-08-29T16:00:00Z', 42, 9001)]);
       expect(
         find.byKey(const ValueKey('audit-session-event-41')),
         findsOneWidget,
@@ -99,7 +97,7 @@ void main() {
   );
 
   testWidgets(
-    'load more disables duplicate requests and removes overlapping event ids',
+    'one in-flight complete read removes overlapping immutable event ids',
     (tester) async {
       final secondPage = Completer<AuditSessionEventPage>();
       final calls = <(String?, int?, int?)>[];
@@ -121,16 +119,20 @@ void main() {
           return secondPage.future;
         },
       );
-      await tester.pumpAndSettle();
-
-      final loadMore = find.byKey(
-        ValueKey('audit-session-load-more-${sessionFixture.sessionId}'),
-      );
-      await tester.tap(loadMore);
-      await tester.pump();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
 
       expect(calls, hasLength(2));
-      expect(tester.widget<FilledButton>(loadMore).onPressed, isNull);
+      expect(
+        find.byKey(
+          ValueKey('audit-session-load-more-${sessionFixture.sessionId}'),
+        ),
+        findsNothing,
+      );
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -300));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(calls, hasLength(2), reason: 'scroll cannot start a second read');
       secondPage.complete(
         const AuditSessionEventPage(
           items: [firstEvent, secondEvent],

@@ -1,0 +1,62 @@
+{
+  "mode": "actual source byte comparison after CRLF normalization only; no runtime substitute",
+  "checks": [
+    {
+      "path": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+      "from": "class _AuxiliaryEditor extends",
+      "until": null,
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "5114e16a4e9047c87508d3e728a28127164d82561973ce6bbc6fa94839f9dade",
+      "afterSha256": "5114e16a4e9047c87508d3e728a28127164d82561973ce6bbc6fa94839f9dade"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_procurement_confirmation_dialog.dart",
+      "from": "class _ConfirmationForm extends",
+      "until": null,
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "a097856756bbad421aadc7dbaaf82fe584cd58d88ca3a8076396ef0c1d90f7fa",
+      "afterSha256": "a097856756bbad421aadc7dbaaf82fe584cd58d88ca3a8076396ef0c1d90f7fa"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
+      "from": "class FinanceStatementDocumentEditor extends",
+      "until": null,
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "5870d96372486e8041494b58eb33e0a9b9df322fa334bad60ae137c9ace386db",
+      "afterSha256": "5870d96372486e8041494b58eb33e0a9b9df322fa334bad60ae137c9ace386db",
+      "baseline": "Exact pre-leaf source reconstructed from OLD; whole-file SHA matches captured combined-direct-affected-whole manifest",
+      "baselineWholeSha256": "e767d3e2a360c42be22f7f5c7fb20128c81dd110528ded6a00df4b86827c63d3"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "from": "  Future<void> _save() async {",
+      "until": "  Future<void> _openChild(",
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "2e69debbce538b97863df4f73cf100371198a4ef70738ed8353b7ad38f17a33d",
+      "afterSha256": "2e69debbce538b97863df4f73cf100371198a4ef70738ed8353b7ad38f17a33d"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "from": "  Future<void> _close() async {",
+      "until": "  @override\n  Widget build(",
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "7ef47d18357e58a211d4e2e1eec41810cc36205264b93568529d013a9d7b05d3",
+      "afterSha256": "7ef47d18357e58a211d4e2e1eec41810cc36205264b93568529d013a9d7b05d3"
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_open_item_classification_dialog.dart",
+      "from": "  void _fill(",
+      "until": "  Future<void> _save(",
+      "normalizedOnlyCRLF": true,
+      "unchanged": true,
+      "beforeSha256": "6006b854f1323cd4c4a5bbfbd1c964ac06bf578b53e2c95921ea246ec60a398a",
+      "afterSha256": "6006b854f1323cd4c4a5bbfbd1c964ac06bf578b53e2c95921ea246ec60a398a"
+    }
+  ],
+  "allUnchanged": true
+}

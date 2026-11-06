@@ -610,19 +610,11 @@ class _WorkshopMaterialIssuePageState
   ) async {
     final goodsIds = lines.map((line) => line.goodsId).toSet().toList();
     if (goodsIds.isEmpty) return const [];
-    final materials = <WmMaterialOption>[];
-    var page = 1;
-    while (true) {
-      final result = await _repo.requestMaterials(
-        workshopId,
-        goodsIds: goodsIds,
-        page: page,
-        size: 100,
-      );
-      materials.addAll(result.items);
-      if (page >= result.totalPages) return materials;
-      page++;
-    }
+    return _repo.completeRequestMaterialsForGoods(
+      workshopId,
+      goodsIds: goodsIds,
+      isCurrent: () => warehouseTaskIsCurrent,
+    );
   }
 
   /// 直接发料换车间: 料的清单、上一次的领料人、期间 (盘点中提示与补录)。

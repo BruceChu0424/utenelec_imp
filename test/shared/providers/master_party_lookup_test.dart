@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -29,6 +31,7 @@ class _Api extends ApiClient {
   bool fail = false;
   bool forbidden = false;
   bool freezeResponseAtStart = false;
+  bool checkReadOwner = false;
   final missing = <String>{};
   final disabled = <String>{};
   final hidden = <String>{};
@@ -58,12 +61,18 @@ class _Api extends ApiClient {
     final hiddenAtStart = Set<String>.of(missing);
     final deniedAtStart = forbidden;
     final failedAtStart = fail;
+    final logical = PagedReadIntent.currentRead;
+    final activity = PagedReadIntent.currentActivity;
     final pending = gate ?? (ids.any(heldIds.contains) ? selectiveGate : null);
     active++;
     if (active > maxActive) maxActive = active;
     try {
       if (pending != null) await pending.future;
       await Future<void>.delayed(Duration.zero);
+      if (checkReadOwner &&
+          (!(logical?.call() ?? true) || !(activity?.call() ?? true))) {
+        throw const UiWorkCancelled();
+      }
       if (freezeResponseAtStart ? failedAtStart : fail) {
         throw StateError('fixture lookup failed');
       }
@@ -90,6 +99,59 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  test(
+    'shared party batch outlives first view activity while another consumer waits',
+    () async {
+      final gate = Completer<void>();
+      final api = _Api()
+        ..gate = gate
+        ..checkReadOwner = true;
+      final lookup = MasterPartyLookup(api);
+      addTearDown(lookup.dispose);
+      var firstCurrent = true;
+      final first = PagedReadIntent.scopedRead(
+        () => firstCurrent,
+        () => lookup.load(MasterPartyKind.client, ['shared-client']),
+        activity: PagedReadActivityFence(isCurrent: () => firstCurrent),
+      );
+      await Future<void>.delayed(Duration.zero);
+      final second = lookup.load(MasterPartyKind.client, ['shared-client']);
+      firstCurrent = false;
+      gate.complete();
+      await Future.wait([first, second]);
+      expect(api.calls, hasLength(1));
+      expect(
+        lookup.reference(MasterPartyKind.client, 'shared-client')?['name'],
+        'name-0-shared-client',
+      );
+    },
+  );
+
+  test(
+    'shared party producer remains fenced by its own session after detaching UI',
+    () async {
+      final gate = Completer<void>();
+      final api = _Api()
+        ..gate = gate
+        ..checkReadOwner = true;
+      var own = true;
+      final lookup = MasterPartyLookup(api, isCurrent: () => own);
+      addTearDown(lookup.dispose);
+      final loading = lookup.load(MasterPartyKind.supplier, [
+        'retired-supplier',
+      ]);
+      final rejected = expectLater(loading, throwsA(isA<UiWorkCancelled>()));
+      await Future<void>.delayed(Duration.zero);
+      own = false;
+      gate.complete();
+      await rejected;
+      expect(
+        lookup.reference(MasterPartyKind.supplier, 'retired-supplier'),
+        isNull,
+      );
+    },
+  );
+
   test(
     'hidden parties retain historical names but cannot be newly selected',
     () async {

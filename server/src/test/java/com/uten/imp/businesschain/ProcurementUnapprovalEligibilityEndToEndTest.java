@@ -86,6 +86,10 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(ap(id)).isEqualByComparingTo("100");assertThat(ap(activeReturn)).isZero();
         blockedWithoutWrites(()->receipts.unapprovalEligibility(id),"退货");var before=facts();
         assertThatThrownBy(()->unapprove("purchaseReceipt",id)).isInstanceOf(com.uten.imp.common.web.ApiException.class);assertThat(facts()).isEqualTo(before);
+        unapprove("purchaseReturn",activeReturn);allowedWithoutWrites(()->receipts.unapprovalEligibility(id));unapprove("purchaseReceipt",id);
+        assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(id)).isZero();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",id)).isPositive();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",returned)).isPositive();
         } else {
         allowedWithoutWrites(()->receipts.unapprovalEligibility(id));var original=originalMovements(id,returned);
         unapprove("purchaseReceipt",id);assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(id)).isZero();
@@ -103,7 +107,14 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         assertThatThrownBy(()->unapprove("purchaseReturn",returned)).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("会计期间");assertThat(facts()).isEqualTo(before);
     }
     @Test @Order(4) void subcontractPassedButUnstoredReceiptCanRestoreTheExactOriginalMaterialCustody(){
-        SC f=subcontractFixture(false);allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));unapprove("subcontractReceipt",f.receipt());
+        SC f=subcontractFixture(false);allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));
+        String originalEvidence=db.queryForObject("SELECT jsonb_agg(to_jsonb(evidence) ORDER BY id)::text FROM business_numeric_input_evidence evidence WHERE owner_kind='SUBCONTRACT_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",String.class,f.receipt());
+        assertThat(number("SELECT original_decimal::numeric FROM business_numeric_input_evidence WHERE owner_kind='SUBCONTRACT_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",f.receipt())).isEqualByComparingTo("10");
+        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='SUBCONTRACT_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",f.receipt())).isEqualByComparingTo("1");
+        UUID draft=unapprove("subcontractReceipt",f.receipt());
+        assertThat(number("SELECT weight FROM subcontract_receipt_items WHERE receipt_id=?",draft)).isEqualByComparingTo("10");
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_id=?",draft)).isZero();
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(evidence) ORDER BY id)::text FROM business_numeric_input_evidence evidence WHERE owner_kind='SUBCONTRACT_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",String.class,f.receipt())).isEqualTo(originalEvidence);
         assertThat(ap(f.receipt())).isZero();assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
         assertThat(number("SELECT SUM(issue.consumed_qty) FROM subcontract_material_issue_items issue JOIN subcontract_material_issues doc ON doc.id=issue.issue_id WHERE issue.order_item_id=?",f.orderItem())).isZero();
     }
@@ -123,6 +134,13 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         if (activeDownstream) {
         UUID activeReturn=subcontractReturned(f);subcontractReturns.approve(activeReturn);
         blockedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()),"退货");
+        unapprove("subcontractReturn",activeReturn);allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));unapprove("subcontractReceipt",f.receipt());
+        assertThat(ap(f.receipt())).isZero();
+        assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
+        assertThat(number("SELECT COALESCE(SUM(amount_local),0) FROM stock_balances WHERE goods_id=?",f.w().goodsE())).isZero();
+        assertThat(number("SELECT SUM(issue.consumed_qty) FROM subcontract_material_issue_items issue WHERE issue.order_item_id=?",f.orderItem())).isZero();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",f.receipt())).isPositive();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",id)).isPositive();
         } else {
         allowedWithoutWrites(()->subcontractReceipts.unapprovalEligibility(f.receipt()));var original=originalMovements(f.receipt(),id);
         unapprove("subcontractReceipt",f.receipt());assertThat(ap(f.receipt())).isZero();
@@ -274,7 +292,7 @@ class ProcurementUnapprovalEligibilityEndToEndTest {
         receipt.setBillDate(BusinessTime.today());receipt.setSupplierId(w.supplierId());receipt.setWarehouseId(w.warehouseId());
         var receiptLine=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
         receiptLine.setGoodsId(w.goodsE());receiptLine.setUnitId(w.unitId());receiptLine.setUnitRate(BigDecimal.ONE);
-        receiptLine.setQty(BigDecimal.TEN);receiptLine.setOrderItemId(orderItem);receipt.setItems(List.of(receiptLine));
+        receiptLine.setQty(BigDecimal.TEN);receiptLine.setWeight(BigDecimal.TEN);receiptLine.setOrderItemId(orderItem);receipt.setItems(List.of(receiptLine));
         UUID receiptId=subcontractReceipts.create(receipt).getId();subcontractReceipts.approve(receiptId);
         UUID inspectionId=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,receiptId);
         inspection.dispose("SUBCONTRACT",receiptId,inspectionId,new InspectionDispositionRequest("PASS",null,"委外材料与加工费实际入仓","sc-return-pass-"+inspectionId));

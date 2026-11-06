@@ -58,4 +58,41 @@ class FixtureSchemaDdlTest {
         assertThat(scan.tables().getFirst().table()).isEqualTo("purchase_orders");
         assertThat(scan.tables().getFirst().columns()).containsKey("misspelled_column");
     }
+
+    @Test void aStandaloneDdlKindLabelDoesNotBorrowTheNextJavaStringAsItsTable() throws Exception {
+        Files.writeString(sources.resolve("Fixture.java"), """
+                class Fixture {
+                    boolean table(String kind) { return kind.startsWith("CREATE TABLE"); }
+                    String field = "table";
+                    String column = "id";
+                }
+                """);
+        var scan = FixtureSchemaDdl.scan(sources, Set.of());
+        assertThat(scan.tables()).isEmpty();
+        assertThat(scan.dynamicDdlFiles()).isEmpty();
+        assertThat(scan.parseFailures()).isEmpty();
+    }
+
+    @Test void realLiteralConcatenationsKeepAllColumnsAcrossComments() throws Exception {
+        Files.writeString(sources.resolve("Fixture.java"), """
+                class Fixture { String sql = "CREATE TABLE goods(" /* schema */
+                    + "id uuid," + "name text)"; }
+                """);
+        var scan = FixtureSchemaDdl.scan(sources, Set.of());
+        assertThat(scan.dynamicDdlFiles()).isEmpty();
+        assertThat(scan.parseFailures()).isEmpty();
+        assertThat(scan.tables()).hasSize(1);
+        assertThat(scan.tables().getFirst().columns()).containsKeys("id", "name");
+    }
+
+    @Test void aVariableTableNameStillRequiresExplicitDynamicDdlReview() throws Exception {
+        Files.writeString(sources.resolve("Fixture.java"), """
+                class Fixture { void create(String table) {
+                    db.execute("CREATE TABLE " + table + "(id uuid)");
+                } }
+                """);
+        var scan = FixtureSchemaDdl.scan(sources, Set.of());
+        assertThat(scan.tables()).isEmpty();
+        assertThat(scan.dynamicDdlFiles()).containsExactly("Fixture.java");
+    }
 }

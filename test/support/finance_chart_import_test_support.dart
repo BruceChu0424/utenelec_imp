@@ -1,3 +1,4 @@
+import 'versioned_summary_test_response.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -176,9 +177,9 @@ class FinanceChartImportTestTransport implements HttpClientAdapter {
       if (o.path.startsWith('/finance/chart/operations/')) {
         return json(reviewReceipts[o.path.split('/').last] ?? {'found': false});
       }
-      if (o.path == '/finance/chart/imports') {
-        return json({
-          'items': [
+      if (o.path == '/finance/chart/imports/summaries') {
+        return json(
+          versionedSummaryTestResponse([
             if (uploaded)
               {
                 'importId': _root,
@@ -186,8 +187,8 @@ class FinanceChartImportTestTransport implements HttpClientAdapter {
                 'applied': preview(_root)['applied'],
                 'cancelled': preview(_root)['cancelled'],
               },
-          ],
-        });
+          ], o.queryParameters),
+        );
       }
       if (o.path == '/finance/chart/imports/$_root') {
         return json(preview(_root));

@@ -22,6 +22,11 @@ public record FulfillmentWorkbenchTableQuery(
     public FulfillmentWorkbenchTableQuery forOperationsProjection() {
         return operationsProjection?this:new FulfillmentWorkbenchTableQuery(sort,order,filters,issuedFrom,issuedTo,needFrom,needTo,true,explicitSort);
     }
+    /** Only a filter/sort can require this read-only display calculation before paging. */
+    boolean requiresDifference() {
+        return "differenceQty".equals(sort) || filters.containsKey("search.differenceQty");
+    }
+
     static final String NULL_VALUE = "__null__";
     static final Map<String, String> FIELDS = Map.of(
             "planNo", "NULLIF(plan_no,'')", "docNo", "visible_doc_no",

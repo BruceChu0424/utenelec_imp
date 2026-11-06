@@ -285,6 +285,7 @@ class _WarehouseReportTablePageState
       fetch: () => fetchPage(requestedPage),
       fetchPage: fetchPage,
       isCurrent: current,
+      ownerIsCurrent: queryCurrent,
     );
     setState(() {
       _loading = _reportPages.loading;
@@ -400,10 +401,10 @@ class _WarehouseReportTablePageState
     });
     // 返回即刷新：行点击 push 的单据详情里做过出库/红冲后返回，重拉报表。
     _myLocation ??= currentLocationOr(context, RouteName.warehouse);
-    ref.onPageResume(
-      _myLocation!,
-      () => _reportPages.revalidate(_load(background: true)),
-    );
+    Future<void> visibleReadReturn() =>
+        _reportPages.revalidate(_load(background: true));
+    _reportRead.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: '$docLabel${_kind.shortLabel}报表',
@@ -578,7 +579,6 @@ class _WarehouseReportTablePageState
       isRefreshing: _reportPages.refreshing,
       refreshError: _reportPages.refreshError,
       refreshedPages: _reportPages.refreshedPages,
-      onRetainedPagesChanged: _reportPages.retainPages,
       paginationRevision: _reportPages.paginationRevision,
       error: _reportPages.error,
       onRetry: () => _load(background: _data != null),

@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -90,9 +91,12 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
       _loadError = null;
     });
     try {
-      final rows = await ref
-          .read(salesRepositoryProvider(SalesDocType.order))
-          .scarceReservations(gid);
+      final rows = await PagedReadIntent.scopedRead(
+        () => mounted && _loadRequests.isCurrent(generation) && gid == _goodsId,
+        () => ref
+            .read(salesRepositoryProvider(SalesDocType.order))
+            .scarceReservations(gid),
+      );
       if (!mounted || !_loadRequests.isCurrent(generation) || gid != _goodsId) {
         return;
       }

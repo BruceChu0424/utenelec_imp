@@ -23,14 +23,16 @@ import '../../features/warehouse/providers/stock_draft_delete.dart';
 import '../../features/warehouse/repositories/stock_doc_repository.dart';
 import '../auth/document_scope_capability.dart';
 import '../auth/permissions.dart';
-import '../models/paged_result.dart';
 import '../formatters/exact_decimal.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/draft_counts_provider.dart';
 import '../providers/master_name_provider.dart';
 import '../providers/export_context_epoch_provider.dart';
+import 'draft_workspace_read.dart';
 import 'form_draft_category.dart';
 import 'form_draft_catalog.dart';
+
+export 'draft_workspace_read.dart';
 
 /// A display projection; the original repositories remain authoritative for
 /// ownership, draft eligibility and writes. IDs always include their source.
@@ -135,29 +137,6 @@ String formDraftCategoryLabel(FormDraft draft) {
 String _categoryTitle(String title) =>
     title.replaceFirst(RegExp(r'^(新建|新增|添加)'), '');
 
-/// Exhaust every server page. An inconsistent/short page is an error, never a
-/// silently complete subset which would make category filters misleading.
-Future<List<T>> loadAllDraftPages<T>(
-  Future<PagedResult<T>> Function(int page) fetch,
-) async {
-  final result = <T>[];
-  var page = 1;
-  while (true) {
-    final response = await fetch(page);
-    if (response.page != page ||
-        (response.items.isEmpty && result.length < response.total)) {
-      throw ApiException('INCOMPLETE_DRAFT_LIST', '草稿列表未完整返回，请刷新重试');
-    }
-    result.addAll(response.items);
-    if (page >= response.totalPages && result.length >= response.total) break;
-    if (response.items.isEmpty) {
-      throw ApiException('INCOMPLETE_DRAFT_LIST', '草稿列表分页不完整，请刷新重试');
-    }
-    page++;
-  }
-  return result;
-}
-
 PurchaseDocType? _purchaseType(DraftDocKind kind) => switch (kind) {
   DraftDocKind.purchaseOrder => PurchaseDocType.order,
   DraftDocKind.purchaseReceipt => PurchaseDocType.receipt,
@@ -208,295 +187,17 @@ String? draftWorkspaceDeletePermission(DraftDocKind kind) {
   };
 }
 
-final draftWorkspaceRowsProvider = FutureProvider.autoDispose
-    .family<List<DraftWorkspaceRow>, DraftDocKind>(
-      (ref, kind) async {
-        ref.watch(exportContextEpochProvider);
-        final scope = ref.watch(authenticatedScopeProvider);
-        final permissions = ref.watch(currentPermissionsProvider);
-        final superAdmin = ref.watch(isSuperAdminProvider);
-        if (scope == null ||
-            (!superAdmin && !permissions.contains(kind.viewPerm))) {
-          return const [];
-        }
-        final names = ref.read(masterNameServiceProvider);
-        final label = draftWorkspaceKindLabel(kind);
-        String? money(Object? amount, [bool masked = false]) => masked
-            ? '***'
-            : amount == null
-            ? null
-            : financeExactMoneyDisplay(amount.toString());
-        final purchase = _purchaseType(kind);
-        if (purchase != null) {
-          final repo = ref.watch(purchaseRepositoryProvider(purchase));
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: PurchaseDocFilter(
-                status: 0,
-                financeApproval: purchase == PurchaseDocType.order
-                    ? 'NONE'
-                    : null,
-              ),
-            ),
-          );
-          await names.ensureLoaded();
-          await names.loadSupplierNames(
-            rows.map((row) => row.supplierId).whereType<String>(),
-          );
-          return [
-            for (final row in rows)
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: label,
-                location: '/purchase/${purchase.pathSegment}/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: names.supplier(row.supplierId),
-                amount: money(
-                  row.totalLocalText ?? row.totalLocal,
-                  row.priceMasked ||
-                      !PurchaseDocConfig.by(
-                        purchase,
-                      ).canViewCommercial(permissions),
-                ),
-                deletable:
-                    row.status == 0 &&
-                    !row.closed &&
-                    !row.legacyImported &&
-                    (purchase != PurchaseDocType.order ||
-                        row.financeApproval == null ||
-                        row.financeApproval!.status == 'DRAFT'),
-              ),
-          ];
-        }
-        final subcontract = _subcontractType(kind);
-        if (subcontract != null) {
-          final repo = ref.watch(subcontractRepositoryProvider(subcontract));
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: SubcontractDocFilter(
-                status: 0,
-                financeApproval: subcontract == SubcontractDocType.order
-                    ? 'NONE'
-                    : null,
-              ),
-            ),
-          );
-          await names.ensureLoaded();
-          await names.loadSupplierNames(
-            rows.map((row) => row.supplierId).whereType<String>(),
-          );
-          return [
-            for (final row in rows)
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: label,
-                location: '/subcontract/${subcontract.pathSegment}/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: names.supplier(row.supplierId),
-                amount: money(
-                  row.totalLocalText ?? row.totalLocal,
-                  row.priceMasked ||
-                      !(superAdmin ||
-                          SubcontractDocConfig.by(
-                            subcontract,
-                          ).canViewCommercial(permissions)),
-                ),
-                deletable:
-                    row.status == 0 &&
-                    !row.closed &&
-                    !row.legacyImported &&
-                    (subcontract != SubcontractDocType.order ||
-                        row.financeApproval == null ||
-                        row.financeApproval!.status == 'DRAFT'),
-              ),
-          ];
-        }
-        final finance = _financeType(kind);
-        if (finance != null) {
-          final repo = ref.watch(financeRepositoryProvider(finance));
-          final financeNames = ref.read(financeNameServiceProvider);
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: const FinanceDocFilter(status: 0),
-            ),
-          );
-          await financeNames.ensureLoaded();
-          await financeNames.loadPartyNames(
-            clientIds: finance == FinanceDocType.receipt
-                ? rows.map((row) => row.partyId).whereType<String>()
-                : const [],
-            supplierIds: finance == FinanceDocType.payment
-                ? rows.map((row) => row.partyId).whereType<String>()
-                : const [],
-          );
-          return [
-            for (final row in rows)
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: label,
-                location: '/finance/${finance.pathSegment}/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: switch (finance) {
-                  FinanceDocType.receipt => financeNames.client(row.partyId),
-                  FinanceDocType.payment => financeNames.supplier(row.partyId),
-                  _ => financeNames.account(row.accountId ?? row.outAccountId),
-                },
-                amount: money(row.amountLocalText ?? row.amountLocal),
-                deletable: row.status == 0 && !row.legacyImported,
-              ),
-          ];
-        }
-        if (kind == DraftDocKind.productionPlan) {
-          final repo = ref.watch(productionPlanRepositoryProvider);
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: const ProductionPlanFilter(status: 0),
-            ),
-          );
-          await names.ensureLoaded();
-          return [
-            for (final row in rows)
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: label,
-                location: '/production/plans/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: row.workshopName ?? names.department(row.departmentId),
-                deletable:
-                    row.status == 0 &&
-                    !row.closed &&
-                    !row.canceled &&
-                    !row.stopped &&
-                    row.legacyId == null,
-              ),
-          ];
-        }
-        if (kind == DraftDocKind.productionDailyReport) {
-          final repo = ref.watch(productionDailyReportRepositoryProvider);
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: const ProductionDailyReportFilter(status: 0),
-            ),
-          );
-          await names.ensureLoaded();
-          return [
-            for (final row in rows)
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: label,
-                location: '/production/daily-reports/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: row.workshopName ?? names.department(row.departmentId),
-                deletable:
-                    row.status == 0 &&
-                    !row.closed &&
-                    !row.canceled &&
-                    row.legacyId == null,
-              ),
-          ];
-        }
-        final sales = _salesType(kind);
-        if (sales != null) {
-          final repo = ref.watch(salesRepositoryProvider(sales));
-          final salesNames = ref.read(salesMasterNameServiceProvider);
-          final rows = await loadAllDraftPages(
-            (page) => repo.list(
-              page: page,
-              size: 200,
-              filter: SalesDocFilter(
-                status: 0,
-                financeRejected: sales == SalesDocType.order ? false : null,
-                stage: sales == SalesDocType.shipment
-                    ? SalesShipmentStage.draft
-                    : null,
-                bucket: sales == SalesDocType.quote
-                    ? SalesQuoteStage.draft
-                    : null,
-              ),
-            ),
-          );
-          await salesNames.ensureLoaded();
-          await salesNames.loadClientNames(
-            rows.map((row) => row.clientId).whereType<String>(),
-          );
-          return [
-            for (final row in rows)
-              if (!row.financeRejected &&
-                  !row.rejected &&
-                  (sales != SalesDocType.shipment ||
-                      salesShipmentStageOf(row) == SalesShipmentStage.draft))
-                DraftWorkspaceRow(
-                  kind: kind,
-                  id: row.id,
-                  category: label,
-                  location: '/sales/${sales.pathSegment}/${row.id}',
-                  billNo: row.billNo,
-                  billDate: row.billDate,
-                  party: salesNames.client(row.clientId),
-                  amount: money(
-                    row.totalLocalText ?? row.totalLocal,
-                    row.priceMasked,
-                  ),
-                  deletable: isDeletableSalesDraftRow(row, sales),
-                  expectedRevision: sales == SalesDocType.quote
-                      ? row.quoteWorkflow.reviewRevision
-                      : null,
-                ),
-          ];
-        }
-        final stockTypes = switch (kind) {
-          DraftDocKind.stockTransfer => [StockDocType.transfer],
-          DraftDocKind.stockCheck => [StockDocType.check],
-          _ => StockDocType.values,
-        };
-        final repositories = {
-          for (final type in stockTypes)
-            type: ref.watch(stockDocRepositoryProvider(type)),
-        };
-        await names.ensureLoaded();
-        return [
-          for (final entry in repositories.entries)
-            for (final row in await loadAllDraftPages(
-              (page) => entry.value.list(
-                page: page,
-                size: 200,
-                filter: const StockDocFilter(status: 0, standaloneDrafts: true),
-              ),
-            ))
-              DraftWorkspaceRow(
-                kind: kind,
-                id: row.id,
-                category: entry.key.label,
-                location: '/warehouse/${entry.key.code}/${row.id}',
-                billNo: row.billNo,
-                billDate: row.billDate,
-                party: names.warehouse(row.warehouseId),
-                amount: money(row.totalLocal),
-                stockType: entry.key,
-                deletable:
-                    row.status == 0 && !row.closed && row.legacyId == null,
-              ),
-        ];
+final draftWorkspaceReadProvider = Provider.autoDispose
+    .family<DraftWorkspaceRead<DraftWorkspaceRow>, DraftDocKind>(
+      (ref, kind) {
+        final read = DraftWorkspaceRead<DraftWorkspaceRow>(
+          (owner) => _loadDraftWorkspaceRows(ref, kind, owner),
+          keyOf: (row) => row.key,
+          onResume: ref.invalidateSelf,
+        );
+        ref.onDispose(read.dispose);
+        read.start();
+        return read;
       },
       dependencies: [
         masterNameServiceProvider,
@@ -506,6 +207,342 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
         salesRepositoryProvider,
       ],
     );
+
+final draftWorkspaceSnapshotProvider = StreamProvider.autoDispose
+    .family<DraftReadSnapshot<DraftWorkspaceRow>, DraftDocKind>(
+      (ref, kind) => ref.watch(draftWorkspaceReadProvider(kind)).snapshots,
+      dependencies: [draftWorkspaceReadProvider],
+    );
+
+/// Explicit complete-set consumers retain their original full-wait contract.
+/// The table uses snapshots from this same read instead of starting a second drain.
+final draftWorkspaceRowsProvider = FutureProvider.autoDispose
+    .family<List<DraftWorkspaceRow>, DraftDocKind>(
+      (ref, kind) => ref.watch(draftWorkspaceReadProvider(kind)).completion,
+      dependencies: [draftWorkspaceReadProvider],
+    );
+
+Future<void> _loadDraftWorkspaceRows(
+  Ref ref,
+  DraftDocKind kind,
+  DraftWorkspaceRead<DraftWorkspaceRow> read,
+) async {
+  ref.watch(exportContextEpochProvider);
+  final scope = ref.watch(authenticatedScopeProvider);
+  final permissions = ref.watch(currentPermissionsProvider);
+  final superAdmin = ref.watch(isSuperAdminProvider);
+  if (scope == null || (!superAdmin && !permissions.contains(kind.viewPerm))) {
+    return;
+  }
+  final names = ref.read(masterNameServiceProvider);
+  final label = draftWorkspaceKindLabel(kind);
+  String? money(Object? amount, [bool masked = false]) => masked
+      ? '***'
+      : amount == null
+      ? null
+      : financeExactMoneyDisplay(amount.toString());
+  final purchase = _purchaseType(kind);
+  if (purchase != null) {
+    final repo = ref.watch(purchaseRepositoryProvider(purchase));
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: PurchaseDocFilter(
+          status: 0,
+          financeApproval: purchase == PurchaseDocType.order ? 'NONE' : null,
+        ),
+      ),
+      (rows) async {
+        await names.loadSupplierNames(
+          rows.map((row) => row.supplierId).whereType<String>(),
+        );
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: label,
+              location: '/purchase/${purchase.pathSegment}/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: names.supplier(row.supplierId),
+              amount: money(
+                row.totalLocalText ?? row.totalLocal,
+                row.priceMasked ||
+                    !PurchaseDocConfig.by(
+                      purchase,
+                    ).canViewCommercial(permissions),
+              ),
+              deletable:
+                  row.status == 0 &&
+                  !row.closed &&
+                  !row.legacyImported &&
+                  (purchase != PurchaseDocType.order ||
+                      row.financeApproval == null ||
+                      row.financeApproval!.status == 'DRAFT'),
+            ),
+        ];
+      },
+    );
+    return;
+  }
+  final subcontract = _subcontractType(kind);
+  if (subcontract != null) {
+    final repo = ref.watch(subcontractRepositoryProvider(subcontract));
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: SubcontractDocFilter(
+          status: 0,
+          financeApproval: subcontract == SubcontractDocType.order
+              ? 'NONE'
+              : null,
+        ),
+      ),
+      (rows) async {
+        await names.loadSupplierNames(
+          rows.map((row) => row.supplierId).whereType<String>(),
+        );
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: label,
+              location: '/subcontract/${subcontract.pathSegment}/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: names.supplier(row.supplierId),
+              amount: money(
+                row.totalLocalText ?? row.totalLocal,
+                row.priceMasked ||
+                    !(superAdmin ||
+                        SubcontractDocConfig.by(
+                          subcontract,
+                        ).canViewCommercial(permissions)),
+              ),
+              deletable:
+                  row.status == 0 &&
+                  !row.closed &&
+                  !row.legacyImported &&
+                  (subcontract != SubcontractDocType.order ||
+                      row.financeApproval == null ||
+                      row.financeApproval!.status == 'DRAFT'),
+            ),
+        ];
+      },
+    );
+    return;
+  }
+  final finance = _financeType(kind);
+  if (finance != null) {
+    final repo = ref.watch(financeRepositoryProvider(finance));
+    final financeNames = ref.read(financeNameServiceProvider);
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: const FinanceDocFilter(status: 0),
+      ),
+      (rows) async {
+        if (finance != FinanceDocType.receipt &&
+            finance != FinanceDocType.payment &&
+            rows.any(
+              (row) => row.accountId != null || row.outAccountId != null,
+            )) {
+          await financeNames.ensureLoaded(includeCounterparties: false);
+        }
+        await financeNames.loadPartyNames(
+          clientIds: finance == FinanceDocType.receipt
+              ? rows.map((row) => row.partyId).whereType<String>()
+              : const [],
+          supplierIds: finance == FinanceDocType.payment
+              ? rows.map((row) => row.partyId).whereType<String>()
+              : const [],
+        );
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: label,
+              location: '/finance/${finance.pathSegment}/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: switch (finance) {
+                FinanceDocType.receipt => financeNames.client(row.partyId),
+                FinanceDocType.payment => financeNames.supplier(row.partyId),
+                _ => financeNames.account(row.accountId ?? row.outAccountId),
+              },
+              amount: money(row.amountLocalText ?? row.amountLocal),
+              deletable: row.status == 0 && !row.legacyImported,
+            ),
+        ];
+      },
+    );
+    return;
+  }
+  if (kind == DraftDocKind.productionPlan) {
+    final repo = ref.watch(productionPlanRepositoryProvider);
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: const ProductionPlanFilter(status: 0),
+      ),
+      (rows) async {
+        if (rows.any(
+          (row) => row.workshopName == null && row.departmentId != null,
+        )) {
+          await names.ensureDepartmentsLoaded();
+        }
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: label,
+              location: '/production/plans/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: row.workshopName ?? names.department(row.departmentId),
+              deletable:
+                  row.status == 0 &&
+                  !row.closed &&
+                  !row.canceled &&
+                  !row.stopped &&
+                  row.legacyId == null,
+            ),
+        ];
+      },
+    );
+    return;
+  }
+  if (kind == DraftDocKind.productionDailyReport) {
+    final repo = ref.watch(productionDailyReportRepositoryProvider);
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: const ProductionDailyReportFilter(status: 0),
+      ),
+      (rows) async {
+        if (rows.any(
+          (row) => row.workshopName == null && row.departmentId != null,
+        )) {
+          await names.ensureDepartmentsLoaded();
+        }
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: label,
+              location: '/production/daily-reports/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: row.workshopName ?? names.department(row.departmentId),
+              deletable:
+                  row.status == 0 &&
+                  !row.closed &&
+                  !row.canceled &&
+                  row.legacyId == null,
+            ),
+        ];
+      },
+    );
+    return;
+  }
+  final sales = _salesType(kind);
+  if (sales != null) {
+    final repo = ref.watch(salesRepositoryProvider(sales));
+    final salesNames = ref.read(salesMasterNameServiceProvider);
+    await read.loadPages(
+      (page) => repo.list(
+        page: page,
+        size: 100,
+        filter: SalesDocFilter(
+          status: 0,
+          financeRejected: sales == SalesDocType.order ? false : null,
+          stage: sales == SalesDocType.shipment
+              ? SalesShipmentStage.draft
+              : null,
+          bucket: sales == SalesDocType.quote ? SalesQuoteStage.draft : null,
+        ),
+      ),
+      (rows) async {
+        await salesNames.loadClientNames(
+          rows.map((row) => row.clientId).whereType<String>(),
+        );
+        return [
+          for (final row in rows)
+            if (!row.financeRejected &&
+                !row.rejected &&
+                (sales != SalesDocType.shipment ||
+                    salesShipmentStageOf(row) == SalesShipmentStage.draft))
+              DraftWorkspaceRow(
+                kind: kind,
+                id: row.id,
+                category: label,
+                location: '/sales/${sales.pathSegment}/${row.id}',
+                billNo: row.billNo,
+                billDate: row.billDate,
+                party: salesNames.client(row.clientId),
+                amount: money(
+                  row.totalLocalText ?? row.totalLocal,
+                  row.priceMasked,
+                ),
+                deletable: isDeletableSalesDraftRow(row, sales),
+                expectedRevision: sales == SalesDocType.quote
+                    ? row.quoteWorkflow.reviewRevision
+                    : null,
+              ),
+        ];
+      },
+    );
+    return;
+  }
+  final stockTypes = switch (kind) {
+    DraftDocKind.stockTransfer => [StockDocType.transfer],
+    DraftDocKind.stockCheck => [StockDocType.check],
+    _ => StockDocType.values,
+  };
+  final repositories = {
+    for (final type in stockTypes)
+      type: ref.watch(stockDocRepositoryProvider(type)),
+  };
+  for (final entry in repositories.entries) {
+    await read.loadPages(
+      (page) => entry.value.list(
+        page: page,
+        size: 100,
+        filter: const StockDocFilter(status: 0, standaloneDrafts: true),
+      ),
+      (rows) async {
+        if (rows.any((row) => row.warehouseId != null)) {
+          await names.ensureWarehousesLoaded();
+        }
+        return [
+          for (final row in rows)
+            DraftWorkspaceRow(
+              kind: kind,
+              id: row.id,
+              category: entry.key.label,
+              location: '/warehouse/${entry.key.code}/${row.id}',
+              billNo: row.billNo,
+              billDate: row.billDate,
+              party: names.warehouse(row.warehouseId),
+              amount: money(row.totalLocal),
+              stockType: entry.key,
+              deletable: row.status == 0 && !row.closed && row.legacyId == null,
+            ),
+        ];
+      },
+    );
+  }
+}
 
 Future<void> deleteDraftWorkspaceRow(
   WidgetRef ref,

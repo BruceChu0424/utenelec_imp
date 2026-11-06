@@ -298,7 +298,11 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         var actual=(List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>)selector.invoke(service,arguments);
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
-        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(dimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged");
+        // Preserve the original golden hash after undoing only the approved full-row classifier entry change.
+        String originalEntryDimension=dimension.replaceAll(
+                "fn_imported_business_document_row\\('([a-z_][a-z_0-9]*)',to_jsonb\\(archive_origin\\)\\)",
+                "fn_imported_business_document('$1',archive_origin.id)");
+        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(originalEntryDimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged apart from the approved row entry");
         if(DIMENSION_HASHES.containsKey(method))assertReviewedNativeOriginDelta(method,dimension);
         var oldRows=(List<Object[]>)bind(em.createNativeQuery(oldQuery(current)),params).getResultList();
         var old=oldRows.stream().map(row->new MaterialAnalysisSupplyWakeupService.AnalysisTarget((UUID)row[0],(UUID)row[1])).toList();
@@ -316,7 +320,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         };
         for(var entry:projections.entrySet()) {
             String table=entry.getKey();
-            String reviewed="(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('"+table+"',archive_origin.id))";
+            String reviewed="(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('"+table+"',to_jsonb(archive_origin)))";
             assertEquals(entry.getValue(),original.split(java.util.regex.Pattern.quote(reviewed),-1).length-1,"exact approved native-source projection count");
             original=original.replace(reviewed,table);
         }

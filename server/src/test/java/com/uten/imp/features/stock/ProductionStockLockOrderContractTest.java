@@ -71,7 +71,7 @@ class ProductionStockLockOrderContractTest {
                         "select package_id, status from production_execution_segments"))
                 .isLessThan(method.indexOf(
                         "join (select * from stock_documents archive_origin"));
-        assertThat(method).contains("not fn_imported_business_document('stock_documents',archive_origin.id)) document")
+        assertThat(method).contains("not fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document")
                 .contains("formatted(lock?\"for update\":\"\")")
                 .contains("formatted(lock?\"for update of header, document\":\"\")");
     }

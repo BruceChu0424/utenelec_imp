@@ -1,0 +1,369 @@
+package com.uten.imp.features.warehouse.taskcenter;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.stock.StockDocAccessPolicy;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.OwnerVisibility.OwnerScope;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import static com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+class WarehouseOutboundTaskCenterQueryServiceTest {
+    private static final UUID ACTOR = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID OTHER_OWNER = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+    @Test
+    void workshopRestrictedRowsDoNotBindAnUnusedWarehouseParameterToHibernate() {
+        var workshop = new WarehouseWorkshopMaterialTaskProjection.Scope(true,
+                "requisition.workshop_department_id=CAST(:scopeWorkshop AS uuid)", Map.of("scopeWorkshop", ACTOR));
+        var access = new WarehouseOutboundTaskCenterSql.Access(false,false,false,false,false,
+                new OwnerScope(false, Set.of()),workshop);
+        var plan = WarehouseOutboundTaskCenterSql.build(new Filter("DRAW",null,null,null,null,null,null,1,20),
+                access,new WarehouseTaskScopePort.WarehouseTaskScope(true,List.of(ACTOR),false),"");
+        assertThat(plan.cte()).doesNotContain(":warehouseScope");
+        assertThat(plan.parameters()).containsEntry("scopeWorkshop",ACTOR).doesNotContainKey("warehouseScope");
+    }
+
+    @Test
+    void approvalWithoutEditingGetsAReviewActionOnlyForWritableManualDocuments() {
+        var owners = new OwnerScope(false,Set.of(ACTOR,OTHER_OWNER),Set.of(ACTOR));
+        var fixture = new Fixture(Set.of("stock_doc:view","stock_doc:approve"),false,owners);
+        var access = new WarehouseOutboundTaskCenterSql.Access(false,false,false,true,false,owners);
+        var own = fixture.service.map(row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true),access);
+        assertThat(own.canHandle()).isTrue();
+        assertThat(own.action()).isEqualTo("STOCK_REVIEW");
+        assertThat(own.actionData()).containsEntry("canEdit",false).containsEntry("canApprove",true);
+        var readonly = fixture.service.map(row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",OTHER_OWNER,true),access);
+        assertThat(readonly.canHandle()).isFalse();
+        assertThat(readonly.action()).isEqualTo("STOCK_DETAIL");
+        assertThat(readonly.actionData()).containsEntry("canApprove",false);
+    }
+
+    @Test
+    void physicalItemsRetainDistinctSelectionKeysAndOneDocumentCommandIdentity() {
+        Fixture fixture = new Fixture(Set.of("warehouse_sales_outbound:execute"), false, new OwnerScope(true, Set.of()));
+        var access = new WarehouseOutboundTaskCenterSql.Access(true, false, false, false, false, new OwnerScope(true, Set.of()));
+        UUID document = UUID.randomUUID();
+        UUID firstItem = UUID.randomUUID(), secondItem = UUID.randomUUID();
+        List<Row> items = java.util.stream.Stream.of(firstItem, secondItem).map(item -> {
+            Object[] raw = java.util.Arrays.copyOf(row("SALES", "SALES_SHIPMENT", document, "SALES_PENDING", ACTOR, true), 29);
+            Object[] line = {item.toString(), item, 1, "SAME-GOODS", "相同货品", "规格", "本色", "kg", new BigDecimal("2.5"), new BigDecimal("1.2")};
+            System.arraycopy(line, 0, raw, 19, line.length);
+            return fixture.service.map(raw, access);
+        }).toList();
+        assertThat(items).extracting(Row::rowKey).containsExactly("SALES:SALES_SHIPMENT:" + document + ":" + firstItem,
+                "SALES:SALES_SHIPMENT:" + document + ":" + secondItem);
+        assertThat(items).allSatisfy(item -> {
+            assertThat(item.id()).isEqualTo(document);
+            assertThat(item.targetId()).isEqualTo(document);
+            assertThat(item.canHandle()).isTrue();
+            assertThat(item.line().quantity()).isEqualByComparingTo("2.5");
+            assertThat(item.actionData()).containsEntry("documentRowKey", "SALES:SALES_SHIPMENT:" + document)
+                    .containsEntry("itemId", item.line().itemId());
+        });
+    }
+
+    @Test
+    void oneDatabasePageUsesSourceIdentityAndGlobalFacetsRatherThanFirstPages() throws Exception {
+        Fixture f = new Fixture(Set.of("stock_doc:view", "warehouse_sales_outbound:view"), true,
+                new OwnerScope(true, Set.of()));
+        UUID sharedId = UUID.randomUUID();
+        Query metadata = query(); when(metadata.getResultList()).thenReturn(List.of(
+                new Object[]{"TOTAL",null,4L}, new Object[]{"STATUS","SALES_PENDING",2L},
+                new Object[]{"STATUS","SALES_SHIPPED",1L}, new Object[]{"STATUS","OTHER_APPROVED",1L},
+                new Object[]{"BILL","SAME-NUMBER",4L}));
+        Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
+                row("SALES", "SALES_SHIPMENT", sharedId, "SALES_SHIPPED", OTHER_OWNER, false),
+                row("OTHER", "STOCK_DOC", sharedId, "OTHER_APPROVED", ACTOR, false)));
+        when(f.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
+
+        Page result = f.service.list(new Filter("ALL", null, null, null, null, null, null, 2, 2, "billNo", "asc", TaskView.ALL));
+        assertThat(result.page()).isEqualTo(2);
+        assertThat(result.total()).isEqualTo(4);
+        assertThat(result.items()).extracting(Row::rowKey).containsExactly(
+                "SALES:SALES_SHIPMENT:" + sharedId, "OTHER:STOCK_DOC:" + sharedId);
+        assertThat(result.items()).allMatch(item -> !item.canHandle());
+        verify(f.scopes).withQueryScopeCache(any());
+        verify(f.scopes, never()).withScopeCache(any());
+        assertThat(result.facets().get("status")).anyMatch(bucket -> bucket.value().equals("SALES_PENDING") && bucket.count() == 2);
+        verify(rows).setParameter("offset", 2L);
+        verify(rows).setParameter("limit", 2);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(f.em, times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,bill_no,id", "OFFSET :offset")
+                .doesNotContain("ORDER BY keyword_rank,bill_no ASC");
+        assertThat(sql.getAllValues().getFirst()).contains("GROUP BY bill_no", "LIMIT 500", "SELECT 'TOTAL'");
+        String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
+        assertThat(json).doesNotContain("amountLocal", "totalOriginal", "price", "currency", "cost");
+    }
+
+    @Test void emptySelectedPageSkipsRowsButRetainsExclusiveFacets() {
+        Fixture f = new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
+        Query metadata=query();when(metadata.getResultList()).thenReturn(List.of(
+                new Object[]{"TOTAL",null,0L},new Object[]{"STATUS","OTHER_DRAFT",3L},
+                new Object[]{"BILL","OTHER-001",2L}));
+        when(f.em.createNativeQuery(anyString())).thenReturn(metadata);
+        var result=f.service.list(new Filter("OTHER","OTHER_APPROVED",null,null,null,null,null,9,20));
+        assertThat(result.items()).isEmpty();assertThat(result.page()).isEqualTo(1);
+        assertThat(result.total()).isZero();
+        assertThat(result.facets().get("status")).anyMatch(value->value.value().equals("OTHER_DRAFT")&&value.count()==3L);
+        assertThat(result.facets().get("billNo")).hasSize(1);
+        verify(f.em).createNativeQuery(anyString());
+    }
+
+    @Test void continuationKeepsExactCountAndRowFactsWithoutQueryingAnyFacet() throws Exception {
+        Fixture f=new Fixture(Set.of("stock_doc:view"),false,new OwnerScope(true,Set.of()));
+        Query count=query();when(count.getSingleResult()).thenReturn(3L);
+        Query rows=query();when(rows.getResultList()).thenReturn(Collections.singletonList(
+                row("OTHER","STOCK_DOC",UUID.randomUUID(),"OTHER_DRAFT",ACTOR,true)));
+        when(f.em.createNativeQuery(anyString())).thenReturn(count,rows);
+        var page=f.service.list(new Filter("OTHER",null,null,null,null,null,null,2,2),false);
+        assertThat(page.metadataIncluded()).isFalse();assertThat(page.facets()).isNull();
+        assertThat(page.total()).isEqualTo(3);assertThat(page.page()).isEqualTo(2);assertThat(page.items()).hasSize(1);
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(f.em,times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).allSatisfy(value->assertThat(value).doesNotContain("metadata_context","GROUP BY status","GROUP BY bill_no"));
+        var json=new ObjectMapper().findAndRegisterModules().readTree(new ObjectMapper().findAndRegisterModules().writeValueAsString(page));
+        assertThat(json.path("metadataIncluded").asBoolean()).isFalse();assertThat(json.path("facets").isNull()).isTrue();
+    }
+
+    @Test
+    void makerReadGrantNeverBecomesStockEditOrProductionTaskOwnership() {
+        Fixture f = new Fixture(Set.of("stock_doc:view", "stock_doc:edit"), false,
+                new OwnerScope(false, Set.of(ACTOR, OTHER_OWNER), Set.of(ACTOR)));
+        var access = new WarehouseOutboundTaskCenterSql.Access(false, false, false, true, false,
+                new OwnerScope(false, Set.of(ACTOR, OTHER_OWNER), Set.of(ACTOR)));
+        Row other = f.service.map(row("OTHER", "STOCK_DOC", UUID.randomUUID(), "OTHER_DRAFT", OTHER_OWNER, true), access);
+        assertThat(other.canHandle()).isFalse();
+        assertThat(other.action()).isEqualTo("STOCK_DETAIL");
+        assertThat(other.actionData().get("canEdit")).isEqualTo(false);
+        Row draw = f.service.map(row("DRAW", "STOCK_DOC", UUID.randomUUID(), "DRAW_PENDING", ACTOR, true), access);
+        assertThat(draw.canHandle()).isFalse();
+        assertThat(draw.action()).isEqualTo("STOCK_DETAIL");
+    }
+
+    @Test
+    void sourcePermissionAndSelectedWarehouseAreCheckedBeforeAnyRowsAreRead() {
+        Fixture f = new Fixture(Set.of("stock_doc:view"), false, new OwnerScope(false, Set.of(ACTOR)));
+        assertThatThrownBy(() -> f.service.list(new Filter("SALES", null, null, null, null, null, null, 1, 20)))
+                .isInstanceOf(ApiException.class);
+        verifyNoInteractions(f.em);
+        UUID outside = UUID.randomUUID();
+        when(f.scopes.current(outside)).thenThrow(new ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN, "outside"));
+        assertThatThrownBy(() -> f.service.list(new Filter("OTHER", null, null, null, null, null, outside, 1, 20)))
+                .isInstanceOf(ApiException.class);
+        verifyNoInteractions(f.em);
+    }
+
+    @Test
+    void productionParticipantBypassesOnlyDrawMakerWhileManualStockStillUsesOwnerScope() {
+        var scope = new WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(UUID.randomUUID()), false);
+        var access = new WarehouseOutboundTaskCenterSql.Access(false, false, false, true, true,
+                new OwnerScope(false, Set.of(ACTOR)));
+        var plan = WarehouseOutboundTaskCenterSql.build(new Filter("ALL", null, "外壳", null, null, null, null, 1, 20),
+                access, scope, ACTOR.toString());
+        assertThat(plan.cte()).contains("d.doc_type='DRAW' AND ((d.maker_id IN (:stockOwners) OR fn_is_production_linked_stock_document(d.id)))",
+                "d.doc_type='OTHER_OUT' AND (d.maker_id IN (:stockOwners))",
+                "d.doc_type='FINISHED_OUT' AND (d.maker_id IN (:stockOwners))", "fn_production_draw_requested(d.id)");
+        assertThat(plan.cte()).contains("AND NOT COALESCE(warehouse.is_line_side,FALSE)");
+        assertThat(plan.parameters().get("stockOwners")).isEqualTo(Set.of(ACTOR));
+        assertThat(plan.parameters().get("warehouseScope")).isEqualTo(scope.idsCsv());
+        assertThat(plan.cte()).doesNotContain("d.doc_type='WDRAW'", "total_original", "amount_local");
+    }
+
+    @Test
+    void productionReadScopeDoesNotConferWarehouseResponsibilityDespiteGrantedActionCodes() {
+        UUID discovery = UUID.randomUUID(), draw = UUID.randomUUID();
+        for (boolean participant : List.of(false, true)) {
+            Fixture fixture = new Fixture(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"),
+                    participant, new OwnerScope(false, Set.of(ACTOR)));
+            Query metadata = query(); when(metadata.getResultList()).thenReturn(
+                    Collections.singletonList(new Object[]{"TOTAL",null,2L}));
+            Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
+                    row("DRAW", "MATERIAL_DISCOVERY", discovery, "DRAW_DISCOVERY_PENDING", OTHER_OWNER, true),
+                    row("DRAW", "STOCK_DOC", draw, "DRAW_PENDING", OTHER_OWNER, true)));
+            when(fixture.em.createNativeQuery(anyString())).thenReturn(metadata, rows);
+
+            Page result = fixture.service.list(new Filter("DRAW", null, null, null, null, null, null, 1, 20));
+            assertThat(result.items()).extracting(Row::id).containsExactly(discovery, draw);
+            assertThat(result.items()).allSatisfy(item -> assertThat(item.canHandle()).isEqualTo(participant));
+            if (!participant) {
+                assertThat(result.items()).extracting(Row::action).containsExactly("HISTORY_DETAIL", "STOCK_DETAIL");
+            }
+        }
+    }
+
+    @Test
+    void historyPermissionDoesNotAllowHandlingPendingSubcontractDrafts() {
+        Fixture f = new Fixture(Set.of("warehouse_subcontract_outbound_history:view", "subcontract_outbound:execute",
+                "subcontract_material_issue:view", "subcontract_material_issue:edit", "subcontract_material_issue:approve"), false,
+                new OwnerScope(true, Set.of()));
+        var access = new WarehouseOutboundTaskCenterSql.Access(false, false, true, false, false, new OwnerScope(true, Set.of()));
+        Row result = f.service.map(row("SUBCONTRACT", "SUBCONTRACT_MATERIAL_ISSUE", UUID.randomUUID(),
+                "SUBCONTRACT_PENDING", ACTOR, true), access);
+        assertThat(result.action()).isEqualTo("HISTORY_DETAIL");
+        assertThat(result.canHandle()).isFalse();
+    }
+
+    @Test
+    void impersonatedViewerRetainsReadableRowsWithoutAnyOutboundCommandCapability() {
+        Fixture f = new Fixture(Set.of("warehouse_sales_outbound:execute", "subcontract_outbound:execute",
+                "subcontract_material_issue:view", "subcontract_material_issue:edit", "subcontract_material_issue:approve",
+                "stock_doc:edit", "stock_doc:approve", "stock_doc:issue"), true, new OwnerScope(true, Set.of()));
+        var access = new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(true, Set.of()));
+        List<Object[]> pending = List.of(
+                row("SALES", "SALES_SHIPMENT", UUID.randomUUID(), "SALES_PENDING", ACTOR, true),
+                row("SUBCONTRACT", "SUBCONTRACT_MATERIAL_ISSUE", UUID.randomUUID(), "SUBCONTRACT_PENDING", ACTOR, true),
+                row("DRAW", "STOCK_DOC", UUID.randomUUID(), "DRAW_PENDING", ACTOR, true),
+                row("DRAW", "MATERIAL_DISCOVERY", UUID.randomUUID(), "DRAW_DISCOVERY_PENDING", ACTOR, true),
+                row("OTHER", "STOCK_DOC", UUID.randomUUID(), "OTHER_DRAFT", ACTOR, true),
+                row("FINISHED", "STOCK_DOC", UUID.randomUUID(), "FINISHED_DRAFT", ACTOR, true));
+        assertThat(pending.stream().map(raw -> f.service.map(raw, access))).allMatch(Row::canHandle);
+
+        when(f.user.getImpersonatedBy()).thenReturn(UUID.randomUUID());
+        List<Row> readonly = pending.stream().map(raw -> f.service.map(raw, access)).toList();
+        assertThat(readonly).hasSize(pending.size()).allMatch(item -> !item.canHandle());
+        assertThat(readonly.getFirst().actionData().get("allowedWarehouseTargets")).isEqualTo(List.of());
+        assertThat(readonly.get(1).action()).isEqualTo("HISTORY_DETAIL");
+        assertThat(readonly.get(2).action()).isEqualTo("STOCK_DETAIL");
+        assertThat(readonly.subList(4, 6)).allSatisfy(item -> {
+            assertThat(item.action()).isEqualTo("STOCK_DETAIL");
+            assertThat(item.actionData()).containsEntry("canEdit", false).containsEntry("canApprove", false);
+        });
+        assertThat(readonly.get(3).actionData()).containsEntry("requestId", pending.get(3)[2]);
+        assertThat(readonly.get(3).action()).isEqualTo("HISTORY_DETAIL");
+    }
+
+    @Test
+    void materialDiscoveryHistoryAndViewOnlyRecordsUseScopedPhysicalDetail() {
+        Fixture f = new Fixture(Set.of("stock_doc:view"), true, new OwnerScope(false, Set.of(ACTOR)));
+        var access = new WarehouseOutboundTaskCenterSql.Access(false, false, false, true, true, new OwnerScope(false, Set.of(ACTOR)));
+        for (String status : List.of("DRAW_DISCOVERY_PENDING", "DRAW_DISCOVERY_CONFIGURED",
+                "DRAW_DISCOVERY_CANCELLED", "DRAW_DISCOVERY_BLOCKED")) {
+            UUID request = UUID.randomUUID();
+            Row result = f.service.map(row("DRAW", "MATERIAL_DISCOVERY", request, status, ACTOR,
+                    status.equals("DRAW_DISCOVERY_PENDING")), access);
+            assertThat(result.canHandle()).isFalse();
+            assertThat(result.action()).isEqualTo("HISTORY_DETAIL");
+            assertThat(result.actionData()).containsEntry("requestId", request);
+        }
+    }
+
+    @Test
+    void cancelledSalesAndReversedDrawAvoidLegacyDetailGatesThatRejectRetainedFacts() {
+        Fixture f = new Fixture(Set.of("stock_doc:view", "warehouse_sales_outbound:view"), true, new OwnerScope(true, Set.of()));
+        var access = new WarehouseOutboundTaskCenterSql.Access(true, false, false, true, true, new OwnerScope(true, Set.of()));
+        for (String status : List.of("SALES_SHIPPED", "SALES_CANCELLED", "SALES_REVERSED", "SALES_LEGACY")) {
+            Row sales = f.service.map(row("SALES", "SALES_SHIPMENT", UUID.randomUUID(), status, ACTOR, false), access);
+            assertThat(sales.canHandle()).isFalse();
+            assertThat(sales.action()).isEqualTo("HISTORY_DETAIL");
+        }
+        Row reversedDraw = f.service.map(row("DRAW", "STOCK_DOC", UUID.randomUUID(), "DRAW_REVERSED", ACTOR, false), access);
+        assertThat(reversedDraw.canHandle()).isFalse();
+        assertThat(reversedDraw.action()).isEqualTo("HISTORY_DETAIL");
+        assertThat(reversedDraw.actionData()).containsEntry("docType", "DRAW");
+    }
+
+    @Test
+    void retainedDetailRechecksIdentityScopeAndReturnsOnlyPagedPhysicalLines() throws Exception {
+        Fixture f = new Fixture(Set.of("warehouse_subcontract_outbound_history:view"), false, new OwnerScope(false, Set.of()));
+        UUID id = UUID.randomUUID();
+        Query header = query(); when(header.getResultList()).thenReturn(Collections.singletonList(
+                row("SUBCONTRACT", "SUBCONTRACT_MATERIAL_ISSUE", id, "SUBCONTRACT_WITHDRAWN", OTHER_OWNER, false)));
+        Query count = query(); when(count.getSingleResult()).thenReturn(2L);
+        Query lines = query(); when(lines.getResultList()).thenReturn(Collections.singletonList(new Object[]{
+                UUID.randomUUID(), 2, "MATERIAL-2", "撤回物料", "本色", "kg", new BigDecimal("3.25"), new BigDecimal("4"), null, null, "A-2"
+        }));
+        when(f.em.createNativeQuery(anyString())).thenReturn(header, count, lines);
+        var detail = f.service.detail("SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:" + id + ":physical-item", null, 2, 1);
+        assertThat(detail.document().canHandle()).isFalse();
+        assertThat(detail.document().actionData()).containsEntry("retained", true);
+        assertThat(detail.page()).isEqualTo(2);
+        assertThat(detail.total()).isEqualTo(2);
+        assertThat(detail.lines().getFirst().quantity()).isEqualByComparingTo("3.25");
+        verify(header).setParameter("rowId", id);
+        verify(header).setParameter("rowSource", "SUBCONTRACT");
+        verify(header).setParameter("identityLineKey", "physical-item");
+        verify(lines).setParameter("detailLineKey", "physical-item");
+        verify(lines).setParameter("lineOffset", 1L);
+        verify(f.audit).recordHistory("view_subcontract_material_issue_detail", "subcontract_material_issues", id,
+                "SAME-NUMBER", null, "仓库出库实物记录");
+        verify(f.scopes).withQueryScopeCache(any());
+        verify(f.scopes, never()).withScopeCache(any());
+        assertThat(new ObjectMapper().findAndRegisterModules().writeValueAsString(detail))
+                .doesNotContain("price", "amount", "cost", "currency");
+    }
+
+    @Test
+    void detailNeverReadsLinesForAnAbsentOrHiddenUnionRow() {
+        Fixture f = new Fixture(Set.of("stock_doc:view"), false, new OwnerScope(false, Set.of(ACTOR)));
+        Query header = query(); when(header.getResultList()).thenReturn(List.of());
+        when(f.em.createNativeQuery(anyString())).thenReturn(header);
+        assertThatThrownBy(() -> f.service.detail("OTHER:STOCK_DOC:" + UUID.randomUUID(), null, 1, 100)).isInstanceOf(ApiException.class);
+        verify(f.em, times(1)).createNativeQuery(anyString());
+        verifyNoInteractions(f.audit);
+    }
+
+    @Test
+    void malformedStatusSortAndDateRangesCannotBroadenTheQuery() {
+        for (Filter input : List.of(new Filter("ALL", "ignored", null, null, null, null, null, 1, 20),
+                new Filter("ALL", null, null, null, null, null, null, 1, 20, "price", "asc"),
+                new Filter("ALL", null, null, null, LocalDate.of(2026, 10, 2), LocalDate.of(2026, 10, 1), null, 1, 20))) {
+            assertThatThrownBy(() -> WarehouseOutboundTaskCenterQueryService.normalize(input)).isInstanceOf(ApiException.class);
+        }
+    }
+
+    private static Query query() { return mock(Query.class, RETURNS_SELF); }
+
+    private static Object[] row(String source, String record, UUID id, String status, UUID maker, boolean actionable) {
+        return new Object[]{source, record, id, "SAME-NUMBER", "SOURCE-1", LocalDate.of(2026, 10, 1),
+                "往来单位", "原材料仓", "经办人", "制单人", 1, status, maker,
+                status.endsWith("APPROVED") || status.endsWith("SHIPPED") ? 1 : 0,
+                status.equals("DRAW_PARTIAL") ? 1 : status.equals("DRAW_SHIPPED") ? 2 : 0,
+                7L, null, true, actionable};
+    }
+
+    private static final class Fixture {
+        final EntityManager em = mock(EntityManager.class);
+        final WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        final AuditDetailViewRecorder audit = mock(AuditDetailViewRecorder.class);
+        final AuthUser user = mock(AuthUser.class);
+        final WarehouseOutboundTaskCenterQueryService service;
+        Fixture(Set<String> permissions, boolean production, OwnerScope owners) {
+            StockDocAccessPolicy access = mock(StockDocAccessPolicy.class);
+            when(access.hasAuthority(anyString())).thenAnswer(invocation -> permissions.contains(invocation.getArgument(0)));
+            when(access.scope()).thenReturn(owners);
+            SecurityContextCurrentUser actor = mock(SecurityContextCurrentUser.class);
+            when(actor.get()).thenReturn(Optional.of(user));
+            when(actor.employeeId()).thenReturn(Optional.of(ACTOR));
+            org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
+        when(scopes.current(any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+            doCallRealMethod().when(scopes).withQueryScopeCache(any());
+            ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
+            when(tasks.canAccessWarehouseTasks()).thenReturn(production);
+            when(tasks.canBrowseWarehouseTasks()).thenReturn(permissions.contains("stock_doc:view"));
+            service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit,
+                    mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class),
+                    new com.fasterxml.jackson.databind.ObjectMapper());
+        }
+    }
+}

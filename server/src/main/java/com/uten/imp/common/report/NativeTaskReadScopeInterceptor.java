@@ -37,9 +37,13 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
             route("/api/company-files/principals(?:/page)?","native_feature"),
             route("/api/approval-policy/departments/"+ID+"/candidates(?:/page)?","native_feature"),
             route("/api/production/workshop-assignment-defaults","native_workshop_tasks"),
+            route("/api/production/daily-reports/draft-claims/query","native_production_owner"),
             route("/api/production/delivery-processing-tasks(?:/"+ID+"(?:/(?:warehouses|requests/"+ID+"))?)?","native_workshop_tasks"),
             route("/api/production/workshop-tasks(?:/(?:facets|count|"+ID+"/materials))?","native_workshop_tasks"),
             route("/api/workshop-material/segments/"+ID+"/stock-readiness","native_workshop_tasks"),
+            route("/api/workshop-material/settings/in-progress-pending/(?:summaries|products/"+ID+")","native_workshop_tasks"),
+            route("/api/workshop-material/choices/(?:pending|material-options)","native_workshop_tasks"),
+            route("/api/workshop-material/segments/"+ID+"/material-changes","native_workshop_tasks"),
             route("/api/procurement/arrival-exceptions/(?:tasks|count|"+ID+")","native_feature"),
             route("/api/master/warehouses/my-scope","native_warehouse_tasks"),
             route("/api/warehouse/task-center/(?:inbound|outbound)(?:/[A-Z_]+:[A-Z_]+:"+ID+"(?::[^/]+)?/detail)?","native_warehouse_tasks"),
@@ -70,7 +74,8 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
                 "/api/business-references/suppliers/search", "/api/business-references/clients/search").contains(path);
         if(!"GET".equals(request.getMethod()) && !referenceSearch
                 && !com.uten.imp.common.web.GoodsSearchReadRoutes.matches(request.getMethod(),path)
-                && !com.uten.imp.common.web.EmployeeCandidateReadRoutes.matches(request.getMethod(),path))return true;
+                && !com.uten.imp.common.web.EmployeeCandidateReadRoutes.matches(request.getMethod(),path)
+                && !com.uten.imp.common.web.ExactBodyReadRoutes.matches(request.getMethod(),path))return true;
         // The original authenticated metadata endpoint remains available to
         // password-change/visitor flows. Only the new explicit browse mode
         // participates in the staff task publication protocol.

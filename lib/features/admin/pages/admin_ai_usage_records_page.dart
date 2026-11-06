@@ -116,11 +116,14 @@ class _AdminAiUsageRecordsSession extends ConsumerStatefulWidget {
 class _AdminAiUsageRecordsPageState
     extends ConsumerState<_AdminAiUsageRecordsSession>
     with ScopedPagedReadViewMixin<_AdminAiUsageRecordsSession> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   late final Object? _owner;
   bool get _current =>
       mounted && _owner != null && _owner == _recordsOwner(ref);
 
-  static const _pageSize = 20;
+  static const _pageSize = 100;
   static const _dayChoices = [7, 30, 90, 180];
 
   _RecordsView _view = _RecordsView.records;
@@ -228,6 +231,7 @@ class _AdminAiUsageRecordsPageState
     try {
       final result = await readScopedPage<AiUsageAuditRecord>(
         target + 1,
+        idOf: (row) => row.id,
         query: query,
         currentQuery: () => _readQuery,
         isCurrent: () => _current,
@@ -243,6 +247,7 @@ class _AdminAiUsageRecordsPageState
                     .readWithHeaders(
                       days: days,
                       page: page - 1,
+                      size: _pageSize,
                       userId: userId,
                       providerId: providerId,
                       filters: filters,
@@ -252,6 +257,7 @@ class _AdminAiUsageRecordsPageState
               : await repository.read(
                   days: days,
                   page: page - 1,
+                  size: _pageSize,
                   userId: userId,
                   providerId: providerId,
                 );
@@ -268,6 +274,7 @@ class _AdminAiUsageRecordsPageState
               ),
             ),
             snapshot: typed,
+            rebuildSnapshot: typed.withPage,
           );
         },
       );
@@ -278,13 +285,14 @@ class _AdminAiUsageRecordsPageState
       setState(() {
         _data = typed;
         _acceptedQuery = query;
-        _page = (result.page - 1).clamp(0, result.totalPages - 1);
+        _page = 0;
         if (_userId == null) _users = typed.users;
         _loading = false;
         _accessDenied = false;
         _error = null;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!_current || generation != _generation) return;
       if (_isAccessDenied(error)) {
         _deny(error as ApiException);
@@ -427,8 +435,6 @@ class _AdminAiUsageRecordsPageState
         padding: pagePadding,
         children: [
           _SummaryRow(key: const ValueKey('ai-records-summary'), data: data),
-          const SizedBox(height: UtenSpacing.s8),
-          _PlatformNote(text: l10n.aiAuditPlatformOnly),
           const SizedBox(height: UtenSpacing.s16),
           _toolbar(l10n),
           const SizedBox(height: UtenSpacing.s12),
@@ -1161,36 +1167,6 @@ class _SummaryCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _PlatformNote extends StatelessWidget {
-  const _PlatformNote({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.info_outline_rounded,
-          size: 14,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: UtenSpacing.s4),
-        Expanded(
-          child: Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

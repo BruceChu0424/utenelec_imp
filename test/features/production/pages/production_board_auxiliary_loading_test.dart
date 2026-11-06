@@ -32,6 +32,8 @@ class _Api extends ApiClient {
   final summary = Completer<Map<String, dynamic>>();
   final workshops = Completer<List<Map<String, dynamic>>>();
   final requests = <String>[];
+  final progressQueries = <Map<String, dynamic>>[];
+  bool completeProgress = false;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -48,6 +50,21 @@ class _Api extends ApiClient {
         };
       }
       return facets.future;
+    }
+    if (path == '/production/plans/progress' && completeProgress) {
+      progressQueries.add({...?query});
+      final page = query!['page'] as int;
+      final size = query['size'] as int;
+      return {
+        'items': [
+          for (var i = (page - 1) * size; i < page * size && i < 251; i++)
+            {'planId': 'progress-$i', 'billNo': 'PP-$i', 'closed': true},
+        ],
+        'page': page,
+        'size': size,
+        'total': 251,
+        'totalPages': 3,
+      };
     }
     if (path == '/production/plans/progress/summary') return summary.future;
     return _emptyPage;
@@ -96,6 +113,49 @@ Future<void> _mount(WidgetTester tester, _Api api) async {
 }
 
 void main() {
+  testWidgets(
+    'history progress exposes all 251 summaries and scrolls without paging controls or reads',
+    (tester) async {
+      final api = _Api()..completeProgress = true;
+      await _mount(tester, api);
+      await tester.tap(find.text('历史记录'));
+      for (
+        var frame = 0;
+        frame < 200 && api.progressQueries.length < 3;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.map((query) => query['page']), [1, 2, 3]);
+      expect(
+        api.progressQueries.every((query) => query['size'] == 100),
+        isTrue,
+      );
+      expect(find.text('20 条/页'), findsNothing);
+      expect(find.text('50 条/页'), findsNothing);
+      final list = find.byType(ListView).last;
+      expect(tester.widget<ListView>(list).semanticChildCount, 251);
+      final tail = find.byKey(
+        const ValueKey('production-progress-plan-progress-250'),
+      );
+      expect(tail, findsNothing);
+      final scrollable = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(tail, 400, scrollable: scrollable);
+      expect(tail.hitTestable(), findsOneWidget);
+      expect(find.byType(Card).evaluate().length, lessThan(40));
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(api.progressQueries, hasLength(3));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('待排产空列表不等待表头筛选桶', (tester) async {
     final api = _Api();
     await _mount(tester, api);

@@ -82,18 +82,61 @@ class ApiClient {
     Future<T> Function(CancelToken?) action, {
     CancelToken? cancelToken,
   }) => _reloadSafety.trackRead(() async {
-    final current = PagedReadIntent.currentRead;
-    if (current == null) return action(cancelToken);
-    ApiException stale() => ApiException('REQUEST_STALE', '搜索条件或读取页面已变化');
-    if (!current()) throw stale();
+    final pagedCurrent = PagedReadIntent.currentRead;
+    final readActivity = PagedReadIntent.currentActivity;
+    final transportActivity = PagedReadIntent.currentTransportActivity;
+    final operation = AuthenticatedRequestScope.current;
+    if (pagedCurrent == null && readActivity == null && operation == null) {
+      return action(cancelToken);
+    }
+    bool pagedAlive() {
+      try {
+        return pagedCurrent?.call() ?? true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    bool activityAlive(bool Function()? activity) {
+      try {
+        return activity?.call() ?? true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    bool current() =>
+        pagedAlive() &&
+        activityAlive(transportActivity) &&
+        (operation?.isCurrent ?? true);
+    void ensureCurrent() {
+      operation?.checkCurrent();
+      if (!pagedAlive()) {
+        throw ApiException('REQUEST_STALE', '搜索条件或读取页面已变化');
+      }
+    }
+
+    ensureCurrent();
+    if (!activityAlive(transportActivity)) {
+      throw ApiException('REQUEST_STALE', '读取页面已离开');
+    }
     final cancellation = cancelToken ?? CancelToken();
     final retirement = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (!current()) cancellation.cancel(_retiredReadReason);
     });
     try {
       final result = await action(cancellation);
-      if (!current()) throw stale();
+      ensureCurrent();
+      if (!activityAlive(readActivity)) {
+        throw ApiException('REQUEST_STALE', '读取页面已离开');
+      }
       return result;
+    } catch (_) {
+      // Logical ownership decides whether an actually received401/403 still
+      // belongs to this request. Visibility only cancels transport/publication;
+      // it must not replace a current access rejection with REQUEST_STALE.
+      ensureCurrent();
+      rethrow;
     } finally {
       retirement.cancel();
     }

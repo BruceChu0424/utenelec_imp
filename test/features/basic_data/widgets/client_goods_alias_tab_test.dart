@@ -212,49 +212,41 @@ void main() {
     expect(repo.deleted, hasLength(1));
   });
 
-  testWidgets('pager moves between server pages', (tester) async {
-    final repo = _FakeAliasRepository(
-      rows: [for (var i = 1; i <= 45; i++) _alias('alias-$i', text: 'PART-$i')],
-    );
-    await _pump(tester, repo);
-    expect(find.text('PART-1'), findsOneWidget);
-
-    // The pager sits below 20 rows: scroll the lazy list down to it.
-    // The list's own Scrollable is the outermost one (text fields add more).
-    final list = find
-        .descendant(
-          of: find.byKey(const ValueKey('client-goods-alias-list')),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    final pager = find.byKey(const ValueKey('client-goods-alias-pager'));
-    await tester.scrollUntilVisible(pager, 400, scrollable: list);
-    await tester.pumpAndSettle();
-    expect(find.text('共 45 条'), findsOneWidget);
-    expect(find.text('/ 3'), findsOneWidget);
-    expect(
-      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-      1,
-    );
-
-    await tester.tap(find.byKey(const ValueKey('client-goods-alias-next')));
-    await tester.pumpAndSettle();
-
-    expect(repo.listCalls.last.page, 2);
-    await tester.scrollUntilVisible(pager, 400, scrollable: list);
-    expect(find.text('/ 3'), findsOneWidget);
-    expect(
-      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-      2,
-    );
-    await tester.scrollUntilVisible(
-      find.text('PART-21'),
-      -400,
-      scrollable: list,
-    );
-    expect(find.text('PART-21'), findsOneWidget);
-    expect(find.text('PART-1'), findsNothing);
-  });
+  testWidgets(
+    'complete aliases remain locally reachable without page controls or scroll requests',
+    (tester) async {
+      final repo = _FakeAliasRepository(
+        rows: [
+          for (var i = 1; i <= 145; i++) _alias('alias-$i', text: 'PART-$i'),
+        ],
+      );
+      await _pump(tester, repo);
+      expect(repo.listCalls.map((call) => call.page), [1, 2]);
+      expect(find.byType(UtenPagination), findsNothing);
+      final list = find
+          .descendant(
+            of: find.byKey(const ValueKey('client-goods-alias-list')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('PART-145'),
+        500,
+        scrollable: list,
+        maxScrolls: 60,
+      );
+      expect(find.text('PART-145'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('PART-1'),
+        -500,
+        scrollable: list,
+        maxScrolls: 60,
+      );
+      expect(repo.listCalls.map((call) => call.page), [1, 2]);
+      expect(find.text('PART-1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 ClientGoodsAlias _alias(

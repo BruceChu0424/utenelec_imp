@@ -1,0 +1,243 @@
+{
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "actualRun": "final-pg",
+  "actualNativeExitCode": 0,
+  "currentClaimsSample": {
+    "acceptedTaskSegments": 1,
+    "globalPublicServiceMillis": 10950.9806,
+    "selectedHeaderBatches": 1,
+    "scope": "Real public service, 1001 current draft headers under the same original owner, one accepted task segment; isolated structural fixture, no production SLA",
+    "activeDraftHeaders": 1001,
+    "globalHeaderBatches": 11,
+    "selectedPublicServiceMillis": 707.934701,
+    "globalReturnedHeaders": 1001,
+    "sameRealDraftClaimRetained": true,
+    "selectedReturnedHeaders": 1
+  },
+  "currentClaimsSampleSha256": "1b36f1d0b7e9e4ac91172430dda0bd2aa1fb5d0ef3e3c489454c61a2a4b10e79",
+  "currentClaimsInitialObservation": {
+    "capturedAtUtc": "2026-11-05T22:02:09.425756+00:00",
+    "sourceAggregateSha256": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+    "sampleProducerModifiedAtUtc": "2026-11-05T21:38:54.393965+00:00",
+    "producerPath": "server/build/loading-validation/daily-report-draft-claims/current-task-service-comparison.json",
+    "sampleSha256": "1b36f1d0b7e9e4ac91172430dda0bd2aa1fb5d0ef3e3c489454c61a2a4b10e79",
+    "qualifiedClassTests": 10,
+    "qualifiedClassFailedErrorsSkipped": 0,
+    "originalObservedWholeRunState": "running",
+    "originalObservedWholeRunNativeExit": null,
+    "scope": "Same current source real public service fixture. Observation occurred while PG22 whole run was still active; its completed native receipt is required independently. Not HTTP/client/SLA; no substitution of earlier sample times."
+  },
+  "currentClaimsCompletedClassTests": 10,
+  "emptyWorkbench": {
+    "database": "isolated PostgreSQL postgres:16-alpine",
+    "fixtureSource": "owned-full-migration-template",
+    "schemaVersion": "1070",
+    "scope": "PURCHASE / COMPLETED / all dates / no column filters / empty business database",
+    "comparison": "Former six equivalent row/summary/status/exception/pending/facet SQL reads reconstructed from the same current authorized projection versus the new single SQL; same connected JDBC session; two warmups and nine alternating trials",
+    "legacySqlPerRequest": 6,
+    "optimizedSqlPerRequest": 1,
+    "legacyMedianMs": 566.0432,
+    "optimizedMedianMs": 84.732601,
+    "medianSpeedup": 6.680347272710299,
+    "legacySamplesMs": [
+      675.0982,
+      738.142599,
+      522.045401,
+      538.2241,
+      737.7158,
+      498.2434,
+      638.4717,
+      566.0432,
+      45.2832
+    ],
+    "optimizedSamplesMs": [
+      165.819,
+      136.8715,
+      102.482701,
+      84.732601,
+      79.1609,
+      81.2516,
+      166.9969,
+      11.510201,
+      5.9324
+    ]
+  },
+  "emptyWorkbenchSha256": "0cf99c2df3455f531cc1a052380833124fb4bde977b7126e98a4f6534c66e570",
+  "growth": [
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/warehouse-metadata-history-10000.json",
+      "sha256": "2555b36f0adb1a6229e39bbe02f44a14cbb07436eaa764cdd3f07ad022a9058b",
+      "scenario": "warehouse-metadata",
+      "history": 10000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 60.0813,
+        "millis": [
+          66.2251,
+          60.0813,
+          54.8253
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 66.2251
+      },
+      "after": {
+        "p50Millis": 48.2082,
+        "millis": [
+          37.3303,
+          54.2217,
+          48.2082
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 54.2217
+      }
+    },
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/warehouse-metadata-history-100000.json",
+      "sha256": "6e88f0d486f855ffeb4c2173c5bd4da0ca9f3e9a8fd2d51682bb18c87d091ec0",
+      "scenario": "warehouse-metadata",
+      "history": 100000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 706.3643,
+        "millis": [
+          549.1161,
+          706.3643,
+          955.2848
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 955.2848
+      },
+      "after": {
+        "p50Millis": 238.7616,
+        "millis": [
+          238.7616,
+          261.0706,
+          191.4293
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 261.0706
+      }
+    },
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/warehouse-metadata-history-1000000.json",
+      "sha256": "711546be1171580376d4039adf5b2149a139d933948c3ad1d3189e64c4605bdf",
+      "scenario": "warehouse-metadata",
+      "history": 1000000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 4930.7346,
+        "millis": [
+          5582.2206,
+          4842.9171,
+          4930.7346
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 5582.2206
+      },
+      "after": {
+        "p50Millis": 2288.4212,
+        "millis": [
+          2297.9887,
+          2288.4212,
+          1928.4154
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 2297.9887
+      }
+    },
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/workbench-page-detail-history-10000.json",
+      "sha256": "f68557211610e8fd5a58b1cbdeb9f93b2b50496c0a39784e6dec69997f0d157f",
+      "scenario": "workbench-page-detail",
+      "history": 10000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 48.216,
+        "millis": [
+          50.1811,
+          48.216,
+          45.884399
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 50.1811
+      },
+      "after": {
+        "p50Millis": 25.471499,
+        "millis": [
+          24.7376,
+          25.471499,
+          25.5752
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 25.5752
+      }
+    },
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/workbench-page-detail-history-100000.json",
+      "sha256": "c6e206455e7984548d8d733c8cf73e7e83cf60a8c94e2601fa42c8601d2b1672",
+      "scenario": "workbench-page-detail",
+      "history": 100000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 850.7032,
+        "millis": [
+          850.7032,
+          861.7944,
+          786.3835
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 861.7944
+      },
+      "after": {
+        "p50Millis": 546.530401,
+        "millis": [
+          288.554499,
+          546.530401,
+          584.895001
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 584.895001
+      }
+    },
+    {
+      "path": "server/build/loading-validation/main-3068-output-fixed/final-pg-growth/workbench-page-detail-history-1000000.json",
+      "sha256": "73c88fef5a8f3211cfe22d2c069e4c6955b8ddf6b47e612b74b47cd47fd5a721",
+      "scenario": "workbench-page-detail",
+      "history": 1000000,
+      "fixedActive": 50,
+      "before": {
+        "p50Millis": 2513.3154,
+        "millis": [
+          2706.173499,
+          2513.3154,
+          2375.468899
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 2706.173499
+      },
+      "after": {
+        "p50Millis": 799.7712,
+        "millis": [
+          1081.9967,
+          757.9806,
+          799.7712
+        ],
+        "samples": 3,
+        "quantileMethod": "nearest rank; only 3 isolated warm observations, no production SLA claim",
+        "p95Millis": 1081.9967
+      }
+    }
+  ],
+  "limits": "Disposable structural SQL/service fixtures only. Exact broad metadata remains dependent on history N. Claims timing excludes HTTP/JWT/native-publication/client rows/actions-ready. Actual HTTP identity/revocation tests are separately in this same current native-run ledger. Initial observation honestly remains then-running state; this completed whole native receipt independently binds same-source green10. No production SLA or addition to old sample times."
+}

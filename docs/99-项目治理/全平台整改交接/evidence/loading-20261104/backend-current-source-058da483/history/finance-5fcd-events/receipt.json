@@ -1,0 +1,85 @@
+{
+  "label": "finance-5fcd-events",
+  "createdAtUtc": "2026-11-05T12:26:32.710913+00:00",
+  "log": "build/loading-validation/combined-finance-current-final.log",
+  "selected": [
+    "FinanceApplicationsPostgresTest"
+  ],
+  "missingClasses": [],
+  "sourceInputSha256": "5fcd0a4e6fa40ea4cf783f62ea123d329413d03998ed6dcb866309dd0a6db089",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceMissing": [],
+  "legacyInputs": [],
+  "legacyInputDrift": [],
+  "counts": {
+    "passed": 6,
+    "failure": 0,
+    "error": 2,
+    "skipped": 0,
+    "flakyFailure": 0,
+    "flakyError": 0
+  },
+  "uniqueCases": 8,
+  "suites": [
+    {
+      "name": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "tests": "8",
+      "errors": "2",
+      "skipped": "0",
+      "failures": "0",
+      "time": "249.359"
+    }
+  ],
+  "cases": [
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable",
+      "status": "passed",
+      "seconds": "4.113"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "originalTravelPathHasThreeDistinctStepsNoCashAndFrozenSignaturesAndDurableReplay",
+      "status": "passed",
+      "seconds": "0.733"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[1]",
+      "status": "error",
+      "seconds": "6.271"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[2]",
+      "status": "error",
+      "seconds": "5.267"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "guessingAnOriginalPayableUuidDoesNotBypassItsExistingReadPermission",
+      "status": "passed",
+      "seconds": "0.022"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl",
+      "status": "passed",
+      "seconds": "2.461"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney",
+      "status": "passed",
+      "seconds": "0.271"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "originalPayrollHrFinanceManagementPathPaysOnceConfirmsAndReversesOnlyActualPayment",
+      "status": "passed",
+      "seconds": "4.226"
+    }
+  ],
+  "note": "Each receipt is independent. Never sum repeated cases across receipts; final unique ledger uses the final whole selection only."
+}

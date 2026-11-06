@@ -39,7 +39,6 @@ import '../../../basic_data/models/master_facet.dart';
 import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
-import '../providers/stock_count_prepared_page_provider.dart';
 import '../widgets/stock_count_batch_approval_dialog.dart';
 
 /// A submitted stock count changes stock only after its designated reviewer approves.
@@ -157,9 +156,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
     super.initState();
     _status = widget.initialStatus == 'HISTORY' ? 'HISTORY' : 'PENDING';
     Future.microtask(
-      () => widget.requestId == null
-          ? _load(null, false, true)
-          : _open(widget.requestId!),
+      () => widget.requestId == null ? _load() : _open(widget.requestId!),
     );
   }
 
@@ -229,11 +226,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
     entry?.remove();
   }
 
-  Future<void> _load([
-    int? page,
-    bool useCache = false,
-    bool preferPrepared = false,
-  ]) async {
+  Future<void> _load([int? page, bool useCache = false]) async {
     final requestedPage = page ?? _refreshPage;
     if (!_canRead) {
       if (mounted) setState(() => _loading = false);
@@ -272,8 +265,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           _columnsQuery,
         ],
         useCache: useCache,
-        fetchPage: (target) => pageRepository.readList(
-          preparedRead: ref.read(stockCountPreparedPageProvider),
+        fetchPage: (target) => pageRepository.list(
           reviewRoute: pageReviewRoute,
           status: pageStatus,
           scopeWarehouseId: pageScopeWarehouseId,
@@ -282,7 +274,6 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           columns: pageColumns.searches,
           sort: pageColumns.sort,
           ascending: pageColumns.ascending,
-          preferPrepared: preferPrepared,
         ),
       );
       if (mounted && sequence == _sequence) {

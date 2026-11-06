@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import 'report_data.dart';
 import 'report_metadata_reuse.dart';
 
@@ -27,15 +31,53 @@ class ReportPageSnapshot
 
   final ReportMetadataRead _read;
   final ReportPageRead _owner;
+
+  @override
+  ReportPageSnapshot withRows(
+    List<Map<String, dynamic>> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) {
+    final combined = PagedResult<Map<String, dynamic>>(
+      items: freezePagedRows(rows),
+      page: page,
+      size: size ?? rows.length,
+      total: total ?? this.total,
+      totalPages: totalPages ?? (rows.isEmpty ? 0 : 1),
+      totals: totals,
+      facets: facets,
+      facetNullCounts: facetNullCounts,
+      readScopeVersion: readScopeVersion,
+    );
+    return ReportPageSnapshot._(
+      snapshot.withPage(combined),
+      combined.size,
+      _read,
+      _owner,
+    );
+  }
 }
 
-/// Only report metadata differs from ordinary paged reads. The same bounded
-/// cache, latest-center queue and reader retirement serve every manual pager.
+/// Reports retain server-owned schema/statistics while sharing the complete
+/// authorized query reader. View activity retires pending work independently
+/// from accepted rows and their authorization session.
 class ReportPagedRead {
   ReportPagedRead(this.metadata);
 
   final ReportMetadataReuse metadata;
   final _pages = ScopedPagedRead<Map<String, dynamic>>();
+  FutureOr<void> Function()? _onViewResume;
+  late final _activity = ReadViewActivity(
+    onResume: () => _onViewResume?.call(),
+  );
+
+  void bindView(BuildContext context, {FutureOr<void> Function()? onResume}) {
+    if (onResume != null) _onViewResume = onResume;
+    _activity.bindView(context);
+  }
+
   ReportPageRead? _active;
   Object? _snapshotRevision;
   int _revision = 0;
@@ -50,6 +92,8 @@ class ReportPagedRead {
     required Future<Map<String, dynamic>> Function(Map<String, dynamic>) fetch,
     required bool Function() isCurrent,
     required bool reusePages,
+    // Compatibility with former neighboring-page scheduling; neither option
+    // controls complete-read continuation or foreground visibility.
     bool revalidatingWindow = false,
     bool Function()? canPrefetch,
     void Function(Object)? onPrefetchError,
@@ -65,8 +109,8 @@ class ReportPagedRead {
         previous != null &&
         previous.isCurrent() &&
         _equality.equals(previous._scope, scope)) {
-      // A completed return-refresh window becomes an ordinary browser again;
-      // keep its fresh cached pages while resuming adjacent preparation.
+      // Reuse only the same complete authorized query; no adjacent-page work
+      // is scheduled. The legacy flag remains a compatibility input.
       previous._revalidatingWindow = revalidatingWindow;
       return previous;
     }
@@ -126,6 +170,7 @@ class ReportPagedRead {
     _disposed = true;
     invalidate();
     _pages.dispose();
+    _activity.dispose();
   }
 }
 
@@ -194,16 +239,19 @@ class ReportPageRead {
     try {
       final fresh = _freshRead;
       _freshRead = false;
-      return await _owner._pages.read(
-        page,
-        scope: _scope,
-        fetchPage: _read,
-        isCurrent: () => !_owner._disposed && _isCurrent(),
-        useCache: !fresh,
-        revalidateWindow: !_revalidatingWindow,
-        canPrefetch: () =>
-            !_revalidatingWindow && (_canPrefetch?.call() ?? true),
-        onPrefetchError: _onPrefetchError,
+      return await _owner._activity.runRead(
+        () => !_owner._disposed && _isCurrent(),
+        () => _owner._pages.read(
+          page,
+          scope: _scope,
+          fetchPage: _read,
+          isCurrent: () => !_owner._disposed && _isCurrent(),
+          useCache: !fresh,
+          revalidateWindow: !_revalidatingWindow,
+          canPrefetch: () =>
+              !_revalidatingWindow && (_canPrefetch?.call() ?? true),
+          onPrefetchError: _onPrefetchError,
+        ),
       );
     } catch (error) {
       if (isCurrent() && pagedReadAccessDenied(error)) _owner.invalidate();

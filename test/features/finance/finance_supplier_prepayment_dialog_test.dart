@@ -10,10 +10,218 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/finance/widgets/finance_supplier_prepayment_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'finance_requirement_test_ui.dart';
 
 void main() {
+  testWidgets(
+    'accepted settlement rows and readonly balances retire after access rejection',
+    (tester) async {
+      final api = _AdvanceApi()..settlementsTotal = 101;
+      await _pump(tester, api);
+      await _openRow(tester, 'ADV-001');
+      final finder = find
+          .byType(MasterDataTableView<Map<String, dynamic>>)
+          .last;
+      for (
+        var attempt = 0;
+        attempt < 60 &&
+            tester
+                    .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+                    .items
+                    .length !=
+                101;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        hasLength(101),
+      );
+      final facts = find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText &&
+            (widget.data ?? '').contains('未应用原币：80'),
+      );
+      expect(facts, findsOneWidget);
+      api.failSettlementPage = 2;
+      await tapFinanceAction(tester, '刷新');
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, '后批无权限');
+      expect(facts, findsNothing);
+      expect(
+        tester
+            .widget<UtenDropdownField>(
+              find.byWidgetPredicate(
+                (w) => w is UtenDropdownField && w.label == '处理记录',
+              ),
+            )
+            .value,
+        'APPLICATION',
+      );
+      expect(api.saves, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'accepted supplier directory rows retire after access rejection',
+    (tester) async {
+      final api = _AdvanceApi()..directoryTotal = 101;
+      await _pump(tester, api);
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      for (
+        var attempt = 0;
+        attempt < 60 &&
+            tester
+                    .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+                    .items
+                    .length !=
+                101;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        hasLength(101),
+      );
+      api.failDirectoryPage = 2;
+      await tapFinanceAction(tester, '刷新');
+      await _waitForReadError(tester, finder);
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        isEmpty,
+      );
+      expect(api.saves, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'supplier directory collects the filtered tail and scroll makes no reads',
+    (tester) async {
+      final api = _AdvanceApi()..directoryTotal = 101;
+      await _pump(
+        tester,
+        api,
+        supplierId: 'supplier-filter',
+        currencyId: 'currency-filter',
+      );
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, hasLength(101));
+      expect(table.items.last['paymentId'], 'advance-100');
+      expect(table.totalPages, 1);
+      expect(table.onPageChange, isNull);
+      expect(api.reads.map((r) => r['size']), everyElement(100));
+      expect(
+        api.reads.map((r) => r['supplierId']),
+        everyElement('supplier-filter'),
+      );
+      expect(
+        api.reads.map((r) => r['currencyId']),
+        everyElement('currency-filter'),
+      );
+      expect(
+        api.reads.map((r) => r['page']).toList().sublist(api.reads.length - 2),
+        [1, 2],
+      );
+      final reads = api.reads.length;
+      await tester.drag(finder, const Offset(0, -6000));
+      await tester.pumpAndSettle();
+      expect(find.text('ADV-100'), findsOneWidget);
+      expect(api.reads, hasLength(reads));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'both application and refund histories collect every original record',
+    (tester) async {
+      final api = _AdvanceApi()..settlementsTotal = 101;
+      await _pump(tester, api);
+      await _openRow(tester, 'ADV-001');
+      final finder = find
+          .byType(MasterDataTableView<Map<String, dynamic>>)
+          .last;
+      var table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, hasLength(101));
+      expect(table.items.last['id'], 'APPLICATION-100');
+      final kind = tester.widget<UtenDropdownField>(
+        find.byWidgetPredicate(
+          (w) => w is UtenDropdownField && w.label == '处理记录',
+        ),
+      );
+      kind.onChanged('REFUND');
+      await tester.pumpAndSettle();
+      table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder);
+      expect(table.items, hasLength(101));
+      expect(table.items.last['id'], 'REFUND-100');
+      expect(table.onPageChange, isNull);
+      for (final kind in ['APPLICATION', 'REFUND']) {
+        final reads = api.reads.where((r) => r['kind'] == kind).toList();
+        expect(reads.map((r) => r['size']), everyElement(100));
+        expect(reads.map((r) => r['page']).toList().sublist(reads.length - 2), [
+          1,
+          2,
+        ]);
+      }
+      final reads = api.reads.length;
+      await tester.drag(finder, const Offset(0, -6000));
+      await tester.pumpAndSettle();
+      expect(find.text('REFUND-100'), findsOneWidget);
+      expect(api.reads, hasLength(reads));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'failed settlement continuation publishes no partial rows or writes',
+    (tester) async {
+      final api = _AdvanceApi()
+        ..settlementsTotal = 101
+        ..failSettlementPage = 2;
+      await _pump(tester, api);
+      await _openRow(tester, 'ADV-001');
+      await _waitForReadError(
+        tester,
+        find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+      );
+      expect(table.items, isEmpty);
+      expect(api.reads.any((query) => query['page'] == 2), isTrue);
+      expect(table.error, '后批无权限');
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+              matching: find.byKey(
+                const ValueKey('master-table-initial-read-details'),
+              ),
+            )
+            .hitTestable(),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is SelectableText && widget.data == '后批无权限',
+        ),
+        findsOneWidget,
+      );
+      expect(api.saves, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'advance reversal unknown response preserves the exact source command and prevents repeats while waiting',
     (tester) async {
@@ -103,6 +311,22 @@ void main() {
   );
 }
 
+Future<void> _waitForReadError(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 60; attempt++) {
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    if (!table.isLoading && table.error != null) return;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(
+    tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).error,
+    isNotNull,
+    reason:
+        'The actual continuation rejection must finish and remain observable.',
+  );
+}
+
 Future<void> _openRow(WidgetTester tester, String label) async {
   final row = find.text(label).first;
   await tester.tap(row);
@@ -117,6 +341,8 @@ Future<void> _pump(
   double width = 1400,
   double scale = 1,
   GlobalKey? boundary,
+  String? supplierId,
+  String? currencyId,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, 900);
@@ -147,7 +373,11 @@ Future<void> _pump(
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
-                onPressed: () => showFinanceSupplierPrepaymentDialog(context),
+                onPressed: () => showFinanceSupplierPrepaymentDialog(
+                  context,
+                  supplierId: supplierId,
+                  currencyId: currencyId,
+                ),
                 child: const Text('打开'),
               ),
             ),
@@ -165,12 +395,39 @@ class _AdvanceApi extends ApiClient {
   bool loseFirst = false;
   int actual = 0;
   final saves = <Map<String, dynamic>>[];
+  int? directoryTotal, settlementsTotal, failSettlementPage, failDirectoryPage;
+  final reads = <Map<String, dynamic>>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
     if (path == '/finance/supplier-prepayments') {
+      if (directoryTotal case final total?) {
+        if (query!['page'] == failDirectoryPage) {
+          reads.add(Map<String, dynamic>.from(query));
+          throw ApiException(
+            'FORBIDDEN',
+            '后批无权限',
+            httpStatus: 403,
+            hasResponseCode: true,
+          );
+        }
+        return _paged(
+          query,
+          total,
+          (i) => {
+            'paymentId': 'advance-$i',
+            'billNo': 'ADV-$i',
+            'billDate': '2026-11-03',
+            'supplierName': '实际供应商$i',
+            'currencyCode': 'USD',
+            'amountOriginal': '100.123456',
+            'amountLocal': '700.654321',
+            'status': 'OPEN',
+          },
+        );
+      }
       return {
         'items': [
           {
@@ -189,6 +446,31 @@ class _AdvanceApi extends ApiClient {
       };
     }
     if (path.endsWith('/settlements')) {
+      if (settlementsTotal case final total?) {
+        if (query!['page'] == failSettlementPage) {
+          reads.add(Map<String, dynamic>.from(query));
+          throw ApiException(
+            'FORBIDDEN',
+            '后批无权限',
+            httpStatus: 403,
+            hasResponseCode: true,
+          );
+        }
+        return _paged(
+          query,
+          total,
+          (i) => {
+            'id': '${query['kind']}-$i',
+            'created_at': '2026-11-03',
+            'status': query['kind'] == 'REFUND' ? 'APPROVED' : 'APPLIED',
+            'source_category': 'MOULD',
+            'amount_original': '20.123456',
+            'source_local': '140.654321',
+            'target_local': '140.654321',
+            'source_reference': '${query['kind']}-$i',
+          },
+        );
+      }
       return {
         'items': [
           {
@@ -221,6 +503,25 @@ class _AdvanceApi extends ApiClient {
       };
     }
     throw StateError('unexpected GET $path');
+  }
+
+  Map<String, dynamic> _paged(
+    Map<String, dynamic> query,
+    int total,
+    Map<String, dynamic> Function(int) row,
+  ) {
+    reads.add(Map<String, dynamic>.from(query));
+    final page = query['page'] as int, size = query['size'] as int;
+    return {
+      'items': [
+        for (var i = (page - 1) * size; i < page * size && i < total; i++)
+          row(i),
+      ],
+      'page': page,
+      'size': size,
+      'total': total,
+      'totalPages': (total / size).ceil(),
+    };
   }
 
   @override

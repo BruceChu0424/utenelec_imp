@@ -1,0 +1,10 @@
+{
+  "ids": [
+    "W7-BIZ-025",
+    "W7-BIZ-034",
+    "W7-BIZ-037"
+  ],
+  "note": "2026-11-05 最新Main3068输出协议与本任务完整列表已在候选安全合成：保留allRows/100行有界传输及首响应权威total供打印/导出范围，不恢复页码。最新186源码/资源零漂移，x86/x64各警告视为错误编译及历史、连续列表、搜索、输出协议实际STA组全部自然0；每架构各命名scope合计307断言（非完整runner/全ERP终验，旧228不重复叠加）。372项status/owner/DoD/依赖/nativeTargets不提升，完整ERP、Win7目标机、正式分发仍未完成。见E-PLATFORM-LOADING-MAIN3068-20261105。",
+  "evidence": "clients/windows_legacy/progress/evidence/platform-loading-main3068-20261105.json",
+  "requiresOwningTreeCanonicalSyncBeforeTrackerSet": true
+}

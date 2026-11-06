@@ -555,6 +555,7 @@ public class SubcontractReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
+        requireActualCreditReversible(id);
         // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         var withdrawals=inspectionService.requireResolvedReversibleReadOnly(ProcurementInspectionPort.SUBCONTRACT, id);
@@ -746,19 +747,7 @@ public class SubcontractReceiptService {
                 SELECT plan_item.id,
                        COALESCE(goods.name, ''),
                        fn_subcontract_material_consumption_cohort_target(plan_item.id,:materialVersion,:receiptId) AS target_qty,
-                       COALESCE((
-                           SELECT SUM(consumption.qty_doc)
-                           FROM subcontract_receipt_material_consumptions consumption
-                           JOIN subcontract_receipt_items source_receipt ON source_receipt.id=consumption.receipt_item_id
-                             AND source_receipt.material_consumption_version=:materialVersion
-                           JOIN subcontract_material_issue_items issue_item ON issue_item.id=consumption.issue_item_id
-                           JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
-                             AND issue.status=1 AND NOT issue.is_deleted
-                           WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted
-                             AND consumption.reversal_of IS NULL
-                             AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal
-                                 WHERE reversal.reversal_of=consumption.id)
-                       ), 0) AS consumed_qty
+                       fn_subcontract_material_consumption_observed_qty(plan_item.id,:materialVersion) AS consumed_qty
                 FROM subcontract_material_plan_items plan_item
                 JOIN goods ON goods.id = plan_item.goods_id
                 CROSS JOIN basis
@@ -769,7 +758,10 @@ public class SubcontractReceiptService {
         UUID actor = currentUser.requireId();
         for (Object[] material : materials) {
             BigDecimal remaining = decimal(material[2]).subtract(decimal(material[3]));
-            if (remaining.signum() <= 0) continue;
+            if (remaining.signum() <= 0) {
+                if (materialVersion == 2) recordZeroActualIncrement(receiptItemId, (UUID) material[0], actor);
+                continue;
+            }
             @SuppressWarnings("unchecked")
             List<Object[]> sources = em.createNativeQuery("""
                     SELECT issue_item.id,
@@ -834,6 +826,29 @@ public class SubcontractReceiptService {
         }
     }
 
+    private void recordZeroActualIncrement(UUID receiptItemId, UUID planItemId, UUID actor) {
+        // A financed replacement / supplier-owned line has no own-material basis.
+        // A genuine rounded zero delta retains a real v2 funding source, not a fabricated issue.
+        int inserted=em.createNativeQuery("""
+                INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
+                    qty_doc,qty_base,consumption_basis,round_credit_source_id,created_by)
+                SELECT receipt.id,issued.id,0,0,'FROZEN_BASE_BOM_ACTUAL',source.id,:actor
+                FROM subcontract_receipt_items receipt
+                JOIN subcontract_receipt_material_consumptions source ON source.qty_doc>0 AND source.reversal_of IS NULL
+                JOIN subcontract_receipt_items funded ON funded.id=source.receipt_item_id AND funded.material_consumption_version=2
+                JOIN subcontract_receipts head ON head.id=funded.receipt_id AND head.status=1 AND NOT head.is_deleted
+                JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id AND issued.plan_item_id=:plan
+                JOIN subcontract_material_issues issue_head ON issue_head.id=issued.issue_id AND issue_head.status=1 AND NOT issue_head.is_deleted
+                WHERE receipt.id=:receipt AND receipt.material_basis_qty>0 AND NOT funded.is_deleted AND NOT issued.is_deleted
+                  AND issued.unit_id IS NOT NULL AND issued.unit_rate>0
+                  AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=source.id)
+                ORDER BY source.created_at,source.id LIMIT 1
+                """).setParameter("receipt",receiptItemId).setParameter("plan",planItemId).setParameter("actor",actor).executeUpdate();
+        if(inserted==0 && ((Number)em.createNativeQuery("SELECT CASE WHEN material_basis_qty>0 THEN 1 ELSE 0 END FROM subcontract_receipt_items WHERE id=:id")
+                .setParameter("id",receiptItemId).getSingleResult()).intValue()==1)
+            throw new ApiException(ErrorCode.CONFLICT,"本批回厂的累计物料核销依据不完整，请核对原始核销来源");
+    }
+
     /** 红冲只按审核时记下的核销切片原样退回；本行没有核销切片时无事可做。 */
     private void requireMaterialConsumptionBalances(UUID id){
         var insufficient=em.createNativeQuery("""
@@ -844,6 +859,13 @@ public class SubcontractReceiptService {
             GROUP BY issue.id HAVING issue.consumed_qty<SUM(original.qty_doc)
             """).setParameter("id",id).getResultList();
         if(!insufficient.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"原发料消费余量已变化，请刷新后重试");
+        requireActualCreditReversible(id);
+    }
+
+    private void requireActualCreditReversible(UUID receiptId) {
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_subcontract_actual_credit_reversal_safe(:id)")
+                .setParameter("id",receiptId).getSingleResult()))
+            throw new ApiException(ErrorCode.CONFLICT,"请先红冲依赖本批原始物料核销的后续零增量回厂单");
     }
 
     private void reverseReceiptMaterialConsumptions(UUID receiptItemId){
@@ -862,8 +884,8 @@ public class SubcontractReceiptService {
             if(updated!=1)throw new ApiException(ErrorCode.CONFLICT,"原发料消费余量已变化，请刷新后重试");
             em.createNativeQuery("""
                     INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,
-                        qty_base,consumption_basis,reversal_of,created_by)
-                    SELECT receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,id,:actor
+                        qty_base,consumption_basis,round_credit_source_id,reversal_of,created_by)
+                    SELECT receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,round_credit_source_id,id,:actor
                     FROM subcontract_receipt_material_consumptions WHERE id=:source
                     """).setParameter("source",source[0]).setParameter("actor",currentUser.requireId()).executeUpdate();
         }

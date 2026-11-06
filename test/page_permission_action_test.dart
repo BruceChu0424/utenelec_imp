@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -519,31 +520,37 @@ void main() {
     expect(find.byType(PagePermissionDrawer), findsNothing);
   });
 
-  testWidgets('search is debounced on server and staff list loads next page', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(900, 820);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final repository = _FakePagePermissionRepository(totalPages: 2);
+  testWidgets(
+    'search is debounced and loads the complete staff result without paging controls',
+    (tester) async {
+      tester.view.physicalSize = const Size(900, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FakePagePermissionRepository(totalPages: 2);
 
-    await tester.pumpWidget(_drawerApp(repository));
-    await tester.pumpAndSettle();
-    final searchField = find.descendant(
-      of: find.byType(UtenSearchBar),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(searchField, '李');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(_drawerApp(repository));
+      await tester.pumpAndSettle();
+      final searchField = find.descendant(
+        of: find.byType(UtenSearchBar),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(searchField, '李');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
 
-    expect(repository.lastSearch, '李');
-    expect(repository.requestedDepartments.last, isNull);
-    await tester.tap(find.text('加载更多'));
-    await tester.pumpAndSettle();
-    expect(repository.requestedPages, containsAllInOrder([1, 1, 2]));
-  });
+      expect(repository.lastSearch, '李');
+      expect(repository.requestedDepartments.last, isNull);
+      expect(find.text('加载更多'), findsNothing);
+      expect(repository.requestedPages, [1, 2, 1, 2]);
+      final table = tester
+          .widget<MasterDataTableView<PagePermissionStaffSummary>>(
+            find.byKey(const ValueKey('page-permission-staff-table')),
+          );
+      expect(table.items, hasLength(2));
+      expect(table.items.last.employeeId, 'employee-2');
+    },
+  );
 
   testWidgets(
     'unprovisioned employee is visible but cannot provision without account support',
@@ -832,11 +839,13 @@ class _FakePagePermissionRepository
     requestedDepartments.add(departmentId);
     final items = [
       PagePermissionStaffSummary(
-        employeeId: 'employee-1',
+        employeeId: totalPages == 1 ? 'employee-1' : 'employee-$page',
         departmentId: 'department-1',
         departmentName: '销售一组',
-        code: 'S001',
-        fullName: '张三',
+        code: page == 1 ? 'S001' : 'S002',
+        fullName: totalPages == 1
+            ? '张三'
+            : '${search?.trim().isNotEmpty == true ? search!.trim() : '员工'}$page',
         positionName: '业务员',
         departmentManager: false,
         hasAccount: hasAccount,

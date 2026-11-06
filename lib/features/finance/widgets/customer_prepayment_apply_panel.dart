@@ -1,3 +1,7 @@
+import '../../../components/layout/uten_ancestor_row_window.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/models/paged_result.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -53,13 +57,20 @@ class _CustomerPrepaymentApplyPanel extends ConsumerStatefulWidget {
 }
 
 class _CustomerPrepaymentApplyPanelState
-    extends ConsumerState<_CustomerPrepaymentApplyPanel> {
+    extends ConsumerState<_CustomerPrepaymentApplyPanel>
+    with ScopedPagedReadViewMixin<_CustomerPrepaymentApplyPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _reason = TextEditingController();
+  final _sourceRows = UtenAncestorRowWindowController<CustomerPrepaymentItem>();
   CustomerPrepaymentPage? _page;
   CustomerPrepaymentItem? _source;
   List<AppliedArAp> _targets = const [];
   CustomerPrepaymentOffsetResult? _lastResult;
   bool _loading = true;
+  bool _readRetired = false;
+  int _readVersion = 0;
   bool _busy = false;
   String? _error;
 
@@ -86,30 +97,93 @@ class _CustomerPrepaymentApplyPanelState
     super.dispose();
   }
 
+  Object get _readQuery => [
+    ref.read(customerPrepaymentRepositoryProvider),
+    widget.clientId,
+  ];
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    _readVersion++;
+    if (!mounted) return;
+    setState(() {
+      _readRetired = true;
+      _loading = false;
+      _page = null;
+      _source = null;
+      _targets = const [];
+      _error = scopedPagedReadRejection?.message ?? '读取身份已变化，请关闭后重新打开';
+    });
+  }
+
   Future<void> _load() async {
+    if (_readRetired) return;
+    final version = ++_readVersion;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final page = await ref
-          .read(customerPrepaymentRepositoryProvider)
-          .list(clientId: widget.clientId, size: 100);
-      if (!mounted) return;
-      setState(() => _page = page);
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _error = error.message);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = '客户预收加载失败');
+      final repository = ref.read(customerPrepaymentRepositoryProvider);
+      final response = await readScopedPage<CustomerPrepaymentItem>(
+        1,
+        query: _readQuery,
+        currentQuery: () => _readQuery,
+        isCurrent: () => version == _readVersion && !_readRetired,
+        idOf: (row) => row.ledgerId,
+        fetchPage: (target) async {
+          final result = await repository.list(
+            clientId: widget.clientId,
+            page: target,
+            size: 100,
+          );
+          return PagedReadSnapshot<
+            CustomerPrepaymentItem,
+            CustomerPrepaymentPage
+          >(
+            page: PagedResult(
+              items: result.items,
+              page: result.page,
+              size: result.size,
+              total: result.total,
+              totalPages: result.totalPages,
+            ),
+            snapshot: result,
+            rebuildSnapshot: result.withPage,
+          );
+        },
+      );
+      if (!mounted || version != _readVersion || _readRetired) return;
+      setState(
+        () => _page =
+            (response
+                    as PagedReadSnapshot<
+                      CustomerPrepaymentItem,
+                      CustomerPrepaymentPage
+                    >)
+                .snapshot,
+      );
+    } catch (error) {
+      if (isRetiredViewRead(error)) return;
+      if (!mounted || version != _readVersion || _readRetired) return;
+      setState(
+        () => _error = error is ApiException ? error.message : '客户预收加载失败',
+      );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && version == _readVersion && !_readRetired) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   void _selectSource(CustomerPrepaymentItem item) {
-    if (!item.hasAvailable || _busy || _lastResult != null) return;
+    if (_readRetired ||
+        _loading ||
+        !item.hasAvailable ||
+        _busy ||
+        _lastResult != null) {
+      return;
+    }
     setState(() {
       _source = _source?.ledgerId == item.ledgerId ? null : item;
       _targets = const [];
@@ -129,7 +203,12 @@ class _CustomerPrepaymentApplyPanelState
       partyId: widget.clientId,
       lockedCurrencyId: source.currencyId,
     );
-    if (!mounted || picked == null) return;
+    if (!mounted ||
+        picked == null ||
+        _readRetired ||
+        _source?.ledgerId != source.ledgerId) {
+      return;
+    }
     for (final target in picked) {
       final orderId = _targetOrderId(target);
       if (orderId == null) {
@@ -152,6 +231,7 @@ class _CustomerPrepaymentApplyPanelState
 
   String? _validationError() {
     final source = _source;
+    if (_readRetired || _loading || _error != null) return '请重新读取客户预收后再操作';
     if (source == null) return '请选择一笔可用客户预收';
     if (!source.hasAvailable) return '所选客户预收已无可用余额，请刷新';
     if (_targets.isEmpty) return '请选择至少一笔同客户、同币种的正应收';
@@ -345,7 +425,13 @@ class _CustomerPrepaymentApplyPanelState
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextButton.icon(
-                onPressed: _load,
+                onPressed: _readRetired
+                    ? null
+                    : () => UtenBusyOverlay.run(
+                        context,
+                        title: '正在读取客户预收',
+                        action: _load,
+                      ),
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('重试'),
               ),
@@ -388,7 +474,14 @@ class _CustomerPrepaymentApplyPanelState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        for (final item in page.items) _sourceTile(theme, item),
+        UtenAncestorRowWindow<CustomerPrepaymentItem>(
+          controller: _sourceRows,
+          rows: page.items,
+          expensiveRows: false,
+          deferRowMounts: false,
+          estimatedRowExtent: 110,
+          rowBuilder: (context, item, _) => _sourceTile(theme, item),
+        ),
         const SizedBox(height: UtenSpacing.s12),
         Row(
           children: [

@@ -65,6 +65,8 @@ void main() {
     expect(draft.toPayload(), containsPair('weight', '0.85'));
     draft.weight.weight.text.text = '一袋';
     expect(draft.validate(), subcontractOutboundWeightInvalid);
+    expect(() => draft.capturedWeightKgText, throwsFormatException);
+    expect(draft.toPayload, throwsFormatException);
     draft.weight.weight.text.text = '';
     expect(draft.validate(), isNull);
   });
@@ -88,6 +90,57 @@ void main() {
     expect(draft.weight.weight.qtyEstimateNote, '保存时按称重折算的数量');
     expect(draft.toPayload(), containsPair('weight', '10.75'));
     expect(draft.toPayload(), containsPair('qtyFromWeight', true));
+  });
+
+  test(
+    'subcontract KG keeps its own 14/4 boundary without rounding the input',
+    () {
+      final draft = SubcontractOutboundLineDraft(line(), item());
+      addTearDown(draft.dispose);
+      for (final raw in [
+        '0.00001kg',
+        '100000000000000kg',
+        '99999999999999.99991kg',
+      ]) {
+        draft.weight.weight.text.text = raw;
+        expect(draft.validate(), subcontractOutboundWeightUnsupported);
+        expect(draft.weight.weight.text.text, raw);
+        expect(draft.toPayload, throwsFormatException);
+      }
+      final quantity = draft.qty.text;
+      for (final sample in {
+        '99999999999999.9999kg': '99999999999999.9999',
+        '1.0000000000kg': '1',
+        '3250g': '3.25',
+      }.entries) {
+        draft.weight.weight.text.text = sample.key;
+        expect(draft.validate(), isNull);
+        expect(draft.capturedWeightKgText, sample.value);
+        expect(draft.toPayload()['weight'], sample.value);
+        expect(draft.weight.weight.enteredText, sample.key);
+        expect(draft.qty.text, quantity);
+        expect(draft.toPayload()['planItemId'], 'plan-item');
+        expect(draft.toPayload()['orderItemId'], 'order-item');
+      }
+      draft.weight.weight.text.text = '0.1g';
+      expect(draft.validate(), isNull);
+      expect(draft.toPayload()['weight'], '0.0001');
+      draft.weight.weight.text.text = '0kg';
+      expect(draft.validate(), isNull);
+      expect(draft.toPayload(), isNot(contains('weight')));
+    },
+  );
+
+  test('本次不发的行不会把未采用的超域重量送入写入体', () {
+    final draft = SubcontractOutboundLineDraft(line(), item());
+    addTearDown(draft.dispose);
+    draft.qty.text = '0';
+    draft.weight.weight.text.text = '0.00001kg';
+    expect(draft.skipped, isTrue);
+    expect(draft.validate(), isNull);
+    expect(subcontractOutboundPayloadItems([draft]), isEmpty);
+    expect(draft.toPayload(), isNot(contains('weight')));
+    expect(draft.weight.weight.text.text, '0.00001kg');
   });
 
   test('批处理后续提交仅可选择尚未执行项，成功和回执未定不重放', () {

@@ -1,0 +1,206 @@
+{
+  "schemaVersion": 1,
+  "id": "E-PLATFORM-LOADING-MAIN3068-20261105",
+  "atUtc": "2026-11-05T22:04:34.365214+00:00",
+  "scope": "Latest Main3068 unit output protocol plus task continuous native lists/history; local actual STA scopes only.",
+  "mainSourceHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "candidateHead": "6d6efcb6816771f43971b61783ea3eed8465c7a5",
+  "executedAtWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "sourceInputs": 186,
+  "sourceDrift": [],
+  "architectures": [
+    "x64",
+    "x86"
+  ],
+  "configuration": "Debug",
+  "warnAsError": true,
+  "restore": false,
+  "actualScopeAssertionCountsPerArchitecture": {
+    "historyHttp": 44,
+    "historyReadMutationUi": 20,
+    "historyCompleteCursorWaitCancelOwner": 17,
+    "continuousListUi": 22,
+    "searchUi": 5,
+    "leafReads": 16,
+    "goodsReads": 66,
+    "unitReads": 38,
+    "nativePrint": 23,
+    "unitExport": 41,
+    "sharedOutputSelection": 9,
+    "capabilityHandshake": 6,
+    "sumOfNamedScopedAssertions": 307
+  },
+  "countsMeaning": "Actual named scope output, not a full native runner or all-ERP unique-test claim; prior228 stays historical, not added again.",
+  "composedBehaviour": [
+    "Complete bounded100-row snapshot collection populates allRows and all-row columns without user page controls.",
+    "Latest print/export selected IDs/capability/journal/unknown reconciliation preserved; totalElements is the first authoritative response total, not a sum of batches.",
+    "Original cancellation, scope/identity retirement, mandatory reread, write limits and unknown-submission protections remain."
+  ],
+  "registry": {
+    "tasks": 372,
+    "statusOwnerDoDDependenciesNativeTargetsPreserved": true,
+    "noStatusPromotion": true
+  },
+  "files": [
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/build-x64-exit.json",
+      "sha256": "83952b41808bdbcc44c7049b851f69793468f740ac9f28eeabf0eef841880034"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/build-x64.log",
+      "sha256": "0fd25323cf556a9f8cba795925ef392946fc7313349b2f9f1a860cc03007cbec"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/build-x86-exit.json",
+      "sha256": "190cd6a1b483d44d0ff332299e573596c68dd73da816dfe78d29c2eaf9f874e7"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/build-x86.log",
+      "sha256": "4232806c0d76d1aa2ecaa7f8bcb076291148adeb2116f757d53bc26583b5bd21"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/continuous-list-contracts-x64-exit.json",
+      "sha256": "2e63105f2f0a763cb98384161c01b511699ce6391650a3d54cc6360ce060c5be"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/continuous-list-contracts-x64.log",
+      "sha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/continuous-list-contracts-x86-exit.json",
+      "sha256": "52d1733e4538649e6d37e3292cebc5c6eae0d593aa1d90dc1791fd43f4b1fb5d"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/continuous-list-contracts-x86.log",
+      "sha256": "e0025513b1348bf6c51e353ac1810b534e18a081d2921f41ccc9fdf402b74977"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/pending-registry-evidence.json",
+      "sha256": "9f929e6cf7eb84ec405d56d21bbed228e871743d325f0ac4b4d8b8a06ff05cd8"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/receipt.json",
+      "sha256": "c9f5bb858159a52cab6f5b2a99e76cc53b63489083404382fa353af2b2249aa5"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/search-input-contracts-x64-exit.json",
+      "sha256": "a0e0f96e4ab4ed4eeb68119cbd121c535df3aba30178b93dd2401a63108ba817"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/search-input-contracts-x64.log",
+      "sha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/search-input-contracts-x86-exit.json",
+      "sha256": "249034607c2643060652024c19264a350d1b02fbf7780d653f9946a65d662cda"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/search-input-contracts-x86.log",
+      "sha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/source-input.json",
+      "sha256": "5e49628a4fe5aaf5aa3a4a1d9f83a6d152a2950c80d6391fcb24fa419a0b0f45"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/table-output-contracts-x64-exit.json",
+      "sha256": "ff07a9c73b34fb376af3ac88ffda7446b437c406b3983bf4300cf3a23f87c703"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/table-output-contracts-x64.log",
+      "sha256": "c97ead845689cb2aaa01835890cdda563d01d7f99f09b4699c0f5588e36c274f"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/table-output-contracts-x86-exit.json",
+      "sha256": "cee2ebce071c1723011e51bc5e696eb2d42e7089d3f9c6c0c40c36c84ed140f2"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/table-output-contracts-x86.log",
+      "sha256": "f469ee19cc2dfc70f4ad9fb0888d8524eb3b2b8ad1a67566e023699e81c7909c"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/unit-history-contracts-x64-exit.json",
+      "sha256": "31a553812c95fd555faf89a7d4d39e0bb801fc1a4778a65004ce758c86091736"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/unit-history-contracts-x64.log",
+      "sha256": "5600bc9292759cb858d3661a78f85f67f455dddfb0c303bed62f240a02d90a38"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/unit-history-contracts-x86-exit.json",
+      "sha256": "f628476c65eb2a90c2ecba9728e282c71825cd2ec269ede5859a7a8bb0ade6c7"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/unit-history-contracts-x86.log",
+      "sha256": "fff6ec23ff46cf7549b3232e7700c644d9d39506cc85f6d4decbcb0a9a6156a9"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x64/goods-continuous-list.png",
+      "sha256": "cf7a61504b8665043c88638f03de15de2738e845d82fc7a5dfc43c034a9c4f0a"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x64/unit-operation-history-fixture.png",
+      "sha256": "367fa178a0a1cc0f2d594f1bdb5573eb4e574a79c29857ec03c74af002cb1150"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x64/unit-record-history-fixture.png",
+      "sha256": "2b67d9bb52c556f86ec444422f09247942f7b2db6f9da45832553d7a7f21fb42"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x64/unit-record-history-narrow-fixture.png",
+      "sha256": "92b65c70268830ef370495b1931b9207aa73b782d50cd6540ad6fd442cf84a2d"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x64/units-continuous-list.png",
+      "sha256": "c3ab265173bcb96de0a7c3d945e02654ed56cd9d64a2e34f46fb620550de9640"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x86/goods-continuous-list.png",
+      "sha256": "cf7a61504b8665043c88638f03de15de2738e845d82fc7a5dfc43c034a9c4f0a"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x86/unit-operation-history-fixture.png",
+      "sha256": "367fa178a0a1cc0f2d594f1bdb5573eb4e574a79c29857ec03c74af002cb1150"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x86/unit-record-history-fixture.png",
+      "sha256": "2b67d9bb52c556f86ec444422f09247942f7b2db6f9da45832553d7a7f21fb42"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x86/unit-record-history-narrow-fixture.png",
+      "sha256": "92b65c70268830ef370495b1931b9207aa73b782d50cd6540ad6fd442cf84a2d"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/x86/units-continuous-list.png",
+      "sha256": "c3ab265173bcb96de0a7c3d945e02654ed56cd9d64a2e34f46fb620550de9640"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/generic-review.json",
+      "sha256": "50139cb6eea297fae69c5c36a2d0e374676334294a1c152b5a09bf7dcf7671ca"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/generic-adoption-receipt.json",
+      "sha256": "6bd023d7caceb3a140a20fb0fb4d2b12cfc215337238a3824ce560733261176b"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/post3068-generic-independent-peer.json",
+      "sha256": "c36cf2bed7a9a9eda5f0a9df2fed1803378fe2d59c121b45ce22ea91f0a16177"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/run_wpf_3068_current.py",
+      "sha256": "ac724a93be63b3382a156d8ea73a20dc12075b8bd9f1d08795f762da58261493"
+    }
+  ],
+  "visualReview": {
+    "viewed": [
+      "x64/unit-record-history-narrow-fixture.png",
+      "x64/units-continuous-list.png"
+    ],
+    "note": "Narrow history screenshot intentionally shows filter invalidation with retained input, so no full-history success is inferred from that empty state. Complete cursor and scroll facts come from actual STA assertions."
+  },
+  "fullErpAcceptance": false,
+  "win7TargetPcAcceptance": false,
+  "formalDistribution": false,
+  "mainIntegrated": false,
+  "companyApiOrDbWritten": false
+}

@@ -1,19 +1,98 @@
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/data_display/paged_read_cache.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_mutation_reload_safety.dart';
-import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/request_reload_semantics.dart';
 import 'package:uten_imp/core/network/interceptors/safe_request_retry_interceptor.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 void main() {
+  for (final authenticated in [false, true]) {
+    test(
+      'a disposed owner callback retires reads without throwing from the cancellation timer: $authenticated',
+      () async {
+        var disposed = false;
+        bool alive() {
+          if (disposed) throw StateError('provider disposed');
+          return true;
+        }
+
+        final adapter = _Adapter();
+        final dio = Dio(BaseOptions(baseUrl: 'https://example.test/api'))
+          ..httpClientAdapter = adapter;
+        final api = ApiClient(dio);
+        final scope = authenticated
+            ? await AuthenticatedRequestScope.capture(
+                baseUrl: dio.options.baseUrl,
+                storage: null,
+                isCurrent: alive,
+              )
+            : null;
+        final read = scope != null
+            ? scope.run(() => api.get('/details/owned'))
+            : PagedReadIntent.scopedRead(
+                alive,
+                () => api.get('/details/owned'),
+              );
+        final rejected = expectLater(
+          read,
+          throwsA(
+            isA<ApiException>().having(
+              (e) => e.code,
+              'code',
+              authenticated ? 'SESSION_CHANGED' : 'REQUEST_STALE',
+            ),
+          ),
+        );
+        await adapter.ready(1);
+        disposed = true;
+        await rejected;
+        expect(adapter.cancelled, [true]);
+        expect(adapter.requests, hasLength(1));
+        adapter.respond(0, '{}');
+        dio.close(force: true);
+      },
+    );
+  }
+
+  test(
+    'an authenticated operation owner retires detail reads without a pager',
+    () async {
+      var current = true;
+      final adapter = _Adapter();
+      final dio = Dio(BaseOptions(baseUrl: 'https://example.test/api'))
+        ..httpClientAdapter = adapter;
+      final api = ApiClient(dio);
+      final scope = await AuthenticatedRequestScope.capture(
+        baseUrl: dio.options.baseUrl,
+        storage: null,
+        isCurrent: () => current,
+      );
+      final read = scope.run(() => api.get('/details/owned'));
+      final rejected = expectLater(
+        read,
+        throwsA(
+          isA<ApiException>().having((e) => e.code, 'code', 'SESSION_CHANGED'),
+        ),
+      );
+      await adapter.ready(1);
+      current = false;
+      await rejected;
+      expect(adapter.cancelled, [true]);
+      expect(adapter.requests, hasLength(1));
+      adapter.respond(0, '{}');
+      dio.close(force: true);
+    },
+  );
+
   test(
     'body-carried search reads share read safety, cancellation and exact retry policy',
     () async {
@@ -34,6 +113,7 @@ void main() {
         '/business-references/suppliers/search-context',
         '/finance/reports/ar-ap/overview/search',
         '/quality/pending-disposals/query',
+        '/production/daily-reports/draft-claims/query',
         '/security/blacklist/search',
         '/master/clients/access-candidates/query',
         '/admin/data-handovers/candidates/query',
@@ -121,14 +201,14 @@ void main() {
   );
 
   test(
-    'same-page consumers share one read; query retirement cancels it without clearing accepted edits',
+    'complete-query consumers share one transport and retiring its owner cancels only that read',
     () async {
       final adapter = _Adapter();
       final dio = Dio(BaseOptions(baseUrl: 'https://example.test/api'))
         ..httpClientAdapter = adapter;
       final api = ApiClient(dio);
-      final cache = PagedReadCache<String>();
-      cache.bind('old');
+      final cache = ScopedPagedRead<String>();
+      addTearDown(cache.dispose);
       Future<PagedResult<String>> fetch() async {
         await api.get('/items', query: {'keyword': '旧'});
         return const PagedResult(
@@ -140,8 +220,20 @@ void main() {
         );
       }
 
-      final a = cache.read(1, fetch);
-      final b = cache.read(1, fetch);
+      final a = cache.read(
+        1,
+        scope: 'Q',
+        fetchPage: (_) => fetch(),
+        isCurrent: () => true,
+        useCache: true,
+      );
+      final b = cache.read(
+        1,
+        scope: 'Q',
+        fetchPage: (_) => fetch(),
+        isCurrent: () => true,
+        useCache: true,
+      );
       expect(identical(a, b), true);
       final rejectedA = expectLater(
         a,
@@ -151,11 +243,23 @@ void main() {
       );
       final rejectedB = expectLater(b, throwsA(isA<ApiException>()));
       await adapter.ready(1);
-      cache.bind('new');
+      cache.invalidate();
       await Future.wait([rejectedA, rejectedB]);
       expect(adapter.requests, hasLength(1));
       expect(adapter.cancelled, [true]);
-      expect(cache.peek(1), isNull);
+      final current = await cache.read(
+        1,
+        scope: 'Q',
+        isCurrent: () => true,
+        fetchPage: (_) async => const PagedResult<String>(
+          items: ['new'],
+          page: 1,
+          size: 100,
+          total: 1,
+          totalPages: 1,
+        ),
+      );
+      expect(current.items, ['new']);
       adapter.respond(0, '{}');
       dio.close(force: true);
     },

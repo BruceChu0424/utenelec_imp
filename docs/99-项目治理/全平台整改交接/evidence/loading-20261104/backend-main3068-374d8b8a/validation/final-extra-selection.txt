@@ -1,0 +1,1 @@
+CostDocumentExportTest,GoodsCostDocumentMapperTest,ShelfLabelQueryPostgresTest,SalesShipmentFinanceReleaseRateEndToEndTest

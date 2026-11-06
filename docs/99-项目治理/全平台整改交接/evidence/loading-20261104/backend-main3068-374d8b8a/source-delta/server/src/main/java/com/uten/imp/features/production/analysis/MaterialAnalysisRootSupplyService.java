@@ -1,0 +1,745 @@
+package com.uten.imp.features.production.analysis;
+
+import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.saleschain.SalesOrderChainSql;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
+import com.uten.imp.features.stock.StockReservation;
+import com.uten.imp.features.stock.StockReservationService;
+import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Collection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Root products use the existing supply ledger and hand qualified output to sales or stock. */
+@Service
+@org.springframework.core.annotation.Order(-100)
+@RequiredArgsConstructor
+public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitlementHook {
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void applyPriorityForOriginEvent(UUID originEventId) { fulfillOrigin(originEventId); }
+    private final EntityManager em;
+    private final SecurityContextCurrentUser currentUser;
+    private final TxSessionVars tx;
+    private final InventoryMutationLock inventoryLock;
+    private final PreplanStockEntitlementService entitlement;
+    private final StockReservationService salesReservations;
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void ensureRootNodes(UUID analysisId) {
+        List<Object[]> invalid = rows("""
+                SELECT item.id,goods.code
+                FROM production_material_analysis_items item
+                JOIN goods ON goods.id=item.goods_id
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales ON sales.id=item.sales_order_item_id
+                LEFT JOIN production_material_analysis_materials root ON root.id=item.root_material_id
+                WHERE item.analysis_id=:id AND item.is_deleted=FALSE
+                  AND item.source_type IN ('SALES_ORDER_ITEM','REWORK','TRIAL','SAMPLE','STOCK','OTHER')
+                  AND (goods.unit_id IS NULL
+                    OR (item.sales_order_item_id IS NULL AND item.unit_id IS DISTINCT FROM goods.unit_id)
+                    OR (item.sales_order_item_id IS NOT NULL AND (
+                      sales.unit_id IS NULL OR sales.unit_rate<=0
+                      OR (sales.unit_id IS DISTINCT FROM goods.unit_id AND sales.unit_rate IS NULL)
+                      OR (root.id IS NOT NULL AND root.per_product_qty<>COALESCE(sales.unit_rate,1)))))
+                LIMIT 1
+                ""","id",analysisId);
+        if (!invalid.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "根产品缺少基本单位或销售单位换算不正确，请先修复历史单位与换算率");
+        }
+
+        em.createNativeQuery("""
+                UPDATE production_material_analysis_items
+                SET root_material_id=gen_random_uuid()
+                WHERE analysis_id=:analysisId AND is_deleted=FALSE
+                  AND root_material_id IS NULL
+                  AND COALESCE(delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
+                  AND source_type IN ('SALES_ORDER_ITEM','REWORK','TRIAL','SAMPLE','STOCK','OTHER')
+                """).setParameter("analysisId", analysisId).executeUpdate();
+        em.createNativeQuery("""
+                INSERT INTO production_material_analysis_materials (
+                  id,analysis_id,analysis_item_id,node_key,parent_node_key,bom_item_id,
+                  goods_id,color_id,unit_id,depth,path,per_product_qty,
+                  required_qty,available_qty,allocated_available_qty,reserved_qty,
+                  safety_stock_qty,inbound_qty,shortage_qty,source_suggestion,active,
+                  control_stage,consumption_basis,basis_output_qty,allow_partial_package,
+                  hard_gate,bom_qty,parent_per_product_qty,calculation_mode,node_role,
+                  allocated_start_qty,allocated_finish_qty,allocated_ship_qty,created_by,updated_by)
+                SELECT item.root_material_id,item.analysis_id,item.id,'ROOT_SUPPLY',NULL,NULL,
+                  item.goods_id,item.color_id,goods.unit_id,0,'[]',
+                  COALESCE(sales.unit_rate,1),
+                  CEIL(GREATEST(item.requested_qty,0)
+                    *COALESCE(sales.unit_rate,1)*10000)/10000,
+                  0,0,0,GREATEST(COALESCE(goods.min_qty,0),0),0,
+                  CEIL(GREATEST(item.requested_qty,0)
+                    *COALESCE(sales.unit_rate,1)*10000)/10000,
+                  CASE btrim(COALESCE(goods.source_type,''))
+                    WHEN '采购' THEN 'BUY' WHEN '自制' THEN 'MAKE' WHEN '委外' THEN 'SUBCONTRACT'
+                    ELSE CASE WHEN EXISTS (
+                      SELECT 1 FROM goods_bom_items bom JOIN goods child ON child.id=bom.component_goods_id
+                      WHERE bom.goods_id=goods.id AND NOT bom.is_deleted AND NOT child.is_deleted
+                        AND NOT COALESCE(child.auto_created,FALSE) AND child.issue_method<>'PERIODIC'
+                    ) THEN 'MAKE' ELSE 'REVIEW' END END,
+                  TRUE,'START','PER_UNIT',1,TRUE,TRUE,
+                  COALESCE(sales.unit_rate,1),1,'EDGE_RULE','ROOT_SUPPLY',0,0,0,:actorId,:actorId
+                FROM production_material_analysis_items item
+                JOIN goods ON goods.id=item.goods_id
+                LEFT JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales ON sales.id=item.sales_order_item_id
+                WHERE item.analysis_id=:analysisId AND item.root_material_id IS NOT NULL
+                  AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
+                ON CONFLICT (id) DO UPDATE
+                SET source_suggestion=EXCLUDED.source_suggestion,updated_at=now(),updated_by=:actorId
+                WHERE production_material_analysis_materials.source_suggestion
+                  IS DISTINCT FROM EXCLUDED.source_suggestion
+                """).setParameter("analysisId", analysisId)
+                .setParameter("actorId", currentUser.requireId()).executeUpdate();
+    }
+
+    /** 有按单 BOM 的根产品; 整批领料的料 (ADR-131 期间边) 不算下层。 */
+    public Set<UUID> rootProductsWithBom(UUID analysisId) {
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT item.id FROM production_material_analysis_items item
+                WHERE item.analysis_id=:id AND item.root_material_id IS NOT NULL AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
+                  AND EXISTS (SELECT 1 FROM goods_bom_items bom JOIN goods child
+                    ON child.id=bom.component_goods_id AND child.is_deleted=FALSE
+                      AND COALESCE(child.auto_created,FALSE)=FALSE
+                      AND child.issue_method<>'PERIODIC'
+                    WHERE bom.goods_id=item.goods_id AND bom.is_deleted=FALSE)
+                """, UUID.class).setParameter("id",analysisId),UUID.class));
+    }
+    /** Runs after the ordinary BOM allocation: already protected component stock is not spent twice. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void refreshRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage) {
+        updateRootQuantities(projectRootNodes(analysisId, futureCoverage, Map.of(), Map.of()));
+        em.createNativeQuery("""
+                UPDATE production_material_analysis_items item
+                SET ready_now_qty=0,ready_by_date_qty=0,ready_start_qty=0,ready_finish_qty=0,ready_ship_qty=0
+                FROM production_material_analysis_materials root
+                WHERE item.analysis_id=:id AND root.id=item.root_material_id
+                  AND COALESCE(root.confirmed_route,'MAKE')<>'MAKE'
+                  AND (item.ready_now_qty,item.ready_by_date_qty,item.ready_start_qty,item.ready_finish_qty,item.ready_ship_qty)
+                      IS DISTINCT FROM (0::numeric,0::numeric,0::numeric,0::numeric,0::numeric)
+                """).setParameter("id",analysisId).executeUpdate();
+        em.createNativeQuery("""
+                WITH snapshot AS MATERIALIZED (
+                  SELECT id,fn_material_analysis_fulfillment_status(id) AS status
+                  FROM production_material_analyses WHERE id=:analysisId AND status<>'CANCELLED'
+                )
+                UPDATE production_material_analyses analysis SET status=snapshot.status
+                FROM snapshot WHERE analysis.id=snapshot.id AND analysis.status IS DISTINCT FROM snapshot.status
+                """).setParameter("analysisId", analysisId).executeUpdate();
+    }
+
+    /**
+     * 顶层供给行数量的纯计算(不写库)。真实刷新传空覆盖值后写回; 下达预览(ADR-116)传入
+     * [allocatedByMaterial](BOM 物料行 id → 内存重算的已分配量, 替代库内旧值)与
+     * [openPlanBySource](来源行 id → 本批计划新增的未完工量, 基本单位), 只叠进视图。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<RootQuantityRow> projectRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,
+            Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource) {
+        return projectRootNodes(analysisId,futureCoverage,allocatedByMaterial,openPlanBySource,MaterialAnalysisIssuePreviewOverlay.NONE);
+    }
+
+    List<RootQuantityRow> projectRootNodes(UUID analysisId, Map<UUID,BigDecimal> futureCoverage,
+            Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource,
+            MaterialAnalysisIssuePreviewOverlay overlay) {
+        Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
+        Map<InventoryKey,BigDecimal> projectedReservations=publicReservationChanges(analysisId,overlay);
+        List<RootQuantityRow> quantities = new ArrayList<>();
+        StringBuilder overrides = new StringBuilder("[");
+        allocatedByMaterial.forEach((id, qty) -> overrides.append(overrides.length() > 1 ? "," : "")
+                .append("{\"id\":\"").append(id).append("\",\"qty\":").append(qty.toPlainString())
+                .append(",\"formalized\":").append(overlay.transferredMaterial(id).toPlainString()).append('}'));
+        overrides.append(']');
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id,item.root_material_id,item.goods_id,item.color_id,
+                  root.per_product_qty,COALESCE(root.confirmed_route,'MAKE'),
+                  GREATEST(item.requested_qty,0),
+                  analysis.warehouse_id,GREATEST(COALESCE(goods.min_qty,0),0),
+                  COALESCE(balance.qty,0),
+                  COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
+                    FROM stock_reservations r WHERE r.goods_id=item.goods_id
+                    AND r.color_id IS NOT DISTINCT FROM item.color_id
+                    AND ((fn_warehouse_same_main(r.warehouse_id,analysis.warehouse_id)
+                          AND fn_warehouse_is_good_stock_leaf(r.warehouse_id)) OR r.warehouse_id IS NULL)
+                    AND r.status=0 AND r.is_deleted=FALSE),0),
+                  GREATEST(COALESCE((SELECT SUM(GREATEST(COALESCE(override.qty,m.allocated_available_qty)-GREATEST(COALESCE((
+                      SELECT SUM(ent.effective_qty)
+                      FROM v_preplan_stock_entitlement_beneficiary_balance ent
+                      WHERE ent.beneficiary_analysis_id=item.analysis_id
+                        AND ent.beneficiary_analysis_material_id=m.id),0)-COALESCE(override.formalized,0),0),0))
+                    FROM production_material_analysis_materials m
+                    LEFT JOIN jsonb_to_recordset(CAST(:overrides AS jsonb)) AS override(id uuid, qty numeric, formalized numeric)
+                      ON override.id=m.id
+                    WHERE m.analysis_id=item.analysis_id AND m.active=TRUE
+                      AND m.node_role='BOM_COMPONENT' AND m.goods_id=item.goods_id
+                      AND m.color_id IS NOT DISTINCT FROM item.color_id),0)
+                    -COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
+                      FROM stock_reservations r WHERE r.owner_type='PREPLAN_ANALYSIS'
+                        AND r.owner_id=item.analysis_id AND r.goods_id=item.goods_id
+                        AND r.color_id IS NOT DISTINCT FROM item.color_id
+                        AND fn_warehouse_same_main(r.warehouse_id,analysis.warehouse_id)
+                        AND fn_warehouse_is_good_stock_leaf(r.warehouse_id) AND r.status=0 AND r.is_deleted=FALSE
+                        AND NOT EXISTS (SELECT 1 FROM preplan_stock_entitlement_events event
+                                        WHERE event.stock_reservation_id=r.id)),0),0),
+                  COALESCE((SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
+                    FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),
+                  item.sales_order_item_id,
+                  COALESCE((SELECT SUM(LEAST(pi.qty,GREATEST(COALESCE(pi.iqty,0),0))
+                      * COALESCE(pi.unit_rate,1))
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) pi ON pi.plan_id=plan.id
+                    WHERE plan.material_analysis_id=item.analysis_id
+                      AND plan.material_analysis_item_id=item.id
+                      AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                      AND pi.is_deleted=FALSE),0),
+                  COALESCE((SELECT SUM(GREATEST(pi.qty-COALESCE(pi.iqty,0),0)
+                      * COALESCE(pi.unit_rate,1))
+                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) pi ON pi.plan_id=plan.id
+                    WHERE plan.material_analysis_id=item.analysis_id
+                      AND plan.material_analysis_item_id=item.id
+                      AND plan.status IN (0,1) AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                      AND pi.is_deleted=FALSE),0),
+                  COALESCE((SELECT SUM(entitlement.effective_qty)
+                      FROM v_preplan_stock_entitlement_beneficiary_balance entitlement
+                      JOIN stock_reservations reservation ON reservation.id=entitlement.stock_reservation_id
+                      WHERE entitlement.beneficiary_analysis_id=item.analysis_id
+                        AND entitlement.beneficiary_analysis_material_id=root.id
+                        AND reservation.goods_id=item.goods_id
+                        AND reservation.color_id IS NOT DISTINCT FROM item.color_id
+                        AND fn_preplan_reservation_has_qualified_origin(reservation.id)
+                        AND NOT EXISTS(SELECT 1 FROM warehouses defective
+                            WHERE defective.id=reservation.warehouse_id AND defective.is_defective)
+                        AND reservation.status=0 AND NOT reservation.is_deleted),0)
+                FROM production_material_analysis_items item
+                JOIN production_material_analyses analysis ON analysis.id=item.analysis_id
+                JOIN production_material_analysis_materials root ON root.id=item.root_material_id
+                JOIN goods ON goods.id=item.goods_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(physical.qty) AS qty FROM v_stock_operable_balances physical
+                    WHERE physical.goods_id=item.goods_id AND physical.color_id IS NOT DISTINCT FROM item.color_id
+                      AND fn_warehouse_same_main(physical.warehouse_id,analysis.warehouse_id)
+                      AND fn_warehouse_is_good_stock_leaf(physical.warehouse_id)
+                ) balance ON TRUE
+                WHERE item.analysis_id=:analysisId AND item.is_deleted=FALSE
+                  AND COALESCE(item.delivery_plan_snapshot->>'mode','ASSEMBLED')<>'BOM'
+                ORDER BY item.line_priority,item.id
+                """).setParameter("analysisId", analysisId).setParameter("overrides", overrides.toString()))) {
+            UUID materialId = (UUID) row[1];
+            InventoryKey dimension = new InventoryKey((UUID) row[2], (UUID) row[3]);
+            BigDecimal required = decimal(row[6]).multiply(decimal(row[4]))
+                    .setScale(4, RoundingMode.CEILING).max(BigDecimal.ZERO);
+            BigDecimal reserved = decimal(row[10]).add(projectedReservations.getOrDefault(dimension,BigDecimal.ZERO));
+            BigDecimal stock = decimal(row[9]).subtract(reserved).max(BigDecimal.ZERO);
+            BigDecimal publicAvailable = publicPools.computeIfAbsent(dimension,
+                    ignored -> stock.subtract(decimal(row[11])).subtract(decimal(row[8]))
+                            .max(BigDecimal.ZERO));
+            boolean external = !"MAKE".equals(row[5]);
+            BigDecimal fulfilled = decimal(row[12]).min(required);
+            BigDecimal unassigned = required.subtract(fulfilled)
+                    .subtract(futureCoverage.getOrDefault(materialId,BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
+            BigDecimal ownQualified = decimal(row[16]).min(required.subtract(fulfilled).max(BigDecimal.ZERO));
+            BigDecimal publicAllocated = row[13] == null ? BigDecimal.ZERO
+                    : unassigned.subtract(ownQualified).max(BigDecimal.ZERO).min(publicAvailable);
+            BigDecimal allocated = external
+                    ? fulfilled.add(ownQualified).add(publicAllocated)
+                    : decimal(row[14]).min(required);
+            if (external) publicPools.put(dimension, publicAvailable.subtract(publicAllocated));
+            BigDecimal openPlan = decimal(row[15]).add(openPlanBySource.getOrDefault((UUID) row[0], BigDecimal.ZERO));
+            quantities.add(new RootQuantityRow(materialId,required,stock,reserved,decimal(row[8]),allocated,
+                    required.subtract(allocated),external?futureCoverage.getOrDefault(materialId,BigDecimal.ZERO):openPlan));
+        }
+        return quantities;
+    }
+
+    private Map<InventoryKey,BigDecimal> publicReservationChanges(UUID analysisId,MaterialAnalysisIssuePreviewOverlay overlay) {
+        var changes=overlay.publicReservations();
+        if(changes.isEmpty())return Map.of();
+        Set<UUID> warehouses=Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT warehouse.id FROM warehouses warehouse
+                JOIN production_material_analyses analysis ON analysis.id=:analysis
+                WHERE fn_warehouse_is_good_stock_leaf(warehouse.id)
+                  AND fn_warehouse_same_main(warehouse.id,analysis.warehouse_id)
+                """).setParameter("analysis",analysisId),UUID.class));
+        Map<InventoryKey,BigDecimal> result=new HashMap<>();
+        for(var change:changes)if(warehouses.contains(change.warehouseId()))
+            result.merge(new InventoryKey(change.goodsId(),change.colorId()),change.qty(),BigDecimal::add);
+        return result;
+    }
+
+    /** Global reservations reduce the whole scope once; each sale remains tied to its real leaf. */
+    private List<PublicStock> publicBalances(Root root) {
+        BigDecimal global=decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations
+                WHERE goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND warehouse_id IS NULL AND status=0 AND NOT is_deleted
+                """).setParameter("goods",root.goodsId()).setParameter("color",root.colorId()).getSingleResult());
+        List<PublicStock> result=new ArrayList<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT balance.warehouse_id,GREATEST(balance.qty-COALESCE((
+                    SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations reservation
+                    WHERE reservation.goods_id=balance.goods_id
+                      AND reservation.color_id IS NOT DISTINCT FROM balance.color_id
+                      AND reservation.warehouse_id=balance.warehouse_id AND reservation.status=0 AND NOT reservation.is_deleted),0),0)
+                FROM v_stock_operable_balances balance WHERE balance.goods_id=:goods
+                  AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND fn_warehouse_same_main(balance.warehouse_id,:scope)
+                  AND fn_warehouse_is_good_stock_leaf(balance.warehouse_id)
+                ORDER BY balance.warehouse_id
+                """).setParameter("goods",root.goodsId()).setParameter("color",root.colorId()).setParameter("scope",root.scopeWarehouseId()))) {
+            BigDecimal available=decimal(row[1]),withheld=global.min(available);
+            global=global.subtract(withheld);available=available.subtract(withheld);
+            if(available.signum()>0)result.add(new PublicStock((UUID)row[0],available));
+        }
+        return List.copyOf(result);
+    }
+
+    private record PublicStock(UUID warehouseId,BigDecimal qty) { }
+
+    /** Explicit notify may allocate existing stock before creating only the external shortage. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean fulfillExisting(UUID analysisId, Collection<UUID> materialIds, String key) {
+        boolean changed = false;
+        for (UUID materialId : materialIds.stream().distinct().sorted().toList()) {
+            Root root = lockRoot(materialId);
+            if (root == null || root.salesOrderItemId() == null
+                    || !root.analysisId().equals(analysisId) || "MAKE".equals(root.route())) continue;
+            if (!root.salesSourceEligible()) {
+                throw conflict("销售订单暂不能新增安排，请先完成财务确认并核对订单状态");
+            }
+            // An arrival during a sales amendment keeps its existing exact lot.
+            // Once the source is approved again, hand over that same lot before
+            // considering unreserved public stock or creating another order.
+            if (fulfillWaitingOrigins(root)) {
+                changed = true;
+                root = lockRoot(materialId);
+            }
+            String command = "ROOT-STOCK:" + key + ":" + materialId;
+            if (exists(command)) continue;
+            BigDecimal qty = root.allocated().min(root.remainingBase());
+            if (qty.signum() <= 0) continue;
+            List<PublicStock> balances=publicBalances(root);
+            BigDecimal available=balances.stream().map(PublicStock::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            if (available.compareTo(qty) < 0) throw conflict("根产品现货已变化，请重新分析后下达");
+            BigDecimal remaining=qty;
+            boolean first=true;
+            for(PublicStock balance:balances) {
+                BigDecimal take=remaining.min(balance.qty());
+                if(take.signum()==0)continue;
+                transfer(root,balance.warehouseId(),take,null,null,null,null,
+                        first?command:command+":"+balance.warehouseId());
+                remaining=remaining.subtract(take);first=false;
+                if(remaining.signum()==0)break;
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
+    /** Called after an exact IQC origin was recorded, in the same stock-in transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean fulfillOrigin(UUID originId) {
+        List<Object[]> origins = rows("""
+                SELECT e.beneficiary_analysis_material_id,e.stock_reservation_id,
+                  e.source_receipt_type,e.source_receipt_id
+                FROM preplan_stock_entitlement_events e
+                JOIN production_material_analysis_materials m ON m.id=e.beneficiary_analysis_material_id
+                WHERE e.id=:id AND m.node_role='ROOT_SUPPLY'
+                """, "id", originId);
+        if (origins.isEmpty()) return false;
+        Object[] origin = origins.getFirst();
+        Root root = lockRoot((UUID) origin[0]);
+        if (root == null || "MAKE".equals(root.route())) throw conflict("根产品供给路线已变化，不能入库交接");
+        String key = "ROOT-IQC:" + originId;
+        if (exists(key)) return true;
+        if (!root.salesSourceEligible()) return false;
+        var lot = entitlement.listAvailableBeneficiaryLotsForProduction(root.analysisId(), root.materialId(),
+                root.scopeWarehouseId(), root.goodsId(), root.colorId(), true).stream()
+                .filter(value -> value.entitlementEventId().equals(originId)).findFirst()
+                .orElseThrow(() -> conflict("根产品合格权益不存在或已被使用"));
+        transferQualifiedLot(root, lot, (String) origin[2], (UUID) origin[3], key);
+        return true;
+    }
+
+    /** 顶层供给行刷新写回的数量列(id = 物料行 id)。 */
+    public record RootQuantityRow(UUID id,BigDecimal required,BigDecimal stock,BigDecimal reserved,BigDecimal safety,
+            BigDecimal allocated,BigDecimal shortage,BigDecimal inbound) {}
+
+    /** Preserve the ordered public-pool calculation and every row's original UPDATE guards. */
+    private void updateRootQuantities(List<RootQuantityRow> rows) {
+        for (int from=0;from<rows.size();from+=500) {
+            List<RootQuantityRow> chunk=rows.subList(from,Math.min(rows.size(),from+500));
+            StringBuilder values=new StringBuilder();
+            for(int index=0;index<chunk.size();index++) {
+                if(index>0) values.append(",");
+                values.append("(CAST(:id").append(index).append(" AS uuid),CAST(:required").append(index)
+                        .append(" AS numeric),CAST(:stock").append(index).append(" AS numeric),CAST(:reserved").append(index)
+                        .append(" AS numeric),CAST(:safety").append(index).append(" AS numeric),CAST(:allocated").append(index)
+                        .append(" AS numeric),CAST(:shortage").append(index).append(" AS numeric),CAST(:inbound").append(index).append(" AS numeric))");
+            }
+            var query=em.createNativeQuery("""
+                    UPDATE production_material_analysis_materials root SET active=TRUE,
+                      required_qty=snapshot.required,available_qty=snapshot.stock,reserved_qty=snapshot.reserved,
+                      safety_stock_qty=snapshot.safety,allocated_available_qty=snapshot.allocated,
+                      allocated_start_qty=snapshot.allocated,allocated_finish_qty=snapshot.allocated,
+                      allocated_ship_qty=snapshot.allocated,shortage_qty=snapshot.shortage,
+                      inbound_qty=snapshot.inbound,updated_at=now()
+                    FROM (VALUES
+                    """+values+"""
+                    ) snapshot(id,required,stock,reserved,safety,allocated,shortage,inbound)
+                    WHERE root.id=snapshot.id
+                      AND (root.active,root.required_qty,root.available_qty,root.reserved_qty,root.safety_stock_qty,
+                           root.allocated_available_qty,root.allocated_start_qty,root.allocated_finish_qty,root.allocated_ship_qty,
+                           root.shortage_qty,root.inbound_qty)
+                          IS DISTINCT FROM (TRUE,snapshot.required,snapshot.stock,snapshot.reserved,snapshot.safety,
+                                            snapshot.allocated,snapshot.allocated,snapshot.allocated,snapshot.allocated,
+                                            snapshot.shortage,snapshot.inbound)
+                    """);
+            for(int index=0;index<chunk.size();index++) {
+                RootQuantityRow row=chunk.get(index);
+                query.setParameter("id"+index,row.id()).setParameter("required"+index,row.required()).setParameter("stock"+index,row.stock())
+                        .setParameter("reserved"+index,row.reserved()).setParameter("safety"+index,row.safety()).setParameter("allocated"+index,row.allocated())
+                        .setParameter("shortage"+index,row.shortage()).setParameter("inbound"+index,row.inbound());
+            }
+            query.executeUpdate();
+        }
+    }
+
+    private boolean fulfillWaitingOrigins(Root initial) {
+        List<PreplanStockEntitlementService.AvailableLot> lots = entitlement
+                .listAvailableBeneficiaryLotsForProduction(initial.analysisId(), initial.materialId(),
+                        initial.scopeWarehouseId(), initial.goodsId(), initial.colorId(), true)
+                .stream().filter(lot -> "ORIGIN_IQC".equals(lot.originEventType())
+                        || "ORIGIN_MAKE".equals(lot.originEventType())).toList();
+        if (lots.isEmpty()) return false;
+        Map<UUID, Object[]> origins = new HashMap<>();
+        NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT origin.id,origin.source_receipt_type,origin.source_receipt_id,
+                    EXISTS(SELECT 1 FROM preplan_root_output_events output
+                        WHERE output.idempotency_key='ROOT-IQC:'||origin.id::text)
+                FROM preplan_stock_entitlement_events origin WHERE origin.id IN (:ids)
+                """).setParameter("ids", lots.stream()
+                        .map(PreplanStockEntitlementService.AvailableLot::entitlementEventId).toList()))
+                .forEach(row -> origins.put((UUID) row[0], row));
+        Root root = initial;
+        boolean changed = false;
+        for (var lot : lots) {
+            String key = "ROOT-IQC:" + lot.entitlementEventId();
+            Object[] origin = origins.get(lot.entitlementEventId());
+            if (origin == null) throw conflict("原合格入库来源已变化，请刷新后重试");
+            if (Boolean.TRUE.equals(origin[3])) continue;
+            transferQualifiedLot(root, lot, (String) origin[1], (UUID) origin[2], key);
+            root = root.afterHandoff(lot.remainingQty());
+            changed = true;
+        }
+        return changed;
+    }
+
+    private void transferQualifiedLot(Root root, PreplanStockEntitlementService.AvailableLot lot,
+            String receiptType, UUID receiptId, String key) {
+        BigDecimal qty = lot.remainingQty();
+        if (qty.compareTo(root.remainingBase()) > 0) throw conflict("根产品合格入库超过剩余来源数量");
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_preplan_reservation_has_qualified_origin(:id)")
+                .setParameter("id",lot.stockReservationId()).getSingleResult()))
+            throw conflict("根产品合格权益缺少原放行和实际入库仓证明，请先核对原收货来源");
+        UUID releaseId = entitlement.appendReleaseLot(UUID.randomUUID(), lot, qty, null, key + ":RELEASE");
+        int released = em.createNativeQuery("""
+                UPDATE stock_reservations SET released_qty=released_qty+:qty,
+                  status=CASE WHEN qty-consumed_qty-released_qty-:qty=0 THEN 1 ELSE 0 END,
+                  release_reason='ROOT_SUPPLY_HANDOFF',updated_at=now()
+                WHERE id=:id AND qty-consumed_qty-released_qty>=:qty AND status=0 AND is_deleted=FALSE
+                """).setParameter("qty", qty).setParameter("id", lot.stockReservationId()).executeUpdate();
+        if (released != 1) throw conflict("根产品入库权益已被并发使用");
+        transfer(root,lot.warehouseId(),qty,lot.stockReservationId(),releaseId,receiptType,receiptId,key);
+    }
+
+
+    public void addOutputReferences(UUID analysisId,
+            Map<UUID,List<MaterialAnalysisContracts.DownstreamReference>> references) {
+        for (Object[] row : rows("""
+                SELECT e.root_material_id,e.id,e.route,e.qty_base,
+                  CASE WHEN EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+                       THEN 'REVERSED' ELSE 'COMPLETED' END,
+                  CASE WHEN e.source_receipt_id IS NULL THEN 'ROOT_STOCK_ALLOCATION'
+                       ELSE 'ROOT_OUTPUT_FULFILLMENT' END
+                FROM preplan_root_output_events e WHERE e.analysis_id=:id AND e.event_kind='FULFILL'
+                ORDER BY e.created_at,e.id
+                ""","id",analysisId)) {
+            references.computeIfAbsent((UUID)row[0],ignored -> new java.util.ArrayList<>()).add(
+                new MaterialAnalysisContracts.DownstreamReference(null,(String)row[2],(String)row[4],
+                    (String)row[5],(UUID)row[1],null,decimal(row[3])));
+        }
+    }
+
+    public boolean hasReversibleExistingOutput(UUID analysisId) {
+        return !em.createNativeQuery("""
+                SELECT e.id FROM preplan_root_output_events e
+                JOIN stock_reservations r ON r.id=e.sales_reservation_id
+                WHERE e.analysis_id=:id AND e.event_kind='FULFILL' AND e.source_receipt_id IS NULL
+                  AND r.consumed_qty=0 AND r.released_qty=0 AND r.is_deleted=FALSE
+                  AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+                LIMIT 1
+                """).setParameter("id",analysisId).getResultList().isEmpty();
+    }
+
+    public void requireAnalysisCancellationSafe(UUID analysisId) {
+        if (!em.createNativeQuery("""
+                SELECT e.id FROM preplan_root_output_events e WHERE e.analysis_id=:id
+                  AND e.event_kind='FULFILL'
+                  AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+                LIMIT 1
+                """).setParameter("id",analysisId).getResultList().isEmpty()) {
+            throw conflict("根产品已有产出交接，请先撤回现货交接或红冲来源入库，再取消分析");
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void revokeExistingOutput(UUID analysisId,UUID eventId,String reason) {
+        List<?> found=em.createNativeQuery("""
+                SELECT id FROM preplan_root_output_events e WHERE id=:eventId AND analysis_id=:analysisId
+                  AND event_kind='FULFILL' AND source_receipt_id IS NULL
+                  AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+                """).setParameter("eventId",eventId).setParameter("analysisId",analysisId).getResultList();
+        if (found.isEmpty()) throw conflict("现货交接不存在、已撤回或必须由来源入库红冲");
+        reverse(eventId,reason);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void reverseReceipt(String receiptType, UUID receiptId) {
+        List<UUID> eventIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT e.id FROM preplan_root_output_events e
+                WHERE e.event_kind='FULFILL' AND e.source_receipt_type=:type AND e.source_receipt_id=:id
+                  AND NOT EXISTS (SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+                ORDER BY e.analysis_item_id,e.id
+                """, UUID.class).setParameter("type", receiptType).setParameter("id", receiptId), UUID.class);
+        for (UUID id : eventIds) reverse(id, "来源入库红冲");
+    }
+
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversible(String type,UUID receiptId){
+        var eventIds=NativeQueryResults.typedRows(em.createNativeQuery("""
+            SELECT e.id FROM preplan_root_output_events e
+            WHERE e.event_kind='FULFILL' AND e.source_receipt_type=:type AND e.source_receipt_id=:id
+              AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+            ORDER BY e.analysis_item_id,e.id
+            """,UUID.class).setParameter("type",type).setParameter("id",receiptId),UUID.class);
+        for(UUID id:eventIds)requireOutputReversible(id);
+        var insufficient=em.createNativeQuery("""
+            WITH reversing_source AS (
+              SELECT source.sales_order_item_id,source.analysis_item_id,SUM(source.qty_base) AS base_qty
+              FROM preplan_root_output_events source
+              WHERE source.event_kind='FULFILL' AND source.source_receipt_type=:type AND source.source_receipt_id=:id
+                AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=source.id)
+              GROUP BY source.sales_order_item_id,source.analysis_item_id
+            ), reversing_credit AS (
+              SELECT source.sales_order_item_id,
+                fn_root_fulfilled_source_qty(source.analysis_item_id)
+                  -fn_root_fulfilled_source_qty_with_delta(source.analysis_item_id,-source.base_qty) AS row_qty
+              FROM reversing_source source
+            )
+            SELECT source.sales_order_item_id FROM reversing_credit source
+            JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) item ON item.id=source.sales_order_item_id
+            GROUP BY source.sales_order_item_id,item.reserved_qty
+            HAVING item.reserved_qty<SUM(source.row_qty)
+            """).setParameter("type",type).setParameter("id",receiptId).getResultList();
+        if(!insufficient.isEmpty())throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
+    }
+    private void requireOutputReversible(UUID eventId){
+        var facts=rows("""
+            SELECT output.sales_reservation_id,reservation.consumed_qty,reservation.released_qty,reservation.is_deleted,
+              EXISTS(SELECT 1 FROM v_sales_delivery_order_claim_active claim WHERE claim.reservation_id=output.sales_reservation_id)
+            FROM preplan_root_output_events output
+            JOIN production_material_analysis_materials root ON root.id=output.root_material_id
+            JOIN production_material_analysis_items item ON item.root_material_id=root.id AND item.id=output.analysis_item_id AND item.is_deleted=FALSE
+            JOIN production_material_analyses analysis ON analysis.id=item.analysis_id AND analysis.is_deleted=FALSE
+            LEFT JOIN stock_reservations reservation ON reservation.id=output.sales_reservation_id
+            WHERE output.id=:id
+            ""","id",eventId);
+        if(facts.size()!=1)throw conflict("根产品交接来源丢失");
+        var row=facts.getFirst();
+        if(row[0]!=null&&(row[1]==null||decimal(row[1]).signum()!=0||decimal(row[2]).signum()!=0||Boolean.TRUE.equals(row[3])))
+            throw conflict("根产品供给已发货或已释放，不能直接反审入库");
+        if(Boolean.TRUE.equals(row[4]))throw conflict("根产品原实物已认领发至加工，请先由仓库实际收回取消发出，再反审来源入库");
+    }
+
+    private void reverse(UUID eventId,String reason) {
+        Object[] event = rows("""
+                SELECT root_material_id,sales_reservation_id,qty_base FROM preplan_root_output_events
+                WHERE id=:id FOR UPDATE
+                """, "id", eventId).getFirst();
+        requireOutputReversible(eventId);
+        Root root = lockRoot((UUID) event[0]);
+        if (root == null) throw conflict("根产品交接来源丢失");
+        BigDecimal before = fulfilled(root.itemId());
+        UUID salesReservationId = (UUID) event[1];
+        if (salesReservationId != null) {
+            // V582：销售出货没有“已开拣未出账”的中间态，原 requireNoPicking 窗口不复存在。
+            // 唯一真闸门是下面这条 CAS：一旦确认出库，consumed_qty 已被消费，撤回必然失败。
+            int changed = em.createNativeQuery("""
+                    UPDATE stock_reservations SET released_qty=qty,status=1,updated_at=now()
+                    WHERE id=:id AND consumed_qty=0 AND released_qty=0 AND is_deleted=FALSE
+                    """).setParameter("id", salesReservationId).executeUpdate();
+            if (changed != 1) throw conflict("根产品供给已发货或已释放，不能直接红冲入库");
+        }
+        em.createNativeQuery("""
+                INSERT INTO preplan_root_output_events(
+                  analysis_id,analysis_item_id,root_material_id,event_kind,reversed_event_id,
+                  warehouse_id,goods_id,color_id,qty_base,source_reservation_id,
+                  release_entitlement_event_id,sales_order_item_id,sales_reservation_id,
+                  source_receipt_type,source_receipt_id,idempotency_key,created_by,route,reason)
+                SELECT analysis_id,analysis_item_id,root_material_id,'REVERSE',id,
+                  warehouse_id,goods_id,color_id,qty_base,source_reservation_id,
+                  release_entitlement_event_id,sales_order_item_id,sales_reservation_id,
+                  source_receipt_type,source_receipt_id,'ROOT-REVERSE:'||id::text,:actor,route,:reason
+                FROM preplan_root_output_events WHERE id=:id
+                """).setParameter("actor", currentUser.requireId()).setParameter("id", eventId)
+                .setParameter("reason",reason).executeUpdate();
+        updateSalesReserved(root, fulfilled(root.itemId()).subtract(before));
+        em.createNativeQuery("""
+                UPDATE production_material_analyses SET status='ACTIVE',updated_at=now()
+                WHERE id=:id AND status='COMPLETED'
+                """).setParameter("id", root.analysisId()).executeUpdate();
+    }
+
+    private void transfer(Root root,UUID actualWarehouseId,BigDecimal qty,UUID sourceReservation,UUID releaseEvent,
+                          String receiptType, UUID receiptId, String key) {
+        BigDecimal before = fulfilled(root.itemId());
+        UUID saleReservation = null;
+        if (root.salesOrderItemId() != null) {
+            StockReservation reservation = salesReservations.reserve(root.salesOrderItemId(), root.goodsId(),
+                    root.colorId(),actualWarehouseId,qty,StockReservation.SOURCE_ORDER,
+                    "ROOT_SUPPLY_INBOUND", root.itemId());
+            em.flush();
+            saleReservation = reservation.getId();
+        }
+        em.createNativeQuery("""
+                INSERT INTO preplan_root_output_events(
+                  analysis_id,analysis_item_id,root_material_id,event_kind,warehouse_id,goods_id,color_id,
+                  qty_base,source_reservation_id,release_entitlement_event_id,sales_order_item_id,
+                  sales_reservation_id,source_receipt_type,source_receipt_id,idempotency_key,created_by,route)
+                VALUES(:analysis,:item,:material,'FULFILL',:warehouse,:goods,:color,:qty,
+                  :reservation,:release,:salesItem,:salesReservation,:receiptType,:receipt,:key,:actor,:route)
+                """).setParameter("analysis", root.analysisId()).setParameter("item", root.itemId())
+                .setParameter("material", root.materialId()).setParameter("warehouse",actualWarehouseId)
+                .setParameter("goods", root.goodsId()).setParameter("color", root.colorId()).setParameter("qty", qty)
+                .setParameter("reservation", sourceReservation).setParameter("release", releaseEvent)
+                .setParameter("salesItem", root.salesOrderItemId()).setParameter("salesReservation", saleReservation)
+                .setParameter("receiptType", receiptType).setParameter("receipt", receiptId)
+                .setParameter("key", key).setParameter("actor", currentUser.requireId())
+                .setParameter("route",root.route()).executeUpdate();
+        updateSalesReserved(root, fulfilled(root.itemId()).subtract(before));
+    }
+
+    private void updateSalesReserved(Root root, BigDecimal delta) {
+        if (root.salesOrderItemId() == null || delta.signum()==0) return;
+        // V545：chain_status 走统一派生（剩余未排量优先）；CAS 守卫（预留 ≤ 未交付 − 未完工计划 − 草稿计划量）不变。
+        int updated = em.createNativeQuery("UPDATE sales_order_items item SET reserved_qty=reserved_qty+:delta,\n"
+                + "  chain_status="
+                + SalesOrderChainSql.chainStatusCaseSql(
+                        SalesOrderChainSql.ChainStatusInputs.of("item").reservedDelta("+:delta"))
+                + ",\n  updated_at=now()\n"
+                + """
+                WHERE item.id=:id AND item.is_deleted=FALSE AND reserved_qty+:delta>=0
+                  AND (:delta<=0 OR reserved_qty+:delta<=
+                    qty-COALESCE(shipped_qty,0)+COALESCE(returned_qty,0)-COALESCE(flag_qty,0)
+                    -GREATEST(COALESCE(planned_qty,0)-COALESCE(produced_qty,0),0)
+                    -COALESCE((SELECT SUM(pi.qty) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) pi
+                      JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id=pi.plan_id WHERE pi.sales_order_item_id=item.id
+                        AND pi.is_deleted=FALSE AND p.is_deleted=FALSE AND p.status=0 AND p.is_canceled=FALSE),0))
+                """).setParameter("delta", delta).setParameter("id", root.salesOrderItemId()).executeUpdate();
+        if (updated!=1) throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
+    }
+
+
+    private Root lockRoot(UUID materialId) {
+        List<Object[]> matches = rows("""
+                SELECT item.analysis_id,item.id,root.id,item.goods_id,item.color_id,analysis.warehouse_id,
+                  item.sales_order_item_id,COALESCE(root.confirmed_route,'MAKE'),root.allocated_available_qty,
+                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty)
+                    *root.per_product_qty*10000)/10000-COALESCE((
+                      SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
+                      FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),0)
+                FROM production_material_analysis_items item
+                JOIN production_material_analysis_materials root ON root.id=item.root_material_id
+                JOIN production_material_analyses analysis ON analysis.id=item.analysis_id
+                WHERE root.id=:id AND item.is_deleted=FALSE AND analysis.is_deleted=FALSE
+                """, "id", materialId);
+        if (matches.isEmpty()) return null;
+        Object[] row = matches.getFirst();
+        inventoryLock.lock(new InventoryKey((UUID) row[3], (UUID) row[4]));
+        em.createNativeQuery("SELECT id FROM production_material_analyses WHERE id=:id FOR UPDATE")
+                .setParameter("id", row[0]).getSingleResult();
+        em.createNativeQuery("SELECT id FROM production_material_analysis_items WHERE id=:id FOR UPDATE")
+                .setParameter("id", row[1]).getSingleResult();
+        boolean salesEligible = true;
+        if (row[6]!=null) {
+            List<Object[]> locked = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.id, (NOT item.is_deleted AND NOT document.is_deleted
+                      AND document.status=1 AND document.finance_confirmed=TRUE
+                      AND NOT COALESCE(document.is_stopped,FALSE) AND NOT document.is_closed)
+                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) item JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) document ON document.id=item.order_id
+                    WHERE item.id=:id
+                    FOR UPDATE OF document,item
+                    """).setParameter("id", row[6]));
+            if (locked.isEmpty()) throw conflict("根产品原销售来源丢失，请先核对关联");
+            salesEligible = Boolean.TRUE.equals(locked.getFirst()[1]);
+        }
+        Object[] current=rows("""
+                SELECT root.allocated_available_qty,
+                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty)
+                    *root.per_product_qty*10000)/10000-COALESCE((
+                      SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
+                      FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),0)
+                FROM production_material_analysis_items item
+                JOIN production_material_analysis_materials root ON root.id=item.root_material_id
+                WHERE item.id=:id
+                ""","id",row[1]).getFirst();
+        row[8]=current[0];
+        row[9]=current[1];
+        return new Root((UUID) row[0],(UUID) row[1],(UUID) row[2],(UUID) row[3],(UUID) row[4],
+                (UUID) row[5],(UUID) row[6],(String) row[7],decimal(row[8]),decimal(row[9]),salesEligible);
+    }
+
+    private BigDecimal fulfilled(UUID itemId) {
+        return decimal(em.createNativeQuery("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=:id")
+                .setParameter("id",itemId).getSingleResult());
+    }
+    private boolean exists(String key) {
+        return !em.createNativeQuery("SELECT id FROM preplan_root_output_events WHERE idempotency_key=:key")
+                .setParameter("key",key).getResultList().isEmpty();
+    }
+    private List<Object[]> rows(String sql,String parameter,Object value) {
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter(parameter,value));
+    }
+    private static BigDecimal decimal(Object value) {
+        return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());
+    }
+    private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT,message); }
+    private record Root(UUID analysisId,UUID itemId,UUID materialId,UUID goodsId,UUID colorId,UUID scopeWarehouseId,
+                        UUID salesOrderItemId,String route,BigDecimal allocated,BigDecimal remainingBase,
+                        boolean salesSourceEligible) {
+        Root afterHandoff(BigDecimal qty) {
+            return new Root(analysisId,itemId,materialId,goodsId,colorId,scopeWarehouseId,salesOrderItemId,
+                    route,allocated,remainingBase.subtract(qty),salesSourceEligible);
+        }
+    }
+}

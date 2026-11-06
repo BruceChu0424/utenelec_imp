@@ -4,17 +4,17 @@
 
 ## W7-BIZ-134 · lib/features/rd_task/pages/rd_task_page.dart
 
-模块 `rd_task`；1203 行；SHA256 `54f4d5ccec4402afc7f05eca748ebd54c30963b141cd09a3b49dcf3fbeb1494c`。
+模块 `rd_task`；1210 行；SHA256 `64eb48530fe1dc2a15e57a5a82d57e07c4512fa79bf5aa4530b4c77a9cc33ec3`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | RdTaskPage @93 (page-class)<br>_RdTaskPageState @103 (state-class)<br>_RdTaskListPanel @232 (supporting-class)<br>_RdTaskListPanelState @243 (state-class)<br>_DesktopTaskTable @888 (supporting-class)<br>_ResolveBar @1114 (supporting-class) |
+| 页面/状态类 | RdTaskPage @93 (page-class)<br>_RdTaskPageState @103 (state-class)<br>_RdTaskListPanel @232 (supporting-class)<br>_RdTaskListPanelState @243 (state-class)<br>_DesktopTaskTable @895 (supporting-class)<br>_ResolveBar @1121 (supporting-class) |
 | 真实路由绑定 | /rd/tasks；router @1166；builder ['RdTaskPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | rd_task:resolve @298；定义 lib/shared/auth/permissions.dart:589 |
+| 权限 | rd_task:resolve @301；定义 lib/shared/auth/permissions.dart:589 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/rd_task/repositories/rd_task_repository.dart；接口：/rd-tasks、/rd-tasks/{id}/resolve |
-| 动作处理 | addPostFrameCallback @256 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeRoute @263 [action-like-invocation] 提示 ['remove']；Navigator.of(dialog).removeRoute(route);<br>_finishUnitOpening @268 [method-declaration-candidate] 提示 ['finish']；void _finishUnitOpening(Object token) {<br>_reconcileInitialBasicUnit @316 [action-like-invocation] 提示 ['reconcile']；await _reconcileInitialBasicUnit(row);<br>_reconcileInitialBasicUnit @396 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _reconcileInitialBasicUnit(RdTaskRow row) async {<br>_finishUnitOpening @436 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @440 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @457 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>reconcileInitialBasicUnit @475 [action-like-invocation] 提示 ['reconcile']；final result = await repo.reconcileInitialBasicUnit(<br>addPostFrameCallback @519 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @540 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>_reconcileInitialBasicUnit @874 [action-like-invocation] 提示 ['reconcile']；? _reconcileInitialBasicUnit(sel) |
+| 动作处理 | addPostFrameCallback @259 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeRoute @266 [action-like-invocation] 提示 ['remove']；Navigator.of(dialog).removeRoute(route);<br>_finishUnitOpening @271 [method-declaration-candidate] 提示 ['finish']；void _finishUnitOpening(Object token) {<br>_reconcileInitialBasicUnit @319 [action-like-invocation] 提示 ['reconcile']；await _reconcileInitialBasicUnit(row);<br>_reconcileInitialBasicUnit @399 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _reconcileInitialBasicUnit(RdTaskRow row) async {<br>_finishUnitOpening @439 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @443 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @460 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>reconcileInitialBasicUnit @478 [action-like-invocation] 提示 ['reconcile']；final result = await repo.reconcileInitialBasicUnit(<br>addPostFrameCallback @522 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @543 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>_reconcileInitialBasicUnit @881 [action-like-invocation] 提示 ['reconcile']；? _reconcileInitialBasicUnit(sel) |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/rd_task/RdTaskController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

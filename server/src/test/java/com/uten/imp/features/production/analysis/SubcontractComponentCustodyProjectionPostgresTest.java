@@ -108,6 +108,10 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     FROM bounds b WHERE b.application_item_id = p_application_item_id), 0);
             $$;
         """);
+        MigratedProjectionSchema.createCurrentFunctions(new JdbcTemplate(new SingleConnectionDataSource(connection,true)),
+                "fn_subcontract_actual_receipt_material_qty");
+        MigratedProjectionSchema.createCurrentColumns(new JdbcTemplate(new SingleConnectionDataSource(connection,true)),
+                "subcontract_receipt_material_consumptions");
         MigratedProjectionSchema.createCurrentTables(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
                 "preplan_aggregate_batches", "preplan_aggregate_batch_events");
         MigratedProjectionSchema.installImportedDocumentPolicy(new JdbcTemplate(new SingleConnectionDataSource(connection, true)),
@@ -893,11 +897,80 @@ class SubcontractComponentCustodyProjectionPostgresTest {
             statement.setObject(1,item);try(var rows=statement.executeQuery()){rows.next();legacy=rows.getObject(1,UUID.class);}
         }
         w.stockedReceipt(item,"0.0001");
+        BigDecimal[] historical=preparation(w.analysis,child);
+        assertThat(historical[0]).isEqualByComparingTo("0.4998");
+        assertThat(historical[2]).isEqualByComparingTo("0.4998");
         update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE order_item_id=? AND id<>?",item,legacy);
         BigDecimal[] fact=preparation(w.analysis,child);
-        assertThat(fact[0]).isEqualByComparingTo("0.4998");
-        assertThat(fact[2]).isEqualByComparingTo("0.4998");
+        // V1 consumes CEIL4(.0001*.5)=.0001, V2 consumes CEIL24=.00005.
+        assertThat(fact[0]).isEqualByComparingTo("0.49985");
+        assertThat(fact[2]).isEqualByComparingTo("0.49985");
         assertThat(fact[3]).isEqualByComparingTo("0.9998");
+    }
+
+    @Test void sharedActualMaterialVectorsKeepEveryNativeQuantumThroughCoverageAndReversal() throws Exception {
+        var vectors=new ObjectMapper().readTree(Files.readString(Path.of("../contracts/subcontract-actual-receipt/v1.json"))).path("actualMaterialVectors");
+        assertThat(vectors.isArray()).isTrue();assertThat(vectors.size()).isGreaterThanOrEqualTo(5);
+        for(var vector:vectors) {
+            BigDecimal actual=new BigDecimal(vector.path("outputQty").asText());
+            BigDecimal base=new BigDecimal(vector.path("baseBomQty").asText());
+            BigDecimal issued=new BigDecimal(vector.path("issuedQty").asText());
+            BigDecimal consumed=new BigDecimal(vector.path("consumedQty").asText());
+            BigDecimal remaining=new BigDecimal(vector.path("remainingMaterialQty").asText());
+            World w=new World(UUID.randomUUID());Parent parent=w.parent(vector.path("id").asText(),false);
+            UUID child=w.child(parent,"child",w.goodsA);
+            UUID action=w.action("2","0"),application=w.allocation(action,parent,"2");
+            UUID item=w.orderItem("1",application,"2");
+            UUID line=w.planLine(item,w.goodsA,base.toPlainString(),issued.toPlainString());
+            // Before the first V2 receipt, an actual partial issue already proves its native grid.
+            BigDecimal[] before=preparation(w.analysis,child);
+            assertThat(before[0]).as(vector.path("id").asText()).isEqualByComparingTo(issued);
+            UUID receiptItem=w.stockedReceipt(item,actual.toPlainString());
+            update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE id=?",receiptItem);
+            BigDecimal[] supplied=preparation(w.analysis,child);
+            assertThat(supplied[0]).as(vector.path("id").asText()).isEqualByComparingTo(remaining);
+            assertThat(supplied[2]).isEqualByComparingTo(new BigDecimal("2").multiply(base).subtract(consumed));
+            assertThat(supplied[3]).isEqualByComparingTo(new BigDecimal("2").subtract(actual));
+            // A reversal adds an original-source fact; it must not downgrade the plan's precision.
+            update("UPDATE subcontract_receipts SET status=-1 WHERE id=(SELECT receipt_id FROM subcontract_receipt_items WHERE id=?)",receiptItem);
+            UUID issue=UUID.randomUUID();
+            update("INSERT INTO subcontract_material_issues(id,status,is_deleted) VALUES(?,-1,false)",issue);
+            update("INSERT INTO subcontract_material_issue_items(issue_id,plan_item_id,qty,unit_rate,is_deleted) VALUES(?,?,?,?,false)",
+                    issue,line,issued,BigDecimal.ONE);
+            update("UPDATE subcontract_material_plan_items SET issued_qty=? WHERE id=?",new BigDecimal("0.05"),line);
+            BigDecimal[] reversed=preparation(w.analysis,child);
+            assertThat(reversed[0]).isEqualByComparingTo("0.05");
+        }
+    }
+
+    @Test void fullyReversedV2RemainsAnActualPrecisionFactWithFourPlaceCurrentCounters() throws Exception {
+        World w=new World(UUID.randomUUID());Parent first=w.parent("first",false),second=w.parent("second",false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",first.id(),second.id());
+        UUID firstChild=w.child(first,"child",w.goodsA),secondChild=w.child(second,"child",w.goodsA);
+        UUID action=w.action("3","0"),application=w.allocation(action,first,"1");w.allocation(action,second,"2",application);
+        UUID item=w.orderItem("1",application,"3");w.planLine(item,w.goodsA,"1","0.5");
+        UUID receiptItem=w.stockedReceipt(item,"0.0001");
+        update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE id=?",receiptItem);
+        update("UPDATE subcontract_receipts SET status=-1 WHERE id=(SELECT receipt_id FROM subcontract_receipt_items WHERE id=?)",receiptItem);
+        Map<UUID,BigDecimal[]> rows=coverage(w.analysis);
+        assertThat(rows.get(firstChild)[0]).isEqualByComparingTo("0.166666666666666666666667");
+        assertThat(rows.get(secondChild)[0]).isEqualByComparingTo("0.333333333333333333333333");
+        assertThat(rows.values().stream().map(row->row[0]).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("0.5");
+    }
+
+    @Test void actualRecordedMaterialLossDoesNotRoundIntoTheLegacyConsumptionCohort() throws Exception {
+        World w=new World(UUID.randomUUID());Parent parent=w.parent("native-waste",false);
+        UUID child=w.child(parent,"child",w.goodsA);
+        UUID action=w.action("1","0"),application=w.allocation(action,parent,"1");
+        UUID item=w.orderItem("1",application,"1"),line=w.planLine(item,w.goodsA,"0.5","0.5");
+        UUID receiptItem=w.stockedReceipt(item,"0.0001");
+        update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE id=?",receiptItem);
+        UUID issue=UUID.randomUUID();
+        update("INSERT INTO subcontract_material_issues(id,status,is_deleted) VALUES(?,1,false)",issue);
+        update("INSERT INTO subcontract_material_issue_items(issue_id,plan_item_id,unit_id,unit_rate,qty,at_supplier_qty,consumed_qty,wasted_qty,compensated_qty,is_deleted) VALUES(?,?,?,1,0.5,0.5,0.00005,0.000000000000000000000001,0,false)",issue,line,w.unit);
+        BigDecimal[] fact=preparation(w.analysis,child);
+        assertThat(fact[0]).isEqualByComparingTo("0.499949999999999999999999");
+        assertThat(fact[2]).isEqualByComparingTo("0.499949999999999999999999");
     }
 
     private void execute(String sql) throws SQLException {
@@ -1041,13 +1114,14 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     planLine, parent.id(), child, UUID.randomUUID(), target, new BigDecimal(qty));
         }
 
-        void stockedReceipt(UUID orderItem, String qty) throws SQLException {
+        UUID stockedReceipt(UUID orderItem, String qty) throws SQLException {
             UUID receipt = UUID.randomUUID();
             UUID item = UUID.randomUUID();
             update("INSERT INTO subcontract_receipts(id,status,is_deleted) VALUES(?,1,false)", receipt);
-            update("INSERT INTO subcontract_receipt_items(quantity_adoption_version,material_consumption_version,id,receipt_id,order_item_id,qty,unit_rate,returned_qty,is_deleted) VALUES(1,1,?,?,?,?,1,0,false)", item, receipt, orderItem, new BigDecimal(qty));
+            update("INSERT INTO subcontract_receipt_items(quantity_adoption_version,material_consumption_version,id,receipt_id,order_item_id,qty,unit_id,unit_rate,material_basis_qty,returned_qty,is_deleted) VALUES(1,1,?,?,?,?,?,1,?,0,false)", item, receipt, orderItem, new BigDecimal(qty),unit,new BigDecimal(qty));
             update("INSERT INTO procurement_inspection_items(receipt_type,receipt_item_id,status,warehouse_stocked_base_qty) VALUES ('SUBCONTRACT',?,'RESOLVED',?)",
                     item, new BigDecimal(qty));
+            return item;
         }
     }
 }

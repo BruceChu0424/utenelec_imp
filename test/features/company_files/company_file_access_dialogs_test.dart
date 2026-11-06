@@ -300,7 +300,7 @@ void main() {
     },
   );
   testWidgets(
-    'library principal picker reads explicit account pages and confirms the last account identity',
+    'library principal picker completes the account query and confirms the last account identity without scroll reads',
     (tester) async {
       final state = await _mount(tester);
       final repository = _PagedPrincipals();
@@ -311,13 +311,8 @@ void main() {
         boundary: state.container.read(_identity),
       );
       await tester.pumpAndSettle();
-      expect(repository.pages, [1]);
-      final table = find.byKey(const Key('uten-employee-picker-candidates'));
-      tester
-          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
-          .onLoadMore!();
-      await tester.pumpAndSettle();
       expect(repository.pages, [1, 2]);
+      final table = find.byKey(const Key('uten-employee-picker-candidates'));
       final rows = tester
           .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
           .items;
@@ -342,6 +337,9 @@ void main() {
         scrollable: scrollable,
         maxScrolls: 30,
       );
+      await tester.pumpAndSettle();
+      expect(last.hitTestable(), findsOneWidget);
+      expect(repository.pages, [1, 2]);
       await tester.tap(last);
       await tester.pump();
       await tester.tap(find.widgetWithText(UtenButton, '确定'));
@@ -365,13 +363,10 @@ void main() {
         scope: state.scope,
         boundary: state.container.read(_identity),
       );
-      await tester.pumpAndSettle();
-      tester
-          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
-            find.byKey(const Key('uten-employee-picker-candidates')),
-          )
-          .onLoadMore!();
-      await tester.pump();
+      for (var frame = 0; frame < 30 && repository.pages.length < 2; frame++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(repository.pages, [1, 2]);
       state.container.read(_identity.notifier).state = _boundary('B');
       await tester.pump();
       repository.continuation!.complete(_PagedPrincipals.response(2));

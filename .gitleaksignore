@@ -524,3 +524,14 @@ afe9fcd8af0121a8287d798024f553fa90247f79:docs/99-项目治理/2026-11-05-订单�
 # Reviewed source checksum; exact evidence and blob verification are recorded in ci-source-fingerprint-review-20261105.json.
 d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c:clients/windows_legacy/progress/evidence/table-output-selection-20261105.json:generic-api-key:357
 3cbafbf44310842f4f77e092f8d2d09ee9d3f815:docs/99-项目治理/evidence/finance-full-chain-audit-20261104/ledger-reference-price-closeout-20261105.json:generic-api-key:101
+
+# Reviewed 2026-11-06 exact historical false positives from 5880bfe54.
+# Five values are SHA-256 source inventory digests; the other finding is
+# a tuple of SQL migration fixture filenames, never authentication material.
+# Pin only these six commit/path/rule/line findings; future findings still fail.
+5880bfe5477c911eaef7b71224dc16a895c021e5:clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/source-input.json:generic-api-key:14
+5880bfe5477c911eaef7b71224dc16a895c021e5:clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/source-input.json:generic-api-key:27
+5880bfe5477c911eaef7b71224dc16a895c021e5:clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/source-input.json:generic-api-key:79
+5880bfe5477c911eaef7b71224dc16a895c021e5:clients/windows_legacy/progress/evidence/loading-main3068-20261105-files/source-input.json:generic-api-key:151
+5880bfe5477c911eaef7b71224dc16a895c021e5:docs/99-项目治理/全平台整改交接/evidence/loading-20261104/finance-and-facet-review.json:generic-api-key:940
+5880bfe5477c911eaef7b71224dc16a895c021e5:server/legacy_migration/test_verify_candidate.py:generic-api-key:59

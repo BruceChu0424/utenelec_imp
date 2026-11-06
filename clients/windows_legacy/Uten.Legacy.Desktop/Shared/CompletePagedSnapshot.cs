@@ -14,22 +14,26 @@ namespace Uten.Legacy.Desktop.Shared
         public int Size { get; set; }
         public long Total { get; set; }
         public int TotalPages { get; set; }
+        public string ReadScopeVersion { get; set; }
     }
 
     /// <summary>One complete scoped page sequence. Never publish a truncated result as
     /// a complete document, or assume a requested size overrides the server ceiling.</summary>
     public static class CompletePagedSnapshot
     {
+        public const int MaximumRows = 100000;
+        public const long MaximumTextBytes = 64L * 1024 * 1024;
         public static async Task<IReadOnlyList<T>> ReadAsync<T>(
             Func<int, int, CancellationToken, Task<SnapshotPage<T>>> read,
             Func<T, string> identity, Func<bool> isCurrent, CancellationToken cancellationToken,
-            IProgress<long> progress = null, int maximumRows = 100000,
-            Func<T, long> measureBytes = null, long maximumBytes = 64L * 1024 * 1024)
+            IProgress<long> progress = null, int maximumRows = MaximumRows,
+            Func<T, long> measureBytes = null, long maximumBytes = MaximumTextBytes)
         {
             if (read == null || identity == null || isCurrent == null || maximumRows < 1 || maximumBytes < 1) throw new ArgumentException();
             var items = new List<T>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             long? total = null; int? totalPages = null, pageSize = null; long measuredBytes = 0;
+            string readScopeVersion = null;
             for (int page = 1; ; page++)
             {
                 Current(isCurrent, cancellationToken);
@@ -42,9 +46,10 @@ namespace Uten.Legacy.Desktop.Shared
                     throw new ApiException("INVALID_PAGINATION", "完整读取的分页或数量超出安全范围，请缩小筛选后重试。");
                 long expectedPages = batch.Total / batch.Size + (batch.Total % batch.Size == 0 ? 0 : 1);
                 if (batch.TotalPages != expectedPages || total.HasValue && (total.Value != batch.Total
-                    || totalPages.Value != batch.TotalPages || pageSize.Value != batch.Size))
+                    || totalPages.Value != batch.TotalPages || pageSize.Value != batch.Size
+                    || !String.Equals(readScopeVersion, batch.ReadScopeVersion, StringComparison.Ordinal)))
                     throw Changed();
-                total = batch.Total; totalPages = batch.TotalPages; pageSize = batch.Size;
+                total = batch.Total; totalPages = batch.TotalPages; pageSize = batch.Size; readScopeVersion = batch.ReadScopeVersion;
                 foreach (var item in batch.Items)
                 {
                     Current(isCurrent, cancellationToken);

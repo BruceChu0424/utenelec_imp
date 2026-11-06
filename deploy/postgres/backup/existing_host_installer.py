@@ -126,6 +126,12 @@ class Asset:
     mode: int
 
 
+FLYWAY_VERSION_AUTHORITY = Path("/usr/local/libexec/uten-imp-release/release_guard.py")
+FLYWAY_VERSION_SOURCE = HERE.parents[1] / "updater" / "release_guard.py"
+FLYWAY_VERSION_AUTHORITY_SHA256 = (
+    "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
+)
+
 ASSETS = (
     Asset("locked-job", HERE / "locked_job.py", LIBEXEC_DIR / "locked_job.py", 0o755),
     Asset(
@@ -734,6 +740,28 @@ def _machine_id_digest() -> str:
     return sha256_bytes(normalized)
 
 
+def _require_flyway_version_authority(assets: Sequence[Asset]) -> None:
+    """Require existing independently bootstrapped trust; never install it here."""
+    if not any(asset.name in {"health-runtime", "acceptance-runtime"} for asset in assets):
+        return
+    source = _safe_source_bytes(Asset(
+        "flyway-version-authority-source", FLYWAY_VERSION_SOURCE,
+        FLYWAY_VERSION_AUTHORITY, 0o644,
+    ))
+    installed = _safe_source_bytes(Asset(
+        "flyway-version-authority-installed", FLYWAY_VERSION_AUTHORITY,
+        FLYWAY_VERSION_AUTHORITY, 0o644,
+    ))
+    details = FLYWAY_VERSION_AUTHORITY.lstat()
+    if (sha256_bytes(source) != FLYWAY_VERSION_AUTHORITY_SHA256
+            or installed != source or details.st_gid != 0
+            or stat.S_IMODE(details.st_mode) != 0o644):
+        raise InstallerError(
+            "existing Flyway authority differs from the separately reviewed bootstrap; "
+            "backup installation cannot create or replace release trust"
+        )
+
+
 def _source_observations(assets: Sequence[Asset]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     names: set[str] = set()
@@ -1029,6 +1057,7 @@ def assess(
     _require_root()
     selected_identity = identity or _identity()
     _require_no_installer_transaction()
+    _require_flyway_version_authority(assets)
     assessment = build_assessment(selected_identity, assets=assets, runner=runner)
     assessment_sha256 = sha256_bytes(canonical_bytes(assessment))
     envelope = {
@@ -1060,6 +1089,7 @@ def record_plan(
         # the writer lock is held so two administrators cannot interleave an
         # account/assessment observation with fixed-plan publication.
         selected_identity = identity or _identity()
+        _require_flyway_version_authority(assets)
         assessment = build_assessment(selected_identity, assets=assets, runner=runner)
         actual_assessment_sha256 = sha256_bytes(canonical_bytes(assessment))
         if actual_assessment_sha256 != expected_assessment_sha256:
@@ -2010,6 +2040,7 @@ def apply_plan(
         identity = _identity()
         if identity_value != {"uid": identity.postgres_uid, "gid": identity.postgres_gid}:
             raise InstallerError("postgres identity changed after plan recording")
+        _require_flyway_version_authority(assets)
         current = build_assessment(identity, assets=assets, runner=runner)
         if current != plan_assessment:
             raise InstallerError("host/source assessment changed after plan recording; assess again")

@@ -63,6 +63,263 @@ Map<String, dynamic> _map(Object? v) =>
     v is Map ? Map<String, dynamic>.from(v) : {};
 void main() {
   testWidgets(
+    'accepted evidence directory projection retires after rejection',
+    (tester) async {
+      final api = _Api()..directoryTotal = 101;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      await _completeTable(tester);
+      api.failKind = 'DIRECTORY';
+      api.failPage = 2;
+      await _tap(tester, '刷新');
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, '后批无权限');
+      expect(api.sent, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  for (final kind in ['GROUP', 'RECEIPT']) {
+    testWidgets(
+      'accepted $kind candidates retire on403 and preserve the input query',
+      (tester) async {
+        final api = _Api();
+        final container = await _mount(
+          tester,
+          api,
+          MemoryFormDraftStorage(),
+          purpose: kind == 'GROUP' ? 'PERIOD_OPENING' : 'ROW_CORRESPONDENCE',
+        );
+        await _tap(tester, kind == 'GROUP' ? '选择真实材料和颜色' : '选择原业务行');
+        await _completeTable(tester);
+        await tester.enterText(_field('搜索真实单号或商品'), '原查询保留');
+        api.failKind = kind;
+        api.failPage = 2;
+        await _tap(tester, '查询');
+        final finder = find
+            .byType(MasterDataTableView<Map<String, dynamic>>)
+            .last;
+        await _waitForReadError(tester, finder);
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          finder,
+        );
+        expect(table.items, isEmpty);
+        expect(table.error, '后批无权限');
+        expect(
+          tester.widget<UtenInput>(_field('搜索真实单号或商品')).controller!.text,
+          '原查询保留',
+        );
+        expect(api.sent, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'quantity directory collects every exact record and scrolling stays local',
+    (tester) async {
+      final api = _Api()..directoryTotal = 101;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      final table = await _completeTable(tester);
+      expect(table.items.last['id'], 'quantity-100');
+      expect(_map(table.items.last['input'])['quantityPcs'], _exact);
+      expect(table.totalPages, 1);
+      expect(table.onPageChange, isNull);
+      await _scrollLocally(tester, api, '实际材料100');
+      expect(api.reads.map((q) => q['size']), everyElement(100));
+      expect(api.sent, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  for (final kind in [
+    'MATERIAL_ISSUE',
+    'MATERIAL_RETURN',
+    'RECEIPT',
+    'PRODUCT_RETURN',
+  ]) {
+    testWidgets(
+      '$kind picker retains every real source UUID and original unit',
+      (tester) async {
+        final api = _Api();
+        final container = await _mount(
+          tester,
+          api,
+          MemoryFormDraftStorage(),
+          purpose: 'ROW_CORRESPONDENCE',
+        );
+        tester.widget<UtenDropdownField>(_dropdown('原业务来源')).onChanged(kind);
+        await tester.pumpAndSettle();
+        await _tap(tester, '选择原业务行');
+        final table = await _completeTable(tester);
+        final source = _map(table.items.last['source']);
+        expect(_map(source['source'])['kind'], kind);
+        expect(
+          _map(source['source'])['itemId'],
+          '${kind == 'MATERIAL_ISSUE' ? 'issue' : 'receipt'}-100',
+        );
+        expect(source['unitId'], 'pcs-real');
+        expect(
+          source['quantityOriginal'],
+          kind == 'MATERIAL_ISSUE' ? '10' : '3',
+        );
+        expect(
+          source['amountOriginal'],
+          kind == 'MATERIAL_ISSUE' ? null : '150',
+        );
+        final queries = api.reads.where((q) => q['kind'] == kind).toList();
+        expect(queries.map((q) => q['size']), everyElement(100));
+        expect(
+          queries.map((q) => q['page']).toList().sublist(queries.length - 2),
+          [1, 2],
+        );
+        expect(
+          queries.map((q) => q['supplierId']),
+          everyElement('supplier-real'),
+        );
+        await _scrollLocally(
+          tester,
+          api,
+          '${kind == 'MATERIAL_ISSUE' ? 'ISSUE' : 'RCV'}-100',
+        );
+        table.onRowTap!(table.items.last);
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining(
+            '${kind == 'MATERIAL_ISSUE' ? 'ISSUE' : 'RCV'}-100',
+          ),
+          findsWidgets,
+        );
+        expect(api.sent, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'group picker keeps goods color and different source units distinct',
+    (tester) async {
+      final api = _Api();
+      final container = await _mount(tester, api, MemoryFormDraftStorage());
+      await _tap(tester, '选择真实材料和颜色');
+      final table = await _completeTable(tester);
+      expect(table.items[0]['goodsId'], table.items[1]['goodsId']);
+      expect(table.items[0]['unitId'], isNot(table.items[1]['unitId']));
+      expect(table.items.last['goodsName'], '真实材料100');
+      await _scrollLocally(tester, api, '真实材料100');
+      table.onRowTap!(table.items.last);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('真实材料100'), findsWidgets);
+      expect(api.sent, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  testWidgets(
+    'source continuation denial publishes no choices and retains exact form and file',
+    (tester) async {
+      final api = _Api()
+        ..failKind = 'RECEIPT'
+        ..failPage = 2;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        purpose: 'ROW_CORRESPONDENCE',
+      );
+      await _fill(tester);
+      await _tap(tester, '选择原业务行');
+      final finder = find
+          .byType(MasterDataTableView<Map<String, dynamic>>)
+          .last;
+      await _waitForReadError(tester, finder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      expect(table.items, isEmpty);
+      expect(table.error, isNotEmpty);
+      expect(
+        api.reads.any((q) => q['kind'] == 'RECEIPT' && q['page'] == 2),
+        isTrue,
+      );
+      expect(api.sent, isEmpty);
+      Navigator.of(tester.element(finder)).pop();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<UtenInput>(_field('原PCS输入')).controller!.text,
+        _exact,
+      );
+      expect(find.text('actual-count.png'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  testWidgets(
+    'quantity directory continuation denial never becomes partial evidence',
+    (tester) async {
+      final api = _Api()
+        ..directoryTotal = 101
+        ..failKind = 'DIRECTORY'
+        ..failPage = 2;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        directory: true,
+      );
+      final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+      await _waitForReadError(tester, finder);
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+        isEmpty,
+      );
+      expect(api.sent, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
+  testWidgets('a different source kind cannot masquerade as a requested UUID', (
+    tester,
+  ) async {
+    final api = _Api()..wrongKind = true;
+    final container = await _mount(
+      tester,
+      api,
+      MemoryFormDraftStorage(),
+      purpose: 'ROW_CORRESPONDENCE',
+    );
+    await _tap(tester, '选择原业务行');
+    final finder = find.byType(MasterDataTableView<Map<String, dynamic>>);
+    await _waitForReadError(tester, finder);
+    expect(
+      tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).items,
+      isEmpty,
+    );
+    expect(api.sent, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    container.dispose();
+  });
+  testWidgets(
     'current period directory opens a related prior source in its original scope',
     (tester) async {
       final api = _Api();
@@ -303,17 +560,14 @@ void main() {
         purpose: 'ROW_CORRESPONDENCE',
       );
       await _tap(tester, '选择原业务行');
-      var table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
-        find.byType(MasterDataTableView<Map<String, dynamic>>),
-      );
-      expect(table.items, hasLength(50));
-      expect(table.totalPages, 400);
+      var table = await _completeTable(tester);
+      expect(table.items, hasLength(101));
+      expect(table.totalPages, 1);
+      expect(table.onPageChange, isNull);
       table.onRowTap!(table.items.first);
       await tester.pumpAndSettle();
       await _tap(tester, '选择实际原发料行');
-      table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
-        find.byType(MasterDataTableView<Map<String, dynamic>>),
-      );
+      table = await _completeTable(tester);
       expect(api.lastQuery!['orderItemId'], 'order-exact');
       table.onRowTap!(table.items.first);
       await tester.pumpAndSettle();
@@ -367,6 +621,50 @@ void main() {
       container.dispose();
     },
   );
+}
+
+Future<MasterDataTableView<Map<String, dynamic>>> _completeTable(
+  WidgetTester tester,
+) async {
+  final finder = find.byType(MasterDataTableView<Map<String, dynamic>>).last;
+  for (var attempt = 0; attempt < 60; attempt++) {
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    if (!table.isLoading && table.items.length == 101) return table;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+    finder,
+  );
+  expect(table.items, hasLength(101), reason: table.error);
+  return table;
+}
+
+Future<void> _waitForReadError(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 60; attempt++) {
+    final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+      finder,
+    );
+    if (!table.isLoading && table.error != null) return;
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(
+    tester.widget<MasterDataTableView<Map<String, dynamic>>>(finder).error,
+    isNotNull,
+    reason: 'The actual rejection must complete and remain observable.',
+  );
+}
+
+Future<void> _scrollLocally(WidgetTester tester, _Api api, String tail) async {
+  final count = api.reads.length;
+  await tester.drag(
+    find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+    const Offset(0, -6000),
+  );
+  await tester.pumpAndSettle();
+  expect(find.textContaining(tail), findsOneWidget);
+  expect(api.reads, hasLength(count));
 }
 
 Future<ProviderContainer> _mount(
@@ -452,6 +750,10 @@ class _Api extends ApiClient {
   final sent = <Map<String, dynamic>>[];
   Map<String, dynamic>? lastQuery;
   Map<String, dynamic>? directoryRecord;
+  int? directoryTotal, failPage;
+  String? failKind;
+  bool wrongKind = false;
+  final reads = <Map<String, dynamic>>[];
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -465,6 +767,30 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     lastQuery = query;
+    if (directoryTotal != null &&
+        path.endsWith('/subcontract-quantity-evidence')) {
+      return _page(
+        'DIRECTORY',
+        query!,
+        directoryTotal!,
+        (i) => {
+          'id': 'quantity-$i',
+          'revision': 0,
+          'status': 'APPROVED',
+          'input': {
+            'scope': _scope,
+            'purpose': 'PERIOD_OPENING',
+            'evidenceType': 'PHYSICAL_COUNT',
+            'quantityPcs': _exact,
+            'enabled': true,
+            'applyToStatement': true,
+          },
+          'stockGroupReference': {'goodsCode': 'M-$i', 'goodsName': '实际材料$i'},
+          'appliedQuantityPcs': '12',
+          'bookEstimatedPcs': '10',
+        },
+      );
+    }
     if (directoryRecord != null && path.endsWith('/quantity-prior')) {
       return directoryRecord!;
     }
@@ -497,15 +823,58 @@ class _Api extends ApiClient {
       };
     }
     if (path.endsWith('/sources')) {
-      return {
-        'items': [
-          for (int i = 0; i < 50; i++)
-            _choice(query?['kind']?.toString() ?? 'RECEIPT', i),
-        ],
-        'totalPages': 400,
-      };
+      final kind = query!['kind'].toString();
+      return _page(
+        kind,
+        query,
+        101,
+        (i) => _choice(wrongKind ? 'MATERIAL_ISSUE' : kind, i),
+      );
+    }
+    if (path.endsWith('/source-choices')) {
+      return _page(
+        'GROUP',
+        query!,
+        101,
+        (i) => {
+          'goodsId': 'group-${i ~/ 2}',
+          'colorId': null,
+          'unitId': i.isEven ? 'pcs-source' : 'weight-source',
+          'goodsCode': 'G-$i',
+          'goodsName': '真实材料$i',
+          'unitName': i.isEven ? '件' : '千克',
+        },
+      );
     }
     return {'items': <Object>[], 'totalPages': 0};
+  }
+
+  Map<String, dynamic> _page(
+    String kind,
+    Map<String, dynamic> query,
+    int total,
+    Map<String, dynamic> Function(int) row,
+  ) {
+    final page = query['page'] as int, size = query['size'] as int;
+    reads.add({...query, 'kind': kind});
+    if (page == failPage && kind == failKind) {
+      throw ApiException(
+        'FORBIDDEN',
+        '后批无权限',
+        httpStatus: 403,
+        hasResponseCode: true,
+      );
+    }
+    return {
+      'items': [
+        for (var i = (page - 1) * size; i < page * size && i < total; i++)
+          row(i),
+      ],
+      'page': page,
+      'size': size,
+      'total': total,
+      'totalPages': (total / size).ceil(),
+    };
   }
 
   Map<String, dynamic> _choice(String kind, int i) {

@@ -190,7 +190,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   Map<String, String?> _workspaceFilters = {};
   Set<String> _workspaceSelected = {};
   bool _workspaceSubtree = false;
-  int _workspacePage = 1;
   bool _batchBusy = false;
 
   @override
@@ -496,7 +495,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       _treeError = null;
       _workspaceSelected = {};
       _workspaceFilters = {};
-      _workspacePage = 1;
     });
     await _load();
     if (editing && mounted && inlineCanEdit && inlineReadReady) {
@@ -514,7 +512,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
     if (editing) {
       setState(() {
         _workspaceSelected = {};
-        _workspacePage = 1;
       });
       inlineEdit.begin();
     }
@@ -1046,7 +1043,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     setState(() {
       change();
-      _workspacePage = 1;
       _workspaceSelected = {};
     });
     if (editing &&
@@ -1158,9 +1154,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       }
       return true;
     }).toList();
-    final pages = (rows.length / 50).ceil().clamp(1, 1 << 30);
-    final page = _workspacePage.clamp(1, pages);
-    final items = rows.skip((page - 1) * 50).take(50).toList();
     final facets = <String, List<MasterFacetBucket>>{};
     final nullCounts = <String, int>{};
     for (final column in _workspaceColumns) {
@@ -1223,7 +1216,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             key: const ValueKey('payment-style-inline-table'),
             tableKey: 'basicData.paymentStyle.workspace',
             columns: inlineColumns(_workspaceColumns),
-            items: items,
+            items: rows,
             virtualized: true,
             serverColumnSearch: true,
             idOf: (row) => row.node.id,
@@ -1243,12 +1236,9 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
                 _workspaceFilters[key] = value;
               }
             }),
-            currentPage: page,
-            totalPages: pages,
             paginationScope:
                 '${_category.value}|$_workspaceSubtree|${_workspaceSubtree ? _selectedId : ''}|$_workspaceKeyword|$_workspaceFilters',
             paginationRevision: _detailRevision,
-            onPageChange: (value) => setState(() => _workspacePage = value),
             isLoading: _treeLoading && _tree.isEmpty,
             loadingMore: _treeLoading && _tree.isNotEmpty,
             error: _treeError,

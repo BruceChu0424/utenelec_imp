@@ -1895,6 +1895,7 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
       items: [for (final candidate in candidates.items) _itemOf(candidate)],
       page: candidates.page,
       totalPages: candidates.totalPages,
+      total: candidates.total,
     );
   }
 

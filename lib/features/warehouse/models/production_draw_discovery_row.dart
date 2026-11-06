@@ -21,8 +21,10 @@ class ProductionDrawDiscoveryRow {
       warehouseIdOf: () => values['warehouseId'] as String?,
       qtyOf: () => double.tryParse(quantity.text.trim()),
       qtyController: quantity,
+      qtyBaseExactOf: () => outboundExactBaseQuantityText(quantity.text, '1'),
       unitRate: 1,
       unitRateExact: '1',
+      quantityMaxScale: 4,
     );
   }
 
@@ -45,8 +47,9 @@ class ProductionDrawDiscoveryRow {
   String? get quantityError {
     final input = quantity.text.trim();
     if (input.isEmpty) return '请填写本次领料数量';
-    if (positiveDocumentQuantityText(input) == null) {
-      return '数量须大于 0，整数最多 40 位、小数最多 24 位';
+    if (positiveMaterialCommandQuantityText(input, plainDecimalOnly: false) ==
+        null) {
+      return '数量须大于 0，最多 4 位小数且小于 100000000000000';
     }
     return null;
   }
@@ -60,6 +63,9 @@ class ProductionDrawDiscoveryRow {
         (values['unitId'] as String?)?.trim().isNotEmpty != true) {
       return '材料或基本单位缺失，请返回核对';
     }
+    if (weight.weight.quantityPendingReason != null) {
+      return weight.weight.errorText;
+    }
     if (weight.weight.hasError) return '本次重量看不懂，请改成如 12.5 或 850g';
     return quantityError ?? warehouseError;
   }
@@ -69,8 +75,13 @@ class ProductionDrawDiscoveryRow {
     'colorId': values['colorId'],
     'unitId': values['unitId'],
     'warehouseId': values['warehouseId'],
-    'qty': positiveDocumentQuantityText(quantity.text.trim()) == null
-        ? (throw const FormatException('数量须大于 0，整数最多 40 位、小数最多 24 位'))
+    'qty':
+        positiveMaterialCommandQuantityText(
+              quantity.text.trim(),
+              plainDecimalOnly: false,
+            ) ==
+            null
+        ? (throw const FormatException('数量须大于 0，最多 4 位小数且小于 100000000000000'))
         : quantity.text.trim(),
   };
 

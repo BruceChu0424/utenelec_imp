@@ -1,0 +1,86 @@
+{
+  "priorSource": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+  "currentSource": "c51925b87cb438f9134136cf2ad31b8d8dc40c38a6c7d0da9e7011e11ff4cb00",
+  "oldWholeFastNativeExit": 1,
+  "oldWholeFastFailed": 1,
+  "oldWholeFastTests": 81,
+  "originalRawRedPreserved": true,
+  "deltaOnly": [
+    "server/legacy_migration/test_verify_candidate.py",
+    "server/src/test/java/com/uten/imp/migration/LegacyMigrationSafetyContractTest.java"
+  ],
+  "allExecutableSourceAndFixtureBytesUnchanged": true,
+  "classes": [
+    {
+      "class": "ArchitectureBoundaryTest",
+      "tests": 11,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/architecture/ArchitectureBoundaryTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml",
+      "xmlSha256": "1ab82bbbb243f7b02d959df669b4c20c58e67be4a41a06c282f888034e33b5e4"
+    },
+    {
+      "class": "FlywayChecksumManifestExporterTest",
+      "tests": 2,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/migration/FlywayChecksumManifestExporterTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.migration.FlywayChecksumManifestExporterTest.xml",
+      "xmlSha256": "0bf8321b1cb625f139088462d81fcbb1ac3640b70a195902bfc667c7a8c6dd2e"
+    },
+    {
+      "class": "HistoricalJdbcNativeSqlTest",
+      "tests": 1,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/testsupport/HistoricalJdbcNativeSqlTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.testsupport.HistoricalJdbcNativeSqlTest.xml",
+      "xmlSha256": "446d891c47e79927e850fdaf14a4b737a08883e990014a061bbabcdec7b13f8f"
+    },
+    {
+      "class": "FinanceReceiptSettlementTest",
+      "tests": 37,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/finance/receipt/FinanceReceiptSettlementTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.features.finance.receipt.FinanceReceiptSettlementTest.xml",
+      "xmlSha256": "23fca39d2f97e892560696cff9cd47335082e82e04533b71d0bf0a148c4832e0"
+    },
+    {
+      "class": "PurchaseOrderTotalAmountTest",
+      "tests": 2,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/purchase/order/PurchaseOrderTotalAmountTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.features.purchase.order.PurchaseOrderTotalAmountTest.xml",
+      "xmlSha256": "9f47940e5ebdad360b373a7ebb97f03449f2fdf00bea665b827d7ce9f6e7a20b"
+    },
+    {
+      "class": "SubcontractOrderTotalAmountTest",
+      "tests": 2,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/features/subcontract/order/SubcontractOrderTotalAmountTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.features.subcontract.order.SubcontractOrderTotalAmountTest.xml",
+      "xmlSha256": "c240bd25bfdd92928a8bc120485b272f1df9371d9ce7034eda25c218ac06c1b7"
+    },
+    {
+      "class": "ProcurementReferencePriceTest",
+      "tests": 14,
+      "wholeClassActualGreen": true,
+      "sourceClock": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+      "currentTestSourceByteExact": true,
+      "sourcePath": "server/src/test/java/com/uten/imp/common/finance/ProcurementReferencePriceTest.java",
+      "xmlPath": "server/build/loading-validation/main-6fb-version-identity/current-fast-receipt/TEST-com.uten.imp.common.finance.ProcurementReferencePriceTest.xml",
+      "xmlSha256": "49f6dfd9a54c4ba94babcbe4aae80afdea7f32b36fd670706703323ae2b4a29d"
+    }
+  ],
+  "limits": "Seven complete passing class artifacts are applied only under exact untouched input and compiled-byte bridge; original81-method whole native1 is not rewritten. The twelfth safety assertion is rerun as its whole12 class."
+}

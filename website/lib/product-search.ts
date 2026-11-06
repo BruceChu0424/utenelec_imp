@@ -60,17 +60,36 @@ function searchSql(scope: ProductSearchScope) {
   };
 }
 
+async function orderedProductSearchIds(db: SearchDatabase, scope: ProductSearchScope, bounds?: { skip: number; take: number }): Promise<string[]> {
+  const sql = searchSql(scope);
+  const rows = await db.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT p."id" ${sql.from} WHERE ${sql.selected}
+    ORDER BY ${scope.internal ? Prisma.sql`p."featured" DESC,` : Prisma.empty} ${sql.rank}, p."sortOrder" ASC,
+      ${scope.internal ? Prisma.empty : Prisma.sql`p."createdAt" DESC,`} p."id" ASC
+      ${bounds ? Prisma.sql`LIMIT ${bounds.take} OFFSET ${bounds.skip}` : Prisma.empty}`);
+  return rows.map(row => row.id);
+}
+
+/** Existing public/card pagination remains bounded. */
+export function productSearchIds(db: SearchDatabase, scope: ProductSearchScope, skip: number, take: number): Promise<string[]> {
+  return orderedProductSearchIds(db, scope, { skip, take });
+}
+
+/** Only for an owner already returning every authorized matching summary.
+ * Rank these lightweight matching identities once in the caller's snapshot;
+ * hydrate at most100 IDs per query. This never expands the authorized scope. */
+export function completeProductSearchIds(db: SearchDatabase, scope: ProductSearchScope): Promise<string[]> {
+  return orderedProductSearchIds(db, scope);
+}
+
 export async function productSearchPage(db: SearchDatabase, scope: ProductSearchScope, skip: number, take: number, facets = false) {
   const sql = searchSql(scope);
   const [rows, counts, groups] = await Promise.all([
-    db.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT p."id" ${sql.from} WHERE ${sql.selected}
-      ORDER BY ${scope.internal ? Prisma.sql`p."featured" DESC,` : Prisma.empty} ${sql.rank}, p."sortOrder" ASC,
-        ${scope.internal ? Prisma.empty : Prisma.sql`p."createdAt" DESC,`} p."id" ASC LIMIT ${take} OFFSET ${skip}`),
+    productSearchIds(db, scope, skip, take),
     db.$queryRaw<Array<{ total: bigint | number }>>(Prisma.sql`SELECT COUNT(*) AS total ${sql.from} WHERE ${sql.selected}`),
     facets ? db.$queryRaw<Array<{ functionType: string | null; gangCount: number | null; total: bigint | number }>>(
       Prisma.sql`SELECT p."functionType", p."gangCount", COUNT(*) AS total ${sql.from} WHERE ${sql.searched} GROUP BY p."functionType",p."gangCount"`) : Promise.resolve([]),
   ]);
-  return { ids: rows.map(row => row.id), total: Number(counts[0].total),
+  return { ids: rows, total: Number(counts[0].total),
     groups: groups.map(row => ({ functionType: row.functionType, gangCount: row.gangCount, _count: { _all: Number(row.total) } })) };
 }
 

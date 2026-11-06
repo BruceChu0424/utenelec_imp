@@ -33,7 +33,7 @@ _GUARD_PATH = Path(__file__).resolve().with_name("release_guard.py")
 _GUARD_MODULE_NAME = "uten_imp_release_guard"
 _PREVERIFIED_GUARD_GLOBAL = "_UTEN_PREVERIFIED_RELEASE_GUARD"
 _GUARD_MAXIMUM_BYTES = 4 * 1024 * 1024
-_GUARD_SHA256 = "1288e528b839c2c6e9ba0f77f7103f93af243bb3d57d10ab4f78b4a524fb3359"
+_GUARD_SHA256 = "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
 OSS_IO_SHA256 = "a3d8a8d4044617e500293ae2dad036b9fd0f1f890d07b2bf87fc6a4e3535f77b"
 WHEELHOUSE_SUPPLY_CHAIN_SHA256 = (
     "b46bee01c173d4cd56d21a80bb40983dba535199d011f5ecc18625e2405c3bea"
@@ -56,6 +56,12 @@ def _validate_release_guard_module(module: Any, expected_path: Path) -> Any:
         "allowed_signing_key_ids",
         "exact_keys",
         "load_json",
+        "parse_flyway_version",
+        "flyway_version_from_filename",
+        "flyway_raw_version_from_filename",
+        "validate_flyway_history_version",
+        "flyway_history_description_from_filename",
+        "require_integer_flyway_head",
         "require_string",
         "safe_extract",
         "sha256_file",
@@ -360,7 +366,7 @@ DATABASE_RECOVERY_VERIFIER_SHA256 = (
 # Updated after the runtime boot verifier and its focused fault tests are
 # reviewed byte-for-byte. Phase 4 refuses to install any other source.
 RUNTIME_BOOT_VERIFIER_SHA256 = (
-    "08be0ef34d5c1a73bdc5cb67fb9a1722b131644b159acb01ed60cc79e1accb73"
+    "f5e4b4106ef703db64005300029805f09d9a999af28baf9a9bb9ad001acbf7ca"
 )
 STORAGE_BOOT_VERIFIER_SHA256 = (
     "0880678bcff0ad03149c0e0d90fccb9f6b274788b3c4e9e6add0d487d64dd83f"
@@ -369,7 +375,7 @@ STORAGE_MOUNT_OBSERVER_SHA256 = (
     "b96476e50edad6178e3ab55516659b9b3b656653a6c0e376d173566d2cd88ddb"
 )
 MIGRATION_AUTHORIZATION_HELPER_SHA256 = (
-    "fa5c63ddda9e1527ad049513880ebe5f1046e79b6983d91573a8625271236aa5"
+    "ab9b84cc6cde16c0104216e71999a51f232ac69e0263ab7d125fa9e3d81eaa0b"
 )
 ENTRY_WATCHDOG_UNIT_SHA256 = (
     "e018a0f67a268e81066350f9d0ae2c923825a3cc907c49c4e4854ce1c807f16a"
@@ -9689,6 +9695,14 @@ def canonical_signed_flyway_projection(target_manifest: dict[str, Any]) -> bytes
     ).encode("utf-8")
 
 
+def expected_signed_history_projection(target_manifest: dict[str, Any]) -> bytes:
+    """Compatibility name for Main canonical signed wire projection.
+
+    Original observed versions/descriptions stay in canonicalHistorySha256;
+    no preferred historical token is fabricated into signed evidence.
+    """
+    return canonical_signed_flyway_projection(target_manifest)
+
 def validate_detail_against_signed_manifest(
     database_receipt: dict[str, Any],
     target_manifest: dict[str, Any],
@@ -10395,6 +10409,34 @@ def archive_interrupted_start_authorization(transaction: Path) -> None:
     durable_unlink(source)
 
 
+def recovery_manifest_with_inventory(observed: dict[str, Any]) -> dict[str, Any]:
+    """Revalidate small signed metadata, without re-reading the payload tree."""
+    version = release_guard.require_string(
+        observed.get("version"), "recovery target version", release_guard.VERSION_RE
+    )
+    release = DEFAULT_RELEASE_BASE / "releases" / version
+    evidence = release / ".release"
+    require_real_directory(release, owner_uid=0)
+    require_real_directory(evidence, owner_uid=0)
+    manifest_path = evidence / "manifest.json"
+    require_root_controlled_file(manifest_path)
+    expected_sha = require_recovery_sha256(observed.get("manifestSha256"), "recovery target manifest digest")
+    if release_guard.sha256_file(manifest_path) != expected_sha:
+        fail("recovery target manifest changed before inventory read")
+    signed = verify_signed_json(manifest_path, evidence / "manifest.sig", DEFAULT_ALLOWED_SIGNERS)
+    full = release_guard.validate_manifest(signed, expected_version=version)
+    if full["signingKeyId"] not in authorized_key_ids(DEFAULT_ALLOWED_SIGNERS):
+        fail("recovery target signing key is no longer authorized")
+    if release_guard.sha256_file(manifest_path) != expected_sha:
+        fail("recovery target manifest changed during inventory read")
+    for key in ("version", "commitSha", "releaseSequence", "signingKeyId",
+                "flywayHeadVersion", "flywayMigrationSetSha256"):
+        if full.get(key) != observed.get(key):
+            fail("recovery target signed inventory differs from its verified summary")
+    if len(full["flywayMigrations"]) != observed.get("flywayMigrationCount"):
+        fail("recovery target signed inventory count differs from its verified summary")
+    return {**observed, "flywayMigrations": full["flywayMigrations"]}
+
 def load_database_recovery_receipt(
     *,
     path_text: str,
@@ -10452,10 +10494,11 @@ def load_database_recovery_receipt(
     if hashlib.sha256(detail_raw).hexdigest() != detail_sha:
         fail("database detailed receipt digest differs from evidenceReference")
     detail_fields = strict_json_object(detail_raw, "detailed database recovery receipt")
+    receipt_target_manifest = recovery_manifest_with_inventory(target_manifest)
     detail_identity = validate_database_recovery_detail(
         detail_fields,
         narrow=value,
-        target_manifest=target_manifest,
+        target_manifest=receipt_target_manifest,
     )
     return {
         "detailFields": detail_fields,

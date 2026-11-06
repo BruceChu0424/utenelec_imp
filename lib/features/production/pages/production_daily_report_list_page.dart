@@ -67,7 +67,9 @@ class _ProductionDailyReportListPageState
     with
         DraftBulkDeleteMixin<ProductionDailyReportListPage>,
         UtenRefreshParticipant<ProductionDailyReportListPage> {
-  final _list = PagedListController<ProductionDailyReportListItem>();
+  final _list = PagedListController<ProductionDailyReportListItem>(
+    idOf: (row) => row.id,
+  );
   final _tableRows =
       MasterDataTableRowsController<ProductionDailyReportListItem>();
   int _reloadGeneration = 0;
@@ -168,10 +170,12 @@ class _ProductionDailyReportListPageState
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionDailyReportListItem>> _fetch([
     int? requestedPage,
+    int batchSize = 100,
   ]) => ref
       .read(productionDailyReportRepositoryProvider)
       .list(
         page: requestedPage ?? _list.pageNum,
+        size: batchSize,
         filter: ProductionDailyReportFilter(
           keyword: _list.normalizedKeyword,
           departmentId: _workshopIdFilter,
@@ -240,6 +244,7 @@ class _ProductionDailyReportListPageState
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -379,7 +384,9 @@ class _ProductionDailyReportListPageState
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _list.revalidate(_reload(null, true)));
+    Future<void> visibleReadReturn() => _list.revalidate(_reload(null, true));
+    _list.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     final page = Scaffold(
       appBar: UtenAppBar(
         title: '生产日报表',
@@ -457,7 +464,6 @@ class _ProductionDailyReportListPageState
                       totalPages: _list.totalPages,
                       paginationRevision: _list.paginationRevision,
                       refreshedPages: _list.refreshedPages,
-                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         _list.normalizedKeyword,
                         _statusFilter,

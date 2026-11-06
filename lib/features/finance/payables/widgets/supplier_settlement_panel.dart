@@ -42,6 +42,9 @@ class SupplierSettlementPanel extends ConsumerStatefulWidget {
 class _SupplierSettlementPanelState
     extends ConsumerState<SupplierSettlementPanel>
     with ScopedPagedReadViewMixin<SupplierSettlementPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _requests = LatestRequestGuard();
   SupplierSettlementPageResult? _result;
   final _tableRows = MasterDataTableRowsController<SupplierSettlementSummary>();
@@ -114,6 +117,7 @@ class _SupplierSettlementPanelState
     try {
       final cachedPage = await readScopedPage<SupplierSettlementSummary>(
         page,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -125,6 +129,7 @@ class _SupplierSettlementPanelState
             sort: sort,
             sortAscending: sortAscending,
             page: target,
+            size: 100,
           );
           return PagedReadSnapshot<
             SupplierSettlementSummary,
@@ -138,6 +143,7 @@ class _SupplierSettlementPanelState
               totalPages: response.totalPages,
             ),
             snapshot: response,
+            rebuildSnapshot: response.withPage,
           );
         },
       );
@@ -154,8 +160,10 @@ class _SupplierSettlementPanelState
         _loading = false;
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       _fail(generation, error.message);
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       _fail(generation, '服务暂不可用，请稍后重试');
     }
   }

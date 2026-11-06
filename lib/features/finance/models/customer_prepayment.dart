@@ -1,3 +1,4 @@
+import '../../../shared/models/paged_result.dart';
 import 'finance_decimal.dart';
 
 int _int(Object? value, {int fallback = 0}) => value is num
@@ -25,6 +26,17 @@ class CustomerPrepaymentPage {
   final int size;
   final int total;
   final int totalPages;
+
+  CustomerPrepaymentPage withPage(
+    PagedResult<CustomerPrepaymentItem> combined,
+  ) => CustomerPrepaymentPage(
+    summary: summary,
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory CustomerPrepaymentPage.fromJson(Map<String, dynamic> json) =>
       CustomerPrepaymentPage(

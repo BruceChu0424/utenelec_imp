@@ -382,7 +382,7 @@ void main() {
     expect(results, hasLength(1));
   });
 
-  testWidgets('向下滚动续页保留列表和多选，分类高亮变化不清掉旧页', (tester) async {
+  testWidgets('整范围读取完成后本地滚动与多选不再加载其他批次', (tester) async {
     final repository = _FakeGoodsRepository(
       splitAcrossPages: true,
       delayedPage: 2,
@@ -393,35 +393,32 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
-    await tester.pumpAndSettle();
-    await tester.tap(_goodsName('连接器甲'));
     await tester.pump();
-    final list = find.byKey(const Key('goods-picker-paged-list'));
-    final originalElement = tester.element(list);
-
-    await _wheelOnGoods(tester, '连接器甲', 100);
     expect(repository.searchPages, [1, 2]);
-    expect(_goodsName('连接器甲'), findsOneWidget);
-    expect(tester.element(list), same(originalElement));
-
+    expect(_goodsName('连接器甲'), findsNothing, reason: '尚未完成的摘要集合不能冒充完整列表');
     repository.completeDelayedPage();
     await tester.pumpAndSettle();
     expect(_goodsName('连接器甲'), findsOneWidget);
     expect(_goodsName('连接器乙'), findsOneWidget);
-    final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
-      find.byType(UtenCategoryTreeView<ProductCategoryNode>),
-    );
-    expect(tree.selectedIds, isEmpty);
+    final list = find.byKey(const Key('goods-picker-paged-list'));
+    final originalElement = tester.element(list);
+    await tester.tap(_goodsName('连接器甲'));
+    await tester.pump();
+    await _wheelOnGoods(tester, '连接器甲', 100);
+    await _wheelOnGoods(tester, '连接器乙', -100);
+    await tester.pumpAndSettle();
+    expect(repository.searchPages, [1, 2]);
+    expect(tester.element(list), same(originalElement));
     expect(repository.searchPolicies, everyElement((true, true)));
-
     await tester.tap(_goodsName('连接器乙'));
     await tester.pump();
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
     await tester.pumpAndSettle();
     expect(results.single.map((goods) => goods.id), ['goods-a', 'goods-b']);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('分页失败重试同一页，已预取的前页保留且不重拉', (tester) async {
+  testWidgets('完整查询中途失败可显式重试，完成后滚动不重查', (tester) async {
     final repository = _FakeGoodsRepository(splitAcrossPages: true)
       ..failNextPage = 2;
     GoodsListItem? selected;
@@ -436,42 +433,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
     expect(repository.searchPages, [1, 2]);
-    repository.failNextPage = 2;
-    await _wheelOnGoods(tester, '连接器甲', 100);
-    await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 2]);
-    expect(_goodsName('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器乙'), findsNothing);
+    expect(selected, isNull);
     await tester.tap(find.text('重试').last);
     await tester.pumpAndSettle();
-    // Continuous paging retains the already loaded previous page; retrying
-    // page two must not fetch page one again.
-    expect(repository.searchPages, [1, 2, 2, 2]);
-    expect(_goodsName('连接器乙'), findsOneWidget);
-    final oldRowTop = tester.getTopLeft(_goodsName('连接器乙')).dy;
-    await _wheelOnGoods(tester, '连接器乙', -100);
-    await tester.pumpAndSettle();
-    // Prepending keeps the old row anchored. The preceding row is above the
-    // viewport and may remain unbuilt until the user continues scrolling up.
-    expect(_goodsName('连接器乙'), findsOneWidget);
-    expect(tester.getTopLeft(_goodsName('连接器乙')).dy, closeTo(oldRowTop, 0.5));
-    await _wheelOnGoods(tester, '连接器乙', -100);
-    await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 2, 2]);
-
+    expect(repository.searchPages, [1, 2, 1, 2]);
     expect(_goodsName('连接器甲'), findsOneWidget);
     expect(_goodsName('连接器乙'), findsOneWidget);
-    expect(repository.searchCategoryIdQueries, [
-      'G-',
-      'G-',
-    ], reason: '缓存前页重新成为可操作页前，轻量定位须重新验证；业务行不重拉');
-    await tester.tap(_goodsName('连接器甲'));
+    await _wheelOnGoods(tester, '连接器甲', 100);
+    await _wheelOnGoods(tester, '连接器乙', -100);
     await tester.pumpAndSettle();
-    expect(selected, isNull, reason: '单击仅选中，仍须底部确认');
-    expect(_widePickerSheet(), findsOneWidget);
+    expect(repository.searchPages, [1, 2, 1, 2]);
+    await tester.tap(_goodsName('连接器甲'));
+    await tester.pump();
+    expect(selected, isNull);
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(selected?.id, 'goods-a');
-    expect(_widePickerSheet(), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -659,7 +637,7 @@ void main() {
     );
   });
 
-  testWidgets('多页搜索会汇总后续页分类用于完整展开', (tester) async {
+  testWidgets('整范围搜索汇总全部分类且滚动不再查询定位', (tester) async {
     final goodsRepository = _FakeGoodsRepository(splitAcrossPages: true);
     await _pumpPicker(tester, goodsRepository);
 
@@ -687,8 +665,7 @@ void main() {
     expect(goodsRepository.searchPages, [1, 2]);
     expect(goodsRepository.searchCategoryIdQueries, [
       'G-',
-      'G-',
-    ], reason: '缓存分页先重新验证轻量定位，完整分类树不能缩窄');
+    ], reason: '完整结果本地滚动不再重查定位');
   });
 
   testWidgets('旧慢请求晚返回不会覆盖较新的搜索结果', (tester) async {

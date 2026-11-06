@@ -19,6 +19,7 @@ import '../../../shared/models/employee_reference.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../providers/production_department_provider.dart';
 import 'delivery_processing_repository.dart';
@@ -103,6 +104,9 @@ class _TasksWindow extends ConsumerStatefulWidget {
 }
 
 class _TasksWindowState extends ConsumerState<_TasksWindow> {
+  final _listRead = ScopedPagedRead<DeliveryProcessingTask>(
+    idOf: (task) => task.id,
+  );
   final _quantity = TextEditingController(),
       _evidence = TextEditingController();
   final _search = TextEditingController();
@@ -150,6 +154,7 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
   @override
   void dispose() {
     _generation++;
+    _listRead.dispose();
     final closePanel = _closePanel;
     _panelSetState = null;
     if (closePanel != null) {
@@ -166,14 +171,35 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
     if (mounted) _update(() {});
   }
 
-  Future<void> _load({int? page}) async {
+  Future<DeliveryProcessingPage> _readCompleteTasks() async {
+    final repository = _repository;
+    final keyword = _search.text.trim();
+    final generation = _generation;
+    bool ownerCurrent() =>
+        _current &&
+        identical(repository, _repository) &&
+        keyword == _search.text.trim();
+    final next = await _listRead.read(
+      1,
+      scope: [repository, _boundary, widget.shipmentId, keyword],
+      isCurrent: () => ownerCurrent() && generation == _generation,
+      isOwnerCurrent: ownerCurrent,
+      fetchPage: (batch) =>
+          repository.list(widget.shipmentId, page: batch, keyword: keyword),
+      fetchPageSized: (batch, size) => repository.list(
+        widget.shipmentId,
+        page: batch,
+        size: size,
+        keyword: keyword,
+      ),
+    );
+    return next as DeliveryProcessingPage;
+  }
+
+  Future<void> _load() async {
     if (_busy) return;
     await _wait('正在读取交付件加工任务', () async {
-      final next = await _repository.list(
-        widget.shipmentId,
-        page: page ?? _page?.page ?? 1,
-        keyword: _search.text.trim(),
-      );
+      final next = await _readCompleteTasks();
       if (!_current) return;
       _update(() {
         _page = next;
@@ -302,11 +328,7 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
         if (!_current) return;
         _update(() => _warehouses = warehouses);
       }
-      final next = await _repository.list(
-        widget.shipmentId,
-        page: _page?.page ?? 1,
-        keyword: _search.text.trim(),
-      );
+      final next = await _readCompleteTasks();
       if (_current) _update(() => _page = next);
     });
   }
@@ -645,7 +667,7 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
                 facets: const {},
                 nullCounts: const {},
                 filters: _filters,
-                headerFilterScopeDescription: '表头条件作用当前页；按物料或来源单号全量查找请使用工具栏搜索',
+                headerFilterScopeDescription: '表头筛选当前完整加工任务；工具栏按物料或来源单号查询',
                 onFilterChanged: (key, value) =>
                     _update(() => _filters[key] = value),
                 idOf: (task) => task.id,
@@ -653,16 +675,13 @@ class _TasksWindowState extends ConsumerState<_TasksWindow> {
                 error: _error,
                 onRetry: () => unawaited(_load()),
                 emptyMessage: '暂无本人可办理的交付件加工任务',
-                currentPage: page?.page ?? 1,
-                totalPages: page?.totalPages ?? 1,
-                onPageChange: (value) => unawaited(_load(page: value)),
                 toolbarActions: [
                   SizedBox(
                     width: 240,
                     child: UtenSearchBar(
                       controller: _search,
                       hint: '查找物料或来源出货单',
-                      onSubmitted: (_) => unawaited(_load(page: 1)),
+                      onSubmitted: (_) => unawaited(_load()),
                     ),
                   ),
                   UtenButton(

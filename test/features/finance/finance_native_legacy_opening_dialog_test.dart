@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -24,6 +25,118 @@ const _capture = bool.fromEnvironment('UTEN_CAPTURE_FINANCE_PARTY_UI');
 final _boundary = GlobalKey();
 
 void main() {
+  for (final status in [503, 403]) {
+    testWidgets(
+      'legacy accepted read $status preserves input and retires only denied presentation',
+      (tester) async {
+        final api = _Api();
+        final environment = await _pump(tester, api);
+        final finder = find.byWidgetPredicate(
+          (w) =>
+              w is MasterDataTableView<Map<String, dynamic>> &&
+              w.tableKey == 'finance.native-legacy-openings.sources',
+        );
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          finder,
+        );
+        table.onSelectedIdsChanged!({table.idOf!(table.items.single)!});
+        await tester.pumpAndSettle();
+        final field = find.byKey(
+          ValueKey('legacy-opening-local-${table.idOf!(table.items.single)!}'),
+        );
+        await tester.enterText(field, '0.000000000000000000000001');
+        final input = tester.widget<UtenInput>(field).controller!;
+        api.readError = ApiException(
+          status == 403 ? 'FORBIDDEN' : 'UNAVAILABLE',
+          'legacy read $status',
+          httpStatus: status,
+        );
+        await Future<void>.sync(table.onRetry!);
+        await tester.pumpAndSettle();
+        if (status == 403) {
+          expect(
+            find.byType(MasterDataTableView<Map<String, dynamic>>),
+            findsNothing,
+          );
+          table.onSelectedIdsChanged!({});
+          await tester.pump();
+          expect(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is UtenFieldHintIcon && w.errorMessage == 'legacy read 403',
+            ),
+            findsOneWidget,
+          );
+        } else {
+          expect(
+            tester
+                .widget<MasterDataTableView<Map<String, dynamic>>>(finder)
+                .items,
+            hasLength(1),
+          );
+        }
+        expect(input.text, '0.000000000000000000000001');
+        expect(api.saved, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        environment.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'all 251 exact legacy opening allocations load once with first-page ledger metadata',
+    (tester) async {
+      final api = _Api()..sourceCount = 251;
+      final environment = await _pump(tester, api);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey == 'finance.native-legacy-openings.sources',
+        ),
+      );
+      expect(table.items, hasLength(251));
+      expect((table.items.last['reference'] as Map)['allocationNo'], 251);
+      expect(api.sourceQueries.map((query) => query['page']), [1, 2, 3]);
+      expect(api.sourceQueries.every((query) => query['size'] == 100), isTrue);
+      final legacy = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey == 'finance.native-legacy-openings.legacy',
+        ),
+      );
+      expect(legacy.items.single['local'], '700.0000');
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      environment.dispose();
+    },
+  );
+
+  testWidgets(
+    'a failed legacy source tail never publishes its first hundred as a complete set',
+    (tester) async {
+      final api = _Api()
+        ..sourceCount = 251
+        ..failTail = true;
+      final environment = await _pump(tester, api);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is MasterDataTableView<Map<String, dynamic>> &&
+              widget.tableKey == 'finance.native-legacy-openings.sources',
+        ),
+      );
+      expect(table.items, isEmpty);
+      expect(api.sourceQueries.map((query) => query['page']), [1, 2]);
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      environment.dispose();
+    },
+  );
+
   testWidgets(
     'legacy share retry preserves exact source and native money without creating a second relationship',
     (tester) async {
@@ -336,6 +449,10 @@ class _Api extends ApiClient {
   bool loseFirst = false, refuseSources = false;
   Completer<void>? gate;
   int sourceReads = 0, receiptReads = 0;
+  int sourceCount = 1;
+  bool failTail = false;
+  ApiException? readError;
+  final sourceQueries = <Map<String, dynamic>>[];
   final savedHeaders = <Map<String, dynamic>>[];
   int actual = 0;
   final saved = <Map<String, dynamic>>[];
@@ -406,6 +523,11 @@ class _Api extends ApiClient {
       };
     }
     if (path.endsWith('/review-1')) return review;
+    sourceQueries.add(Map<String, dynamic>.from(query ?? {}));
+    if (readError != null) throw readError!;
+    final page = (query?['page'] as num?)?.toInt() ?? 1;
+    final size = (query?['size'] as num?)?.toInt() ?? 100;
+    if (page > 1 && failTail) throw StateError('held source tail failure');
     return {
       'legacy': {
         'ledgerId': 'old-ledger',
@@ -415,8 +537,26 @@ class _Api extends ApiClient {
         'original': '700.0000',
       },
       'sources': {
-        'items': [source],
-        'totalPages': 1,
+        'items': [
+          for (
+            var i = (page - 1) * size;
+            i < sourceCount && i < page * size;
+            i++
+          )
+            sourceCount == 1
+                ? source
+                : {
+                    ...source,
+                    'reference': {
+                      'entryId': 'real-opening-entry',
+                      'allocationNo': i + 1,
+                    },
+                  },
+        ],
+        'page': page,
+        'size': size,
+        'total': sourceCount,
+        'totalPages': (sourceCount + size - 1) ~/ size,
       },
       'reviews': actual == 0 ? <Map<String, dynamic>>[] : [review],
     };

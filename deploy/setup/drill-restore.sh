@@ -251,26 +251,8 @@ if ! trusted_manifest_rows_data="$(/usr/bin/python3 -I "$trusted_release_guard" 
   --expected-version "$expected_release_version")"; then
   die 'root-installed release guard rejected the signature, claimed signing key, manifest, or Flyway checksum inventory'
 fi
-if ! manifest_summary="$(LC_ALL=C awk -F '\t' '
-  NF != 3 { exit 10 }
-  $1 !~ /^[1-9][0-9]*$/ { exit 11 }
-  $2 !~ /^V[0-9]+__[A-Za-z0-9_]+[.]sql$/ { exit 12 }
-  $3 !~ /^-?[0-9]+$/ || $3 < -2147483648 || $3 > 2147483647 { exit 13 }
-  {
-    file_version = $2
-    sub(/^V/, "", file_version)
-    sub(/__.*/, "", file_version)
-    if ((file_version + 0) != ($1 + 0)) exit 14
-    if (seen_version[$1]++ || seen_file[$2]++) exit 15
-    if (count > 0 && ($1 + 0) <= previous_version) exit 16
-    previous_version = ($1 + 0)
-    count++
-  }
-  END {
-    if (count < 1) exit 17
-    printf "%d\t%d\n", count, previous_version
-  }
-' <<<"$trusted_manifest_rows_data")"; then
+if ! manifest_summary="$(/usr/bin/python3 -I "$trusted_release_guard" \
+  flyway-rows --summary --require-order <<<"$trusted_manifest_rows_data")"; then
   die 'root-installed release guard emitted a non-canonical Flyway checksum inventory'
 fi
 IFS=$'\t' read -r trusted_manifest_count trusted_manifest_max_version <<<"$manifest_summary"
@@ -708,7 +690,7 @@ echo '==> Validate Flyway history without mutating it'
   || die 'flyway_schema_history is missing'
 failed_migrations="$(psql_drill uten_imp 'SELECT count(*) FROM flyway_schema_history WHERE success IS DISTINCT FROM true;')"
 [[ "$failed_migrations" == 0 ]] || die "Flyway history contains $failed_migrations failed or indeterminate rows"
-invalid_successful_history_count="$(psql_drill uten_imp "SELECT count(*) FROM flyway_schema_history WHERE success AND (version IS NULL OR version !~ '^[1-9][0-9]*$' OR checksum IS NULL OR type IS DISTINCT FROM 'SQL');")"
+invalid_successful_history_count="$(psql_drill uten_imp "SELECT count(*) FROM flyway_schema_history WHERE success AND (version IS NULL OR checksum IS NULL OR type IS DISTINCT FROM 'SQL');")"
 [[ "$invalid_successful_history_count" == 0 ]] \
   || die 'Flyway history contains a successful repeatable/non-SQL row, a null version/checksum, or a non-canonical version'
 latest_flyway_version="$(psql_drill uten_imp "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1;")"
@@ -727,11 +709,17 @@ duplicate_successful_history_count="$(psql_drill uten_imp "SELECT count(*) FROM 
 echo '==> Compare restored Flyway rows with the independently trusted release manifest'
 trusted_manifest_rows="$restore_dir/trusted-flyway.tsv"
 restored_manifest_rows="$restore_dir/restored-flyway.tsv"
-printf '%s\n' "$trusted_manifest_rows_data" \
-  | LC_ALL=C sort -t $'\t' -k1,1n >"$trusted_manifest_rows"
-psql_drill uten_imp \
-  "SELECT version || chr(9) || script || chr(9) || checksum::text FROM flyway_schema_history WHERE success ORDER BY version::bigint;" \
-  | LC_ALL=C sort -t $'\t' -k1,1n >"$restored_manifest_rows"
+printf '%s\n' "$trusted_manifest_rows_data" >"$trusted_manifest_rows"
+if ! restored_rows_data="$(psql_drill uten_imp \
+  "SELECT version || chr(9) || script || chr(9) || checksum::text FROM flyway_schema_history WHERE success ORDER BY installed_rank;")"; then
+  die 'could not read the isolated restored Flyway inventory'
+fi
+if ! restored_comparison_rows="$(/usr/bin/python3 -I "$trusted_release_guard" \
+  flyway-rows --history <<<"$restored_rows_data")"; then
+  die 'isolated restored Flyway inventory has invalid raw version/script identities'
+fi
+printf '%s\n' "$restored_comparison_rows" >"$restored_manifest_rows"
+unset restored_rows_data restored_comparison_rows
 chmod 0600 "$trusted_manifest_rows" "$restored_manifest_rows"
 cmp --silent -- "$trusted_manifest_rows" "$restored_manifest_rows" \
   || die 'restored Flyway versions/scripts/checksums differ from the signed production release manifest'

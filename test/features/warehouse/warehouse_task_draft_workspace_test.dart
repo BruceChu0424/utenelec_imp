@@ -970,6 +970,7 @@ void main() {
         formDraftsPageCategories['warehouse-master']!.scope,
       ];
       var checked = 0;
+      final missing = <String>[];
       for (final descriptor in FormDraftCatalog.all.values.where(
         (entry) =>
             entry.module == BadgeModule.warehouse && entry.dialogKind == null,
@@ -990,20 +991,65 @@ void main() {
           data: const {},
         );
         final expected = isTaskFormDraft(draft) ? 0 : 1;
-        expect(
-          destinations.where((scope) => scope.matches(draft)).length,
-          expected,
-          reason: '${descriptor.title}: ${draft.route}',
-        );
+        if (destinations.where((scope) => scope.matches(draft)).length !=
+            expected) {
+          missing.add('${descriptor.title}: ${draft.route}');
+        }
         final other = FormDraft.fromJson({
           ...draft.toJson(),
           'module': BadgeModule.sales.name,
         });
         expect(destinations.any((scope) => scope.matches(other)), isFalse);
       }
+      expect(
+        missing,
+        isEmpty,
+        reason: 'Every registered standalone input keeps one destination',
+      );
       expect(checked, greaterThan(1));
     },
   );
+
+  for (final descriptor in [
+    FormDraftCatalog.workshopMaterialCount,
+    FormDraftCatalog.workshopMaterialCloseRetry,
+  ]) {
+    testWidgets(
+      '${descriptor.title} local input is reachable from its warehouse draft entry',
+      (tester) async {
+        final spec = descriptor.spec(route: descriptor.route);
+        final local = FormDraft(
+          id: 'standalone-workshop',
+          title: spec.title,
+          module: spec.module,
+          route: spec.route,
+          permission: spec.permission,
+          draftKind: spec.draftKind,
+          updatedAt: DateTime(2026, 11, 4),
+          data: const {},
+        );
+        final scope = await container(
+          tester,
+          drafts: [local],
+          permissions: {
+            Perm.stockDocView,
+            Perm.warehouseView,
+            Perm.workshopMaterialCount,
+          },
+        );
+        expect(scope.read(formDraftsPageCountProvider('warehouse')), 1);
+        expect(scope.read(formDraftsPageCountProvider('warehouse-master')), 0);
+        await tester.tap(find.text('仓库草稿'));
+        await tester.pumpAndSettle();
+        final table = tester.widget<MasterDataTableView<DraftWorkspaceRow>>(
+          find.byType(MasterDataTableView<DraftWorkspaceRow>),
+        );
+        expect(table.items.single.local?.id, local.id);
+        expect(table.items.single.location, local.resumeLocation);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   test('source-bound warehouse snapshots stay on their task recovery path', () {
     final destinations = [

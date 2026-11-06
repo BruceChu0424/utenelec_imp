@@ -1,3 +1,4 @@
+import '../../support/versioned_summary_test_response.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -539,7 +540,9 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/finance/asset-opening-groups') return {'items': <Object>[]};
+    if (path == '/finance/asset-opening-groups/summaries') {
+      return versionedSummaryTestResponse([], query);
+    }
     if (group && path == '/finance/template-imports/$_source') {
       throw ApiException(
         'NOT_FOUND',

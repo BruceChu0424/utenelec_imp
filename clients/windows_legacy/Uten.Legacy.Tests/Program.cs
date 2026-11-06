@@ -36,6 +36,23 @@ namespace Uten.Legacy.Tests
                         + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
+                if (args.Length == 1 && args[0] == "--continuous-list-contracts")
+                {
+                    int complete = RunUi(UiContractChecks.RunContinuousLists);
+                    Console.WriteLine("PASS native complete lists/bounded batches/virtual scroll/selection/write limit/owner retirement; assertions=" + complete
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
+                if (args.Length == 1 && args[0] == "--unit-history-contracts")
+                {
+                    int historyContractReadChecks = UnitHistoryContractChecks.Run();
+                    int historyContractUiChecks = RunUi(UnitHistoryContractChecks.RunUi);
+                    int historyContractContinuousUiChecks = RunUi(UnitHistoryContractChecks.RunContinuousUi);
+                    Console.WriteLine("PASS unit history contracts; model/HTTP=" + historyContractReadChecks
+                        + "; original read/mutation UI=" + historyContractUiChecks + "; complete cursor UI=" + historyContractContinuousUiChecks
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--search-input-contracts")
                 {
                     int search = RunUi(DebouncedSearchInputChecks.Run);

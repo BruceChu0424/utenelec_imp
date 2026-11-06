@@ -1,3 +1,5 @@
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/models/employee_reference.dart';
@@ -112,7 +114,8 @@ class ProductionExecutionSegmentsCard extends ConsumerStatefulWidget {
 }
 
 class _ProductionExecutionSegmentsCardState
-    extends ConsumerState<ProductionExecutionSegmentsCard> {
+    extends ConsumerState<ProductionExecutionSegmentsCard>
+    with ReadViewActivityMixin<ProductionExecutionSegmentsCard> {
   final _navigation = PageNavigationSession();
 
   @override
@@ -684,6 +687,9 @@ class _ProductionExecutionSegmentsCardState
 
   Future<void> _refreshAfterNavigation() async {
     if (!mounted || !widget.refreshAfterNavigation) return;
+    if (!await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+      return;
+    }
     await _load();
     if (!mounted) return;
     await widget.onChanged?.call();

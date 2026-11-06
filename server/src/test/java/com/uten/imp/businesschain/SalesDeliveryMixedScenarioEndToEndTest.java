@@ -168,6 +168,44 @@ class SalesDeliveryMixedScenarioEndToEndTest {
         assertNoParentStock(w);
     }
 
+    @Test void restoredOriginalMakeReceiptKeepsItsPrivateBudgetWhenItIsReissuedAndActuallyShipped(){
+        var w=world("delivery-restored-make");
+        input(w,w.goodsC(),"30");input(w,w.goodsD(),"50");input(w,w.goodsE(),"5");
+        var recipe=boms.snapshot(w.goodsA());var c=child(child(recipe.root(),w.goodsB()),w.goodsC());
+        var order=order(w,"5",plan(recipe,List.of(),c.path()));var view=analyze(w,List.of(order));
+        var original=material(view,order,w.goodsB());var make=startManufacture(w,view,original.materialLineId());
+        UUID firstReport=reportManufacture(w,make,"4");assertPrivateReceipt(make,original.materialLineId(),firstReport,"4");
+        refresh(w,view.analysisId(),List.of(order));
+        UUID abandoned=shipment(w,order,"2");var abandonedComponent=component(abandoned,w.goodsB());
+        cancelUnprocessedIssue(w,abandoned,abandonedComponent);shipments.delete(abandoned);
+        assertThat(db.queryForObject("SELECT count(*) FROM sales_delivery_entitlement_restores restored JOIN sales_delivery_entitlement_handoffs handoff ON handoff.id=restored.handoff_id WHERE handoff.component_id=?",Integer.class,abandonedComponent.id())).isEqualTo(1);
+        assertClosedCredit(make,original.materialLineId(),"0");
+        UUID first=shipment(w,order,"2");var firstComponent=component(first,w.goodsB());process(w,first,firstComponent,"1");
+        assertThat(db.queryForObject("SELECT origin.event_type FROM sales_delivery_entitlement_handoffs handoff JOIN preplan_stock_entitlement_events origin ON origin.id=handoff.source_entitlement_event_id WHERE handoff.component_id=?",String.class,firstComponent.id())).isEqualTo("RESTORE");
+        shipments.transitionWarehouseWork(first,support.pick(ready(w,order,first)));
+        var remaining=refresh(w,view.analysisId(),List.of(order));
+        assertThat(material(remaining,order,w.goodsB()).requiredQty()).isEqualByComparingTo("6");
+        assertClosedCredit(make,original.materialLineId(),"4");
+        UUID secondReport=reportManufacture(w,make,"6");assertPrivateReceipt(make,original.materialLineId(),secondReport,"6");
+        UUID second=shipment(w,order,"3");var secondComponent=component(second,w.goodsB());process(w,second,secondComponent,"2");
+        assertPrivateComponent(secondComponent.id(),"6");shipments.transitionWarehouseWork(second,support.pick(ready(w,order,second)));
+        assertClosedCredit(make,original.materialLineId(),"10");
+        assertThat(db.queryForObject("SELECT sum(handoff.quantity) FROM sales_delivery_entitlement_handoffs handoff WHERE source_material_id=? AND NOT EXISTS(SELECT 1 FROM sales_delivery_entitlement_restores restored WHERE restored.handoff_id=handoff.id)",BigDecimal.class,original.materialLineId())).isEqualByComparingTo("10");
+        assertThat(db.queryForObject("SELECT sum(quantity) FROM sales_delivery_entitlement_handoffs WHERE source_material_id=?",BigDecimal.class,original.materialLineId())).isEqualByComparingTo("14");
+        assertThat(product(analyses.detail(view.analysisId()),order).remainingQty()).isZero();
+        for(UUID goods:List.of(w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE()))assertThat(support.balance(w.warehouseId(),goods)).isZero();
+    }
+
+    private void cancelUnprocessedIssue(FullChainEndToEndTest.World w,UUID shipment,SalesShipmentDeliveryService.Component component){
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","restore-make-"+component.id());
+        UUID workshop=(UUID)ReflectionTestUtils.getField(assignment,"workshopId"),worker=(UUID)ReflectionTestUtils.getField(assignment,"workerId");
+        var task=processing.get(component.id());task=processing.assign(component.id(),new DeliveryProcessingContracts.Assignment(task.version(),workshop,worker,UUID.randomUUID()));
+        var issued=shipments.processingWarehouseWork(shipment,component.id(),"ISSUE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(task.version(),w.warehouseId(),"原自制件发出",UUID.randomUUID(),"未加工的原私有件"));
+        task=processing.start(component.id(),new DeliveryProcessingContracts.Start(issued.revision(),w.warehouseId(),UUID.randomUUID()));
+        task=processing.cancelStart(component.id(),new DeliveryProcessingContracts.CancelStart(task.version(),UUID.randomUUID()));
+        shipments.processingWarehouseWork(shipment,component.id(),"CANCEL_ISSUE",new SalesShipmentDeliveryService.ProcessingWarehouseAction(task.version(),w.warehouseId(),"原自制件实际收回",UUID.randomUUID(),"按原权益恢复后取消未加工发出"));
+    }
+
     private FullChainEndToEndTest.World world(String tag){var w=fixture.seedWorld(tag+UUID.randomUUID().toString().substring(0,6));fixture.loginAs(w.superAdminUserId());return w;}
     private void input(FullChainEndToEndTest.World w,UUID goods,String qty){ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,goods,qty);}
     private Order order(FullChainEndToEndTest.World w,String qty,DeliveryPlan plan){

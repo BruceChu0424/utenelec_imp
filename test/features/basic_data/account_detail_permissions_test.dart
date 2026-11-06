@@ -38,6 +38,47 @@ final _testAccountServer = StateProvider<String>(
 
 void main() {
   testWidgets(
+    'account statement fetches bill candidates only on the first real header opening',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _AccountFacetApi();
+      final repository = _AccountRepositoryFake();
+      await _pumpDetail(tester, repository, {
+        Perm.accountView,
+        Perm.accountBalanceView,
+        Perm.accountFlowView,
+      }, api: api);
+      expect(repository.statementFacetCalls, 0);
+      expect(api.bodies, isEmpty);
+      final table = tester.widget<MasterDataTableView<AccountStatementRow>>(
+        find.byType(MasterDataTableView<AccountStatementRow>),
+      );
+      expect(table.onLoadMore, isNull);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      expect(repository.statementSizes.every((size) => size == 100), true);
+      await tester.pumpAndSettle();
+      expect(repository.statementFacetCalls, 0);
+      expect(api.bodies, isEmpty);
+      await tester.ensureVisible(find.text('单号').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('单号').first);
+      await tester.pumpAndSettle();
+      expect(api.bodies, hasLength(1));
+      expect(api.bodies.single['accountId'], 'account-1');
+      expect(api.bodies.single['dateFrom'], repository.statementDateFrom);
+      expect(api.bodies.single['dateTo'], repository.statementDateTo);
+      expect(api.bodies.single['__facetField'], 'billNo');
+      expect(api.bodies.single['__facetPage'], 1);
+      expect(api.bodies.single.containsKey('billNo'), false);
+      expect(find.textContaining('ONLY-REMOTE'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'editing other account fields preserves a historical posting UUID outside the new candidate scope',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
@@ -503,6 +544,7 @@ Future<void> _pumpDetail(
   bool settle = true,
   bool trackOwner = false,
   _MasterStatusFake? statusRepository,
+  ApiClient? api,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -539,7 +581,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        apiClientProvider.overrideWithValue(api ?? ApiClient(Dio())),
         if (trackOwner) ...[
           apiBaseUrlProvider.overrideWith(
             (ref) => ref.watch(_testAccountServer),
@@ -581,10 +623,34 @@ Future<void> _pumpDetail(
   if (settle) await tester.pumpAndSettle();
 }
 
+class _AccountFacetApi extends ApiClient {
+  _AccountFacetApi() : super(Dio());
+  final bodies = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    expect(path, '/finance/reports/account/statement/facets');
+    bodies.add({...?body});
+    return {
+      'field': 'billNo',
+      'page': body?['__facetPage'],
+      'size': 100,
+      'hasMore': false,
+      'items': [
+        {'value': 'ONLY-REMOTE', 'label': 'ONLY-REMOTE', 'count': 1},
+      ],
+    };
+  }
+}
+
 class _AccountRepositoryFake implements AccountRepository {
+  int statementFacetCalls = 0;
   List<AccountStatementRow> statementRows = const [];
   final statementColumnQueries = <Map<String, String?>>[];
   final statementPages = <int>[];
+  final statementSizes = <int>[];
   _AccountRepositoryFake({this.styleDeleted = false});
   final bool styleDeleted;
   @override
@@ -593,7 +659,11 @@ class _AccountRepositoryFake implements AccountRepository {
     required String dateFrom,
     required String dateTo,
     String? keyword,
-  }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
+  }) async {
+    statementFacetCalls++;
+    return const [];
+  }
+
   int detailCalls = 0;
   int statementCalls = 0;
   String? statementDateFrom;
@@ -659,12 +729,13 @@ class _AccountRepositoryFake implements AccountRepository {
     statementDateTo = dateTo;
     statementColumnQueries.add(Map.of(columnQuery));
     statementPages.add(page);
+    statementSizes.add(size);
     if (pendingStatement case final pending?) return pending.future;
     return AccountStatementPage(
       rows: statementRows,
       page: page,
       size: size,
-      total: 0,
+      total: statementRows.length,
       totalPages: 1,
     );
   }

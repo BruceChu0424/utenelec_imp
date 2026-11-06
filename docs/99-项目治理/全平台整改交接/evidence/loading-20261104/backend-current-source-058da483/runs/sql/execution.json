@@ -1,0 +1,27 @@
+{
+  "label": "sql",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-sql-selection.txt",
+  "selected": "ProcurementOrderApprovalPredicatesPostgresTest,WarehouseTaskPageMetadataPostgresTest,WarehouseOutboundTaskCenterQueryServiceTest,WarehouseOutboundTaskCenterSqlPostgresTest,WarehouseOutboundTaskCenterMigratedSchemaPostgresTest,WarehouseInboundTaskCenterQueryServiceTest,WarehouseInboundTaskCenterQueryPostgresTest,WarehousePhysicalDetailHeaderPostgresTest,FulfillmentWorkbenchPageReadTest,FulfillmentWorkbenchPageReadPostgresTest,FulfillmentWorkbenchTaskAudiencePostgresTest,FulfillmentWorkbenchEmptyPageLatencyPostgresTest,CurrentWorkbenchOriginPostgresTest,PageMetadataRequestTest,TaskContinuationMetadataHttpTest,SchemaIndexHygieneContractTest,NativeTaskReadScopeInterceptorTest,BusinessApplicationReadScopeTest,DocumentQuantityAdoptionPostgresTest,DocumentWeightAdoptionTest,DocumentUnapprovalCapabilityTest,ProductionExecutionWorkbenchQueryPostgresTest#publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=ProcurementOrderApprovalPredicatesPostgresTest,WarehouseTaskPageMetadataPostgresTest,WarehouseOutboundTaskCenterQueryServiceTest,WarehouseOutboundTaskCenterSqlPostgresTest,WarehouseOutboundTaskCenterMigratedSchemaPostgresTest,WarehouseInboundTaskCenterQueryServiceTest,WarehouseInboundTaskCenterQueryPostgresTest,WarehousePhysicalDetailHeaderPostgresTest,FulfillmentWorkbenchPageReadTest,FulfillmentWorkbenchPageReadPostgresTest,FulfillmentWorkbenchTaskAudiencePostgresTest,FulfillmentWorkbenchEmptyPageLatencyPostgresTest,CurrentWorkbenchOriginPostgresTest,PageMetadataRequestTest,TaskContinuationMetadataHttpTest,SchemaIndexHygieneContractTest,NativeTaskReadScopeInterceptorTest,BusinessApplicationReadScopeTest,DocumentQuantityAdoptionPostgresTest,DocumentWeightAdoptionTest,DocumentUnapprovalCapabilityTest,ProductionExecutionWorkbenchQueryPostgresTest#publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+    "surefire:test"
+  ],
+  "environment": {
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-sql-empty-benchmark.json",
+    "UTEN_RUN_DB_TESTS": "true"
+  },
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "startedAtUtc": "2026-11-05T12:48:09.9283044Z",
+  "wrapperPid": 49708,
+  "log": "build/loading-validation/combined-sql.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T12:58:11.6405170Z",
+  "actualExitCode": 0
+}

@@ -367,7 +367,7 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   Flexible(child: runButton),
                   if (actor == null)
                     const UtenFieldHintIcon(
-                      info: '页面每页 20 条；单次导出最多 10,000 条。',
+                      info: '显示当前查询的全部结果；单次导出最多 10,000 条。',
                       dense: true,
                     ),
                 ],
@@ -780,6 +780,7 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
     return UtenEmployeePickerPage(
       page: page.page,
       totalPages: page.totalPages,
+      total: page.total,
       items: [
         for (final actor in page.items)
           UtenEmployeePickerItem(

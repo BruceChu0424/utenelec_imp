@@ -38,6 +38,7 @@ bool isSearchReadPost(String path) =>
       '/business-references/suppliers/search-context',
       '/finance/reports/ar-ap/overview/search',
       '/quality/pending-disposals/query',
+      '/production/daily-reports/draft-claims/query',
       '/security/blacklist/search',
       '/master/clients/access-candidates/query',
       '/admin/data-handovers/candidates/query',

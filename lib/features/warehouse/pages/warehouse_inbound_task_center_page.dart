@@ -90,17 +90,7 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      onPrepare: (keyword, scope, refreshTick, canPrepare) =>
-          prepareWarehouseTaskPages(
-            ref,
-            context,
-            direction: WarehouseTaskDirection.inbound,
-            sources: sources.keys,
-            scope: scope,
-            keyword: keyword,
-            refreshTick: refreshTick,
-            canPrepare: () => canPrepare,
-          ),
+
       bodyBuilder: (source, keyword, refresh, header) =>
           WarehouseTaskRecordsView(
             key: ValueKey(('inbound', source)),

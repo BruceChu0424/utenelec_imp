@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/session_provider.dart';
+import '../inputs/uten_field_hint_icon.dart';
 import 'uten_dialog.dart';
 
 /// 审核动作前的责任提示。
@@ -16,12 +17,17 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
     this.reviewerLabel = '审核员',
     this.description,
     this.compact = false,
+    this.inline = false,
   });
 
   final String actionLabel;
   final String reviewerLabel;
   final String? description;
   final bool compact;
+
+  /// Title-row identity with adjacent accessible disclosure, without a separate
+  /// explanation block. Existing notice/dialog callers keep their layout.
+  final bool inline;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,6 +46,36 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
     final showDetail = !compact || description != null;
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+
+    if (inline) {
+      return Semantics(
+        container: true,
+        label: '审核员 $currentActor。$detail',
+        child: Row(
+          key: const Key('reviewer-responsibility-notice'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(width: UtenSpacing.s8),
+            Icon(
+              Icons.gpp_maybe_outlined,
+              size: UtenSpacing.s20,
+              color: colors.error,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Flexible(
+              child: Text(
+                '审核员：$currentActor',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: colors.error,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            UtenFieldHintIcon(info: detail, dense: true),
+          ],
+        ),
+      );
+    }
 
     return Semantics(
       container: true,

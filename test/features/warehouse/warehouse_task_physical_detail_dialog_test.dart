@@ -52,8 +52,8 @@ class _Api extends ApiClient {
     final empty = query?['search.goodsName'] == '不匹配';
     return {
       'page': page,
-      'size': 100,
-      'total': empty ? 0 : 101,
+      'size': 1,
+      'total': empty ? 0 : 2,
       'totalPages': empty ? 0 : 2,
       'lines': [
         if (!empty)
@@ -99,7 +99,8 @@ void main() {
       await tester.pumpAndSettle();
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
-      expect(table().totalPages, 2);
+      expect(table().totalPages, 1);
+      expect(table().items, hasLength(2));
       expect(table().showPaginationControls, isFalse);
       await tester.tap(find.text('数量'));
       await tester.pumpAndSettle();
@@ -113,8 +114,10 @@ void main() {
       expect(api.calls.last.query['scopeWarehouseId'], 'warehouse-a');
       table().onSortChange!('quantity', false);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(api.calls.last.query['linePage'], 2);
       expect(api.calls.last.query['sort'], 'quantity');
       expect(api.calls.last.query['order'], 'desc');
@@ -143,10 +146,10 @@ void main() {
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
     expect(
-      api.calls.single.path,
+      api.calls.first.path,
       '/warehouse/task-center/outbound/OTHER%3ASTOCK_DOC%3Aoriginal-id%3Aitem-id/detail',
     );
-    expect(api.calls.single.query['scopeWarehouseId'], 'warehouse-a');
+    expect(api.calls.first.query['scopeWarehouseId'], 'warehouse-a');
     expect(find.text('PHYSICAL-1'), findsOneWidget);
     expect(
       find.byType(MasterDataTableView<Map<String, dynamic>>),
@@ -154,16 +157,17 @@ void main() {
     );
     expect(find.byType(DataTable), findsNothing);
     expect(find.textContaining('PRIVATE'), findsNothing);
-    expect(find.text('/ 2'), findsOneWidget);
-    expect(
-      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-      1,
-    );
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    expect(api.calls.last.query['linePage'], 2);
-    expect(find.text('PHYSICAL-1'), findsNothing);
+    expect(api.calls.map((call) => call.query['linePage']), [1, 2]);
+    expect(find.byType(UtenPagination), findsNothing);
     expect(find.text('PHYSICAL-2'), findsOneWidget);
+    expect(
+      api.calls.every(
+        (call) =>
+            call.query['scopeWarehouseId'] == 'warehouse-a' &&
+            call.query['lineSize'] == 100,
+      ),
+      true,
+    );
     expect(tester.takeException(), isNull);
   });
 

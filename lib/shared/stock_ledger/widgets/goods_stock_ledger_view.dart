@@ -81,6 +81,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     with
         UtenRefreshParticipant<GoodsStockLedgerView>,
         ScopedPagedReadViewMixin<GoodsStockLedgerView> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   final _readViewportRows = MasterDataTableRowsController<StockLedgerRow>();
   int get _visibleReadPage => _data == null
       ? (_data?.page ?? 1)
@@ -105,7 +108,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     }
   }
 
-  /// 默认近一月 (含今天); 每页 50 行 (StockLedgerQuery 默认)。
+  /// 默认近一月 (含今天); 内部每批100条，完整结果本地连续滚动。
   late DateTime _from;
   late DateTime _to;
   String? _warehouseId;
@@ -175,6 +178,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       sort: _columnQuery.sort,
       ascending: _columnQuery.ascending,
       page: page,
+      size: 100,
     );
   }
 
@@ -196,6 +200,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     try {
       final cached = await readScopedPage<StockLedgerRow>(
         page,
+        idOf: (row) => '${row.rowKind}:${row.id}',
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
@@ -227,6 +232,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
               totalPages: data.totalPages,
             ),
             snapshot: data,
+            rebuildSnapshot: data.withPage,
           );
         },
       );
@@ -239,6 +245,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         _loading = false;
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted || version != _version) return;
       setState(() {
         _error = e is ApiException ? e.message : '出入库流水加载失败，请检查网络后重试';

@@ -58,6 +58,8 @@ public final class ScheduledTaskCatalog {
                     "每 10 分钟给已经盘点、还没结算的车间内料仓补做结算; 差报工审核、单个重量或发料记录的, 通知该补的人, 补完自动结算。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",
                     "每 5 分钟刷新销售、采购、生产和委外的报表汇总; 库存与应收应付月度已改为增量汇总表, 不再整表重算。")),
+            Map.entry("SummaryReadMarkerCompactor.compact", new Entry("完整列表读取凭据整理",
+                    "每分钟分批整理已提交的列表变化标记，保留原逻辑修订和完整读取凭据，不修改业务记录或权限。")),
             Map.entry("PartyMonthlySummaryScheduler.drain", new Entry("往来月度汇总重算",
                     "每隔数秒把客户/供应商往来事件按月汇总重算, 对账单期初不再全历史重放, 读取前还会按单位即时补算。")),
             Map.entry("StockMonthlyVerificationScheduler.verifyChunk", new Entry("库存月汇总分块核对",

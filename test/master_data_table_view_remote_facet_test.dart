@@ -37,7 +37,7 @@ Widget _page(
 
 const _initial = MasterFacetPage(
   items: [MasterFacetBucket(value: '其他高频货品', count: 100)],
-  hasMore: true,
+  hasMore: false,
 );
 
 Future<void> _open(WidgetTester tester) async {
@@ -172,7 +172,7 @@ void main() {
                               count: 100,
                             ),
                           ],
-                          hasMore: true,
+                          hasMore: false,
                         )
                       : const MasterFacetPage(
                           items: [
@@ -283,7 +283,7 @@ void main() {
                                   count: 100,
                                 ),
                               ],
-                              hasMore: true,
+                              hasMore: false,
                             )
                           : const MasterFacetPage(
                               items: [
@@ -509,7 +509,7 @@ void main() {
   );
 
   testWidgets(
-    'search pages the full candidate scope and selecting text commits its keyword',
+    'search collects the full candidate scope once without a continuation control',
     (tester) async {
       final requests = <(String, String, int)>[];
       String? selected;
@@ -531,11 +531,13 @@ void main() {
       await tester.enterText(find.byType(TextField).last, 'V4');
       await tester.pump(const Duration(milliseconds: 251));
       await tester.pumpAndSettle();
-      expect(requests.last, ('name', 'V4', 1));
+      expect(requests.where((request) => request.$2 == 'V4'), [
+        ('name', 'V4', 1),
+        ('name', 'V4', 2),
+      ]);
       expect(find.text('V4一开 (1)'), findsOneWidget);
       expect(find.text('无匹配项'), findsNothing);
-      await tester.tap(find.text('加载更多候选'));
-      await tester.pumpAndSettle();
+      expect(find.text('加载更多候选'), findsNothing);
       expect(requests.last, ('name', 'V4', 2));
       expect(find.text('V4二开 (1)'), findsOneWidget);
       await tester.tap(find.text('V4二开 (1)'));

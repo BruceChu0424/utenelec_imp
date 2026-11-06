@@ -367,7 +367,15 @@ void main() {
 
     await tester.tap(find.text('已退回'));
     await tester.pumpAndSettle();
-    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 20, null)));
+    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 100, null)));
+    final table = tester.widget<MasterDataTableView<SalesQuoteFinanceListItem>>(
+      find.byKey(const Key('quote-finance-desktop-table')),
+    );
+    expect(table.items.map((item) => item.quoteId), ['r1']);
+    expect(
+      repo.calls.where((call) => call.$2 > 1).every((call) => call.$2 == 100),
+      isTrue,
+    );
     expect(find.text('已退回: 客户要改数量'), findsWidgets);
   });
 

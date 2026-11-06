@@ -614,6 +614,7 @@ class _WarehouseInboundExpectationsViewState
                 scope: scope,
               ),
         },
+        isCurrent: captureReadOwner(ref),
         onLoaded: () {
           if (mounted) setState(() {});
         },

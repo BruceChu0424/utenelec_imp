@@ -359,8 +359,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       final pageSort = _sortKey;
       final pageOrder = _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc');
 
-      final r = await readScopedPage(
+      final r = await readScopedPage<InstantInventoryRow>(
         page,
+        idOf: (row) => row.readIdentity,
         slot: '_load',
         query: [
           pageRepository,
@@ -981,7 +982,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
               ),
         ),
         items: _page?.items ?? const [],
-        idOf: (row) => row.goodsId == null ? null : row.rowKey,
+        idOf: (row) => row.readIdentity,
         outputSelectorOf: (row) => row.identityFields,
         rowKeyOf: (r) => stockCountRowKey(r.goodsId ?? '', r.colorId),
         toolbarActions: [

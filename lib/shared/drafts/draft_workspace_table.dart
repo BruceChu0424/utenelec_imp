@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/feedback/uten_context_menu.dart';
 import '../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../components/layout/uten_filter_toolbar.dart';
@@ -83,11 +84,17 @@ List<DraftWorkspaceRow> mergeDraftWorkspaceRows(
   String? Function(FormDraft draft)? resolveLocalParty,
 }) {
   final drafts = local.toList();
+  final byDocument = <String, List<FormDraft>>{};
+  for (final draft in drafts) {
+    for (final id in formDraftConfirmedIds(draft)) {
+      byDocument.putIfAbsent(id, () => []).add(draft);
+    }
+  }
   final matched = <String>{};
   final rows = <DraftWorkspaceRow>[];
   for (final row in formal) {
     final checkpoints = <String, FormDraft>{
-      for (final draft in drafts)
+      for (final draft in byDocument[row.id] ?? const <FormDraft>[])
         if (_checkpointMatches(row, draft)) draft.id: draft,
     }.values.toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     matched.addAll(checkpoints.map((draft) => draft.id));
@@ -120,7 +127,13 @@ bool _checkpointMatches(DraftWorkspaceRow row, FormDraft draft) {
   if (!formDraftConfirmedIds(draft).contains(row.id)) return false;
   final kind = formDraftBusinessKind(draft);
   if (row.stockType != null) {
-    final type = switch (kind) {
+    return _localStockType(draft) == row.stockType;
+  }
+  return kind == row.kind?.name;
+}
+
+StockDocType? _localStockType(FormDraft draft) =>
+    switch (formDraftBusinessKind(draft)) {
       'stockTransfer' => StockDocType.transfer,
       'stockCheck' => StockDocType.check,
       'stockDocument' => StockDocType.tryByCode(
@@ -128,10 +141,6 @@ bool _checkpointMatches(DraftWorkspaceRow row, FormDraft draft) {
       ),
       _ => null,
     };
-    return type == row.stockType;
-  }
-  return kind == row.kind?.name;
-}
 
 String? _localParty(FormDraft draft) {
   final header = formDraftHeader(draft);
@@ -157,6 +166,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
   final _filters = <String, String?>{};
   Map<String, DraftWorkspaceRow> _visible = {};
   int _localReferenceRefresh = 0;
+  bool _retrying = false;
   late final _localReferences = PartyReferenceReadController(ref);
   final _navigation = PageNavigationSession();
 
@@ -188,7 +198,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     try {
       await Future.wait([
         for (final kind in _kinds)
-          ref.read(draftWorkspaceRowsProvider(kind).future),
+          ref.read(draftWorkspaceReadProvider(kind)).firstPage,
       ]);
     } catch (_) {
       // Each source renders its existing error/retry state in this table.
@@ -277,7 +287,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     if (mounted) setState(() => ++_localReferenceRefresh);
     final kinds = _kinds;
     for (final kind in kinds) {
-      ref.invalidate(draftWorkspaceRowsProvider(kind));
+      ref.invalidate(draftWorkspaceReadProvider(kind));
     }
     try {
       await Future.wait([
@@ -289,8 +299,58 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     }
   }
 
-  bool _canDelete(DraftWorkspaceRow row, {bool localRemoved = false}) {
+  Future<void> _retrySources() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      await UtenBusyOverlay.run(
+        context,
+        title: '正在重新读取草稿',
+        action: () => _refresh(reportFailure: true),
+      );
+    } catch (_) {
+      // The source snapshot retains the accepted rows and retryable failure.
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  bool _familyComplete(DraftWorkspaceRow row) {
+    DraftDocKind? family = row.kind;
+    final local = row.local;
+    if (family == null && local != null) {
+      final kind = formDraftBusinessKind(local);
+      final stock = _localStockType(local);
+      if (stock != null && _kinds.contains(DraftDocKind.stockDocument)) {
+        family = DraftDocKind.stockDocument;
+      } else if (stock == StockDocType.transfer &&
+          _kinds.contains(DraftDocKind.stockTransfer)) {
+        family = DraftDocKind.stockTransfer;
+      } else if (stock == StockDocType.check &&
+          _kinds.contains(DraftDocKind.stockCheck)) {
+        family = DraftDocKind.stockCheck;
+      } else {
+        family = _kinds
+            .where((candidate) => candidate.name == kind)
+            .firstOrNull;
+      }
+    }
+    if (family == null) return true;
+    final value = ref.read(draftWorkspaceSnapshotProvider(family));
+    return value.hasValue &&
+        !value.isLoading &&
+        !value.hasError &&
+        value.requireValue.complete &&
+        value.requireValue.error == null;
+  }
+
+  bool _canDelete(
+    DraftWorkspaceRow row, {
+    bool localRemoved = false,
+    bool requireComplete = true,
+  }) {
     final scope = ref.read(authenticatedScopeProvider);
+    if (requireComplete && !_familyComplete(row)) return false;
     if (scope == null ||
         scope.readOnly ||
         !row.deletable ||
@@ -319,13 +379,18 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
   bool _canSelect(DraftWorkspaceRow row) {
     final scope = ref.read(authenticatedScopeProvider);
     return row.local?.hasUnknownSubmission != true &&
+        _familyComplete(row) &&
         scope != null &&
         !scope.readOnly &&
         (_canDelete(row) || widget.canSelectRow?.call(row) == true);
   }
 
-  Future<void> _delete(String key, DraftWorkspaceRow? row) async {
-    if (row == null || !_canDelete(row)) {
+  Future<void> _delete(
+    String key,
+    DraftWorkspaceRow? row, {
+    bool trustedComplete = false,
+  }) async {
+    if (row == null || !_canDelete(row, requireComplete: !trustedComplete)) {
       throw ApiException('CONFLICT', '草稿或删除权限已变化，请刷新后重试');
     }
     final store = ref.read(formDraftsProvider.notifier);
@@ -335,7 +400,11 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         mounted &&
         selectedDraftIds.contains(key) &&
         store.ownerKey == ownerKey &&
-        _canDelete(row, localRemoved: localRemoved);
+        _canDelete(
+          row,
+          localRemoved: localRemoved,
+          requireComplete: !trustedComplete,
+        );
     Future<void> discardLocalBeforeDelete() async {
       if (!current()) throw ApiException('CONFLICT', '草稿或删除权限已变化，请刷新后重试');
       if (row.local == null || localRemoved) return;
@@ -426,14 +495,19 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     final failures = <String>[];
     var loading = false;
     for (final kind in _kinds) {
-      final value = ref.watch(draftWorkspaceRowsProvider(kind));
+      ref.watch(draftWorkspaceReadProvider(kind)).bindView(context);
+      final value = ref.watch(draftWorkspaceSnapshotProvider(kind));
       loading |= value.isLoading;
       // Loading a new identity must not retain a previous identity's rows.
       if (value.hasValue && !value.isLoading && !value.hasError) {
-        formal.addAll(value.requireValue);
+        final snapshot = value.requireValue;
+        formal.addAll(snapshot.rows);
+        loading |= snapshot.loading;
+        if (snapshot.error != null) failures.add(draftWorkspaceKindLabel(kind));
       }
       if (value.hasError) failures.add(draftWorkspaceKindLabel(kind));
     }
+    final complete = !loading && failures.isEmpty;
     final local = ref
         .watch(formDraftCategoryProvider(widget.localScope))
         .where((draft) => !isTaskFormDraft(draft))
@@ -486,12 +560,19 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         key: 'category',
         label: '类别',
         width: 170,
+        info: failures.isNotEmpty
+            ? '${failures.join('、')}尚未完整读取，已保留可用草稿；请重试后核对完整搜索及筛选。'
+            : loading
+            ? '正在补齐后续草稿，搜索结果会继续增加；完整读取后可筛选、选择和删除。'
+            : null,
+        columnSearchEnabled: complete,
         value: (row) => row.category,
       ),
       MasterColumnDef(
         key: 'billNo',
         label: '单据 / 草稿',
         width: 250,
+        columnSearchEnabled: complete,
         value: (row) => row.billNo ?? '未提交草稿',
       ),
       MasterColumnDef(
@@ -499,6 +580,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         label: '单据日期',
         width: 130,
         type: 'date',
+        columnSearchEnabled: complete,
         sortable: true,
         value: (row) => row.billDate,
       ),
@@ -506,6 +588,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         key: 'party',
         label: productionOnly ? '车间 / 部门' : '往来单位 / 部门',
         width: 220,
+        columnSearchEnabled: complete,
         value: (row) => row.party,
       ),
       if (!productionOnly)
@@ -514,6 +597,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
           label: '金额',
           width: 140,
           type: 'money',
+          columnSearchEnabled: complete,
           sortable: true,
           value: (row) => row.amount,
         ),
@@ -522,6 +606,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         label: '保存时间',
         width: 180,
         type: 'date',
+        columnSearchEnabled: complete,
         sortable: true,
         value: (row) => row.local == null
             ? null
@@ -530,7 +615,8 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     ];
     final facets = <String, List<MasterFacetBucket>>{};
     final nullCounts = <String, int>{};
-    for (final column in columns) {
+    for (final column
+        in complete ? columns : <MasterColumnDef<DraftWorkspaceRow>>[]) {
       final counts = <String, int>{};
       for (final row in searchable) {
         final value = column.value(row);
@@ -570,6 +656,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     // the mixin's identity/selection generation plus each latest detail and
     // local CAS revision still fence every write.
     final selectedRows = {for (final id in selected) id: _visible[id]!};
+    bool? deleteFamiliesComplete;
     final table = MasterDataTableView<DraftWorkspaceRow>(
       tableKey:
           '${widget.tableKey ?? 'shared.drafts.workspace.${_kinds.map((kind) => kind.name).join('.')}'}'
@@ -581,26 +668,38 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         widget.kinds.join(','),
       ),
       primary: true,
-      toolbarActions: widget.toolbarActions,
+      toolbarActions: [
+        ...widget.toolbarActions,
+        if (failures.isNotEmpty)
+          UtenButton(
+            onPressed: _retrying ? null : _retrySources,
+            child: const Text('重试'),
+          ),
+      ],
       columns: columns,
       items: rows,
       facets: facets,
       nullCounts: nullCounts,
       filters: _filters,
       onFilterChanged: (key, value) {
-        if (widget.selectionLocked || draftDeleteBusy) return;
+        if (!complete || widget.selectionLocked || draftDeleteBusy) return;
         clearDraftSelection();
         setState(() => _filters[key] = value);
       },
       isLoading: loading && rows.isEmpty,
-      emptyMessage: failures.isEmpty ? '暂无草稿' : '草稿暂未加载，请重试',
+      emptyMessage: complete
+          ? '暂无草稿'
+          : failures.isNotEmpty
+          ? '草稿未完整读取，请重试'
+          : '正在检索后续草稿',
       rowKeyOf: (row) => row.key,
       rowWidgetKeyOf: (row) => ValueKey('draft-workspace-row-${row.key}'),
       onRowTap: _open,
       selectable: true,
-      idOf: (row) => _canSelect(row) ? row.key : null,
+      idOf: (row) => complete && _canSelect(row) ? row.key : null,
       selectedIds: selected,
-      onSelectedIdsChanged: widget.selectionLocked || draftDeleteBusy
+      onSelectedIdsChanged:
+          !complete || widget.selectionLocked || draftDeleteBusy
           ? null
           : (ids) {
               if (widget.selectionLocked || draftDeleteBusy) return;
@@ -640,7 +739,21 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
               )
               ? '本机填写会先按原修订清除，再删除正式单据。即使正式删除失败或结果待确认，本机输入也不会自动恢复；未知提交不能删除。'
               : null,
-          delete: (key) => _delete(key, selectedRows[key]),
+          delete: (key) {
+            // Validate completeness at the first actual dispatch, after the
+            // confirmation. Own writes may retire the list provider while this
+            // already confirmed batch keeps its exact rows and original CAS.
+            deleteFamiliesComplete ??= selectedRows.values.every(
+              _familyComplete,
+            );
+            if (deleteFamiliesComplete != true) {
+              throw ApiException(
+                'INCOMPLETE_DRAFT_LIST',
+                '草稿尚未完整读取，未发送删除，请重试后核对',
+              );
+            }
+            return _delete(key, selectedRows[key], trustedComplete: true);
+          },
           reload: () => _refresh(reportFailure: true),
           selectedIds: selected
               .where((id) => _canDelete(_visible[id]!))
@@ -667,25 +780,6 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         ),
       if (loading && rows.isNotEmpty)
         const LinearProgressIndicator(minHeight: 2),
-      if (failures.isNotEmpty)
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '${failures.join('、')}加载失败，已保留可用草稿。',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ),
-            UtenButton(
-              onPressed: () async {
-                try {
-                  await _refresh();
-                } catch (_) {}
-              },
-              child: const Text('重试'),
-            ),
-          ],
-        ),
     ];
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: header.isEmpty

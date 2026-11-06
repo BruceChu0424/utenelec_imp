@@ -35,6 +35,54 @@ final class SubcontractComponentCustodyProjection {
      */
     static final String ORDER_ITEM_STOCKED_BASE_SQL = orderItemStockedBaseSql(false);
     private static final String ORDER_ITEM_STOCKED_LEGACY_BASE_SQL = orderItemStockedBaseSql(true);
+    private static final String ACTUAL_MATERIAL_QUANTUM = "1000000000000000000000000";
+    private static final String ORDER_ITEM_USES_ACTUAL_PRECISION_SQL = """
+            EXISTS (
+                SELECT 1 FROM LATERAL (
+                    WITH selected_actual_receipts AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_receipt_items candidate
+                        WHERE candidate.order_item_id=item.id AND candidate.material_consumption_version=2
+                          AND (candidate.material_basis_qty IS NOT NULL OR EXISTS(
+                              SELECT 1 FROM subcontract_receipt_material_consumptions original
+                              WHERE original.receipt_item_id=candidate.id)))
+                    SELECT archive_origin.* FROM selected_actual_receipts archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
+                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
+                      AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))
+                ) actual_item
+                JOIN (SELECT * FROM subcontract_receipts archive_origin
+                      WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
+                        AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
+                        AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) actual_receipt
+                  ON actual_receipt.id=actual_item.receipt_id)
+            OR EXISTS(SELECT 1 FROM (VALUES(item.qty),(item.received_qty),(item.returned_qty),
+                    (item.issued_qty),(item.material_returned_qty)) original(value)
+                      WHERE original.value<>TRUNC(original.value,4))
+            """;
+    private static final String PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL = """
+            line.issued_qty<>TRUNC(line.issued_qty,4) OR EXISTS (
+                SELECT 1 FROM LATERAL (
+                    WITH selected_precision_sources AS MATERIALIZED (
+                        SELECT candidate.* FROM subcontract_material_issue_items candidate
+                        WHERE candidate.plan_item_id=line.plan_item_id)
+                    SELECT archive_origin.* FROM selected_precision_sources archive_origin
+                    WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
+                      AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
+                      AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))
+                ) evidence
+                JOIN (SELECT * FROM subcontract_material_issues archive_origin
+                      WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL
+                        AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL
+                        AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
+                  ON issue.id=evidence.issue_id
+                CROSS JOIN LATERAL (VALUES(evidence.qty),(evidence.requested_qty),(evidence.at_supplier_qty),
+                    (evidence.consumed_qty),(evidence.returned_qty),(evidence.wasted_qty),(evidence.compensated_qty),
+                    (evidence.qty*evidence.unit_rate),(evidence.at_supplier_qty*evidence.unit_rate),
+                    (evidence.consumed_qty*evidence.unit_rate),(evidence.returned_qty*evidence.unit_rate),
+                    (evidence.wasted_qty*evidence.unit_rate),(evidence.compensated_qty*evidence.unit_rate)) original(value)
+                WHERE (issue.status IN(1,-1) OR issue.status=0 AND NOT issue.is_deleted AND NOT evidence.is_deleted)
+                  AND original.value<>TRUNC(original.value,4))
+            """;
 
     private static String orderItemStockedBaseSql(boolean legacyOnly) {
         return """
@@ -207,8 +255,8 @@ final class SubcontractComponentCustodyProjection {
                 ), sources AS MATERIALIZED (
                     SELECT source.order_item_id,source.application_item_id,source.alloc_qty
                     FROM subcontract_order_item_sources source
-                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
-                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document ON document.id=item.order_id
+                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item ON item.id=source.order_item_id AND NOT item.is_deleted
+                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) document ON document.id=item.order_id
                       AND document.status=1 AND NOT document.is_deleted
                     -- The membership predicate already implies this scope is nonempty. Keep an
                     -- uncorrelated gate so stale statistics cannot evaluate unrelated document
@@ -219,8 +267,8 @@ final class SubcontractComponentCustodyProjection {
                         WHERE relevant.application_item_id IN (SELECT application_item_id FROM live_items))
                 ), stocked AS MATERIALIZED (
                     SELECT item.id AS order_item_id,item.qty AS ordered_qty,COALESCE(item.unit_rate,1) AS order_unit_rate,
-                           %s AS stocked_base,%s AS legacy_stocked_base
-                    FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
+                           %s AS stocked_base,%s AS legacy_stocked_base,%s AS use_actual_precision
+                    FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
                     WHERE EXISTS (SELECT 1 FROM sources)
                       AND item.id IN (SELECT order_item_id FROM sources)
                 ), source_progress AS MATERIALIZED (
@@ -309,7 +357,7 @@ final class SubcontractComponentCustodyProjection {
                     SELECT owner.order_item_id,owner.analysis_id,owner.analysis_material_id AS parent_material_id,
                            owner.allocated_qty,SUM(owner.allocated_qty) OVER(
                                PARTITION BY owner.order_item_id,owner.application_item_id) AS owner_total,
-                           owner.alloc_qty,stocked.order_unit_rate,stocked.ordered_qty,
+                           owner.alloc_qty,stocked.order_unit_rate,stocked.ordered_qty,stocked.use_actual_precision,
                            progress.source_stocked_base,progress.source_legacy_stocked_base
                     FROM owner_allocations owner
                     JOIN stocked ON stocked.order_item_id=owner.order_item_id
@@ -318,17 +366,18 @@ final class SubcontractComponentCustodyProjection {
                 ), frozen_parent_output AS (
                     SELECT parent_material_id,ROUND(SUM(GREATEST(
                         alloc_qty*order_unit_rate-source_stocked_base,0)
-                        *allocated_qty/NULLIF(owner_total,0)),4) AS remaining_qty
+                        *allocated_qty/NULLIF(owner_total,0)),CASE WHEN BOOL_OR(use_actual_precision) THEN 24 ELSE 4 END) AS remaining_qty
                     FROM owner_shares WHERE analysis_id=:analysisId GROUP BY parent_material_id
                 ), plan_lines AS MATERIALIZED (
-                    SELECT line.*,
+                    SELECT line.*,precision_rule.use_actual_precision,
+                           CASE WHEN precision_rule.use_actual_precision THEN %s::numeric ELSE 10000::numeric END AS unit_quantum,
                            GREATEST(line.gross_qty-(
                 """ + ceilMaterialFractionSql("LEAST(stocked.stocked_base,stocked.legacy_stocked_base)*line.bom_unit_qty", "stocked.order_unit_rate") + "+" +
-                ceilMaterialFractionSql("GREATEST(stocked.stocked_base-stocked.legacy_stocked_base,0)*line.base_bom_unit_qty", "stocked.order_unit_rate") + """
+                ceilActualMaterialFractionSql("GREATEST(stocked.stocked_base-stocked.legacy_stocked_base,0)*line.base_bom_unit_qty", "stocked.order_unit_rate") + """
                            ),0) AS pool_qty
                     FROM (
                         SELECT plan_item.id AS plan_item_id,plan_item.order_item_id,
-                               plan_item.goods_id,plan_item.color_id,plan_item.bom_unit_qty,plan_item.base_bom_unit_qty,
+                                plan_item.goods_id,plan_item.color_id,plan_item.bom_unit_qty,plan_item.base_bom_unit_qty,plan_item.issued_qty,
                                COALESCE((SELECT SUM(issue_item.wasted_qty)
                                    FROM subcontract_material_issue_items issue_item
                                    JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
@@ -340,8 +389,8 @@ final class SubcontractComponentCustodyProjection {
                                      AND issue.status=1 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0)+COALESCE((
                                    SELECT SUM(issue_item.qty)
-                                   FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) issue_item
-                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue ON issue.id=issue_item.issue_id
+                                   FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) issue_item
+                                   JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue ON issue.id=issue_item.issue_id
                                      AND issue.status=0 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0) AS gross_qty
                         FROM subcontract_material_plan_items plan_item
@@ -351,14 +400,18 @@ final class SubcontractComponentCustodyProjection {
                           AND NOT plan_item.is_deleted AND plan_item.bom_unit_qty>0
                     ) line
                     JOIN stocked ON stocked.order_item_id=line.order_item_id
+                    CROSS JOIN LATERAL (SELECT stocked.use_actual_precision OR (
+                """ + PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL + """
+                    ) AS use_actual_precision OFFSET 0) precision_rule
                 ), owner_material_raw AS (
                     -- Material factors stay in numerators until the final ceiling.
                     SELECT line.plan_item_id,owner.analysis_id,owner.parent_material_id,
                            owner.alloc_qty*owner.allocated_qty*line.bom_unit_qty*owner.order_unit_rate*owner.ordered_qty AS owned_numerator,
                            owner.source_legacy_stocked_base*line.bom_unit_qty*owner.allocated_qty*owner.ordered_qty
-                             +line.wasted_qty*owner.alloc_qty*owner.allocated_qty*owner.order_unit_rate AS stocked_numerator,
+                             +CASE WHEN line.use_actual_precision THEN 0 ELSE line.wasted_qty*owner.alloc_qty*owner.allocated_qty*owner.order_unit_rate END AS stocked_numerator,
                            (owner.source_stocked_base-owner.source_legacy_stocked_base)*line.base_bom_unit_qty
-                               *owner.allocated_qty*owner.ordered_qty AS actual_numerator,
+                               *owner.allocated_qty*owner.ordered_qty
+                             +CASE WHEN line.use_actual_precision THEN line.wasted_qty*owner.alloc_qty*owner.allocated_qty*owner.order_unit_rate ELSE 0 END AS actual_numerator,
                            owner.owner_total*owner.order_unit_rate*owner.ordered_qty AS denominator
                     FROM owner_shares owner
                     JOIN plan_lines line ON line.order_item_id=owner.order_item_id
@@ -453,9 +506,12 @@ final class SubcontractComponentCustodyProjection {
                     JOIN material_denominator_terms part ON part.plan_item_id=running.plan_item_id
                       AND part.part_number=running.part_number+1
                 ), material_units AS (
-                    -- Every owner shares an integer scale; one four-decimal tick is base_denominator units.
-                    SELECT plan_item_id,denominator AS base_denominator,denominator*10000 AS material_denominator
-                    FROM material_denominator_sums WHERE part_number=part_count
+                    -- Historical-only projections retain their four-place distribution.
+                    -- A live v2 cohort owns actual material on its declared 24-place grid.
+                    SELECT part.plan_item_id,part.denominator AS base_denominator,line.unit_quantum,
+                           part.denominator*line.unit_quantum AS material_denominator
+                    FROM material_denominator_sums part JOIN plan_lines line ON line.plan_item_id=part.plan_item_id
+                    WHERE part.part_number=part.part_count
                 ), exact AS (
                     SELECT handoff.plan_item_id,handoff.parent_material_id,
                            SUM(GREATEST(LEAST(handoff.qty,target.qty)-target.released_qty,0)) AS qty
@@ -465,7 +521,7 @@ final class SubcontractComponentCustodyProjection {
                       AND NOT target.is_deleted
                     GROUP BY handoff.plan_item_id,handoff.parent_material_id
                 ), needs AS (
-                    SELECT line.plan_item_id,line.goods_id,line.color_id,units.base_denominator,
+                    SELECT line.plan_item_id,line.goods_id,line.color_id,units.base_denominator,units.unit_quantum,
                            line.pool_qty*units.material_denominator AS pool_units,
                            owner.analysis_id,owner.parent_material_id,owner_need.qty AS need_units,
                            LEAST(COALESCE(exact.qty,0)*units.material_denominator,owner_need.qty) AS exact_take_units
@@ -473,11 +529,11 @@ final class SubcontractComponentCustodyProjection {
                     JOIN owner_materials owner ON owner.plan_item_id=line.plan_item_id
                     JOIN material_units units ON units.plan_item_id=line.plan_item_id
                     CROSS JOIN LATERAL (
-                        SELECT GREATEST(owner.owned_numerator*10000-(
+                        SELECT GREATEST(owner.owned_numerator*units.unit_quantum-(
                 """ + ceilMaterialFractionSql("owner.stocked_numerator", "owner.denominator") + """
-                            )*10000*owner.denominator-(
-                """ + ceilMaterialFractionSql("owner.actual_numerator", "owner.denominator") + """
-                            )*10000*owner.denominator,0)*div(units.base_denominator,owner.denominator) AS qty
+                            )*units.unit_quantum*owner.denominator-(
+                """ + ceilActualMaterialFractionSql("owner.actual_numerator", "owner.denominator") + """
+                            )*units.unit_quantum*owner.denominator,0)*div(units.base_denominator,owner.denominator) AS qty
                     ) owner_need
                     LEFT JOIN exact ON exact.plan_item_id=line.plan_item_id
                       AND exact.parent_material_id=owner.parent_material_id
@@ -510,7 +566,7 @@ final class SubcontractComponentCustodyProjection {
                     FROM opens
                 ), nets AS (
                     SELECT parent_material_id,goods_id,color_id,
-                """ + ceilMaterialFractionSql("need_units", "base_denominator*10000") + """
+                """ + ceilScaledMaterialFractionSql("need_units", "base_denominator*unit_quantum", "unit_quantum") + """
                            AS required_qty,
                            GREATEST((exact_ticks+(
                 """ + halfUpIntegerFractionSql(
@@ -518,7 +574,8 @@ final class SubcontractComponentCustodyProjection {
                            )-(
                 """ + halfUpIntegerFractionSql(
                         "public_pool_units*(open_running_units-open_units)", "open_total_units*base_denominator") + """
-                           ))/10000,0) AS net_qty
+                           ))*(CASE WHEN unit_quantum=10000 THEN 0.0001::numeric
+                                    ELSE 0.000000000000000000000001::numeric END),0) AS net_qty
                     FROM ranked WHERE analysis_id=:analysisId
                 )
                 SELECT parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id,
@@ -544,7 +601,8 @@ final class SubcontractComponentCustodyProjection {
                 GROUP BY parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id
                 HAVING SUM(nets.net_qty)>0 OR (%s AND SUM(nets.required_qty)>0)
                 ORDER BY parent.analysis_item_id,child.node_key
-                """).formatted(ORDER_ITEM_STOCKED_BASE_SQL,ORDER_ITEM_STOCKED_LEGACY_BASE_SQL,includeUncovered?"TRUE":"FALSE")).setParameter("analysisId", analysisId))
+                """).formatted(ORDER_ITEM_STOCKED_BASE_SQL,ORDER_ITEM_STOCKED_LEGACY_BASE_SQL,ORDER_ITEM_USES_ACTUAL_PRECISION_SQL,
+                        ACTUAL_MATERIAL_QUANTUM,includeUncovered?"TRUE":"FALSE")).setParameter("analysisId", analysisId))
                 .stream()
                 .map(row -> new ChildCoverage((UUID) row[0], (String) row[1], (UUID) row[2],
                         (UUID) row[3], (UUID) row[4], decimal(row[5]), decimal(row[6]),decimal(row[7]),decimal(row[8])))
@@ -557,6 +615,18 @@ final class SubcontractComponentCustodyProjection {
                 fn_subcontract_draw_f((div((%s)*10000,(%s))
                     +CASE WHEN mod((%s)*10000,(%s))>0 THEN 1 ELSE 0 END)/10000,1)
                 """.formatted(numerator,denominator,numerator,denominator);
+    }
+
+    private static String ceilActualMaterialFractionSql(String numerator,String denominator) {
+        return "fn_subcontract_actual_receipt_material_qty(("+
+                ceilScaledMaterialFractionSql(numerator,denominator,ACTUAL_MATERIAL_QUANTUM)+"),1)";
+    }
+
+    private static String ceilScaledMaterialFractionSql(String numerator,String denominator,String quantum) {
+        return """
+                ((div((%s)*(%s),(%s))+CASE WHEN mod((%s)*(%s),(%s))>0 THEN 1 ELSE 0 END)
+                    *(CASE WHEN (%s)=10000 THEN 0.0001::numeric ELSE 0.000000000000000000000001::numeric END))
+                """.formatted(numerator,quantum,denominator,numerator,quantum,denominator,quantum);
     }
 
     /** Integer division keeps a repeating ratio from moving an exact half-tick boundary. */

@@ -11,8 +11,12 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/production/delivery_processing/delivery_processing_repository.dart';
 import 'package:uten_imp/features/production/delivery_processing/delivery_processing_tasks_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../support/uten_test_actions.dart';
 
 Map<String, dynamic> _task({int version = 1, bool done = false}) => {
   'componentId': 'component-1',
@@ -69,19 +73,33 @@ class _Api extends Fake implements ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => {'recorded': recorded};
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const [];
 }
 
 class _Repository extends DeliveryProcessingRepository {
   _Repository(super.api);
   Completer<DeliveryProcessingTask>? pendingResponse;
   int submits = 0, reads = 0;
+  final listQueries = <({int page, int size, String? keyword})>[];
+  Future<DeliveryProcessingPage> Function(int page, int size, String? keyword)?
+  pages;
   @override
   Future<DeliveryProcessingPage> list(
     String? shipmentId, {
     int page = 1,
+    int size = 100,
     String? keyword,
-  }) async =>
-      DeliveryProcessingPage([DeliveryProcessingTask(_task())], 1, 1, 1);
+  }) async {
+    listQueries.add((page: page, size: size, keyword: keyword));
+    return pages?.call(page, size, keyword) ??
+        DeliveryProcessingPage([DeliveryProcessingTask(_task())], 1, 1, 1);
+  }
+
   @override
   Future<DeliveryProcessingTask> get(String id) async {
     reads++;
@@ -99,12 +117,54 @@ class _Repository extends DeliveryProcessingRepository {
   }
 }
 
-Future<void> _pump(WidgetTester tester, _Repository repo) async {
-  await tester.binding.setSurfaceSize(const Size(1280, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+class _ListApi extends _Api {
+  final queries = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    queries.add({...?query});
+    final page = query!['page'] as int, size = query['size'] as int;
+    return {
+      'items': [
+        for (
+          var index = (page - 1) * size;
+          index < page * size && index < 251;
+          index++
+        )
+          {
+            ..._task(),
+            'componentId': 'transport-$index',
+            'remainingQtyExact': '0.000000000000000000000001',
+            'futureSource': {'proof': 'kept'},
+          },
+      ],
+      'page': page,
+      'size': size,
+      'total': 251,
+      'totalPages': (251 / size).ceil(),
+      'readScopeVersion': 'transport-proof',
+      'sourceSnapshot': {'pending': 7},
+    };
+  }
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  _Repository repo, {
+  bool select = true,
+  bool settle = true,
+}) async {
+  await setUtenTestSurfaceSize(tester, const Size(1280, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(repo.api),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'processing-fixture'),
+        ),
         deliveryProcessingRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue({
           'production_execution:view',
@@ -135,12 +195,170 @@ Future<void> _pump(WidgetTester tester, _Repository repo) async {
     ),
   );
   await tester.tap(find.text('交付件加工任务'));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
+  if (!select) return;
   await tester.tap(find.widgetWithText(TextButton, '办理').first);
   await tester.pumpAndSettle();
 }
 
 void main() {
+  test(
+    'processing transport keeps complete typed rows, raw subjects and first metadata',
+    () async {
+      final api = _ListApi(),
+          reader = ScopedPagedRead<DeliveryProcessingTask>(
+            idOf: (row) => row.id,
+          );
+      addTearDown(reader.dispose);
+      final repository = DeliveryProcessingRepository(api);
+      final result = await reader.read(
+        1,
+        scope: 'transport',
+        isCurrent: () => true,
+        fetchPage: (page) => repository.list('shipment-1', page: page),
+        fetchPageSized: (page, size) =>
+            repository.list('shipment-1', page: page, size: size),
+      );
+      final typed = result as DeliveryProcessingPage;
+      expect(typed.items, hasLength(251));
+      expect(typed.items.last.id, 'transport-250');
+      expect(typed.items.last.remaining, '0.000000000000000000000001');
+      expect(typed.items.last.data['futureSource'], {'proof': 'kept'});
+      expect(typed.items.last.processingTargets.single.quantity, '200');
+      expect(typed.metadata['sourceSnapshot'], {'pending': 7});
+      expect(typed.readScopeVersion, 'transport-proof');
+      expect(api.queries.map((query) => query['size']), [100, 100, 100]);
+      expect(
+        api.queries.every((query) => query['shipmentId'] == 'shipment-1'),
+        true,
+      );
+    },
+  );
+  DeliveryProcessingPage batch(int page, int size) => DeliveryProcessingPage(
+    [
+      for (
+        var index = (page - 1) * size;
+        index < page * size && index < 251;
+        index++
+      )
+        DeliveryProcessingTask({
+          ..._task(),
+          'componentId': 'component-$index',
+          'goodsCode': 'ITEM-$index',
+          'remainingQtyExact': '0.000000000000000000000001',
+          'version': index + 7,
+        }),
+    ],
+    page,
+    (251 / size).ceil(),
+    251,
+    size: size,
+    readScopeVersion: 'processing-proof',
+    metadata: const {'pendingCount': 7},
+  );
+
+  testWidgets(
+    'all 251 delivery processing tasks use bounded batches and local scrolling with exact subjects',
+    (tester) async {
+      final repo = _Repository(_Api())
+        ..pages = (page, size, _) async => batch(page, size);
+      await _pump(tester, repo, select: false);
+      final finder = find.byType(MasterDataTableView<DeliveryProcessingTask>);
+      final table = tester.widget<MasterDataTableView<DeliveryProcessingTask>>(
+        finder,
+      );
+      expect(table.items, hasLength(251));
+      expect(table.items.last.id, 'component-250');
+      expect(table.items.last.remaining, '0.000000000000000000000001');
+      expect(table.items.last.processingTargets.single.quantity, '200');
+      expect(table.items.last.version, 257);
+      expect(table.onPageChange, isNull);
+      expect(repo.listQueries.map((query) => (query.page, query.size)), [
+        (1, 100),
+        (2, 100),
+        (3, 100),
+      ]);
+      final position = tester
+          .stateList<ScrollableState>(
+            find.descendant(of: finder, matching: find.byType(Scrollable)),
+          )
+          .where(
+            (state) =>
+                state.position.axis == Axis.vertical &&
+                state.position.hasContentDimensions,
+          )
+          .map((state) => state.position)
+          .reduce((a, b) => a.maxScrollExtent > b.maxScrollExtent ? a : b);
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(repo.listQueries, hasLength(3));
+      expect(repo.submits, 0);
+      await tester.pumpWidget(const SizedBox());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a failed later processing batch publishes no prefix and retries the whole query',
+    (tester) async {
+      var failing = true;
+      final repo = _Repository(_Api())
+        ..pages = (page, size, _) async {
+          if (page == 2 && failing) throw ApiException('NETWORK', '后续加工任务读取失败');
+          return batch(page, size);
+        };
+      await _pump(tester, repo, select: false);
+      final finder = find.byType(MasterDataTableView<DeliveryProcessingTask>);
+      expect(
+        tester
+            .widget<MasterDataTableView<DeliveryProcessingTask>>(finder)
+            .items,
+        isEmpty,
+      );
+      expect(repo.listQueries, hasLength(2));
+      failing = false;
+      tester
+          .widget<MasterDataTableView<DeliveryProcessingTask>>(finder)
+          .onRetry!();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MasterDataTableView<DeliveryProcessingTask>>(finder)
+            .items,
+        hasLength(251),
+      );
+      expect(repo.listQueries.map((query) => query.page), [1, 2, 1, 2, 3]);
+      expect(repo.submits, 0);
+      await tester.pumpWidget(const SizedBox());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'closing the processing owner abandons held continuation without extra batches',
+    (tester) async {
+      final gate = Completer<DeliveryProcessingPage>();
+      final repo = _Repository(_Api())
+        ..pages = (page, size, _) =>
+            page == 2 ? gate.future : Future.value(batch(page, size));
+      await _pump(tester, repo, select: false, settle: false);
+      expect(repo.listQueries, hasLength(2));
+      await tester.pumpWidget(const SizedBox());
+      gate.complete(batch(2, 100));
+      await tester.pumpAndSettle();
+      expect(repo.listQueries, hasLength(2));
+      expect(repo.submits, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'unknown report retains the exact original UUID, quantity and expected version',
     () async {

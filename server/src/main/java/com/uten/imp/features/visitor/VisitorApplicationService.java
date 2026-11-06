@@ -189,6 +189,20 @@ public class VisitorApplicationService {
         return toPageResponse(result, pageable);
     }
 
+    /** Narrow advisory read for the chosen minute; submit remains authoritative. */
+    @Transactional(readOnly = true)
+    public boolean hasActiveApplicationAt(OffsetDateTime plannedVisitAt) {
+        if (plannedVisitAt == null) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        UUID visitorId = currentVisitorId();
+        OffsetDateTime from = plannedVisitAt.truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        return appRepo.exists((root, query, cb) -> cb.and(
+                cb.equal(root.get("visitorAccountId"), visitorId),
+                cb.equal(root.get("deleted"), false),
+                root.get("status").in(List.of("pending", "hostReviewing", "approved", "checkedIn")),
+                cb.greaterThanOrEqualTo(root.<OffsetDateTime>get("plannedVisitAt"), from),
+                cb.lessThan(root.<OffsetDateTime>get("plannedVisitAt"), from.plusMinutes(1))));
+    }
+
     @Transactional(readOnly = true)
     public VisitorDetail getDetail(UUID id) {
         VisitorApplication app = appRepo.findById(id)

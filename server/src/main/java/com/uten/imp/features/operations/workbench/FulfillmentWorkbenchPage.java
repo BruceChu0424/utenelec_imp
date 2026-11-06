@@ -13,7 +13,18 @@ public record FulfillmentWorkbenchPage(
         Summary summary,
         Capabilities capabilities,
         Map<String, List<Facet>> facets,
-        Map<String, Long> nullCounts) {
+        Map<String, Long> nullCounts,
+        boolean metadataIncluded) {
+
+    public FulfillmentWorkbenchPage(List<FulfillmentTaskRow> items,int page,int size,long total,int totalPages,
+            Summary summary,Capabilities capabilities,Map<String,List<Facet>> facets,Map<String,Long> nullCounts) {
+        this(items,page,size,total,totalPages,summary,capabilities,facets,nullCounts,true);
+    }
+
+    public FulfillmentWorkbenchPage {
+        if (!metadataIncluded && (summary!=null || facets!=null || nullCounts!=null))
+            throw new IllegalArgumentException("Omitted task metadata must be null, never invented zero buckets");
+    }
 
     public record Facet(String value, String label, long count) {}
 

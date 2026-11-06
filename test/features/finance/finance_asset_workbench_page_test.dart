@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -19,6 +21,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import '../../support/uten_test_actions.dart';
@@ -589,6 +592,68 @@ void main() {
     await setUtenTestSurfaceSize(tester, null);
   });
 
+  testWidgets(
+    'all posting run summaries complete in bounded batches and scroll locally with original authority',
+    (tester) async {
+      final repository = _FakeAssetRepository(
+        historyRuns: [
+          for (var i = 0; i < 120; i++)
+            AssetPostingRun(
+              id: 'run-$i',
+              runType: AssetPostingRunType.depreciation,
+              period: '2026-${i.toString().padLeft(3, '0')}',
+              status: 'APPROVED',
+              itemCount: 1,
+              totalAmount: '100.0001',
+              allowedActions: const {'POST'},
+              version: 6,
+            ),
+        ],
+      );
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      await _pumpWorkbench(
+        tester,
+        repository: repository,
+        permissions: const {Perm.financeAssetView, Perm.financeAssetPost},
+      );
+      await tester.tap(find.text('月末处理'));
+      await tester.pumpAndSettle();
+      expect(repository.runQueries, [
+        (page: 1, size: 100),
+        (page: 2, size: 100),
+      ]);
+      final rows = tester.widget<UtenAncestorRowWindow<AssetPostingRun>>(
+        find.byType(UtenAncestorRowWindow<AssetPostingRun>),
+      );
+      expect(rows.rows, hasLength(120));
+      expect(rows.rows.last.id, 'run-119');
+      expect(rows.rows.last.totalAmount, '100.0001');
+      expect(rows.rows.last.allowedActions, {'POST'});
+      expect(rows.deferRowMounts, false);
+      final list = find.byKey(
+        const PageStorageKey('finance-asset-posting-panel'),
+      );
+      final scrolling = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final position = tester.state<ScrollableState>(scrolling).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('finance-asset-history-post-run-119')),
+        findsOneWidget,
+      );
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(repository.runQueries, [
+        (page: 1, size: 100),
+        (page: 2, size: 100),
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('history exposes server-allowed approve and post actions', (
     tester,
   ) async {
@@ -815,6 +880,7 @@ Future<void> _pumpWorkbench(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(_FixtureLookupApi()),
         formDraftsProvider.overrideWith(
           () => _FixedAssetDrafts(formDrafts ?? []),
         ),
@@ -857,6 +923,22 @@ class _FixedAssetDrafts extends FormDraftsNotifier {
   final List<FormDraft> initial;
   @override
   List<FormDraft> build() => initial;
+}
+
+class _FixtureLookupApi extends ApiClient {
+  _FixtureLookupApi() : super(Dio());
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const {};
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const [];
 }
 
 class _FakeOverviewRepository implements FinanceAssetOverviewRepository {
@@ -942,6 +1024,7 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
   final nextLists =
       <FinanceAssetLedger, Completer<PagedResult<FinanceAssetSummary>>>{};
   int createCalls = 0;
+  final runQueries = <({int page, int size})>[];
   int postingActionCalls = 0;
   final List<int?> postingExpectedVersions = <int?>[];
 
@@ -990,12 +1073,13 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     AssetPostingRunType? runType,
     String? status,
   }) async {
+    runQueries.add((page: page, size: size));
     return PagedResult<AssetPostingRun>(
-      items: historyRuns,
+      items: historyRuns.skip((page - 1) * size).take(size).toList(),
       page: page,
       size: size,
-      total: 0,
-      totalPages: 1,
+      total: historyRuns.length,
+      totalPages: (historyRuns.length + size - 1) ~/ size,
     );
   }
 

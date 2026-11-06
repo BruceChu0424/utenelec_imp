@@ -240,6 +240,22 @@ class GoodsCostHttpSmokeEndToEndTest {
         assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Integer.class,scope)).isZero();
     }
 
+    @Test void completeSummaryRoutesHaveCompositeHeadersMatchingRealBodyProofAndExactTemplateDetail() throws Exception {
+        var versions=request(get(ROOT+"/versions/summary").param("goodsId",world.goodsD().toString()).param("size","1000"),owner,null,200);
+        String versionProof=body(versions).path("readScopeVersion").asText();
+        assertThat(versionProof).hasSize(64);assertThat(versions.getResponse().getHeader("X-Uten-Read-Scope-Version")).isEqualTo(versionProof);
+        var created=body(request(post(ROOT+"/templates"),owner,new TemplateSave(null,key("template-scope"),
+                new TemplateInput("完整读域模板",world.goodsD(),null,null,null,null,null,List.of(),List.of(),"保持实际模板来源")),200));
+        var templates=request(get(ROOT+"/templates/summary").param("goodsId",world.goodsD().toString()).param("size","1000"),owner,null,200);
+        JsonNode summaries=body(templates);String templateProof=summaries.path("readScopeVersion").asText();
+        assertThat(templateProof).hasSize(64);assertThat(templates.getResponse().getHeader("X-Uten-Read-Scope-Version")).isEqualTo(templateProof);
+        assertThat(summaries.path("items").findValuesAsText("id")).contains(created.path("id").asText());
+        var detail=request(get(ROOT+"/templates/"+created.path("id").asText()).param("goodsId",world.goodsD().toString()),owner,null,200);
+        assertThat(body(detail)).isEqualTo(created);assertThat(detail.getResponse().getHeader("X-Uten-Read-Scope-Version")).isEqualTo(templateProof);
+        // Production facts retain the original master_goods scope; a cost proof never retires that different reader.
+        var production=request(get(ROOT+"/production-output").param("goodsId",world.goodsD().toString()),owner,null,200);
+        assertThat(production.getResponse().getHeader("X-Uten-Read-Scope-Version")).hasSize(64).isNotEqualTo(templateProof);
+    }
     private DraftInput input(String price){
         return new DraftInput(world.goodsD(),null,"完整链路成本单","10",null,"1",LocalDate.of(2026,9,29),"DESIGN","MANUAL",null,
                 List.of(new LineOverride("ROOT",null,"BUY",price,"1","1",null,"AS_RECORDED",null,"MANUAL","smoke checked original cost")),

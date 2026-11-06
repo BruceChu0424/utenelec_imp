@@ -35,7 +35,11 @@ class OperationalCommercialSignGuardWiringTest {
     }
 
     private static void assertPurchaseWired(String source, String approvalKernel) {
-        String save = DraftMutationSourceContract.method(source, "saveItems");
+        // The two-argument entry delegates new rows to the same quantity-plan writer
+        // used by edits; inspect the method that actually persists the items.
+        assertThat(DraftMutationSourceContract.method(source, "saveItems").replaceAll("\\s+", ""))
+                .contains("returnsaveItems(r,lines,DocumentQuantitySavePlan.empty());");
+        String save = DraftMutationSourceContract.methodContaining(source, "saveItems", "itemRepo.save(");
         String compact = save.replaceAll("\\s+", "");
         assertThat(compact).contains("getPrice().signum()<0", "ErrorCode.VALIDATION_FAILED", "ProcurementQuantities.of(");
         assertThat(compact.indexOf("getPrice().signum()<0")).isLessThan(compact.indexOf("itemRepo.save("));
@@ -232,15 +236,16 @@ class OperationalCommercialSignGuardWiringTest {
     @Test
     void salesReturnGuardsServerDerivedCostOnlyInTheStoredPhase() throws IOException {
         String source = read("sales/ret/SalesReturnService.java");
-        String requestGuard = method(source,
+        String save = DraftMutationSourceContract.methodContaining(source, "saveItems",
+                "NonNegativeCommercialSignGuard.requireRequestLine(");
+        String requestGuard = method(save,
                 "NonNegativeCommercialSignGuard.requireRequestLine(",
-                "SalesReturnItem it = new SalesReturnItem();");
-        String storedGuard = method(source,
-                "private static void requireNonNegativeStoredCommercial",
-                "private void applyTotals");
+                ");");
+        String storedGuard = DraftMutationSourceContract.method(source, "requireNonNegativeStoredCommercial");
 
         assertThat(requestGuard).contains("l.getQty(), l.getPrice(), l.getDiscount()")
                 .doesNotContain("getCostAmount");
+        assertBefore(save, "NonNegativeCommercialSignGuard.requireRequestLine(", "SalesReturnItem it =");
         assertThat(source).doesNotContain("l.getCostAmount()");
         assertThat(storedGuard).contains("item.getCostAmount()");
     }

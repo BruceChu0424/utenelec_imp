@@ -9,6 +9,7 @@ import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,9 +30,9 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Actual Roles/Journal transactions and the actual V1049 over original V999_11
- * table/check/immutable definitions. Identity tables and permission lookup are
- * anonymous local fixtures, not a full ERP or global audit-pipeline acceptance.
+ * Actual Roles/Journal transactions and V1077 over original V999_11
+ * table/check/immutable definitions. Anonymous identity/parent projections use
+ * the live migrated catalog; this is not full ERP or global audit-pipeline acceptance.
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceApplicationSettingsReceiptPostgresTest {
@@ -47,6 +48,7 @@ class FinanceApplicationSettingsReceiptPostgresTest {
     private static JdbcTemplate db;
     private static TransactionTemplate transactions;
     private static String legacyBeforeMigration;
+    private static String applicationBeforeMigration;
     private static int immutableTriggersBeforeMigration;
     private final SecurityContextCurrentUser current=new SecurityContextCurrentUser();
     private FinanceApplicationOperationJournal journal;
@@ -58,19 +60,17 @@ class FinanceApplicationSettingsReceiptPostgresTest {
         PG.start();
         var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);transactions=new TransactionTemplate(new DataSourceTransactionManager(source));
-        db.execute("""
-                CREATE TABLE employees(id uuid PRIMARY KEY,full_name text NOT NULL,status text NOT NULL DEFAULT 'active',is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid NOT NULL REFERENCES employees(id),status text NOT NULL DEFAULT 'active',is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE departments(id uuid PRIMARY KEY,name text NOT NULL,is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE finance_applications(id uuid PRIMARY KEY,anonymous_original text NOT NULL);
-                CREATE FUNCTION fn_canonical_employee_identity(uuid) RETURNS uuid LANGUAGE sql IMMUTABLE AS 'SELECT $1';
-                """);
-        db.update("INSERT INTO employees(id,full_name) VALUES(?,?),(?,?)",EMPLOYEE_A,"匿名设置人员甲",EMPLOYEE_B,"匿名设置人员乙");
+        // Only the original operation/settings definitions below are the migration subject.
+        // Identity and parent-row projections use every column from the real current catalog.
+        MigratedProjectionSchema.createCurrentTables(db,"employees","users","departments","finance_applications");
+        MigratedProjectionSchema.createCurrentEmployeeIdentityReaders(db);
+        db.update("INSERT INTO employees(id,full_name,status) VALUES(?,?,'active'),(?,?,'active')",EMPLOYEE_A,"匿名设置人员甲",EMPLOYEE_B,"匿名设置人员乙");
         db.update("INSERT INTO users(id,employee_id) VALUES(?,?),(?,?)",ACTOR_A,EMPLOYEE_A,ACTOR_B,EMPLOYEE_B);
-        db.update("INSERT INTO finance_applications(id,anonymous_original) VALUES(?,?)",APPLICATION,"原申请身份和冻结内容保持不变");
+        db.update("INSERT INTO finance_applications(id,remark) VALUES(?,?)",APPLICATION,"原申请身份和冻结内容保持不变");
+        applicationBeforeMigration=db.queryForObject("SELECT to_jsonb(application)::text FROM finance_applications application WHERE id=?",String.class,APPLICATION);
         String original=resource("/db/migration/V999_11__financial_application_original_six_workflows.sql");
         for(String table:List.of("finance_application_settings","finance_application_enable_periods","finance_application_role_bindings","finance_application_operations"))
-            db.execute(tableDdl(original,table));
+            MigratedProjectionSchema.createOriginalTables(db,"V999_11__financial_application_original_six_workflows.sql",table);
         db.execute(statement(original,"CREATE UNIQUE INDEX finance_application_one_enable_period"));
         db.execute(statement(original,"CREATE UNIQUE INDEX finance_application_role_person_unique"));
         int functionStart=original.indexOf("CREATE FUNCTION fn_finance_application_events_immutable()");
@@ -108,7 +108,8 @@ class FinanceApplicationSettingsReceiptPostgresTest {
     @Test void actualMigrationPreservesOldReceiptsAndOnlyAdmitsTheThreeNullApplicationCommands() {
         assertThat(legacyRow()).isEqualTo(legacyBeforeMigration);
         assertThat(immutableTriggerCount()).isEqualTo(immutableTriggersBeforeMigration).isEqualTo(1);
-        assertThat(db.queryForObject("SELECT anonymous_original FROM finance_applications WHERE id=?",String.class,APPLICATION)).isEqualTo("原申请身份和冻结内容保持不变");
+        assertThat(db.queryForObject("SELECT remark FROM finance_applications WHERE id=?",String.class,APPLICATION)).isEqualTo("原申请身份和冻结内容保持不变");
+        assertThat(db.queryForObject("SELECT to_jsonb(application)::text FROM finance_applications application WHERE id=?",String.class,APPLICATION)).isEqualTo(applicationBeforeMigration);
         for(String operation:List.of("SETTINGS_SAVE","ROLE_SAVE","ROLE_REMOVE"))
             inTransaction(()->journal.execute(null,UUID.randomUUID(),operation,Map.of("fixture",operation),ignored->{},()->Map.of("operation",operation)));
         assertThatThrownBy(()->db.update("INSERT INTO finance_application_operations(request_id,application_id,actor_id,operation,payload_hash,result) VALUES(?,NULL,?,'SUBMIT',repeat('0',64),'{}')",UUID.randomUUID(),ACTOR_A))
@@ -339,6 +340,5 @@ class FinanceApplicationSettingsReceiptPostgresTest {
     private static void assertSameJson(Object actual,Object expected){try{assertThat(JSON.readTree(encode(actual))).isEqualTo(JSON.readTree(encode(expected)));}catch(java.io.IOException error){throw new AssertionError(error);}}
     private static String encode(Object value){try{return JSON.writeValueAsString(value);}catch(Exception error){throw new AssertionError(error);}}
     private static String resource(String name)throws Exception {try(var input=FinanceApplicationSettingsReceiptPostgresTest.class.getResourceAsStream(name)){return new String(Objects.requireNonNull(input,name).readAllBytes(),StandardCharsets.UTF_8);}}
-    private static String tableDdl(String sql,String table){int start=sql.indexOf("CREATE TABLE "+table+" (");int end=sql.indexOf("\n);",start);if(start<0||end<0)throw new AssertionError("Original table missing: "+table);return sql.substring(start,end+3);}
     private static String statement(String sql,String prefix){int start=sql.indexOf(prefix);int end=sql.indexOf(';',start);if(start<0||end<0)throw new AssertionError("Original statement missing: "+prefix);return sql.substring(start,end+1);}
 }

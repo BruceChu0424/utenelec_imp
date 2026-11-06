@@ -29,6 +29,9 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportDraftClaim;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportDraftClaimsHeader;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportDraftClaimsQuery;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialDecision;
@@ -161,10 +164,22 @@ public class ProductionDailyReportService {
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter originalFilter, int page, int size, String sort, String order,
                                                 boolean includeDeleted, boolean onlyDeleted) {
         final DailyReportQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        Specification<ProductionDailyReport> spec = reportListSpecification(f, includeDeleted, onlyDeleted);
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<ProductionDailyReport> p = reportRepo.findAll(searchPage.specification(), searchPage.pageable());
+        PageResponse<DailyReportListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return retainedRecords.page(result, "production_daily_reports", p.getContent());
+    }
+
+    /** The existing list predicate is shared unchanged by the bounded draft selector. */
+    private Specification<ProductionDailyReport> reportListSpecification(DailyReportQueryFilter f,
+            boolean includeDeleted, boolean onlyDeleted) {
         var readScope = access.scope(
                 "production_daily_report:approve",
                 "production_daily_report:reverse");
-        Specification<ProductionDailyReport> spec = (Root<ProductionDailyReport> root,
+        return (Root<ProductionDailyReport> root,
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -196,12 +211,111 @@ public class ProductionDailyReportService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
-        Page<ProductionDailyReport> p = reportRepo.findAll(searchPage.specification(), searchPage.pageable());
-        PageResponse<DailyReportListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
-        return retainedRecords.page(result, "production_daily_reports", p.getContent());
+    }
+
+    /** One bounded child projection for the exact headers selected by the original read policy. */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public PageResponse<DailyReportListItem> listWithDraftClaims(DailyReportQueryFilter filter, int page, int size,
+                                                               String sort, String order,
+                                                               boolean includeDeleted, boolean onlyDeleted) {
+        PageResponse<DailyReportListItem> result = list(filter, page, size, sort, order, includeDeleted, onlyDeleted);
+        List<UUID> ids = result.getItems().stream().map(DailyReportListItem::getId).toList();
+        Map<UUID, List<DraftClaimEvidence>> evidence = readDraftClaimEvidence(ids);
+        for (DailyReportListItem header : result.getItems()) {
+            header.setDraftClaimsVersion(1);
+            header.setDraftClaims(evidence.getOrDefault(header.getId(), List.of()).stream()
+                    .map(DraftClaimEvidence::claim).toList());
+        }
+        return result;
+    }
+
+    /** Current accepted task IDs narrow the original report scope before its count and page. */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public PageResponse<DailyReportDraftClaimsHeader> queryDraftClaims(DailyReportDraftClaimsQuery request) {
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll("production_daily_report:view");
+        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请提供本次执行工单范围");
+        List<UUID> requested = request.executionSegmentIds() == null ? List.of() : request.executionSegmentIds();
+        if (requested.size() > 100 || requested.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多核对100个完整执行工单身份");
+        }
+        List<UUID> segmentIds = List.copyOf(new LinkedHashSet<>(requested));
+        int page = request.page() == null ? 1 : request.page();
+        int size = request.size() == null ? 100 : request.size();
+        if (page < 1 || size < 1 || size > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "草稿范围查询页码或批大小无效");
+        }
+        Pageables.checkedOffset(page, size);
+        DailyReportQueryFilter filter = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(
+                new DailyReportQueryFilter(null, null, null, null, STATUS_DRAFT, null, null));
+        Specification<ProductionDailyReport> original = reportListSpecification(filter, false, false);
+        // Resolve the existing read scope first; an empty selector is never an unfiltered query.
+        if (segmentIds.isEmpty()) return new PageResponse<>(List.of(), page, size, 0, 0);
+        Specification<ProductionDailyReport> selected = original.and((root, query, cb) -> {
+            var itemQuery = query.subquery(UUID.class);
+            var item = itemQuery.from(ProductionDailyReportItem.class);
+            itemQuery.select(item.get("reportId")).where(cb.equal(item.get("reportId"), root.get("id")),
+                    cb.isFalse(item.get("deleted")), item.get("executionSegmentId").in(segmentIds));
+            return cb.and(cb.equal(root.get("status"), STATUS_DRAFT), cb.exists(itemQuery));
+        });
+        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate")
+                .and(Sort.by(Sort.Direction.ASC, "id")));
+        Page<DailyReportDraftClaimsHeader.Projection> headers = reportRepo.findBy(selected,
+                query -> query.as(DailyReportDraftClaimsHeader.Projection.class).page(pageable));
+        Map<UUID, List<DraftClaimEvidence>> evidence = readDraftClaimEvidence(
+                headers.getContent().stream().map(DailyReportDraftClaimsHeader.Projection::getId).toList());
+        List<DailyReportDraftClaimsHeader> items = headers.getContent().stream().map(header -> {
+            if (header.getRowVersion() == null || header.getRowVersion() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "草稿原版本信息不完整，请刷新后核对");
+            }
+            List<DraftClaimEvidence> claims = evidence.getOrDefault(header.getId(), List.of());
+            return new DailyReportDraftClaimsHeader(header.getId(), header.getBillNo(), header.getBillDate(),
+                    header.getStatus(), header.isClosed(), header.isCanceled(), header.getRowVersion().toString(),
+                    1, draftClaimsFingerprint(header, claims), claims.stream().map(DraftClaimEvidence::claim).toList());
+        }).toList();
+        return new PageResponse<>(items, headers);
+    }
+
+    private record DraftClaimEvidence(DailyReportDraftClaim claim, UUID itemId, Object lineNo) { }
+
+    private Map<UUID, List<DraftClaimEvidence>> readDraftClaimEvidence(List<UUID> ids) {
+        Map<UUID, List<DraftClaimEvidence>> claims = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.report_id, item.execution_segment_id, item.qty, item.is_actual_surplus, item.id, item.line_no
+                    FROM production_daily_report_items item
+                    JOIN production_daily_reports report ON report.id=item.report_id
+                    WHERE report.id IN (:ids) AND report.status=0 AND report.is_deleted=FALSE
+                      AND item.is_deleted=FALSE
+                    ORDER BY item.report_id, item.line_no, item.id
+                    """).setParameter("ids", ids))) {
+                BigDecimal qty = (BigDecimal) row[2];
+                claims.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>()).add(
+                        new DraftClaimEvidence(new DailyReportDraftClaim((UUID) row[1],
+                                qty == null ? null : qty.toPlainString(), Boolean.TRUE.equals(row[3])),
+                                (UUID) row[4], row[5]));
+            }
+        }
+        return claims;
+    }
+
+    private static String draftClaimsFingerprint(DailyReportDraftClaimsHeader.Projection header,
+                                                 List<DraftClaimEvidence> claims) {
+        List<String> parts = new ArrayList<>(List.of("PRODUCTION-DAILY-REPORT-DRAFT-CLAIMS-V1",
+                "header:" + header.getId(), "rowVersion:" + header.getRowVersion(),
+                "status:" + header.getStatus(), "closed:" + header.isClosed(), "canceled:" + header.isCanceled(),
+                "claimCount:" + claims.size()));
+        for (int i = 0; i < claims.size(); i++) {
+            DraftClaimEvidence evidence = claims.get(i);
+            String path = "claim[" + String.format(java.util.Locale.ROOT, "%010d", i) + "].";
+            parts.add(path + "item:" + evidence.itemId());
+            parts.add(path + "line:" + evidence.lineNo());
+            parts.add(path + "segment:" + evidence.claim().executionSegmentId());
+            parts.add(path + "qty:" + evidence.claim().qty());
+            parts.add(path + "actualSurplus:" + evidence.claim().actualSurplus());
+        }
+        return CanonicalFingerprint.sha256(parts);
     }
 
 

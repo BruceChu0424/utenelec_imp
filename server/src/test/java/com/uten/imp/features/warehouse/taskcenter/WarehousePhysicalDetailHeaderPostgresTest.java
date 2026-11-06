@@ -91,6 +91,18 @@ class WarehousePhysicalDetailHeaderPostgresTest {
         assertThat(outbound.detail(key,warehouse,1,100,Map.of("requestedQuantity","!=0"),null,null).total()).isZero();
         assertThat(first.document().id()).isEqualTo(document);
     }
+    @Test void continuationPagesRetainRealInboundOutboundRowsAndExactTotalsWithExplicitlyMissingMetadata() {
+        document("OTHER_IN");document("OTHER_OUT");
+        var filter=new WarehouseTaskCenterContracts.Filter("OTHER",null,null,null,null,null,warehouse,1,1);
+        var fullIn=inbound.list(filter);var nextIn=inbound.list(filter,false);
+        assertThat(fullIn.metadataIncluded()).isTrue();assertThat(nextIn.metadataIncluded()).isFalse();assertThat(nextIn.facets()).isNull();
+        assertThat(nextIn.total()).isEqualTo(fullIn.total());assertThat(nextIn.items()).isEqualTo(fullIn.items());
+        var fullOut=outbound.list(filter);var nextOut=outbound.list(filter,false);
+        assertThat(fullOut.metadataIncluded()).isTrue();assertThat(nextOut.metadataIncluded()).isFalse();assertThat(nextOut.facets()).isNull();
+        assertThat(nextOut.total()).isEqualTo(fullOut.total());assertThat(nextOut.items()).isEqualTo(fullOut.items());
+        assertThat(nextOut.items()).allSatisfy(value->assertThat(value.line().goodsName()).doesNotContain("SECRET"));
+    }
+
     private UUID document(String type) {
         UUID id=UUID.randomUUID();execute("INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,status,issue_status,is_closed,is_deleted,maker_id,warehouse_id,created_at)"
                 +" VALUES(:id,:type,'PHYSICAL','2026-10-28',0,0,FALSE,FALSE,:actor,:warehouse,now())","id",id,"type",type,"actor",actor,"warehouse",warehouse);

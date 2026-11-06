@@ -1,0 +1,8 @@
+{
+  "startedAtUtc": "2026-11-05T12:32:18.6805283Z",
+  "endedAtUtc": "2026-11-05T12:32:29.6240829Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "containerName": "uten-event-contract-1e323a82dd",
+  "scope": "Owned disposable minimal event-catalogue SQL fixture; exact currentV1002 CHECK followed by exact candidateV1062; no company database"
+}

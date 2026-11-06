@@ -1,0 +1,11 @@
+{
+  "target": "tool/loading_web_probe.dart",
+  "output": "build/loading-probe-current",
+  "startedAtUtc": "2026-11-05T11:36:15.531535+00:00",
+  "endedAtUtc": "2026-11-05T11:38:05.261605+00:00",
+  "exitCode": 0,
+  "log": "build\\loading-validation\\web-current-probe-build.log",
+  "logSha256": "b24c99166e1d4ef730ffb2712d48672730526fc5af03f07beadb85a6e69f6034",
+  "localValidationOnly": true,
+  "formalDistribution": false
+}

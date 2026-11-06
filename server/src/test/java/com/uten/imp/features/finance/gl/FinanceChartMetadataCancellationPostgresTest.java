@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.FinanceOperationJournal;
 import com.uten.imp.security.*;
 import com.uten.imp.support.FinanceReportTestAccess;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,8 +25,8 @@ import static com.uten.imp.features.finance.gl.FinanceChartContracts.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** Actual owning V999_1 table shapes, V1049/V1053 and immutable function over
- * anonymous identity fixtures. Not a full ERP or global audit-pipeline claim. */
+/** Actual owning V999_1 table shapes, V1077/V1079 and immutable function over
+ * anonymous current-catalog identity projections. Not full ERP or global audit-pipeline acceptance. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinanceChartMetadataCancellationPostgresTest {
     private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
@@ -43,11 +44,11 @@ class FinanceChartMetadataCancellationPostgresTest {
     @BeforeAll static void start()throws Exception{
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);transactions=new TransactionTemplate(new DataSourceTransactionManager(source));
-        db.execute("CREATE TABLE users(id uuid PRIMARY KEY);CREATE TABLE payment_styles(id uuid PRIMARY KEY);CREATE TABLE currencies(id uuid PRIMARY KEY);CREATE TABLE finance_applications(id uuid PRIMARY KEY)");
+        MigratedProjectionSchema.createCurrentTables(db,"users","payment_styles","currencies","finance_applications");
         db.update("INSERT INTO users(id)VALUES(?),(?)",A,B);
-        String chart=resource("V999_1__finance_chart_code_imports.sql"),applications=resource("V999_11__financial_application_original_six_workflows.sql");
-        for(String table:List.of("finance_chart_imports","finance_chart_codes","finance_chart_manual_operations"))db.execute(tableDdl(chart,table));
-        db.execute(tableDdl(applications,"finance_application_operations"));
+        String applications=resource("V999_11__financial_application_original_six_workflows.sql");
+        MigratedProjectionSchema.createOriginalTables(db,"V999_1__finance_chart_code_imports.sql","finance_chart_imports","finance_chart_codes","finance_chart_manual_operations");
+        MigratedProjectionSchema.createOriginalTables(db,"V999_11__financial_application_original_six_workflows.sql","finance_application_operations");
         int first=applications.indexOf("CREATE FUNCTION fn_finance_application_events_immutable()"),last=applications.indexOf("$$;",first);
         db.execute(applications.substring(first,last+3));
         db.execute(statement(applications,"CREATE TRIGGER finance_application_operations_immutable"));
@@ -145,6 +146,5 @@ class FinanceChartMetadataCancellationPostgresTest {
     private static String oldBytes(){return receiptBytes(OLD);}
     private static void seedOld(){db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result,created_at)VALUES(?,?,repeat('0',64),?::jsonb,TIMESTAMPTZ '2026-01-01 00:00:00Z')",OLD,A,"{\"requestId\":\""+OLD+"\",\"code\":\"1009\",\"status\":\"CREATED\"}");}
     private static String resource(String name)throws Exception{try(var input=FinanceChartMetadataCancellationPostgresTest.class.getResourceAsStream("/db/migration/"+name)){return new String(Objects.requireNonNull(input,name).readAllBytes(),StandardCharsets.UTF_8);}}
-    private static String tableDdl(String sql,String table){int start=sql.indexOf("CREATE TABLE "+table+" ("),end=sql.indexOf("\n);",start);if(start<0||end<0)throw new AssertionError("Original table missing: "+table);return sql.substring(start,end+3);}
     private static String statement(String sql,String prefix){int start=sql.indexOf(prefix),end=sql.indexOf(';',start);if(start<0||end<0)throw new AssertionError("Original statement missing: "+prefix);return sql.substring(start,end+1);}
 }

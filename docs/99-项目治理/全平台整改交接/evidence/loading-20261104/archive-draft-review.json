@@ -1,0 +1,968 @@
+{
+  "schemaVersion": 1,
+  "updatedAtUtc": "2026-11-05T07:33:06.297468+00:00",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-20261104",
+  "baseCommit": "0c23563d419ed262f517deb51524b718e4e2077d",
+  "scope": "Read/loading implementation only. No deployment, business-data movement, archive heat exit, or target Win7 acceptance.",
+  "archive": {
+    "state": "implemented_pending_final_clean_postgres_ack",
+    "changes": [
+      "Fair eligibility scan orders not-yet-evaluated and oldest facts, including reopened/deleted registered orders for rejection refresh.",
+      "Existing payload hash semantics preserved; unchanged-package reuse checks payload self hash plus attachment_refs and line_counts from the same repeatable-read transaction, with copy read-back validation.",
+      "Owner finance port batches exact receipt/return facts; pending recognition, unsettled confirmed ledger, and any newly referenced finance object not copied by v1 package conservatively block ready."
+    ],
+    "hotExitPermitted": false,
+    "businessRowsMoved": false,
+    "newMigration": false,
+    "pending": [
+      "Final clean PostgreSQL run of archive Pilot, Page and actual ProcurementFirstPayable flow is owned by root/backend agent. Prior stale-class context errors remain in original logs and are not counted as final passing.",
+      "Physical archive removal requires full object-family manifest, original-byte retrieval, restore rehearsal and production workload/retention acceptance."
+    ],
+    "productionObservation": "Root production readonly facts are separate evidence; local source is not deployed.",
+    "productionFollowup": {
+      "path": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/production-lifecycle-followup.json",
+      "sha256": "cae84b86599680d57ae7469f222460dc6cca7615e49ea73ba7039b31fd6acc9b",
+      "scope": "Separate bounded production READ ONLY observation of the old deployed v2.5.46/schema999, not execution of this worktree.",
+      "exactCounts": {
+        "eligibilityTrue": 150,
+        "eligibilityFalse": 50,
+        "packageVerifiedRows": 140,
+        "outboxDelivered": 2022,
+        "tiered": 0,
+        "eligibleAtDefault90Days": 0,
+        "coldRows": 0
+      },
+      "interpretation": [
+        "Four lifecycle tasks last SUCCESS and seven successes each over14days prove recorded execution, not per-object success or a latency SLA.",
+        "Outbox90day eligibility currently0: cold payload0 is a genuine untriggered age condition, not proof of broken tiering.",
+        "Audit saved6hot/30archive months and PERMANENT_RETAIN; five attached hot partitions202610..202702, attached archive0. Preserve non-destructive retention; no new physical business split selected.",
+        "Eight allowlisted environment overrides empty does not prove all effective Spring configuration. Prior catalog200/120/1916 were estimates, so differences are not claimed as growth."
+      ]
+    }
+  },
+  "draft": {
+    "state": "local_implemented_tested",
+    "sharedOwner": "DraftWorkspaceRead snapshot + firstPage + full completion; legacy Future consumers still wait for true full completion.",
+    "families": "All existing purchase/subcontract/finance/sales/production-plan/production-daily/stock branches use bounded pages; no per-kind truncation.",
+    "safety": [
+      "Incomplete or failed family preserves read rows, local checkpoints and original input; no false complete/zero.",
+      "A local checkpoint whose formal row is on a later batch cannot be selected/deleted before family completion. After completion latest formal status/local CAS/unknown-submit guards still run.",
+      "Pre-confirmed multi-delete retains original per-row owner/revision gates without stopping valid remaining rows after its own write invalidates the shared source.",
+      "Existing warehouse draft routes restored exactly, without broad route permission widening."
+    ]
+  },
+  "completeLists": {
+    "state": "local_implemented_tested",
+    "entrypoints": [
+      "loadCompletePagedResult",
+      "loadCompletePagedSnapshot (legacy List contract)",
+      "loadCompleteCursorSnapshot"
+    ],
+    "contract": [
+      "Internally bounded 100-row batches; same query completes before a single accepted list; no scroll/neighbor fetch or five-page revalidation.",
+      "First response metadata/totals/counts/capabilities remain authoritative; rows-only continuations never fabricate zero metadata.",
+      "Known totals and page shape, stable revision/proof and unique row identities checked; unknown total only explicit true fixed-page or hasMore-horizon EOF contract.",
+      "True cursors detect repeated structural tokens; overlap dedup is opt-in only for immutable audit IDs and keeps first fact.",
+      "Reified virtual withRowsFrom rebuilds full typed payload, preserving Base/Child covariance and all row/metadata fields.",
+      "Unique owned empty lists and returned projections retain read proof without attaching global const empty lists.",
+      "Stable owner proof is separate from current request ticket only for explicit ViewMixin owners; default direct reader contract remains strict.",
+      "Malformed structure/owner invalidation does not trigger automatic repeated full-query retries; network/5xx recovery and explicit refresh remain."
+    ],
+    "retiredMechanisms": "build/loading-validation/retired-neighbor-tests.json",
+    "limits": [
+      "Checks use the revision/proof actually supplied by each endpoint. Multiple HTTP pages do not themselves create one database transaction; an endpoint with no data snapshot token cannot prove arbitrary concurrent equal-count reordering solely from stable total and unique IDs. No client-side token or false revision is invented.",
+      "Full-query loading transfers more total summaries for very large queries; UI work is sliced/virtualized but deployment latency and production-size acceptance remain to be measured."
+    ],
+    "retainedDifference": "PagePreparationCoordinator/PreparedPageRead only prepare and consume one bounded category first batch. Cache exposes only read(fetch)/clear and retains at most100 rows; no page parameter, page map, maxPages, LRU, navigation/buffer/accepted-window zone, peek/accept/bind or redundant query owner. The immutable query/lifecycle remains solely in PreparedPageRead. Its maximumQueries8 limits distinct category preparations and is not a scrolling list window. Access-rejection callback compatibility still retires confirmed403 data.",
+    "intermediateCacheTestReplacement": {
+      "path": "test/components/paged_read_cache_test.dart",
+      "previousSha256": "1bb8a90ab81946785a7f83f391b73aa594767969442f89ca2b946f2c7a60a3cb",
+      "reason": "Replaced unused multi-page LRU and test-only public query/page APIs with six observable single-batch retention, coalescing, typed authority, owner retirement, budget and failed/invalid retry contracts; immutable query ownership remains tested at the actual PreparedPageRead owner.",
+      "replacementTests": 6
+    },
+    "batchAdapters100": [
+      "RD explicit first/continuation100,201rows=>3requests",
+      "Quality explicit first/continuation100,201records=>3requests",
+      "StockLedger explicit frozen query size100 first/continuation,201identities=>3requests",
+      "Workshop read+prepare key/fetch all100",
+      "Subcontract draw same-source complete100 batches, no private pager/page state/clamp; stable owner separate from request ticket"
+    ]
+  },
+  "storage": {
+    "state": "local_implemented_tested",
+    "contract": "One true-cursor metadata inventory sequence to EOF, stable revision/total; virtual local rows, no load-more. Cleanup/delete/unknown-submit gates unchanged.",
+    "tests": 15
+  },
+  "wpf": {
+    "state": "local_sta_x86_x64_passed_not_target_os_uat",
+    "changedFiles": [
+      "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+      "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "clients/windows_legacy/Uten.Legacy.Tests/Program.cs"
+    ],
+    "scope": [
+      "Existing Goods readonly table",
+      "Existing Units migrated table; other Win7 business entries remain unported"
+    ],
+    "contract": [
+      "Shared CompletePagedSnapshot reused; exact totals/unique IDs/continuation shape/scope version validated, internal size<=100, single owner cancellation and existing input single-flight preserved.",
+      "No previous/next UI or neighbor algorithm. DataGrid binds only the complete rows and retains row/column virtualization.",
+      "Existing confirmed-write ReloadPageAfterOperationAsync retires old read sequence/cancellation and preserves failed selection; unknown submit/owner guards unchanged.",
+      "Original UnitBatchCommand maximum500 preserved: select-all501 rejects without command splitting, zero writes and all501 still selected."
+    ],
+    "validationByArchitecture": {
+      "x64": {
+        "warningAsErrorBuild": "passed",
+        "realStaControls": true,
+        "continuousAssertions": 22,
+        "existingSearchAssertions": {
+          "input": 5,
+          "leafRequestResult": 16,
+          "goodsContract": 66,
+          "unitsContract": 38
+        },
+        "scope": "Local Windows developer machine only, no Win7 hardware or release artifact."
+      },
+      "x86": {
+        "warningAsErrorBuild": "passed",
+        "realStaControls": true,
+        "continuousAssertions": 22,
+        "existingSearchAssertions": {
+          "input": 5,
+          "leafRequestResult": 16,
+          "goodsContract": 66,
+          "unitsContract": 38
+        },
+        "scope": "Local Windows developer machine only, no Win7 hardware or release artifact."
+      }
+    },
+    "nativeCases": [
+      "501 rows => six bounded requests; server ID501 reachable.",
+      "12 alternating full-table scrolls => zero added requests and identical ItemsSource.",
+      "Superseded query held on batch2 publishes no prefix; six new-query batches accepted; late old batch dispatches no remaining requests.",
+      "Scope/total drift, duplicate identity and empty nonterminal page reject atomically."
+    ],
+    "screenshotsViewed": [
+      "build/loading-validation/wpf/x64/goods-continuous-list.png",
+      "build/loading-validation/wpf/x64/units-continuous-list.png"
+    ],
+    "limits": [
+      "Real STA501-row cases and original input/IME/read owner tests were run on the local developer OS. Target Win7 hardware and million-row x86 heap behavior were not validated.",
+      "These full-query consumers do not silently truncate at an invented UI row count. Existing helper maximumBytes is enforced only when a byte-measure function is supplied; current summary consumers rely on bounded response/transport and query cancellation, not a claimed total-heap bound."
+    ]
+  },
+  "validation": {
+    "runs": [
+      {
+        "log": "build/loading-validation/core-empty-retry-final-tests.log",
+        "passed": 43,
+        "note": "5 files; before final owner/request separation, which is covered by the next focused run."
+      },
+      {
+        "log": "build/loading-validation/core-owner-request-separation-tests.log",
+        "passed": 23,
+        "note": "Complete core + ViewMixin at final narrow owner/request contract; overlaps earlier tests, do not sum."
+      },
+      {
+        "log": "build/loading-validation/draft-partial-final-tests.log",
+        "passed": 47,
+        "note": "3 draft suites including partial guard, CAS, server status, unchanged bulk-delete completion and unknown submission."
+      },
+      {
+        "log": "build/loading-validation/server-storage-complete-tests.log",
+        "passed": 15
+      },
+      {
+        "log": "build/loading-validation/core-owned-analyze-accepted.log",
+        "result": "No issues found",
+        "scope": "Initial60 owned production files +6 tests; later additions checked by root final global analysis."
+      },
+      {
+        "log": "build/loading-validation/owned-final-incremental-analyze.log",
+        "result": "No issues found",
+        "exitCode": 0,
+        "scope": "Final16 owned changed production/test targets, including retired APIs, Subcontract/Workshop source and201-row adapters. Prior60+6 source analysis remains a separate earlier snapshot."
+      }
+    ],
+    "remaining": [
+      "Final clean PostgreSQL acceptance of archive Pilot, Page and actual ProcurementFirstPayable flow is owned by root/backend agent and has not yet been acknowledged.",
+      "Root final all-source analysis/integration and formal runtime validation are separate. No production activation or target Win7 hardware UAT performed."
+    ],
+    "historyPreserved": [
+      "Initial duplicate Maven compile was terminated before tests at root request.",
+      "Initial old target had stale removed test entity class context errors; no passing count inferred.",
+      "Initial missing test path, old page expectations, malformed facet fixtures and initial WPF missing Shared using compile failure remain original logs.",
+      "Accidental pub resolution was restored by root from verified original lock; no dependency upgrade retained."
+    ],
+    "finalDartSelection": {
+      "state": "all_selected_files_verified_across_two_runs",
+      "distinctTests": 271,
+      "fileCount": 11,
+      "notOneCombinedGreenRun": true,
+      "files": [
+        {
+          "path": "test/features/warehouse/warehouse_task_records_view_test.dart",
+          "passed": 91,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/features/subcontract/subcontract_decomposition_page_test.dart",
+          "passed": 48,
+          "log": "build/loading-validation/subcontract-workshop-cancellation-verified.log"
+        },
+        {
+          "path": "test/features/production/pages/production_workshop_tasks_page_test.dart",
+          "passed": 72,
+          "log": "build/loading-validation/subcontract-workshop-cancellation-verified.log"
+        },
+        {
+          "path": "test/features/rd_task/rd_task_page_filter_scope_test.dart",
+          "passed": 2,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/features/quality/quality_inspection_records_page_test.dart",
+          "passed": 14,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/shared/stock_ledger/goods_stock_ledger_date_range_test.dart",
+          "passed": 2,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/components/paged_read_cache_test.dart",
+          "passed": 6,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/shared/paging/prepared_page_read_test.dart",
+          "passed": 20,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/shared/paging/scoped_paged_read_intent_test.dart",
+          "passed": 3,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        },
+        {
+          "path": "test/core/network/paged_search_cancellation_test.dart",
+          "passed": 9,
+          "log": "build/loading-validation/subcontract-workshop-cancellation-verified.log"
+        },
+        {
+          "path": "test/shared/paging/scoped_paged_read_view_mixin_test.dart",
+          "passed": 4,
+          "log": "build/loading-validation/typed-consumer-and-preparation-final.log"
+        }
+      ],
+      "history": {
+        "initialRunPassed": 257,
+        "initialRunFailed": 6,
+        "resolved": [
+          "Four Subcontract old pagination/title/50 expectations replaced with complete201 source-scoped rows and fresh removal of deleted tail; all original permission, supplier/color facet, exact quantity, source eligibility and command assertions retained.",
+          "Workshop late-query test now advances UiWorkBudget timer turns before assertions; production budget was not weakened. Workshop read and prepared first batch now consistently100.",
+          "Actual HTTP cancellation test migrated retired cache bind/peek/page APIs to the same owner clear/read contract; physical cancellation, coalescing and write isolation assertions retained."
+        ],
+        "finalAffectedRunPassed": 129,
+        "finalAffectedRunFailed": 0,
+        "note": "The129 affected cases overlap initial passing cases; do not add257+129. Current selected distinct271 cases passed in their respective final source runs."
+      }
+    }
+  },
+  "inputManifest": {
+    "dartProduction": [
+      {
+        "path": "lib/shared/models/paged_result.dart",
+        "sha256": "f021fbd831fda54ed2ac7eb2bcdfa8efbc6e8c480cd21113485f88b62e990d7c",
+        "bytes": 7474
+      },
+      {
+        "path": "lib/shared/paging/complete_paged_snapshot.dart",
+        "sha256": "7ca3ca13319594baeab55d669a9581683e807f8ff7d8762799718ec24291f4c4",
+        "bytes": 8021
+      },
+      {
+        "path": "lib/shared/paging/scoped_paged_read.dart",
+        "sha256": "a2ca5c491992081ba315713e4d60b9f2f9bb1dbe7da2360654cfb6ef519dacf1",
+        "bytes": 6446
+      },
+      {
+        "path": "lib/shared/paging/paged_read_window_binding.dart",
+        "sha256": "bc4d1142fd794a3edbfafcd84932413e6162e2895c416e6e6ca7a694bf7d9825",
+        "bytes": 3449
+      },
+      {
+        "path": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
+        "sha256": "2f954f2451946ce65aa3b5c45934af251e5de8e23f538bd95b2deee7aa4eecb7",
+        "bytes": 5260
+      },
+      {
+        "path": "lib/shared/paging/scoped_paged_read_provider.dart",
+        "sha256": "970b6a471af430b965bcec0d50d73b5ecb2af5c689f39443b215a184177c482c",
+        "bytes": 4745
+      },
+      {
+        "path": "lib/shared/paging/prepared_page_read.dart",
+        "sha256": "4ac54c160c3f581b39964f98df965ee836a713c5c3adafae595019a08d6800b0",
+        "bytes": 4108
+      },
+      {
+        "path": "lib/components/data_display/paged_list_controller.dart",
+        "sha256": "7adcc0666918af6496a088f393d99fb1fca8ba713de2ee9476427a45019f7386",
+        "bytes": 5645
+      },
+      {
+        "path": "lib/components/data_display/paged_read_cache.dart",
+        "sha256": "26834259fefa3c0648cd5767d06f46e2c2c15049a5faff427fd50d1fd898569d",
+        "bytes": 1879
+      },
+      {
+        "path": "lib/shared/drafts/draft_workspace_read.dart",
+        "sha256": "9ff3b9cb5b0b07b4a9232f80126cba88b51961affa63770b0a933dbf756f8a99",
+        "bytes": 4611
+      },
+      {
+        "path": "lib/shared/drafts/draft_workspace_sources.dart",
+        "sha256": "c2f89105e3c09b47c2cce5f36e476e880861c574705b1f971784337451f3ec8d",
+        "bytes": 24307
+      },
+      {
+        "path": "lib/shared/drafts/draft_workspace_table.dart",
+        "sha256": "13050ffd5b70d945d04950b8c2256fed8edc42e5f46f76d53fd41e1338d66690",
+        "bytes": 27895
+      },
+      {
+        "path": "lib/shared/drafts/form_drafts_page.dart",
+        "sha256": "9ebf6c18361a796320773ab5fccbe60325655e93314f12d4fde112f6dd1e5f14",
+        "bytes": 9115
+      },
+      {
+        "path": "lib/features/operations_workbench/models/operations_workbench.dart",
+        "sha256": "dfe578ae0d382b32440849efe3378a7a07f136a61cd61505b70b7132e1df2708",
+        "bytes": 34072
+      },
+      {
+        "path": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+        "sha256": "51fbee0ebb255265c8acc5ad370a8ad9ff51e3b4210301355560f4437fbc0d5b",
+        "bytes": 78001
+      },
+      {
+        "path": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
+        "sha256": "b2b495bd1bc2cd45a75f53b72735d3d1fae204dc1241242d99adcd6440e5ba8e",
+        "bytes": 8244
+      },
+      {
+        "path": "lib/features/report/shared/report_data.dart",
+        "sha256": "a6fc60b0e9e6afe902121dda8930fe876a9552f60cf798b3d311cc63c47b9483",
+        "bytes": 6311
+      },
+      {
+        "path": "lib/features/report/shared/report_paged_read.dart",
+        "sha256": "71d50ad41f8a6040f279c57c17b3a6b5a122319749ce1de5a29a779f6c8b5134",
+        "bytes": 8564
+      },
+      {
+        "path": "lib/features/admin/pages/admin_audit_log_page.dart",
+        "sha256": "33d3a49b176e478247d333e8d58e4af62c54c97b1cdb535f86ad17226cc83760",
+        "bytes": 63650
+      },
+      {
+        "path": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+        "sha256": "65dd74e08da7f6acff8ce5d71daadf7a299e86715a99848d0f92099cd8c3f009",
+        "bytes": 51771
+      },
+      {
+        "path": "lib/features/admin/models/audit_log_entry.dart",
+        "sha256": "b4ccaf524e5155bcff9fa72990ac16488690570dcb652de337b676a42a697209",
+        "bytes": 18335
+      },
+      {
+        "path": "lib/features/admin/models/audit_session.dart",
+        "sha256": "96d0df5e7dbe144ee07c947dc686d108f70533745ed155c2cfb5a18a6bd5f57e",
+        "bytes": 7014
+      },
+      {
+        "path": "lib/features/admin/models/ai_usage_audit_models.dart",
+        "sha256": "f9eb2252a57ff1c6fd51f672cc5eb1b82bc3af69c2fc1ea75952a855acb77d93",
+        "bytes": 6498
+      },
+      {
+        "path": "lib/features/warehouse/models/warehouse_task_center_record.dart",
+        "sha256": "9c468354bd71029fba8e6de1e398b087359b63de739752421b969478f30fdb91",
+        "bytes": 9206
+      },
+      {
+        "path": "lib/features/warehouse/repositories/warehouse_task_center_repository.dart",
+        "sha256": "0f262a4e9b08b1d0449c15a908169074e3c3aa054d54f5ea7b22d2b97929181e",
+        "bytes": 2739
+      },
+      {
+        "path": "lib/features/warehouse/providers/warehouse_task_page_preparation.dart",
+        "sha256": "f04d43a8263384ac5fc393a1a36c8750887948c30e5d0d67f4c5c885d1942495",
+        "bytes": 8098
+      },
+      {
+        "path": "lib/features/warehouse/models/warehouse_insight.dart",
+        "sha256": "4b1364ee306e08169fadee5dbd87506b38cce6e543504163a9f808586f17bd32",
+        "bytes": 26741
+      },
+      {
+        "path": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+        "sha256": "a388915874ca1daea1c181900e8efc9258ef5df5c48df5e94fdd7027338c1f7d",
+        "bytes": 47563
+      },
+      {
+        "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+        "sha256": "e9b06cc4bb2187482c840fb6d16e1cc958a55f9fee66631b343711bea8478276",
+        "bytes": 51247
+      },
+      {
+        "path": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+        "sha256": "0ebc068d8bc737a05df305de9e071fb27f7862ee1a7c2f0bb0f49184c55858a3",
+        "bytes": 33704
+      },
+      {
+        "path": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+        "sha256": "03b1952fdafe1b580b725208ffa133910ed916eeaf30b4730187ba0d301f7a72",
+        "bytes": 40873
+      },
+      {
+        "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+        "sha256": "92ec02dc71a4edcc4ce9c448169bb6355a4deea58cb102dffa8eb1731279eebb",
+        "bytes": 24603
+      },
+      {
+        "path": "lib/features/subcontract/models/subcontract_draw.dart",
+        "sha256": "14432e7b24fa4a09d12cce4c6c80f6e664b5a7fbe3129d9fbbe8c80510ee4d46",
+        "bytes": 24807
+      },
+      {
+        "path": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+        "sha256": "21b8e165519f39b99ff8d2743fdd33febe652e775e67388ddcc539e664b1cc6a",
+        "bytes": 111140
+      },
+      {
+        "path": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+        "sha256": "4b0b650f3b2974b648b0fa2a39a21aa7930b28c3ab8961370e18775317d16f74",
+        "bytes": 56186
+      },
+      {
+        "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+        "sha256": "b553853b7d89d4b5e027b8573f3dad3ee7c148b97dc16c19306d1fa69c5ed12a",
+        "bytes": 23174
+      },
+      {
+        "path": "lib/features/production/models/production_material_analysis.dart",
+        "sha256": "bd8ee6d0a5242809957ae7786be63dec50f75dee9042661321a1deac7f6478b1",
+        "bytes": 106298
+      },
+      {
+        "path": "lib/features/production/pages/production_material_analysis_page.dart",
+        "sha256": "f8f7b4fd0c701306d07218528b9f2907830ebddfbf4550ada2ec6820de9aec77",
+        "bytes": 138862
+      },
+      {
+        "path": "lib/features/production/widgets/production_fqc_replenishment_banner.dart",
+        "sha256": "cc96c9b637ce718a7468b82a14270401a4e1316dd0beef70fe7fd1ed7d95dddb",
+        "bytes": 32693
+      },
+      {
+        "path": "lib/features/production/pages/production_daily_report_list_page.dart",
+        "sha256": "cf1e5a2d49f46446dc493a0f39cdd1b3e0a39f16d0c2a867a3faa2ac7985fa81",
+        "bytes": 19321
+      },
+      {
+        "path": "lib/features/production/pages/production_plan_list_page.dart",
+        "sha256": "1b21e6f4d6ee0ad67b4951f5de2a64eb922bbd9c010cd6efef280534218a3b6c",
+        "bytes": 27247
+      },
+      {
+        "path": "lib/features/production/pages/production_report_page.dart",
+        "sha256": "e16676763031a68e5d795530128ca967497176c99bdc0e8a688ac7280d71eaa9",
+        "bytes": 23996
+      },
+      {
+        "path": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+        "sha256": "86b03bb57a411da48545fe068ea27c74f1ac9f803ab8badc4a3012f4226d338d",
+        "bytes": 45076
+      },
+      {
+        "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+        "sha256": "0a7bc97a5b6a80bbfc761fc8dfd3a9b38ac0cc54a400a06c52f5351191138ab2",
+        "bytes": 22765
+      },
+      {
+        "path": "lib/features/sales/pages/sales_doc_list_page.dart",
+        "sha256": "dd96c146ac53f174f89261379c6211b7209857dec5542bc8c4932a3a0c67c73a",
+        "bytes": 70187
+      },
+      {
+        "path": "lib/features/sales/pages/sales_report_page.dart",
+        "sha256": "1b9f8daefb676df5b4a508eaea58524a67414a492ccd3830864420bce14999a2",
+        "bytes": 38617
+      },
+      {
+        "path": "lib/features/sales/repositories/sales_repository.dart",
+        "sha256": "d39dad622ea48613d4366f79e6b2384edd9ae3a2190827a25a7ba69db12d786d",
+        "bytes": 29952
+      },
+      {
+        "path": "lib/features/basic_data/models/account_node.dart",
+        "sha256": "f272a6e846ef56f60045c55d9484fa35a91b9cdc19941bf0c61a7e20f4da20b4",
+        "bytes": 21617
+      },
+      {
+        "path": "lib/features/basic_data/pages/account_detail_page.dart",
+        "sha256": "28e18f4f46f76929f9cf08262924167f9c4fce8ae25a812a4afc93a666ada57d",
+        "bytes": 46782
+      },
+      {
+        "path": "lib/features/rd_task/models/rd_task.dart",
+        "sha256": "967719e04fc576a95ccdae083f2bac7ef969bbe22c3a9a0d286e6eb9a9c839b2",
+        "bytes": 5382
+      },
+      {
+        "path": "lib/features/rd_task/pages/rd_task_page.dart",
+        "sha256": "c789547a2f764d3ed839dc71e196510c05a7a0a2be3259a20daaa46e53179b8a",
+        "bytes": 45185
+      },
+      {
+        "path": "lib/features/profile/models/profile_change_request.dart",
+        "sha256": "699b9e39face1cf3c8b4d0d5400631aeb0e8857f7bd4828944169633ff9d4276",
+        "bytes": 9834
+      },
+      {
+        "path": "lib/features/profile/providers/profile_change_providers.dart",
+        "sha256": "62469be42b3e287501a05dc34b3cd5600212bc8d59d036295a9c9f5385f62db6",
+        "bytes": 11054
+      },
+      {
+        "path": "lib/features/quality/models/quality_inspection_record.dart",
+        "sha256": "e36d9f359b28df1b39fa68b11b956e76d315b6743519492b8f24a10ed0929bab",
+        "bytes": 9435
+      },
+      {
+        "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+        "sha256": "e6b2c27c00ca80a6504cd140ebedaeafd1ca272ed499557fdb3ddcef46ff6670",
+        "bytes": 47325
+      },
+      {
+        "path": "lib/shared/stock_ledger/stock_ledger_models.dart",
+        "sha256": "cae1ff7f3c0cf41d601f01394cf29d7af57a61603d9b1a2d4fff1570d642c274",
+        "bytes": 18854
+      },
+      {
+        "path": "lib/shared/stock_ledger/material_trace_models.dart",
+        "sha256": "29d1ec5201b6e0e68a3f59eb6e976738c995174af85a870789677ccbb40205e6",
+        "bytes": 5926
+      },
+      {
+        "path": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+        "sha256": "74ac6a68b07e1fe51b98a6e502e53f4788693a2f7186d438cf8bde5cc8c95358",
+        "bytes": 25777
+      },
+      {
+        "path": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart",
+        "sha256": "7a7eac30a20db1dd5b7c343e076f2ff32ab607c6e138ce163002441f6f422d9b",
+        "bytes": 37545
+      },
+      {
+        "path": "lib/shared/pricing/price_analysis_models.dart",
+        "sha256": "7bd3628173ca8158b725e51cb4c580027315984e8adb2b2b9b11eabf59a932fc",
+        "bytes": 4710
+      },
+      {
+        "path": "lib/shared/drafts/form_draft_category_table.dart",
+        "sha256": "905df8d7de73fdfcb18b067b8b0284b466dbf6fc5f1f0b2a838c7ee5f95c2bcf",
+        "bytes": 41526
+      },
+      {
+        "path": "lib/features/admin/pages/server_storage_page.dart",
+        "sha256": "7769ff0f478eb3f5522d593577528963ae3128451c1ec640b5fad94b500b07fb",
+        "bytes": 29613
+      },
+      {
+        "path": "lib/features/admin/models/server_storage.dart",
+        "sha256": "f6674e52219c2d27c6c02dab636a299a720deb47aec5e69b666cebcd9fbb2539",
+        "bytes": 7641
+      },
+      {
+        "path": "lib/features/admin/repositories/server_storage_repository.dart",
+        "sha256": "6c467611a8cd3e2ff1ad2c4ed3dbd8127e7cd139a4d9fa144707ba6eb9bb6d8a",
+        "bytes": 2671
+      },
+      {
+        "path": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+        "sha256": "0c2cc406540fd84e1825495bda676d87228cfa6d410ef1458edca7f0aae31b9b",
+        "bytes": 33686
+      },
+      {
+        "path": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+        "sha256": "08c79d344b3d5424e9e4d769cb13114dd03839e7c8c1387dc343ecc1c10c6730",
+        "bytes": 38787
+      },
+      {
+        "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+        "sha256": "c7b0f0543f9e485cca5c2d1032cdcfd79ba4a4ad6490fd03f5e2b9780c23d049",
+        "bytes": 164802
+      },
+      {
+        "path": "lib/features/production/pages/material_analysis_candidates.dart",
+        "sha256": "4259539147e045e587cd882f7f922ec698ea9ace3995273db80b4c02202296b3",
+        "bytes": 60599
+      },
+      {
+        "path": "lib/shared/paging/paged_read_intent.dart",
+        "sha256": "edbb4ea16e0a0aec639ad1c6d7c16af4ea2af21f29495cd1a17993eb24080a75",
+        "bytes": 621
+      },
+      {
+        "path": "lib/features/production/repositories/production_execution_workbench_repository.dart",
+        "sha256": "0603ba03ae2c0899cf028970c67d6b75cf2797a1ae04d7f33a8da9a0bc5db0ed",
+        "bytes": 12510
+      }
+    ],
+    "archiveProduction": [
+      {
+        "path": "server/src/main/java/com/uten/imp/features/archive/BusinessArchiveEligibilityService.java",
+        "sha256": "1574984ef9b31e6b5ecd35044c523c43ce883738bf300d071488563a93517a4f",
+        "bytes": 32476
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/application/port/ProcurementArchiveEligibilityPort.java",
+        "sha256": "f44cbc8998c7cccf8bed24dac171c363b14df0a741f5cec443e7016033b6b643",
+        "bytes": 499
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementArchiveEligibilityAdapter.java",
+        "sha256": "b3d1045d0303f04ac7ab59a67943280e6abf228ffe4928d932f6e8ba6a63d70e",
+        "bytes": 3345
+      }
+    ],
+    "wpfProductionAndTests": [
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+        "sha256": "7ee3031248ca5f1b3ed761da93b450a0eea2c610686a32583d3f63df909a988d",
+        "bytes": 4662
+      },
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+        "sha256": "3f51227e80ca22fb9c057ed348505a0d271f2945c46b23714882e3436be5fc04",
+        "bytes": 28692
+      },
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+        "sha256": "226509822b059ba63952fc4a8fa27418f81cbaffda5b57232ea29272e6ff092c",
+        "bytes": 44657
+      },
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+        "sha256": "3dd887d5afa5efcb65a1d59223a869312df62d7d9026a6be10350370cc355cb2",
+        "bytes": 94031
+      },
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "sha256": "cdee64ea8f0220bd8c9f3e7f96a9e86fac8c01fd0bfe5fc826cb21d0d131f6a6",
+        "bytes": 10042
+      }
+    ],
+    "dartTests": [
+      {
+        "path": "test/shared/paging/complete_paged_read_test.dart",
+        "sha256": "0e1caef63c338fd63b5590a3e70ed37198ecc03af41c95b1533fe85bc22b1804",
+        "bytes": 16234
+      },
+      {
+        "path": "test/shared/paging/complete_cursor_snapshot_test.dart",
+        "sha256": "0ab3ab27898b2aa7da4bc4dc0b58b547e041922c435f7e31c88e98e2884bfbb9",
+        "bytes": 4252
+      },
+      {
+        "path": "test/shared/paging/paged_read_ahead_binding_test.dart",
+        "sha256": "f6ca5fb72f17d582185491d443926590777f46e727b1360233b02c4c9b4a731a",
+        "bytes": 4923
+      },
+      {
+        "path": "test/shared/paging/scoped_paged_read_provider_test.dart",
+        "sha256": "48645a90774fa2b6987502288e8566aa4ca7460e8443630b5c3e2e12bb4e7859",
+        "bytes": 7765
+      },
+      {
+        "path": "test/shared/paging/scoped_paged_read_view_mixin_test.dart",
+        "sha256": "06881b99acc8df6b1e6249a6babd0ac20f4dcfb210aca00d4502e1c241abedb5",
+        "bytes": 6698
+      },
+      {
+        "path": "test/components/paged_list_controller_test.dart",
+        "sha256": "3a49cc0e415753d38d2caa9da722511ca3d1c6357d56e179cfdb4c495195ef45",
+        "bytes": 11323
+      },
+      {
+        "path": "test/components/paged_read_cache_test.dart",
+        "sha256": "4ddde927bd28029b7bf0486ffe434dfdd63bc5fb9d83804facc94709a7ba4f8e",
+        "bytes": 3734
+      },
+      {
+        "path": "test/features/report/report_paged_read_test.dart",
+        "sha256": "cbc02d39095de2fcb66cb9526412e0b67a1a1bd57a32f4676f0c35cdaae89a73",
+        "bytes": 12353
+      },
+      {
+        "path": "test/shared/drafts/draft_workspace_sources_test.dart",
+        "sha256": "73799951379d9a17519917547678848e7976a92066174023a7975726b07ce56f",
+        "bytes": 30266
+      },
+      {
+        "path": "test/shared/drafts/draft_workspace_read_test.dart",
+        "sha256": "a15a3e3b1d3eb0c3e5a16c856311db374a22929f4ac5d7f9f6e1cf63f93c44d2",
+        "bytes": 6451
+      },
+      {
+        "path": "test/shared/drafts/form_draft_category_table_test.dart",
+        "sha256": "eb0c61460fd901a55be53c5c17c9ca4e7d54d47d670f1592c1f65fb3a33493b3",
+        "bytes": 43335
+      },
+      {
+        "path": "test/shared/drafts/form_draft_unknown_deletion_ui_test.dart",
+        "sha256": "8089c6475fb2f34a9913f88781bf68d691f2ab8f984d8e6df26356ba1cddd455",
+        "bytes": 13586
+      },
+      {
+        "path": "test/features/admin/server_storage_page_test.dart",
+        "sha256": "8c9e1a0cb9324785cc45ce3568f126cd647a0c8f9e91eb390389d3317a369518",
+        "bytes": 22662
+      },
+      {
+        "path": "test/features/subcontract/subcontract_decomposition_page_test.dart",
+        "sha256": "e39360e9e0701484e20d313cb8d65046808730671ca2284cfe1a181f75a8ae8c",
+        "bytes": 136013
+      },
+      {
+        "path": "test/features/warehouse/warehouse_task_records_view_test.dart",
+        "sha256": "8dda5475b7170ec3a9d0b187a8ed1909a4b6f7fe109193f3e1f95766f822e041",
+        "bytes": 85735
+      },
+      {
+        "path": "test/features/production/pages/production_workshop_tasks_page_test.dart",
+        "sha256": "3b6cb94aaa381722e734cafa2c5d41781626c08aef89003174c107dbb3f786e1",
+        "bytes": 137188
+      },
+      {
+        "path": "test/features/rd_task/rd_task_page_filter_scope_test.dart",
+        "sha256": "a4f89e0b6b244f3a2367c2f0e533deedc219b7f039f40e1b4c65c2fd2f7dbe4f",
+        "bytes": 8293
+      },
+      {
+        "path": "test/features/quality/quality_inspection_records_page_test.dart",
+        "sha256": "c208b146b6988db7d0e46e03fc6a85bae4f60808ff551ab6ac95ee3a01090fd1",
+        "bytes": 24280
+      },
+      {
+        "path": "test/shared/stock_ledger/goods_stock_ledger_date_range_test.dart",
+        "sha256": "f89d85a6b8ea2c8338e240ad34404916cd34252c8ac406892ce136eefce445e8",
+        "bytes": 7804
+      },
+      {
+        "path": "test/shared/paging/scoped_paged_read_intent_test.dart",
+        "sha256": "24eaec8ca98908f11ea951b8cd48bdfddd94e386e349591063191b05c3a7075e",
+        "bytes": 2332
+      },
+      {
+        "path": "test/core/network/paged_search_cancellation_test.dart",
+        "sha256": "1d96dcc7a85886523273f58f8617e2fcbb7836dca1ea276b68815b56af03f20e",
+        "bytes": 12965
+      },
+      {
+        "path": "test/shared/paging/typed_snapshot_owner_contract_test.dart",
+        "sha256": "c8eb6e54a49eb0e40ce34de8b3c748595736eba8e58b4e04f0e8666256602fc6",
+        "bytes": 5999
+      }
+    ],
+    "archiveTests": [
+      {
+        "path": "server/src/test/java/com/uten/imp/features/archive/BusinessArchivePilotPostgresTest.java",
+        "sha256": "3834acd035bd940808133a95fc783cf4220d1f7fb29e003c411ba43a3a65a0ab",
+        "bytes": 27989,
+        "state": "final clean PG pending; shared businesschain fixture may receive root/backend fixes"
+      },
+      {
+        "path": "server/src/test/java/com/uten/imp/features/archive/BusinessArchiveEligibilityPageTest.java",
+        "sha256": "0efaf106699b8f3e3d97b98701cf7de73f114561e32311903e1e769a118d069d",
+        "bytes": 1987,
+        "state": "final clean PG pending; shared businesschain fixture may receive root/backend fixes"
+      },
+      {
+        "path": "server/src/test/java/com/uten/imp/businesschain/ProcurementFirstPayablePostgresTest.java",
+        "sha256": "f264cd25894a6455d8f88f85b9aa0ec9fce7f8f8c603ea19ab9acba08ac0916e",
+        "bytes": 52982,
+        "state": "final clean PG pending; shared businesschain fixture may receive root/backend fixes"
+      }
+    ]
+  },
+  "evidenceFiles": [
+    {
+      "path": "build/loading-validation/core-empty-retry-final-tests.log",
+      "sha256": "129d36031346f326f52343c6bb49473b3b5f77f5fccca42028618a37d16c57fd",
+      "bytes": 9389
+    },
+    {
+      "path": "build/loading-validation/core-owner-request-separation-tests.log",
+      "sha256": "76af0228dc64f824b923e8cc62a881ce03b008b315a502dd31603ec491da2a72",
+      "bytes": 5298
+    },
+    {
+      "path": "build/loading-validation/draft-partial-final-tests.log",
+      "sha256": "fc0d0b16a90b5ea66e41764a7b4613b695095cb52e7f2984959c368d734d4db3",
+      "bytes": 9727
+    },
+    {
+      "path": "build/loading-validation/server-storage-complete-tests.log",
+      "sha256": "47dd12f660ed06106ca898691d04093bc185d953582f4961bd7548f372989079",
+      "bytes": 1539
+    },
+    {
+      "path": "build/loading-validation/core-owned-analyze-accepted.log",
+      "sha256": "ef4440c6038a26c4b9a537c5242ff484d4db7ac8a52bd5e52d01a3fa1bf88454",
+      "bytes": 1997
+    },
+    {
+      "path": "build/loading-validation/wpf/x64-final-build.log",
+      "sha256": "98df1ce224d2e274ea40b914e462253e3fcbb788bd51f1125765e6595259e5c9",
+      "bytes": 552
+    },
+    {
+      "path": "build/loading-validation/wpf/x64-final-continuous-tests.log",
+      "sha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602",
+      "bytes": 126
+    },
+    {
+      "path": "build/loading-validation/wpf/x64-final-search-tests.log",
+      "sha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6",
+      "bytes": 127
+    },
+    {
+      "path": "build/loading-validation/wpf/x86-final-build.log",
+      "sha256": "0651da86acad59577b4aae1768e5041cc900ad5231df4163925b6e1af37c9dc3",
+      "bytes": 552
+    },
+    {
+      "path": "build/loading-validation/wpf/x86-final-continuous-tests.log",
+      "sha256": "e0025513b1348bf6c51e353ac1810b534e18a081d2921f41ccc9fdf402b74977",
+      "bytes": 126
+    },
+    {
+      "path": "build/loading-validation/wpf/x86-final-search-tests.log",
+      "sha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b",
+      "bytes": 127
+    },
+    {
+      "path": "build/loading-validation/owned-final-incremental-analyze.log",
+      "sha256": "2d057827b40be780271724bd4dab47df2fa7b889beb4c1d090ce09f6f4894231",
+      "bytes": 581
+    },
+    {
+      "path": "build/loading-validation/typed-consumer-and-preparation-final.log",
+      "sha256": "1410ebdac2ae1882f28d13251c4dd3e2a8b7c687797256012beb1c190f27b1db",
+      "bytes": 72150
+    },
+    {
+      "path": "build/loading-validation/subcontract-workshop-cancellation-verified.log",
+      "sha256": "5aadaa83c21a5bd72acd5c7dff16c10532a8c1e7254cf8efca0ff81c73373ba9",
+      "bytes": 28468
+    },
+    {
+      "path": "build/loading-validation/retired-neighbor-tests.json",
+      "sha256": "b0c52f04c9d669a0f4a14e1321b0b605bfb928c7ea6a47f84f821e0ab0cd75b8",
+      "bytes": 13881
+    },
+    {
+      "path": "build/loading-validation/typed-snapshot-owner-contract-tests.log",
+      "sha256": "d700d34e14240e4d6f5777347ea60a96b95eb3d556d7d28d343b51ed563c6c68",
+      "bytes": 673
+    },
+    {
+      "path": "build/loading-validation/typed-snapshot-owner-contract-analyze.log",
+      "sha256": "0046c7ebb5ec41d3a06d1882b93f88683734e59a865e63583b756cc130a57a4e",
+      "bytes": 72
+    }
+  ],
+  "removedArtifacts": [
+    {
+      "path": "lib/components/data_display/paged_read_ahead_policy.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "d8229442ac946423c8f16331527f296f11ee1da16aa2b781dd32987196c2588d",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "lib/shared/paging/paged_read_window_refresh.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "465ad31bde3859df0e54002d6aab6e3d3b84caea3925486a03eede527ba2a8b8",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "lib/shared/paging/cursor_paged_read_adapter.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "e600fe18a10a055b381d4764e0a5903ffc5efcc273e18b79525df05c282e1532",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "test/shared/paging/scoped_paged_read_window_test.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "e9672eb25c8d6e23c65c42fff31dc374d99232c0cfc9263f7000ab77886c2b79",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "test/components/paged_list_window_revalidation_test.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "3439d798f5ff63cde2ae121f46745b9e01ba4cb4f01257fe499b170d27a5b63b",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "test/shared/paging/cursor_paged_read_adapter_test.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "4f1463ed0d4704a686a874a24966108f8b2261ae874318d4b78a148ed087ccee",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    },
+    {
+      "path": "test/shared/paging/scoped_paged_prepare_next_test.dart",
+      "currentState": "removed",
+      "originalGitBlobBytesSha256": "1c35dc96b7f0bab60679131bda95b4ec81a3384cc99c565b1989a09869a5b40a",
+      "reason": "Retired automatic neighboring-page/window/navigation mechanism; ownership/real cursor/full-query contracts tested at their single common entries."
+    }
+  ],
+  "typedOwnerReview": {
+    "state": "actual_production_chains_reviewed_and_three_real_model_regressions_passed",
+    "productionChangesForThisFollowup": false,
+    "findings": [
+      "All reviewed withPage callbacks retain combined.items directly through this.items/this.rows constructors; Finance payables/prepayment/review/approval/settlement/loss, Account/RD/Quality/Ledger and report models do not re-freeze this list.",
+      "PagedResult-typed Audit and Warehouse without a callback re-clone with the actual subclass and then set combined=result before building the outer wrapper, so both point to the same final clone.",
+      "ReportPageSnapshot override freezes once and ReportData.withPage aliases the resulting rows. Nested trace/health/draw snapshots retain the combined PagedResult itself.",
+      "No current production double-freeze owner detachment found. Previous generic test checked live typed ownership, but actual finance plus empty audit/retirement protection was missing."
+    ],
+    "newTests": {
+      "path": "test/shared/paging/typed_snapshot_owner_contract_test.dart",
+      "passed": 3,
+      "failed": 0,
+      "cases": [
+        "Real FinancePayablesResult nonempty two-batch callback preserves exact first summary, pendingLossCases7, rowVersion11 and original legacy no-payment fact.",
+        "Real FinancePayablesResult empty callback shares the same unique owned empty list.",
+        "Real AuditLogPage empty PagedResult snapshot without rebuild callback preserves snapshotId700 and readScopeVersion."
+      ],
+      "ownershipAssertions": [
+        "typed items and outer items are the identical List",
+        "typed and outer owner proofs belong to the same session",
+        "invalidating the reader retires both proofs",
+        "another independent empty result remains current",
+        "shared const empty source lists never receive a response owner"
+      ]
+    },
+    "testLog": "build/loading-validation/typed-snapshot-owner-contract-tests.log",
+    "analyzeLog": "build/loading-validation/typed-snapshot-owner-contract-analyze.log",
+    "analysis": "No issues found",
+    "commandExitCode": 0,
+    "lease": "Commands naturally completed; Flutter lease returned to root. No remaining client command running."
+  }
+}

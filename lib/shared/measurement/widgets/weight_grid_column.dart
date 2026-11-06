@@ -430,6 +430,7 @@ class WeightQtyAutofill<T> {
     required this.qtyControllerOf,
     this.unitRateOf,
     this.unitRateTextOf,
+    this.maxScaleOf,
     this.enabledOf,
   });
 
@@ -441,6 +442,9 @@ class WeightQtyAutofill<T> {
 
   /// Original decimal rate; required by callers that have recorded rate text.
   final String? Function(T row)? unitRateTextOf;
+
+  /// Actual caller write-field scale; general document quantities retain 24.
+  final int Function(T row)? maxScaleOf;
 
   /// 行级开关 (如只读行/已过账行关闭)。
   final bool Function(T row)? enabledOf;
@@ -647,6 +651,64 @@ class _WeightCellState<T extends EditableGridRow>
   int _quantityEpoch = 0;
   late bool Function() _ownerCurrent;
   UtenAutofillTextController? _watchedQty;
+  ({
+    Object row,
+    WeightEntryController controller,
+    Listenable? params,
+    Listenable? quantityListenable,
+    UtenAutofillTextController? quantityController,
+    bool enabled,
+    bool autofillEnabled,
+    WeightUnit unit,
+    WeightCaptureMode mode,
+    int scale,
+    String? rate,
+    String parameters,
+  })?
+  _quantityConfiguration;
+
+  void _syncQuantityConfiguration() {
+    final autofill = widget.qtyAutofill;
+    final autofillEnabled =
+        autofill != null && (autofill.enabledOf?.call(widget.row) ?? true);
+    final p = widget.paramsOf?.call(widget.row);
+    final next = (
+      row: widget.row,
+      controller: widget.controller,
+      params: widget.paramsListenable,
+      quantityListenable: widget.qtyListenable,
+      quantityController: autofillEnabled
+          ? autofill.qtyControllerOf(widget.row)
+          : null,
+      enabled: widget.enabled,
+      autofillEnabled: autofillEnabled,
+      unit: widget.entryUnit,
+      mode: widget.mode,
+      scale: _quantityMaxScale(),
+      rate: _quantityRate(),
+      parameters:
+          '${p?.basis}|${p?.goodsId}|${p?.supplierId}|'
+          '${p?.logMean}|${p?.lotPrior}|${p?.effectiveDf}|${p?.effectiveGamma}|'
+          '${p?.effectiveTier}|${p?.scaleResKg}',
+    );
+    final before = _quantityConfiguration;
+    if (before != null &&
+        (!identical(before.row, next.row) ||
+            !identical(before.controller, next.controller) ||
+            !identical(before.params, next.params) ||
+            !identical(before.quantityListenable, next.quantityListenable) ||
+            !identical(before.quantityController, next.quantityController) ||
+            before.enabled != next.enabled ||
+            before.autofillEnabled != next.autofillEnabled ||
+            before.unit != next.unit ||
+            before.mode != next.mode ||
+            before.scale != next.scale ||
+            before.rate != next.rate ||
+            before.parameters != next.parameters)) {
+      _quantityEpoch++;
+    }
+    _quantityConfiguration = next;
+  }
 
   void _quantityChanged() {
     _quantityEpoch++;
@@ -671,6 +733,7 @@ class _WeightCellState<T extends EditableGridRow>
     widget.controller.text.addListener(_quantityChanged);
     widget.paramsListenable?.addListener(_quantityChanged);
     _watchQty();
+    _syncQuantityConfiguration();
     _focus.addListener(_onFocus);
     _scheduleSync();
   }
@@ -678,7 +741,7 @@ class _WeightCellState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant _WeightCell<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _quantityEpoch++;
+    _syncQuantityConfiguration();
     if (!identical(oldWidget.paramsListenable, widget.paramsListenable)) {
       oldWidget.paramsListenable?.removeListener(_quantityChanged);
       widget.paramsListenable?.addListener(_quantityChanged);
@@ -720,10 +783,16 @@ class _WeightCellState<T extends EditableGridRow>
 
   String _quantitySource() {
     final p = widget.paramsOf?.call(widget.row);
-    return '${widget.controller.kgText}|${p?.goodsId}|${p?.supplierId}|'
+    final source =
+        '${widget.controller.kgText}|${p?.goodsId}|${p?.supplierId}|'
         '${p?.logMean}|${p?.lotPrior}|${p?.effectiveDf}|${p?.effectiveGamma}|'
         '${p?.effectiveTier}|${p?.scaleResKg}|${_quantityRate()}';
+    final scale = _quantityMaxScale();
+    return scale == 24 ? source : '$source|quantityMaxScale:$scale';
   }
+
+  int _quantityMaxScale() =>
+      widget.qtyAutofill?.maxScaleOf?.call(widget.row) ?? 24;
 
   String? _quantityRate() {
     final autofill = widget.qtyAutofill;
@@ -739,6 +808,7 @@ class _WeightCellState<T extends EditableGridRow>
     final weight = widget.controller, row = widget.row;
     final reason = weight.quantityPendingReason;
     if (reason == null) return;
+    _syncQuantityConfiguration();
     final epoch = _quantityEpoch, source = _quantitySource();
     bool current() =>
         mounted &&
@@ -760,7 +830,7 @@ class _WeightCellState<T extends EditableGridRow>
           key: 'weight.count-quantity',
           groupKey: 'weight.count-quantity',
           label: '本次称重数量换算；仍为称重估算来源',
-          maxScale: 24,
+          maxScale: _quantityMaxScale(),
           reason: reason,
         ),
         isCurrent: current,
@@ -902,6 +972,7 @@ class _WeightCellState<T extends EditableGridRow>
       netKg: weight.kgText,
       estimate: estimate,
       unitRate: _quantityRate(),
+      maxScale: _quantityMaxScale(),
       choice: weight.quantityPrecisionSource == source
           ? weight.quantityPrecision
           : null,

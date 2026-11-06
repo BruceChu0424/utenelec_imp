@@ -206,12 +206,31 @@ Future<_Harness> _pump(
   return _Harness(repo, reviewer, container, claimId);
 }
 
+Finder get _modalResponsibilityNotice => find.byWidgetPredicate(
+  (widget) => widget is UtenReviewerResponsibilityNotice && !widget.inline,
+);
+
 Future<void> _openConfirmation(WidgetTester tester) async {
   await tester.tap(find.text('通过'));
   await tester.pumpAndSettle();
-  expect(find.byType(UtenReviewerResponsibilityNotice), findsOneWidget);
-  expect(find.text('审核员：审批员(R001)'), findsOneWidget);
-  expect(find.textContaining('记录报销审批责任'), findsOneWidget);
+  final modalNotice = find.byWidgetPredicate(
+    (widget) => widget is UtenReviewerResponsibilityNotice && !widget.inline,
+  );
+  expect(modalNotice, findsOneWidget);
+  expect(
+    find.byWidgetPredicate(
+      (widget) => widget is UtenReviewerResponsibilityNotice && widget.inline,
+    ),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: modalNotice, matching: find.text('审核员：审批员(R001)')),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: modalNotice, matching: find.textContaining('记录报销审批责任')),
+    findsOneWidget,
+  );
   expect(find.byType(UtenBusyOverlayCard), findsNothing);
   expect(
     tester.widget<UtenButton>(find.widgetWithText(UtenButton, '通过')).isLoading,
@@ -247,7 +266,7 @@ void main() {
       await tester.tap(find.text('通过'));
       await tester.tap(find.text('通过'));
       await tester.pumpAndSettle();
-      expect(find.byType(UtenReviewerResponsibilityNotice), findsOneWidget);
+      expect(_modalResponsibilityNotice, findsOneWidget);
       expect(find.byType(UtenBusyOverlayCard), findsNothing);
       expect(repo.approvals, isEmpty);
       await tester.tap(find.text('确认通过'));
@@ -262,7 +281,7 @@ void main() {
             .isLoading,
         isTrue,
       );
-      expect(find.byType(UtenReviewerResponsibilityNotice), findsNothing);
+      expect(_modalResponsibilityNotice, findsNothing);
       repo.approveGate!.complete(null);
       await tester.pumpAndSettle();
       expect(repo.approvals, hasLength(1));
@@ -357,7 +376,7 @@ void main() {
       await _pump(tester, repository: repo);
       await tester.tap(find.text('通过'));
       await tester.pumpAndSettle();
-      expect(find.byType(UtenReviewerResponsibilityNotice), findsNothing);
+      expect(_modalResponsibilityNotice, findsNothing);
       expect(repo.approvals, isEmpty);
       expect(find.byType(UtenBusyOverlayCard), findsNothing);
       expect(tester.takeException(), isNull);
@@ -401,7 +420,7 @@ void main() {
       isNull,
     );
     expect(harness.repository.approvals, isEmpty);
-    expect(find.byType(UtenReviewerResponsibilityNotice), findsNothing);
+    expect(_modalResponsibilityNotice, findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

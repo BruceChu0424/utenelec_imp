@@ -58,6 +58,9 @@ class _ReportablePlanLineSheet extends ConsumerStatefulWidget {
 class _ReportablePlanLineSheetState
     extends ConsumerState<_ReportablePlanLineSheet>
     with ScopedPagedReadViewMixin<_ReportablePlanLineSheet> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _search = TextEditingController();
   final _tableRows = MasterDataTableRowsController<ReportablePlanLine>();
   List<ReportablePlanLine>? _items;
@@ -171,6 +174,7 @@ class _ReportablePlanLineSheetState
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _error = productionErrorMessage(error, fallback: '加载可报工任务失败');

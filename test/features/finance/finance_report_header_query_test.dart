@@ -129,7 +129,7 @@ void main() {
     },
   );
   testWidgets(
-    'client statement shares customer names with search, paging, print and export',
+    'complete client statement shares customer names with local scroll, print and export',
     (tester) async {
       final capture = GlobalKey();
       final api = await _pump(tester, 'recon', capture: capture);
@@ -154,8 +154,7 @@ void main() {
       await tester.pumpAndSettle();
       table().onSortChange!('clientName', false);
       await tester.pumpAndSettle();
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutReads(tester, api);
       expect(api.requests.last.$2, containsPair('f.search.clientName', '甲客户'));
       expect(api.requests.last.$2, containsPair('sort', 'clientName'));
       final export = table().toolbarActions!
@@ -187,13 +186,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       table().onFilterChanged('search.clientName', '新条件');
       await tester.pumpAndSettle();
-      expect(table().items.single['clientName'], '新条件');
+      expect(table().items, hasLength(2));
+      expect(table().items.every((row) => row['clientName'] == '新条件'), isTrue);
       expect(api.requests.last.$2['layout'], isNull);
       api.delayedClient!.complete(
         _clientStatementData({'f.search.clientName': '旧条件'}),
       );
       await tester.pumpAndSettle();
-      expect(table().items.single['clientName'], '新条件');
+      expect(table().items, hasLength(2));
+      expect(table().items.every((row) => row['clientName'] == '新条件'), isTrue);
       api.delayedClient = Completer<Map<String, dynamic>>();
       table().onFilterChanged('search.clientName', '跨视图旧条件');
       await tester.pump(const Duration(milliseconds: 600));
@@ -231,7 +232,7 @@ void main() {
     }
   });
   testWidgets(
-    'report headers keep full query across page export and currency clear without replay',
+    'report headers keep the complete query across local scroll export and currency clear without replay',
     (tester) async {
       final api = await _pump(tester, 'detail');
       MasterDataTableView<Map<String, dynamic>> table() =>
@@ -258,8 +259,7 @@ void main() {
       await tester.pumpAndSettle();
       table().onSortChange!('expectedOriginal', false);
       await tester.pumpAndSettle();
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutReads(tester, api);
       expect(
         api.requests.last.$2,
         containsPair('f.search.expectedOriginal', '>=90071992547409.1234'),
@@ -340,11 +340,76 @@ void main() {
       expect(table().filters['search.orderNo'], 'REJECTED-NEW-SCOPE');
       expect(table().error, '暂时无法检索');
       expect(table().serverColumnSearchKeys, contains('orderNo'));
+      // A second unsuccessful correction still has the same authorized schema;
+      // unknown result counts and old rows never become an accepted query.
+      table().onFilterChanged('search.orderNo', 'REJECTED-NEXT-SCOPE');
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().facets, isEmpty);
+      expect(table().summaryBar, isNull);
+      expect(table().serverColumnSearchKeys, contains('orderNo'));
+      expect(table().totalPages, -1);
       api.rejectHeaders = false;
       table().onFilterChanged('search.orderNo', null);
       await tester.pumpAndSettle();
       expect(table().items, isNotEmpty);
       expect(table().error, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final denial in [
+    (401, 'UNAUTHORIZED'),
+    (403, 'FORBIDDEN'),
+    (409, 'READ_SCOPE_CHANGED'),
+  ]) {
+    testWidgets(
+      'confirmed report denial clears prior schema and facts: ${denial.$2}',
+      (tester) async {
+        final api = await _pump(tester, 'detail');
+        MasterDataTableView<Map<String, dynamic>> table() => tester.widget(
+          find.byType(MasterDataTableView<Map<String, dynamic>>),
+        );
+        expect(table().items, hasLength(2));
+        expect(table().serverColumnSearchKeys, contains('orderNo'));
+        api.rejectHeaders = true;
+        api.rejectionStatus = denial.$1;
+        api.rejectionCode = denial.$2;
+        table().onFilterChanged('search.orderNo', 'REVOKED-SOURCE');
+        await tester.pumpAndSettle();
+        expect(table().items, isEmpty);
+        expect(table().facets, isEmpty);
+        expect(table().columns, isEmpty);
+        expect(table().serverColumnSearchKeys, isEmpty);
+        expect(table().summaryBar, isNull);
+        expect(table().filters['search.orderNo'], 'REVOKED-SOURCE');
+        expect(table().error, '暂时无法检索');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets(
+    'failed currency-scope change never borrows the former money schema',
+    (tester) async {
+      final api = await _pump(tester, 'detail');
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
+      table().onFilterChanged('currencyCode', 'first-currency');
+      await tester.pumpAndSettle();
+      expect(table().serverColumnSearchKeys, contains('expectedOriginal'));
+      table().onFilterChanged('search.orderNo', 'SAME-AUTHORIZED-SCHEMA');
+      await tester.pumpAndSettle();
+      expect(table().serverColumnSearchKeys, contains('orderNo'));
+      expect(table().items, hasLength(2));
+      api.rejectHeaders = true;
+      table().onFilterChanged('currencyCode', 'different-currency');
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().facets, isEmpty);
+      expect(table().columns, isEmpty);
+      expect(table().serverColumnSearchKeys, isEmpty);
+      expect(table().summaryBar, isNull);
+      expect(table().filters['currencyCode'], 'different-currency');
+      expect(table().filters['search.orderNo'], 'SAME-AUTHORIZED-SCHEMA');
       expect(tester.takeException(), isNull);
     },
   );
@@ -458,16 +523,16 @@ void main() {
     expect(api.requests.last.$2['sort'], isNull);
   });
   testWidgets(
-    'detail footer renders server full-scope totals instead of adding the visible page',
+    'detail footer keeps authoritative full-scope totals across the complete result and local scroll',
     (tester) async {
-      await _pump(tester, 'detail', serverTotals: true);
+      final api = await _pump(tester, 'detail', serverTotals: true);
       tester
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(1);
       await tester.pumpAndSettle();
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
-      expect(table().items.single['debit'], 10);
+      expect(table().items.map((row) => row['debit']), [10, 1224.56]);
       UtenTotalsSummaryBar totals() =>
           tester.widget(find.byType(UtenTotalsSummaryBar));
       final amount = totals().entries.singleWhere(
@@ -475,8 +540,7 @@ void main() {
       );
       expect(amount.value.replaceAll(RegExp(r'[^0-9.\-]'), ''), '1234.56');
       expect(amount.value, contains('元'));
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutReads(tester, api);
       expect(
         totals().entries
             .singleWhere((entry) => entry.label == '所列记录本期借方合计')
@@ -649,6 +713,22 @@ Future<void> _selectStatementContext(
   }
 }
 
+Future<void> _scrollWithoutReads(WidgetTester tester, _HeaderApi api) async {
+  final table = find.byType(MasterDataTableView<Map<String, dynamic>>);
+  final before = api.requests.length;
+  for (final state in tester.stateList<ScrollableState>(
+    find.descendant(of: table, matching: find.byType(Scrollable)),
+  )) {
+    if (state.position.axis == Axis.vertical &&
+        state.position.hasContentDimensions) {
+      state.position.jumpTo(state.position.maxScrollExtent);
+    }
+  }
+  await tester.pumpAndSettle();
+  expect(api.requests, hasLength(before));
+  expect(find.byKey(const ValueKey('master-table-page-next')), findsNothing);
+}
+
 Future<UtenExportButton> _visibleExport(WidgetTester tester) async {
   var opened = false;
   if (find.byType(UtenExportButton).evaluate().isEmpty) {
@@ -759,8 +839,10 @@ Map<String, dynamic> _clientStatementData(Map<String, dynamic> query) => {
   ],
   'facets': <String, dynamic>{},
   'page': query['page'] ?? 1,
-  'size': query['size'] == 500 ? 1 : 50,
-  'total': query['size'] == 500 ? 2 : 100,
+  // This fixture's server deliberately clamps every transport batch to one
+  // row; page/count/size describe the same complete two-row source.
+  'size': 1,
+  'total': 2,
   'totalPages': 2,
 };
 
@@ -808,6 +890,8 @@ class _HeaderApi extends ApiClient {
   }
 
   bool rejectHeaders = false;
+  int rejectionStatus = 503;
+  String rejectionCode = 'TEMPORARY';
   bool serverTotals = false;
   Completer<Map<String, dynamic>>? materialContexts;
   @override
@@ -866,7 +950,7 @@ class _HeaderApi extends ApiClient {
       return _clientStatementData(parameters);
     }
     if (rejectHeaders && parameters.containsKey('f.search.orderNo')) {
-      throw ApiException('TEMPORARY', '暂时无法检索', httpStatus: 503);
+      throw ApiException(rejectionCode, '暂时无法检索', httpStatus: rejectionStatus);
     }
     if (serverTotals && path.endsWith('/ar-ap/detail')) {
       final page = parameters['page'] ?? 1;
@@ -1073,12 +1157,12 @@ class _HeaderApi extends ApiClient {
       ],
       'facets': {
         'currencyCode': [
-          {'value': 'currency-id', 'label': '美金', 'count': 51},
+          {'value': 'currency-id', 'label': '美金', 'count': 2},
         ],
       },
       'page': parameters['page'] ?? 1,
-      'size': 50,
-      'total': 51,
+      'size': 1,
+      'total': 2,
       'totalPages': 2,
     };
   }

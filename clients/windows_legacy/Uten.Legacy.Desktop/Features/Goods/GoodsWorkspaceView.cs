@@ -29,8 +29,6 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private readonly TextBlock status = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock shownScope = new TextBlock { Text = "货品资料", VerticalAlignment = VerticalAlignment.Center };
         private readonly TextBlock pageText = new TextBlock { VerticalAlignment = VerticalAlignment.Center, MinWidth = 145 };
-        private readonly Button previous = new Button { Content = "上一页", MinWidth = 68 };
-        private readonly Button next = new Button { Content = "下一页", MinWidth = 68 };
         private readonly Button retry = new Button { Content = "重新读取", MinWidth = 84 };
         private readonly Border detail = new RoundedSurface { Visibility = Visibility.Collapsed,
             BorderThickness = new Thickness(0, 1, 0, 0), MaxHeight = 190 };
@@ -51,7 +49,6 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private string selectedCategory;
         private string selectedCategoryName = "全部货品";
         private string unitUuid;
-        private int page = 1, totalPages;
         private bool listBusy, subscribed, replacingCategories;
         private long observedSessionGeneration, observedReadRevision;
 
@@ -67,13 +64,11 @@ namespace Uten.Legacy.Desktop.Features.Goods
             rows.SelectionChanged += OnRowSelected;
             detailRetry.Click += (sender, args) => OnRowSelected(rows, null);
             openUnit.Click += async (sender, args) => await OpenUnitByUuidAsync();
-            previous.Click += async (sender, args) => await LoadPageAsync(Math.Max(1, page - 1));
-            next.Click += async (sender, args) => await LoadPageAsync(page + 1);
             retry.Click += async (sender, args) => await LoadAsync();
             searchDelay = new DebouncedSearchInput(search, () =>
             {
                 Cancel(listRead); listGeneration++; Cancel(detailRead); detailGeneration++;
-                detail.Visibility = Visibility.Collapsed; listBusy = true; UpdatePager();
+                detail.Visibility = Visibility.Collapsed; listBusy = true; UpdateListState();
                 status.Text = "搜索条件已变化，正在准备读取…";
             }, () => LoadPageAsync(1), () => IsLoaded && lifetime != null && !lifetime.IsCancellationRequested);
         }
@@ -149,12 +144,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             Grid.SetColumn(tableSurface, 2); body.Children.Add(tableSurface);
             Grid.SetRow(body, 2); grid.Children.Add(body);
             var footer = new DockPanel { Margin = Spacing(top: "S8", bottom: "S8") };
-            var pager = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            previous.Margin = Spacing(left: "S8", right: "S8"); next.Margin = Spacing(left: "S8");
-            previous.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
-            next.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
-            pager.Children.Add(previous); pager.Children.Add(pageText); pager.Children.Add(next);
-            DockPanel.SetDock(pager, Dock.Right); footer.Children.Add(pager); footer.Children.Add(shownScope);
+            DockPanel.SetDock(pageText, Dock.Right); footer.Children.Add(pageText); footer.Children.Add(shownScope);
             Grid.SetRow(footer, 3); grid.Children.Add(footer);
             var details = new StackPanel(); details.Children.Add(detailTitle); details.Children.Add(detailStatus);
             details.Children.Add(detailRetry); details.Children.Add(openUnit); details.Children.Add(detailFields);
@@ -225,7 +215,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         {
             listGeneration++; treeGeneration++; detailGeneration++;
             Cancel(listRead); Cancel(treeRead); Cancel(detailRead);
-            listBusy = false; UpdatePager();
+            listBusy = false; UpdateListState();
         }
         private static void Cancel(CancellationTokenSource source)
         {
@@ -237,9 +227,9 @@ namespace Uten.Legacy.Desktop.Features.Goods
             replacingCategories = true;
             try { categories.Items.Clear(); } finally { replacingCategories = false; }
             detail.Visibility = Visibility.Collapsed;
-            detailFields.Children.Clear(); page = 1; totalPages = 0; selectedCategory = null;
+            detailFields.Children.Clear(); selectedCategory = null;
             selectedCategoryName = "全部货品"; shownScope.Text = "货品资料"; pageText.Text = "尚未读取";
-            UpdatePager();
+            UpdateListState();
         }
         public async Task LoadAsync()
         {
@@ -303,7 +293,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         {
             if (!IsLoaded || lifetime == null || lifetime.IsCancellationRequested || !Allowed(GoodsReadService.GoodsViewPermission)) return Task.CompletedTask;
             long owner = session.Generation, revision = session.ReadScopeRevision, expectedRead = listGeneration + 1;
-            var key = Tuple.Create(selectedCategory, (search.Text ?? "").Trim(), requestedPage, owner, revision);
+            var key = Tuple.Create(selectedCategory, (search.Text ?? "").Trim(), owner, revision);
             return searchDelay.RunReadAsync(key,
                 () => IsLoaded && !lifetime.IsCancellationRequested && listGeneration == expectedRead
                     && session.Generation == owner && session.ReadScopeRevision == revision,
@@ -318,15 +308,26 @@ namespace Uten.Legacy.Desktop.Features.Goods
             CancellationToken token = listRead.Token; long ownerGeneration = session.Generation, ownerReadRevision = session.ReadScopeRevision;
             string categoryId = selectedCategory, categoryCaption = selectedCategoryName, keyword = search.Text;
             Cancel(detailRead); detailGeneration++; detail.Visibility = Visibility.Collapsed;
-            listBusy = true; UpdatePager(); status.Text = "正在读取货品，列表保留上次结果…";
+            listBusy = true; UpdateListState(); status.Text = "正在读取货品，列表保留上次结果…";
             try
             {
-                GoodsPage result = await service.ListAsync(categoryId, keyword, requestedPage, 20, token);
+                GoodsPage first = null;
+                var result = await CompletePagedSnapshot.ReadAsync<GoodsRecord>(async (batch, size, ct) =>
+                {
+                    var response = await service.ListAsync(categoryId, keyword, batch, size, ct).ConfigureAwait(false);
+                    if (first == null) first = response;
+                    return new SnapshotPage<GoodsRecord> { Items = response.Items, Page = response.Page,
+                        Size = response.Size, Total = response.Total, TotalPages = response.TotalPages,
+                        ReadScopeVersion = response.ReadScopeVersion };
+                }, item => item.Id,
+                    () => !token.IsCancellationRequested && generation == listGeneration
+                        && ownerGeneration == session.Generation && ownerReadRevision == session.ReadScopeRevision,
+                    token, maximumRows: Int32.MaxValue);
                 if (token.IsCancellationRequested || generation != listGeneration || ownerGeneration != session.Generation || ownerReadRevision != session.ReadScopeRevision || !IsLoaded) return;
-                rows.ItemsSource = result.Items; page = result.Page; totalPages = result.TotalPages;
-                pageText.Text = "第 " + page + " / " + Math.Max(1, totalPages) + " 页 · 共 " + result.Total + " 项";
+                rows.ItemsSource = result;
+                pageText.Text = "共 " + first.Total + " 项";
                 shownScope.Text = categoryCaption + (string.IsNullOrWhiteSpace(keyword) ? "" : " · 搜索：“" + keyword.Trim() + "”");
-                status.Text = result.Items.Count == 0 ? "当前范围没有货品。" : "双击或选择一行查看详情。";
+                status.Text = result.Count == 0 ? "当前范围没有货品。" : "";
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) when (error.Code == "READ_SCOPE_CHANGED" || error.StatusCode == 403)
@@ -341,13 +342,11 @@ namespace Uten.Legacy.Desktop.Features.Goods
             }
             finally
             {
-                if (generation == listGeneration && IsLoaded) { listBusy = false; UpdatePager(); }
+                if (generation == listGeneration && IsLoaded) { listBusy = false; UpdateListState(); }
             }
         }
-        private void UpdatePager()
+        private void UpdateListState()
         {
-            previous.IsEnabled = !listBusy && page > 1;
-            next.IsEnabled = !listBusy && page < totalPages;
             rows.IsEnabled = !listBusy;
         }
         private async void OnRowSelected(object sender, SelectionChangedEventArgs args)

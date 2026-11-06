@@ -73,7 +73,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         DraftBulkDeleteMixin<FinanceDocListPage>,
         UtenRefreshParticipant<FinanceDocListPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
-  final _list = PagedListController<FinanceDocListItem>();
+  final _list = PagedListController<FinanceDocListItem>(idOf: (row) => row.id);
   final _tableRows = MasterDataTableRowsController<FinanceDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
@@ -292,6 +292,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         .read(financeRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: 100,
           filter: _docFilter(),
           sort: _list.sortKey,
           order: _list.sortOrder,
@@ -678,9 +679,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
+    Future<void> visibleReadReturn() => _list.revalidate(_reload(null, true));
+    _list.bindView(context, onResume: visibleReadReturn);
     ref.onPageResume(
       _myLocation!,
-      () => _list.revalidate(_reload(null, true)),
+      visibleReadReturn,
       refreshKeys: [_cfg.refreshKey],
     );
     return Scaffold(
@@ -852,7 +855,6 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                       totalPages: _list.totalPages,
                       paginationRevision: _list.paginationRevision,
                       refreshedPages: _list.refreshedPages,
-                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         widget.docType,
                         _list.normalizedKeyword,

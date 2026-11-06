@@ -1,0 +1,94 @@
+{
+  "result": "PASS",
+  "runtime": "Flutter release JavaScript/CanvasKit in real headless Chrome",
+  "datasetRows": 36000,
+  "wheelSamples": [
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 25,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 0,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 52,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 50000,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 80,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 100000,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 80,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 0,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 105,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 1331164,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 105,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 0,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 132,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 900000,
+      "maximumScroll": 1331164,
+      "mounted": true
+    },
+    {
+      "loadedRows": 36000,
+      "builtDistinctRows": 132,
+      "pageRequests": 0,
+      "placeholders": 0,
+      "headerElement": 26185874,
+      "scrollPixels": 0,
+      "maximumScroll": 1331164,
+      "mounted": true
+    }
+  ],
+  "pageRequests": 0,
+  "browserExceptions": [],
+  "scrollNetworkRequests": [],
+  "scrollDataRequests": [],
+  "fixtureOnly": true,
+  "companyUat": false,
+  "screenshot": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\web-current-runtime/web-continuous-table.png"
+}

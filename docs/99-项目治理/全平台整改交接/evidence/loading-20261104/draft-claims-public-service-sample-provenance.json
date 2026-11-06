@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "a5ed5b7a883891d58f7402daa0056a376f5aa95378f7bd4891485f64f491ff48",
+  "originalReceipt": "server/build/loading-validation/daily-report-draft-claims/current-task-service-comparison.json",
+  "durableReceipt": "draft-claims-public-service-sample-a5ed5b7a.json",
+  "receiptSha256": "63af0d20b5dcf1a7010fac052b2121495cbd9d37e203aeb0876dee4fecf041c2",
+  "originalSourceManifest": "server/build/loading-validation/main-f6e-scoped/source-input.json",
+  "sourceManifestFileSha256": "2f57639923a5e1649f0cc045e47e0d271e84e014e7b52e9b34789bf60e4a857d",
+  "measurement": "Single isolated real public-service comparison; not HTTP or UI end-to-end latency; not production SLA",
+  "caseOutcome": "Owner reports actual source-labelled case PASS; full PG9 invocation remains RED8pass1fail on original read-scope actor fixture",
+  "globalInvocationRelabelledGreen": false,
+  "sealedOriginalReceipt": "server/build/loading-validation/main-f6e-scoped/draft-scoped-pg-receipt/current-task-service-comparison.json",
+  "sealedRunReceipt": "server/build/loading-validation/main-f6e-scoped/draft-scoped-pg-receipt/seal.json",
+  "sealedRunReceiptSha256": "265a0adca6eefd0be442f85fec7203b7b95a9d628d2a9ba28102fdbcdabf7407"
+}

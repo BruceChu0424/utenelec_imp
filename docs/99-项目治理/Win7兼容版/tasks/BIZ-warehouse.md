@@ -714,9 +714,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`。
+证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`；`clients/windows_legacy/progress/contracts/subcontract-actual-receipt-v2.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。；2026-11-06 E-SUBCONTRACT-ACTUAL-RECEIPT-V2：采购/委外到货登记与IQC合格入库确认共用数量摘要，合法精确原量完整换行显示；按实际回厂、合格入库更新需求与库存，不以供料预算代实收。Exact原文、权限、草稿及未知提交保留；原生此入口仍未迁移，原status/owner/依赖/DoD不变，Win7目标机/完整ERP未验收。。
 
 ## W7-BIZ-201
 

@@ -425,7 +425,7 @@ class _ExpenseApprovalListPageState
           isLoading: listAsync.isLoading && !listAsync.hasValue,
           loadingMore: listAsync.isLoading && listAsync.hasValue,
           error: listAsync.hasError
-              ? (humanErrorMessage(listAsync.error!) ?? '加载更多没有成功，请重试')
+              ? (humanErrorMessage(listAsync.error!) ?? '读取完整列表失败，请重试')
               : null,
           onRetry: _refreshQueue,
           primary: true,

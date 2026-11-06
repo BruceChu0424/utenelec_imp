@@ -1,0 +1,16 @@
+{
+  "source": "c51925b87cb438f9134136cf2ad31b8d8dc40c38a6c7d0da9e7011e11ff4cb00",
+  "priorFullCompiledSource": "7771570d9a8e14de8a3351fe8320dad19bfa29e9c4111102244a47eabac87816",
+  "priorFullCompileActualExitCode": 0,
+  "currentSingleTestJavacActualExitCode": 0,
+  "compiledClassesChecked": 10161,
+  "allProductionClassesAndOtherTestsByteExact": true,
+  "onlyCompiledClassDelta": [
+    {
+      "path": "test-classes/com/uten/imp/migration/LegacyMigrationSafetyContractTest.class",
+      "beforeSha256": "ebf9781b40497ffd8778edec7a6e7483853ecaf0377da46c8c214f1b128b4ca8",
+      "afterSha256": "6591dffc70301c0a87abc0468655f39e817c208511c4893565f4428778992a64"
+    }
+  ],
+  "noUnrelatedTestsRepeated": true
+}

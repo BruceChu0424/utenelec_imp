@@ -69,7 +69,9 @@ class ProductionPlanListPage extends ConsumerStatefulWidget {
 
 class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     with UtenRefreshParticipant<ProductionPlanListPage> {
-  final _list = PagedListController<ProductionPlanListItem>();
+  final _list = PagedListController<ProductionPlanListItem>(
+    idOf: (row) => row.id,
+  );
   int? _statusFilter; // null=全部
   bool _historyMode = false;
 
@@ -146,6 +148,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
   Future<PagedResult<ProductionPlanListItem>> _fetch([
     int? requestedPage,
+    int batchSize = 100,
   ]) async {
     final names = ref.read(masterNameServiceProvider);
     final ownerCurrent = captureReadOwner(ref);
@@ -153,6 +156,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
         .read(productionPlanRepositoryProvider)
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: batchSize,
           filter: ProductionPlanFilter(
             origin: _historyMode ? BusinessDocumentOrigin.all : null,
             keyword: _list.normalizedKeyword,
@@ -245,6 +249,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -540,7 +545,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     // 返回即刷新：从详情/编辑页（保存/审核/删除后）回到本列表时静默重拉当前页，
     // 不再停留在进入子页前的老数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _list.revalidate(_reload(null, true)));
+    Future<void> visibleReadReturn() => _list.revalidate(_reload(null, true));
+    _list.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     final page = Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单',
@@ -659,7 +666,6 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                       totalPages: _list.totalPages,
                       paginationRevision: _list.paginationRevision,
                       refreshedPages: _list.refreshedPages,
-                      onRetainedPagesChanged: _list.retainPages,
                       paginationScope: (
                         _list.normalizedKeyword,
                         _statusFilter,

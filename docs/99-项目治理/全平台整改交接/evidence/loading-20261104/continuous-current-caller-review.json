@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "state": "source_review_complete_final_runtime_in_progress",
+  "generatedAtUtc": "2026-11-05T10:42:20.337188+00:00",
+  "root": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "interpretation": "Forward/reverse source review is distinct from runtime acceptance. Filename, marker and source counts are not workflow counts. Current runtime verdicts remain in combined-current-validation.json.",
+  "directProviderReview": {
+    "originalCandidates": 13,
+    "confirmedGap": "lib/features/applications/pages/business_application_list_page.dart",
+    "retainedReviewed": [
+      {
+        "path": "lib/features/approvals/repositories/approval_policy_repository.dart",
+        "sha256": "bf6d9ad4350bdae72f543ad92e47a53eaca721f71c78635a86834296d50924c1",
+        "reason": "The async provider reads complete department policies; paged employee candidates are owned by the shared picker."
+      },
+      {
+        "path": "lib/features/basic_data/pages/mould_category_page.dart",
+        "sha256": "0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073",
+        "reason": "CategoryPageShell and MasterEntityDetailPane own the actual full list; no separate paged async provider is defined here."
+      },
+      {
+        "path": "lib/features/basic_data/repositories/reference_method_repository.dart",
+        "sha256": "1be9aec29c03e44fc41ffc13e947ce4939a3815c06a728fdeb1f48653c059a74",
+        "reason": "Async providers expose complete authorized method dictionaries; admin pages are consumed by the shared complete table reader."
+      },
+      {
+        "path": "lib/features/basic_data/repositories/warehouse_repository.dart",
+        "sha256": "38d7801cd588d99a8ef0004b032d112b0582c4c7e2ffdb54d9f3075d8818d524",
+        "reason": "The async provider exposes workshop options; master list paging is owned by the shared pane."
+      },
+      {
+        "path": "lib/features/client_update/software_downloads_presentation.dart",
+        "sha256": "e72ccf7f011f595ea19537c02656ec02cb5500e5dcd072338fb4e8c547d954c6",
+        "reason": "The async value is a single host capability, not a paged business list."
+      },
+      {
+        "path": "lib/features/quality/providers/production_fqc_capability_provider.dart",
+        "sha256": "c0417b491dc84e63e0ff67e6611661d0ce7ba30c4fe3d992e1395620fb59946e",
+        "reason": "The async value is a permission-fenced boolean, not a row list."
+      },
+      {
+        "path": "lib/features/sales/pages/sales_doc_edit_page.dart",
+        "sha256": "e6f6223e87cae2564ee7fed82eef45e60d7c0b6a6d4463798278e2049456f7a7",
+        "reason": "The FutureProvider text is a dictionary comment; page references belong to edit/print context, not a paged list provider."
+      },
+      {
+        "path": "lib/shared/attachments/business_attachment_section.dart",
+        "sha256": "6bd58e9cc5f0047c49b5c3f1e1683500f22666bf5ee908cced02ceacf99388d9",
+        "reason": "Owner-scoped attachment API returns its existing full metadata list; no hidden later pages are discarded."
+      },
+      {
+        "path": "lib/shared/drafts/draft_workspace_sources.dart",
+        "sha256": "c2f89105e3c09b47c2cce5f36e476e880861c574705b1f971784337451f3ec8d",
+        "reason": "DraftWorkspaceRead loads every bounded family page and exposes first-progress/full-completion separately; incomplete proof cannot authorize checkpoint deletion."
+      },
+      {
+        "path": "lib/shared/models/retained_async_page.dart",
+        "sha256": "b390ff9c698e87ae036dfa47506cf87d64e475fe273ab568375dc8ac0ff1b6b0",
+        "reason": "Publication/owner adapter only; it does not issue a repository page request."
+      },
+      {
+        "path": "lib/shared/platform_branding/platform_branding_provider.dart",
+        "sha256": "e14d495f67e2536f31e1a63e1c353628829f3d743a038b006c547a55b89374c3",
+        "reason": "One branding configuration DTO, not paged rows."
+      },
+      {
+        "path": "lib/shared/providers/document_status_counts_provider.dart",
+        "sha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180",
+        "reason": "Badge/count queries retain their original scope; they are not display row pages."
+      }
+    ]
+  },
+  "confirmedGapsAndCorrections": [
+    {
+      "path": "lib/features/applications/pages/business_application_list_page.dart",
+      "sha256": "4d7e8049218070426855d0bcab265c45d7034c1fb7a8bf640ab64e48465f3c79",
+      "problem": "Direct FutureProvider bypassed the complete reader and returned only24 rows.",
+      "correction": "The same four original queues now use ScopedPagedReadProviderLease, stable IDs and100-row first/continuation batches; page state/navigation removed.",
+      "test": "test/features/applications/business_application_complete_list_test.dart"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_bucket_detail.dart",
+      "sha256": "e476a5536fac1da8338c4b3155be2354b89cceccdbec061115d3d39c0ebf8af4",
+      "problem": "Private200-row slicing hid later rows after the public pager was retired.",
+      "correction": "All filtered rows are passed to the shared virtual table; duplicate cross-page selection/pager state removed.",
+      "test": "test/features/production/pages/production_material_analysis_page_test.dart"
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_order_page.dart",
+      "sha256": "538e1eece4ea9843af12d01f96e3293c0b2c3414b9ba5392491d95d2a53665ab",
+      "problem": "Private100-row sublist hid later preparation review rows while commands could include them.",
+      "correction": "The full original row tree is visible; missing assignment uses existing revealItemId/revealRequest; original selection and500+1 command/CAS contracts preserved.",
+      "test": "test/features/production/pages/production_material_analysis_page_test.dart"
+    },
+    {
+      "path": "lib/features/production/pages/production_board_page.dart",
+      "sha256": "f3cee68b45063dcae8e29ed7e11ac5570b4c51438fdd72ca9697e5c361040aad",
+      "problem": "Progress kept20/50/100 page-size UI although the reader already completed all rows.",
+      "correction": "Fixed100-row transport, no user page controls, stable plan/order IDs and a local ListView.builder; summary remains server authoritative.",
+      "test": "test/features/production/pages/production_board_auxiliary_loading_test.dart"
+    },
+    {
+      "path": "lib/features/production/repositories/production_repository.dart",
+      "sha256": "2425b45e3d69e3f655248045705e067a2eda9df2a814daf1bf4e739a45b305af",
+      "problem": "A local future-source paged adapter remained solely for a count caller.",
+      "correction": "The sole launcher consumes the maintained full snapshot length; adapter removed, original shared local search ordering and command source/CAS unchanged.",
+      "test": "test/features/production/repositories/production_material_analysis_repository_test.dart"
+    },
+    {
+      "path": "lib/features/payroll/pages/payroll_generate_page.dart",
+      "sha256": "a65c98f1216f29a7a5bfd1334aa4f7f6873e0201069db35fd062ade9898cd765",
+      "problem": "Generated payroll preview silently displayed only20 slips.",
+      "correction": "All loaded slips use the existing UtenAncestorRowWindow with deferRowMounts=false and the original parent scroll.",
+      "test": "test/features/payroll/payroll_suggestion_responsive_detail_test.dart"
+    },
+    {
+      "path": "lib/features/basic_data/pages/party_detail_page.dart",
+      "sha256": "e1f3ad43b5051949de4a915b49fa83bed97bd570b147aeb53e08c13ed162d208",
+      "problem": "Supplier loss detail byGoods silently displayed only8 rows.",
+      "correction": "All loaded rows use the shared local row window, preserving exact amounts, currency/permissions and detail routes.",
+      "test": "test/features/basic_data/pages/supplier_loss_navigation_test.dart"
+    }
+  ],
+  "retiredAlgorithms": [
+    "PagedReadAheadPolicy",
+    "UtenLoadMoreBoundary",
+    "UtenScrollPrefetchPolicy",
+    "CursorPagedReadAdapter",
+    "PagedReadWindowRefresh",
+    "multi-page PagedReadCache LRU/window zones",
+    "private preparation bucket/order slicing",
+    "private future-transfer local paging wrapper"
+  ],
+  "compatibilityAndNecessaryDifferences": [
+    "Legacy table/controller page and loadNext/previous method signatures remain compatibility boundaries; the common view binds no-op paging and does not call the network on scroll.",
+    "_visiblePresentationActive controls covered-route and local geometry handling only. Viewport, focused and keyboard-neighbour rows remain mounted locally; this is not neighbouring network pages.",
+    "PreparedPageRead holds only one explicitly prepared bounded category first batch and its existing physical read budget; maximumQueries limits distinct preparations, not scrolling list pages.",
+    "PDF/printing pages and text layout remain real paper/file boundaries. Warehouse print preview retains its original2000-row contract; it is not the business list source.",
+    "Business write/selection limits, original approved command splitting, CAS/version and unknown-write protection are unchanged; reading all rows does not expand command authority.",
+    "Visible expandable detail sections or short warning summaries keep an explicit complete entry where applicable; private slices with no route to the tail were removed.",
+    "AI context caps, bounded name enrichment/ID chunks and source-tree path prefixes remain purpose-specific work; they do not truncate business display rows.",
+    "Public SEO directory pagination and the external visitor minimum2-character/top5 privacy search retain their original public contract.",
+    "WPF full ERP and Win7 target-device acceptance are separate from the already implemented native screens; current WPF history followup has its own fresh receipt."
+  ],
+  "snapshotBoundary": "Multiple HTTP batches are one complete current-query collection, not an invented shared database MVCC snapshot. Supplied scope/revision/HWM, cardinality, page shape and immutable IDs are checked; detectable drift fails without a false complete/zero, and writes remain server authoritative.",
+  "runtimeEvidence": {
+    "broadOldFreezeNewTree": "build/loading-validation/combined-dart-tests-execution.json",
+    "currentApplication8": "build/loading-validation/application-complete-v2.jsonl",
+    "millionIsolated": "build/loading-validation/million-summary-isolated-before-fix.log",
+    "wholeClosure": "build/loading-validation/final-dart-closure-execution.json",
+    "rootTailReview": "build/loading-validation/final-local-slice-independent-review.json",
+    "verdict": "Pending natural completion; no running command is counted as passed."
+  }
+}

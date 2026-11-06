@@ -1,0 +1,496 @@
+[
+  {
+    "class": "FinanceApplicationsPostgresTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java",
+    "sha256": "ce3fa67a0f7ca5c1c30e4fcf2562d829d2e256fe5039321e3ac0304a861354ce",
+    "relevantTextCandidates": [
+      {
+        "line": 32,
+        "text": "private static final String MIGRATIONS=snapshotMigrations();"
+      },
+      {
+        "line": 36,
+        "text": "@DynamicPropertySource static void database(DynamicPropertyRegistry r){PG.start();FixtureDatabaseProperties.bindSameRole(r,PG::getJdbcUrl,PG::getUsername,PG::getPassword);r.add(\"spring.flyway.locations\",()->MIGRATIONS);}"
+      },
+      {
+        "line": 39,
+        "text": "@Autowired com.uten.imp.features.expenseclaim.ExpenseClaimService expenseClaims;"
+      },
+      {
+        "line": 109,
+        "text": "assertThat(db.queryForObject(\"SELECT count(*) FROM finance_application_events WHERE application_id=? AND event_type='PAYMENT_POSTED'\",Integer.class,id)).isEqualTo(1);"
+      },
+      {
+        "line": 117,
+        "text": "var shown=applications.detail(id);UUID invoiceId=db.queryForObject(\"SELECT id FROM expense_claim_invoices WHERE claim_id=?\",UUID.class,nativeClaim);var lease=claims.claim(\"FINANCE_APPLICATION_REVIEW\",id.toString());"
+      },
+      {
+        "line": 118,
+        "text": "applications.verifyExpenseInvoice(id,new InvoiceVerification(UUID.randomUUID(),((Number)shown.get(\"row_version\")).longValue(),shown.get(\"source_fingerprint\").toString(),lease.claimId(),invoiceId,expenseClaims.detail(nativeClaim).version(),\"VERIFIED_MANUAL\",\"原票原件及真实查验回执逐项核对一致\"));"
+      },
+      {
+        "line": 120,
+        "text": "assertThat(db.queryForObject(\"SELECT status FROM expense_claims WHERE id=?\",String.class,nativeClaim)).isEqualTo(\"APPROVED\");"
+      },
+      {
+        "line": 122,
+        "text": "assertThat(db.queryForObject(\"SELECT finance_expense_id FROM expense_claims WHERE id=?\",UUID.class,nativeClaim)).isEqualTo(doc);assertBalanced(doc);"
+      },
+      {
+        "line": 123,
+        "text": "assertThat(db.queryForObject(\"SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAID'\",Integer.class,nativeClaim)).isEqualTo(1);"
+      },
+      {
+        "line": 124,
+        "text": "var reversed=applications.reverse(id,reason(paid,\"按真实报销原付款对称撤回\"));assertThat(db.queryForObject(\"SELECT status FROM expense_claims WHERE id=?\",String.class,nativeClaim)).isEqualTo(\"REJECTED\");"
+      },
+      {
+        "line": 127,
+        "text": "assertThat(db.queryForObject(\"SELECT count(*) FROM expense_claim_events WHERE claim_id=? AND event_type='PAYMENT_REVERSED'\",Integer.class,nativeClaim)).isEqualTo(1);"
+      },
+      {
+        "line": 128,
+        "text": "assertThatThrownBy(()->db.update(\"INSERT INTO expense_claim_events(id,claim_id,event_type,actor_employee_id,actor_name_snapshot) VALUES(?,?,'UNRECOGNIZED_EVENT',?,'isolated event contract probe')\",UUID.randomUUID(),nativeClaim,w.owner().employee()))"
+      },
+      {
+        "line": 129,
+        "text": ".isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class).hasMessageContaining(\"expense_claim_events_type_chk\");"
+      },
+      {
+        "line": 131,
+        "text": "assertThat(reversed).containsEntry(\"expenseClaimUnavailable\",true);"
+      },
+      {
+        "line": 132,
+        "text": "assertThatThrownBy(()->expenseClaims.detail(nativeClaim)).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,"
+      },
+      {
+        "line": 137,
+        "text": "assertThat(db.queryForObject(\"SELECT count(*) FROM expense_claim_invoices WHERE claim_id=? AND id=?\",Integer.class,nativeClaim,invoiceId)).isEqualTo(1);"
+      },
+      {
+        "line": 138,
+        "text": "assertThat(expenseClaims.detail(nativeClaim).id()).isEqualTo(nativeClaim);"
+      },
+      {
+        "line": 183,
+        "text": "* isolated B, apply real1040 capture and all current migrations, validate every"
+      },
+      {
+        "line": 193,
+        "text": "com.uten.imp.testsupport.TestFlyway.configure().dataSource(original).locations(MIGRATIONS).target(\"1039\").load().migrate();"
+      },
+      {
+        "line": 215,
+        "text": "com.uten.imp.testsupport.TestFlyway.configure().dataSource(data).locations(MIGRATIONS).target(\"1040\").load().migrate();"
+      },
+      {
+        "line": 219,
+        "text": "com.uten.imp.testsupport.TestFlyway.configure().dataSource(original).locations(MIGRATIONS).load().migrate();"
+      },
+      {
+        "line": 221,
+        "text": "String eventContract=db.queryForObject(\"SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='expense_claim_events'::regclass AND conname='expense_claim_events_type_chk'\",String.class);"
+      },
+      {
+        "line": 223,
+        "text": "assertThat(eventTypes).containsExactlyInAnyOrder(\"CREATED\",\"SUBMITTED\",\"WITHDRAWN\",\"EDITED\",\"STAGE_APPROVED\",\"APPROVED\",\"REJECTED\",\"PAID\",\"ABANDONED\",\"PAYMENT_REVERSED\");"
+      },
+      {
+        "line": 300,
+        "text": "\"\"\",input.id(),numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.FIN_APPLICATION),input.kind(),claim==null?(kind==FinanceApplicationCatalog.Kind.TRAVEL_APPLICATION?\"TRAVEL_PLAN\":\"PAYMENT_INTENT\"):\"EXPENSE_CLAIM\",claim,w.owner().employee(),w.owner().name(),department,input.title(),Objects.toString(input.remark(),\"\"),input.travelApplicationId(),input.requestedDate(),applications.encode(payload),applications.digest(payload),w.owner().user(),w.owner().user());"
+      },
+      {
+        "line": 322,
+        "text": "db.update(\"INSERT INTO expense_claims(id,claim_no,applicant_id,applicant_name_snapshot,applicant_department_id,title,total_amount,status,approval_stage,approval_round,submitted_at,expense_kind,remark) VALUES(?,?,?,? ,(SELECT department_id FROM employees WHERE id=?),'原差旅住宿费',100,'SUBMITTED',NULL,1,now(),?,'原凭据只读保全')\",claim,numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.EXPENSE_CLAIM),w.owner().employee(),w.owner().name(),w.owner().employee(),kind.equals(\"TRAVEL_REIMBURSEMENT\")?\"TRAVEL\":\"GENERAL\");"
+      },
+      {
+        "line": 323,
+        "text": "db.update(\"INSERT INTO expense_claim_items(id,claim_id,line_no,category,amount,expense_date,description) VALUES(?,?,1,'TRAVEL',100,CURRENT_DATE,'真实原差旅事项')\",UUID.randomUUID(),claim);"
+      },
+      {
+        "line": 324,
+        "text": "UUID original=proof(claim,\"EXPENSE_CLAIM\");"
+      },
+      {
+        "line": 325,
+        "text": "db.update(\"INSERT INTO expense_claim_invoices(id,claim_id,line_no,invoice_type,invoice_no,issue_date,seller_name,amount_excl_tax,tax_amount,total_amount,attachment_id) VALUES(?,?,1,'DIGITAL',?,CURRENT_DATE,'原票供应方',94.34,5.66,100,?)\",UUID.randomUUID(),claim,new java.math.BigInteger(UUID.randomUUID().toString().replace(\"-\",\"\"),16).toString().substring(0,20),original);"
+      },
+      {
+        "line": 326,
+        "text": "db.update(\"UPDATE expense_claims SET submission_snapshot=?::jsonb WHERE id=?\",expenseClaims.applicationBusinessSnapshot(claim),claim);"
+      },
+      {
+        "line": 341,
+        "text": "private static String snapshotMigrations(){"
+      },
+      {
+        "line": 343,
+        "text": "var root=java.nio.file.Path.of(Objects.requireNonNull(FinanceApplicationsPostgresTest.class.getClassLoader().getResource(\"db/migration\")).toURI());"
+      },
+      {
+        "line": 344,
+        "text": "var snapshot=java.nio.file.Files.createTempDirectory(\"uten-original-finance-round-migrations-\");"
+      },
+      {
+        "line": 345,
+        "text": "try(var paths=java.nio.file.Files.list(root)){for(var p:paths.filter(f->f.getFileName().toString().endsWith(\".sql\")).toList()){byte[] bytes=java.nio.file.Files.readAllBytes(p);java.nio.file.Files.write(snapshot.resolve(p.getFileName()),bytes);if(!Arrays.equals(bytes,java.nio.file.Files.readAllBytes(p)))throw new IllegalStateException(\"Migration source changed while taking snapshot\");}}"
+      },
+      {
+        "line": 347,
+        "text": "}catch(Exception e){throw new IllegalStateException(\"Cannot freeze the actual migration source\",e);}"
+      }
+    ]
+  },
+  {
+    "class": "LegacyQuantityAdoptionCompatibilityPostgresTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/migration/LegacyQuantityAdoptionCompatibilityPostgresTest.java",
+    "sha256": "a1f5f96f5dab69449deb2ab505abbbf21add2ef8efd1902a14cedc64a2732558",
+    "relevantTextCandidates": [
+      {
+        "line": 1,
+        "text": "package com.uten.imp.migration;"
+      },
+      {
+        "line": 55,
+        "text": "String file=file(family);db.update(\"INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500) ON CONFLICT DO NOTHING\",run,file);"
+      },
+      {
+        "line": 140,
+        "text": "assertThat(rejected.getSQLState()).isEqualTo(\"23514\");assertThat(rejected.getMessage()).contains(\"dedicated migration identity\");"
+      },
+      {
+        "line": 176,
+        "text": "String script(Family f) throws Exception{return Files.readString(Path.of(\"legacy_migration\",f.module()));}"
+      },
+      {
+        "line": 191,
+        "text": "db.update(\"INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500) ON CONFLICT DO NOTHING\",run,file);"
+      }
+    ]
+  },
+  {
+    "class": "ProductionExecutionWorkbenchQueryPostgresTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+    "sha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+    "relevantTextCandidates": [
+      {
+        "line": 39,
+        "text": "* Migration tests separately verify the full production view definitions. */"
+      },
+      {
+        "line": 157,
+        "text": "CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);"
+      },
+      {
+        "line": 213,
+        "text": "CREATE TABLE production_actual_output_supplement_claims(id uuid PRIMARY KEY, proof_id uuid, report_id uuid, event_type text, source_claim_id uuid, created_by uuid, created_at timestamptz);"
+      },
+      {
+        "line": 224,
+        "text": "WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted"
+      },
+      {
+        "line": 229,
+        "text": "String requestMigration = Files.readString(Path.of(\"src/main/resources/db/migration/V559__production_workshop_draw_request.sql\"));"
+      },
+      {
+        "line": 230,
+        "text": "int functionStart = requestMigration.indexOf(\"CREATE OR REPLACE FUNCTION fn_production_draw_requested(\");"
+      },
+      {
+        "line": 231,
+        "text": "jdbc.execute(requestMigration.substring(functionStart, requestMigration.indexOf(\"$$;\", functionStart) + 3));"
+      },
+      {
+        "line": 232,
+        "text": "String quantitiesMigration = Files.readString(Path.of(\"src/main/resources/db/migration/V564__production_draw_requested_quantities.sql\"));"
+      },
+      {
+        "line": 233,
+        "text": "jdbc.execute(quantitiesMigration.substring(quantitiesMigration.indexOf(\"CREATE FUNCTION fn_production_draw_item_requested_qty(\"),"
+      },
+      {
+        "line": 234,
+        "text": "quantitiesMigration.indexOf(\"CREATE FUNCTION fn_guard_production_draw_quantities(\")));"
+      },
+      {
+        "line": 235,
+        "text": "String receiving=Files.readString(Path.of(\"src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql\"));"
+      },
+      {
+        "line": 238,
+        "text": "String returnMigration = Files.readString(Path.of(\"src/main/resources/db/migration/V560__production_material_return_requests.sql\"));"
+      },
+      {
+        "line": 239,
+        "text": "int pendingStart = returnMigration.indexOf(\"CREATE FUNCTION fn_material_issue_pending_return(\");"
+      },
+      {
+        "line": 240,
+        "text": "jdbc.execute(returnMigration.substring(pendingStart,returnMigration.indexOf(\"$$;\",pendingStart)+3));"
+      },
+      {
+        "line": 242,
+        "text": "String migration = Files.readString(Path.of(\"src/main/resources/db/migration/V152__production_material_issue_return_ledger.sql\"));"
+      },
+      {
+        "line": 243,
+        "text": "int start = migration.lastIndexOf(\"CREATE OR REPLACE VIEW v_production_material_clearance AS\");"
+      },
+      {
+        "line": 245,
+        "text": "jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));"
+      },
+      {
+        "line": 777,
+        "text": "jdbc.update(\"INSERT INTO production_actual_output_supplement_claims(id,proof_id,report_id,event_type) VALUES(?,?,?,'CLAIM')\", UUID.randomUUID(), proof, report);"
+      }
+    ]
+  },
+  {
+    "class": "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/features/production/analysis/MaterialAnalysisSupplyWakeupQueryPostgresTest.java",
+    "sha256": "2a25fd36e4c1bf93d2792128ffb22333a00c37a2047df5921d393e8d1c3b258b",
+    "relevantTextCandidates": [
+      {
+        "line": 72,
+        "text": ".locations(\"classpath:db/migration\").load().migrate();"
+      },
+      {
+        "line": 184,
+        "text": "assertTrue(Boolean.TRUE.equals(db.queryForObject(\"SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE contype='f' AND conrelid=CAST(? AS regclass) AND confrelid=CAST(? AS regclass))\",Boolean.class,items,header)));"
+      },
+      {
+        "line": 211,
+        "text": "jdbc.update(\"INSERT INTO legacy_migration_run_files(run_id,file_name,sha256,byte_size) VALUES(?,?,repeat('f',64),500)\",run,file);"
+      }
+    ]
+  },
+  {
+    "class": "SalesShipmentOwnerBoundaryTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentOwnerBoundaryTest.java",
+    "sha256": "767160d14d5e7809493aeddd9705efaa80a4acf82d94baedf976f830a65f50ba",
+    "relevantTextCandidates": []
+  },
+  {
+    "class": "SalesBomDeliveryEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesBomDeliveryEndToEndTest.java",
+    "sha256": "0a9b96c4abc1b1b6b3403969e936ae4bd1b2b587a34c5a315afb86c277eacde6",
+    "relevantTextCandidates": [
+      {
+        "line": 27,
+        "text": "/** Real PostgreSQL, all migrations, production stock kernel and commercial/warehouse review state machines. */"
+      }
+    ]
+  },
+  {
+    "class": "SalesDeliveryMakeSourceEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMakeSourceEndToEndTest.java",
+    "sha256": "eb99ece60ee6b202ad4d47bdfc4ae027ee3c3aa51167df956d5e79cdf87478c2",
+    "relevantTextCandidates": [
+      {
+        "line": 100,
+        "text": "WHERE event.event_type='ORIGIN_MAKE' AND event.beneficiary_analysis_id=? AND reservation.goods_id=?"
+      },
+      {
+        "line": 111,
+        "text": "WHERE handoff.source_material_id=? AND origin.event_type='ORIGIN_MAKE'"
+      },
+      {
+        "line": 125,
+        "text": "WHERE event.daily_report_id=? AND event.event_type='POST' AND posting.settlement_type='CONSUMED' AND demand.goods_id=?"
+      }
+    ]
+  },
+  {
+    "class": "SalesDeliveryMixedScenarioEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryMixedScenarioEndToEndTest.java",
+    "sha256": "feec5490aca18d57490e5f3b98243476e70775ea8c7432fa3fd8276fecb381ca",
+    "relevantTextCandidates": [
+      {
+        "line": 163,
+        "text": "assertThat(db.queryForObject(\"SELECT sum(event.order_qty) FROM sales_delivery_fulfillment_events event JOIN sales_delivery_fulfillment_allocations allocation ON allocation.id=event.allocation_id WHERE allocation.analysis_item_id=? AND event.event_type='FULFILL'\",BigDecimal.class,product(finished,order).analysisLineId())).isEqualByComparingTo(\"5\");"
+      },
+      {
+        "line": 184,
+        "text": "assertThat(db.queryForObject(\"SELECT origin.event_type FROM sales_delivery_entitlement_handoffs handoff JOIN preplan_stock_entitlement_events origin ON origin.id=handoff.source_entitlement_event_id WHERE handoff.component_id=?\",String.class,firstComponent.id())).isEqualTo(\"RESTORE\");"
+      },
+      {
+        "line": 265,
+        "text": "private void assertConsumed(UUID report,UUID goods,String expected){assertThat(db.queryForObject(\"SELECT sum(posting.qty_base) FROM production_material_settlement_postings posting JOIN production_material_settlement_events event ON event.id=posting.event_id JOIN production_material_demands demand ON demand.id=posting.demand_id WHERE event.daily_report_id=? AND event.event_type='POST' AND posting.settlement_type='CONSUMED' AND demand.goods_id=?\",BigDecimal.class,report,goods)).isEqualByComparingTo(expected);}"
+      },
+      {
+        "line": 273,
+        "text": "WHERE origin.event_type='ORIGIN_MAKE' AND origin.beneficiary_analysis_material_id=?"
+      }
+    ]
+  },
+  {
+    "class": "SalesDeliveryOrderClaimEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryOrderClaimEndToEndTest.java",
+    "sha256": "2c433b9278b6651e9b0040bfce6e31ab81848c259422a871799cde1da5f7a5c2",
+    "relevantTextCandidates": [
+      {
+        "line": 119,
+        "text": "assertThat(db.queryForObject(\"SELECT sum(quantity_row) FROM sales_delivery_order_claim_row_events WHERE component_id=? AND event_type='CONSUME'\",BigDecimal.class,component.id())).isEqualByComparingTo(rowCredit);"
+      },
+      {
+        "line": 200,
+        "text": "assertThat(db.queryForObject(\"SELECT count(*) FROM sales_delivery_order_claim_events event JOIN sales_delivery_order_claims claim ON claim.id=event.claim_id WHERE claim.reservation_id=? AND event.event_type='CONSUME'\",Integer.class,original)).isEqualTo(1);"
+      }
+    ]
+  },
+  {
+    "class": "SalesDeliveryPrivateSourceEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryPrivateSourceEndToEndTest.java",
+    "sha256": "a1f0290ff9bfd02d0439d8f7831942eb37d8fbfa77767578ce46de3e25393eef",
+    "relevantTextCandidates": [
+      {
+        "line": 103,
+        "text": "WHERE event.beneficiary_analysis_material_id=? AND event.event_type='ORIGIN_IQC'"
+      },
+      {
+        "line": 265,
+        "text": "assertThat(db.queryForObject(\"SELECT sum(event.order_qty) FROM sales_delivery_fulfillment_events event JOIN sales_delivery_fulfillment_allocations allocation ON allocation.id=event.allocation_id WHERE allocation.analysis_item_id=? AND event.event_type='FULFILL'\",BigDecimal.class,view.products().getFirst().analysisLineId())).isEqualByComparingTo(\"5\");"
+      }
+    ]
+  },
+  {
+    "class": "SalesDeliveryRevisionEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryRevisionEndToEndTest.java",
+    "sha256": "027f2213502c70154e95d7a61fa77a894c1a0db4fd2867870d0f1b2f6d26a059",
+    "relevantTextCandidates": []
+  },
+  {
+    "class": "SalesDeliverySourceReverseUnitsEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliverySourceReverseUnitsEndToEndTest.java",
+    "sha256": "06bd499ba9eb985a25e4f5cfe2ed14395ea3421e23918c80f8be34a2d8c3dec3",
+    "relevantTextCandidates": []
+  },
+  {
+    "class": "SalesDeliveryWarehouseScopeEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesDeliveryWarehouseScopeEndToEndTest.java",
+    "sha256": "292e499cb6dcb9dd4b8462bfc14b3753d5fea96b7dcbd2e7b8e9b784398bf145",
+    "relevantTextCandidates": []
+  },
+  {
+    "class": "SalesShipmentFinanceReleaseRateEndToEndTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java",
+    "sha256": "38875fc327115559acbeb5b73797bd89547ae5973c119b4325293b5a8ef371e1",
+    "relevantTextCandidates": [
+      {
+        "line": 194,
+        "text": "return db.query(\"SELECT event_type,exchange_rate,exchange_rate_source FROM sales_shipment_finance_release_events WHERE shipment_id=? ORDER BY occurred_at,id\","
+      }
+    ]
+  },
+  {
+    "class": "SalesShipmentCurrencyFilterTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/features/sales/shipment/SalesShipmentCurrencyFilterTest.java",
+    "sha256": "7faec12beec653281a89d8b3786e46263d2a636f7bedc40922c1ca5e325c2387",
+    "relevantTextCandidates": []
+  },
+  {
+    "class": "ArchitectureBoundaryTest",
+    "group": "combined-integration-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/architecture/ArchitectureBoundaryTest.java",
+    "sha256": "97e4829a8b8bdca710b5cf31f311a5f378008c68baa6d56c6e71331b2012113b",
+    "relevantTextCandidates": [
+      {
+        "line": 56,
+        "text": "\"expenseclaim->attachment\","
+      },
+      {
+        "line": 113,
+        "text": "\"expenseclaim->common\","
+      },
+      {
+        "line": 118,
+        "text": "// 接入 ADR-023 统一任务并发认领 TaskClaimService（与 expenseclaim/purchase/sales/"
+      },
+      {
+        "line": 302,
+        "text": "void expenseClaimNeverReachesTheSharedAiPlatform() throws IOException {"
+      },
+      {
+        "line": 306,
+        "text": "Path expenseClaim = FEATURE_SOURCE.resolve(\"expenseclaim\");"
+      },
+      {
+        "line": 307,
+        "text": "if (Files.exists(expenseClaim)) {"
+      },
+      {
+        "line": 308,
+        "text": "for (Path file : javaFiles(expenseClaim)) {"
+      }
+    ]
+  },
+  {
+    "class": "DirectMakeDeliveryClosedCreditPostgresTest",
+    "group": "combined-capacity-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+    "sha256": "60e13e69cff910f3f60bce9032b1ae3267cdb7afc526210dab734e0cd0becffd",
+    "relevantTextCandidates": [
+      {
+        "line": 44,
+        "text": "CREATE TABLE preplan_stock_entitlement_events(id uuid PRIMARY KEY,event_type text,stock_reservation_id uuid,beneficiary_analysis_id uuid,beneficiary_analysis_material_id uuid,source_exact_peg_id uuid,counter_event_id uuid);"
+      },
+      {
+        "line": 57,
+        "text": "CREATE TABLE sales_delivery_fulfillment_events(id uuid PRIMARY KEY,allocation_id uuid,event_type text,counter_event_id uuid);"
+      },
+      {
+        "line": 72,
+        "text": "jdbc.execute(new ClassPathResource(\"db/migration/V1058__direct_make_closed_delivery_credit.sql\").getContentAsString(StandardCharsets.UTF_8));"
+      },
+      {
+        "line": 73,
+        "text": "jdbc.execute(new ClassPathResource(\"db/migration/V1061__direct_make_closed_delivery_capacity_branches.sql\").getContentAsString(StandardCharsets.UTF_8));"
+      },
+      {
+        "line": 83,
+        "text": "row(\"preplan_stock_entitlement_events\",\"id\",origin,\"event_type\",\"ORIGIN_MAKE\",\"stock_reservation_id\",originalReservation,\"beneficiary_analysis_id\",analysis,\"beneficiary_analysis_material_id\",material,\"source_exact_peg_id\",exact);"
+      },
+      {
+        "line": 96,
+        "text": "row(\"sales_delivery_fulfillment_events\",\"id\",fulfilled,\"allocation_id\",allocation,\"event_type\",\"FULFILL\");"
+      },
+      {
+        "line": 144,
+        "text": "jdbc.update(\"UPDATE preplan_stock_entitlement_events SET event_type='RESTORE',counter_event_id=? WHERE id=?\",UUID.randomUUID(),origin);"
+      },
+      {
+        "line": 154,
+        "text": "case \"BUY\"->jdbc.update(\"UPDATE preplan_stock_entitlement_events SET event_type='ORIGIN_IQC' WHERE id=?\",origin);"
+      },
+      {
+        "line": 158,
+        "text": "case \"REVERSED\"->row(\"sales_delivery_fulfillment_events\",\"id\",UUID.randomUUID(),\"allocation_id\",allocation,\"event_type\",\"REVERSE\",\"counter_event_id\",fulfilled);"
+      }
+    ]
+  },
+  {
+    "class": "InteractiveTaskReadScopePostgresTest",
+    "group": "combined-capacity-selection.txt",
+    "path": "server/src/test/java/com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java",
+    "sha256": "549b040f94d0509a4f4d7be1b1955b9f4e93be3c21e682d2a8d32a89ee74d847",
+    "relevantTextCandidates": []
+  }
+]

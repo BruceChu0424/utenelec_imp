@@ -350,7 +350,7 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(contracts).contains("List<GeneratedDraw> drawDocuments");
         assertThat(commands).contains("drawDocuments(UUID packageId)");
         assertThat(commands).contains(
-                "NOT fn_imported_business_document('stock_documents',archive_origin.id)) stock ON stock.id = doc.document_id");
+                "NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock ON stock.id = doc.document_id");
     }
 
     @Test

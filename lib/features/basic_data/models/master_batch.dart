@@ -4,6 +4,10 @@
 // 逐条返回 {id, label, ok, reason}。失败条目的 reason 是给人看的中文原因
 // (被哪些单据/货品引用、已被他人修改、没有权限……)，页面逐条展示，不吞掉。
 
+/// Client validation for the existing authoritative MasterBatchRequests.MAX_ITEMS.
+/// A complete list does not enlarge or split a business command.
+const masterBatchMaximumItems = 500;
+
 /// 批量命令的一条目标：业务 id + 列表行读到的乐观锁版本(无版本的主档传 null)。
 class MasterBatchItem {
   const MasterBatchItem(this.id, [this.version]);

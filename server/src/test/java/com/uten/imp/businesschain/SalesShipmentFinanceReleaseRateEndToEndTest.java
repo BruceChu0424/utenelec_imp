@@ -88,21 +88,21 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
         Map<String,Object> released=release(draft.getId(),new BigDecimal("7.200000"));
         assertEquals("7.2",released.get("shipmentExchangeRate"));assertEquals("7.2",released.get("suggestedExchangeRate"));
         rate("7.2",db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals(List.of("RELEASED|7.2|FINANCE_MANUAL"),releaseEvents(draft.getId()));
+        assertEquals(1,releaseEvents(draft.getId()).size());event(releaseEvents(draft.getId()).getFirst(),"RELEASED","7.2","FINANCE_MANUAL");
 
         // 撤回放行：冻结值作废，撤回事件不带汇率。
         shipments.financeAuditReverse(draft.getId());
         assertNull(db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals(List.of("RELEASED|7.2|FINANCE_MANUAL","REVOKED|null|null"),releaseEvents(draft.getId()));
+        var events=releaseEvents(draft.getId());assertEquals(2,events.size());event(events.getFirst(),"RELEASED","7.2","FINANCE_MANUAL");event(events.getLast(),"REVOKED",null,null);
 
         // 主档维护了 7 之后：预填 7；不填就用主档(来源=主档)；填成同值也算主档。
         db.update("UPDATE currencies SET exchange_rate=7 WHERE id=?",w.currencyId());
         assertEquals("7",shipments.financeAuditInfo(draft.getId()).get("suggestedExchangeRate"));
         release(draft.getId(),null);
-        assertEquals("RELEASED|7|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        event(releaseEvents(draft.getId()).getLast(),"RELEASED","7","CURRENCY_MASTER");
         shipments.financeAuditReverse(draft.getId());
         release(draft.getId(),new BigDecimal("7.0"));
-        assertEquals("RELEASED|7|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        event(releaseEvents(draft.getId()).getLast(),"RELEASED","7","CURRENCY_MASTER");
         shipments.financeAuditReverse(draft.getId());
 
         // 财务改成 7.25 放行；主档随后改成 8 也不影响本单——仓库确认出库按冻结的 7.25 立应收。
@@ -141,7 +141,7 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
         assertTrue(other.getMessage().contains("记账汇率固定为 1"),other.getMessage());
         release(draft.getId(),null);
         rate("1",db.queryForObject("SELECT exchange_rate FROM sales_shipments WHERE id=?",BigDecimal.class,draft.getId()));
-        assertEquals("RELEASED|1|CURRENCY_MASTER",releaseEvents(draft.getId()).getLast());
+        event(releaseEvents(draft.getId()).getLast(),"RELEASED","1","CURRENCY_MASTER");
     }
 
     /**
@@ -190,9 +190,14 @@ class SalesShipmentFinanceReleaseRateEndToEndTest {
                 ((Number)info.get("reviewRevision")).longValue(),info.get("contentHash").toString(),claim.claimId(),null,exchangeRate));
     }
 
-    private List<String> releaseEvents(UUID shipmentId) {
-        return db.queryForList("SELECT event_type||'|'||COALESCE(exchange_rate::text,'null')||'|'||COALESCE(exchange_rate_source,'null')"
-                +" FROM sales_shipment_finance_release_events WHERE shipment_id=? ORDER BY occurred_at,id",String.class,shipmentId);
+    private record ReleaseEvent(String type,BigDecimal rate,String source) { }
+    private List<ReleaseEvent> releaseEvents(UUID shipmentId) {
+        return db.query("SELECT event_type,exchange_rate,exchange_rate_source FROM sales_shipment_finance_release_events WHERE shipment_id=? ORDER BY occurred_at,id",
+                (rs,index)->new ReleaseEvent(rs.getString(1),rs.getBigDecimal(2),rs.getString(3)),shipmentId);
+    }
+    private static void event(ReleaseEvent actual,String type,String expectedRate,String source){
+        assertEquals(type,actual.type());assertEquals(source,actual.source());
+        if(expectedRate==null)assertNull(actual.rate());else rate(expectedRate,actual.rate());
     }
 
     private static void rate(String expected,BigDecimal actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),"expected "+expected+" but was "+actual);}

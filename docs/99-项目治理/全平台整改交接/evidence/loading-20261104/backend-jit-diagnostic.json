@@ -1,0 +1,123 @@
+{
+  "status": "ISOLATED_CAUSE_VERIFIED; final public scope acceptance remains pending current source tests",
+  "createdAtUtc": "2026-11-05T10:27:25.240259+00:00",
+  "compiledSourceInputSha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+  "fixtureRows": 8,
+  "role": {
+    "version": "PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "current_user": "test",
+    "current_database": "test"
+  },
+  "execution": {
+    "path": "server/build/loading-validation/execution-f619-diagnostic-execution.json",
+    "sha256": "570caf0f7bfeada3a3dd5b7951530c72983263492524c1cabc30538046996253"
+  },
+  "receipt": {
+    "path": "server/build/loading-validation/execution-plan-diagnostic-f619/receipt.json",
+    "sha256": "ae81380fdf4eb3f879a34379f99aefba2343f0f601436430d7a8dcfde37b8fe4"
+  },
+  "plans": [
+    {
+      "path": "server/build/loading-validation/execution-plan-diagnostic-f619/query-0-jit-off-plan.json",
+      "sha256": "cb36cc1bafec30a00b1c5681ea36590ed9f37bd0a88dd09e7cd6d2b165041d4e"
+    },
+    {
+      "path": "server/build/loading-validation/execution-plan-diagnostic-f619/query-0-jit-on-plan.json",
+      "sha256": "3a8517f432039681ca2eee6f891ba2f425764860566fdeb91bb95b2f3f53a5eb"
+    },
+    {
+      "path": "server/build/loading-validation/execution-plan-diagnostic-f619/query-1-jit-off-plan.json",
+      "sha256": "08c6ee51327c7ac051027874094b0dfc31385dbfcdc20ef7562cf4bb6aa216af"
+    },
+    {
+      "path": "server/build/loading-validation/execution-plan-diagnostic-f619/query-1-jit-on-plan.json",
+      "sha256": "f65fc8acb11b7cc48287a7eb4f5520758792df5d83ffd8c71dc3b8ba5eca70e4"
+    }
+  ],
+  "queries": [
+    {
+      "queryIndex": 0,
+      "sqlSha256": "d65f3c137e53dfaf31b2782b29a65f91150c3d0cccc556beab5e7249a4d1bbd1",
+      "on": {
+        "rowFingerprintSha256": "726cd99fcd2b320c760e9e659e7b4ee274c475f690bc08e6134159809fd9a266",
+        "queryMillis": 46.8548,
+        "rowCount": 1,
+        "planSha256": "3a8517f432039681ca2eee6f891ba2f425764860566fdeb91bb95b2f3f53a5eb",
+        "plan": "build\\loading-validation\\execution-plan-diagnostic-f619\\query-0-jit-on-plan.json"
+      },
+      "off": {
+        "rowFingerprintSha256": "726cd99fcd2b320c760e9e659e7b4ee274c475f690bc08e6134159809fd9a266",
+        "queryMillis": 8.8539,
+        "rowCount": 1,
+        "planSha256": "cb36cc1bafec30a00b1c5681ea36590ed9f37bd0a88dd09e7cd6d2b165041d4e",
+        "plan": "build\\loading-validation\\execution-plan-diagnostic-f619\\query-0-jit-off-plan.json"
+      }
+    },
+    {
+      "queryIndex": 1,
+      "sqlSha256": "9a923e0766af0a32a6030c0119db0841f1d1f41ba77a638798a551194a20bcb0",
+      "on": {
+        "rowFingerprintSha256": "6108fa4839b83d252ee160936c801a5cbec2f19f69c0263fd90e78ee6cac518a",
+        "queryMillis": 24436.3762,
+        "rowCount": 1,
+        "planSha256": "f65fc8acb11b7cc48287a7eb4f5520758792df5d83ffd8c71dc3b8ba5eca70e4",
+        "plan": "build\\loading-validation\\execution-plan-diagnostic-f619\\query-1-jit-on-plan.json"
+      },
+      "off": {
+        "rowFingerprintSha256": "6108fa4839b83d252ee160936c801a5cbec2f19f69c0263fd90e78ee6cac518a",
+        "queryMillis": 34.6605,
+        "rowCount": 1,
+        "planSha256": "08c6ee51327c7ac051027874094b0dfc31385dbfcdc20ef7562cf4bb6aa216af",
+        "plan": "build\\loading-validation\\execution-plan-diagnostic-f619\\query-1-jit-off-plan.json"
+      }
+    }
+  ],
+  "rowQueryPlanSummary": {
+    "query-1-jit-off-plan.json": {
+      "Planning Time": 14.69,
+      "Execution Time": 15.306,
+      "JIT": null
+    },
+    "query-1-jit-on-plan.json": {
+      "Planning Time": 30.743,
+      "Execution Time": 24394.302,
+      "JIT": {
+        "Functions": 569,
+        "Options": {
+          "Inlining": true,
+          "Optimization": true,
+          "Expressions": true,
+          "Deforming": true
+        },
+        "Timing": {
+          "Generation": 176.312,
+          "Inlining": 161.353,
+          "Optimization": 15142.236,
+          "Emission": 8886.617,
+          "Total": 24366.517
+        }
+      }
+    }
+  },
+  "publicOwner": "ProductionExecutionWorkbenchService.segmentPage shared by workOrders/inProgressTasks/workshopTasks; existing SQL/predicates/projection are retained",
+  "implementation": "InteractiveTaskReadScope saves and restores jit on the actual existing Hibernate JDBC connection with transaction-local set_config. No global setting, source/access guard, estimate-cost rewrite or cache is introduced.",
+  "officialSources": [
+    {
+      "url": "https://www.postgresql.org/docs/16/sql-set.html",
+      "supports": "SET LOCAL lasts through the current transaction and is removed on commit/rollback or an earlier savepoint rollback. Outside a transaction it has no effect."
+    },
+    {
+      "url": "https://www.postgresql.org/docs/16/functions-admin.html#FUNCTIONS-ADMIN-SET",
+      "supports": "set_config(..., true) changes a setting only for the current transaction; current_setting corresponds to SHOW."
+    },
+    {
+      "url": "https://www.postgresql.org/docs/16/jit-decision.html",
+      "supports": "JIT compilation can exceed the saved time for short queries. Decisions use estimated costs at plan time; jit=off also disables JIT during execution."
+    }
+  ],
+  "qualifications": [
+    "This is exact isolated fixture SQL and same-connection A/B, not production latency, a company-network SLA, or a whole-platform performance guarantee.",
+    "Only the demonstrated shared segment projection is governed. Unmeasured analytical/report queries keep their prior optimizer configuration.",
+    "The final source public-service/transaction restoration/cancellation verdicts belong to the final backend acceptance receipt; diagnostics are not relabelled as final source execution."
+  ]
+}

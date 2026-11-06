@@ -238,7 +238,7 @@ class _WarehouseQualityResultsPageState
     super.initState();
     // 全来源与全部作业是明确的默认范围；徽章只报告工作量，不代用户收窄。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      trackRefresh(_load(1, preferPrepared: true));
+      trackRefresh(_load(1));
     });
   }
 
@@ -305,7 +305,7 @@ class _WarehouseQualityResultsPageState
       }
     });
     if (!seg.history || !_historyTime.isNone) {
-      _load(1, preferPrepared: !seg.history);
+      _load(1);
     }
   }
 
@@ -354,11 +354,7 @@ class _WarehouseQualityResultsPageState
     _load(1);
   }
 
-  Future<void> _load(
-    int page, {
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final ownerCurrent = captureReadOwner(ref);
@@ -381,7 +377,7 @@ class _WarehouseQualityResultsPageState
       _loading = true;
       _error = null;
     });
-    unawaited(_refreshStatusCounts(force: !preferPrepared && !useCache));
+    unawaited(_refreshStatusCounts(force: !useCache));
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
       final seg = _statusSeg!;
@@ -450,7 +446,7 @@ class _WarehouseQualityResultsPageState
           order: pageOrder,
           billNo: pageBillNo,
           scopeWarehouseId: pageScopeWarehouseId,
-        ).read(ref, pageRepository, preferPrepared: preferPrepared),
+        ).read(ref, pageRepository),
       );
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
 
@@ -647,16 +643,7 @@ class _WarehouseQualityResultsPageState
     ref.watch(currentPermissionsProvider);
     ref.watch(authenticatedScopeProvider);
     ref.watch(formDraftsProvider);
-    if (_statusSeg?.history != true) {
-      prepareWarehouseQualityPages(
-        ref,
-        context,
-        keyword: _effectiveKeyword,
-        receiptType: _receiptType,
-        scopeWarehouseId: _scopeWarehouseId,
-        canPrepare: () => !_loading,
-      );
-    }
+
     final result =
         _result ??
         const PagedResult<WarehouseQualityResultTask>(

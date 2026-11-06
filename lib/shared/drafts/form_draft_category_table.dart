@@ -1,6 +1,7 @@
 import '../providers/master_party_options.dart';
 import '../providers/party_reference_read_controller.dart';
 import '../providers/export_context_epoch_provider.dart';
+import '../paging/paged_read_window_binding.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
@@ -298,6 +299,10 @@ class _FormDraftCategoryTableState<T>
     // Only a managed server window pins drafts independently of its pages.
     // A bare external page label retains the original first-page-only policy.
     final paginated = table.onPageChange != null || table.onLoadMore != null;
+    // A valid empty remote response clears only remote pages. Journal rows use
+    // the existing unpaged slot; a retired source still hides the entire union.
+    final pinLocal =
+        paginated || readWindowBindingOf(table.items)?.empty == true;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
     final referenceKey = [
@@ -339,12 +344,30 @@ class _FormDraftCategoryTableState<T>
         .toList();
     final localIds = {for (final draft in local) '$_prefix${draft.id}'};
     _localSelected.removeWhere((id) => !localIds.contains(id));
-    final rows = <FormDraftCategoryRow<T>>[
-      if (!paginated)
-        for (final draft in local) FormDraftCategoryRow(draft: draft),
-      for (final item in formalItems)
-        FormDraftCategoryRow(record: item, draft: recovering[_id(item)]),
+    List<FormDraftCategoryRow<T>> projectRecords(List<T> records) => [
+      for (final item in records)
+        FormDraftCategoryRow<T>(record: item, draft: recovering[_id(item)]),
     ];
+    final projectionKey = [
+      'form-draft-category-records',
+      widget.scope,
+      widget.search,
+      table.paginationScope,
+    ];
+    final rows = projectReadWindowBinding<T, FormDraftCategoryRow<T>>(
+      table.items,
+      [
+        if (!pinLocal)
+          for (final draft in local) FormDraftCategoryRow<T>(draft: draft),
+        ...projectRecords(formalItems),
+      ],
+      project: (records) => [
+        if (!pinLocal)
+          for (final draft in local) FormDraftCategoryRow<T>(draft: draft),
+        ...projectRecords(records),
+      ],
+      projectionKey: projectionKey,
+    );
     final protectedFormalIds = {
       for (final entry in recovering.entries)
         if (entry.value.hasUnknownSubmission) entry.key,
@@ -374,13 +397,12 @@ class _FormDraftCategoryTableState<T>
       _windowRecovery = Map.of(recovering);
       _windowRows = {
         for (final entry in table.refreshedPages.entries)
-          entry.key: [
-            for (final item in entry.value)
-              FormDraftCategoryRow<T>(
-                record: item,
-                draft: recovering[_id(item)],
-              ),
-          ],
+          entry.key: projectReadWindowBinding<T, FormDraftCategoryRow<T>>(
+            entry.value,
+            projectRecords(entry.value),
+            project: projectRecords,
+            projectionKey: projectionKey,
+          ),
       };
     }
     return MasterDataTableView<FormDraftCategoryRow<T>>(
@@ -390,13 +412,12 @@ class _FormDraftCategoryTableState<T>
       paginationScope: (widget.scope, widget.search, table.paginationScope),
       paginationRevision: table.paginationRevision,
       refreshedPages: _windowRows,
-      onRetainedPagesChanged: table.onRetainedPagesChanged,
       rowsController: table.rowsController?.adapt<FormDraftCategoryRow<T>>(
         (rows) =>
             rows.where((row) => !row.isLocal).map((row) => row.record as T),
       ),
       unpagedItems: [
-        if (paginated)
+        if (pinLocal)
           for (final draft in local) FormDraftCategoryRow<T>(draft: draft),
         for (final item in table.unpagedItems)
           FormDraftCategoryRow<T>(record: item, draft: recovering[_id(item)]),
@@ -574,6 +595,22 @@ class _FormDraftCategoryTableState<T>
                     (row) => row.record != null
                         ? recordMatches.contains(row.record)
                         : draftMatches.contains(row),
+                  )
+                  .toList();
+            },
+      unfilteredRows: table.unfilteredRows == null
+          ? null
+          : (all) {
+              final visibleRecords = Set<T>.identity()
+                ..addAll(
+                  table.unfilteredRows!([
+                    for (final row in all)
+                      if (row.record != null) row.record as T,
+                  ]),
+                );
+              return all
+                  .where(
+                    (row) => row.isLocal || visibleRecords.contains(row.record),
                   )
                   .toList();
             },
@@ -820,8 +857,6 @@ class _FormDraftCategoryTableState<T>
       revealRequest: table.revealRequest,
       totalPages: table.totalPages,
       showPaginationControls: table.showPaginationControls,
-      maxRetainedPages: table.maxRetainedPages,
-      maxRetainedRows: table.maxRetainedRows,
       onPageChange: table.onPageChange,
       expensiveRowMounts: table.expensiveRowMounts,
       summaryBar: table.error != null && local.isNotEmpty

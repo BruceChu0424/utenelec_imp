@@ -1,0 +1,72 @@
+{
+  "createdAtUtc": "2026-11-05T12:35:25.593086+00:00",
+  "kind": "PRECISE_ADDITIVE_EVENT_CONTRACT_AND_FINANCE_FIXTURE_APPLICABILITY",
+  "previousInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "currentInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "previousProductionSourceSha256": "2011dcac14293aca55c0b93089b21fcd4d869457786dfa86488ca11d7ba18d81",
+  "currentProductionSourceSha256": "01c72e08ff768e1ea4de1495efcb442ea0d572aecae4fe7ea2ad8c7380bcbb3f",
+  "unchangedExistingProductionSourceSha256": "2011dcac14293aca55c0b93089b21fcd4d869457786dfa86488ca11d7ba18d81",
+  "sourceFiles": 6956,
+  "changedFiles": [
+    "server/src/test/java/com/uten/imp/features/finance/application/FinanceApplicationsPostgresTest.java"
+  ],
+  "added": [
+    "server/src/main/resources/db/migration/V1062__expense_payment_reversal_event_contract.sql"
+  ],
+  "missing": [],
+  "allExistingProductionAndLegacyFilesByteEqual": true,
+  "allOtherTestJavaAndTestResourcesByteEqual": true,
+  "onlyProductionDelta": {
+    "path": "server/src/main/resources/db/migration/V1062__expense_payment_reversal_event_contract.sql",
+    "sha256": "333d89c6b0c9c6ab59a5c160632b8b6f7d88564719f8dd0bc0befd8f866ddec2",
+    "table": "expense_claim_events",
+    "constraint": "expense_claim_events_type_chk",
+    "beforeTypes": [
+      "ABANDONED",
+      "APPROVED",
+      "CREATED",
+      "EDITED",
+      "PAID",
+      "REJECTED",
+      "STAGE_APPROVED",
+      "SUBMITTED",
+      "WITHDRAWN"
+    ],
+    "afterTypes": [
+      "ABANDONED",
+      "APPROVED",
+      "CREATED",
+      "EDITED",
+      "PAID",
+      "PAYMENT_REVERSED",
+      "REJECTED",
+      "STAGE_APPROVED",
+      "SUBMITTED",
+      "WITHDRAWN"
+    ],
+    "addedTypes": [
+      "PAYMENT_REVERSED"
+    ],
+    "removedTypes": [],
+    "existingServiceAndClientContract": "ExpenseClaimService1142 and Flutter expense_claim_event.dart already emit/recognize this type; V999_11 allowed it before V1000/V1002 omitted it.",
+    "dataOrPermissionChanges": false,
+    "unknownEventStillRejectedSqlState": "23514"
+  },
+  "independentDependencyDiscovery": {
+    "path": "server/build/loading-validation/expense-event-1062-applicability-discovery.json",
+    "sha256": "8e08d356cec65696510450bed38a730f833e08e99a8facf91984855244013267",
+    "kind": "static dependency review, not runtime"
+  },
+  "directReferencesToChangedFixtureOutsideItself": [],
+  "originalFinanceFixtureBodyAndAssertionsBytePreservedByExactInversion": true,
+  "fixtureConfigurationBoundary": "The new datasource/scan staging configuration is nested @TestConfiguration imported explicitly by FinanceApplicationsPostgresTest only; it is not a production component or imported by another test source.",
+  "acceptedPreviousEvidence": {
+    "capacity": "All20 passed cases keep identical Java/test inputs. DirectMake minimal schema executes1058/1061 only; Scope uses fixture_write. Neither reads/writes the new event CHECK.",
+    "integration-f4-first": "Only82 passed cases in15 unchanged classes are applicable: all existing code/SQL/test resources remain byte-equal; the solely added1062 CHECK is not exercised by their audited stock/order/shipment/source-query paths. Raw16-class run remains RED exit1; entire old Finance class excluded."
+  },
+  "excludedAffectedClasses": [
+    "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest"
+  ],
+  "mandatoryNewRuntimeEvidence": "Full current FinanceApplicationsPostgresTest must independently complete actual exit0, every testcase passed and0skip, against the real1039 ->1040 ->current upgraded business DB with mapped-schema validation and all-worker/scan-journal routing proofs.",
+  "forbiddenTransfers": "Restricted to f4 plus exactly one changed Finance fixture and one additive event CHECK. It does not claim every resource is identical, adopt0c/0d/f619/5a results, or pretend aggregate hashes are equal."
+}

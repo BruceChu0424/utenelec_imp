@@ -22,6 +22,10 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import 'finance_entry_file_picker.dart';
 import 'finance_source_table.dart';
@@ -45,12 +49,26 @@ const _sources = {
 };
 Map<String, dynamic> _map(Object? v) =>
     v is Map ? Map<String, dynamic>.from(v) : {};
-List<Map<String, dynamic>> _maps(Object? v) => [
-  if (v is List)
-    for (final row in v)
-      if (row is Map) _map(row),
-];
 String _problem(Object e) => humanErrorMessage(e) ?? '读取或提交失败，原输入、附件及请求已保留';
+Object? _pickerIdentity(Map<String, dynamic> row, String kind) {
+  if (kind == 'GROUP') {
+    if (row['goodsId'] is! String ||
+        row['goodsId'] == '' ||
+        row['unitId'] is! String ||
+        row['unitId'] == '') {
+      return null;
+    }
+    return (row['goodsId'], row['colorId'], row['unitId']);
+  }
+  final source = _map(_map(row['source'])['source']);
+  if (source['kind'] != kind ||
+      source['itemId'] is! String ||
+      source['itemId'] == '') {
+    return null;
+  }
+  return (source['kind'], source['itemId']);
+}
+
 String _status(Object? v) => switch (v) {
   'SUBMITTED' => '待审核',
   'APPROVED' => '已审核',
@@ -99,11 +117,13 @@ class _EvidenceDirectory extends ConsumerStatefulWidget {
   ConsumerState<_EvidenceDirectory> createState() => _EvidenceDirectoryState();
 }
 
-class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
+class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory>
+    with ReadViewActivityMixin<_EvidenceDirectory> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final bool Function() _owner;
   bool _retired = false, _busy = false, _opening = false;
   String? _error;
-  int _page = 1, _pages = 0;
   List<Map<String, dynamic>> _rows = [];
   bool get _current => mounted && !_retired && _owner();
   @override
@@ -118,10 +138,10 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
         });
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
       _busy = true;
@@ -130,19 +150,36 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
     try {
       final api = ref.read(apiClientProvider),
           guard = await api.captureRequestScope(isCurrent: () => _current);
-      final result = await guard.run(
-        () =>
-            api.get(_base, query: {...widget.scope, 'page': page, 'size': 50}),
+      final result = await readViewActivity.runRead(
+        () => _current,
+        () => guard.run(
+          () => loadCompletePagedResult<Map<String, dynamic>>(
+            isCurrent: () => _current && guard.isCurrent,
+            idOf: (row) => row['id'],
+            loadPage: (page, size) async =>
+                PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                  await api.get(
+                    _base,
+                    query: {...widget.scope, 'page': page, 'size': size},
+                  ),
+                  (row) => row,
+                ),
+          ),
+        ),
       );
       if (_current && guard.isCurrent) {
         setState(() {
-          _rows = _maps(result['items']);
-          _page = page;
-          _pages = (result['totalPages'] as num?)?.toInt() ?? 0;
+          _rows = result.items;
         });
       }
     } catch (e) {
-      if (_current) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current) {
+        setState(() {
+          if (pagedReadAccessDenied(e)) _rows = [];
+          _error = _problem(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -164,7 +201,7 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
     } finally {
       _opening = false;
     }
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   @override
@@ -199,7 +236,7 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
                 child: UtenResponsiveActionWrap(
                   children: [
                     UtenButton(
-                      onPressed: _busy ? null : () => _load(1),
+                      onPressed: _busy ? null : _load,
                       child: const Text('刷新'),
                     ),
                     if (canEdit) ...[
@@ -285,10 +322,7 @@ class _EvidenceDirectoryState extends ConsumerState<_EvidenceDirectory> {
                   idOf: (r) => '${r['id']}',
                   busy: _busy,
                   error: _error,
-                  retry: () => _load(_page),
-                  page: _page,
-                  pages: _pages,
-                  onPage: _load,
+                  retry: _load,
                   onOpen: (r) => _open(row: r),
                   canOpen: (_) => !_busy,
                   scope: widget.scope,
@@ -1306,12 +1340,14 @@ class _EvidencePicker extends ConsumerStatefulWidget {
   ConsumerState<_EvidencePicker> createState() => _EvidencePickerState();
 }
 
-class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
+class _EvidencePickerState extends ConsumerState<_EvidencePicker>
+    with ReadViewActivityMixin<_EvidencePicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final bool Function() _owner;
   bool _retired = false, _busy = false;
   final _q = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
-  int _page = 1, _pages = 0;
   String? _error;
   bool get _current => mounted && !_retired && _owner();
   @override
@@ -1326,7 +1362,7 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
         });
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -1335,7 +1371,7 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
       _busy = true;
@@ -1345,33 +1381,50 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
       final api = ref.read(apiClientProvider),
           guard = await api.captureRequestScope(isCurrent: () => _current);
       final group = widget.kind == 'GROUP';
-      final result = await guard.run(
-        () => api.get(
-          group
-              ? '/finance/subcontract-loss-policies/source-choices'
-              : '$_base/sources',
-          query: {
-            if (group)
-              'supplierId': widget.scope['supplierId']
-            else
-              ...widget.scope,
-            if (!group) 'kind': widget.kind,
-            if (widget.orderItemId != null) 'orderItemId': widget.orderItemId,
-            'keyword': _q.text,
-            'page': page,
-            'size': 50,
-          },
+      final keyword = _q.text;
+      final result = await readViewActivity.runRead(
+        () => _current,
+        () => guard.run(
+          () => loadCompletePagedResult<Map<String, dynamic>>(
+            isCurrent: () => _current && guard.isCurrent,
+            idOf: (row) => _pickerIdentity(row, widget.kind),
+            loadPage: (page, size) async =>
+                PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                  await api.get(
+                    group
+                        ? '/finance/subcontract-loss-policies/source-choices'
+                        : '$_base/sources',
+                    query: {
+                      if (group)
+                        'supplierId': widget.scope['supplierId']
+                      else
+                        ...widget.scope,
+                      if (!group) 'kind': widget.kind,
+                      if (widget.orderItemId != null)
+                        'orderItemId': widget.orderItemId,
+                      'keyword': keyword,
+                      'page': page,
+                      'size': size,
+                    },
+                  ),
+                  (row) => row,
+                ),
+          ),
         ),
       );
       if (_current && guard.isCurrent) {
         setState(() {
-          _rows = _maps(result['items']);
-          _page = page;
-          _pages = (result['totalPages'] as num?)?.toInt() ?? 0;
+          _rows = result.items;
         });
       }
     } catch (e) {
-      if (_current) setState(() => _error = _problem(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current) {
+        setState(() {
+          if (pagedReadAccessDenied(e)) _rows = [];
+          _error = _problem(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1410,13 +1463,13 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
                   label: '搜索真实单号或商品',
                   controller: _q,
                   enabled: !_busy,
-                  onFieldSubmitted: (_) => _load(1),
+                  onFieldSubmitted: (_) => _load(),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: UtenButton(
-                  onPressed: _busy ? null : () => _load(1),
+                  onPressed: _busy ? null : _load,
                   child: const Text('查询'),
                 ),
               ),
@@ -1473,15 +1526,10 @@ class _EvidencePickerState extends ConsumerState<_EvidencePicker> {
                           ),
                         ],
                   rows: _rows,
-                  idOf: (r) => group
-                      ? '${r['goodsId']}:${r['colorId']}:${r['unitId']}'
-                      : '${_map(_map(r['source'])['source'])['itemId']}',
+                  idOf: (r) => _pickerIdentity(r, widget.kind).toString(),
                   busy: _busy,
                   error: _error,
-                  retry: () => _load(_page),
-                  page: _page,
-                  pages: _pages,
-                  onPage: _load,
+                  retry: _load,
                   onOpen: (r) {
                     if (_current && !_busy) Navigator.pop(context, r);
                   },

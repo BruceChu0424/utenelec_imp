@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -46,6 +47,112 @@ void main() {
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
   });
+
+  testWidgets(
+    'real ARAP return clears its search, stops the old locator and refreshes only the current query',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final api = _OverviewApi()
+        ..largeLocator = true
+        ..locationGate = Completer<Map<String, dynamic>>();
+      final router = GoRouter(
+        initialLocation: RouteName.financeReportOverview,
+        routes: [
+          GoRoute(
+            path: RouteName.financeReportOverview,
+            builder: (_, _) => const FinanceArApOverviewPage(),
+          ),
+          GoRoute(
+            path: '/cover',
+            builder: (_, _) => const Scaffold(body: Text('opaque cover')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _pumpPage(tester, prefs: prefs, api: api, router: router);
+      await tester.enterText(_searchField(), 'C-003');
+      await tester.pump(const Duration(milliseconds: 350));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.locationReads, [(0, 1), (0, 2)]);
+      unawaited(router.push<void>('/cover'));
+      await tester.pumpAndSettle();
+      expect(api.locationActivity.last!(), isFalse);
+      api.locationGate!.complete({
+        'items': [
+          {'partyType': 'CLIENT', 'categoryId': null},
+        ],
+        'page': 2,
+        'size': 100,
+        'total': 3,
+        'totalPages': 3,
+      });
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.locationReads, [(0, 1), (0, 2)]);
+      final reports = api.reportQueries.length;
+      api.locatorRevision = 1;
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(api.locationReads, [(0, 1), (0, 2)]);
+      expect(api.reportQueries.length, reports + 1);
+      expect(api.reportActivityAtDispatch, everyElement(isTrue));
+      expect(api.reportQueries.last, isNot(contains('keyword')));
+      expect(
+        tester.widget<TextField>(_searchField()).controller!.text,
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Ticker-only ARAP cover retains the query and revalidates report and full locator once',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final active = ValueNotifier(true);
+      addTearDown(active.dispose);
+      final api = _OverviewApi()
+        ..largeLocator = true
+        ..locationGate = Completer<Map<String, dynamic>>();
+      await _pumpPage(tester, prefs: prefs, api: api, active: active);
+      await tester.enterText(_searchField(), 'C-003');
+      await tester.pump(const Duration(milliseconds: 350));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.locationReads, [(0, 1), (0, 2)]);
+      active.value = false;
+      await tester.pump();
+      expect(api.locationActivity.last!(), isFalse);
+      api.locationGate!.complete({
+        'items': [
+          {'partyType': 'CLIENT', 'categoryId': null},
+        ],
+        'page': 2,
+        'size': 100,
+        'total': 3,
+        'totalPages': 3,
+      });
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 5));
+      }
+      expect(api.locationReads, [(0, 1), (0, 2)]);
+      final reports = api.reportQueries.length;
+      api.locatorRevision = 1;
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(api.locationReads, [(0, 1), (0, 2), (1, 1), (1, 2), (1, 3)]);
+      expect(api.reportQueries.length, reports + 1);
+      expect(api.reportQueries.last['keyword'], 'C-003');
+      expect(_tree(tester).visibleFilterIds, contains('domestic-supplier'));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('finance report return preserves hub scroll and report filters', (
     tester,
@@ -392,13 +499,14 @@ void main() {
         'EXACT-C-002',
         'PREFIX-C-002',
         'NEAR-C-002',
+        'PAGE2-C-002',
       ]);
       expect(_table(tester).items.map((row) => row['categoryId']).toSet(), {
         'southeast-asia',
         'domestic-supplier',
         'overseas',
       });
-      expect(_table(tester).totalPages, 2);
+      expect(_table(tester).totalPages, 1);
       expect(find.text('共 4'), findsOneWidget);
       expect(find.textContaining('应收应付 ·'), findsNothing);
       expect(_tree(tester).flatLevelColors, isTrue);
@@ -411,7 +519,7 @@ void main() {
       await tester.tap(find.textContaining('海外客户'));
       await tester.pumpAndSettle();
       _expectGlobal(api.reportQueries.last, 'C-002');
-      expect(_table(tester).items, hasLength(3));
+      expect(_table(tester).items, hasLength(4));
       final export = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );
@@ -422,11 +530,16 @@ void main() {
         export.bodyParams['sensitiveFilter'],
         containsPair('keyword', 'C-002'),
       );
-      _table(tester).onPageChange!(2);
+      final loadedReads = api.reportQueries.length;
+      final scroll = find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable && widget.axisDirection == AxisDirection.down,
+      );
+      await tester.drag(scroll.last, const Offset(0, -600));
       await tester.pumpAndSettle();
-      expect(api.reportQueries.last['page'], 2);
+      expect(api.reportQueries.length, loadedReads);
       _expectGlobal(api.reportQueries.last, 'C-002');
-      expect(_table(tester).items.single['partyName'], 'PAGE2-C-002');
+      expect(_table(tester).items.last['partyName'], 'PAGE2-C-002');
       final beforeSort = api.reportQueries.length;
       _table(tester).onSortChange!('arAmount', false);
       await tester.pumpAndSettle();
@@ -484,6 +597,7 @@ void main() {
       _expectGlobal(api.reportQueries.last, 'OVER');
       expect(_tree(tester).selectedIds, isEmpty);
       await tester.enterText(_searchField(), '');
+      api.heldLocationDelay!.complete();
       await tester.pumpAndSettle();
       expect(
         api.reportQueries.last,
@@ -622,6 +736,7 @@ Future<void> _pumpPage(
   bool dark = false,
   GlobalKey? capture,
   bool readFinanceDetail = false,
+  ValueNotifier<bool>? active,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = size;
@@ -667,7 +782,14 @@ Future<void> _pumpPage(
                   ).copyWith(textScaler: TextScaler.linear(scale)),
                   child: child!,
                 ),
-                home: const FinanceArApOverviewPage(),
+                home: active == null
+                    ? const FinanceArApOverviewPage()
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: active,
+                        child: const FinanceArApOverviewPage(),
+                        builder: (_, enabled, child) =>
+                            TickerMode(enabled: enabled, child: child!),
+                      ),
               )
             : MaterialApp.router(
                 routerConfig: router,
@@ -723,12 +845,20 @@ class _OverviewApi extends ApiClient {
 
   final bool delayFirstSearch;
   final String? delayLocationKeyword;
+  Completer<void>? heldLocationDelay;
   // Business criteria stay flat in this fake; private wire requests are
   // captured separately so tests can verify contact values never enter URLs.
   final reportQueries = <Map<String, dynamic>>[];
+  final reportActivityAtDispatch = <bool>[];
   final reportSearchRequests =
       <({Map<String, dynamic> query, Map<String, dynamic> body})>[];
   final locationQueries = <Map<String, dynamic>>[];
+  bool largeLocator = false;
+  int locatorRevision = 0;
+  final locationReads = <(int, int)>[];
+  final locationActivity = <bool Function()?>[];
+  Completer<Map<String, dynamic>>? locationGate;
+
   bool _holdNextReport = false;
   Completer<Map<String, dynamic>>? heldReport;
 
@@ -792,12 +922,36 @@ class _OverviewApi extends ApiClient {
       final q = Map<String, dynamic>.from(query ?? const {});
       locationQueries.add(q);
       final keyword = q['keyword']?.toString();
+      if (largeLocator) {
+        final page = (q['page'] as num?)?.toInt() ?? 1;
+        locationReads.add((locatorRevision, page));
+        locationActivity.add(PagedReadIntent.currentTransportActivity);
+        if (locatorRevision == 0 && page == 2 && locationGate != null) {
+          return locationGate!.future;
+        }
+        return {
+          'items': [
+            {
+              'partyType': page == 3 ? 'SUPPLIER' : 'CLIENT',
+              'categoryId': page == 1
+                  ? 'southeast-asia'
+                  : page == 2
+                  ? null
+                  : 'domestic-supplier',
+            },
+          ],
+          'page': page,
+          'size': 100,
+          'total': 3,
+          'totalPages': 3,
+        };
+      }
       if (keyword == 'LOCATOR-FAIL') {
         throw StateError('locator unavailable');
       }
       final page = (q['page'] as num?)?.toInt() ?? 1;
       if (keyword == delayLocationKeyword) {
-        await Future<void>.delayed(const Duration(milliseconds: 500));
+        await (heldLocationDelay ??= Completer<void>()).future;
       }
       if (keyword == 'C-002' ||
           keyword == 'C-003' ||
@@ -829,6 +983,9 @@ class _OverviewApi extends ApiClient {
     }
     if (path == '/finance/reports/ar-ap/overview') {
       final q = Map<String, dynamic>.from(query ?? const {});
+      reportActivityAtDispatch.add(
+        PagedReadIntent.currentActivity?.call() ?? true,
+      );
       reportQueries.add(q);
       if (_holdNextReport) {
         _holdNextReport = false;

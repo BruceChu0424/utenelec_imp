@@ -6,8 +6,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/ai_usage_dashboard_models.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 
 abstract interface class AiUsageDashboardRepository {
   /// 看板总览(指定统计窗口)。
@@ -36,13 +40,38 @@ class DioAiUsageDashboardRepository implements AiUsageDashboardRepository {
   final ApiClient api;
 
   @override
-  Future<AiUsageDashboard> dashboard(AiUsageWindow window) async =>
-      AiUsageDashboard.fromJson(
-        await api.get(
-          ApiEndpoints.adminAiUsageDashboard,
-          query: {'window': window.wire},
-        ),
-      );
+  Future<AiUsageDashboard> dashboard(AiUsageWindow window) async {
+    final current = PagedReadIntent.currentRead ?? () => true;
+    final rawSummary = await api.get(
+      ApiEndpoints.adminAiUsageDashboard,
+      query: {'window': window.wire, 'includePeople': false},
+    );
+    if (rawSummary['window'] != window.wire) {
+      throw ApiException('INVALID_RESPONSE', '用量统计窗口未确认，请刷新后重新读取');
+    }
+    final summary = AiUsageDashboard.fromJson(rawSummary);
+    final people = await loadCompletePagedResult<AiUsagePerson>(
+      isCurrent: current,
+      idOf: (row) => row.userId,
+      loadPage: (page, size) async {
+        final json = await api.get(
+          '${ApiEndpoints.adminAiUsageDashboard}/people',
+          query: {'window': window.wire, 'page': page, 'size': size},
+        );
+        if (json['items'] is! List ||
+            [
+              'page',
+              'size',
+              'total',
+              'totalPages',
+            ].any((key) => json[key] is! int)) {
+          throw ApiException('INVALID_RESPONSE', '用量人员结果不完整，请刷新后重新读取');
+        }
+        return PagedResult.fromJson(json, AiUsagePerson.fromJson);
+      },
+    );
+    return summary.withPeople(people.items);
+  }
 
   @override
   Future<AiUsagePersonDetail> person(

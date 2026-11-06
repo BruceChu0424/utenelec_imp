@@ -430,7 +430,6 @@ class _FinanceAssetFormSurfaceState
       .listPickerPage(
         query,
         purpose: EmployeeReferencePurpose.financeAssetCustodian,
-        size: 30,
         departmentId: _departmentId,
         includeSubtree: true,
       );

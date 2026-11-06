@@ -55,10 +55,11 @@ class BusinessApplicationRepository {
   Future<Map<String, dynamic>> prepaymentFinanceCandidates(
     String id, {
     int page = 1,
+    int size = 100,
     String? keyword,
   }) => api.get(
     '$path/$id/prepayment-finance-candidates',
-    query: {'page': page, 'size': 24, 'keyword': ?keyword},
+    query: {'page': page, 'size': size, 'keyword': ?keyword},
   );
 }
 

@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:convert';
 
@@ -7,12 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -23,6 +24,7 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 import '../repositories/company_file_repository.dart';
+import '../repositories/company_file_complete_listing.dart';
 import 'company_file_access_editor.dart';
 
 export 'company_file_access_editor.dart' show CompanyFileScopeBoundary;
@@ -1161,11 +1163,15 @@ class CompanyFileMoveDialog extends StatefulWidget {
   State<CompanyFileMoveDialog> createState() => _CompanyFileMoveDialogState();
 }
 
-class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
+class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog>
+    with ReadViewActivityMixin<CompanyFileMoveDialog> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   String? _parent;
   CompanyFileListing? _listing;
   Object? _error;
-  int _request = 0, _page = 0;
+  Object? _readActionToken;
+  int _request = 0;
   @override
   void initState() {
     super.initState();
@@ -1174,19 +1180,44 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
 
   Future<void> _load() async {
     final request = ++_request;
+    bool current() => mounted && widget.scope.isCurrent && request == _request;
     setState(() {
       _listing = null;
       _error = null;
     });
     try {
-      final value = await widget.scope.run(
-        () => widget.repository.list(parentId: _parent, page: _page),
+      final parent = _parent;
+      final value = await readViewActivity.runRead(
+        current,
+        () => widget.scope.run(
+          () => widget.repository.readCompleteListing(
+            parentId: parent,
+            isCurrent: () =>
+                mounted && widget.scope.isCurrent && request == _request,
+          ),
+        ),
       );
       if (mounted && widget.scope.isCurrent && request == _request) {
         setState(() => _listing = value);
       }
     } catch (e) {
-      if (mounted && request == _request) setState(() => _error = e);
+      if (isRetiredViewRead(e)) return;
+      if (mounted && widget.scope.isCurrent && request == _request) {
+        setState(() => _error = e);
+      }
+    }
+  }
+
+  Future<void> _loadFromAction() async {
+    if (!mounted || !widget.scope.isCurrent) return;
+    final token = Object();
+    setState(() => _readActionToken = token);
+    try {
+      await _load();
+    } finally {
+      if (mounted && identical(_readActionToken, token)) {
+        setState(() => _readActionToken = null);
+      }
     }
   }
 
@@ -1207,14 +1238,18 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_readActionToken != null && widget.scope.isCurrent)
+              UtenBusyOverlay(
+                title: l.companyFilesLoading,
+                showDoNotLeaveHint: false,
+              ),
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 TextButton(
                   onPressed: () {
                     _parent = null;
-                    _page = 0;
-                    _load();
+                    _loadFromAction();
                   },
                   child: Text(l.companyFilesTitle),
                 ),
@@ -1222,8 +1257,7 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                   (b) => TextButton(
                     onPressed: () {
                       _parent = b.id;
-                      _page = 0;
-                      _load();
+                      _loadFromAction();
                     },
                     child: Text('/ ${b.name}'),
                   ),
@@ -1238,7 +1272,7 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                   ? UtenEmpty.error(
                       message: companyFileError(_error!, l),
                       actionLabel: l.companyFilesRetry,
-                      onAction: _load,
+                      onAction: _loadFromAction,
                     )
                   : listing == null
                   ? const Center(child: CircularProgressIndicator())
@@ -1259,25 +1293,11 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           _parent = folders[i].id;
-                          _page = 0;
-                          _load();
+                          _loadFromAction();
                         },
                       ),
                     ),
             ),
-            if (listing != null && listing.total > listing.size)
-              Align(
-                alignment: Alignment.centerRight,
-                child: UtenPagination(
-                  currentPage: _page + 1,
-                  totalPages: (listing.total / listing.size).ceil(),
-                  busy: !widget.scope.isCurrent,
-                  onPageChanged: (target) {
-                    _page = target - 1;
-                    _load();
-                  },
-                ),
-              ),
           ],
         ),
       ),

@@ -358,5 +358,12 @@ public final class WorkshopMaterialDtos {
      */
     public record SegmentMaterials(UUID segmentId, UUID binWarehouseId, long lockVersion,
                                    LocalDate earliestEffectiveFrom, List<PeriodicRowView> rows,
-                                   List<WorkshopMaterialChoicePort.MaterialOption> options) {}
+                                   List<WorkshopMaterialChoicePort.MaterialOption> options,
+                                   UUID productGoodsId,UUID workshopDepartmentId) {
+        /** Old stored command results and direct callers retain their original shape/meaning. */
+        public SegmentMaterials(UUID segmentId,UUID binWarehouseId,long lockVersion,LocalDate earliestEffectiveFrom,
+                                List<PeriodicRowView> rows,List<WorkshopMaterialChoicePort.MaterialOption> options) {
+            this(segmentId,binWarehouseId,lockVersion,earliestEffectiveFrom,rows,options,null,null);
+        }
+    }
 }

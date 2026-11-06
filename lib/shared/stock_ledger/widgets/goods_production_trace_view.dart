@@ -72,6 +72,9 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
     with
         UtenRefreshParticipant<GoodsProductionTraceView>,
         ScopedPagedReadViewMixin<GoodsProductionTraceView> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   final _readViewportRows =
       MasterDataTableRowsController<GoodsProductionTraceRow>();
   int get _visibleReadPage => _data == null
@@ -206,6 +209,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
     try {
       final cached = await readScopedPage<GoodsProductionTraceRow>(
         page,
+        idOf: (row) => row.id,
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
@@ -236,7 +240,11 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
           return PagedReadSnapshot<
             GoodsProductionTraceRow,
             MaterialTraceResult
-          >(page: result.page, snapshot: result);
+          >(
+            page: result.page,
+            snapshot: result,
+            rebuildSnapshot: result.withPage,
+          );
         },
       );
       final data = cached;
@@ -252,6 +260,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || request != _request) return;
       final revoked =
           error is ApiException &&

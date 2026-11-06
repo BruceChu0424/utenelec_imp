@@ -113,7 +113,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         DraftBulkDeleteMixin<PurchaseDocListPage>,
         UtenRefreshParticipant<PurchaseDocListPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
-  final _list = PagedListController<PurchaseDocListItem>();
+  final _list = PagedListController<PurchaseDocListItem>(idOf: (row) => row.id);
   final _tableRows = MasterDataTableRowsController<PurchaseDocListItem>();
   int _reloadGeneration = 0;
   int _badgeRequestId = 0;
@@ -424,7 +424,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       _cfg.draftKind == null ? null : DocumentStatusScope(_cfg.draftKind!);
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<PurchaseDocListItem>> _fetch([int? requestedPage]) async {
+  Future<PagedResult<PurchaseDocListItem>> _fetch([
+    int? requestedPage,
+    int batchSize = 100,
+  ]) async {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
     final names = ref.read(masterNameServiceProvider);
@@ -434,6 +437,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         .read(purchaseRepositoryProvider(widget.docType))
         .list(
           page: requestedPage ?? _list.pageNum,
+          size: batchSize,
           filter: PurchaseDocFilter(
             origin: _queryOrigin,
             keyword: _list.normalizedKeyword,
@@ -565,6 +569,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -820,11 +825,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     // 且推迟到返回转场结束; 详情/编辑页保存成功 bump 的 tick 在本页就在栈顶时立即重拉,
     // 被详情页盖着时只记下、返回再拉——此前 tick 与返回各拉一次, 一次保存重拉两遍。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () {
+    FutureOr<void> visibleReadReturn() {
       return _list.revalidate(
         Future.wait([_reload(null, true), _loadBadge()]).then((_) {}),
       );
-    }, refreshKeys: [_cfg.refreshKey]);
+    }
+
+    _list.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(
+      _myLocation!,
+      visibleReadReturn,
+      refreshKeys: [_cfg.refreshKey],
+    );
     final isRequest = widget.docType == PurchaseDocType.request;
     final approvedLabel = isRequest ? '计划已下达' : '已审';
     final seg = _seg;
@@ -1062,7 +1074,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             totalPages: _list.totalPages,
                             paginationRevision: _list.paginationRevision,
                             refreshedPages: _list.refreshedPages,
-                            onRetainedPagesChanged: _list.retainPages,
                             paginationScope: (
                               _readerGeneration,
                               widget.docType,

@@ -39,6 +39,7 @@ model WebsiteMediaObject {
 
   @@index([authorityId, state])
   @@index([state, createdAt])
+  @@index([state, createdAt(sort: Desc), publicPath], map: "cms_media_order_idx")
 }
 
 /// 产品系列 (Z9 / S300 / Q7 / Q9 / V系列 / 出口 / 地面插座 ...)
@@ -67,6 +68,8 @@ model Series {
 
   @@index([parentId])
   @@index([legacySource, legacyId])
+  @@index([sortOrder, id], map: "cms_series_order_idx")
+  @@index([sortOrder, code, id], map: "cms_series_options_idx")
 }
 
 /// 系列级展示素材。role 仅允许 hero / lineup / lifestyle / combination / detail。
@@ -123,6 +126,8 @@ model Product {
   @@index([category])
   @@index([sceneEnabled])
   @@index([legacySource, legacyId])
+  @@index([featured(sort: Desc), sortOrder, id], map: "cms_product_order_idx")
+  @@index([seriesId, featured(sort: Desc), sortOrder, id], map: "cms_product_series_order_idx")
 }
 
 /// 产品颜色 / 材质款式。场景试装必须选择到具体款式，避免只知道产品而不知道正面效果。
@@ -156,6 +161,7 @@ model ProductVariant {
   @@index([productId])
   @@index([published])
   @@index([legacySource, legacyId])
+  @@index([productId, isDefault(sort: Desc), sortOrder, id], map: "cms_variant_preview_idx")
 }
 
 /// 场景试装背景与默认安装参数。config 为 JSON 字符串，兼容 SQLite 并便于未来扩展。
@@ -175,6 +181,7 @@ model ScenePreset {
   @@index([published])
   @@index([sortOrder])
   @@index([defaultVariantId])
+  @@index([sortOrder, createdAt, id], map: "cms_scene_order_idx")
 }
 
 /// 一次通过完整 QA 门禁后实际落库的旧站目录导入。dry-run 不写本表。
@@ -281,6 +288,7 @@ model News {
 
   @@index([category])
   @@index([publishedAt])
+  @@index([publishedAt(sort: Desc), id], map: "cms_news_order_idx")
 }
 
 /// 样板工程
@@ -293,6 +301,7 @@ model CaseItem {
   published  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  @@index([sortOrder, id], map: "cms_case_order_idx")
 }
 
 /// 人才招聘岗位
@@ -306,6 +315,7 @@ model Job {
   published  Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  @@index([sortOrder, id], map: "cms_job_order_idx")
 }
 
 /// 站点设置 (键值对 + 多语言)
@@ -355,6 +365,7 @@ model Inquiry {
   @@index([handled])
   @@index([createdAt])
   @@index([source, locale])
+  @@index([createdAt(sort: Desc), id], map: "cms_inquiry_order_idx")
 }
 
 /// Written in the same transaction as Inquiry. Removed from polling only after
@@ -422,6 +433,9 @@ model CmsRevision {
   createdAt    DateTime @default(now())
   @@index([status, createdAt])
   @@index([entityType, entityId, createdAt])
+  @@index([createdAt(sort: Desc), id], map: "cms_revision_order_idx")
+  @@index([status, createdAt(sort: Desc), id], map: "cms_revision_status_order_idx")
+  @@index([entityType, entityId, status, operation, createdBy, baseHash, createdAt, id], map: "cms_pending_delete_lookup_idx")
 }
 
 model CmsAuditEvent {
@@ -470,4 +484,5 @@ model ResourceDocument {
   @@index([published, language])
   @@index([productId])
   @@index([seriesId])
+  @@index([updatedAt(sort: Desc), id], map: "cms_resource_order_idx")
 }

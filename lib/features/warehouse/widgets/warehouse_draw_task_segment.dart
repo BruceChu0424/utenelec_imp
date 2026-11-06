@@ -186,13 +186,12 @@ class _WarehouseDrawTaskSegmentState
 
   List<WarehouseDrawTask> _viewItemsOf(PagedResult<WarehouseDrawTask> result) {
     final view = _projectTaskRows(result.items);
-    projectReadWindowBinding(
+    return projectReadWindowBinding(
       result.items,
       view,
       project: _projectTaskRows,
       projectionKey: 'warehouse-draw-batch-goods-v1',
     );
-    return view;
   }
 
   List<WarehouseDrawTask>? _visibleTaskSource;

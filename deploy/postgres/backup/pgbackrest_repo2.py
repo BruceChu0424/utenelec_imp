@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -29,6 +30,9 @@ PLACEHOLDER_MARKERS = ("REPLACE", "CHANGEME", "EXAMPLE", "__")
 # pgbackrest_health, backup_acceptance and backup_commissioner so they cannot drift apart.
 MINIMUM_RESTORE_POINTS = 3
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+FLYWAY_VERSION_AUTHORITY_SHA256 = (
+    "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
+)
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
 SAFE_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 SAFE_ENDPOINT = re.compile(
@@ -95,6 +99,60 @@ TimeoutStartSec=12h
 
 class ContractError(ValueError):
     """Raised when a commissioning input violates the reviewed contract."""
+
+
+def flyway_version_api():
+    """Load the existing version authority from a fixed source/trusted path."""
+    source = Path(__file__).resolve(strict=True)
+    in_checkout = (
+        source.parent.name == "backup"
+        and source.parents[1].name == "postgres"
+        and source.parents[2].name == "deploy"
+    )
+    path = (
+        source.parents[2] / "updater" / "release_guard.py"
+        if in_checkout
+        else Path("/usr/local/libexec/uten-imp-release/release_guard.py")
+    )
+    try:
+        if path.resolve(strict=True) != path:
+            raise ContractError("Flyway version authority path is not canonical")
+        if not in_checkout:
+            _assert_secure_file(path, 0, 0, 0o644, "Flyway version authority")
+            for directory in (path.parent, *path.parent.parents):
+                info = directory.stat()
+                if info.st_uid != 0 or stat.S_IMODE(info.st_mode) & 0o022:
+                    raise ContractError("Flyway authority directory is not root controlled")
+        spec = importlib.util.spec_from_file_location("uten_backup_flyway_identity", path)
+        if spec is None or spec.loader is None:
+            raise ContractError("Cannot load the fixed Flyway version authority")
+        # Execute only captured bytes with the reviewed digest, not a second
+        # pathname open after verification. Installed trust is never recreated.
+        if in_checkout:
+            if path.stat().st_size > 4 * 1024 * 1024:
+                raise ContractError("Flyway authority exceeds the source budget")
+            raw = path.read_bytes()
+        else:
+            if not hasattr(os, "O_NOFOLLOW"):
+                raise ContractError("Flyway authority capture requires O_NOFOLLOW")
+            expected = path.lstat()
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+            with os.fdopen(descriptor, "rb") as stream:
+                opened = os.fstat(stream.fileno())
+                raw = stream.read(4 * 1024 * 1024 + 1)
+                after = path.lstat()
+            if ((opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+                    != (expected.st_dev, expected.st_ino, expected.st_size, expected.st_mtime_ns)
+                    or (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                    != (expected.st_dev, expected.st_ino, expected.st_size, expected.st_mtime_ns)):
+                raise ContractError("Flyway authority changed during capture")
+        if len(raw) > 4 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != FLYWAY_VERSION_AUTHORITY_SHA256:
+            raise ContractError("Flyway authority differs from the reviewed digest")
+        module = importlib.util.module_from_spec(spec)
+        exec(compile(raw, str(path), "exec"), module.__dict__)
+        return module
+    except OSError as exc:
+        raise ContractError("Cannot read the fixed Flyway version authority") from exc
 
 
 @dataclass(frozen=True)

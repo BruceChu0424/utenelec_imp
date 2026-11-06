@@ -1,0 +1,17 @@
+{
+  "atUtc": "2026-11-06T07:17:13.489576+00:00",
+  "archive": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-main4ee-52be87ef/backend-main4ee-final-evidence.zip",
+  "bytes": 13230017,
+  "sha256": "49f0604d51a5c4fb805bb3eba25f4b48f2c47af1462c322506694e52a4522d3b",
+  "zipMembers": 747,
+  "everyMemberSha256Verified": true,
+  "zipCrcAllVerified": true,
+  "sourceEvidenceStableDuringArchive": true,
+  "memberManifestSha256": "b9de2a3ce7596ab3ff8a88019b2daaaa7f02f26aca696409affe5b027dd09aa0",
+  "backendAcceptanceSha256": "430d613244ba5e2810f7110c9e38af894405a30e826674e1908d8bc791f811a8",
+  "source": "52be87ef98d6baaaba0dec16e0aabc659a1d184e70fd2834bd3fbccf3702e794",
+  "oldD213ArchiveSha256Unchanged": "5385472c27629de9fcd437365f5e54e0a39c7326425a57d4cc438a53a62a18ce",
+  "evidenceOnlyNotFormalProductPackage": true,
+  "companyDbWritten": false,
+  "mainWritten": false
+}

@@ -192,7 +192,7 @@ class _PanelApi extends ApiClient {
                 ],
           'page': 1,
           'size': 50,
-          'total': 2,
+          'total': emptyBalances ? 0 : 2,
           'totalPages': 1,
         };
       case '/stock/goods/g1/ledger':

@@ -32,6 +32,8 @@ TARGETS = {
 PIN_GRAPH = (
     ("deploy/updater/release_guard.py", (
         ("deploy/updater/release_updater.py", "_GUARD_SHA256", "python"),
+        ("deploy/postgres/backup/pgbackrest_repo2.py", "FLYWAY_VERSION_AUTHORITY_SHA256", "python"),
+        ("deploy/postgres/backup/existing_host_installer.py", "FLYWAY_VERSION_AUTHORITY_SHA256", "python"),
         ("deploy/updater/runtime_boot_verifier.py", "RELEASE_GUARD_SHA256", "python"),
         ("deploy/updater/migration_authorization.py", "RELEASE_GUARD_SHA256", "python"),
     )),
@@ -48,6 +50,9 @@ PIN_GRAPH = (
     )),
     ("deploy/updater/retention_manager.py", (
         ("deploy/updater/retention_launcher.py", "APPROVED_RETENTION_MANAGER_SHA256", "python"),
+    )),
+    ("deploy/postgres/backup/existing_host_installer.py", (
+        ("deploy/postgres/backup/launch-existing-host-installer.py", "REVIEWED_INSTALLER_SHA256", "python"),
     )),
 )
 

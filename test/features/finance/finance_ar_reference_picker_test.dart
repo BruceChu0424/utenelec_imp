@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
-import 'package:uten_imp/components/layout/uten_load_more_boundary.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/finance/models/finance_decimal.dart';
@@ -21,7 +20,10 @@ void main() {
       final grid = tester.widget<UtenEditableGrid>(
         find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
       );
-      expect(grid.headerFilterScopeDescription, '筛选已加载台账；查找全部台账请使用上方搜索');
+      expect(
+        grid.headerFilterScopeDescription,
+        '按当前往来单位的全部未结台账筛选；币种及可核销金额由原台账决定',
+      );
       const allocationHelp = '订单号仅辅助归属；本次收款只核销明确勾选的出货应收，不跨批次自动分摊。';
       expect(
         grid.columns
@@ -53,15 +55,16 @@ void main() {
       await tester.ensureVisible(find.text('来源类型 / 单号'));
       await tester.tap(find.text('来源类型 / 单号'));
       await tester.pumpAndSettle();
-      expect(find.text('筛选已加载台账；查找全部台账请使用上方搜索'), findsNothing);
+      expect(find.text('按当前往来单位的全部未结台账筛选；币种及可核销金额由原台账决定'), findsNothing);
       final filterScopeHint = find.byWidgetPredicate(
         (widget) =>
             widget is Tooltip &&
-            (widget.message?.contains('筛选已加载台账；查找全部台账请使用上方搜索') ?? false),
+            (widget.message?.contains('按当前往来单位的全部未结台账筛选；币种及可核销金额由原台账决定') ??
+                false),
       );
       await tester.tap(filterScopeHint);
       await tester.pumpAndSettle();
-      expect(find.text('筛选已加载台账；查找全部台账请使用上方搜索'), findsOneWidget);
+      expect(find.text('按当前往来单位的全部未结台账筛选；币种及可核销金额由原台账决定'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -162,7 +165,7 @@ void main() {
   }
 
   testWidgets(
-    'AR reference drawer loads the next page by wheel and keeps the original exact amount',
+    'AR reference drawer completes every page once and keeps the original exact amount across local scrolling',
     (tester) async {
       final api = _PagedArReferenceApi();
       List<AppliedArAp>? applied;
@@ -208,29 +211,16 @@ void main() {
   );
 
   testWidgets(
-    'AR next-page failure retains the editable first page and retries only that page',
+    'AR complete-query refresh failure retains exact input and explicit Enter retries the entire query',
     (tester) async {
-      final api = _PagedArReferenceApi(failPageTwoOnce: true);
+      final api = _PagedArReferenceApi();
       List<AppliedArAp>? applied;
       await _openPagedPicker(tester, api, (result) => applied = result);
       await _selectAndFillFirst(tester, '7.0001');
-
-      await _wheelAtLedgerBottom(tester, api);
-      expect(api.pages, [1, 2, 2]);
-      expect(
-        find.byKey(const ValueKey('ar-ap-select-ledger-51')),
-        findsNothing,
-      );
-      _ledgerVerticalPosition(tester).jumpTo(0);
+      api.failPageTwoOnce = true;
+      await _submitSearch(tester);
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<Checkbox>(
-              find.byKey(const ValueKey('ar-ap-select-ledger-1')),
-            )
-            .value,
-        isTrue,
-      );
+      expect(api.pages, [1, 2, 1, 2]);
       expect(
         tester
             .widget<TextField>(
@@ -240,36 +230,24 @@ void main() {
             .text,
         '7.0001',
       );
-      expect(find.text('重试'), findsOneWidget);
-
-      // A further wheel while an error is displayed must not retry in a loop.
       await _wheelAtLedgerBottom(tester, api);
-      expect(api.pages, [1, 2, 2]);
-      await tester.tap(find.text('重试'));
-      await tester.pumpAndSettle();
-      expect(api.pages, [1, 2, 2, 2]);
-      expect(
-        find.byKey(const ValueKey('ar-ap-select-ledger-51')),
-        findsOneWidget,
-      );
+      expect(api.pages, [1, 2, 1, 2]);
       _ledgerVerticalPosition(tester).jumpTo(0);
       await tester.pumpAndSettle();
+      await _submitSearch(tester);
+      await tester.pumpAndSettle();
+      expect(api.pages, [1, 2, 1, 2, 1, 2]);
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
       await tester.pumpAndSettle();
-      expect(applied, hasLength(1));
-      expect(applied!.single.ledgerId, 'ledger-1');
       expect(applied!.single.receiptAmountText, '7.0001');
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'AR speculative denial retires private rows while keeping raw local amount',
+    'AR denied complete refresh retires private rows, preserves raw input and coalesces active same-query Enter',
     (tester) async {
-      final gate = Completer<void>();
-      final api = _PagedArReferenceApi()
-        ..nextGate = gate
-        ..denyNext = true;
+      final api = _PagedArReferenceApi();
       await _openPagedPicker(tester, api, (_) {});
       await _selectAndFillFirst(tester, '12.3400');
       final controller = tester
@@ -277,6 +255,16 @@ void main() {
             find.byKey(const ValueKey('ar-ap-amount-ledger-1')),
           )
           .controller!;
+      final gate = Completer<void>();
+      api.nextGate = gate;
+      api.denyNext = true;
+      await _submitSearch(tester);
+      for (var frame = 0; frame < 100 && api.pages.length < 4; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await _submitSearch(tester);
+      await tester.pump();
+      expect(api.pages, [1, 2, 1, 2]);
       gate.complete();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('ar-ap-select-ledger-1')), findsNothing);
@@ -284,7 +272,7 @@ void main() {
       expect(find.text('picker read revoked'), findsOneWidget);
       expect(controller.text, '12.3400');
       await tester.pump(const Duration(seconds: 1));
-      expect(api.pages, [1, 2]);
+      expect(api.pages, [1, 2, 1, 2]);
       expect(tester.takeException(), isNull);
     },
   );
@@ -384,7 +372,10 @@ Future<void> _openPagedPicker(
   );
   await tester.tap(find.text('打开引用'));
   await tester.pumpAndSettle();
-  expect(api.pages, [1, 2], reason: 'next DTO is prepared before any scroll');
+  expect(api.pages, [
+    1,
+    2,
+  ], reason: 'the authorized query completes before any scroll');
 }
 
 Future<void> _selectAndFillFirst(
@@ -400,18 +391,22 @@ Future<void> _selectAndFillFirst(
   await tester.pumpAndSettle();
 }
 
+Future<void> _submitSearch(WidgetTester tester) async {
+  final field = find.widgetWithText(TextField, '搜索应收单号、发运单号、销售订单号或客户');
+  await tester.tap(field);
+  await tester.pump();
+  await tester.testTextInput.receiveAction(TextInputAction.search);
+  await tester.pump();
+}
+
 ScrollPosition _ledgerVerticalPosition(WidgetTester tester) {
-  // Cell editors own additional scrollables; select the outer list viewport.
   final viewport = find
-      .descendant(
-        of: find.byType(UtenLoadMoreBoundary),
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is SingleChildScrollView &&
-              widget.scrollDirection == Axis.vertical,
-        ),
+      .byWidgetPredicate(
+        (widget) =>
+            widget is SingleChildScrollView &&
+            widget.scrollDirection == Axis.vertical,
       )
-      .first;
+      .last;
   return tester
       .state<ScrollableState>(
         find.descendant(of: viewport, matching: find.byType(Scrollable)).first,
@@ -436,13 +431,14 @@ Future<void> _wheelAtLedgerBottom(
   expect(position.extentAfter, lessThanOrEqualTo(0.5));
   expect(
     api.pages,
-    api.failPageTwoOnce && beforeWheel.length == 2 ? [1, 2, 2] : beforeWheel,
-    reason:
-        'At most the missing prepared DTO is retried on reaching the boundary',
+    beforeWheel,
+    reason: 'All rows are already local; wheel input never retries reads',
   );
   await tester.sendEventToBinding(
     PointerScrollEvent(
-      position: tester.getCenter(find.byType(UtenLoadMoreBoundary)),
+      position: tester.getCenter(
+        find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
+      ),
       scrollDelta: const Offset(0, 96),
     ),
   );
@@ -450,7 +446,7 @@ Future<void> _wheelAtLedgerBottom(
 }
 
 class _PagedArReferenceApi extends _ArReferenceApi {
-  _PagedArReferenceApi({this.failPageTwoOnce = false, bool multiOrder = false})
+  _PagedArReferenceApi({bool multiOrder = false})
     : super(
         overrides: {
           'amountBalanceOriginal': 65.4321,
@@ -459,7 +455,7 @@ class _PagedArReferenceApi extends _ArReferenceApi {
           if (multiOrder) 'salesOrderNos': ['XD-001', 'XD-002'],
         },
       );
-  final bool failPageTwoOnce;
+  bool failPageTwoOnce = false;
   Completer<void>? nextGate;
   bool denyNext = false;
   int _failed = 0;
@@ -477,7 +473,7 @@ class _PagedArReferenceApi extends _ArReferenceApi {
     if (page == 2 && denyNext) {
       throw ApiException('FORBIDDEN', 'picker read revoked', httpStatus: 403);
     }
-    if (page == 2 && failPageTwoOnce && _failed < 2) {
+    if (page == 2 && failPageTwoOnce && _failed < 1) {
       _failed++;
       throw NetworkException();
     }

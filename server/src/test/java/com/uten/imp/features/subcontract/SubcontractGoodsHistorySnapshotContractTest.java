@@ -152,13 +152,10 @@ class SubcontractGoodsHistorySnapshotContractTest {
                     .contains("insert into " + table + " (")
                     .contains("goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at");
         }
-        // V624/V627 重写后口径：七张 *_items 的明细自身快照 + cost/material_issue/
-        // material_return 三处 parent_* 快照共 9 个 'LEGACY_IMPORT' 字面量（原 10 的
-        // 第 10 处是收货明细）；收货明细改由 V627 权威来源投影
-        // fn_legacy_receipt_source_projection 固化 goods_snapshot_source='LEGACY_IMPORT'，
-        // loader 只注册来源证明并引用 projected.*。
+        // 收货(V627)和退料自身/父产品快照(V1093)已移到注册过的原始来源投影；
+        // loader 其余七处直接写入。投影的来源绑定和两种快照必须同时保留。
         assertThat(occurrences(legacy, "'legacy_import'"))
-                .isGreaterThanOrEqualTo(9);
+                .isEqualTo(7);
         assertThat(legacy)
                 .contains("fn_register_legacy_receipt_import_source(")
                 .contains("fn_legacy_receipt_source_projection('subcontract_item'")
@@ -166,6 +163,16 @@ class SubcontractGoodsHistorySnapshotContractTest {
         assertThat(compact(read(MAIN.resolve(
                 "resources/db/migration/V627__legacy_receipt_consideration_provenance.sql"))))
                 .contains("'goods_snapshot_source','legacy_import'");
+        assertThat(legacy)
+                .contains("fn_register_legacy_quantity_counter_source(")
+                .contains("fn_legacy_quantity_counter_source_projection('subcontract_material_return_item'")
+                .contains("projected.goods_snapshot_source")
+                .contains("projected.parent_goods_snapshot_source");
+        assertThat(compact(read(MAIN.resolve(
+                "resources/db/migration/V1093__legacy_return_quantity_source_proofs.sql"))))
+                .contains("'goods_snapshot_source','legacy_import'")
+                .contains("'parent_goods_snapshot_source',case when")
+                .contains("then 'legacy_import' end");
 
         Pattern directInsert = Pattern.compile(
                 "insert\\s+into\\s+subcontract_(?:inquiry|application|order|receipt|material_issue|return|material_return|waste|order_cost)_items\\s*\\((.*?)\\)\\s*values",

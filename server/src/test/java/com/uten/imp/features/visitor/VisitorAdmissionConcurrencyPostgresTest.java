@@ -125,6 +125,43 @@ class VisitorAdmissionConcurrencyPostgresTest {
     }
 
     @Test
+    void minuteConflictIsOwnerScopedHalfOpenAndDoesNotLoadTheActiveDirectory() {
+        when(columnCurrent.id()).thenReturn(Optional.of(accountId));
+        OffsetDateTime minute = OffsetDateTime.parse("2026-11-04T00:00:00+08:00");
+        transactions.executeWithoutResult(ignored -> {
+            for (String terminal : java.util.List.of("rejected", "cancelled")) {
+                var row = columnApplication(accountId, "terminal", minute.toString());
+                row.setStatus(terminal); applications.saveAndFlush(row);
+            }
+            var deleted = columnApplication(accountId, "deleted", minute.toString());
+            deleted.setDeleted(true); applications.saveAndFlush(deleted);
+            applications.saveAndFlush(columnApplication(UUID.randomUUID(), "other visitor", minute.toString()));
+            applications.saveAndFlush(columnApplication(accountId, "previous minute", minute.minusNanos(1000).toString()));
+            applications.saveAndFlush(columnApplication(accountId, "next minute", minute.plusMinutes(1).toString()));
+        });
+        Boolean initialConflict = transactions.execute(ignored -> columnQueries.hasActiveApplicationAt(minute));
+        assertThat(initialConflict).isFalse();
+        for (String active : java.util.List.of("pending", "hostReviewing", "approved", "checkedIn")) {
+            UUID id = transactions.execute(ignored -> {
+                var row = columnApplication(accountId, active, minute.plusSeconds(59).toString());
+                row.setStatus(active); return applications.saveAndFlush(row).getId();
+            });
+            Boolean conflict = transactions.execute(ignored -> columnQueries.hasActiveApplicationAt(
+                    minute.plusSeconds(23).withOffsetSameInstant(java.time.ZoneOffset.UTC)));
+            assertThat(conflict).isTrue();
+            transactions.executeWithoutResult(ignored -> applications.deleteById(id));
+        }
+        verifyNoInteractions(columnMapper);
+    }
+
+    @Test
+    void minuteConflictRequiresAnAuthenticatedVisitorAndAValidMinute() {
+        assertThatThrownBy(() -> columnQueries.hasActiveApplicationAt(null)).isInstanceOf(ApiException.class);
+        when(columnCurrent.id()).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> columnQueries.hasActiveApplicationAt(OffsetDateTime.now())).isInstanceOf(ApiException.class);
+    }
+
+    @Test
     void typedHeadersKeepTheOwnerAndChineseDayBeforePagination() {
         UUID matching = transactions.execute(ignored -> {
             VisitorApplication row = columnApplication(accountId, "50%_literal", "2026-10-27T16:30:00Z");

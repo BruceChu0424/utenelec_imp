@@ -51,6 +51,7 @@ final visitorApprovalListProvider = FutureProvider.autoDispose
                 status: q.status,
                 hostDepartmentId: q.hostDepartmentId,
                 page: page,
+                size: 100,
                 columns: columns.searches,
                 sort: columns.sort,
                 ascending: columns.ascending,
@@ -104,6 +105,7 @@ final myAsHostProvider = FutureProvider.autoDispose
               fetchPage: (page) => repository.myAsHost(
                 status: q.status,
                 page: page,
+                size: 100,
                 columns: columns.searches,
                 sort: columns.sort,
                 ascending: columns.ascending,

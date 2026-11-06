@@ -9,6 +9,7 @@ import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 
 import 'package:flutter/material.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +57,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
   const FinanceProcurementApprovalTasksPage({
     super.key,
     this.embedded = false,
+    this.historyOnly = false,
     this.externalHeader,
     this.refreshTick = 0,
     this.refreshCompletion,
@@ -63,6 +65,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
   });
 
   final bool embedded;
+  final bool historyOnly;
 
   /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
   /// （2026-09-24 用户口径「表格滑到顶」，置顶后只剩表格自身工具条）。
@@ -81,6 +84,9 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
 class _FinanceProcurementApprovalTasksPageState
     extends ConsumerState<FinanceProcurementApprovalTasksPage>
     with ScopedPagedReadViewMixin<FinanceProcurementApprovalTasksPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   static const int _maxBatchSize = 100;
 
   FinanceProcurementApprovalPage? _result;
@@ -187,20 +193,27 @@ class _FinanceProcurementApprovalTasksPageState
   void initState() {
     super.initState();
     _readerEpoch = ref.read(exportContextEpochProvider);
-    _status =
-        const {
-          'PENDING',
-          'CLOSURE_PENDING',
-          'APPROVED',
-          'REJECTED',
-          'ALL',
-        }.contains(widget.initialStatus)
-        ? widget.initialStatus!
+    _status = widget.historyOnly
+        ? 'HISTORY'
+        : const {
+            'PENDING',
+            'CLOSURE_PENDING',
+            'APPROVED',
+            'REJECTED',
+            'RETURNED',
+            'ALL',
+            'HISTORY',
+          }.contains(widget.initialStatus)
+        ? (widget.initialStatus == 'ALL'
+              ? 'HISTORY'
+              : widget.initialStatus == 'REJECTED'
+              ? 'RETURNED'
+              : widget.initialStatus!)
         : 'PENDING';
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
-      _load(1, preferPrepared: true).whenComplete(() {
+      _load(1).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -218,7 +231,9 @@ class _FinanceProcurementApprovalTasksPageState
               'CLOSURE_PENDING',
               'APPROVED',
               'REJECTED',
+              'RETURNED',
               'ALL',
+              'HISTORY',
             }.contains(widget.initialStatus)
             ? widget.initialStatus!
             : 'PENDING',
@@ -242,10 +257,12 @@ class _FinanceProcurementApprovalTasksPageState
       ++_columnFilters.generation;
       _clearSelectionState();
     });
-    _load(1, preferPrepared: true);
+    _load(1);
   }
 
   void _selectStatus(String status) {
+    if (status == 'ALL') status = 'HISTORY';
+    if (status == 'REJECTED') status = 'RETURNED';
     if (_busyDecision || _status == status) return;
     ++_requestVersion;
     setState(() {
@@ -255,10 +272,7 @@ class _FinanceProcurementApprovalTasksPageState
       _columnFilters.reset();
       _clearSelectionState();
     });
-    _load(
-      1,
-      preferPrepared: status == 'PENDING' || status == 'CLOSURE_PENDING',
-    );
+    _load(1);
   }
 
   void _applyKeyword(String value) {
@@ -304,7 +318,7 @@ class _FinanceProcurementApprovalTasksPageState
         if (mounted &&
             _allowed &&
             epoch == ref.read(exportContextEpochProvider)) {
-          _load(1, preferPrepared: true);
+          _load(1);
         }
       });
     }
@@ -323,11 +337,7 @@ class _FinanceProcurementApprovalTasksPageState
 
   Future<void> _navigatePage(int page) => _load(page, useCache: true);
 
-  Future<void> _load(
-    int page, {
-    bool useCache = false,
-    bool preferPrepared = false,
-  }) async {
+  Future<void> _load(int page, {bool useCache = false}) async {
     final cacheQuery = _cacheQuery;
     final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
     final orderType = _orderType;
@@ -354,6 +364,7 @@ class _FinanceProcurementApprovalTasksPageState
     try {
       final cachedPage = await readScopedPage<FinanceProcurementApprovalTask>(
         page,
+        idOf: (row) => row.caseId,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
@@ -361,6 +372,7 @@ class _FinanceProcurementApprovalTasksPageState
           Future<PagedResult<FinanceProcurementApprovalTask>> fetch() async {
             final response = await repo.approvalTasks(
               page: target,
+              size: 100,
               orderType: orderType,
               keyword: keyword,
               sort: sort,
@@ -371,24 +383,7 @@ class _FinanceProcurementApprovalTasksPageState
             return financeProcurementSnapshot(response);
           }
 
-          if (target != 1) return fetch();
-          return ref
-              .read(financeAuditPreparedPagesProvider)
-              .procurements
-              .read(
-                financeProcurementReadKey(
-                  repo,
-                  page: target,
-                  orderType: orderType,
-                  keyword: keyword,
-                  sort: sort,
-                  order: order,
-                  billNo: billNo,
-                  status: status,
-                ),
-                fetch,
-                preferPrepared: preferPrepared,
-              );
+          return fetch();
         },
       );
       final result =
@@ -413,6 +408,7 @@ class _FinanceProcurementApprovalTasksPageState
         }
       });
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || requestVersion != _requestVersion) {
         return;
       }
@@ -427,7 +423,8 @@ class _FinanceProcurementApprovalTasksPageState
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _error = '待审任务加载失败，请检查网络后重试';
@@ -471,6 +468,7 @@ class _FinanceProcurementApprovalTasksPageState
             status: _status,
           ),
     },
+    isCurrent: captureReadOwner(ref),
     onLoaded: () {
       if (mounted) setState(() {});
     },
@@ -996,7 +994,7 @@ class _FinanceProcurementApprovalTasksPageState
   String _typeStatusLabel(String type) => switch (_status) {
     'PENDING' => '$type待审批',
     'APPROVED' => '$type已生效',
-    'REJECTED' => '$type已驳回',
+    'RETURNED' => '$type待修改/重提',
     _ => '$type订货',
   };
 
@@ -1053,7 +1051,7 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   Widget _buildToolbar() {
-    final history = _status == 'ALL' || _status == 'APPROVED';
+    final history = const {'ALL', 'APPROVED', 'HISTORY'}.contains(_status);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1062,23 +1060,30 @@ class _FinanceProcurementApprovalTasksPageState
           segmentsKey: const Key('finance-approval-status-segments'),
           searchKey: const Key('finance-approval-search'),
           segments: [
-            UtenFilterSegment(
-              value: 'PENDING',
-              label: '待审批',
-              count: ref.watch(
-                badgeFactOrNullProvider(BadgeFact.procurementApproval),
+            if (!widget.historyOnly)
+              UtenFilterSegment(
+                value: 'PENDING',
+                label: '待审批',
+                count: ref.watch(
+                  badgeFactOrNullProvider(BadgeFact.procurementApproval),
+                ),
+                countForm: UtenSegmentCountForm.actionable,
               ),
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-            const UtenFilterSegment(value: 'CLOSURE_PENDING', label: '历史结束申请'),
-            const UtenFilterSegment(
-              value: 'REJECTED',
-              label: '已驳回',
-              countForm: UtenSegmentCountForm.inProgress,
-            ),
-            const UtenFilterSegment(value: 'ALL', label: '历史单据'),
+            if (!widget.historyOnly)
+              const UtenFilterSegment(
+                value: 'CLOSURE_PENDING',
+                label: '结束待业务确认',
+              ),
+            if (!widget.historyOnly)
+              const UtenFilterSegment(
+                value: 'RETURNED',
+                label: '待修改/重提',
+                countForm: UtenSegmentCountForm.inProgress,
+              ),
+            if (widget.historyOnly || !widget.embedded)
+              const UtenFilterSegment(value: 'HISTORY', label: '历史单据'),
           ],
-          selected: {history ? 'ALL' : _status},
+          selected: {history ? 'HISTORY' : _status},
           onSelectionChanged: _selectStatus,
           searchHint: '搜索订货单号 / 供应商 / 提交人',
           initialSearchValue: _keyword,
@@ -1090,7 +1095,7 @@ class _FinanceProcurementApprovalTasksPageState
           UtenFilterToolbar<String>(
             autoSelectBadge: false,
             segments: const [
-              UtenFilterSegment(value: 'ALL', label: '全部记录'),
+              UtenFilterSegment(value: 'HISTORY', label: '全部已完成'),
               UtenFilterSegment(value: 'APPROVED', label: '已生效'),
             ],
             selected: {_status},

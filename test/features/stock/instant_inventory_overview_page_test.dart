@@ -171,7 +171,7 @@ void main() {
     _expectScope(risk);
     expect(summary['size'], 1);
     expect(summary['attention'], isNull);
-    expect(risk['size'], 8);
+    expect(risk['size'], 100);
     expect(risk['attention'], 'NEGATIVE_BALANCE');
     expect(risk['sort'], 'negativeBalanceCount');
     expect(risk['order'], 'desc');
@@ -264,7 +264,8 @@ void main() {
     expect(find.text('当前可查看汇总，分析指标暂未提供'), findsNothing);
     expect(find.text('库存结构'), findsNothing);
     expect(find.byKey(const Key('inventory-risk-details')), findsNothing);
-    expect(find.textContaining('最近更新'), findsOneWidget);
+    expect(find.textContaining('最近更新'), findsNothing);
+    await readFieldHint(tester, '最近更新');
     expect(tester.takeException(), isNull);
   });
 
@@ -382,8 +383,30 @@ void main() {
   });
 }
 
-InstantInventoryApiFixture _api() =>
-    InstantInventoryApiFixture(withTotals: true, withAnalysis: true);
+InstantInventoryApiFixture _api() {
+  final api = InstantInventoryApiFixture(withTotals: true, withAnalysis: true);
+  api.onInventory = (query) async {
+    final data = api.response();
+    if (query['attention'] == null) return data;
+    return {
+      ...data,
+      'items': [
+        ...data['items'] as List,
+        {
+          'goodsId': 'risk-third',
+          'name': '第三条风险物料',
+          'qty': -1,
+          'unitName': '个',
+        },
+      ],
+      'page': query['page'],
+      'size': query['size'],
+      'total': 3,
+      'totalPages': 1,
+    };
+  };
+  return api;
+}
 
 void _expectScope(Map<String, dynamic> query) {
   expect(query['categoryId'], 'category-1');

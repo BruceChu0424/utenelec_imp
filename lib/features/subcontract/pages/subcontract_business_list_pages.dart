@@ -347,7 +347,9 @@ class _SubcontractBusinessListPageState
     with
         DraftBulkDeleteMixin<_SubcontractBusinessListPage>,
         UtenRefreshParticipant<_SubcontractBusinessListPage> {
-  final _controller = PagedListController<SubcontractDocListItem>();
+  final _controller = PagedListController<SubcontractDocListItem>(
+    idOf: (row) => row.id,
+  );
   final _tableRows = MasterDataTableRowsController<SubcontractDocListItem>();
   int _reloadGeneration = 0;
   int _badgeRequestId = 0;
@@ -555,6 +557,7 @@ class _SubcontractBusinessListPageState
 
   Future<PagedResult<SubcontractDocListItem>> _fetch([
     int? requestedPage,
+    int batchSize = 100,
   ]) async {
     final seg = _seg!;
     final range = seg.history ? _historyTime.range : null;
@@ -565,6 +568,7 @@ class _SubcontractBusinessListPageState
         .read(subcontractRepositoryProvider(_p.type))
         .list(
           page: requestedPage ?? _controller.pageNum,
+          size: batchSize,
           filter: SubcontractDocFilter(
             origin: widget.archiveOnly ? BusinessDocumentOrigin.legacy : null,
             keyword: _controller.keyword.trim(),
@@ -711,6 +715,7 @@ class _SubcontractBusinessListPageState
       silent: silent,
       fetch: _fetch,
       fetchPage: _fetch,
+      fetchPageSized: (page, size) => _fetch(page, size),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -942,11 +947,18 @@ class _SubcontractBusinessListPageState
         ? null
         : pendingCount + rejectedCount + executingCount;
     _location ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_location!, () {
+    FutureOr<void> visibleReadReturn() {
       return _controller.revalidate(
         Future.wait([_reload(null, true), _loadBadge()]).then((_) {}),
       );
-    }, refreshKeys: [_cfg.refreshKey]);
+    }
+
+    _controller.bindView(context, onResume: visibleReadReturn);
+    ref.onPageResume(
+      _location!,
+      visibleReadReturn,
+      refreshKeys: [_cfg.refreshKey],
+    );
     final names = ref.watch(mn.masterNameServiceProvider);
     final seg = _seg;
     final primarySeg = _primarySeg;
@@ -1206,7 +1218,6 @@ class _SubcontractBusinessListPageState
                           totalPages: _controller.page?.totalPages ?? 1,
                           paginationRevision: _controller.paginationRevision,
                           refreshedPages: _controller.refreshedPages,
-                          onRetainedPagesChanged: _controller.retainPages,
                           paginationScope: (
                             _readerGeneration,
                             _p.type,

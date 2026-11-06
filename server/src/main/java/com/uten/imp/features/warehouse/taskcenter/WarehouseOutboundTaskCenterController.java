@@ -64,10 +64,13 @@ public class WarehouseOutboundTaskCenterController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return queries.list(new WarehouseTaskCenterContracts.Filter(source, status, keyword, billNo,
+        var filter=new WarehouseTaskCenterContracts.Filter(source, status, keyword, billNo,
                 dateFrom, dateTo, scopeWarehouseId, page, size, sort, order,
                 WarehouseTaskCenterContracts.TaskView.requested(view)).withColumnSearch(
-                        ColumnKeywordSearch.requestValues(ColumnKeywordSearch.currentRequest())));
+                        ColumnKeywordSearch.requestValues(ColumnKeywordSearch.currentRequest()));
+        if(!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
+            return queries.list(filter,false);
+        return queries.list(filter);
     }
 
     /** 按当前筛选结果导出表格（2026-10-29 用户批注）：与列表同授权同投影，密码走请求体。 */

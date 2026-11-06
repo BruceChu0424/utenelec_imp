@@ -103,6 +103,11 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "execution_segment_id")
     private UUID executionSegmentId;
 
+    /** Existing physical tombstone, read-only here; current claim selectors must not borrow deleted lines. */
+    @Column(name = "is_deleted", insertable = false, updatable = false, nullable = false)
+    @lombok.Setter(lombok.AccessLevel.NONE)
+    private boolean deleted;
+
     /** Exact segment-to-sales-order allocation. */
     @Column(name = "execution_segment_sales_allocation_id")
     private UUID executionSegmentSalesAllocationId;

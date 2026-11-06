@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_execution_workbench.dart';
+import '../models/production_exact_quantity.dart';
 import '../models/production_flow_stage.dart';
 import 'production_flow_stage_cell.dart';
 import 'production_sales_requirements.dart';
@@ -27,8 +28,8 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
   final ProductionExecutionWorkbenchSegment task;
   final ProductionFlowStage stage;
   final Widget routeBadge;
-  final double remainingReportQty;
-  final double draftReportedQty;
+  final Object? remainingReportQty;
+  final Object? draftReportedQty;
   final Widget materialSummary;
   final List<Widget> materials;
   final List<Widget> actions;
@@ -41,6 +42,12 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
     final unit = task.productUnitName?.trim() ?? '';
     return unit.isEmpty ? number : '$number $unit';
   }
+
+  String _reportQty(Object? value) =>
+      productionQuantityWithUnit(value, task.productUnitName) ?? '—';
+
+  bool _positive(Object? value) =>
+      (productionExactQuantityUnits(value) ?? BigInt.zero) > BigInt.zero;
 
   @override
   Widget build(BuildContext context) {
@@ -120,17 +127,17 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final metrics = [
-                    ('planned', '计划数量', task.plannedQty),
-                    ('reported', '已报工', task.reportedQty),
-                    ('remaining', '待报工', remainingReportQty),
-                    ('inbound', '计划实收', task.plannedInboundQty),
+                    ('planned', '计划数量', _qty(task.plannedQty)),
+                    ('reported', '已报工', _qty(task.reportedQty)),
+                    ('remaining', '待报工', _reportQty(remainingReportQty)),
+                    ('inbound', '计划实收', _qty(task.plannedInboundQty)),
                   ];
                   var columns = constraints.maxWidth >= 720 ? 4 : 2;
                   // 大字号或长数量需要完整读作一个数，减少列数而不缩小字体。
                   for (final metric in metrics) {
                     final painter = TextPainter(
                       text: TextSpan(
-                        text: _qty(metric.$3),
+                        text: metric.$3,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -178,12 +185,12 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
                                 ),
                                 const SizedBox(height: UtenSpacing.s4),
                                 Text(
-                                  _qty(metric.$3),
+                                  metric.$3,
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w700,
                                     color:
                                         metric.$1 == 'remaining' &&
-                                            remainingReportQty > 0
+                                            _positive(remainingReportQty)
                                         ? scheme.primary
                                         : null,
                                   ),
@@ -196,7 +203,7 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
                   );
                 },
               ),
-              if (draftReportedQty > 0 ||
+              if (_positive(draftReportedQty) ||
                   task.actualSurplusReportedQty > 0 ||
                   task.actualSurplusInboundQty > 0) ...[
                 const SizedBox(height: UtenSpacing.s8),
@@ -204,8 +211,8 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
                   spacing: UtenSpacing.s16,
                   runSpacing: UtenSpacing.s4,
                   children: [
-                    if (draftReportedQty > 0)
-                      Text('草稿待审核 ${_qty(draftReportedQty)}'),
+                    if (_positive(draftReportedQty))
+                      Text('草稿待审核 ${_reportQty(draftReportedQty)}'),
                     if (task.actualSurplusReportedQty > 0)
                       Text('其中超产 ${_qty(task.actualSurplusReportedQty)}'),
                     if (task.actualSurplusInboundQty > 0)

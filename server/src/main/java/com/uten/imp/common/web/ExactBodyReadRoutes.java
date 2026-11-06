@@ -9,6 +9,7 @@ public final class ExactBodyReadRoutes {
                 "^/api/(?:master/(?:clients|suppliers)/search-context"
                         + "|business-references/(?:clients|suppliers)/(?:search-context|search)"
                         + "|sales/orders/(?:shippable-lines/selection|delivery-preview)"
-                        + "|quality/pending-disposals/query)$");
+                        + "|quality/pending-disposals/query"
+                        + "|production/daily-reports/draft-claims/query)$");
     }
 }

@@ -14,8 +14,8 @@ import 'uten_table_action_scope.dart';
 
 import '../feedback/uten_date_range_picker.dart';
 import '../feedback/uten_date_range_tooltip.dart';
-import '../../../core/theme/uten_tokens.dart';
-import '../../../core/utils/china_datetime.dart';
+import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/china_datetime.dart';
 
 enum _HistoryTimeAction { range, all }
 

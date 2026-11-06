@@ -43,6 +43,7 @@ class ProcurementFirstPayablePostgresTest {
  @Autowired com.uten.imp.features.finance.gl.GlPostingService gl;
  @Autowired com.uten.imp.application.port.ProcurementCreditBookAllocationPort creditBooks;
  @Autowired com.uten.imp.features.finance.gl.NativeFinancialPostingAccountService nativeAccounts;
+ @Autowired com.uten.imp.application.port.ProcurementArchiveEligibilityPort archiveFinance;
  private FullChainEndToEndTest fixture;
  private FullChainEndToEndTest.World w;
  @AfterEach void cleanup(){if(fixture!=null&&w!=null){fixture.loginAs(w.superAdminUserId());var p=first.policy();first.configure(new ProcurementPayableRecognitionService.PolicyInput(((Number)p.get("revision")).longValue(),false,null,"隔离回归完成后关闭此测试政策"));}SecurityContextHolder.clearContext();}
@@ -66,9 +67,15 @@ class ProcurementFirstPayablePostgresTest {
   assertThat(db.queryForObject("SELECT count(*) FROM finance_procurement_payable_routes WHERE source_id=?",Integer.class,oldBefore.get("source_doc_id"))).isZero();
   UUID receiptItem=db.queryForObject("SELECT id FROM purchase_receipt_items WHERE receipt_id=? AND NOT is_deleted",UUID.class,receipt);
   UUID orderItem=db.queryForObject("SELECT order_item_id FROM purchase_receipt_items WHERE id=?",UUID.class,receiptItem);
+  UUID archiveOrder=db.queryForObject("SELECT order_id FROM purchase_order_items WHERE id=?",UUID.class,orderItem);
+  assertThat(archiveFinance.purchaseOrderFacts(List.of(archiveOrder)).get(archiveOrder))
+    .isEqualTo(new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(1,1,0));
+  assertThat(archiveFinance.purchaseOrderFacts(List.of(UUID.randomUUID()))).isEmpty();
   var ret=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();ret.setBillDate(BusinessTime.today());ret.setSupplierId(w.supplierId());ret.setWarehouseId(w.warehouseId());ret.setCurrencyId(currency);ret.setExchangeRate(n("7"));ret.setTaxRate(BigDecimal.ZERO);ret.setSettlementMethodId(db.queryForObject("SELECT settlement_method_id FROM purchase_receipts WHERE id=?",UUID.class,receipt));
   var returned=new com.uten.imp.features.purchase.ret.dto.ReturnItemLine();returned.setReceiptItemId(receiptItem);returned.setOrderItemId(orderItem);returned.setGoodsId(w.goodsA());returned.setUnitId(w.unitId());returned.setUnitRate(BigDecimal.ONE);returned.setQty(n("0.5"));returned.setPrice(n("40"));ret.setItems(List.of(returned));UUID returnedId=returns.create(ret).getId();returns.approve(returnedId);
   var creditCandidate=db.queryForMap("SELECT * FROM finance_procurement_payable_candidates WHERE source_id=?",returnedId);amount(creditCandidate,"amount_original","-20");amount(creditCandidate,"amount_local","-140");
+  assertThat(archiveFinance.purchaseOrderFacts(List.of(archiveOrder)).get(archiveOrder))
+    .isEqualTo(new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(2,2,0));
   var pendingPlan=transactions.execute(t->creditBooks.planPending((UUID)candidate.get("id"),n("20")));
   assertThat(pendingPlan.sourceApLedgerId()).isNull();assertThat(pendingPlan.sourceCandidateId()).isEqualTo(candidate.get("id"));
   assertThat(pendingPlan.amountLocal()).isEqualByComparingTo("140");assertThat(pendingPlan.offsetOriginal()).isZero();
@@ -82,6 +89,8 @@ class ProcurementFirstPayablePostgresTest {
   UUID reviewer=fixture.createUserWithPerms(w,"first-ap-reviewer","finance_report:view","ar_ap_ledger:view","finance:view:all","supplier_settlement:confirm","finance_post:execute");fixture.loginAs(reviewer);assertThatThrownBy(()->first.operation(command.requestId())).isInstanceOf(ApiException.class).hasMessageContaining("本人原请求");assertThatThrownBy(()->first.submit(command,"anonymous-reconciliation.png","image/png",proof)).isInstanceOf(ApiException.class).hasMessageContaining("另一提交人");first.approve(review);first.approve(review);fixture.loginAs(w.superAdminUserId());assertThat(first.operation(command.requestId()).get("id")).isEqualTo(review);
   UUID ap=db.queryForObject("SELECT ledger_id FROM finance_procurement_payable_candidates WHERE id=?",UUID.class,candidate.get("id")),credit=db.queryForObject("SELECT ledger_id FROM finance_procurement_payable_candidates WHERE id=?",UUID.class,creditCandidate.get("id"));
   assertThat(db.queryForObject("SELECT bill_no FROM ar_ap_ledger WHERE id=?",String.class,ap)).startsWith("APC-");
+  assertThat(archiveFinance.purchaseOrderFacts(List.of(archiveOrder)).get(archiveOrder))
+    .isEqualTo(new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(2,0,2));
   assertThat(db.queryForObject("SELECT source_doc_no FROM ar_ap_ledger WHERE id=?",String.class,ap)).isEqualTo(candidate.get("bill_no"));
   assertThat(db.queryForObject("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_id=? AND status=1 AND NOT is_deleted",Integer.class,receipt)).isEqualTo(1);
   int controlled=db.queryForObject("SELECT count(*) FROM gl_vouchers WHERE source_type IN('PROCUREMENT_PENDING','PROCUREMENT_AP_RECOGNITION')",Integer.class);
@@ -105,6 +114,8 @@ class ProcurementFirstPayablePostgresTest {
   first.reverse(again,"重确认后按原记录对称撤回");
   returns.reverse(returnedId);receipts.reverse(receipt);
   assertThat(db.queryForObject("SELECT count(*) FROM finance_procurement_payable_candidates WHERE source_id IN(?,?) AND status='SOURCE_REVERSED'",Integer.class,receipt,returnedId)).isEqualTo(2);
+  assertThat(archiveFinance.purchaseOrderFacts(List.of(archiveOrder)).get(archiveOrder))
+    .isEqualTo(new com.uten.imp.application.port.ProcurementArchiveEligibilityPort.Facts(2,0,0));
   assertThat(db.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,bank)).isEqualByComparingTo("1000");
   assertThat(db.queryForMap("SELECT * FROM ar_ap_ledger WHERE id=?",oldPayable)).isEqualTo(oldBefore);
  }

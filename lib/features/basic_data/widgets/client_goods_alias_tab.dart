@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 // Customer detail tab 货品对照 (ADR-134): how this customer writes our goods.
 //
 // The server learns these rows when sales save a quotation or order that came
@@ -22,7 +23,9 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_pagination.dart';
+import '../../../components/layout/uten_ancestor_row_window.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -48,9 +51,14 @@ class ClientGoodsAliasTab extends ConsumerStatefulWidget {
       _ClientGoodsAliasTabState();
 }
 
-class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
+class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab>
+    with ReadViewActivityMixin<ClientGoodsAliasTab> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   PagedResult<ClientGoodsAlias>? _result;
-  int _page = 1;
+  final _rows = UtenAncestorRowWindowController<ClientGoodsAlias>();
+  int? _activeGeneration;
+  String? _activeKeyword;
   String _keyword = '';
   bool _loading = false;
   String? _error;
@@ -64,7 +72,15 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    listenReadOwner(ref, () {
+      ++_generation;
+      setState(() {
+        _result = null;
+        _loading = false;
+        _error = null;
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -73,52 +89,79 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
     if (oldWidget.clientId != widget.clientId) {
       _keyword = '';
       _result = null;
-      _load(1);
+      _load();
     }
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!mounted) return;
     final generation = ++_generation;
+    final currentOwner = captureReadOwner(ref);
+    final clientId = widget.clientId, keyword = _keyword;
+    final repository = ref.read(clientGoodsAliasRepositoryProvider);
+    _activeGeneration = generation;
+    _activeKeyword = keyword;
+    bool current() =>
+        mounted &&
+        generation == _generation &&
+        currentOwner() &&
+        clientId == widget.clientId &&
+        keyword == _keyword;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(clientGoodsAliasRepositoryProvider)
-          .list(
-            widget.clientId,
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<ClientGoodsAlias>(
+          idOf: (alias) => alias.id,
+          isCurrent: current,
+          loadPage: (page, size) => repository.list(
+            clientId,
             page: page,
-            size: widget.pageSize,
-            keyword: _keyword,
-          );
-      if (!mounted || generation != _generation) return;
+            size: size,
+            keyword: keyword,
+          ),
+        ),
+      );
+      if (!current()) return;
       setState(() {
         _result = result;
-        _page = result.page < 1 ? page : result.page;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) {
+        if (current()) setState(() => _loading = false);
+        return;
+      }
       if (!mounted || generation != _generation) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
+      if (isRetiredViewRead(error)) {
+        if (current()) setState(() => _loading = false);
+        return;
+      }
       if (!mounted || generation != _generation) return;
       setState(() {
         _error = basicDataL10n(context).clientGoodsAliasLoadFailed;
         _loading = false;
       });
+    } finally {
+      if (_activeGeneration == generation) {
+        _activeGeneration = null;
+        _activeKeyword = null;
+      }
     }
   }
 
   void _onKeywordChanged(String value) {
     final keyword = value.trim();
-    if (keyword == _keyword) return;
     _keyword = keyword;
-    _load(1);
+    _load();
   }
 
   String _goodsLabel(ClientGoodsAlias alias) {
@@ -161,8 +204,7 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
       return;
     }
     context.appSuccess(l10n.clientGoodsAliasDeleted);
-    final remaining = (_result?.items.length ?? 1) - 1;
-    await _load(remaining <= 0 && _page > 1 ? _page - 1 : _page);
+    await _load();
   }
 
   @override
@@ -190,6 +232,17 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
           key: const ValueKey('client-goods-alias-search'),
           hint: l10n.clientGoodsAliasSearchHint,
           initialValue: _keyword,
+          onInputChanged: (value) {
+            ++_generation;
+            setState(() {
+              _keyword = value.trim();
+              _result = null;
+              _loading = true;
+            });
+          },
+          isQueryPending: (value) =>
+              _activeGeneration == _generation &&
+              _activeKeyword == value.trim(),
           onChanged: _onKeywordChanged,
           onSubmitted: _onKeywordChanged,
         ),
@@ -209,14 +262,14 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
         ),
         if (_result != null && _result!.total > 0) ...[
           const SizedBox(height: UtenSpacing.s12),
-          _pager(theme),
+          Text(l10n.clientGoodsAliasTotal(_result!.total)),
         ],
       ],
     );
     return Stack(
       fit: StackFit.expand,
       children: [
-        RefreshIndicator(onRefresh: () => _load(_page), child: list),
+        RefreshIndicator(onRefresh: _load, child: list),
         if (_deletingId != null)
           UtenBusyOverlay(
             showDoNotLeaveHint: false,
@@ -249,14 +302,18 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
               title: l10n.clientGoodsAliasNoMatch,
             );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (var i = 0; i < result.items.length; i++) ...[
-          if (i > 0) const Divider(height: 1, indent: 70),
-          _aliasRow(theme, result.items[i]),
+    return UtenAncestorRowWindow<ClientGoodsAlias>(
+      controller: _rows,
+      rows: result.items,
+      expensiveRows: false,
+      deferRowMounts: false,
+      estimatedRowExtent: 100,
+      rowBuilder: (context, alias, index) => Column(
+        children: [
+          if (index > 0) const Divider(height: 1, indent: 70),
+          _aliasRow(theme, alias),
         ],
-      ],
+      ),
     );
   }
 
@@ -405,36 +462,6 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
     key: const ValueKey('client-goods-alias-error'),
     message: message,
     actionLabel: basicDataL10n(context).commonRetry,
-    onAction: _loading ? null : () => _load(_page),
+    onAction: _loading ? null : _load,
   );
-
-  Widget _pager(ThemeData theme) {
-    final l10n = basicDataL10n(context);
-    final result = _result!;
-    final pages = result.totalPages < 1 ? 1 : result.totalPages;
-    return Wrap(
-      key: const ValueKey('client-goods-alias-pager'),
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s8,
-      children: [
-        Text(
-          l10n.clientGoodsAliasTotal(result.total),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        if (pages > 1)
-          UtenPagination(
-            currentPage: _page,
-            totalPages: pages,
-            busy: _loading,
-            onPageChanged: _load,
-            previousKey: const ValueKey('client-goods-alias-prev'),
-            nextKey: const ValueKey('client-goods-alias-next'),
-          ),
-      ],
-    );
-  }
 }

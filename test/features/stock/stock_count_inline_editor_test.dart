@@ -70,6 +70,14 @@ class _CountRepo extends StockCountRequestRepository {
   List<StockCountWarehouse> warehouses = const [_normal, _workshop];
   int failures = 0;
   final candidateWarehouses = <String>[];
+  Future<PagedResult<CountStockRow>> Function(
+    String warehouse,
+    List<String> goods,
+    int page,
+    int size,
+  )?
+  pagedDeferred;
+  final candidateBatches = <(List<String>, int, int)>[];
   final submissions =
       <
         ({
@@ -116,6 +124,10 @@ class _CountRepo extends StockCountRequestRepository {
     bool ascending = true,
   }) async {
     candidateWarehouses.add(warehouseId);
+    candidateBatches.add((List.of(goodsIds), page, size));
+    if (pagedDeferred != null) {
+      return pagedDeferred!(warehouseId, goodsIds, page, size);
+    }
     if (deferred != null) return deferred!(warehouseId, goodsIds);
     final rows = result
         .where((r) => goodsIds.isEmpty || goodsIds.contains(r.goodsId))
@@ -164,6 +176,37 @@ Future<void> _mountInstant(
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
+  final inventory =
+      api ?? InstantInventoryApiFixture(withTotals: false, withAnalysis: false);
+  if (api == null) {
+    // Keep the legacy fixture's137-row fact, supplying real internal batches
+    // rather than repeating page1's two rows for every requested page.
+    inventory.onInventory = (query) async {
+      final raw = inventory.response();
+      final rows = <Object?>[
+        ...raw['items'] as List,
+        for (var i = 2; i < 137; i++)
+          {
+            'goodsId':
+                '00000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+            'name': '完整库存候选$i',
+            'unitName': '个',
+            'qty': 0,
+          },
+      ];
+      final page = query['page'] as int? ?? 1;
+      final size = query['size'] as int? ?? 50;
+      final start = (page - 1) * size;
+      return {
+        ...raw,
+        'items': rows.sublist(start, (start + size).clamp(0, rows.length)),
+        'page': page,
+        'size': size,
+        'total': rows.length,
+        'totalPages': (rows.length + size - 1) ~/ size,
+      };
+    };
+  }
   tester.view
     ..physicalSize = const Size(2200, 1200)
     ..devicePixelRatio = 1;
@@ -171,13 +214,7 @@ Future<void> _mountInstant(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(
-          api ??
-              InstantInventoryApiFixture(
-                withTotals: false,
-                withAnalysis: false,
-              ),
-        ),
+        apiClientProvider.overrideWithValue(inventory),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue({
           if (allowed) stockCountSubmitPermission,
@@ -196,6 +233,85 @@ Future<void> _mountInstant(
 }
 
 void main() {
+  for (final invalid in [
+    'duplicate',
+    'total-drift',
+    'empty-intermediate',
+    'revision',
+  ]) {
+    test(
+      'candidate complete read rejects $invalid atomically and explicit retry preserves exact source and original chunks',
+      () async {
+        final repo = _CountRepo();
+        repo.pagedDeferred = (warehouse, goods, page, size) async {
+          final row = _row(
+            page == 2 && invalid != 'duplicate' ? 'other' : _screw,
+            qty: '90071992547409.1235',
+          );
+          return PagedResult(
+            items: invalid == 'empty-intermediate' && page == 1 ? [] : [row],
+            page: page,
+            size: size,
+            total: invalid == 'empty-intermediate'
+                ? 1
+                : invalid == 'total-drift' && page == 2
+                ? 3
+                : 2,
+            totalPages: 2,
+            readScopeVersion: invalid == 'revision' ? 'version-$page' : 'same',
+          );
+        };
+        final editor = StockCountInlineController(repo)..begin(_normal);
+        await editor.ensureRows([_screw, 'other']);
+        expect(editor.busy, isFalse);
+        expect(editor.error, isNotNull);
+        expect(editor.rows, isEmpty);
+        expect(repo.submissions, isEmpty);
+        repo.pagedDeferred = null;
+        repo.result = [_row(_screw, qty: '90071992547409.1235')];
+        final previous = repo.candidateBatches.length;
+        await editor.ensureRows([_screw, 'other']);
+        expect(repo.candidateBatches.length, greaterThan(previous));
+        expect(editor.error, isNull);
+        expect(editor.rows.values.single.snapshot.qty, '90071992547409.1235');
+        expect(repo.candidateWarehouses, everyElement(_normal.id));
+        expect(
+          repo.candidateBatches.every(
+            (batch) => batch.$1.length <= 50 && batch.$3 == 100,
+          ),
+          isTrue,
+        );
+        expect(repo.submissions, isEmpty);
+        editor.dispose();
+      },
+    );
+  }
+  test(
+    'complete candidate capability retains fifty selected-goods chunks and does not reload an accepted exact set',
+    () async {
+      final repo = _CountRepo()
+        ..result = [
+          for (var i = 0; i < 51; i++)
+            _row('goods-$i', qty: '1.000000000000000000000001'),
+        ];
+      final editor = StockCountInlineController(repo)..begin(_normal);
+      final ids = [for (var i = 0; i < 51; i++) 'goods-$i'];
+      await editor.ensureRows(ids);
+      expect(editor.rows, hasLength(51));
+      expect(repo.candidateBatches.map((batch) => batch.$1.length), [50, 1]);
+      expect(repo.candidateBatches.map((batch) => batch.$3), [100, 100]);
+      expect(
+        editor.rows.values.every(
+          (row) => row.snapshot.qty == '1.000000000000000000000001',
+        ),
+        isTrue,
+      );
+      await editor.ensureRows(ids);
+      expect(repo.candidateBatches, hasLength(2));
+      expect(repo.submissions, isEmpty);
+      editor.dispose();
+    },
+  );
   testWidgets(
     'blank count inputs name their fields while book values stay guidance and snapshot facts',
     (tester) async {
@@ -403,6 +519,8 @@ void main() {
         reason: '盘点录入已迁独立页，本表恢复纯查询口径',
       );
       expect(table.items.map((r) => r.goodsId), contains(_screw));
+      expect(table.items, hasLength(137));
+      expect(table.items.last.goodsId, '00000000-0000-4000-8000-000000000136');
       expect(tester.takeException(), isNull);
     },
   );

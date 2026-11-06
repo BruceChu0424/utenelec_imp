@@ -26,24 +26,72 @@ Map<String, String?> recordedDecimalFields(
 BigInt? nonNegativeDocumentQuantityUnits(String? raw) =>
     _documentQuantityValue(raw)?.units;
 
-({String text, BigInt units})? _documentQuantityValue(String? raw) {
+({String text, BigInt units})? _documentQuantityValue(
+  String? raw, {
+  int integerDigits = 40,
+  int fractionDigits = 24,
+}) {
+  if (integerDigits < 1 ||
+      integerDigits > 40 ||
+      fractionDigits < 0 ||
+      fractionDigits > 24) {
+    throw ArgumentError('单据十进制边界超出公共支持范围');
+  }
   final text = financeExactTrimmed(financeExactDecimal(raw));
   if (text == null) return null;
   final units = financeExactDecimalUnits(text, scale: 24);
   if (units == null ||
       units < BigInt.zero ||
-      units >= BigInt.from(10).pow(64)) {
+      units >= BigInt.from(10).pow(integerDigits + 24) ||
+      (fractionDigits < 24 &&
+          financeExactDecimalUnits(text, scale: fractionDigits) == null)) {
     return null;
   }
   return (text: text, units: units);
 }
 
-String? nonNegativeDocumentQuantityText(String raw) =>
-    _documentQuantityValue(raw)?.text;
+String? nonNegativeDocumentQuantityText(
+  String raw, {
+  int integerDigits = 40,
+  int fractionDigits = 24,
+}) => _documentQuantityValue(
+  raw,
+  integerDigits: integerDigits,
+  fractionDigits: fractionDigits,
+)?.text;
 
 /// 40-integer/24-fraction input remains decimal text until the server validates it.
 /// A binary number cannot preserve every valid 40-integer/24-fraction quantity.
-String? positiveDocumentQuantityText(String raw) {
-  final value = _documentQuantityValue(raw);
+String? positiveDocumentQuantityText(
+  String raw, {
+  int integerDigits = 40,
+  int fractionDigits = 24,
+}) {
+  final value = _documentQuantityValue(
+    raw,
+    integerDigits: integerDigits,
+    fractionDigits: fractionDigits,
+  );
   return value == null || value.units == BigInt.zero ? null : value.text;
+}
+
+/// Material commands share the service's positive 14/4 value boundary while
+/// retaining each caller's original syntax and entered text. General document
+/// quantities still use 40/24.
+String? positiveMaterialCommandQuantityText(
+  String raw, {
+  bool plainDecimalOnly = true,
+}) {
+  final text = raw.trim();
+  if (plainDecimalOnly && !RegExp(r'^\d+(\.\d+)?$').hasMatch(text)) {
+    return null;
+  }
+  return positiveDocumentQuantityText(
+            text,
+            integerDigits: 14,
+            fractionDigits: 4,
+          ) ==
+          null
+      ? null
+      : text;
 }

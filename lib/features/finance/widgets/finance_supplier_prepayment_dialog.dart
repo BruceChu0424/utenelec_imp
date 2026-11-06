@@ -10,8 +10,14 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
@@ -37,13 +43,15 @@ class _AdvanceDirectory extends ConsumerStatefulWidget {
   ConsumerState<_AdvanceDirectory> createState() => _AdvanceDirectoryState();
 }
 
-class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
+class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory>
+    with ReadViewActivityMixin<_AdvanceDirectory> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
   late final int _epoch;
   bool _busy = false;
   String? _error;
   String _kind = 'APPLICATION';
-  int _page = 1, _pages = 0;
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic>? _source;
   bool get _current =>
@@ -57,10 +65,10 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
     super.initState();
     _api = ref.read(apiClientProvider);
     _epoch = ref.read(exportContextEpochProvider);
-    _load(1);
+    _load();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     setState(() {
       _busy = true;
@@ -68,34 +76,55 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
     });
     try {
       final id = widget.paymentId;
-      if (id != null) {
-        final source = await _api.get('/finance/supplier-prepayments/$id');
-        if (!_current) return;
-        _source = source;
-      }
-      final result = await _api.get(
-        id == null
-            ? '/finance/supplier-prepayments'
-            : '/finance/supplier-prepayments/$id/settlements',
-        query: {
-          'page': '$page',
-          'size': '50',
-          if (id == null && widget.supplierId != null)
-            'supplierId': widget.supplierId,
-          if (id == null && widget.currencyId != null)
-            'currencyId': widget.currencyId,
-          if (id != null) 'kind': _kind,
-        },
-      );
+      final kind = _kind;
+      final result = await readViewActivity.runRead(() => _current, () async {
+        final source = id == null
+            ? null
+            : await _api.get('/finance/supplier-prepayments/$id');
+        if (PagedReadIntent.currentActivity?.call() == false) {
+          throw const UiWorkCancelled();
+        }
+        final complete = await loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: () => _current,
+          idOf: (row) => row[id == null ? 'paymentId' : 'id'],
+          loadPage: (page, size) async =>
+              PagedResult.fromJsonResponsive<Map<String, dynamic>>(
+                await _api.get(
+                  id == null
+                      ? '/finance/supplier-prepayments'
+                      : '/finance/supplier-prepayments/$id/settlements',
+                  query: {
+                    'page': page,
+                    'size': size,
+                    if (id == null && widget.supplierId != null)
+                      'supplierId': widget.supplierId,
+                    if (id == null && widget.currencyId != null)
+                      'currencyId': widget.currencyId,
+                    if (id != null) 'kind': kind,
+                  },
+                ),
+                (row) => row,
+              ),
+        );
+        return (source: source, complete: complete);
+      });
       if (_current) {
         setState(() {
-          _rows = _maps(result['items']);
-          _page = page;
-          _pages = (result['totalPages'] as num?)?.toInt() ?? 0;
+          _source = result.source;
+          _rows = result.complete.items;
         });
       }
     } catch (e) {
-      if (_current) setState(() => _error = _message(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current) {
+        setState(() {
+          if (pagedReadAccessDenied(e)) {
+            _rows = [];
+            _source = null;
+          }
+          _error = _message(e);
+        });
+      }
     } finally {
       if (_current) setState(() => _busy = false);
     }
@@ -133,7 +162,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
         await _command(mode, selected: row);
       }
     }
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   Future<void> _classify() async {
@@ -142,7 +171,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
       context,
       paymentId: widget.paymentId!,
     );
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   Future<void> _command(String mode, {Map<String, dynamic>? selected}) async {
@@ -153,7 +182,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
       builder: (_) =>
           _AdvanceCommand(source: _source!, mode: mode, selected: selected),
     );
-    if (_current) await _load(_page);
+    if (_current) await _load();
   }
 
   @override
@@ -216,7 +245,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
                         onChanged: (v) {
                           if (!_busy && v != null) {
                             setState(() => _kind = v);
-                            _load(1);
+                            _load();
                           }
                         },
                       ),
@@ -325,10 +354,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
                   idOf: (r) => '${r[detail ? 'id' : 'paymentId']}',
                   busy: _busy,
                   error: _error,
-                  retry: () => _load(_page),
-                  page: _page,
-                  pages: _pages,
-                  onPage: _load,
+                  retry: _load,
                   scope: (
                     _epoch,
                     widget.paymentId,
@@ -361,7 +387,7 @@ class _AdvanceDirectoryState extends ConsumerState<_AdvanceDirectory> {
                         child: const Text('登记实际退款'),
                       ),
                     UtenButton(
-                      onPressed: _busy ? null : () => _load(_page),
+                      onPressed: _busy ? null : _load,
                       child: const Text('刷新'),
                     ),
                   ],

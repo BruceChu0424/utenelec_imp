@@ -38,6 +38,9 @@ public class ReportReadPlanInterceptor implements AsyncHandlerInterceptor {
             if(match.matches()) {
                 version=ReadScopePublication.capture(request,authority,users,match.group(1));
             }
+            else if(path.matches("^/api/finance/statement-documents/reviews/[0-9a-fA-F-]{36}/original-table$")) {
+                version=ReadScopePublication.capture(request,authority,users,"finance");
+            }
         }
         if(reuse && (version==null || supplied==null || !version.equals(supplied[0])))count=facets=totals=true;
         ReportReadPlan plan = new ReportReadPlan(count,facets,totals,version);

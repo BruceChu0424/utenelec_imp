@@ -4,7 +4,7 @@
   "purpose": "Subcontract loss is a supply allowance, not a fixed deduction from actual receipts.",
   "rules": {
     "supplyBudget": "finishedTarget * baseBomQty * (1 + allowedLossPct / 100), rounded upward only at the owning document quantity boundary",
-    "normalFinishedLimit": "finishedTarget * (1 + allowedLossPct / 100)",
+    "normalFinishedLimit": "finishedTarget * (1 + allowedLossPct / 100), downward only to the existing 24-place native quantity input grid; original zero-loss targets retain every recorded digit",
     "actualReceipt": "An explicit operator entry; never prefilled from theoretical material capacity.",
     "receiptConsumption": "Version 2 consumes base BOM against actual material-basis receipt quantity; actual waste and returns are independent movements.",
     "partialReceipt": "A receipt below the finished target remains partial and does not erase the unfulfilled demand.",
@@ -142,5 +142,156 @@
     "oldTheoreticalCapacity": "3382 / 1.03 = 3283.4951",
     "actualPhysicalReceiptVerified": false,
     "productionDataMayBeRewritten": false
-  }
+  },
+  "quantityFractionDigits": 24,
+  "normalAllowanceVectors": [
+    {
+      "id": "recorded-target-zero-loss",
+      "target": "1.000000000000000000000001",
+      "lossPct": "0",
+      "normalMaximum": "1.000000000000000000000001"
+    },
+    {
+      "id": "recorded-target-allowance-floor",
+      "target": "1.000000000000000000000001",
+      "lossPct": "10",
+      "normalMaximum": "1.100000000000000000000001"
+    },
+    {
+      "id": "legacy-four-place-input",
+      "target": "0.0001",
+      "lossPct": "50",
+      "normalMaximum": "0.000150000000000000000000"
+    },
+    {
+      "id": "original-target-rate-three",
+      "target": "2.000000000000000000000001",
+      "lossPct": "3",
+      "normalMaximum": "2.060000000000000000000001"
+    }
+  ],
+  "inverseVectors": [
+    {
+      "id": "exact-recorded-target",
+      "retainedBase": "1.000000000000000000000001",
+      "orderUnitRate": "1",
+      "heldMaterialQty": "0",
+      "baseBomQty": "1",
+      "lossPct": "0",
+      "minimumTarget": "1.000000000000000000000001",
+      "normalMaximumAtTarget": "1.000000000000000000000001"
+    },
+    {
+      "id": "converted-source-rate-three",
+      "retainedBase": "0.73356",
+      "orderUnitRate": "3",
+      "heldMaterialQty": "0",
+      "baseBomQty": "1",
+      "lossPct": "10",
+      "minimumTarget": "0.222290909090909090909091",
+      "normalMaximumAtTarget": "0.244520000000000000000000"
+    },
+    {
+      "id": "combined-rational-sources",
+      "retainedBase": "0.6666666666666666",
+      "orderUnitRate": "1",
+      "heldMaterialQty": "1",
+      "baseBomQty": "3",
+      "lossPct": "0",
+      "minimumTarget": "0.999999999999999933333334",
+      "normalMaximumAtTarget": "0.999999999999999933333334"
+    },
+    {
+      "id": "four-place-retained-source",
+      "retainedBase": "1100.0001",
+      "orderUnitRate": "1",
+      "heldMaterialQty": "0",
+      "baseBomQty": "1",
+      "lossPct": "10",
+      "minimumTarget": "1000.000090909090909090909091",
+      "normalMaximumAtTarget": "1100.000100000000000000000000"
+    }
+  ],
+  "actualMaterialVectors": [
+    {
+      "id": "actual-source-base-one",
+      "outputQty": "1.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "1",
+      "plannedMaterialQty": "1.0001",
+      "stockBeforeIssueQty": "1.0001",
+      "issuedQty": "1.000000000000000000000001",
+      "consumedQty": "1.000000000000000000000001",
+      "remainingMaterialQty": "0.000000000000000000000000",
+      "physicalOutputQty": "1.000000000000000000000001",
+      "finishedTargetQty": "1.000000000000000000000001"
+    },
+    {
+      "id": "actual-source-base-three",
+      "outputQty": "1.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "3",
+      "plannedMaterialQty": "3.0001",
+      "stockBeforeIssueQty": "3.0003",
+      "issuedQty": "3.000000000000000000000003",
+      "consumedQty": "3.000000000000000000000003",
+      "remainingMaterialQty": "0.000000000000000000000000",
+      "physicalOutputQty": "1.000000000000000000000001",
+      "finishedTargetQty": "1.000000000000000000000001"
+    },
+    {
+      "id": "actual-residual-base-one",
+      "outputQty": "1.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "1",
+      "plannedMaterialQty": "1.0001",
+      "stockBeforeIssueQty": "1.0001",
+      "issuedQty": "1.000000000000000000000002",
+      "consumedQty": "1.000000000000000000000001",
+      "remainingMaterialQty": "0.000000000000000000000001",
+      "physicalOutputQty": "1.000000000000000000000002",
+      "finishedTargetQty": "1.000000000000000000000001"
+    },
+    {
+      "id": "actual-residual-base-three",
+      "outputQty": "1.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "3",
+      "plannedMaterialQty": "3.0001",
+      "stockBeforeIssueQty": "3.0003",
+      "issuedQty": "3.000000000000000000000004",
+      "consumedQty": "3.000000000000000000000003",
+      "remainingMaterialQty": "0.000000000000000000000001",
+      "physicalOutputQty": "1.000000000000000000000001",
+      "finishedTargetQty": "1.000000000000000000000001"
+    },
+    {
+      "id": "actual-material-owning-ceiling",
+      "outputQty": "1.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "0.1",
+      "plannedMaterialQty": "0.1001",
+      "stockBeforeIssueQty": "0.1001",
+      "issuedQty": "0.100000000000000000000001",
+      "consumedQty": "0.100000000000000000000001",
+      "remainingMaterialQty": "0.000000000000000000000000",
+      "physicalOutputQty": "1.00000000000000000000001",
+      "finishedTargetQty": "1.000000000000000000000001"
+    },
+    {
+      "id": "actual-cumulative-round-credit",
+      "finishedTargetQty": "0.00000000000000000000001",
+      "outputQty": "0.000000000000000000000001",
+      "lossPct": "0",
+      "baseBomQty": "0.1",
+      "plannedMaterialQty": "0.0001",
+      "stockBeforeIssueQty": "0.0001",
+      "issuedQty": "0.000000000000000000000001",
+      "consumedQty": "0.000000000000000000000001",
+      "remainingMaterialQty": "0",
+      "physicalOutputQty": "0.00000000000000000000001",
+      "subsequentOutputQty": "0.000000000000000000000009",
+      "subsequentConsumedQty": "0"
+    }
+  ]
 }

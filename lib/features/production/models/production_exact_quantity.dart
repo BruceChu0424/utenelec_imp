@@ -50,6 +50,31 @@ String productionQuantityTextFromUnits(
   int scale = productionQuantityScale,
 }) => _canonical(financeExactDecimalFromUnits(units, scale: scale));
 
+/// Read-only report quota preview. Original decimal facts share one subtraction
+/// and the existing business tolerance; unsafe legacy numbers stay unknown.
+class ProductionReportPreview {
+  ProductionReportPreview({required Object? remaining, Object? draft = '0'})
+    : baseUnits = productionExactQuantityUnits(remaining),
+      draftUnits = productionExactQuantityUnits(draft);
+
+  final BigInt? baseUnits;
+  final BigInt? draftUnits;
+  static final _threshold = productionExactQuantityUnits('0.000001')!;
+  bool get known => baseUnits != null && draftUnits != null;
+  BigInt? get remainingUnits {
+    if (!known) return null;
+    final difference = baseUnits! - draftUnits!;
+    return difference.isNegative ? BigInt.zero : difference;
+  }
+
+  String? get remainingText => remainingUnits == null
+      ? null
+      : productionQuantityTextFromUnits(remainingUnits!);
+  bool get atMostThreshold => known && remainingUnits! <= _threshold;
+  bool get fullyClaimed => atMostThreshold && baseUnits! > _threshold;
+  bool get draftAwaitingApproval => fullyClaimed && draftUnits! > _threshold;
+}
+
 String? productionQuantityWithUnit(Object? value, String? unit) {
   final text = productionExactQuantityText(value);
   if (text == null) return null;

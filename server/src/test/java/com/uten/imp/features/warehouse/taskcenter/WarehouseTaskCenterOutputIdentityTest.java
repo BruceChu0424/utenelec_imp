@@ -26,11 +26,13 @@ class WarehouseTaskCenterOutputIdentityTest {
                 1, "G1", "重复货品", null, null, "个", BigDecimal.ONE, null));
         var second = document.withLine(new WarehouseTaskCenterContracts.Line("line-2", UUID.randomUUID(),
                 2, "G1", "重复货品", null, null, "个", BigDecimal.ONE, null));
-        when(inbound.list(any())).thenReturn(new WarehouseTaskCenterContracts.Page(
+        when(inbound.list(any(), eq(false))).thenReturn(new WarehouseTaskCenterContracts.Page(
                 List.of(first, second), 1, 100, 2, 1, Map.of()));
         var service = new WarehouseTaskCenterExportService(mock(WarehouseOutboundTaskCenterQueryService.class), inbound, settings);
         var payload = service.inbound(new WarehouseTaskCenterContracts.Filter("ALL", null, null, null,
                 null, null, null, 1, 100));
+        verify(inbound).list(any(), eq(false));
+        verify(inbound, never()).list(any());
         var projection = new TableColumnProjection("warehouse.tasks", null, List.of(),
                 List.of(Map.of("rowKey", second.rowKey())));
         var selection = new ExportRowSelection(projection);

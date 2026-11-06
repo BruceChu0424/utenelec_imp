@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -535,6 +536,9 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
 class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     with ScopedPagedReadViewMixin<_GoodsPickerSheet> {
   @override
+  Future<void> onReadViewResumed() => _reloadCurrentPage();
+
+  @override
   void scopedPagedReadOwnerChanged() {
     ++_requestVersion;
     if (mounted) {
@@ -991,6 +995,22 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   }
 
   Future<void> _reloadCategory({String? keyword, bool useCache = false}) async {
+    final query = freezePagedReadQuery(_pagingQuery());
+    try {
+      await readViewActivity.runRead(
+        () => _canRead && samePagedReadQuery(query, _pagingQuery()),
+        () => _reloadCategoryRows(keyword: keyword, useCache: useCache),
+        slot: '_reloadCategory-pipeline',
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error)) rethrow;
+    }
+  }
+
+  Future<void> _reloadCategoryRows({
+    String? keyword,
+    bool useCache = false,
+  }) async {
     if (!_canRead) return;
     final categoryId = _selectedCategoryId;
     final requestedPage = _page;
@@ -1032,6 +1052,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       });
       unawaited(_reloadFacets(requestVersion));
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
       setState(() {
         _error = _pickerErrorMessage(
@@ -1049,6 +1070,19 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   }
 
   Future<void> _reloadGlobalSearch({bool useCache = false}) async {
+    final query = freezePagedReadQuery(_pagingQuery());
+    try {
+      await readViewActivity.runRead(
+        () => _canRead && samePagedReadQuery(query, _pagingQuery()),
+        () => _reloadGlobalSearchRows(useCache: useCache),
+        slot: '_reloadGlobalSearch-pipeline',
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error)) rethrow;
+    }
+  }
+
+  Future<void> _reloadGlobalSearchRows({bool useCache = false}) async {
     if (!_canRead) return;
     final query = _query;
     final requestedPage = _page;
@@ -1146,6 +1180,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       }
       unawaited(_reloadFacets(requestVersion));
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
+      if (pagedReadAccessDenied(error)) {
+        scopedPagedReadOwnerChanged();
+        return;
+      }
       if (!mounted || !_canRead || requestVersion != _requestVersion) return;
       setState(() {
         _error = _pickerErrorMessage(error, '搜索货品失败，请稍后重试');
@@ -1178,7 +1217,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         current,
         () => _searchCategoryIds(query),
       );
-      if (!current()) return;
+      if (!current() || !(PagedReadIntent.currentActivity?.call() ?? true)) {
+        return;
+      }
       final resolution = _resolveSearchLocation(query, matchingIds, result);
       setState(() {
         _globalResolutionQuery = query;
@@ -1188,6 +1229,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         _searchError = null;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       if (pagedReadAccessDenied(error)) {
         scopedPagedReadOwnerChanged();
@@ -1274,9 +1316,20 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
           ),
         );
       }
-      if (!mounted || !_canRead || requestVersion != _requestVersion) return;
+      if (!mounted ||
+          !_canRead ||
+          requestVersion != _requestVersion ||
+          !(PagedReadIntent.currentActivity?.call() ?? true)) {
+        return;
+      }
       setState(() => _facets = result);
-    } catch (_) {
+    } catch (error) {
+      if (mounted &&
+          _canRead &&
+          requestVersion == _requestVersion &&
+          pagedReadAccessDenied(error)) {
+        scopedPagedReadOwnerChanged();
+      }
       // 候选桶是可选增强：失败静默为空下拉，不阻塞列表。
     }
   }

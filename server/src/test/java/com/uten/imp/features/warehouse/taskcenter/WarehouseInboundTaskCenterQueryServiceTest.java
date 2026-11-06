@@ -53,12 +53,10 @@ class WarehouseInboundTaskCenterQueryServiceTest {
         when(stock.nativeReadScope(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(OwnerScope.class)))
                 .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of()));
-        when(jdbc.queryForObject(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.MapSqlParameterSource.class),
-                org.mockito.ArgumentMatchers.eq(Long.class))).thenReturn(0L);
         when(jdbc.query(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.MapSqlParameterSource.class),
-                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class))).thenReturn(java.util.List.of());
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.SqlParameterSource.class),
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class)))
+                .thenReturn(java.util.Collections.singletonList(new Object[]{"TOTAL",null,0L}));
         var service=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper(),current,scopes,stock,
                 mock(ProductionStockTaskAccessPolicy.class),mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
         assertThat(service.list(filter("PURCHASE","")).total()).isZero();

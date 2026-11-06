@@ -1,0 +1,66 @@
+{
+  "owner": "/root/backend_final_current",
+  "upstreamMain": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "completeSourceFiles": 7389,
+  "sourceFrozen": true,
+  "pendingExtraTargets": "Completed: final-extra4 actual24passed native0; source-bound union65/452 all0badskip. Pre-cost61 separate receipt preserved.",
+  "activeExecs": {},
+  "legacy": {
+    "actualExitCode": 0,
+    "tests": 54,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "priorStage": "../main-3068-final/superseded source a8ddb7387. Compile3211/2581actual0; fast39/280native1=277passed3errors0failure/skip. Missing2contracts+mock overload repaired; raw RED copied superseded-a8ddb-fast-red/ and never rewritten.",
+  "repair": "Only2 exact Main contract additions plusWarehouseTaskCenterOutputIdentityTest precision mock-overload/verify. corrected-phase-provenance.json asserts exact3-path delta; all production/SQL and other prior inputs byte exact.",
+  "next": [
+    "OWN6807 queue-validation.ps1 already waits90484 true native compile0, then auto-runs final-fast39 native and final-pg22 serially and seal-current.py. Do not start a duplicate group. queue-execution.json gives current phase. Never modify source while active.",
+    "Run prepare-source-bridge.py, then seal-current.py only after both current native runs naturally complete; sealer exact classsets/nonzero tests/all pathset+hash/no failures/errors/skips/compiled295/full1009->1070/current6growth+claims timestamps.",
+    "Run archive-current.py after green receipt; durable source delta vs Main3068/current raw receipt/native evidence plus original RED remain separate.",
+    "4backend override manifest unchanged c097008aaf5d0ce78bbd05592e202f00c42cddd69216ca3ef665bb5e192cd6ac, all4task paths unchanged during repair. Root/integration owns finalMainCAS."
+  ],
+  "migrations": {
+    "committedMainByteExact": 1004,
+    "subversions": 14,
+    "candidateCount": 1009,
+    "maximumVersion": 1070,
+    "returnSchemaGate": 1067,
+    "mappingVersion": "bootstrap-v22",
+    "fiveCandidateBodiesByteExact": true
+  },
+  "mainWritten": false,
+  "companyDbWritten": false,
+  "commitPushPackageDeploy": false,
+  "compile": {
+    "session": 90484,
+    "actualExitCode": 0,
+    "mainSources": 3211,
+    "testSources": 2581
+  },
+  "fast": {
+    "actualExitCode": 0,
+    "classes": 39,
+    "tests": 280,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "completedAtUtc": "2026-11-05T21:33:13.1634806Z"
+  },
+  "currentPhase": "Core65 completed native0 and sealed. Archive immutable374d then authorized preflight repair phase with a new source clock.",
+  "nextPreflightStage": "After core65 closes/archive immutable374d, repair real integer-only preflight/exporter/legacy consumers against C09 common3 APIs in deploy/updater/release_guard.py. Root explicitly authorized; no version/header/schema type changes, no commits/import/company DB. Do NOT call core65 latest-preflight green; preserve original failure receipt and source-clock bridge. Rerun affected producer/script suites only, no blind oldPG repetition.",
+  "coreCompleted": {
+    "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+    "classes": 65,
+    "uniqueJavaTests": 452,
+    "nativeAll0": true,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "completeInputPaths": 7389,
+    "sourceDrift": 0,
+    "compiledMigrationsExact": 1009,
+    "compiledExternalResourcesExact": 295
+  }
+}

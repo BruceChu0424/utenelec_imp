@@ -439,7 +439,7 @@ public class ProductionOverproductionRateService {
                        segment.product_goods_id,segment.product_color_id,segment.product_unit_id,segment.product_unit_rate,
                        fn_execution_tolerance_surplus_qty(segment.id,TRUE),fn_execution_overproduction_policy_applies(segment.id)
                 FROM production_execution_segments segment
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('production_plans',archive_origin.id)) plan ON plan.id=segment.plan_id
+                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id
                 JOIN goods ON goods.id=segment.product_goods_id
                 LEFT JOIN colors color ON color.id=segment.product_color_id

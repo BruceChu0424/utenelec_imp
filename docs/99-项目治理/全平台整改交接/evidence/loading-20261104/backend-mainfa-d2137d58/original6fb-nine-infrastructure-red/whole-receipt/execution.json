@@ -1,0 +1,27 @@
+{
+  "label": "current-pg",
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T23:28:41.1221154Z",
+  "completedAtUtc": "2026-11-06T00:27:19.4283946Z",
+  "actualExitCode": 1,
+  "sourceAggregateSha256": "c51925b87cb438f9134136cf2ad31b8d8dc40c38a6c7d0da9e7011e11ff4cb00",
+  "upstreamMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-6fb-version-identity",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.exportFlywayChecksums=true",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-6fb-crosswalk-qualified/current-pg-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-6fb-crosswalk-qualified/current-pg-measurements",
+    "-Dtest=LegacyFlywayVersionIdentityPostgresTest,InventoryValueOutputRefreshContinuationPostgresTest,ProcurementFinanceReviewReadOnlyEndToEndTest,ReceiptExplicitOrderLifecyclePostgresTest,FinanceApplicationContinuationEndToEndTest,StandardFinanceApprovalReadOnlyEndToEndTest,FinanceDocumentMutationConcurrencyPostgresTest,SalesShipmentFinanceReleaseRateEndToEndTest,FinanceApplicationsPostgresTest",
+    "surefire:test"
+  ],
+  "selection": "LegacyFlywayVersionIdentityPostgresTest,InventoryValueOutputRefreshContinuationPostgresTest,ProcurementFinanceReviewReadOnlyEndToEndTest,ReceiptExplicitOrderLifecyclePostgresTest,FinanceApplicationContinuationEndToEndTest,StandardFinanceApprovalReadOnlyEndToEndTest,FinanceDocumentMutationConcurrencyPostgresTest,SalesShipmentFinanceReleaseRateEndToEndTest,FinanceApplicationsPostgresTest",
+  "wrapperPid": 48992,
+  "log": "build\\loading-validation\\main-6fb-crosswalk-qualified\\current-pg.log",
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g"
+  }
+}

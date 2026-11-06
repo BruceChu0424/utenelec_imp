@@ -1,3 +1,7 @@
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/models/paged_result.dart';
 // 页面权限抽屉（V812 权限整理）：业务页右上角「权限设置」原地滑出的右侧面板。
 //
 // 与被替代的独立设置页相比的三个新口径：
@@ -238,7 +242,13 @@ class PagePermissionDrawer extends ConsumerStatefulWidget {
       _PagePermissionDrawerState();
 }
 
-class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
+class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer>
+    with ReadViewActivityMixin<PagePermissionDrawer> {
+  @override
+  Future<void> onReadViewResumed() async {
+    await _loadStaff();
+  }
+
   List<ManagedPermissionDepartment> _departments = const [];
   ManagedPermissionDepartmentForest _departmentForest =
       ManagedPermissionDepartmentForest.fromRows(const []);
@@ -249,11 +259,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   List<PagePermissionStaffSummary> _staff = const [];
   String _search = '';
   TableColumnQuery _staffHeaders = const TableColumnQuery();
-  int _page = 0;
-  int _totalPages = 0;
   int _total = 0;
   bool _staffLoading = false;
-  bool _loadingMore = false;
   String? _staffError;
   int _staffRequest = 0;
 
@@ -352,8 +359,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _departmentsError = null;
     });
     try {
-      final rows = await _repository.managedDepartments(
-        widget.scope.surfaceKey,
+      final rows = await PagedReadIntent.scopedRead(
+        () => _current,
+        () => _repository.managedDepartments(widget.scope.surfaceKey),
       );
       final forest = ManagedPermissionDepartmentForest.fromRows(rows);
       if (!_current) return;
@@ -381,51 +389,65 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     }
   }
 
-  Future<bool> _loadStaff({bool append = false}) async {
+  Future<bool> _loadStaff() async {
     if (!_current) return false;
     final departmentId = _departmentId;
     final request = ++_staffRequest;
-    final nextPage = append ? _page + 1 : 1;
+    final repository = _repository;
+    final surfaceKey = widget.scope.surfaceKey;
+    final search = _search;
+    final headers = _staffHeaders;
+    bool current() => _current && request == _staffRequest;
     setState(() {
-      if (append) {
-        _loadingMore = true;
-      } else {
-        _staffLoading = true;
-        _staffError = null;
-      }
+      _staffLoading = true;
+      _staffError = null;
+      _staff = const [];
     });
     try {
-      final result = await _repository.staffPage(
-        surfaceKey: widget.scope.surfaceKey,
-        departmentId: departmentId,
-        search: _search,
-        page: nextPage,
-        columnQuery: _staffHeaders.searches,
-        sort: _staffHeaders.sort,
-        ascending: _staffHeaders.ascending,
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<PagePermissionStaffSummary>(
+          isCurrent: current,
+          idOf: (row) => row.employeeId,
+          loadPage: (page, size) async {
+            final response = await repository.staffPage(
+              surfaceKey: surfaceKey,
+              departmentId: departmentId,
+              search: search,
+              page: page,
+              size: size,
+              columnQuery: headers.searches,
+              sort: headers.sort,
+              ascending: headers.ascending,
+            );
+            if (response.surfaceKey != surfaceKey ||
+                response.departmentId != departmentId) {
+              throw ApiException('READ_SCOPE_CHANGED', '人员读取范围已变化，请重新进入');
+            }
+            return PagedResult<PagePermissionStaffSummary>(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            );
+          },
+        ),
       );
-      if (!_current || request != _staffRequest) return false;
-      final combined = append
-          ? <PagePermissionStaffSummary>[..._staff, ...result.items]
-          : result.items;
+      if (!current()) return false;
       setState(() {
-        _staff = combined;
-        _page = result.page;
-        _totalPages = result.totalPages;
+        _staff = result.items;
         _total = result.total;
         _staffLoading = false;
-        _loadingMore = false;
         _staffError = null;
       });
       return true;
     } catch (error) {
-      if (!_current || request != _staffRequest) return false;
+      if (isRetiredViewRead(error)) return false;
+      if (!current()) return false;
       setState(() {
-        _staffError = error is ApiException
-            ? error.message
-            : (append ? '加载更多失败，请重试' : '人员加载失败，请重试');
+        _staffError = error is ApiException ? error.message : '人员加载失败，请重试';
         _staffLoading = false;
-        _loadingMore = false;
       });
       return false;
     }
@@ -453,8 +475,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _pending.clear();
       _expandedFamilies.clear();
       _staff = const [];
-      _page = 0;
-      _totalPages = 0;
       _total = 0;
     });
     await _loadStaff();
@@ -478,9 +498,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _staffHeaders = headers;
       _pickedStaff = null;
       _staff = const [];
-      _page = 0;
       _total = 0;
-      _totalPages = 0;
     });
     await _loadStaff();
   }
@@ -1101,15 +1119,16 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final people = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s8),
-          child: Text(
-            '共 $_total 人',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+        if (!_staffLoading && _staffError == null)
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            child: Text(
+              '共 $_total 人',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
-        ),
         Expanded(child: _staffList()),
       ],
     );
@@ -1153,10 +1172,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             : _departmentId == null
             ? '当前可管理范围暂无员工'
             : '该部门及子部门暂无可管理员工',
-        description: _search.isEmpty ? null : '请调整姓名或工号关键词。',
       );
     }
-    final hasMore = _page < _totalPages;
     final requestVersion = _staffRequest;
     return Column(
       children: [
@@ -1267,7 +1284,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             onSortChange: (key, ascending) =>
                 _changeStaffHeaders(_staffHeaders.sorted(key, ascending)),
             paginationScope: (_departmentId, _search, _staffHeaders),
-            loadingMore: _loadingMore,
+            loadingMore: _staffLoading,
             showPaginationControls: false,
             showFullscreenToggle: false,
             showColumnChooser: false,
@@ -1275,17 +1292,18 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             enableTextSelection: false,
           ),
         ),
-        if (hasMore || _staffError != null)
+        if (_staffError != null)
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s8),
             child: OutlinedButton(
-              onPressed: _loadingMore ? null : () => _loadStaff(append: true),
-              child: _loadingMore
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_staffError ?? '加载更多'),
+              onPressed: _staffLoading
+                  ? null
+                  : () => UtenBusyOverlay.run(
+                      context,
+                      title: '正在重新读取人员',
+                      action: _loadStaff,
+                    ),
+              child: Text(_staffError!),
             ),
           ),
       ],

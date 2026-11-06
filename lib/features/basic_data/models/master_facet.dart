@@ -7,9 +7,16 @@ export '../../../shared/models/master_facet_bucket.dart';
 /// A bounded page of distinct candidates queried over the full authorized row
 /// scope. Selecting an item still applies the existing exact-value filter.
 class MasterFacetPage {
-  const MasterFacetPage({required this.items, required this.hasMore});
+  const MasterFacetPage({
+    required this.items,
+    required this.hasMore,
+    this.page,
+    this.size,
+  });
   final List<MasterFacetBucket> items;
   final bool hasMore;
+  final int? page;
+  final int? size;
 
   factory MasterFacetPage.fromJson(Map<String, dynamic> json) =>
       MasterFacetPage(
@@ -18,6 +25,8 @@ class MasterFacetPage {
             MasterFacetBucket.fromJson(Map<String, dynamic>.from(item as Map)),
         ],
         hasMore: json['hasMore'] == true,
+        page: (json['page'] as num?)?.toInt(),
+        size: (json['size'] as num?)?.toInt(),
       );
 }
 

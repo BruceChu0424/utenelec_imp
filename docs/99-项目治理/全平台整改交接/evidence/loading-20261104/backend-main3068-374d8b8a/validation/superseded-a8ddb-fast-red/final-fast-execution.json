@@ -1,0 +1,26 @@
+{
+  "label": "final-fast",
+  "state": "completed",
+  "startedAtUtc": "2026-11-05T21:19:01.1754198Z",
+  "completedAtUtc": "2026-11-05T21:23:55.8885505Z",
+  "actualExitCode": 1,
+  "sourceAggregateSha256": "a8ddb083780a6602f15ef5cb0292b299e23b26b8b09061fd3cb7b1a2994a78f5",
+  "upstreamMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-main-3068-final",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.loading.measurement.directory=build/loading-validation/main-3068-final/final-fast-growth",
+    "-Duten.jdbc.measurement.trace-directory=build/loading-validation/main-3068-final/final-fast-measurements",
+    "-Dtest=ArchitectureBoundaryTest,ExactBodyReadRoutesTest,NativeTaskReadScopeInterceptorTest,ProductionDraftClaimsReadRoutesTest,ExportRowSelectionTest,MasterExportSelectionTest,OutputSelectionCapabilitiesTest,SelectedDocumentProjectionTest,SelectedExportIdsTest,XlsxSelectedRowsStreamingTest,CommercialReportLineIdentityTest,StockFinanceReportLineIdentityTest,OutputSelectionRequestBodyLimitMvcTest,MasterExportSelectionAspectTest,GoodsBomExportProjectionTest,GoodsImportMouldReferenceTest,GoodsImportCellCorrectionsSafetyTest,GoodsImportPaperTest,FulfillmentWorkbenchQueryServiceTest,ProductionWorkshopTaskExportServiceTest,WhereUsedExportAndReplacementSecurityTest,WhereUsedExportServiceTest,ProductionSubcontractLineIdentityTest,MasterReportExportSourceTest,ReportExportServiceTest,ShelfLabelOutputScopeTest,ShelfLabelExportPagingTest,StockReportWarehouseInventoryScopeTest,WarehouseTaskCenterOutputIdentityTest,ProcurementReferencePriceTest,PurchaseOrderTotalAmountTest,SubcontractOrderTotalAmountTest,SalesOrderListSortTest,SalesReturnAmountAuthorityTest,LegacyMigrationSafetyContractTest,HotTableTriggerHygieneContractTest,PaymentStyleReferenceGuardMigrationContractTest,AuditSessionTableExportServiceTest,FinanceChartDirectoryExportTest",
+    "surefire:test"
+  ],
+  "selection": "ArchitectureBoundaryTest,ExactBodyReadRoutesTest,NativeTaskReadScopeInterceptorTest,ProductionDraftClaimsReadRoutesTest,ExportRowSelectionTest,MasterExportSelectionTest,OutputSelectionCapabilitiesTest,SelectedDocumentProjectionTest,SelectedExportIdsTest,XlsxSelectedRowsStreamingTest,CommercialReportLineIdentityTest,StockFinanceReportLineIdentityTest,OutputSelectionRequestBodyLimitMvcTest,MasterExportSelectionAspectTest,GoodsBomExportProjectionTest,GoodsImportMouldReferenceTest,GoodsImportCellCorrectionsSafetyTest,GoodsImportPaperTest,FulfillmentWorkbenchQueryServiceTest,ProductionWorkshopTaskExportServiceTest,WhereUsedExportAndReplacementSecurityTest,WhereUsedExportServiceTest,ProductionSubcontractLineIdentityTest,MasterReportExportSourceTest,ReportExportServiceTest,ShelfLabelOutputScopeTest,ShelfLabelExportPagingTest,StockReportWarehouseInventoryScopeTest,WarehouseTaskCenterOutputIdentityTest,ProcurementReferencePriceTest,PurchaseOrderTotalAmountTest,SubcontractOrderTotalAmountTest,SalesOrderListSortTest,SalesReturnAmountAuthorityTest,LegacyMigrationSafetyContractTest,HotTableTriggerHygieneContractTest,PaymentStyleReferenceGuardMigrationContractTest,AuditSessionTableExportServiceTest,FinanceChartDirectoryExportTest",
+  "wrapperPid": 62264,
+  "log": "build\\loading-validation\\main-3068-final\\final-fast.log",
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g"
+  }
+}

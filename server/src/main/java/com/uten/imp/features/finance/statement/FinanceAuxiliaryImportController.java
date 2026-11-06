@@ -42,4 +42,11 @@ public class FinanceAuxiliaryImportController {
         if(request==null||request.importId()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择原导入批次");
         return service.applyDirectory(request.importId());
     }
+
+    @GetMapping("/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(
+            @RequestParam(defaultValue="all") String scope,@RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="100") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return service.summaries(scope,page,size,readSnapshotRevision);
+    }
 }

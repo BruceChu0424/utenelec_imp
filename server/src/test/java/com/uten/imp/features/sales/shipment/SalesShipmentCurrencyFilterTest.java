@@ -43,6 +43,31 @@ import static org.mockito.Mockito.when;
  * 按 sales_shipments.currency_id 等值（客户零星发货段共用 /shipments 端点同享该参数）。
  */
 class SalesShipmentCurrencyFilterTest {
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void financeHistoryKeepsProcessedTerminalAndLegacyRecordsWithoutReadingPendingDrafts() {
+        SalesShipmentRepository repository = mock(SalesShipmentRepository.class);
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        SalesDocumentAccessPolicy access = mock(SalesDocumentAccessPolicy.class);
+        CustomerShipmentPolicy policy = mock(CustomerShipmentPolicy.class);
+        var filter = new ShipmentQueryFilter(null,null,null,null,null,null,null,
+                null,null,null,null,null,"FINANCE_HISTORY");
+        service(repository, access, policy).list(filter,1,20,null,null);
+        ArgumentCaptor<Specification<SalesShipment>> captor = ArgumentCaptor.forClass(Specification.class);
+        verify(repository).findAll(captor.capture(), any(Pageable.class));
+        Root<SalesShipment> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
+        org.mockito.Mockito.doReturn(SalesShipment.class).when(root).getJavaType();
+        captor.getValue().toPredicate(root,null,cb);
+        verify(cb).equal(root.get("financeAudit"),(short)1);
+        verify(root.get("status")).in((short)1,(short)-1);
+        verify(cb).equal(root.get("shipmentKind"),"LEGACY");
+        verify(cb).isTrue(root.get("rejected"));
+        verify(cb).isFalse(root.get("financeRejected"));
+        org.mockito.Mockito.verify(cb,org.mockito.Mockito.never()).equal(root.get("status"),(short)0);
+    }
+
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})

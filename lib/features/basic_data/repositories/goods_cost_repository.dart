@@ -1,4 +1,9 @@
 import 'dart:typed_data';
+import '../../../core/network/api_exception.dart';
+import '../../../core/performance/ui_work_budget.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../models/goods_cost_sheet.dart';
@@ -65,10 +70,165 @@ abstract interface class GoodsCostRepository {
   );
 }
 
-class DioGoodsCostRepository implements GoodsCostRepository {
+/// Additive complete-read capability. Existing independent repositories retain
+/// their public contracts; the production Dio implementation always requires
+/// explicit complete-summary metadata rather than accepting a legacy prefix.
+abstract interface class GoodsCostVersionedReads {
+  Future<Map<String, dynamic>?> latestVersionForDefault(
+    String goodsId, {
+    required bool Function() isCurrent,
+  });
+  Future<PagedResult<Map<String, dynamic>>> completeVersions(
+    String goodsId, {
+    required bool Function() isCurrent,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  });
+  Future<List<Map<String, dynamic>>> completeTemplateSummaries(
+    String goodsId,
+    String? clientId, {
+    required bool Function() isCurrent,
+  });
+  Future<Map<String, dynamic>> selectedTemplateDetail(
+    String id,
+    String goodsId,
+    String? clientId,
+  );
+}
+
+extension GoodsCostCompleteReads on GoodsCostRepository {
+  /// A single latest default is a selection operation, never the contents of
+  /// the comparison list. The comparison list is read completely when opened.
+  Future<Map<String, dynamic>?> latestVersionForDefaultRead(
+    String goodsId, {
+    required bool Function() isCurrent,
+  }) async {
+    final repository = this;
+    if (repository is GoodsCostVersionedReads) {
+      return (repository as GoodsCostVersionedReads).latestVersionForDefault(
+        goodsId,
+        isCurrent: isCurrent,
+      );
+    }
+    final rows = await list(goodsId);
+    if (!isCurrent()) throw const UiWorkCancelled();
+    return rows.firstOrNull;
+  }
+
+  Future<List<Map<String, dynamic>>> completeVersionListForRead(
+    String goodsId, {
+    required bool Function() isCurrent,
+  }) async {
+    final repository = this;
+    if (repository is GoodsCostVersionedReads) {
+      return (await (repository as GoodsCostVersionedReads).completeVersions(
+        goodsId,
+        isCurrent: isCurrent,
+        columnQuery: const TableColumnQuery(
+          sort: 'updatedAt',
+          ascending: false,
+        ),
+      )).items;
+    }
+    // List's independent implementation contract is a complete ordered list.
+    // Production Dio never uses this compatibility branch.
+    final result = await list(goodsId);
+    if (!isCurrent()) throw const UiWorkCancelled();
+    return result;
+  }
+
+  Future<PagedResult<Map<String, dynamic>>> completeVersionsForRead(
+    String goodsId, {
+    required bool Function() isCurrent,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  }) {
+    final repository = this;
+    if (repository is GoodsCostVersionedReads) {
+      return (repository as GoodsCostVersionedReads).completeVersions(
+        goodsId,
+        isCurrent: isCurrent,
+        columnQuery: columnQuery,
+      );
+    }
+    return loadCompletePagedResult<Map<String, dynamic>>(
+      isCurrent: isCurrent,
+      idOf: (row) => row['id'],
+      loadPage: (page, size) =>
+          versions(goodsId, page: page, size: size, columnQuery: columnQuery),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> completeTemplatesForRead(
+    String goodsId,
+    String? clientId, {
+    required bool Function() isCurrent,
+  }) async {
+    final repository = this;
+    if (repository is GoodsCostVersionedReads) {
+      return (repository as GoodsCostVersionedReads).completeTemplateSummaries(
+        goodsId,
+        clientId,
+        isCurrent: isCurrent,
+      );
+    }
+    final result = await templates(goodsId, clientId);
+    if (!isCurrent()) throw const UiWorkCancelled();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> selectedTemplateForRead(
+    Map<String, dynamic> summary,
+    String goodsId,
+    String? clientId, {
+    required bool Function() isCurrent,
+  }) => PagedReadIntent.scopedRead(isCurrent, () async {
+    if (!isCurrent()) throw const UiWorkCancelled();
+    final repository = this, id = summary['id']?.toString();
+    if (id == null || id.isEmpty) {
+      throw ApiException('SNAPSHOT_CHANGED', '模板身份缺失，请重新读取');
+    }
+    final Map<String, dynamic> detail;
+    if (repository is GoodsCostVersionedReads) {
+      detail = await (repository as GoodsCostVersionedReads)
+          .selectedTemplateDetail(id, goodsId, clientId);
+    } else if (summary['input'] is Map<String, dynamic>) {
+      // Existing independent full-template implementations already own this
+      // selected detail. No production request falls back to all details.
+      detail = summary;
+    } else {
+      throw ApiException(
+        'INCOMPLETE_READ_PROTOCOL',
+        '服务端尚未提供所选模板完整资料，请更新服务端后重试',
+      );
+    }
+    if (!isCurrent()) throw const UiWorkCancelled();
+    if (detail['id']?.toString() != id ||
+        detail['input'] is! Map<String, dynamic> ||
+        summary['version'] != null && summary['version'] != detail['version']) {
+      throw ApiException('SNAPSHOT_CHANGED', '所选模板版本已变化，请刷新模板后重新核对');
+    }
+    return detail;
+  });
+}
+
+class DioGoodsCostRepository
+    implements GoodsCostRepository, GoodsCostVersionedReads {
   DioGoodsCostRepository(this.api);
   final ApiClient api;
   static const base = '/master/goods/cost-sheets';
+  @override
+  Future<Map<String, dynamic>?> latestVersionForDefault(
+    String goodsId, {
+    required bool Function() isCurrent,
+  }) => PagedReadIntent.scopedRead(isCurrent, () async {
+    if (!isCurrent()) throw const UiWorkCancelled();
+    final result = await versions(
+      goodsId,
+      size: 1,
+      columnQuery: const TableColumnQuery(sort: 'updatedAt', ascending: false),
+    );
+    if (!isCurrent()) throw const UiWorkCancelled();
+    return result.items.firstOrNull;
+  });
   @override
   Future<Map<String, dynamic>> productionOutput(
     String goodsId, {
@@ -115,8 +275,15 @@ class DioGoodsCostRepository implements GoodsCostRepository {
   Future<Map<String, dynamic>> importApply(Map<String, dynamic> request) =>
       api.post('$base/import-apply', body: request);
   @override
-  Future<List<Map<String, dynamic>>> list(String goodsId) =>
-      api.getList(base, query: {'goodsId': goodsId});
+  Future<List<Map<String, dynamic>>> list(String goodsId) async =>
+      (await completeVersions(
+        goodsId,
+        isCurrent: () => true,
+        columnQuery: const TableColumnQuery(
+          sort: 'updatedAt',
+          ascending: false,
+        ),
+      )).items;
   @override
   Future<PagedResult<Map<String, dynamic>>> versions(
     String goodsId, {
@@ -141,6 +308,69 @@ class DioGoodsCostRepository implements GoodsCostRepository {
     );
     return PagedResult.fromJsonResponsive(json, (row) => row);
   }
+
+  @override
+  Future<PagedResult<Map<String, dynamic>>> completeVersions(
+    String goodsId, {
+    required bool Function() isCurrent,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  }) async {
+    final result = await readVersionedSummarySnapshot<Map<String, dynamic>>(
+      isCurrent: isCurrent,
+      batchSize: 1000,
+      decode: (row) => row,
+      idOf: (row) => row['id'],
+      loadPage: (page, size, revision) => api.get(
+        '$base/versions/summary',
+        query: {
+          'goodsId': goodsId,
+          'page': page,
+          'size': size,
+          ...tableColumnParameters(
+            columnQuery.searches,
+            columnQuery.sort,
+            columnQuery.ascending,
+          ),
+          'status': ?columnQuery.searches['status'],
+          'currencyId': ?columnQuery.searches['currencyName'],
+          'readSnapshotRevision': ?revision,
+        },
+      ),
+    );
+    return result.page;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> completeTemplateSummaries(
+    String goodsId,
+    String? clientId, {
+    required bool Function() isCurrent,
+  }) => readCompleteVersionedSummaries<Map<String, dynamic>>(
+    isCurrent: isCurrent,
+    batchSize: 1000,
+    decode: (row) => row,
+    idOf: (row) => row['id'],
+    loadPage: (page, size, revision) => api.get(
+      '$base/templates/summary',
+      query: {
+        'goodsId': goodsId,
+        'clientId': ?clientId,
+        'page': page,
+        'size': size,
+        'readSnapshotRevision': ?revision,
+      },
+    ),
+  );
+
+  @override
+  Future<Map<String, dynamic>> selectedTemplateDetail(
+    String id,
+    String goodsId,
+    String? clientId,
+  ) => api.get(
+    '$base/templates/$id',
+    query: {'goodsId': goodsId, 'clientId': ?clientId},
+  );
 
   @override
   Future<GoodsCostSheet> detail(String id) async =>
@@ -215,10 +445,7 @@ class DioGoodsCostRepository implements GoodsCostRepository {
   Future<List<Map<String, dynamic>>> templates(
     String goodsId,
     String? clientId,
-  ) => api.getList(
-    '$base/templates',
-    query: {'goodsId': goodsId, 'clientId': ?clientId},
-  );
+  ) => completeTemplateSummaries(goodsId, clientId, isCurrent: () => true);
   @override
   Future<Map<String, dynamic>> saveTemplate(
     Map<String, dynamic> input,

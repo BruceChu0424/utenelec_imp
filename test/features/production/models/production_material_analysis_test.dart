@@ -3,8 +3,123 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
+import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 
 void main() {
+  test(
+    'integrated complete candidate snapshot and finance detail retain main delivery JSON, identities and source versions',
+    () async {
+      final delivery = <String, dynamic>{
+        'version': 1,
+        'mode': 'BOM',
+        'packaging': 'BULK',
+        'bomFingerprint': 'server-bom-proof',
+        'nodeModes': [
+          {
+            'path': ['00000000-0000-4000-8000-000000000001'],
+            'mode': 'CHILDREN',
+            'futureNodeEvidence': {'quantityText': '0.0000000000000000001'},
+          },
+        ],
+        'processes': [
+          {'path': <String>[], 'operation': 'LASER', 'required': true},
+        ],
+        'futureHeaderEvidence': {'sourceId': 'original-identity', 'keep': true},
+      };
+      final reader = ScopedPagedRead<MaterialAnalysisSalesCandidate>(
+        idOf: (row) => row.orderId,
+      );
+      addTearDown(reader.dispose);
+      final result = await reader.read(
+        1,
+        scope: 'integrated-delivery',
+        isCurrent: () => true,
+        fetchPage: (page) async {
+          final response = MaterialAnalysisSalesCandidatePage.fromJson({
+            'items': [
+              {
+                'orderId': 'order-$page',
+                'orderNo': 'SO-$page',
+                'deliveryDate': '2026-12-31',
+                'clientName': '原授权客户',
+                'lines': [
+                  {
+                    'salesOrderItemId': 'line-$page',
+                    'goodsId': 'goods-$page',
+                    'unitId': 'unit-original',
+                    'orderedQty': 12.5,
+                    'analysisId': 'analysis-$page',
+                    'analysisStatus': 'DRAFT',
+                    'analysisVersion': 7,
+                    'deliveryPlan': delivery,
+                  },
+                ],
+              },
+            ],
+            'page': page,
+            'size': 1,
+            'total': 2,
+            'totalPages': 2,
+          });
+          return PagedReadSnapshot<
+            MaterialAnalysisSalesCandidate,
+            MaterialAnalysisSalesCandidatePage
+          >(
+            page: PagedResult(
+              items: response.items,
+              page: response.page,
+              size: response.size,
+              total: response.total,
+              totalPages: response.totalPages,
+            ),
+            snapshot: response,
+            rebuildSnapshot: response.withPage,
+          );
+        },
+      );
+      final typed =
+          (result
+                  as PagedReadSnapshot<
+                    MaterialAnalysisSalesCandidate,
+                    MaterialAnalysisSalesCandidatePage
+                  >)
+              .snapshot;
+      expect(typed.items, same(result.items));
+      expect(typed.items.map((row) => row.orderId), ['order-1', 'order-2']);
+      expect(typed.lines.map((line) => line.salesOrderItemId), [
+        'line-1',
+        'line-2',
+      ]);
+      for (final line in typed.lines) {
+        expect(line.deliveryPlan!.toJson(), delivery);
+        expect(line.deliveryPlan!.supported, isTrue);
+        expect(line.deliveryDate, '2026-12-31');
+        expect(line.analysisVersion, 7);
+        expect(line.unitId, 'unit-original');
+        expect(line.orderedQty, 12.5);
+      }
+      final proof = readWindowBindingOf(typed.items)!;
+      expect(proof.isCurrent, isTrue);
+      reader.invalidate();
+      expect(proof.isCurrent, isFalse);
+      final financeLine = SalesOrderFinanceReviewLine.fromJson({
+        'itemId': 'line-1',
+        'deliveryPlan': delivery,
+        'qty': '9007199254740993.0001',
+        'unitId': 'unit-original',
+        'price': null,
+        'matchesQuote': false,
+      });
+      expect(financeLine.deliveryPlan!.toJson(), delivery);
+      expect(financeLine.qty, '9007199254740993.0001');
+      expect(financeLine.price, isNull);
+      expect(financeLine.matchesQuote, isFalse);
+    },
+  );
+
   test(
     'production recipe identities survive sync and responsive parsing',
     () async {

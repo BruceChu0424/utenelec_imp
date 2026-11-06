@@ -65,6 +65,9 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
     with
         MasterInlinePageMixin<SettlementMethodPage, SettlementMethodAdminItem>,
         ScopedPagedReadViewMixin<SettlementMethodPage> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _readViewportRows =
       MasterDataTableRowsController<SettlementMethodAdminItem>();
   int get _visibleReadPage => _page == null
@@ -229,6 +232,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation) ||
@@ -246,7 +250,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
         _error = e.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted ||
           !inlineAcceptsRead(inlineReadBoundary) ||
           !_loadRequests.isCurrent(generation) ||

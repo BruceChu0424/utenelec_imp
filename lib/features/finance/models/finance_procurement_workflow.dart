@@ -1,3 +1,4 @@
+import '../../../shared/models/paged_result.dart';
 import '../../../shared/business_columns/business_column.dart';
 // 财务订货审批任务模型。
 //
@@ -665,6 +666,16 @@ class FinanceProcurementApprovalPage {
   final int size;
   final int total;
   final int totalPages;
+
+  FinanceProcurementApprovalPage withPage(
+    PagedResult<FinanceProcurementApprovalTask> combined,
+  ) => FinanceProcurementApprovalPage(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory FinanceProcurementApprovalPage.fromJson(Map<String, dynamic> json) {
     final nested = _map(json['data']);

@@ -1,0 +1,898 @@
+{
+  "createdAtUtc": "2026-11-05T13:27:29.269642+00:00",
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "purpose": "Durable reviewed local backend test evidence. This is not an application/client release artifact.",
+  "archive": {
+    "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+    "sha256": "1d2f02c6c8fbea63d3aa34459b60b06e76aeecb1327be12592b95b9d973489e9",
+    "bytes": 2019867,
+    "entries": 99
+  },
+  "files": {
+    "server/build/loading-validation/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/source-input.json",
+      "sha256": "2b3669c3dd5ff6bcc2e66f6d1566497da54d19ec0be84d7a8f4e6dc84821428d",
+      "bytes": 1426204
+    },
+    "server/build/loading-validation/combined-final-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/compile-execution.json",
+      "sha256": "694438dd8bbbd8181221a0690c5c9a175a1e00faedc7b76208491a5b2c025e71",
+      "bytes": 477
+    },
+    "server/build/loading-validation/combined-event-contract-final-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/event-contract-compile-execution.json",
+      "sha256": "5f7537febc8752d5246277a74abd4f3acf09ad06c5eec8ce1e59876cba2ec6e2",
+      "bytes": 507
+    },
+    "server/build/loading-validation/combined-final-resource-receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/compiled-resources.json",
+      "sha256": "1d0c476d993cc804f096e1f35c73632116315c4fbe1d1b5ba3c8b242b2fb20f7",
+      "bytes": 162070
+    },
+    "server/build/loading-validation/combined-v1062-resource-receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/current-compiled-resources.json",
+      "sha256": "933b9b6fd9100d6391b8fab4dbd9e5aced27c30162fe7e841250661dede4cc34",
+      "bytes": 162238
+    },
+    "server/build/loading-validation/combined-v1062-legacy-python-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/legacy-python-execution.json",
+      "sha256": "d3aa51f7f131afa8de4bf9690fc8a336ee10ae3144234a524b41fc8cf5a4775f",
+      "bytes": 505
+    },
+    "build/loading-validation/combined-final-migration-reconciliation.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/migration-reconciliation.json",
+      "sha256": "1fd53fe51c21b670b8ce7548228d3c1bc864f5f219d57da9a8743e05198fcb6b",
+      "bytes": 242821
+    },
+    "build/loading-validation/backend-semantic-composition.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/original-f619/semantic-composition.json",
+      "sha256": "a624f4fd24f204ebb2e0a6652eb2c6fc5b800cfe3eb55087a17e37d463b385c5",
+      "bytes": 4844
+    },
+    "build/loading-validation/combined-origin-read-review.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/original-f619/origin-read-review.json",
+      "sha256": "85e17f26991c2ef273727d11e78f103fe010b17ea3a822de3e52c94bdb2947cf",
+      "bytes": 389358
+    },
+    "server/build/loading-validation/combined-final-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "current/compile.log",
+      "sha256": "bb444946a10ffd78294016bec3e7f20c75a5aa64c373e450cd44d6417ac94687",
+      "bytes": 3512
+    },
+    "server/build/loading-validation/combined-event-contract-final-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "current/event-contract-compile.log",
+      "sha256": "c89f60bd5da81cc7a140f2ea694212e71016144e0b0db737ab318990cb279fff",
+      "bytes": 3383
+    },
+    "server/build/loading-validation/combined-v1062-legacy-python-tests.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "current/legacy-python.log",
+      "sha256": "a49c857df49f0642a93ec62ec3a793f4c57bf75ceb1e62f2684363b201f52518",
+      "bytes": 172
+    },
+    "server/build/loading-validation/combined-receipts/capacity/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/capacity/receipt.json",
+      "sha256": "6e4a4ce31373494fe1bd436bde27dc17e527f08fab15663375bd9b316787ead5",
+      "bytes": 5911
+    },
+    "server/build/loading-validation/combined-capacity-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/capacity/execution.json",
+      "sha256": "a768dc4522c69a09b617733306efc1a02c20ae5efa40340d36c19fed59864284",
+      "bytes": 1245
+    },
+    "server/build/loading-validation/combined-capacity.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/capacity/console.log",
+      "sha256": "7afb4485136e8c80504508794d38ef4034ad75cc02f5290194d20c312a7887d6",
+      "bytes": 5640
+    },
+    "server/build/loading-validation/combined-receipts/capacity/TEST-com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/capacity/xml/TEST-com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest.xml",
+      "sha256": "e41ee32aea5639198c2e098fb623fd02da9fa70537dadfce0df521294a5dacea",
+      "bytes": 57985
+    },
+    "server/build/loading-validation/combined-receipts/capacity/TEST-com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/capacity/xml/TEST-com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest.xml",
+      "sha256": "daa181e3ffe537e0c9dc1bfa04cbbec350d845dcfc3c6965404846a2a54e435c",
+      "bytes": 54305
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/integration-f4-first/receipt.json",
+      "sha256": "6792e7955d251ffecc1658bfa139fb0cf0401037c34961a35f5672d4f30b83db",
+      "bytes": 25261
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/combined-integration-final-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/integration-f4-first/execution.json",
+      "sha256": "ebaed78e0be31ea3e8593eba6a31929cc3f2552a5bb663345c3c51dd43ccb83d",
+      "bytes": 2317
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/combined-integration-final.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/console.log",
+      "sha256": "a99d9ef8500f507a5e7064da3a235d9ef7df662e2065d6e310f6f57c88380890",
+      "bytes": 1894993
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml",
+      "sha256": "0ef960d28e9cd01dbfdd9920497b5a279c5ff16dcf58707f7599249838b42eeb",
+      "bytes": 54301
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest.xml",
+      "sha256": "9aa589aefc9e6d34080aef9052c14c7896850d4b10e42eeedf94bb1ca7bc84db",
+      "bytes": 426287
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest.xml",
+      "sha256": "51a8c94e8aa328bec6b186d625a8657eebb3e19b870644504e4ecb5cb8315fd7",
+      "bytes": 58256
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml",
+      "sha256": "22fea3f52f814d9f766c4819b7c40f6fe9464d434a08d982b7d6db0d7d448268",
+      "bytes": 59531
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest.xml",
+      "sha256": "6a32d43a45ace975a6089df5d11afef6fdc6628834e4b4670b3033fbf80960f0",
+      "bytes": 59483
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest.xml",
+      "sha256": "eee1d7b7f7d06f562687fbcd379517c7691ce5e30cd16e83fb118fe568f4c95c",
+      "bytes": 59897
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest.xml",
+      "sha256": "9aded31170ca9d2f5056705176c3fa14b47848a224e29b53742d610ad1f00cc6",
+      "bytes": 59078
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest.xml",
+      "sha256": "59cec7d7014e885c44489f2aaeb2011ed2cb1c4d7bd830fbeaf0217530a29f70",
+      "bytes": 59351
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest.xml",
+      "sha256": "0067247a42fe1c5670bdd5b1db144224ce64a520f880f9122c64fbfc3453b7bb",
+      "bytes": 59148
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest.xml",
+      "sha256": "3b437d2de519b79f5295376337a1f77a322fda3b26f82ade5b483747ec0ef72b",
+      "bytes": 59697
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+      "sha256": "a8342895cf7a3682fd795a3a3d2a627ab120a448c7a846be7d1ea7d92f350f8f",
+      "bytes": 423592
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest.xml",
+      "sha256": "e8728b111800fc529b44abbbcff089354b1f83af21282671b254bcdc2f94aa42",
+      "bytes": 422544
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml",
+      "sha256": "6f12393fbcd317f99837a77f25269bfa7e05b20f391395ddb6fe1cd1639f00be",
+      "bytes": 424213
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest.xml",
+      "sha256": "8cc91caf54fe491940d6039ade2b04a0ef396a7e810954338cd9b43ac6dc772e",
+      "bytes": 53943
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest.xml",
+      "sha256": "75cf07143e2b8af2755bf5577488b7b9756e00e4e7f134182f1991a6744e6d65",
+      "bytes": 54266
+    },
+    "server/build/loading-validation/combined-receipts/integration-f4-first/TEST-com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/integration-f4-first/xml/TEST-com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest.xml",
+      "sha256": "cf7730a491a22bc4459a70ef10c5276e389791c847bec6e5d3746b37197c0f97",
+      "bytes": 419268
+    },
+    "server/build/loading-validation/combined-receipts/finance-v1062-final/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/finance-v1062-final/receipt.json",
+      "sha256": "5b7f8a5f4d7ee11aa30a3fb3d8aacda4059cf656c0edc653a356cb14d84d476a",
+      "bytes": 3079
+    },
+    "server/build/loading-validation/combined-finance-v1062-final-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/finance-v1062-final/execution.json",
+      "sha256": "e569dfa63b32761721389c4fbd325b748af37ffe504227d36c3290f137468a3e",
+      "bytes": 1189
+    },
+    "server/build/loading-validation/combined-finance-v1062-final.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/finance-v1062-final/console.log",
+      "sha256": "510dc583f708c3a9e95a06fcbf1330a3df85dfe2a6cd15f68f0adbfa1c381977",
+      "bytes": 742652
+    },
+    "server/build/loading-validation/combined-receipts/finance-v1062-final/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/finance-v1062-final/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+      "sha256": "4324e881b5bd56cf94e62ab4ccc35f8d1cff69c80572902f1205c2156896917c",
+      "bytes": 792204
+    },
+    "server/build/loading-validation/combined-receipts/sql/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/sql/receipt.json",
+      "sha256": "5285cb234b5800b1ad8e39489449d93e1bb0b14dc475609e3876f94243496388",
+      "bytes": 41578
+    },
+    "server/build/loading-validation/combined-sql-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/sql/execution.json",
+      "sha256": "c7c017fda77548e039a69fa6d5b94179e9614278e05fc2c623e057dd053e4f83",
+      "bytes": 2929
+    },
+    "server/build/loading-validation/combined-sql.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/console.log",
+      "sha256": "62f6a3112476706974cdfc2ff013dfde3dfd1906ad4cd3bd62d24d2ad844efdb",
+      "bytes": 756754
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.businesschain.CurrentWorkbenchOriginPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.businesschain.CurrentWorkbenchOriginPostgresTest.xml",
+      "sha256": "82f1b13110b194f45515462a9a37f42b536c56919ddf7b7c0cde44a5e2db09fc",
+      "bytes": 426212
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.common.finance.DocumentQuantityAdoptionPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.common.finance.DocumentQuantityAdoptionPostgresTest.xml",
+      "sha256": "1c7ee61d59d4140ad31d04ce2d50bee465bd71b1f1b67f0c14fe5c9cd748c915",
+      "bytes": 420870
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.common.report.BusinessApplicationReadScopeTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.common.report.BusinessApplicationReadScopeTest.xml",
+      "sha256": "3895bb526c74a71641ee15b22995b7b8e1d2400f2679d967f4261ddb399b9099",
+      "bytes": 54443
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.common.report.NativeTaskReadScopeInterceptorTest.xml",
+      "sha256": "91ae46227ba3106379318c38d31d295a8c408d7e09897692dcfd16cc82375470",
+      "bytes": 55180
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.common.web.PageMetadataRequestTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.common.web.PageMetadataRequestTest.xml",
+      "sha256": "d31f678187bafb7bad35d5994a5f091a5a4f90370ae689361fdffc98a43b0e67",
+      "bytes": 54055
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest.xml",
+      "sha256": "b51df348c2a6a512c4bb85dc8a74b05c0e78f3fdbab67a4c8456439a1a6ab3f9",
+      "bytes": 55931
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchEmptyPageLatencyPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchEmptyPageLatencyPostgresTest.xml",
+      "sha256": "c1ac428f5c6abbd7c8449ceb806bddf5d227de1456cceb4120604a7b9fc60b66",
+      "bytes": 55120
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadPostgresTest.xml",
+      "sha256": "885f1642068ddbbe31cb67dbba2466b1d5cce8934e9ff25c2d3f55a9c524aa2e",
+      "bytes": 58579
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPageReadTest.xml",
+      "sha256": "caff97cc44db7d18c5d6d102bbe743aabdd2c40588565aa96045de21b1e44a35",
+      "bytes": 54291
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTaskAudiencePostgresTest.xml",
+      "sha256": "1d153b0db93dae65e8fd2b8c2c2cf79bb47a2f039317570dce0699a319bb9382",
+      "bytes": 56043
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml",
+      "sha256": "089cc7d13f2ada0778a6bed5f2bb66612c3b1fd034ac2ee1b7597b7e0d9a118f",
+      "bytes": 55172
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.stock.weight.DocumentWeightAdoptionTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.stock.weight.DocumentWeightAdoptionTest.xml",
+      "sha256": "5e618ae2eec3dcc61d7ca95f7e4c9d36b056bda67bc4e5b59767f60b6656047a",
+      "bytes": 54594
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.TaskContinuationMetadataHttpTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.TaskContinuationMetadataHttpTest.xml",
+      "sha256": "402cdb0d8105bf760fd8acfa3fa48427579ff3ebfc000b212490c1ca5b6dcc0f",
+      "bytes": 54667
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryPostgresTest.xml",
+      "sha256": "21f710642a41376b90f73d0c0f4fbad0a39f8d6394a103e14c4d1c141b2626db",
+      "bytes": 59151
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryServiceTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseInboundTaskCenterQueryServiceTest.xml",
+      "sha256": "8d5c5e458fe7a98299187c206bcbd12951332f62e2d530e0dbfb73317347875d",
+      "bytes": 55139
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterMigratedSchemaPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterMigratedSchemaPostgresTest.xml",
+      "sha256": "91729e787f7ff49506b3cfd98d386cca387d77b47d56f622b19ef8b95af2c41a",
+      "bytes": 55022
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterQueryServiceTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterQueryServiceTest.xml",
+      "sha256": "ffec978e312b0080f28b7ea20a2a7ef50ee5afdc435172127873d83462c80bf9",
+      "bytes": 57326
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterSqlPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseOutboundTaskCenterSqlPostgresTest.xml",
+      "sha256": "f8f185344942e165f34c336b0a2d69264baca694095d7258c72961ee52a8e9e9",
+      "bytes": 56774
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehousePhysicalDetailHeaderPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehousePhysicalDetailHeaderPostgresTest.xml",
+      "sha256": "12b4728708786ca73351a79f0af5a57cdd4fd9f851565f13ecec846f02e21951",
+      "bytes": 54598
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseTaskPageMetadataPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.features.warehouse.taskcenter.WarehouseTaskPageMetadataPostgresTest.xml",
+      "sha256": "1dfac7546c85d223780348304d1f58a454118e23b792b0f5b6773735ba1ebeed",
+      "bytes": 56890
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.imp.migration.SchemaIndexHygieneContractTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.imp.migration.SchemaIndexHygieneContractTest.xml",
+      "sha256": "dcb9e723d18c7a4e08674d4f7203deaf1f3f7c535eb01fd709ad2c1dec069a89",
+      "bytes": 54824
+    },
+    "server/build/loading-validation/combined-receipts/sql/TEST-com.uten.searchtest.ProcurementOrderApprovalPredicatesPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/sql/xml/TEST-com.uten.searchtest.ProcurementOrderApprovalPredicatesPostgresTest.xml",
+      "sha256": "ae4fa964475162493abdefc645819c18b60a0882fd92c7e8c80b89045dc86487",
+      "bytes": 55240
+    },
+    "server/build/loading-validation/combined-receipts/critical/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/critical/receipt.json",
+      "sha256": "54695076940927d83a1be22ef8acbe2a6b4861d86abff9fb07d880cba6722934",
+      "bytes": 35942
+    },
+    "server/build/loading-validation/combined-critical-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/runs/critical/execution.json",
+      "sha256": "ce5e5b2f35ec392cfc7ca9295a5530193fdcaf5b94b871f17711398184fa7655",
+      "bytes": 2153
+    },
+    "server/build/loading-validation/combined-critical.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/console.log",
+      "sha256": "306a72366afc337d0d9711efb2e42875a533c13a86ba72207a704e4da7315e86",
+      "bytes": 1507939
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest.xml",
+      "sha256": "44aae99d2d0c4e279e2f2462b0ae4a139caa61c55bb60d0830eddc0da88d8e47",
+      "bytes": 426641
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest.xml",
+      "sha256": "febdbf16f4f313e601948dffbce702bc64c89617f4a38d21364489dc6d6b9b0d",
+      "bytes": 58374
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.businesschain.ProcurementFirstPayablePostgresTest.xml",
+      "sha256": "9da8283823a4998f04b76e68a71730c8b1d32f196d0a4c9684dce5be1a767b3b",
+      "bytes": 61043
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest.xml",
+      "sha256": "ed54f5e8d8049bb6c16dd056a13a1f90208b0116586b129029aa7e67a57d5e80",
+      "bytes": 61029
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest.xml",
+      "sha256": "ba3703d199127945069d97882e83ed525a73fa115928184a2b94f0e786566b80",
+      "bytes": 59856
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.ai.usage.AiUsageDashboardPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.ai.usage.AiUsageDashboardPostgresTest.xml",
+      "sha256": "0b5577ea99a7665b22d00ff6c9190e9065492b1069e4d3e98694264c2cafd330",
+      "bytes": 420067
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.archive.BusinessArchiveEligibilityPageTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.archive.BusinessArchiveEligibilityPageTest.xml",
+      "sha256": "40e77111583fe23337b15549cb83ce4c2f49094fb9fbb565762c63152000a03b",
+      "bytes": 55053
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.archive.BusinessArchivePilotPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.archive.BusinessArchivePilotPostgresTest.xml",
+      "sha256": "fd0abb1b7374af3cee6c7401486f4fb6f4e6a701239a575ad43310996cf09d2b",
+      "bytes": 60623
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.finance.application.FinanceApplicationReferencePagingPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationReferencePagingPostgresTest.xml",
+      "sha256": "6c096d52e3c1756d6821f4a7e785e9f6dce6ebc521702bcdd0a9965700c0e348",
+      "bytes": 420286
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.finance.procurement.ProcurementApprovalReturnedQueuePostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.finance.procurement.ProcurementApprovalReturnedQueuePostgresTest.xml",
+      "sha256": "e677ab2bb5770956d6f9449754e6a6c781a2501c7f4fdaeba5e7ab562db78c53",
+      "bytes": 55019
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest.xml",
+      "sha256": "01915739667288428e6362aaa93b16dd632f5e27f0305b12bf9bbc957d9e77cf",
+      "bytes": 59760
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.visitor.VisitorAdmissionConcurrencyPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.visitor.VisitorAdmissionConcurrencyPostgresTest.xml",
+      "sha256": "b28800c57d492d4ba754c1d916c2de2e263fd3285727340b23cdbdc5ea7d9cf4",
+      "bytes": 56191
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.features.visitor.VisitorApplicationPaginationTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.features.visitor.VisitorApplicationPaginationTest.xml",
+      "sha256": "872c30d531845c66382b3dc3856ca0d000085996d062744cd5c33bfe610d6802",
+      "bytes": 55302
+    },
+    "server/build/loading-validation/combined-receipts/critical/TEST-com.uten.imp.migration.ImportedDocumentAncestryWalkPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "raw-runs/critical/xml/TEST-com.uten.imp.migration.ImportedDocumentAncestryWalkPostgresTest.xml",
+      "sha256": "c7fe7198be4777db55412345ed62d4aae408b823d2a8e5c3f51211a585f39c2f",
+      "bytes": 420273
+    },
+    "server/build/loading-validation/combined-receipts/integration-interrupted/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/integration-interrupted/receipt.json",
+      "sha256": "d2548fda12de8ef0dfd92302bfe17717cffa4610682d1c114cfadbffb90c4239",
+      "bytes": 7111
+    },
+    "server/build/loading-validation/combined-receipts/integration-interrupted/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-interrupted/xml/TEST-com.uten.imp.architecture.ArchitectureBoundaryTest.xml",
+      "sha256": "392a204ac263b1b287ffe6ed6f963c152e5b70137f3c01b4af47b0d8737459c5",
+      "bytes": 54303
+    },
+    "server/build/loading-validation/combined-receipts/integration-interrupted/TEST-com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-interrupted/xml/TEST-com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest.xml",
+      "sha256": "e94a210db7548a43d0766db298251973b3d31d74885ec94f66d8679d5678a467",
+      "bytes": 425859
+    },
+    "server/build/loading-validation/combined-receipts/integration-interrupted/TEST-com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-interrupted/xml/TEST-com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest.xml",
+      "sha256": "8daa96e72b92c738e94f3e8d20b80ca1536ed409561efb1c87abbc715928b087",
+      "bytes": 58257
+    },
+    "server/build/loading-validation/combined-receipts/integration-interrupted/combined-integration-regressions.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-interrupted/combined-integration-regressions.log",
+      "sha256": "975e0380fdecc0b0e1639acad523a2a25a2607f9eef52e5b1262dddfd7a51c19",
+      "bytes": 381679
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/integration-resume/receipt.json",
+      "sha256": "607c790897a63394faad07c019331c6d1bf632312dc0926a07d590e506d3b684",
+      "bytes": 20173
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml",
+      "sha256": "b6fb76409903c888bd69a03f24cb382af95fb0c668183b0764695e85960bd641",
+      "bytes": 425649
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliveryOrderClaimEndToEndTest.xml",
+      "sha256": "fd4f0ce38d31aabf9593704e9a3bb860227191ff90a3937a1165371fd2abb3e2",
+      "bytes": 58538
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliveryPrivateSourceEndToEndTest.xml",
+      "sha256": "b7fd0883d774b2eb86ec76d0ea06d4ee2ece763e930be4b0369f1a90d418b36e",
+      "bytes": 59801
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliveryRevisionEndToEndTest.xml",
+      "sha256": "f74df48c4c2a9bcc6889187ebb5aec8a89f9aae70037fda485837f7c8b67b3ba",
+      "bytes": 58984
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliverySourceReverseUnitsEndToEndTest.xml",
+      "sha256": "7a62a4a50453f2c1535926c8e4593fd6f700c207290c627c4f2619a1ab05dacd",
+      "bytes": 59257
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesDeliveryWarehouseScopeEndToEndTest.xml",
+      "sha256": "823655e7dcf433d6e3b8d5ed4248a5d22edc955450326a65ff3e2920d551bf6d",
+      "bytes": 59054
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest.xml",
+      "sha256": "590e3a7977e8a78a1bcec2dc08737157ce500ee3069b772b710694d442d24279",
+      "bytes": 59605
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+      "sha256": "ac4231766cbc948cb02bdf5994b2f10be1163f8ca7befaf0f0f5f5e0d8377cdc",
+      "bytes": 587366
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest.xml",
+      "sha256": "52af6f8e5a58c03c2b3fa4cb796df582237c5e71a68dd4f7de55515035b20e21",
+      "bytes": 421770
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml",
+      "sha256": "f71670ae16803396cce04724def50bf22bbfac5f1a2e020fdd94ea5716307b50",
+      "bytes": 423275
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest.xml",
+      "sha256": "8ee316e71d8baef0f785781e6e437fa31d7ab0956ede436c9ec0d6bc69e06c7a",
+      "bytes": 53850
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest.xml",
+      "sha256": "21b3ed4d0375d97b23e05fb66edd2982d05196ed9bc5fcb3c417820788c5fc42",
+      "bytes": 54172
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/TEST-com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/xml/TEST-com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest.xml",
+      "sha256": "9581f2ae830fa64c2625fc5b2a0eafc68111c33fadcc020ea1163c3952c2d7bd",
+      "bytes": 418746
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/combined-integration-resume.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/integration-resume/combined-integration-resume.log",
+      "sha256": "f65119f4aab99027165a2d5e9d00be3edf4b9227e519ed73458a44f24d9701bc",
+      "bytes": 2045846
+    },
+    "server/build/loading-validation/combined-receipts/integration-resume/combined-integration-resume-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/integration-resume/execution.json",
+      "sha256": "a0b76670e12eaba6abd45833fe56189be2fbfe913e5938b546fa637d1f9bd423",
+      "bytes": 2032
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/pre-restore/receipt.json",
+      "sha256": "beacda458218a0defbf7586a3dc0cf3ef3d126f70931c3843b3e4afd13529828",
+      "bytes": 6901
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/TEST-com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/pre-restore/xml/TEST-com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest.xml",
+      "sha256": "4869af98d30e4f5e3298eb1956d34bebd9d0e80f82894de5ae030b565fa3cd1f",
+      "bytes": 58042
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/pre-restore/xml/TEST-com.uten.imp.businesschain.SalesDeliveryMixedScenarioEndToEndTest.xml",
+      "sha256": "74d3202da02e3e5d38b709ca44d9038adfc0a52d3479a4de88e3668af6a40840",
+      "bytes": 422849
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/TEST-com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/pre-restore/xml/TEST-com.uten.imp.common.util.InteractiveTaskReadScopePostgresTest.xml",
+      "sha256": "d9506feac1158b4f6f08614c866bdf0b3d225688d688f8aab6f0244943ea3777",
+      "bytes": 54692
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/pre-restore/xml/TEST-com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest.xml",
+      "sha256": "3e13b55a809590076904fb52b4df55cada1019d540a286a809a08acc170df8f1",
+      "bytes": 419030
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/combined-pre-restore.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/pre-restore/combined-pre-restore.log",
+      "sha256": "ac78c9de47305b15cb374b47cf1c876b4a313828d0ac80737c2d1b7e14a6f475",
+      "bytes": 745101
+    },
+    "server/build/loading-validation/combined-receipts/pre-restore/combined-pre-restore-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/pre-restore/execution.json",
+      "sha256": "b4757602a16942da292107890e8a3bcae0ecfde4252137e78296e8eb366b98a9",
+      "bytes": 1743
+    },
+    "server/build/loading-validation/combined-receipts/finance-b81-probe/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/finance-b81-probe/receipt.json",
+      "sha256": "e1d5ca24d785e803602825835076809bcd4302176ee64cd54dfef90fb72d048d",
+      "bytes": 1201
+    },
+    "server/build/loading-validation/combined-receipts/finance-b81-probe/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/finance-b81-probe/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+      "sha256": "fb151635b3bcc1c148c4de44d71578e5d030fa79483a59586ffc67326c8262cd",
+      "bytes": 791043
+    },
+    "server/build/loading-validation/combined-receipts/finance-b81-probe/combined-finance-current.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/finance-b81-probe/combined-finance-current.log",
+      "sha256": "a394812d6e8c8fc57ddd52e19a4d87d52dec073bfb53d028b52ce3a7faeb2b36",
+      "bytes": 743997
+    },
+    "server/build/loading-validation/combined-receipts/finance-b81-probe/combined-finance-current-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/finance-b81-probe/execution.json",
+      "sha256": "697d8ece5495d8decc418082e173a4892dec7677d8f5032ff63463560bcb554b",
+      "bytes": 1177
+    },
+    "server/build/loading-validation/combined-receipts/finance-5fcd-events/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/finance-5fcd-events/receipt.json",
+      "sha256": "234e49fedd04bb9022d570fc4c33c1d0beecdec3a763dac1d1f2d84a44018beb",
+      "bytes": 3078
+    },
+    "server/build/loading-validation/combined-receipts/finance-5fcd-events/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/finance-5fcd-events/xml/TEST-com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest.xml",
+      "sha256": "be58dc9168cff29a0dcf5ccdd796ecaeab44342680f500263e7834e951612b4e",
+      "bytes": 823651
+    },
+    "server/build/loading-validation/combined-receipts/finance-5fcd-events/combined-finance-current-final.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/finance-5fcd-events/combined-finance-current-final.log",
+      "sha256": "feb18d098b7b80ef198220cfc6035ea80ac9cfd5a9ba0913be2ebc704374acd0",
+      "bytes": 775913
+    },
+    "server/build/loading-validation/combined-receipts/finance-5fcd-events/combined-finance-current-final-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/finance-5fcd-events/execution.json",
+      "sha256": "b4cb81be2da5cb1d77e2ef67ab4d6bf5a2f4d210cfb91cb543ff09d6fd89e56e",
+      "bytes": 1195
+    },
+    "server/build/loading-validation/combined-receipts/source-f619/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-f619/source-input.json",
+      "sha256": "74aa1cee8fe03843fa283db1ab6328b039c63e3f1af327bed74b2a8f27dd0355",
+      "bytes": 1424608
+    },
+    "server/build/loading-validation/combined-receipts/source-f619/combined-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-f619/combined-test-compile.log",
+      "sha256": "16f2245db704b927cb0a432dfb5c36d4152dddb9556709ecc391eb405efb31fa",
+      "bytes": 2077
+    },
+    "server/build/loading-validation/combined-receipts/source-5a-pre-restore/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-5a-pre-restore/source-input.json",
+      "sha256": "caa6ddcceeb50392a14aac9987ba17d9a1b47b51ef46a2da6e9ec59e01f1adf2",
+      "bytes": 1425886
+    },
+    "server/build/loading-validation/combined-receipts/source-5a-pre-restore/combined-final-legacy-python-tests.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-5a-pre-restore/combined-final-legacy-python-tests.log",
+      "sha256": "b3b7774bae97fc877acbc2af9f349178562b7921a6f2f35f482693d8bc3ad611",
+      "bytes": 172
+    },
+    "server/build/loading-validation/combined-receipts/source-5a-pre-restore/combined-pre-restore-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-5a-pre-restore/combined-pre-restore-test-compile.log",
+      "sha256": "3dd2302ebd8cacb82e348605569efd42e79f56bdd9b76e35026c184ac19e914d",
+      "bytes": 5204
+    },
+    "server/build/loading-validation/combined-receipts/source-5a-pre-restore/combined-final-legacy-python-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-5a-pre-restore/combined-final-legacy-python-execution.json",
+      "sha256": "5621813c6410e1a5a2b3748e4f19994b646dc46c418ce01707ceaed6aee803ae",
+      "bytes": 505
+    },
+    "server/build/loading-validation/combined-receipts/source-5a-pre-restore/combined-pre-restore-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-5a-pre-restore/combined-pre-restore-test-compile-execution.json",
+      "sha256": "314bcb5d39ed6c565f3fdea47a91aa4523c6a5f39c475d44ff0cb8e3b2be3994",
+      "bytes": 489
+    },
+    "server/build/loading-validation/combined-receipts/source-f4-integration-first/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-f4-integration-first/source-input.json",
+      "sha256": "a2bdf97eb93eb3bb45c0adc6c2d0cc9d8c65eb9c4d371d943c34846265cfaa97",
+      "bytes": 1425881
+    },
+    "server/build/loading-validation/combined-receipts/source-f4-integration-first/combined-final-legacy-python-tests.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-f4-integration-first/combined-final-legacy-python-tests.log",
+      "sha256": "a114a2577bcb3f18932845ae2da0eee38b0283fccc506655826a351fd2625278",
+      "bytes": 173
+    },
+    "server/build/loading-validation/combined-receipts/source-f4-integration-first/combined-final-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-f4-integration-first/combined-final-test-compile.log",
+      "sha256": "bb444946a10ffd78294016bec3e7f20c75a5aa64c373e450cd44d6417ac94687",
+      "bytes": 3512
+    },
+    "server/build/loading-validation/combined-receipts/source-f4-integration-first/combined-final-legacy-python-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-f4-integration-first/combined-final-legacy-python-execution.json",
+      "sha256": "23ccd6f90ede10e2cb66c76afa7b6ffc810d970dca565d4ecb19d669b276f5b4",
+      "bytes": 618
+    },
+    "server/build/loading-validation/combined-receipts/source-f4-integration-first/combined-final-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-f4-integration-first/combined-final-test-compile-execution.json",
+      "sha256": "694438dd8bbbd8181221a0690c5c9a175a1e00faedc7b76208491a5b2c025e71",
+      "bytes": 477
+    },
+    "server/build/loading-validation/combined-receipts/source-b81-finance-probe/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-b81-finance-probe/source-input.json",
+      "sha256": "8f112058f9be4ea2951896a80cda8c7c53a2fded8eb1b0d9c17a74ac4bc4e4f7",
+      "bytes": 1425947
+    },
+    "server/build/loading-validation/combined-receipts/source-b81-finance-probe/combined-finance-fixture-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-b81-finance-probe/combined-finance-fixture-test-compile.log",
+      "sha256": "6109abf45da0b01d1988ac5ae5a7c2152fd904fec08ca0463f05f231fbd32876",
+      "bytes": 3383
+    },
+    "server/build/loading-validation/combined-receipts/source-b81-finance-probe/combined-finance-fixture-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-b81-finance-probe/combined-finance-fixture-test-compile-execution.json",
+      "sha256": "a73fec1ebc9dbd1968d312c378d04c3174051ff467108506653dcf3b95fcf08e",
+      "bytes": 497
+    },
+    "server/build/loading-validation/combined-receipts/source-5fcd-finance-events/combined-source-input.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-5fcd-finance-events/source-input.json",
+      "sha256": "f99a0ca13ac54f353723598302e7088129577536afda4fc344e386c8e5841471",
+      "bytes": 1425947
+    },
+    "server/build/loading-validation/combined-receipts/source-5fcd-finance-events/combined-finance-final-test-compile.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "history/source-5fcd-finance-events/combined-finance-final-test-compile.log",
+      "sha256": "f6d47b5217f75a5846b001214151b0861d0eb5ef7eebfd4882f8f3a1094be4c0",
+      "bytes": 3383
+    },
+    "server/build/loading-validation/combined-receipts/source-5fcd-finance-events/combined-finance-final-test-compile-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/history/source-5fcd-finance-events/combined-finance-final-test-compile-execution.json",
+      "sha256": "802710505a343e89b6f875fe6bab0769c4b7a2ba3a6c5e9d3ccda01de0b7a800",
+      "bytes": 493
+    },
+    "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-source-applicability.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/source-applicability.json",
+      "sha256": "45fcb436bcc68796c04e8cc9870b80f04057e342e54a1f60767880e820e64fbc",
+      "bytes": 3997
+    },
+    "server/build/loading-validation/expense-event-1062-applicability-discovery.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/expense-event-static-dependency-review.json",
+      "sha256": "8e08d356cec65696510450bed38a730f833e08e99a8facf91984855244013267",
+      "bytes": 25362
+    },
+    "server/build/loading-validation/expense-event-contract-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/expense-event-pg-probe-execution.json",
+      "sha256": "df6cbeb47d4844c1e73ad711aa4a8ed1f6cd8194baf96f56c196ad6f6698a3f9",
+      "bytes": 356
+    },
+    "server/build/loading-validation/expense-event-contract-probe.sql": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/expense-event-pg-probe.sql",
+      "sha256": "903c0fd2a1df9a12babb6e8bb680e8a75c37a81ccdc353eb0f8935f1ad01e920",
+      "bytes": 2692
+    },
+    "server/build/loading-validation/expense-event-contract-probe.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "current/expense-event-pg-probe.log",
+      "sha256": "9bb53ecade34889f8224810eec8733a5b5ca3a7fdc3c7898be5c98d9a6d7cca9",
+      "bytes": 559
+    },
+    "server/build/loading-validation/combined-final-growth/warehouse-metadata-history-10000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/warehouse-metadata-history-10000.json",
+      "sha256": "07b28158fbbd9198b86fdb0d05c662c76db338945e8e3ef1a756665ae066957e",
+      "bytes": 15125
+    },
+    "server/build/loading-validation/combined-final-growth/warehouse-metadata-history-100000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/warehouse-metadata-history-100000.json",
+      "sha256": "c3ba278ee11617e1072cd49be9e5dd59b9245751c8089790a3a4c1b7ec2d494b",
+      "bytes": 15203
+    },
+    "server/build/loading-validation/combined-final-growth/warehouse-metadata-history-1000000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/warehouse-metadata-history-1000000.json",
+      "sha256": "585c268ba6f5a584f3de00137e2082d7493b1250d545c92972a52d57d1210d64",
+      "bytes": 15287
+    },
+    "server/build/loading-validation/combined-final-growth/workbench-page-detail-history-10000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/workbench-page-detail-history-10000.json",
+      "sha256": "d9c76fdd053f73c95dd801ed50602f4bbd9e6b9912c7279079f31419cdca41b3",
+      "bytes": 36532
+    },
+    "server/build/loading-validation/combined-final-growth/workbench-page-detail-history-100000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/workbench-page-detail-history-100000.json",
+      "sha256": "996cdeccd6eed7219537d55440d2a0e80aef3c899e8e236015ffba5945529e1c",
+      "bytes": 36712
+    },
+    "server/build/loading-validation/combined-final-growth/workbench-page-detail-history-1000000.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/growth/workbench-page-detail-history-1000000.json",
+      "sha256": "b5e18d5acf8cf40931acf02819a8b3ef5d33450cea34032b560e492eaf1c9456",
+      "bytes": 36635
+    },
+    "server/build/loading-validation/combined-sql-empty-benchmark.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/empty-workbench-benchmark.json",
+      "sha256": "18f6febf2ed73219b7760aace794bfacebba5e088fc32e4289ef3618f595008a",
+      "bytes": 882
+    },
+    "server/build/loading-validation/combined-interactive-read/public-execution-read.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/public-execution-read.json",
+      "sha256": "7a0ee591a95866b9f5b302044a345177e2b7b3ab504fa0ddb4d0ee1e041a62c1",
+      "bytes": 368
+    },
+    "server/build/loading-validation/execution-plan-diagnostic-f619/receipt.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/receipt.json",
+      "sha256": "ae81380fdf4eb3f879a34379f99aefba2343f0f601436430d7a8dcfde37b8fe4",
+      "bytes": 29546
+    },
+    "server/build/loading-validation/execution-plan-diagnostic-f619/query-0-jit-off-plan.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/query-0-jit-off-plan.json",
+      "sha256": "cb36cc1bafec30a00b1c5681ea36590ed9f37bd0a88dd09e7cd6d2b165041d4e",
+      "bytes": 31999
+    },
+    "server/build/loading-validation/execution-plan-diagnostic-f619/query-0-jit-on-plan.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/query-0-jit-on-plan.json",
+      "sha256": "3a8517f432039681ca2eee6f891ba2f425764860566fdeb91bb95b2f3f53a5eb",
+      "bytes": 31999
+    },
+    "server/build/loading-validation/execution-plan-diagnostic-f619/query-1-jit-off-plan.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/query-1-jit-off-plan.json",
+      "sha256": "08c6ee51327c7ac051027874094b0dfc31385dbfcdc20ef7562cf4bb6aa216af",
+      "bytes": 206917
+    },
+    "server/build/loading-validation/execution-plan-diagnostic-f619/query-1-jit-on-plan.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/query-1-jit-on-plan.json",
+      "sha256": "f65fc8acb11b7cc48287a7eb4f5520758792df5d83ffd8c71dc3b8ba5eca70e4",
+      "bytes": 207341
+    },
+    "server/build/loading-validation/execution-f619-diagnostic-execution.json": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/execution.json",
+      "sha256": "570caf0f7bfeada3a3dd5b7951530c72983263492524c1cabc30538046996253",
+      "bytes": 922
+    },
+    "server/build/loading-validation/execution-f619-diagnostic-source.java": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-current-source-058da483/jit-original-f619/ExecutionReadPlanDiagnostic.java",
+      "sha256": "77f24ccffa9c0679bf010cf5b47361389694e4a8c80e99aa6ae7392f1f568b23",
+      "bytes": 7016
+    },
+    "server/build/loading-validation/execution-f619-diagnostic.log": {
+      "repoPath": "docs/99-项目治理/全平台整改交接/evidence/loading-20261104/backend-test-evidence-058da483.zip",
+      "archiveEntry": "jit-original-f619/console.log",
+      "sha256": "a59c2b8f018a529f2a000cc768bfb6f327e841aed654094632820f4a3c849a11",
+      "bytes": 305276
+    }
+  },
+  "historicalQualification": "f619 interrupted/red and5a restored-MAKE red are retained separately and never counted as final-source green."
+}

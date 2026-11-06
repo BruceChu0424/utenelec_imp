@@ -9,12 +9,13 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/buttons/click_guard.dart';
+import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../components/layout/uten_load_more_boundary.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -85,6 +86,9 @@ class _SupplierCreditApplyPanel extends ConsumerStatefulWidget {
 class _SupplierCreditApplyPanelState
     extends ConsumerState<_SupplierCreditApplyPanel>
     with ScopedPagedReadViewMixin<_SupplierCreditApplyPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _reason = TextEditingController();
   final Map<String, TextEditingController> _amounts = {};
   final Set<String> _selected = {};
@@ -93,8 +97,6 @@ class _SupplierCreditApplyPanelState
   bool _loading = false;
   bool _readRetired = false;
   int _requestVersion = 0;
-  int _page = 0;
-  int _totalPages = 1;
   String? _error;
 
   @override
@@ -136,12 +138,13 @@ class _SupplierCreditApplyPanelState
     widget.source.currencyId,
     widget.source.bookingRate,
     widget.source.outstandingOriginal,
+    'OPEN',
     200,
   ];
 
-  Future<void> _load({bool more = false}) async {
+  Future<void> _load() async {
     if (!mounted || _readRetired) return;
-    if (_loading || (more && _page >= _totalPages)) return;
+    if (_loading) return;
     final version = ++_requestVersion;
     final supplierId = widget.source.supplierId;
     if (supplierId == null) {
@@ -160,13 +163,15 @@ class _SupplierCreditApplyPanelState
       final filter = FinancePayablesFilter(
         supplierId: supplierId,
         currencyId: widget.source.currencyId,
+        // The existing server OPEN filter means every positive balance,
+        // including partial/overdue and proved historical opening targets.
+        status: 'OPEN',
       );
       final cached = await readScopedPage<FinancePayableItem>(
-        more ? _page + 1 : 1,
+        1,
+        idOf: (row) => row.id,
         query: _readQuery,
         currentQuery: () => _readQuery,
-        useCache: more,
-        canPrefetch: () => false,
         fetchPage: (target) async {
           final result = await repository.list(
             page: target,
@@ -182,6 +187,7 @@ class _SupplierCreditApplyPanelState
               totalPages: result.totalPages,
             ),
             snapshot: result,
+            rebuildSnapshot: result.withPage,
           );
         },
       );
@@ -195,24 +201,21 @@ class _SupplierCreditApplyPanelState
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _targets = {
-          if (more)
-            for (final target in _targets) target.id: target,
           for (final target in result.items)
             if (supplierOffsetTargetCompatible(widget.source, target))
               target.id: target,
         }.values.toList(growable: false);
-        _page = result.page;
-        _totalPages = result.totalPages;
         _loading = false;
       });
-      unawaited(prepareScopedNext<FinancePayableItem>(result.page));
     } on ApiException catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _loading = false;
         _error = error.message;
       });
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _loading = false;
@@ -377,89 +380,77 @@ class _SupplierCreditApplyPanelState
   }
 
   Widget _buildTargets() {
-    if (_loading && _page == 0) {
+    if (_loading && _targets.isEmpty) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    return UtenLoadMoreBoundary(
-      enabled: !_loading && _error == null && _page < _totalPages,
-      scope: (widget.source.supplierId, widget.source.currencyId),
-      onLoadMore: () => _load(more: true),
-      child: ListView.separated(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        itemCount: _targets.length + 1,
-        separatorBuilder: (_, _) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          if (index == _targets.length) {
-            return Column(
-              children: [
-                if (_targets.isEmpty && _error == null)
-                  UtenEmpty(
-                    message: _page < _totalPages
-                        ? '当前页暂无符合条件的正应付，可继续加载'
-                        : '暂无同供应商、同币种、同立账汇率的正应付',
+    return ListView.separated(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      itemCount: _targets.length + 1,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        if (index == _targets.length) {
+          return Column(
+            children: [
+              if (_targets.isEmpty && _error == null)
+                const UtenEmpty(message: '暂无同供应商、同币种、同立账汇率的正应付'),
+              if (_error != null) Text(_error!),
+              if (_error != null && !_readRetired)
+                UtenActionButton(
+                  enabled: !_loading,
+                  onAction: () => UtenBusyOverlay.run(
+                    context,
+                    title: '正在读取可应用应付',
+                    action: _load,
                   ),
-                if (_error != null) Text(_error!),
-                if (_page < _totalPages)
-                  TextButton.icon(
-                    key: const ValueKey('supplier-offset-load-more'),
-                    onPressed: _loading ? null : () => _load(more: true),
-                    icon: const Icon(Icons.expand_more_rounded),
-                    label: Text(
-                      _loading
-                          ? '加载中'
-                          : _error != null
-                          ? '重试'
-                          : '加载更多',
-                    ),
-                  ),
-                const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-              ],
-            );
-          }
-          final target = _targets[index];
-          final selected = _selected.contains(target.id);
-          final controller = _amounts.putIfAbsent(
-            target.id,
-            () => TextEditingController(),
+                  label: const Text('重试'),
+                ),
+              const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+            ],
           );
-          return CheckboxListTile(
-            key: ValueKey('supplier-offset-target-${target.id}'),
-            value: selected,
-            onChanged: (value) => setState(() {
-              if (value == true) {
-                _selected.add(target.id);
-                if (controller.text.isEmpty) {
-                  controller.text = target.outstandingOriginal ?? '';
-                }
-              } else {
-                _selected.remove(target.id);
+        }
+        final target = _targets[index];
+        final selected = _selected.contains(target.id);
+        final controller = _amounts.putIfAbsent(
+          target.id,
+          () => TextEditingController(),
+        );
+        return CheckboxListTile(
+          key: ValueKey('supplier-offset-target-${target.id}'),
+          value: selected,
+          onChanged: (value) => setState(() {
+            if (value == true) {
+              _selected.add(target.id);
+              if (controller.text.isEmpty) {
+                controller.text = target.outstandingOriginal ?? '';
               }
-            }),
-            title: Text(
-              '${target.sourceDocNo ?? '—'} · ${target.sourceTypeLabel}',
-            ),
-            subtitle: Text(
-              '未付 ${target.outstandingOriginal ?? '—'}'
-              ' · 汇率 ${target.bookingRate ?? '—'}',
-            ),
-            secondary: SizedBox(
-              width: 150,
-              child: TextField(
-                key: ValueKey('supplier-offset-amount-${target.id}'),
-                controller: controller,
-                enabled: selected,
-                textAlign: TextAlign.right,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const UtenInputDecoration(
-                  InputDecoration(isDense: true, labelText: '应用原币金额'),
-                ),
+            } else {
+              _selected.remove(target.id);
+            }
+          }),
+          title: Text(
+            '${target.sourceDocNo ?? '—'} · ${target.sourceTypeLabel}',
+          ),
+          subtitle: Text(
+            '未付 ${target.outstandingOriginal ?? '—'}'
+            ' · 汇率 ${target.bookingRate ?? '—'}',
+          ),
+          secondary: SizedBox(
+            width: 150,
+            child: TextField(
+              key: ValueKey('supplier-offset-amount-${target.id}'),
+              controller: controller,
+              enabled: selected,
+              textAlign: TextAlign.right,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, labelText: '应用原币金额'),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

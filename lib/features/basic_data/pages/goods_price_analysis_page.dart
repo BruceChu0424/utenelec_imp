@@ -1,3 +1,6 @@
+import '../../../core/router/page_navigation_session.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -22,7 +25,6 @@ import '../widgets/goods_material_market_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -52,6 +54,16 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     with
         NativeReadViewScopeMixin<GoodsPriceAnalysisPage>,
         ScopedPagedReadViewMixin<GoodsPriceAnalysisPage> {
+  @override
+  Future<void> onReadViewResumed() => _load(preserveSelection: true);
+
+  final _navigation = PageNavigationSession();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
+
   final _readViewportRows = MasterDataTableRowsController<PriceObservation>();
   int get _visibleReadPage => _historyPage == null
       ? (_historyPage?.page ?? 1)
@@ -59,6 +71,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
 
   @override
   void scopedPagedReadOwnerChanged() {
+    invalidateNativeReadAccess();
     _clear();
     if (mounted) {
       setState(() {
@@ -210,14 +223,37 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
     _clear();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool preserveSelection = false}) async {
+    final identity = _identity;
+    final owns = captureNativeOwnership();
+    try {
+      await readViewActivity.runRead(
+        () => mounted && owns() && identity == _identity,
+        () => _loadRows(preserveSelection: preserveSelection),
+        slot: 'price-analysis-pipeline',
+      );
+    } catch (error) {
+      if (!isRetiredViewRead(error)) rethrow;
+    }
+  }
+
+  Future<void> _loadRows({bool preserveSelection = false}) async {
     if (!mounted || !_allowed) return;
-    final accepts = captureNativeRead(_identity, () => _identity);
+    final accepts = captureNativeRead(
+      _identity,
+      () => _identity,
+      retainAccepted: preserveSelection,
+    );
     if (!accepts()) return;
     final restoreHistory = _historyTableMode;
     // A fresh native read supersedes every pending history cursor as well.
     // Otherwise a discarded history response could leave its spinner locked.
-    _clear();
+    if (!preserveSelection) {
+      _clear();
+    } else {
+      _historyRevision++;
+      _supplierRevision++;
+    }
     if (_historyOnly) {
       setState(() {
         _analysis = null;
@@ -225,20 +261,31 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         _error = null;
       });
       try {
-        final result = await ref
-            .read(priceAnalysisRepositoryProvider)
-            .historyTable(widget.goodsId, _tableParameters(1));
+        final result = await _readCompleteHistory(1, isCurrent: accepts);
         if (!accepts() || !_allowed || !_historyOnly) return;
         acceptNativeRead();
+        final selectedId = preserveSelection ? _selectedRow?.identity : null;
         setState(() {
           _historyPage = result;
+          _selectedRow = selectedId == null
+              ? null
+              : result.items
+                    .where((row) => row.identity == selectedId)
+                    .firstOrNull;
           _historyTableMode = true;
 
           _loading = false;
           _mergeChoices(result.items);
         });
       } catch (error) {
+        if (isRetiredViewRead(error)) return;
         if (!accepts() || !_allowed) return;
+        if (nativeReadAccessDenied(error) || nativeReadResourceRetired(error)) {
+          invalidateNativeReadAccess();
+          _clear();
+        } else if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+          return;
+        }
         setState(() {
           _loading = false;
           _error = error is ApiException
@@ -270,10 +317,10 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       return;
     }
     setState(() {
-      _analysis = null;
+      if (!preserveSelection) _analysis = null;
       _loading = true;
       _error = null;
-      _selectedRow = null;
+      if (!preserveSelection) _selectedRow = null;
     });
     try {
       final result = await ref.read(priceAnalysisRepositoryProvider).analysis(
@@ -287,27 +334,50 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
             'targetMarginRate': financeExactMultiplyTexts([margin, '0.01']),
         },
       );
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        throw const UiWorkCancelled();
+      }
       if (!accepts() || !_allowed) return;
       final supplierApplicable = _kind == 'SUBCONTRACT'
           ? await ref
                 .read(priceAnalysisRepositoryProvider)
                 .subcontractApplicable(widget.goodsId)
           : false;
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        throw const UiWorkCancelled();
+      }
       if (!accepts() || !_allowed) return;
       _mergeChoices(result.observations);
       acceptNativeRead();
+      final selectedId = preserveSelection ? _selectedRow?.identity : null;
       setState(() {
         _analysis = result;
+        if (!restoreHistory) {
+          _selectedRow = selectedId == null
+              ? null
+              : result.observations
+                    .where((row) => row.identity == selectedId)
+                    .firstOrNull;
+        }
         _supplierApplicable = supplierApplicable;
         _loading = false;
       });
       _primeContextChoices();
-      if (restoreHistory) _loadHistoryTable(1);
+      if (restoreHistory) {
+        await _loadHistoryTable(1, preserveSelection: preserveSelection);
+      }
       if (_supplierApplicable && _subcontractView == 'suppliers') {
         _loadSuppliers();
       }
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!accepts() || !_allowed) return;
+      if (nativeReadAccessDenied(error) || nativeReadResourceRetired(error)) {
+        invalidateNativeReadAccess();
+        _clear();
+      } else if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        return;
+      }
       setState(() {
         _loading = false;
         _error = error is ApiException
@@ -348,6 +418,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         widget.goodsId,
         {'kind': _kind, 'pageSize': 50},
       );
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) return;
       if (!mounted ||
           !owns() ||
           identity != _identity ||
@@ -408,6 +479,9 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
             'days': _days,
             'supplierId': ?_filters['supplierId'],
           });
+      if (!(PagedReadIntent.currentActivity?.call() ?? true)) {
+        throw const UiWorkCancelled();
+      }
       if (!mounted ||
           !owns() ||
           !_allowed ||
@@ -423,6 +497,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         if (!_supplierApplicable) _subcontractView = 'prices';
       });
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (!mounted ||
           !owns() ||
           identity != _identity ||
@@ -465,8 +540,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         ref.read(isSuperAdminProvider),
         path,
       )) {
-        await context.push(path);
-        if (mounted && owns()) _load();
+        await _navigation.push(path);
       }
     }
   }
@@ -538,31 +612,23 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         )) {
       return;
     }
-    final owns = captureNativeOwnership();
-    await context.push(path);
-    if (owns() && mounted) await _load();
+    await _navigation.push(path);
   }
 
   Map<String, dynamic> _tableParameters(int page) => {
     'kind': _kind,
     ..._filters,
     'page': page,
-    'size': 50,
+    'size': 100,
     if (_tableSort != null) 'sort': _tableSort,
     'ascending': _tableAscending,
     'filters': jsonEncode(_tableFilters),
   };
-  Future<void> _loadHistoryTable(int page, {bool useCache = false}) async {
-    if (!mounted || !_allowed || !nativeReadAccessConfirmed) return;
-    final owns = captureNativeOwnership();
-    final identity = _identity;
-    final revision = ++_historyRevision;
-    setState(() {
-      _historyTableMode = true;
-      _historyLoading = true;
-      _historyError = null;
-      _selectedRow = null;
-    });
+  Future<PagedResult<PriceObservation>> _readCompleteHistory(
+    int page, {
+    bool useCache = false,
+    bool Function()? isCurrent,
+  }) {
     final repository = ref.read(priceAnalysisRepositoryProvider);
     final goodsId = widget.goodsId;
     final parameters = Map<String, dynamic>.unmodifiable(
@@ -574,14 +640,38 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       _identity,
       _tableParameters(1)..remove('page'),
     ];
+    return readScopedPage<PriceObservation>(
+      page,
+      query: pagingQuery(),
+      currentQuery: pagingQuery,
+      useCache: useCache,
+      isCurrent: isCurrent,
+      idOf: (row) => row.identity,
+      fetchPage: (target) =>
+          repository.historyTable(goodsId, {...parameters, 'page': target}),
+    );
+  }
+
+  Future<void> _loadHistoryTable(
+    int page, {
+    bool useCache = false,
+    bool preserveSelection = false,
+  }) async {
+    if (!mounted || !_allowed || !nativeReadAccessConfirmed) return;
+    final owns = captureNativeOwnership();
+    final identity = _identity;
+    final revision = ++_historyRevision;
+    setState(() {
+      _historyTableMode = true;
+      _historyLoading = true;
+      _historyError = null;
+      if (!preserveSelection) _selectedRow = null;
+    });
     try {
-      final result = await readScopedPage<PriceObservation>(
+      final result = await _readCompleteHistory(
         page,
-        query: pagingQuery(),
-        currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) =>
-            repository.historyTable(goodsId, {...parameters, 'page': target}),
+        isCurrent: () => owns() && revision == _historyRevision,
       );
       if (!mounted ||
           !owns() ||
@@ -591,12 +681,19 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
           !nativeReadAccessConfirmed) {
         return;
       }
+      final selectedId = preserveSelection ? _selectedRow?.identity : null;
       setState(() {
         _historyPage = result;
+        _selectedRow = selectedId == null
+            ? null
+            : result.items
+                  .where((row) => row.identity == selectedId)
+                  .firstOrNull;
         _historyLoading = false;
         _mergeChoices(result.items);
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted ||
           !owns() ||
           identity != _identity ||
@@ -745,6 +842,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
 
   @override
   void dispose() {
+    _navigation.dispose();
     _quantity.dispose();
     _margin.dispose();
     super.dispose();

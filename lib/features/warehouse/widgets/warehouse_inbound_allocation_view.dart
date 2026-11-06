@@ -379,7 +379,13 @@ class _ConfirmSummaryRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),
-              Text('本次 ${_qty(section.quantity)}$unit'),
+              Flexible(
+                fit: FlexFit.tight,
+                child: Text(
+                  '本次 ${_qty(section.quantity)}$unit',
+                  textAlign: TextAlign.right,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s2),

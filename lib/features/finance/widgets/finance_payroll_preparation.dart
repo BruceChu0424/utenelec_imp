@@ -1,3 +1,11 @@
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/paged_query_identity.dart';
+import '../../../shared/models/paged_result.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1016,17 +1024,25 @@ class _PayrollGlPicker extends ConsumerStatefulWidget {
   ConsumerState<_PayrollGlPicker> createState() => _GlPickerState();
 }
 
-class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
+class _GlPickerState extends ConsumerState<_PayrollGlPicker>
+    with ReadViewActivityMixin<_PayrollGlPicker> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   String? _employee, _auxiliary, _error;
   String _search = '';
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _pool = {};
-  bool _loading = false, _more = false;
+  bool _loading = false;
+  bool _picked = false;
+  bool _retired = false;
+  int? _activeLoad;
+  Object? _activeLoadQuery;
   int _read = 0;
   late final ApiClient _api = ref.read(apiClientProvider);
   late final int _epoch = ref.read(exportContextEpochProvider);
   bool get _current =>
       mounted &&
+      !_retired &&
       ref.read(exportContextEpochProvider) == _epoch &&
       identical(_api, ref.read(apiClientProvider));
   Map<String, dynamic> get _query => {
@@ -1052,54 +1068,102 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
     unawaited(_load());
   }
 
+  void _readError(Object error, String fallback) {
+    setState(() {
+      _error = humanErrorMessage(error) ?? fallback;
+      _loading = false;
+      if (pagedReadAccessDenied(error)) {
+        _retired = true;
+        _rows = [];
+        _pool = {};
+      }
+    });
+  }
+
   Future<void> _load() async {
-    if (!_current) return;
+    if (!_current ||
+        _activeLoad == _read && samePagedReadQuery(_activeLoadQuery, _query)) {
+      return;
+    }
     final read = ++_read;
+    final query = Map<String, dynamic>.unmodifiable(_query);
+    _activeLoad = read;
+    _activeLoadQuery = freezePagedReadQuery(query);
     setState(() {
       _loading = true;
       _rows = [];
       _pool = {};
     });
     try {
-      final value = await _api.get(
-        '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources',
-        query: _query,
+      Map<String, dynamic> first = const {};
+      bool current() => _current && read == _read;
+      final value = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<Map<String, dynamic>>(
+          isCurrent: current,
+          idOf: (row) {
+            if (widget.kind == 'EXISTING_NON_CASH_VOUCHER') {
+              return row['voucherId'];
+            }
+            final id = row['entryId'];
+            final allocation = row['allocationNo'];
+            return id == null || id.toString().isEmpty || allocation == null
+                ? null
+                : '$id|$allocation';
+          },
+          loadPage: (page, size) async {
+            final response = await _api.get(
+              '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources/page',
+              query: {...query, 'page': page, 'size': size},
+            );
+            if (page == 1) first = response;
+            return PagedResult.fromJson(response, (row) => row);
+          },
+        ),
       );
       if (mounted && read == _read && _current) {
         setState(() {
-          _rows = financeApplicationRows(value['items']);
-          _pool = financeApplicationMap(value['balancePool']);
-          _more = value['more'] == true;
+          _rows = value.items;
+          _pool = financeApplicationMap(first['balancePool']);
           _error = null;
           _loading = false;
         });
       }
     } catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (mounted && read == _read && _current) {
-        setState(() {
-          _error = humanErrorMessage(e) ?? '原GL来源未读取完成';
-          _loading = false;
-        });
+        _readError(e, '原GL来源未读取完成');
+      }
+    } finally {
+      if (_activeLoad == read) {
+        _activeLoad = null;
+        _activeLoadQuery = null;
       }
     }
   }
 
   Future<void> _select(Map<String, dynamic> row) async {
+    if (_picked || _loading || !_current || !_rows.contains(row)) return;
     if (widget.kind == 'EXISTING_NON_CASH_VOUCHER') {
-      if (_current && row['ready'] == true) Navigator.pop(context, row);
+      if (row['ready'] == true) {
+        _picked = true;
+        Navigator.pop(context, row);
+      }
       return;
     }
-    if (_loading || !_current) return;
     final read = ++_read;
     setState(() => _loading = true);
     try {
-      final result = await _api.get(
-        '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources',
-        query: {
-          ..._query,
-          'entryId': row['entryId'],
-          'allocationNo': row['allocationNo'],
-        },
+      final result = await PagedReadIntent.scopedRead(
+        () => _current && read == _read,
+        () => _api.get(
+          '$financeApplicationsApi/${widget.application['id']}/payroll-gl-sources',
+          query: {
+            ..._query,
+            'entryId': row['entryId'],
+            'allocationNo': row['allocationNo'],
+          },
+        ),
       );
       if (!_current || read != _read) return;
       final selected = financeApplicationRows(result['items'])
@@ -1119,6 +1183,7 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
         return;
       }
       if (mounted) {
+        _picked = true;
         Navigator.pop(context, {
           ...selected,
           'auxiliaryId': _auxiliary,
@@ -1127,7 +1192,7 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
       }
     } catch (e) {
       if (_current && read == _read) {
-        setState(() => _error = humanErrorMessage(e) ?? '所选原GL来源未核对完成');
+        _readError(e, '所选原GL来源未核对完成');
       }
     } finally {
       if (_current && read == _read) setState(() => _loading = false);
@@ -1136,7 +1201,7 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(exportContextEpochProvider) != _epoch) {
+    if (ref.watch(exportContextEpochProvider) != _epoch || _retired) {
       return Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -1144,7 +1209,7 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
           children: [
             UtenDialogHeader(
               padding: EdgeInsets.zero,
-              title: const Text('身份或权限已变化，请关闭后从原申请重新进入。'),
+              title: Text(_error ?? '身份或权限已变化，请关闭后从原申请重新进入。'),
               showCloseButton: true,
               onClose: () => Navigator.pop(context),
             ),
@@ -1158,154 +1223,189 @@ class _GlPickerState extends ConsumerState<_PayrollGlPicker> {
     final auxiliaries = financeApplicationRows(
       widget.references['auxiliaries'],
     ).where((a) => a['employeeId'] == _employee).toList();
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          UtenDialogHeader(
-            padding: EdgeInsets.zero,
-            title: Text(
-              widget.kind == 'WAGE_LIABILITY'
-                  ? '选择明确原工资负债来源'
-                  : '选择本工资条员工的真实未结来源',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            showCloseButton: true,
-            onClose: () => Navigator.pop(context),
-          ),
-          const SizedBox(height: 12),
-          if (widget.employeeId == null && widget.kind == 'WAGE_LIABILITY')
-            UtenDropdownField(
-              label: '工资负债归属',
-              value: _employee,
-              items: [
-                const UtenDropdownItem(label: '明确原汇总负债（无员工辅助）'),
-                for (final e in employees)
-                  UtenDropdownItem(
-                    value: e['employeeId'].toString(),
-                    label: '${e['employeeCode']} ${e['employeeName']}',
-                  ),
-              ],
-              onChanged: (v) {
-                setState(() {
-                  _employee = v;
-                  _auxiliary = null;
-                });
-                unawaited(_load());
-              },
-            ),
-          if (_employee != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: UtenDropdownField(
-                label: '该员工明确辅助项目',
-                value: _auxiliary,
-                items: [
-                  for (final a in auxiliaries)
-                    UtenDropdownItem(
-                      value: a['id'].toString(),
-                      label: '${a['sourceSystem']} ${a['code']} ${a['name']}',
-                    ),
-                ],
-                onChanged: (v) {
-                  setState(() => _auxiliary = v);
-                  unawaited(_load());
-                },
-              ),
-            ),
-          Row(
+    return Stack(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              UtenDialogHeader(
+                padding: EdgeInsets.zero,
+                title: Text(
+                  widget.kind == 'WAGE_LIABILITY'
+                      ? '选择明确原工资负债来源'
+                      : '选择本工资条员工的真实未结来源',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                showCloseButton: true,
+                onClose: () => Navigator.pop(context),
+              ),
+              const SizedBox(height: 12),
+              if (widget.employeeId == null && widget.kind == 'WAGE_LIABILITY')
+                UtenDropdownField(
+                  label: '工资负债归属',
+                  value: _employee,
+                  items: [
+                    const UtenDropdownItem(label: '明确原汇总负债（无员工辅助）'),
+                    for (final e in employees)
+                      UtenDropdownItem(
+                        value: e['employeeId'].toString(),
+                        label: '${e['employeeCode']} ${e['employeeName']}',
+                      ),
+                  ],
+                  onChanged: (v) {
+                    setState(() {
+                      _employee = v;
+                      _auxiliary = null;
+                    });
+                    unawaited(_load());
+                  },
+                ),
+              if (_employee != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: UtenDropdownField(
+                    label: '该员工明确辅助项目',
+                    value: _auxiliary,
+                    items: [
+                      for (final a in auxiliaries)
+                        UtenDropdownItem(
+                          value: a['id'].toString(),
+                          label:
+                              '${a['sourceSystem']} ${a['code']} ${a['name']}',
+                        ),
+                    ],
+                    onChanged: (v) {
+                      setState(() => _auxiliary = v);
+                      unawaited(_load());
+                    },
+                  ),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: UtenInput(
+                      label: '原凭证号',
+                      onChanged: (v) {
+                        _read++;
+                        setState(() {
+                          _search = v.trim();
+                          _rows = [];
+                          _pool = {};
+                          _loading = false;
+                          _error = null;
+                        });
+                      },
+                      onFieldSubmitted: (_) => _load(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    onPressed: _loading ? null : _load,
+                    child: const Text('查询'),
+                  ),
+                ],
+              ),
+              if (_error != null) Text(_error!),
+              if (widget.kind == 'DEDUCTION' &&
+                  _pool['issues'] is List &&
+                  (_pool['issues'] as List).isEmpty &&
+                  _pool['fingerprint'] != null)
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  onPressed: () {
+                    if (!_current ||
+                        _loading ||
+                        _picked ||
+                        _pool['fingerprint'] == null) {
+                      return;
+                    }
+                    _picked = true;
+                    Navigator.pop(context, {
+                      'auxiliaryId': _auxiliary,
+                      'kind': 'GL_AUXILIARY_BALANCE_POOL',
+                      'sourceFingerprint': _pool['fingerprint'],
+                      'voucherNo': '该员工实际余额池',
+                    });
+                  },
+                  child: const Text('明确按该员工同币已记账余额池清偿（不认定某张旧单结清）'),
+                ),
               Expanded(
-                child: UtenInput(
-                  label: '原凭证号',
-                  onChanged: (v) => _search = v,
-                  onFieldSubmitted: (_) => _load(),
+                child: MasterDataTableView<Map<String, dynamic>>(
+                  columns: [
+                    financeApplicationColumn(
+                      'voucherNo',
+                      '原凭证号',
+                      200,
+                      filters: false,
+                    ),
+                    financeApplicationColumn(
+                      'allocationNo',
+                      '辅助分配编号',
+                      130,
+                      filters: false,
+                    ),
+                    financeApplicationColumn(
+                      'date',
+                      '原分录日期',
+                      130,
+                      filters: false,
+                    ),
+                    financeApplicationColumn(
+                      'sourceAmountLocal',
+                      '原账载本币金额',
+                      190,
+                      filters: false,
+                    ),
+                    financeApplicationColumn(
+                      'amountLocal',
+                      '现可认领本币上限',
+                      210,
+                      filters: false,
+                    ),
+                    financeApplicationColumn(
+                      'amountOriginal',
+                      '现可认领原币上限',
+                      210,
+                      filters: false,
+                    ),
+                    MasterColumnDef(
+                      key: 'issues',
+                      label: '核对提示',
+                      width: 360,
+                      value: (r) => financeApplicationRows(
+                        r['issues'],
+                      ).map((x) => x['message']).join('；'),
+                      columnSearchEnabled: false,
+                    ),
+                  ],
+                  items: _rows,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  isLoading: _loading,
+                  onRowTap: _select,
+                  showPaginationControls: false,
+                  showFullscreenToggle: false,
+                  rowKeyOf: (r) => widget.kind == 'EXISTING_NON_CASH_VOUCHER'
+                      ? r['voucherId'].toString()
+                      : '${r['entryId']}:${r['allocationNo']}',
                 ),
               ),
-              const SizedBox(width: 8),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: _loading ? null : _load,
-                child: const Text('查询'),
-              ),
-              const SizedBox(width: 8),
             ],
           ),
-          if (_error != null) Text(_error!),
-          if (_more) const Text('候选超过100行，请按原凭证号缩小范围。'),
-          if (widget.kind == 'DEDUCTION' &&
-              _pool['issues'] is List &&
-              (_pool['issues'] as List).isEmpty &&
-              _pool['fingerprint'] != null)
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: () => Navigator.pop(context, {
-                'auxiliaryId': _auxiliary,
-                'kind': 'GL_AUXILIARY_BALANCE_POOL',
-                'sourceFingerprint': _pool['fingerprint'],
-                'voucherNo': '该员工实际余额池',
-              }),
-              child: const Text('明确按该员工同币已记账余额池清偿（不认定某张旧单结清）'),
-            ),
-          Expanded(
-            child: MasterDataTableView<Map<String, dynamic>>(
-              columns: [
-                financeApplicationColumn(
-                  'voucherNo',
-                  '原凭证号',
-                  200,
-                  filters: false,
-                ),
-                financeApplicationColumn(
-                  'allocationNo',
-                  '辅助分配编号',
-                  130,
-                  filters: false,
-                ),
-                financeApplicationColumn('date', '原分录日期', 130, filters: false),
-                financeApplicationColumn(
-                  'sourceAmountLocal',
-                  '原账载本币金额',
-                  190,
-                  filters: false,
-                ),
-                financeApplicationColumn(
-                  'amountLocal',
-                  '现可认领本币上限',
-                  210,
-                  filters: false,
-                ),
-                financeApplicationColumn(
-                  'amountOriginal',
-                  '现可认领原币上限',
-                  210,
-                  filters: false,
-                ),
-                MasterColumnDef(
-                  key: 'issues',
-                  label: '核对提示',
-                  width: 360,
-                  value: (r) => financeApplicationRows(
-                    r['issues'],
-                  ).map((x) => x['message']).join('；'),
-                  columnSearchEnabled: false,
-                ),
-              ],
-              items: _rows,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              isLoading: _loading,
-              onRowTap: _select,
-              showPaginationControls: false,
-              showFullscreenToggle: false,
-              rowKeyOf: (r) => '${r['entryId']}:${r['allocationNo']}',
+        ),
+        if (_loading)
+          const Positioned.fill(
+            child: UtenBusyOverlay(
+              title: '正在读取原GL来源',
+              showDoNotLeaveHint: false,
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

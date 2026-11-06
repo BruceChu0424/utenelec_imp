@@ -4,6 +4,8 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportDraftClaimsQuery;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportDraftClaimsHeader;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalResolution;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportCreateResolution;
@@ -124,9 +126,23 @@ public class ProductionDailyReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new DailyReportQueryFilter(keyword, warehouseId, departmentId, workerId,
-                status, dateFrom, dateTo), page, size, sort, order, includeDeleted, onlyDeleted);
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(defaultValue = "false") boolean includeDraftClaims) {
+        var filter = new DailyReportQueryFilter(keyword, warehouseId, departmentId, workerId,
+                status, dateFrom, dateTo);
+        return includeDraftClaims
+                ? service.listWithDraftClaims(filter, page, size, sort, order, includeDeleted, onlyDeleted)
+                : service.list(filter, page, size, sort, order, includeDeleted, onlyDeleted);
+    }
+
+    /** Same report authority; body identities avoid an oversized URL and do not grant task access. */
+    @PostMapping("/draft-claims/query")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public PageResponse<DailyReportDraftClaimsHeader> queryDraftClaims(
+            @RequestBody DailyReportDraftClaimsQuery query,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
+        return service.queryDraftClaims(query);
     }
 
     @GetMapping("/{id}")

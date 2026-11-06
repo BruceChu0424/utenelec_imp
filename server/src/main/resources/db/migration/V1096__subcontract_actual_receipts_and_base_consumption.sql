@@ -1,11 +1,19 @@
 -- The allowance is a material budget, never an assertion of actual material loss.
 -- Retain every approved historical quantity, amount and immutable consumption slice.
-ALTER TABLE subcontract_receipt_items ADD COLUMN material_consumption_version SMALLINT;
-UPDATE subcontract_receipt_items item
-SET material_consumption_version=CASE WHEN item.material_basis_qty IS NOT NULL
-  OR EXISTS(SELECT 1 FROM subcontract_receipts receipt WHERE receipt.id=item.receipt_id AND receipt.status IN(1,-1))
-  OR EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source WHERE source.receipt_item_id=item.id)
-  THEN 1 ELSE 2 END;
+-- A metadata default describes existing history without issuing UPDATE against
+-- source-verified immutable legacy rows. Only an unexecuted native draft adopts v2.
+ALTER TABLE subcontract_receipt_items ADD COLUMN material_consumption_version SMALLINT NOT NULL DEFAULT 1;
+UPDATE subcontract_receipt_items item SET material_consumption_version=2
+FROM subcontract_receipts receipt
+WHERE receipt.id=item.receipt_id AND receipt.status=0 AND NOT receipt.is_deleted AND NOT item.is_deleted
+  AND item.material_basis_qty IS NULL AND item.legacy_id IS NULL AND item.legacy_import_run_id IS NULL
+  AND item.unapproval_source_item_id IS NULL
+  AND receipt.legacy_id IS NULL AND receipt.legacy_import_run_id IS NULL
+  AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(item))
+  AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(receipt))
+  AND NOT EXISTS(SELECT 1 FROM document_unapprovals lineage WHERE lineage.family='subcontractReceipt'
+      AND (lineage.draft_id=receipt.id OR lineage.original_id=receipt.id))
+  AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source WHERE source.receipt_item_id=item.id);
 ALTER TABLE subcontract_receipt_items ALTER COLUMN material_consumption_version SET DEFAULT 2,
   ALTER COLUMN material_consumption_version SET NOT NULL,
   ADD CONSTRAINT subcontract_receipt_consumption_version_chk CHECK(material_consumption_version IN(1,2));
@@ -33,20 +41,57 @@ END $$;
 ALTER TABLE subcontract_receipt_material_consumptions ADD CONSTRAINT subcontract_consumption_basis_version_chk
 CHECK(consumption_basis IN('FROZEN_BOM_ESTIMATE','FROZEN_BASE_BOM_ACTUAL'));
 
+-- A zero-increment v2 batch is an explicit proof, never a missing material slice.
+-- Preserve the exact positive source that released its cumulative rounding credit.
+ALTER TABLE subcontract_receipt_material_consumptions ADD COLUMN round_credit_source_id UUID
+  REFERENCES subcontract_receipt_material_consumptions(id);
+DO $$ DECLARE rule RECORD; changed INTEGER:=0; BEGIN
+  FOR rule IN SELECT conname FROM pg_constraint WHERE conrelid='subcontract_receipt_material_consumptions'::regclass
+    AND contype='c' AND (pg_get_constraintdef(oid) ~ '^CHECK \(\(qty_doc > ' OR pg_get_constraintdef(oid) ~ '^CHECK \(\(qty_base > ')
+  LOOP
+    EXECUTE format('ALTER TABLE subcontract_receipt_material_consumptions DROP CONSTRAINT %I',rule.conname);
+    changed:=changed+1;
+  END LOOP;
+  IF changed<>2 THEN RAISE EXCEPTION 'V1096 expected the two original positive consumption quantity checks'; END IF;
+END $$;
+ALTER TABLE subcontract_receipt_material_consumptions ADD CONSTRAINT subcontract_consumption_actual_zero_proof_chk CHECK(
+  (qty_doc>0 AND qty_base>0 AND round_credit_source_id IS NULL)
+  OR (qty_doc=0 AND qty_base=0 AND consumption_basis='FROZEN_BASE_BOM_ACTUAL' AND round_credit_source_id IS NOT NULL));
+
+
 -- The order's approved allowance, not the goods master's mutable remembered default.
+-- FinancialExactAmount.MAX_FRACTION_DIGITS / native quantity facts own this
+-- 24-place input grid. Planning supply and historical v1 estimates retain their separate CEIL4.
+CREATE FUNCTION fn_subcontract_normal_receipt_quantity_limit(p_target NUMERIC,p_loss_pct NUMERIC)
+RETURNS NUMERIC LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT TRUNC(p_target*(1+COALESCE(p_loss_pct,0)/100),24)
+$$;
 CREATE FUNCTION fn_subcontract_normal_receipt_limit(p_order_item UUID) RETURNS NUMERIC LANGUAGE sql STABLE AS $$
-  SELECT TRUNC(item.qty*(1+COALESCE(item.allowed_loss_pct,0)/100),4)
+  SELECT fn_subcontract_normal_receipt_quantity_limit(item.qty,item.allowed_loss_pct)
   FROM subcontract_order_items item WHERE item.id=p_order_item AND NOT item.is_deleted
 $$;
 COMMENT ON FUNCTION fn_subcontract_normal_receipt_limit(UUID) IS
   'Normal cumulative finished receipts: original finished target plus its approved maximum material allowance. The physical base-BOM capacity remains an independent bound.';
 
+-- Actual v2 material facts follow the existing 24-place source-quantity owner.
+-- Planning supply and historical v1 estimates keep fn_subcontract_draw_f/sets at four places.
+CREATE FUNCTION fn_subcontract_actual_receipt_material_qty(p_output NUMERIC,p_base_bom NUMERIC)
+RETURNS NUMERIC LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT CEIL(p_output*p_base_bom*1000000000000000000000000)*0.000000000000000000000001
+$$;
+CREATE FUNCTION fn_subcontract_actual_receipt_sets(p_material NUMERIC,p_base_bom NUMERIC)
+RETURNS NUMERIC LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT CASE WHEN p_base_bom IS NULL OR p_base_bom<=0 THEN NULL
+    ELSE DIV(GREATEST(COALESCE(p_material,0),0)*1000000000000000000000000,p_base_bom)
+         *0.000000000000000000000001 END
+$$;
+
 -- Keep old and new cumulative rounding in separate cohorts; old excess consumption
 -- cannot stand in for material consumed by a new receipt or be silently refunded.
 CREATE FUNCTION fn_subcontract_material_consumption_cohort_target(p_plan_item UUID,p_version INTEGER,p_current_receipt UUID DEFAULT NULL)
 RETURNS NUMERIC LANGUAGE sql STABLE AS $$
-  SELECT fn_subcontract_draw_f(COALESCE(SUM(item.material_basis_qty),0),
-       CASE WHEN p_version=1 THEN plan.bom_unit_qty ELSE plan.base_bom_unit_qty END)
+  SELECT CASE WHEN p_version=1 THEN fn_subcontract_draw_f(COALESCE(SUM(item.material_basis_qty),0),plan.bom_unit_qty)
+    ELSE fn_subcontract_actual_receipt_material_qty(COALESCE(SUM(item.material_basis_qty),0),plan.base_bom_unit_qty) END
   FROM subcontract_material_plan_items plan
   LEFT JOIN (subcontract_receipt_items item JOIN subcontract_receipts receipt ON receipt.id=item.receipt_id
     AND NOT receipt.is_deleted AND (receipt.status=1 OR receipt.id=p_current_receipt))
@@ -61,25 +106,134 @@ RETURNS NUMERIC LANGUAGE sql STABLE AS $$
        + fn_subcontract_material_consumption_cohort_target(p_plan_item,2,p_current_receipt)
 $$;
 
+CREATE FUNCTION fn_subcontract_material_consumption_ledger_qty(p_plan_item UUID,p_version INTEGER)
+RETURNS NUMERIC LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(SUM(source.qty_doc),0)
+  FROM subcontract_receipt_material_consumptions source
+  JOIN subcontract_receipt_items receipt ON receipt.id=source.receipt_item_id AND receipt.material_consumption_version=p_version
+  JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id AND NOT issued.is_deleted
+  JOIN subcontract_material_issues head ON head.id=issued.issue_id AND head.status=1 AND NOT head.is_deleted
+  WHERE issued.plan_item_id=p_plan_item AND source.reversal_of IS NULL
+    AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=source.id)
+$$;
+CREATE FUNCTION fn_subcontract_material_consumption_observed_qty(p_plan_item UUID,p_version INTEGER)
+RETURNS NUMERIC LANGUAGE sql STABLE AS $$
+  SELECT CASE WHEN p_version=1 THEN COALESCE(SUM(issued.consumed_qty),0)
+      -fn_subcontract_material_consumption_ledger_qty(p_plan_item,2)
+    ELSE fn_subcontract_material_consumption_ledger_qty(p_plan_item,2) END
+  FROM subcontract_material_issue_items issued
+  JOIN subcontract_material_issues head ON head.id=issued.issue_id AND head.status=1 AND NOT head.is_deleted
+  WHERE issued.plan_item_id=p_plan_item AND NOT issued.is_deleted
+$$;
+CREATE FUNCTION fn_subcontract_material_consumption_reversal_allowance(p_order_item UUID,p_version INTEGER)
+RETURNS NUMERIC LANGUAGE sql STABLE AS $$
+  SELECT COUNT(*)*CASE WHEN p_version=1 THEN 0.0001::numeric ELSE 0.000000000000000000000001::numeric END
+  FROM subcontract_receipt_items item JOIN subcontract_receipts head ON head.id=item.receipt_id
+  WHERE item.order_item_id=p_order_item AND NOT item.is_deleted AND item.material_consumption_version=p_version
+    AND (head.status=-1 OR EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal
+      WHERE reversal.receipt_item_id=item.id AND reversal.reversal_of IS NOT NULL))
+$$;
+CREATE FUNCTION fn_subcontract_receipt_material_line_proven(p_receipt_item UUID,p_plan_item UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+  SELECT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source
+    JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id AND issued.plan_item_id=p_plan_item
+    JOIN subcontract_material_issues head ON head.id=issued.issue_id AND head.status=1 AND NOT head.is_deleted
+    JOIN subcontract_receipt_items receipt ON receipt.id=source.receipt_item_id
+    LEFT JOIN subcontract_receipt_material_consumptions credit ON credit.id=source.round_credit_source_id
+    LEFT JOIN subcontract_receipt_items funded ON funded.id=credit.receipt_item_id
+    LEFT JOIN subcontract_receipts fund_head ON fund_head.id=funded.receipt_id
+    WHERE source.receipt_item_id=p_receipt_item AND source.reversal_of IS NULL AND NOT issued.is_deleted
+      AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=source.id)
+      AND (source.qty_doc>0 OR (receipt.material_consumption_version=2 AND receipt.material_basis_qty>0
+        AND source.qty_doc=0 AND source.qty_base=0 AND credit.qty_doc>0 AND credit.reversal_of IS NULL
+        AND credit.issue_item_id=source.issue_item_id AND funded.material_consumption_version=2
+        AND fund_head.status=1 AND NOT fund_head.is_deleted AND NOT funded.is_deleted
+        AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=credit.id))))
+$$;
+CREATE FUNCTION fn_subcontract_actual_credit_reversal_safe(p_receipt UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+  SELECT NOT EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
+    WHERE NOT plan.is_deleted AND EXISTS(SELECT 1 FROM subcontract_receipt_items item
+      WHERE item.receipt_id=p_receipt AND item.order_item_id=plan.order_item_id AND item.material_consumption_version=2)
+    AND EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions marker
+      JOIN subcontract_material_issue_items issued ON issued.id=marker.issue_item_id
+      JOIN subcontract_receipt_items item ON item.id=marker.receipt_item_id
+      JOIN subcontract_receipts head ON head.id=item.receipt_id
+      JOIN subcontract_receipt_material_consumptions credit ON credit.id=marker.round_credit_source_id
+      JOIN subcontract_receipt_items funding ON funding.id=credit.receipt_item_id
+      WHERE issued.plan_item_id=plan.id AND marker.qty_doc=0 AND marker.reversal_of IS NULL
+        AND head.status=1 AND NOT head.is_deleted AND NOT item.is_deleted AND head.id<>p_receipt
+        AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=marker.id)
+        AND (funding.receipt_id=p_receipt OR
+          fn_subcontract_material_consumption_ledger_qty(plan.id,2)
+            -(SELECT COALESCE(SUM(source.qty_doc),0) FROM subcontract_receipt_material_consumptions source
+              JOIN subcontract_receipt_items item ON item.id=source.receipt_item_id
+              JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id
+              WHERE item.receipt_id=p_receipt AND issued.plan_item_id=plan.id AND item.material_consumption_version=2
+                AND source.reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=source.id))
+          < fn_subcontract_actual_receipt_material_qty((SELECT COALESCE(SUM(item.material_basis_qty),0)
+              FROM subcontract_receipt_items item JOIN subcontract_receipts head ON head.id=item.receipt_id
+              WHERE item.order_item_id=plan.order_item_id AND item.material_consumption_version=2 AND NOT item.is_deleted
+                AND head.status=1 AND NOT head.is_deleted AND head.id<>p_receipt),plan.base_bom_unit_qty))))
+$$;
+CREATE FUNCTION fn_subcontract_material_consumption_balanced(p_plan_item UUID)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
+  WITH facts AS (
+    SELECT plan.order_item_id,
+      fn_subcontract_material_consumption_observed_qty(plan.id,1) legacy,
+      fn_subcontract_material_consumption_ledger_qty(plan.id,1) known_legacy,
+      fn_subcontract_material_consumption_ledger_qty(plan.id,2) actual,
+      fn_subcontract_material_consumption_cohort_target(plan.id,1) legacy_target,
+      fn_subcontract_material_consumption_cohort_target(plan.id,2) actual_target,
+      EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source
+        JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id
+        JOIN subcontract_receipt_items receipt ON receipt.id=source.receipt_item_id AND receipt.material_consumption_version=2
+        JOIN subcontract_receipts head ON head.id=receipt.receipt_id
+        WHERE issued.plan_item_id=plan.id AND source.reversal_of IS NULL
+          AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=source.id)
+          AND (head.status IS DISTINCT FROM 1 OR head.is_deleted OR receipt.is_deleted
+            OR receipt.material_basis_qty IS NULL OR receipt.material_basis_qty<=0)) invalid_actual,
+      EXISTS(SELECT 1 FROM subcontract_receipt_items receipt JOIN subcontract_receipts head ON head.id=receipt.receipt_id
+        WHERE receipt.order_item_id=plan.order_item_id AND receipt.material_consumption_version=2 AND receipt.material_basis_qty>0
+          AND head.status=1 AND NOT head.is_deleted AND NOT receipt.is_deleted
+          AND NOT fn_subcontract_receipt_material_line_proven(receipt.id,plan.id)) missing_actual,
+      EXISTS(SELECT 1 FROM subcontract_receipt_items receipt JOIN subcontract_receipts head ON head.id=receipt.receipt_id
+        WHERE receipt.order_item_id=plan.order_item_id AND receipt.material_consumption_version=2
+          AND receipt.material_basis_qty>0 AND NOT receipt.is_deleted AND head.status=1 AND NOT head.is_deleted) has_actual
+    FROM subcontract_material_plan_items plan WHERE plan.id=p_plan_item AND NOT plan.is_deleted
+  )
+  SELECT COALESCE(NOT invalid_actual AND NOT missing_actual AND legacy>=0 AND (NOT (has_actual OR actual>0) OR abs(legacy-known_legacy)<=fn_subcontract_material_consumption_reversal_allowance(order_item_id,1))
+    AND abs(legacy-legacy_target)<=fn_subcontract_material_consumption_reversal_allowance(order_item_id,1)
+    AND abs(actual-actual_target)<=fn_subcontract_material_consumption_reversal_allowance(order_item_id,2),FALSE)
+  FROM facts
+$$;
+
 CREATE FUNCTION fn_subcontract_physical_receipt_capacity(p_order_item UUID,p_excluded_issue UUID DEFAULT NULL)
 RETURNS NUMERIC LANGUAGE sql STABLE AS $$
   WITH basis AS (
-    SELECT COALESCE(SUM(item.material_basis_qty),0) received
+    SELECT COALESCE(SUM(item.material_basis_qty) FILTER(WHERE item.material_consumption_version=1),0) received
     FROM subcontract_receipt_items item JOIN subcontract_receipts receipt ON receipt.id=item.receipt_id
     WHERE item.order_item_id=p_order_item AND NOT item.is_deleted AND receipt.status=1 AND NOT receipt.is_deleted
   ), materials AS (
     SELECT plan.id,plan.base_bom_unit_qty,
       COALESCE(SUM(issue_item.at_supplier_qty+issue_item.compensated_qty-COALESCE(issue_item.returned_qty,0)
         -COALESCE(issue_item.wasted_qty,0)) FILTER(WHERE p_excluded_issue IS NULL OR issue.id<>p_excluded_issue),0) usable,
-      COALESCE(SUM(issue_item.consumed_qty),0) consumed
+      COALESCE(SUM(issue_item.consumed_qty),0) consumed,
+      fn_subcontract_material_consumption_ledger_qty(plan.id,2) actual_consumed,
+      fn_subcontract_material_consumption_cohort_target(plan.id,1) legacy_target,
+      fn_subcontract_material_consumption_ledger_qty(plan.id,1) known_legacy,
+      fn_subcontract_material_consumption_reversal_allowance(plan.order_item_id,1) legacy_allowance
     FROM subcontract_material_plan_items plan
     LEFT JOIN (subcontract_material_issue_items issue_item JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
       AND issue.status=1 AND NOT issue.is_deleted) ON issue_item.plan_item_id=plan.id AND NOT issue_item.is_deleted
     WHERE plan.order_item_id=p_order_item AND NOT plan.is_deleted
     GROUP BY plan.id,plan.base_bom_unit_qty
   )
-  SELECT CASE WHEN COUNT(materials.id)=0 OR BOOL_OR(materials.usable<materials.consumed) THEN 0
-    ELSE MAX(basis.received)+MIN(fn_subcontract_draw_sets(materials.usable-materials.consumed,materials.base_bom_unit_qty)) END
+  SELECT CASE WHEN COUNT(materials.id)=0 OR BOOL_OR(materials.usable<GREATEST(materials.consumed,materials.legacy_target+materials.actual_consumed) OR materials.base_bom_unit_qty IS NULL OR materials.base_bom_unit_qty<=0
+      OR abs(materials.consumed-materials.actual_consumed-materials.legacy_target)>materials.legacy_allowance
+      OR abs(materials.consumed-materials.actual_consumed-materials.known_legacy)>materials.legacy_allowance) THEN 0
+    ELSE MAX(basis.received)+MIN(fn_subcontract_actual_receipt_sets(
+      materials.usable-GREATEST(materials.consumed-materials.actual_consumed,materials.legacy_target),materials.base_bom_unit_qty)) END
   FROM basis LEFT JOIN materials ON TRUE
 $$;
 CREATE FUNCTION fn_subcontract_returnable_qty_excluding_issue(p_order_item UUID,p_excluded_issue UUID)
@@ -126,16 +280,12 @@ RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
                  JOIN subcontract_material_issue_items issue_item ON issue_item.id = live.issue_item_id
                  LEFT JOIN lines ON lines.id = issue_item.plan_item_id
                  WHERE lines.id IS NULL OR live.consumption_basis <> CASE WHEN live.material_consumption_version=1 THEN 'FROZEN_BOM_ESTIMATE' ELSE 'FROZEN_BASE_BOM_ACTUAL' END)
-             AND NOT EXISTS (
-                 SELECT 1
-                 FROM lines CROSS JOIN basis
-                 WHERE abs(COALESCE((SELECT SUM(issue_item.consumed_qty)
-                                     FROM subcontract_material_issue_items issue_item
-                                     JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
-                                      AND issue.status = 1 AND NOT issue.is_deleted
-                                     WHERE issue_item.plan_item_id = lines.id AND NOT issue_item.is_deleted), 0)
-                           - fn_subcontract_material_consumption_target(lines.id))
-                       > basis.reversed_line_count * 0.0001)
+             AND NOT EXISTS (SELECT 1 FROM lines
+                 WHERE NOT fn_subcontract_material_consumption_balanced(lines.id)
+                    OR ((SELECT material_consumption_version FROM receipt_line)=2 AND (
+                      NOT fn_subcontract_receipt_material_line_proven(p_receipt_item,lines.id)
+                      OR fn_subcontract_material_consumption_ledger_qty(lines.id,2)
+                         <fn_subcontract_material_consumption_cohort_target(lines.id,2))))
         END
 $$;
 
@@ -147,7 +297,7 @@ DECLARE
     v_reversed_lines INTEGER;
     v_missing_basis INTEGER;
     v_netted NUMERIC;
-    v_netted_lines INTEGER;
+    v_netted_allowance NUMERIC;
     v_replacement NUMERIC;
     v_supplier_own NUMERIC;
     v_target NUMERIC;
@@ -164,8 +314,9 @@ BEGIN
                               AND item.legacy_id IS NULL AND item.legacy_import_run_id IS NULL
                               AND receipt.legacy_id IS NULL AND receipt.legacy_import_run_id IS NULL),
            COALESCE(SUM(item.qty - item.material_basis_qty) FILTER (WHERE item.material_basis_qty < item.qty), 0),
-           COUNT(*) FILTER (WHERE item.material_basis_qty < item.qty)
-      INTO v_missing_basis, v_netted, v_netted_lines
+           COALESCE(SUM(CASE WHEN item.material_consumption_version=1 THEN 0.0001::numeric
+             ELSE 0.000000000000000000000001::numeric END) FILTER (WHERE item.material_basis_qty < item.qty),0)
+      INTO v_missing_basis, v_netted, v_netted_allowance
     FROM subcontract_receipt_items item
     JOIN subcontract_receipts receipt ON receipt.id = item.receipt_id
      AND receipt.status = 1 AND NOT receipt.is_deleted
@@ -197,7 +348,7 @@ BEGIN
 
     v_supplier_own := fn_subcontract_supplier_own_qty(p_order_item_id);
 
-    IF v_netted > v_replacement / NULLIF(v_rate, 0) + v_supplier_own + v_netted_lines * 0.0001 THEN
+    IF v_netted > v_replacement / NULLIF(v_rate, 0) + v_supplier_own + v_netted_allowance THEN
         RAISE EXCEPTION 'subcontract receipt material basis nets more than IQC replacements and finance-approved supplier material'
             USING ERRCODE = '23514', CONSTRAINT = 'subcontract_target_outbound_first_guard';
     END IF;
@@ -232,7 +383,7 @@ BEGIN
                 USING ERRCODE = '23514', CONSTRAINT = 'subcontract_target_outbound_first_guard';
         END IF;
         v_target := fn_subcontract_material_consumption_target(line.id);
-        IF abs(line.consumed_qty - v_target) > v_reversed_lines * 0.0001 THEN
+        IF NOT fn_subcontract_material_consumption_balanced(line.id) THEN
             RAISE EXCEPTION 'subcontract receipt material consumption % differs from target % beyond the reversal tolerance',
                 line.consumed_qty, v_target
                 USING ERRCODE = '23514', CONSTRAINT = 'subcontract_target_outbound_consumption_guard';
@@ -247,6 +398,8 @@ DECLARE
     receipt subcontract_receipt_items%ROWTYPE;
     issue subcontract_material_issue_items%ROWTYPE;
     original subcontract_receipt_material_consumptions%ROWTYPE;
+    credit subcontract_receipt_material_consumptions%ROWTYPE;
+    current_qty NUMERIC; target_qty NUMERIC; observed_qty NUMERIC;
 BEGIN
     IF TG_OP <> 'INSERT' THEN
         RAISE EXCEPTION 'subcontract material consumption sources are immutable' USING ERRCODE = '55000';
@@ -270,10 +423,47 @@ BEGIN
         IF original.id IS NULL OR original.reversal_of IS NOT NULL
            OR original.receipt_item_id <> NEW.receipt_item_id
            OR original.issue_item_id <> NEW.issue_item_id OR original.qty_doc <> NEW.qty_doc
-           OR original.qty_base <> NEW.qty_base OR original.consumption_basis <> NEW.consumption_basis THEN
+           OR original.qty_base <> NEW.qty_base OR original.consumption_basis <> NEW.consumption_basis
+           OR original.round_credit_source_id IS DISTINCT FROM NEW.round_credit_source_id THEN
             RAISE EXCEPTION 'subcontract receipt reversal must restore the same complete original consumption slice'
                 USING ERRCODE = '23514';
         END IF;
+    ELSIF receipt.material_consumption_version=2 THEN
+        IF receipt.material_basis_qty IS NULL OR receipt.material_basis_qty<=0 OR NOT EXISTS(
+          SELECT 1 FROM subcontract_receipts head WHERE head.id=receipt.receipt_id AND head.status=0 AND NOT head.is_deleted)
+          OR issue.is_deleted OR NOT EXISTS(SELECT 1 FROM subcontract_material_issues head WHERE head.id=issue.issue_id AND head.status=1 AND NOT head.is_deleted)
+          OR issue.unit_id IS NULL OR issue.unit_rate IS NULL OR issue.unit_rate<=0 THEN
+            RAISE EXCEPTION 'native actual material proof requires a current own-material draft and verified issued source' USING ERRCODE='23514';
+        END IF;
+        SELECT COALESCE(SUM(source.qty_doc),0) INTO current_qty FROM subcontract_receipt_material_consumptions source
+          JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id
+          WHERE source.receipt_item_id=receipt.id AND issued.plan_item_id=issue.plan_item_id AND source.reversal_of IS NULL
+            AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=source.id);
+        target_qty:=fn_subcontract_material_consumption_cohort_target(issue.plan_item_id,2,receipt.receipt_id);
+        observed_qty:=fn_subcontract_material_consumption_ledger_qty(issue.plan_item_id,2);
+        IF NEW.qty_doc=0 THEN
+            SELECT * INTO credit FROM subcontract_receipt_material_consumptions WHERE id=NEW.round_credit_source_id;
+            IF current_qty<>0 OR EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source
+                JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id
+                WHERE source.receipt_item_id=receipt.id AND issued.plan_item_id=issue.plan_item_id AND source.reversal_of IS NULL)
+              OR target_qty>observed_qty OR credit.id IS NULL OR credit.qty_doc<=0 OR credit.reversal_of IS NOT NULL
+              OR credit.issue_item_id<>issue.id OR credit.receipt_item_id=receipt.id
+              OR NOT EXISTS(SELECT 1 FROM subcontract_receipt_items item JOIN subcontract_receipts head ON head.id=item.receipt_id
+                WHERE item.id=credit.receipt_item_id AND item.material_consumption_version=2 AND item.material_basis_qty>0
+                  AND head.status=1 AND NOT head.is_deleted AND NOT item.is_deleted)
+              OR EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=credit.id) THEN
+                RAISE EXCEPTION 'zero actual increment requires exact cumulative v2 material funding and its immutable original source' USING ERRCODE='23514';
+            END IF;
+        ELSIF observed_qty+NEW.qty_doc>target_qty OR EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions source
+            JOIN subcontract_material_issue_items issued ON issued.id=source.issue_item_id
+            WHERE source.receipt_item_id=receipt.id AND issued.plan_item_id=issue.plan_item_id AND source.qty_doc=0 AND source.reversal_of IS NULL) THEN
+            RAISE EXCEPTION 'actual material consumption exceeds its independent cumulative target' USING ERRCODE='23514';
+        END IF;
+    END IF;
+    IF NEW.reversal_of IS NOT NULL AND receipt.material_consumption_version=2
+      AND NOT fn_subcontract_actual_credit_reversal_safe(receipt.receipt_id) THEN
+      RAISE EXCEPTION 'reverse the later zero-increment actual receipt before its original material funding receipt'
+        USING ERRCODE='23514',CONSTRAINT='subcontract_actual_credit_reversal_guard';
     END IF;
     RETURN NEW;
 END;
@@ -288,7 +478,7 @@ DO $$ DECLARE source TEXT; anchor TEXT; BEGIN
     RAISE EXCEPTION 'V1096 received capacity anchor differs';
   END IF;
   source:=replace(source,anchor,anchor||E'\n  IF TG_ARGV[0]=''SUBCONTRACT'' THEN\n'
-    ||E'    v_capacity:=v_capacity+GREATEST(TRUNC(COALESCE(NEW.qty,0)*(1+COALESCE((to_jsonb(NEW)->>''allowed_loss_pct'')::numeric,0)/100),4)-COALESCE(NEW.qty,0),0);\n'
+    ||E'    v_capacity:=v_capacity+GREATEST(fn_subcontract_normal_receipt_quantity_limit(COALESCE(NEW.qty,0),(to_jsonb(NEW)->>''allowed_loss_pct'')::numeric)-COALESCE(NEW.qty,0),0);\n'
     ||E'  END IF;');
   EXECUTE source;
   source:=pg_get_functiondef('fn_guard_return_allowance()'::regprocedure);
@@ -298,6 +488,6 @@ DO $$ DECLARE source TEXT; anchor TEXT; BEGIN
   END IF;
   EXECUTE replace(source,anchor,anchor||E'\n'
     ||E'            IF TG_TABLE_NAME=''subcontract_order_items'' THEN\n'
-    ||E'                v_tolerance_base:=GREATEST(TRUNC(v_base*(1+COALESCE((v_new_row->>''allowed_loss_pct'')::numeric,0)/100),4)-v_base,0)*v_rate;\n'
+    ||E'                v_tolerance_base:=GREATEST(fn_subcontract_normal_receipt_quantity_limit(v_base,(v_new_row->>''allowed_loss_pct'')::numeric)-v_base,0)*v_rate;\n'
     ||E'            END IF;');
 END $$;

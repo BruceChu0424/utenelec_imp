@@ -5040,6 +5040,74 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         )
 
     @unittest.skipUnless(os.name == "posix", "recovery receipts run on Linux CI")
+    def test_recovery_inventory_reads_only_signed_metadata_and_keeps_observation_immutable(self) -> None:
+        import release_updater
+
+        fixture = ReleaseFixture()
+        fixture.setUp()
+        self.addCleanup(fixture.tearDown)
+        base = fixture.root / "metadata-only"
+        evidence = base / "releases" / fixture.info["version"] / ".release"
+        evidence.mkdir(parents=True)
+        path = evidence / "manifest.json"
+        path.write_bytes(fixture.manifest_path.read_bytes())
+        observed = {
+            key: fixture.info[key] for key in ("version", "commitSha", "releaseSequence",
+                "signingKeyId", "flywayHeadVersion", "flywayMigrationSetSha256")
+        }
+        observed.update(manifestSha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                        flywayMigrationCount=len(fixture.info["flywayMigrations"]), verified=True)
+        with mock.patch.object(release_updater, "DEFAULT_RELEASE_BASE", base), \
+             mock.patch.object(release_updater, "require_real_directory"), \
+             mock.patch.object(release_updater, "require_root_controlled_file"), \
+             mock.patch.object(release_updater, "verify_signed_json", return_value=fixture.manifest) as verify, \
+             mock.patch.object(release_updater, "authorized_key_ids", return_value={fixture.key_id}), \
+             mock.patch.object(release_updater, "load_installed_manifest") as full_payload, \
+             mock.patch.object(release_updater.release_guard, "verify_payload") as scan:
+            rich = release_updater.recovery_manifest_with_inventory(observed)
+            self.assertEqual(rich["flywayMigrations"], fixture.info["flywayMigrations"])
+            self.assertNotIn("flywayMigrations", observed)
+            verify.assert_called_once_with(path, evidence / "manifest.sig", release_updater.DEFAULT_ALLOWED_SIGNERS)
+            full_payload.assert_not_called()
+            scan.assert_not_called()
+            with self.assertRaisesRegex(release_updater.UpdaterError, "count differs"):
+                release_updater.recovery_manifest_with_inventory({
+                    **observed, "flywayMigrationCount": observed["flywayMigrationCount"] + 1
+                })
+            with self.assertRaisesRegex(release_updater.UpdaterError, "changed before"):
+                release_updater.recovery_manifest_with_inventory({**observed, "manifestSha256": "0" * 64})
+
+
+    @unittest.skipUnless(os.name == "posix", "recovery receipts run on Linux CI")
+    def test_recovery_inventory_rejects_a_change_during_signed_read(self) -> None:
+        import release_updater
+
+        fixture = ReleaseFixture()
+        fixture.setUp()
+        self.addCleanup(fixture.tearDown)
+        base = fixture.root / "changed-metadata"
+        evidence = base / "releases" / fixture.info["version"] / ".release"
+        evidence.mkdir(parents=True)
+        path = evidence / "manifest.json"
+        path.write_bytes(fixture.manifest_path.read_bytes())
+        observed = {key: fixture.info[key] for key in ("version", "commitSha", "releaseSequence",
+            "signingKeyId", "flywayHeadVersion", "flywayMigrationSetSha256")}
+        observed.update(manifestSha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                        flywayMigrationCount=len(fixture.info["flywayMigrations"]), verified=True)
+        def changed(*_args):
+            path.write_bytes(path.read_bytes() + b" ")
+            return fixture.manifest
+        with mock.patch.object(release_updater, "DEFAULT_RELEASE_BASE", base), \
+             mock.patch.object(release_updater, "require_real_directory"), \
+             mock.patch.object(release_updater, "require_root_controlled_file"), \
+             mock.patch.object(release_updater, "verify_signed_json", side_effect=changed), \
+             mock.patch.object(release_updater, "authorized_key_ids", return_value={fixture.key_id}), \
+             mock.patch.object(release_updater, "run") as run:
+            with self.assertRaisesRegex(release_updater.UpdaterError, "changed during"):
+                release_updater.recovery_manifest_with_inventory(observed)
+            run.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix", "recovery receipts run on Linux CI")
     def test_database_recovery_receipt_is_hash_and_release_bound(self) -> None:
         import release_updater
 
@@ -5094,6 +5162,9 @@ class SignatureAndIoValidationTest(unittest.TestCase):
                 release_updater, "require_real_directory"
             ), mock.patch.object(
                 release_updater, "read_root_evidence_bytes", side_effect=evidence_bytes
+            ), mock.patch.object(
+                release_updater, "recovery_manifest_with_inventory",
+                return_value={**manifest, "flywayMigrations": full_manifest["flywayMigrations"]},
             ):
                 observed = release_updater.load_database_recovery_receipt(
                     path_text=str(receipt_path),
@@ -5136,8 +5207,9 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "successful": True,
             "targetVersion": detail["targetVersion"],
         }
+        signed_target = {**observed, "flywayMigrations": full["flywayMigrations"]}
         identity = release_updater.validate_database_recovery_detail(
-            detail, narrow=narrow, target_manifest=observed
+            detail, narrow=narrow, target_manifest=signed_target
         )
         receipt = {"detailIdentity": identity}
         live = self.recovery_live_database_fixture(full)
@@ -5212,7 +5284,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
         boolean_detail["databaseIdentity"]["timeline"] = True
         with self.assertRaisesRegex(release_updater.UpdaterError, "canonical integer"):
             release_updater.validate_database_recovery_detail(
-                boolean_detail, narrow=narrow, target_manifest=observed
+                boolean_detail, narrow=narrow, target_manifest=signed_target
             )
         schema_drift = json.loads(json.dumps(detail))
         schema_drift["repositories"][0]["unexpected"] = True
@@ -5221,7 +5293,7 @@ class SignatureAndIoValidationTest(unittest.TestCase):
             "keys differ from contract",
         ):
             release_updater.validate_database_recovery_detail(
-                schema_drift, narrow=narrow, target_manifest=observed
+                schema_drift, narrow=narrow, target_manifest=signed_target
             )
 
     @unittest.skipUnless(os.name == "posix", "database recovery evidence runs on Linux CI")

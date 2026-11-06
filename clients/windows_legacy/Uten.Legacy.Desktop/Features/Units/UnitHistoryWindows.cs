@@ -63,8 +63,10 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (!Current || Mutating || Unresolved || NeedsRefresh) return;
             Mutating = true; UpdateActions();
+            UtenBusyDialog waiting = null;
             try
             {
+                waiting = UtenBusyDialog.Show(this, "正在处理单位历史");
                 // Read durable state before a fresh explicit decision. Core rechecks atomically before sending.
                 await ReadPendingGateAsync(Lifetime.Token);
                 if (!Current || Unresolved || !JournalConfirmed) return;
@@ -104,6 +106,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             catch (Exception) { if (Current) { NeedsRefresh = true; ShowStatus("暂时无法完成本次操作，请先核对本机提交记录；不会自动重试。", true); } }
             finally
             {
+                waiting?.Dispose();
                 Mutating = false;
                 if (!Ended) { UpdateActions(); if (Retired) Close(); }
             }
@@ -130,7 +133,15 @@ namespace Uten.Legacy.Desktop.Features.Units
             ClearData(); Lifetime.Dispose(); base.OnClosed(args);
         }
         protected static DataGrid HistoryTable(double height)
-        { return new DataGrid { Height = height, SelectionMode = DataGridSelectionMode.Single, SelectionUnit = DataGridSelectionUnit.FullRow, CanUserSortColumns = false }; }
+        {
+            var table = new DataGrid { Height = height, SelectionMode = DataGridSelectionMode.Single,
+                SelectionUnit = DataGridSelectionUnit.FullRow, CanUserSortColumns = false,
+                EnableRowVirtualization = true, EnableColumnVirtualization = true };
+            ScrollViewer.SetCanContentScroll(table, true);
+            VirtualizingPanel.SetIsVirtualizing(table, true);
+            VirtualizingPanel.SetVirtualizationMode(table, VirtualizationMode.Recycling);
+            return table;
+        }
         protected static DataGridTextColumn Column(string label, string property, double width, bool stretch = false)
         { return new DataGridTextColumn { Header = label, Binding = new Binding(property) { TargetNullValue = "—" }, IsReadOnly = true,
             Width = new DataGridLength(width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel) }; }
@@ -160,15 +171,14 @@ namespace Uten.Legacy.Desktop.Features.Units
         private long sequence;
         private bool loading;
         public UnitOperationHistoryWindow(Window parent, SessionCoordinator session, bool preferRedo = false)
-            : base(parent, session, "本人操作记录与撤回", 920)
+            : base(parent, session, "本人最近10次操作与撤回", 920)
         {
             this.preferRedo = preferRedo;
-            Body.Children.Add(Note("最近 10 次本人资料操作及最近 30 条撤回事件。能否执行由当前权限、引用与后续修改决定。"));
             operations.Columns.Add(Column("操作", "Label", 1, true)); operations.Columns.Add(Column("状态", "StateLabel", 90));
             operations.Columns.Add(Column("影响项", "AffectedCount", 80)); operations.Columns.Add(Column("时间", "CreatedAtDisplay", 165));
             Body.Children.Add(UtenSurfaces.Wrap(operations, UtenSurfaceRole.Table));
             summary.Margin = new Thickness(0, Space("S12"), 0, Space("S12")); Body.Children.Add(summary);
-            Body.Children.Add(Note("撤回与取消撤回事件"));
+            Body.Children.Add(Note("最近30条撤回与取消撤回事件"));
             events.Columns.Add(Column("动作", "ActionLabel", 100)); events.Columns.Add(Column("操作", "Label", 1, true)); events.Columns.Add(Column("时间", "CreatedAtDisplay", 165));
             Body.Children.Add(UtenSurfaces.Wrap(events, UtenSurfaceRole.Table));
             refresh = ActionButton("刷新", () => { _ = ReloadAsync(); });
@@ -184,8 +194,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             read?.Cancel(); read?.Dispose(); read = CancellationTokenSource.CreateLinkedTokenSource(Lifetime.Token);
             var token = read.Token; long request = ++sequence; loading = true; UpdateActions();
             string selected = (operations.SelectedItem as UnitOperationEntry)?.Id;
+            UtenBusyDialog waiting = null;
             try
             {
+                waiting = UtenBusyDialog.Show(this, "正在读取本人操作记录", read.Cancel);
                 var result = await Service.OperationsAsync(token); await ReadPendingGateAsync(token);
                 if (!Current || request != sequence || !result.IsCurrent(Session)) return;
                 snapshot = result; operations.ItemsSource = result.Value.Entries; events.ItemsSource = result.Value.Events;
@@ -195,9 +207,17 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (!Unresolved && JournalConfirmed) ShowStatus(result.Value.Entries.Count == 0 ? "当前没有本人单位操作记录。" : "已读取本人单位操作历史。");
             }
             catch (OperationCanceledException) { }
-            catch (ApiException error) { if (Current && request == sequence) { snapshot = null; ShowStatus(error.UserMessage, true); } }
+            catch (ApiException error)
+            {
+                if (Current && request == sequence)
+                {
+                    snapshot = null;
+                    if (error.StatusCode == 401 || error.StatusCode == 403) operations.ItemsSource = events.ItemsSource = null;
+                    ShowStatus(error.UserMessage, true);
+                }
+            }
             catch (Exception) { if (Current && request == sequence) { snapshot = null; ShowStatus("读取操作历史失败，请点击刷新重试。", true); } }
-            finally { if (!Ended && request == sequence) { loading = false; UpdateActions(); } }
+            finally { waiting?.Dispose(); if (!Ended && request == sequence) { loading = false; UpdateActions(); } }
         }
         private async Task ApplyAsync(bool redoAction)
         {

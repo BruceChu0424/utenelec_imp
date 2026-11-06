@@ -29,25 +29,20 @@ final _repository = StateProvider<AuditLogRepository?>((_) => null);
 
 void main() {
   testWidgets(
-    'audit first page is bounded and one pinned source serves explicit continuation',
+    'one pinned audit source completes all pages before publication and scrolling performs no reads',
     (tester) async {
       final pending = Completer<AuditActorPage>();
       final original = _ActorRepository(pending: pending);
       final replacement = _ActorRepository();
-      final container = await _pump(tester, original);
-      expect(original.calls.map((call) => call.page), [1]);
-      _table(tester).onLoadMore!();
-      await tester.pump();
+      final container = await _pump(tester, original, settle: false);
       expect(original.calls.map((call) => call.page), [1, 2]);
       container.read(_repository.notifier).state = replacement;
       pending.complete(_ActorRepository.response(2));
       await tester.pumpAndSettle();
-      expect(_table(tester).items, hasLength(200));
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
-      expect(original.calls.map((call) => call.page), [1, 2, 3]);
+      expect(_table(tester).onLoadMore, isNull);
+      expect(original.calls.map((call) => call.page), [1, 2, 3, 4, 5]);
       expect(replacement.calls, isEmpty);
-      expect(_table(tester).items, hasLength(300));
+      expect(_table(tester).items, hasLength(416));
     },
   );
 
@@ -62,9 +57,8 @@ void main() {
           tester,
           original,
           onSelected: (value) => selected = value,
+          settle: false,
         );
-        _table(tester).onLoadMore!();
-        await tester.pump();
         switch (boundary) {
           case 'server':
             container.read(_server.notifier).state = 'https://audit-b.test';
@@ -101,13 +95,12 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(repository.calls.last.department, 'finance');
-      expect(repository.calls.last.page, 1);
+      expect(repository.calls.last.page, 2);
+      expect(_table(tester).onLoadMore, isNull);
       expect(
         _table(tester).items.every((item) => item.departmentId == 'finance'),
         true,
       );
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(104));
       expect(_table(tester).items.last.id, 'historical-user-103');
       await tester.tap(
@@ -135,8 +128,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.calls.last.actorType, 'visitor');
       expect(repository.calls.last.department, isNull);
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(104));
       expect(_table(tester).items.last.id, 'visitor-103');
       await tester.tap(
@@ -172,8 +163,6 @@ void main() {
       expect(repository.calls.last.unassigned, true);
       expect(repository.calls.last.actorType, 'staff');
       expect(repository.calls.last.department, isNull);
-      _table(tester).onLoadMore!();
-      await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(104));
       expect(_table(tester).items.last.id, 'unassigned-user-103');
     },
@@ -184,9 +173,7 @@ void main() {
   ) async {
     final pending = Completer<AuditActorPage>();
     final repository = _ActorRepository(pending: pending);
-    await _pump(tester, repository);
-    _table(tester).onLoadMore!();
-    await tester.pump();
+    await _pump(tester, repository, settle: false);
     final search = find.descendant(
       of: find.byType(UtenSearchBar),
       matching: find.byType(TextField),
@@ -300,7 +287,9 @@ Future<ProviderContainer> _pump(
   if (settle) {
     await tester.pumpAndSettle();
   } else {
-    await tester.pump();
+    for (var frame = 0; frame < 12; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
   }
   return ProviderScope.containerOf(
     tester.element(find.byType(AuditActorPicker)),

@@ -22,18 +22,18 @@
 
 ## W7-BIZ-213 · lib/features/webinquiry/pages/website_inquiry_list_page.dart
 
-模块 `webinquiry`；270 行；SHA256 `9e919aea7a6b29138d5f52e6066a8794b462b39003f90f26eb54628f6e3213d3`。
+模块 `webinquiry`；250 行；SHA256 `6457a1a26a5134e35ba97acdcb6f17c440092a875ed91dbdddaa56135302843f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | WebsiteInquiryListPage @29 (page-class)<br>_InquiryCard @150 (supporting-class) |
+| 页面/状态类 | WebsiteInquiryListPage @28 (page-class)<br>_InquiryCard @130 (supporting-class) |
 | 真实路由绑定 | /webinquiry；router @893；builder ['WebsiteInquiryListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | copyWith @177 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @194 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @204 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @215 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @233 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @250 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @258 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
+| 动作处理 | copyWith @157 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @174 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @184 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @195 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @213 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @230 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @238 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/utils/china_datetime.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_paged_grid.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/features/webinquiry/models/website_inquiry.dart` (models)；`lib/features/webinquiry/providers/website_inquiry_providers.dart` (providers)。
+直接源依赖：`lib/core/utils/china_datetime.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/features/webinquiry/models/website_inquiry.dart` (models)；`lib/features/webinquiry/providers/website_inquiry_providers.dart` (providers)。

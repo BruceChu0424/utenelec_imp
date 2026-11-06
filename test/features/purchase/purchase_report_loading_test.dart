@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_report_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -45,6 +46,16 @@ void main() {
           expect(find.textContaining('测试供应商'), findsOneWidget);
         }
         expect(tester.takeException(), isNull);
+        expect(api.reportScopes, hasLength(2));
+        expect(
+          api.reportScopes.every((scope) => scope?.call() == true),
+          isTrue,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        expect(
+          api.reportScopes.every((scope) => scope?.call() == false),
+          isTrue,
+        );
         api.unrelated.complete([]);
         await tester.pumpAndSettle();
       },
@@ -57,6 +68,7 @@ class _ReportApi extends ApiClient {
 
   final bool populated;
   final paths = <String>[];
+  final reportScopes = <bool Function()?>[];
   final unrelated = Completer<List<Map<String, dynamic>>>();
 
   @override
@@ -65,6 +77,10 @@ class _ReportApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     paths.add(path);
+    if (path == ApiEndpoints.purchaseReportMonthly ||
+        path == ApiEndpoints.purchaseReportPending) {
+      reportScopes.add(PagedReadIntent.currentRead);
+    }
     if (path == ApiEndpoints.purchaseReportMonthly) {
       return populated
           ? [

@@ -1,3 +1,4 @@
+import '../../../../shared/paging/read_view_activity.dart';
 import 'package:flutter/material.dart';
 import '../../../../components/inputs/uten_input_decoration.dart';
 import '../../../../components/inputs/uten_field_message.dart';
@@ -210,27 +211,16 @@ class StockCountInlineController extends ChangeNotifier {
     error = null;
     _notify();
     try {
-      final snapshots = <CountStockRow>[];
-      for (var offset = 0; offset < ids.length; offset += 50) {
-        final chunk = ids.sublist(offset, (offset + 50).clamp(0, ids.length));
-        var page = 1;
-        while (true) {
-          final result = await repository.candidates(
-            warehouseId: selected.id,
-            goodsIds: chunk,
-            page: page,
-            size: 100,
-          );
-          if (_disposed ||
-              generation != _generation ||
-              warehouse?.id != selected.id) {
-            return;
-          }
-          snapshots.addAll(result.items);
-          if (page >= result.totalPages) break;
-          page++;
-        }
-      }
+      bool current() =>
+          !_disposed &&
+          generation == _generation &&
+          warehouse?.id == selected.id;
+      final snapshots = await repository.completeCandidatesForGoods(
+        warehouseId: selected.id,
+        goodsIds: ids,
+        isCurrent: current,
+      );
+      if (!current()) return;
       for (final row in snapshots) {
         if (row.canEdit) {
           rows.putIfAbsent(row.key, () => StockCountEditRow(row, _notifyEdits));
@@ -238,7 +228,7 @@ class StockCountInlineController extends ChangeNotifier {
       }
       _loadedGoods.addAll(ids);
     } catch (e) {
-      if (!_disposed && generation == _generation) {
+      if (!_disposed && generation == _generation && !isRetiredViewRead(e)) {
         error = e is ApiException ? e.message : '盘点数据没有读到，请重试';
       }
     } finally {

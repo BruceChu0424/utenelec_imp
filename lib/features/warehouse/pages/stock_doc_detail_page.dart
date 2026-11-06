@@ -657,6 +657,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
         colorId: item.colorId,
         warehouseId: detail.warehouseId,
         qtyOf: () => item.qty,
+        qtyBaseExactOf: () => outboundExactBaseQuantityText(
+          item.qtyText,
+          item.recordedUnitRateText,
+        ),
         unitRate: item.unitRate ?? 1,
         unit: unit,
       );

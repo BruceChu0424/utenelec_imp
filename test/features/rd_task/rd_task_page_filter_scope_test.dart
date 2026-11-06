@@ -14,7 +14,42 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
-  testWidgets('研发类别筛选覆盖服务端全集，翻页不裁剪当页为假空', (tester) async {
+  testWidgets('研发201条摘要首续同100批，完成后本地列表无额外读取', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _RdApi(rowCount: 201);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue({}),
+          isSuperAdminProvider.overrideWithValue(false),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: RdTaskPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<RdTaskRow>>(
+      find.byType(MasterDataTableView<RdTaskRow>),
+    );
+    expect(table.items, hasLength(201));
+    expect(table.items.last.id, 'rd-200');
+    expect(api.queries.map((query) => query['page']), [1, 2, 3]);
+    expect(api.queries.every((query) => query['size'] == 100), isTrue);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.queries, hasLength(3));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('研发完整类别列表连续读取，筛选不裁剪为假空', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     await tester.binding.setSurfaceSize(const Size(1500, 900));
@@ -41,8 +76,9 @@ void main() {
 
     MasterDataTableView<RdTaskRow> table() =>
         tester.widget(find.byType(MasterDataTableView<RdTaskRow>));
-    expect(table().items.single.category, 'BOM');
-    expect(table().totalPages, 2);
+    expect(table().items.map((row) => row.category), ['BOM', 'SAMPLE']);
+    expect(table().totalPages, 1);
+    expect(api.queries.every((query) => query['size'] == 100), isTrue);
     final categoryCodes = {'BOM', 'DESIGN', 'SAMPLE', 'TRIAL', 'ECN', 'OTHER'};
     expect(
       table().facets['category']!.map((bucket) => bucket.value).toSet(),
@@ -62,14 +98,11 @@ void main() {
     table().onFilterChanged('category', null);
     await tester.pumpAndSettle();
     expect(api.queries.last.containsKey('category'), isFalse);
-    table().onPageChange!(2);
-    await tester.pumpAndSettle();
-    expect(api.queries.last['page'], 2);
-    expect(table().items.single.category, 'SAMPLE');
+    expect(table().items.map((row) => row.category), ['BOM', 'SAMPLE']);
     expect(
       table().facets['category']!.map((bucket) => bucket.value).toSet(),
       categoryCodes,
-      reason: '翻页后仍使用完整类别枚举，不随当前页样本变化',
+      reason: '完整快照仍使用完整类别枚举，不随行样本变化',
     );
     expect(tester.takeException(), isNull);
     final beforeHistory = api.queries.length;
@@ -132,7 +165,8 @@ void main() {
 }
 
 class _RdApi extends ApiClient {
-  _RdApi() : super(Dio());
+  _RdApi({this.rowCount = 2}) : super(Dio());
+  final int rowCount;
   final queries = <Map<String, dynamic>>[];
 
   @override
@@ -144,23 +178,28 @@ class _RdApi extends ApiClient {
     queries.add(Map<String, dynamic>.from(query ?? const {}));
     final category = query?['category'] as String?;
     final page = query?['page'] as int? ?? 1;
-    final rowCategory = category ?? (page == 1 ? 'BOM' : 'SAMPLE');
-    return {
-      'items': [
+    final size = query?['size'] as int? ?? 20;
+    final allRows = [
+      for (var index = 0; index < rowCount; index++)
         {
-          'id': 'rd-$rowCategory',
-          'taskNo': 'RD-$rowCategory',
-          'title': '待完成的 $rowCategory 工作',
-          'category': rowCategory,
+          'id': 'rd-$index',
+          'taskNo': 'RD-$index',
+          'title': '待完成的工作$index',
+          'category': index.isEven ? 'BOM' : 'SAMPLE',
           'status': 'OPEN',
           'priority': 'NORMAL',
           'rowVersion': 1,
         },
-      ],
+    ];
+    final matching = allRows
+        .where((row) => category == null || row['category'] == category)
+        .toList();
+    return {
+      'items': matching.skip((page - 1) * size).take(size).toList(),
       'page': page,
-      'size': 1,
-      'total': category == null ? 2 : 1,
-      'totalPages': category == null ? 2 : 1,
+      'size': size,
+      'total': matching.length,
+      'totalPages': (matching.length / size).ceil(),
     };
   }
 }

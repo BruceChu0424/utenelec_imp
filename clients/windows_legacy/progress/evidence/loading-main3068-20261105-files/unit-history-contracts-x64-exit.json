@@ -1,0 +1,11 @@
+{
+  "name": "unit-history-contracts-x64",
+  "startedAtUtc": "2026-11-05T21:39:02.224821+00:00",
+  "command": [
+    "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\wpf-3068-current\\x64\\Uten.Legacy.Tests.exe",
+    "--unit-history-contracts"
+  ],
+  "exitCode": 0,
+  "endedAtUtc": "2026-11-05T21:39:12.537199+00:00",
+  "logSha256": "5600bc9292759cb858d3661a78f85f67f455dddfb0c303bed62f240a02d90a38"
+}

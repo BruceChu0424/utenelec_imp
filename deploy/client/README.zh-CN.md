@@ -222,7 +222,13 @@ python deploy/client/build_windows_release.py `
 
 结束行出现 `[OK]` 且回执 `state=FORMAL_WINDOWS_PAIR_READY_FOR_PUBLISH` 才算出包成功；
 预检不过会明确列出每个不一致字段，产物状态记为 `REJECTED_BY_PREFLIGHT`，不得上传。
-复用已构建的 payload 重打包时加 `--skip-build`（仍执行端点核验与预检）。上传时在发布页
+当前 SDK 默认引擎若未通过前述修复引擎准入，必须先使用受审、互相匹配的本地引擎及
+`gen_snapshot` 从最终干净提交完整构建 Release；不能为通过打包而修改共享 SDK 或放宽引擎检查。
+构建回执记录源码 SHA、版本/构建号、依赖锁、引擎与 `gen_snapshot` 摘要、实际构建命令及正式配置；
+`APP_BUILD_ID` 使用该完整源码 SHA，配置中已有的受信控制面入口也须保留并在 AOT 中核对。
+随后核对工作树与锁未变化、实际 payload 的引擎和 AOT 身份，再用上述唯一入口的 `--skip-build`
+生成双包；该参数仍执行端点核验与预检，不能将旧版本或另一提交的 payload 绑定到本次源码。
+上传时在发布页
 **新建**两个发布条目（不要恢复旧草稿，旧草稿钉着旧的 expectedSha256），表单字段按回执
 `publishForm` 逐字填写；预检 CLI 也可单独对任意已有双包复检：
 

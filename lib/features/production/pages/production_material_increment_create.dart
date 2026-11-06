@@ -235,11 +235,7 @@ class _IncrementCreateState
         throw const FormatException('选中材料来源已变化或已有待审批申请，请核对来源');
       }
       final text = _controller(id).text.trim();
-      final qty = productionExactQuantityUnits(text, scale: 4);
-      if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(text) ||
-          qty == null ||
-          qty <= BigInt.zero ||
-          qty >= BigInt.parse('1000000000000000000')) {
+      if (positiveMaterialCommandQuantityText(text) == null) {
         throw FormatException(
           '${row['goodsName']}：追加数量须大于0、最多4位小数且小于100000000000000',
         );

@@ -543,6 +543,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('委外重量超出原写域保留输入并挡住保存和审核', (tester) async {
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
+    final api = SubcontractOutboundFakeApi();
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('weight-cell-input')).first;
+    await tester.enterText(field, '0.00001kg');
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('subcontract-outbound-batch-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
+    expect(tester.widget<TextField>(field).controller!.text, '0.00001kg');
+    await tester.enterText(field, '1500g');
+    await tester.pump();
+    await _confirm(tester);
+    final items = (api.savedBodies.first['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items.first['weight'], '1.5');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('顶部卡片不含发出仓和备注，表内默认仓及备注按原单同步并准确提交', (tester) async {
     await setUtenTestSurfaceSize(tester, const Size(1440, 1200));
     addTearDown(() => setUtenTestSurfaceSize(tester, null));

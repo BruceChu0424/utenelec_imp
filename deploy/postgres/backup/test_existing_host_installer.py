@@ -362,6 +362,11 @@ class ReadOnlyAssessmentContractTest(unittest.TestCase):
             events.append("assessment")
             return assessment
 
+        def version_authority(assets):
+            self.assertTrue(held["value"])
+            self.assertIs(assets, installer.ASSETS)
+            events.append("flyway-authority")
+
         def publish(*_args, **_kwargs):
             self.assertTrue(held["value"])
             events.append("publish")
@@ -372,7 +377,9 @@ class ReadOnlyAssessmentContractTest(unittest.TestCase):
             installer, "build_assessment", side_effect=reassess
         ), mock.patch.object(installer, "_archive_existing_plan", side_effect=lambda: events.append("archive")), mock.patch.object(
             installer, "_atomic_write", side_effect=publish
-        ), mock.patch.object(installer, "_require_no_installer_transaction"):
+        ), mock.patch.object(installer, "_require_no_installer_transaction"), mock.patch.object(
+            installer, "_require_flyway_version_authority", side_effect=version_authority
+        ):
             _, plan_sha = installer.record_plan(
                 expected_assessment_sha256=assessment_sha,
                 confirmation=installer.RECORD_CONFIRMATION,
@@ -380,7 +387,7 @@ class ReadOnlyAssessmentContractTest(unittest.TestCase):
 
         self.assertRegex(plan_sha, r"^[0-9a-f]{64}$")
         self.assertEqual(
-            ["lock-enter", "identity", "assessment", "archive", "publish", "lock-exit"],
+            ["lock-enter", "identity", "flyway-authority", "assessment", "archive", "publish", "lock-exit"],
             events,
         )
 
@@ -952,6 +959,37 @@ class PosixAtomicFilesystemContractTest(unittest.TestCase):
             link.symlink_to(real)
             with self.assertRaises(installer.InstallerError):
                 installer._file_observation(link, allow_missing=False)
+
+
+class FlywayAuthorityDependencyTests(unittest.TestCase):
+    def setUp(self):
+        self.asset = installer.Asset(
+            "health-runtime", Path("/reviewed/health.py"), Path("/fixed/health.py"), 0o755
+        )
+        self.authority = installer.FLYWAY_VERSION_SOURCE.read_bytes()
+
+    def test_existing_exact_bootstrap_is_read_only_and_never_an_install_asset(self):
+        with mock.patch.object(installer, "_safe_source_bytes", return_value=self.authority) as capture, \
+             mock.patch.object(Path, "lstat", return_value=SimpleNamespace(st_gid=0, st_mode=stat.S_IFREG | 0o644)), \
+             mock.patch.object(installer, "_atomic_write") as write:
+            installer._require_flyway_version_authority((self.asset,))
+        self.assertEqual(capture.call_count, 2)
+        write.assert_not_called()
+        self.assertNotIn(installer.FLYWAY_VERSION_AUTHORITY, {asset.target for asset in installer.ASSETS})
+
+    def test_changed_bootstrap_blocks_assessment_before_host_queries_or_writes(self):
+        runner = mock.Mock()
+        with mock.patch.object(installer, "_require_root"), \
+             mock.patch.object(installer, "_require_no_installer_transaction"), \
+             mock.patch.object(installer, "_safe_source_bytes", side_effect=[self.authority, b"different authority"]), \
+             mock.patch.object(Path, "lstat", return_value=SimpleNamespace(st_gid=0, st_mode=stat.S_IFREG | 0o644)), \
+             mock.patch.object(installer, "build_assessment") as assess, \
+             mock.patch.object(installer, "_atomic_write") as write:
+            with self.assertRaisesRegex(installer.InstallerError, "separately reviewed bootstrap"):
+                installer.assess(identity=installer.Identity(1, 1), assets=(self.asset,), runner=runner)
+        assess.assert_not_called()
+        runner.assert_not_called()
+        write.assert_not_called()
 
 
 if __name__ == "__main__":

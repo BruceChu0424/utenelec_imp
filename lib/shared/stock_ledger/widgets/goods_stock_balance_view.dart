@@ -68,6 +68,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     with
         UtenRefreshParticipant<GoodsStockBalanceView>,
         ScopedPagedReadViewMixin<GoodsStockBalanceView> {
+  @override
+  Future<void> onReadViewResumed() => _load(1);
+
   final _readViewportRows = MasterDataTableRowsController<BalanceRow>();
   int get _visibleReadPage => _balances == null
       ? (_balances?.page ?? 1)
@@ -184,6 +187,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         _loading = false;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!mounted || version != _version) return;
       setState(() {
         _error = humanErrorMessage(caughtError) ?? '库存余额加载失败，请检查网络后重试';

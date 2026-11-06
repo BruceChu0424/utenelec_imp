@@ -31,4 +31,11 @@ public class FinanceAccountingImportController {
     @PostMapping("/{id}/approve") public Result approve(@PathVariable UUID id,@RequestBody Review request){return service.approve(id,request);}
     @PostMapping("/{id}/reject") public Preview reject(@PathVariable UUID id,@RequestBody Review request){return service.reject(id,request);}
     @PostMapping("/{id}/withdraw") public Preview withdraw(@PathVariable UUID id,@RequestBody Review request){return service.withdraw(id,request);}
+
+    @GetMapping("/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(
+            @RequestParam(defaultValue="all") String scope,@RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="100") int size,@RequestParam(required=false) String readSnapshotRevision) {
+        return service.summaries(scope,page,size,readSnapshotRevision);
+    }
 }

@@ -1,0 +1,1182 @@
+[
+  {
+    "sourcePath": "assets/fonts/OFL.txt",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/fonts/OFL.txt"
+  },
+  {
+    "sourcePath": "contracts/windows-engine-safety/v1.json",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/contracts/windows-engine-safety/v1.json"
+  },
+  {
+    "sourcePath": "contracts/windows-payload-binding/v1.json",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/contracts/windows-payload-binding/v1.json"
+  },
+  {
+    "sourcePath": "docs/00-项目准则/13-适老化UX基线.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/00-项目准则/13-适老化UX基线.md"
+  },
+  {
+    "sourcePath": "docs/00-项目准则/14-徽章与计数口径.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/00-项目准则/14-徽章与计数口径.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/AI工作助手使用说明.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/AI工作助手使用说明.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/App外壳.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/App外壳.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/HR任务中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/HR任务中心.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/产成品待点收任务页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/产成品待点收任务页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/人事花名册核对与员工资料更正页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/人事花名册核对与员工资料更正页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库任务中心页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库任务中心页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库到货登记页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库到货登记页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库单据编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库单据编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库委外出仓工作台页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库委外出仓工作台页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库实物单据历史专页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库实物单据历史专页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库管理枢纽页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库管理枢纽页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/仓库资料页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/仓库资料页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/入库任务中心页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/入库任务中心页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/入职流程页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/入职流程页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/公司资料库.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/公司资料库.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/出入库记录页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/出入库记录页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/出库任务中心页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/出库任务中心页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/分析关联订单货品清单页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/分析关联订单货品清单页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/列表分类与状态呈现.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/列表分类与状态呈现.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/即时库存页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/即时库存页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/员工列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/员工列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/员工编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/员工编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/员工详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/员工详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/品质任务中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/品质任务中心.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/品质检测记录页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/品质检测记录页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/品质部检查结果页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/品质部检查结果页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/基础资料页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/基础资料页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/委外专属工作台与页面权限.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/委外专属工作台与页面权限.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/委外发料单页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/委外发料单页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/委外回厂短交判定页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/委外回厂短交判定页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/委外申请页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/委外申请页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/委外领料批量出仓页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/委外领料批量出仓页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/官网管理页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/官网管理页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/官网询盘页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/官网询盘页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/审批只读检查.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/审批只读检查.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/客户端软件更新.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/客户端软件更新.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/客户零星发货与出货财务审核.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/客户零星发货与出货财务审核.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工作台首页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工作台首页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工程研发部任务中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工程研发部任务中心.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工程首次基本单位核对.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工程首次基本单位核对.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工资条列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工资条列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工资条审核页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工资条审核页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工资条生成页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工资条生成页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/工资条详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/工资条详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/平台设置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/平台设置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/库存分析页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/库存分析页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/库存列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/库存列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/库存盘点审核页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/库存盘点审核页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/库存详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/库存详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/建议箱页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/建议箱页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/待检处置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/待检处置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/我的权限与申请开通.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/我的权限与申请开通.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/我的申请与审批中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/我的申请与审批中心.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/我的车间任务页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/我的车间任务页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/我的页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/我的页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/报销业务设置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/报销业务设置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/报销列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/报销列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/报销审批列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/报销审批列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/报销审批详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/报销审批详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/报销详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/报销详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/新建报销页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/新建报销页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/服务器存储页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/服务器存储页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/服务器更新页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/服务器更新页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/服务器状态页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/服务器状态页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/物料反查产成品页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/物料反查产成品页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/物料追溯中心设计.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/物料追溯中心设计.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产履约任务工作台.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产履约任务工作台.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产成品质检任务页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产成品质检任务页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产执行分段与报工页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产执行分段与报工页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产物料分析页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产物料分析页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产补产物料待办.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产补产物料待办.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产计划单一键生成与全链路溯源设计.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产计划单一键生成与全链路溯源设计.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产订单排产页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产订单排产页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产调度工作台.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产调度工作台.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产超产与追加处理说明.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产超产与追加处理说明.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产退料批量收料页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产退料批量收料页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/生产领料任务中心页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/生产领料任务中心页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/短信接入设置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/短信接入设置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/离职流程页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/离职流程页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/称重计数页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/称重计数页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/订货单公共表头规范.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/订货单公共表头规范.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/设置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/设置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/访客预约系统.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/访客预约系统.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/财务业务审核中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/财务业务审核中心.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/财务报表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/财务报表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/货品价格分析页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/货品价格分析页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/货品成本工作台.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/货品成本工作台.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/货品操作历史.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/货品操作历史.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/货品资料详情与编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/货品资料详情与编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/货架目视化清单页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/货架目视化清单页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/资产与待摊管理页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/资产与待摊管理页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/资产及待摊重新提交对照.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/资产及待摊重新提交对照.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/超限产出处置.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/超限产出处置.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/车间内料仓发料页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/车间内料仓发料页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/车间内料仓用量与结算页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/车间内料仓用量与结算页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/车间内料仓盘点页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/车间内料仓盘点页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/车间内料仓设置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/车间内料仓设置页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/车间内料仓页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/车间内料仓页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/软件下载页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/软件下载页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/通知列表页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/通知列表页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/通知发布页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/通知发布页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/通知详情页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/通知详情页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/部门管理页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/部门管理页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/采购委外IQC合格待入库任务页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/采购委外IQC合格待入库任务页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/采购委外应付结算工作台.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/采购委外应付结算工作台.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/采购订货单编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/采购订货单编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/重新提交审批差异展示.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/重新提交审批差异展示.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/钱流单据页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/钱流单据页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售任务中心页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售任务中心页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售出货仓库作业页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售出货仓库作业页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售出货批量出库页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售出货批量出库页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售报价单编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售报价单编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售报价财务核价页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售报价财务核价页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售缺货仲裁页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售缺货仲裁页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售订单生产进度.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售订单生产进度.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售订单财务审核页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售订单财务审核页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售订货单编辑页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售订货单编辑页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售负责人订单审核页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售负责人订单审核页.md"
+  },
+  {
+    "sourcePath": "docs/03-页面/销售退货质检冻结处置页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/03-页面/销售退货质检冻结处置页.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/00-业务术语与状态总表.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/00-业务术语与状态总表.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/01-销售订货到发货全链路-SOP.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/01-销售订货到发货全链路-SOP.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/04-生产订单排产与执行全链路需求.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/04-生产订单排产与执行全链路需求.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/05-销售现货预留生命周期与稀缺仲裁.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/05-销售现货预留生命周期与稀缺仲裁.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/06-销售退货质检冻结与处置.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/06-销售退货质检冻结与处置.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/08-委外全链路-订货出仓回仓重设计.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/08-委外全链路-订货出仓回仓重设计.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/09-物料调入与子层级供给总纲.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/09-物料调入与子层级供给总纲.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/2026-09-07-客户现金退款工作包方案.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/2026-09-07-客户现金退款工作包方案.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/2026-09-07-财务原始金额与精确分摊口径.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/2026-09-07-财务原始金额与精确分摊口径.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/2026-09-07-销售资金库存场景矩阵与压力验收.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/2026-09-07-销售资金库存场景矩阵与压力验收.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/员工报销全链路-SOP.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/员工报销全链路-SOP.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/员工报销合规依据与凭证清单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/员工报销合规依据与凭证清单.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/我的申请与审批权限配置指南.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/我的申请与审批权限配置指南.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/物料分析撤回与调拨验证.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/物料分析撤回与调拨验证.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/生产品质恢复与反向约束.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/生产品质恢复与反向约束.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/生产计量与来源守恒.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/生产计量与来源守恒.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/生产销售备注传递.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/生产销售备注传递.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/订单交付与分次收款操作核对.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/订单交付与分次收款操作核对.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/车间任务路线与供料场景矩阵.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/车间任务路线与供料场景矩阵.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/车间内料仓上线与使用说明.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/车间内料仓上线与使用说明.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/采购委外退货成本与商业贷项对账.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/采购委外退货成本与商业贷项对账.md"
+  },
+  {
+    "sourcePath": "docs/07-业务链路/采购申请分解前数量修正.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/07-业务链路/采购申请分解前数量修正.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-010-组织岗位模型与统一部门选择器.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-010-组织岗位模型与统一部门选择器.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-012-报表加密导出与列排序与行跳源头.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-012-报表加密导出与列排序与行跳源头.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-018-资产与待摊专业子账及不可变过账.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-018-资产与待摊专业子账及不可变过账.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-020-入职工号岗位与管理中心用人语义.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-020-入职工号岗位与管理中心用人语义.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-021-人事域完善-转正车辆多联系方式与任务软认领.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-021-人事域完善-转正车辆多联系方式与任务软认领.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-023-统一任务并发控制与认领.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-023-统一任务并发控制与认领.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-024-三架构缺口闭合-退货处置-委外守恒-IQC.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-024-三架构缺口闭合-退货处置-委外守恒-IQC.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-025-通知庆典互动与自动发布.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-025-通知庆典互动与自动发布.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-026-登录庆典弹窗与今日卡片与祝福快捷发布与账号锁定.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-026-登录庆典弹窗与今日卡片与祝福快捷发布与账号锁定.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-027-财务审批改为权限授权的审核组.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-027-财务审批改为权限授权的审核组.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-028-计划部自底向上整树确认.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-028-计划部自底向上整树确认.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-029-生产计划前需求与物料分析重构.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-029-生产计划前需求与物料分析重构.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-030-销售待收计划与正式应收分层.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-030-销售待收计划与正式应收分层.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-032-导出文件可选密码保护.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-032-导出文件可选密码保护.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-033-生产物料节点任务化与自底向上备料.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-033-生产物料节点任务化与自底向上备料.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-034-分类驱动业务编号与UUID关联.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-034-分类驱动业务编号与UUID关联.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-035-收付款类别分类页与财务引用一致性.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-035-收付款类别分类页与财务引用一致性.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-036-全局业务标识与单据号命名空间.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-036-全局业务标识与单据号命名空间.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-038-来源单号可读化与订货仓库后移.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-038-来源单号可读化与订货仓库后移.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-039-计划前物料分析备料库存绑定.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-039-计划前物料分析备料库存绑定.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-040-销售开单体验与财务审核中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-040-销售开单体验与财务审核中心.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-041-快递式全链路进度追踪.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-041-快递式全链路进度追踪.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-042-委外全链路重设计-订货出仓回仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-042-委外全链路重设计-订货出仓回仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-043-合格到货精确归属与跨分析借料边界.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-043-合格到货精确归属与跨分析借料边界.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-046-生产领料仓库点收报工归属与未来计件边界.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-047-采购委外应付月结与超耗责任分层.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-047-采购委外应付月结与超耗责任分层.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-048-客户预收与销售订单资金事实分层.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-048-客户预收与销售订单资金事实分层.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-049-跨物料分析让料与后续供给优先补齐.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-049-跨物料分析让料与后续供给优先补齐.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-050-客户访问与人员数据交接分层.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-050-客户访问与人员数据交接分层.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-051-账户余额核对与流水可追溯.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-051-账户余额核对与流水可追溯.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-052-关键业务事件强提醒与驳回修订闭环.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-052-关键业务事件强提醒与驳回修订闭环.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-053-多币种收款毛额净额与追加式账户流水.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-053-多币种收款毛额净额与追加式账户流水.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-054-生产报工质量放行与合格入库.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-054-生产报工质量放行与合格入库.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-055-即时库存台账金额与货品成本完整性.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-055-即时库存台账金额与货品成本完整性.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-056-计划前生产需求与公共安全库存补库分账.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-056-计划前生产需求与公共安全库存补库分账.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-057-下线生产BOM策略与计划级例外放行.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-057-下线生产BOM策略与计划级例外放行.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-058-生产成品仓库送检登记与库位快照.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-058-生产成品仓库送检登记与库位快照.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-059-委外目标件出仓与前置自制准备.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-062-委外先自制后通知与分批通知.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-062-委外先自制后通知与分批通知.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-063-部门定向审核待办弹窗与通知办结撤回.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-063-部门定向审核待办弹窗与通知办结撤回.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-064-直下单销售式供货流现货直发缺口才生产.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-064-直下单销售式供货流现货直发缺口才生产.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-065-备料下达同批合并采购委外申请.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-065-备料下达同批合并采购委外申请.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-066-分类分段统一与历史记录时间门控.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-066-分类分段统一与历史记录时间门控.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-068-采购委外订货单行级商业条款与学习模式.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-068-采购委外订货单行级商业条款与学习模式.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-069-订货行多来源锚定与同货品合并.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-069-订货行多来源锚定与同货品合并.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-070-物料分析分桶详情页与三处学习记忆及超量下单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-070-物料分析分桶详情页与三处学习记忆及超量下单.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-071-下达车间原子化与计划侧齐套判断下线.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-071-下达车间原子化与计划侧齐套判断下线.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-072-委外收敛与采购委外订货批准后改量.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-072-委外收敛与采购委外订货批准后改量.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-073-本批物料履约与同主仓分仓领料.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-073-本批物料履约与同主仓分仓领料.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-075-合格来源跟随实际入库仓与车间通知.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-075-合格来源跟随实际入库仓与车间通知.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-076-生产成品品质检查单聚合层.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-076-生产成品品质检查单聚合层.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-077-车间明确提交领料后进入仓库任务.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-077-车间明确提交领料后进入仓库任务.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-078-完整子批生产与实际用料余料退仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-078-完整子批生产与实际用料余料退仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-079-品质放行逐行实际入库仓与委外成本来源.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-079-品质放行逐行实际入库仓与委外成本来源.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-080-跨路线在途调入与子层按计划产出展开.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-080-跨路线在途调入与子层按计划产出展开.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-081-下层一键办齐与物料表身份列统一.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-081-下层一键办齐与物料表身份列统一.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-082-出货财审退回链路闭环.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-082-出货财审退回链路闭环.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-083-客户供应商资料子表与详情整页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-083-客户供应商资料子表与详情整页.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-084-出货仓库一步确认出库.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-084-出货仓库一步确认出库.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-085-委外单一子件直接发料出仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-085-委外单一子件直接发料出仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-086-报工同页登记实际用料与收尾余料退仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-086-报工同页登记实际用料与收尾余料退仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-087-车间内部直送与线边仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-087-车间内部直送与线边仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-088-待排产扣除分析承接量与关联订单只读清单页.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-088-待排产扣除分析承接量与关联订单只读清单页.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-089-车间直送v2持续生产与线边仓自动配置.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-089-车间直送v2持续生产与线边仓自动配置.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-090-到货先入库后质检.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-090-到货先入库后质检.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-091-开工路线确认与到货进展通知.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-091-开工路线确认与到货进展通知.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-092-直送资格按sourcing收紧.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-092-直送资格按sourcing收紧.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-093-车间先确认路线与同任务持续补料.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-093-车间先确认路线与同任务持续补料.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-094-报销链路完整化.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-094-报销链路完整化.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-095-车间路线开工前随时可换与逐种物料事实.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-095-车间路线开工前随时可换与逐种物料事实.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-096-车间任务三条路线通用与路线记忆批量设路线.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-096-车间任务三条路线通用与路线记忆批量设路线.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-097-出货放行记账汇率由财务确认.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-097-出货放行记账汇率由财务确认.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-098-委外允许损耗与回厂短交判定.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-098-委外允许损耗与回厂短交判定.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-099-计划量单一入口与子层按计划产出展开.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-099-计划量单一入口与子层按计划产出展开.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-100-进行中黄色数量徽章与三形态计数口径.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-100-进行中黄色数量徽章与三形态计数口径.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-101-委外单一子层级按到货解锁与容差自动结案.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-101-委外单一子层级按到货解锁与容差自动结案.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-102-物料分析一张表直接下单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-102-物料分析一张表直接下单.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-103-委外两条路线同位锁定与单一子件按到货解锁.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-103-委外两条路线同位锁定与单一子件按到货解锁.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-104-追加自制并入未开工的生产计划.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-104-追加自制并入未开工的生产计划.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-111-主档删除引用保护与批量原子命令.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-111-主档删除引用保护与批量原子命令.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-112-金额口径统一与资金过账单一入口.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-112-金额口径统一与资金过账单一入口.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-113-委外子件精确库存归属交接.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-113-委外子件精确库存归属交接.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-114-委外损耗独立结清不改订货量.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-114-委外损耗独立结清不改订货量.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-115-仓库负责人与仓库通知按仓分发.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-115-仓库负责人与仓库通知按仓分发.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-116-物料分析下达预览只读投影.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-116-物料分析下达预览只读投影.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-117-下单后查子层物料与车间催计划.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-117-下单后查子层物料与车间催计划.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-118-自制实际产出分账与公共超产.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-118-自制实际产出分账与公共超产.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-119-底层自制实际领料与BOM累计学习.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-121-跨模块新建表单草稿恢复.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-121-跨模块新建表单草稿恢复.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-127-直送资格单一事实源、不可转原因与报工自动分流.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-127-直送资格单一事实源、不可转原因与报工自动分流.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-128-往来余额按单据币种显示与信用口径统一.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-128-往来余额按单据币种显示与信用口径统一.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-129-BOM设计使用数量与真实使用数量.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-130-手工需求单多货品与新建物料分析页表格化.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-130-手工需求单多货品与新建物料分析页表格化.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-131-车间整批领料与盘点计耗.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-131-车间整批领料与盘点计耗.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-134-销售客户文件AI识别导入与主档学习及报价财务核价.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-134-销售客户文件AI识别导入与主档学习及报价财务核价.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-136-业务扩展列与客户报价模板学习.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-136-业务扩展列与客户报价模板学习.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-137-全平台可扩展表格与统一投影.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-137-全平台可扩展表格与统一投影.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-138-货品成本单与实际成本工作台.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-138-货品成本单与实际成本工作台.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-139-销售报价议价客户确认与货品报价历史.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-139-销售报价议价客户确认与货品报价历史.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-143-委外按工序领直属物料与分批回厂.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-143-委外按工序领直属物料与分批回厂.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-144-采购允许超收比例与超出部分财务审批.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-144-采购允许超收比例与超出部分财务审批.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-146-不良品仓业务规则与可用量单一口径.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-146-不良品仓业务规则与可用量单一口径.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-147-车间内料仓开通单一真源与发料来源仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-147-车间内料仓开通单一真源与发料来源仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-148-产成品实物交接批同去向合单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-148-产成品实物交接批同去向合单.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-149-仓库数据范围服务端强制.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-149-仓库数据范围服务端强制.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-151-表单草稿回到初始值单重参数结构化契约与入库登记单批合一.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-151-表单草稿回到初始值单重参数结构化契约与入库登记单批合一.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-154-证件号问题不阻塞开号与证件核对任务.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-154-证件号问题不阻塞开号与证件核对任务.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-156-委外申请物料齐套才解锁下单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-156-委外申请物料齐套才解锁下单.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-160-员工证件批量核对更正.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-160-员工证件批量核对更正.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-161-表格行高统一读表单行基准与格内组件规范.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-161-表格行高统一读表单行基准与格内组件规范.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-162-页面权限抽屉与权限面层级.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-162-页面权限抽屉与权限面层级.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-165-车间到货通知产能水位与车间负责人受众.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-165-车间到货通知产能水位与车间负责人受众.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-166-中央提醒弹窗分级体系.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-166-中央提醒弹窗分级体系.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-167-实际超限报工与本批产出处置.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-167-实际超限报工与本批产出处置.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-168-常用模块权限分组.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-168-常用模块权限分组.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-169-状态色深色实底与逐页独立配色.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-169-状态色深色实底与逐页独立配色.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-170-全员基础包钉死护栏.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-170-全员基础包钉死护栏.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-171-委外任务中心领料并入待处理分类.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-171-委外任务中心领料并入待处理分类.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-172-个人通知弹窗开关.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-172-个人通知弹窗开关.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-173-会话状态语义相等与身份栅栏去对象指纹.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-173-会话状态语义相等与身份栅栏去对象指纹.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-174-车间内流转免预开通内料仓.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-174-车间内流转免预开通内料仓.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-175-公司平台品牌与配置中心.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-175-公司平台品牌与配置中心.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-176-生产日报保存实耗与审核余料处理.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-176-生产日报保存实耗与审核余料处理.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-177-反审保留原始审核事实并恢复后续草稿.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-177-反审保留原始审核事实并恢复后续草稿.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-178-审批退回保留来源与筛选可恢复.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-178-审批退回保留来源与筛选可恢复.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-179-货品价格分析与可追溯建议.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-179-货品价格分析与可追溯建议.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-180-进行中与历史单据按真实业务生命周期分流.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-180-进行中与历史单据按真实业务生命周期分流.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-181-操作资格统一使用有效权限与准确失败提示.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-181-操作资格统一使用有效权限与准确失败提示.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-182-货品操作历史与可控撤回.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-182-货品操作历史与可控撤回.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-183-本地业务服务与受控远程入口.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-183-本地业务服务与受控远程入口.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-184-业务待办按真实操作资格与责任范围计算.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-184-业务待办按真实操作资格与责任范围计算.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-185-组装编辑草稿与共享组件同步.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-185-组装编辑草稿与共享组件同步.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-186-原材料行情手动关联与离线预测.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-186-原材料行情手动关联与离线预测.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-187-权限模板作为可预览的授权快照.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-187-权限模板作为可预览的授权快照.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-188-BOM粘贴按既有边复制与停用货品.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-188-BOM粘贴按既有边复制与停用货品.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-189-基础资料对象历史与受控版本恢复.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-189-基础资料对象历史与受控版本恢复.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-190-基本单位日常字段简化.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-190-基本单位日常字段简化.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-191-禁用货品自动退出当前组装清单.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-191-禁用货品自动退出当前组装清单.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-192-业务数据清空功能永久删除.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-192-业务数据清空功能永久删除.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-193-采购委外提前结束与余量重建财审.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-193-采购委外提前结束与余量重建财审.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-194-公司资料库与目录授权.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-194-公司资料库与目录授权.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-195-采购委外直接取消未收余量.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-195-采购委外直接取消未收余量.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-196-超级管理员权限可被个人收回与外网授权放开.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-196-超级管理员权限可被个人收回与外网授权放开.md"
+  },
+  {
+    "sourcePath": "docs/99-决策记录-ADR/ADR-197-BOM行与货品主档既有引用不按新选重校验.md",
+    "compiledPath": "server/target-loading-main-3068-output-fixed/classes/ai-knowledge/99-决策记录-ADR/ADR-197-BOM行与货品主档既有引用不按新选重校验.md"
+  }
+]

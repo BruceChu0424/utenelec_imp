@@ -56,6 +56,24 @@ Future<void> _pumpPage(
 }
 
 void main() {
+  testWidgets('检验201条首续同100批且合并全部record身份', (tester) async {
+    final api = _RecordApi(rowCount: 201);
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.procurementInspectionView},
+      size: const Size(1400, 950),
+    );
+    final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byType(MasterDataTableView<QualityInspectionRecord>),
+    );
+    expect(table.items, hasLength(201));
+    expect(table.items.last.recordId, 'iqc-event-1-200');
+    expect(api.listQueries.map((query) => query['page']), [1, 2, 3]);
+    expect(api.listQueries.every((query) => query['size'] == 100), isTrue);
+    expect(table.totalPages, 1);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('决定日期默认近一月，卡片内清除后按全部日期重新查询', (tester) async {
     final api = _RecordApi();
     await _pumpPage(
@@ -512,7 +530,8 @@ void main() {
 }
 
 class _RecordApi extends ApiClient with NativeFacetFakeTransport {
-  _RecordApi({this.empty = false}) : super(Dio());
+  _RecordApi({this.empty = false, this.rowCount = 1}) : super(Dio());
+  final int rowCount;
 
   final bool empty;
   final List<String> listPaths = [];
@@ -563,12 +582,25 @@ class _RecordApi extends ApiClient with NativeFacetFakeTransport {
       );
     }
     final domain = path.contains('/production/') ? 'FQC' : 'IQC';
+    final page = (query?['page'] as num?)?.toInt() ?? 1;
+    final size = (query?['size'] as num?)?.toInt() ?? 40;
+    final total = empty ? 0 : rowCount;
     return {
-      'items': empty ? const <Map<String, dynamic>>[] : [_record(domain)],
-      'page': (query?['page'] as num?)?.toInt() ?? 1,
-      'size': 40,
-      'total': empty ? 0 : 1,
-      'totalPages': empty ? 0 : 1,
+      'items': [
+        for (
+          var index = (page - 1) * size;
+          index < total && index < page * size;
+          index++
+        )
+          {
+            ..._record(domain),
+            if (index > 0) 'recordId': '${domain.toLowerCase()}-event-1-$index',
+          },
+      ],
+      'page': page,
+      'size': size,
+      'total': total,
+      'totalPages': (total / size).ceil(),
       'metrics': const {
         'ALL': 5,
         'PASS': 3,

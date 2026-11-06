@@ -1,0 +1,42 @@
+{
+  "createdAtUtc": "2026-11-05T21:08:45.578713+00:00",
+  "mainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+      "reviewedMainSha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c",
+      "resolvedCandidateSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering."
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+      "reviewedMainSha256": "84fb0c4dec4d67c522284263f1bb34ab109eb62df6aa86466ee9b4af3d65ff5e",
+      "resolvedCandidateSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering."
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+      "reviewedMainSha256": "4bcb9076e8badc06bcd577f7b2e5d37b71f024fad48dfea6c408fd61bf41fc4b",
+      "resolvedCandidateSha256": "a266379079aa289832e77a5e77431ad0585e6253cf65b121f0d3e17c9ca83ea4",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering."
+    },
+    {
+      "path": "docs/数据迁移/README.md",
+      "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+      "reviewedMainSha256": "c1af9e4b4ea502f2372cf3c259002f76ef66166e0930fc0e756b678d49fa6fe0",
+      "resolvedCandidateSha256": "452cbcd949e7cfb99a0a40ca97c354f7fabe50063afce903fb8514fb63c6f4d1",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering."
+    }
+  ],
+  "sameMain1058Sha256": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a",
+  "oldExec1057": "moved to final1070 with body bytes unchanged; all1004 committed Main migrations byte exact",
+  "previousManifestSha256": "49f748f42e49a29dab5fb4a46b7b0150d1a16ab8001cb89de01a660374dc902f",
+  "latestCompositionReceiptSha256": "0a7f6149394afaa94773626f3e1e76e78c6da948687e4b2bf531410597201c0c"
+}

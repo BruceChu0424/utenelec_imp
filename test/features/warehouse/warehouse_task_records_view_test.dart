@@ -1868,7 +1868,8 @@ void main() {
         'dateTo': '2026-10-12',
         'scopeWarehouseId': 'warehouse-2',
         'page': 2,
-        'size': 20,
+        'size': 100,
+        'includeMetadata': false,
         'sort': 'businessDate',
         'order': 'desc',
         'search.quantity': '>=9007199254740993.0001',
@@ -1877,7 +1878,7 @@ void main() {
     },
   );
 
-  testWidgets('状态与来源表头查询完整服务端结果，翻页/清空/重排返回正确范围', (tester) async {
+  testWidgets('完整列表保留状态与来源表头的服务端范围，滚动不分页，清空重排重新读取', (tester) async {
     final rows = [
       for (var index = 1; index <= 20; index++)
         warehouseTestRecord(
@@ -1896,17 +1897,10 @@ void main() {
     ];
     final gateway = WarehouseTaskRecordsFakeGateway(rows);
     await _pump(tester, gateway);
-    expect(find.text('LATE-21'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    expect(gateway.calls.any((query) => query.page == 2), isTrue);
-    final pageInput = tester.widget<TextField>(
-      find.byWidgetPredicate(
-        (widget) => widget is TextField && widget.decoration?.hintText == '页码',
-      ),
-    );
-    expect(pageInput.controller?.text, '2');
-    expect(find.text('LATE-21'), findsOneWidget);
+    expect(_table(tester).items, hasLength(21));
+    expect(_table(tester).items.last.billNo, 'LATE-21');
+    expect(find.byKey(const ValueKey('master-table-page-next')), findsNothing);
+    expect(gateway.calls.every((query) => query.page == 1), isTrue);
     _table(tester).onFilterChanged('status', 'OTHER_DRAFT');
     await tester.pumpAndSettle();
     expect(gateway.calls.last.page, 1);
@@ -1920,7 +1914,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.calls.last.source, 'ALL');
     expect(gateway.calls.last.status, isNull);
-    expect(_table(tester).totalPages, 2);
+    expect(_table(tester).items, hasLength(21));
+    expect(_table(tester).totalPages, 1);
     final beforeSort = gateway.calls.length;
     _table(tester).onSortChange!('billNo', false);
     await tester.pumpAndSettle();
@@ -1963,7 +1958,8 @@ void main() {
       ),
     ]);
     await _pump(tester, gateway);
-    expect(find.text('LATE-HEADER'), findsNothing);
+    expect(_table(tester).items, hasLength(21));
+    expect(_table(tester).items.last.billNo, 'LATE-HEADER');
     expect(_table(tester).serverColumnSearch, isTrue);
     _table(tester).onFilterChanged('search.goodsName', '指定%_');
     await tester.pumpAndSettle();

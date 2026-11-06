@@ -45,6 +45,11 @@ class ProductionMaterialAnalysisHistoryPage extends ConsumerStatefulWidget {
 class _ProductionMaterialAnalysisHistoryPageState
     extends ConsumerState<ProductionMaterialAnalysisHistoryPage>
     with ScopedPagedReadViewMixin<ProductionMaterialAnalysisHistoryPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   static const _statuses = <String, String>{
     'ACTIVE': '进行中',
     'PARTIALLY_PLANNED': '部分已下达，剩余待料',
@@ -142,6 +147,7 @@ class _ProductionMaterialAnalysisHistoryPageState
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!current()) return;
       setState(() {
         _loading = false;
@@ -180,7 +186,11 @@ class _ProductionMaterialAnalysisHistoryPageState
       context,
       RouteName.productionMaterialAnalysis,
     );
-    ref.onPageResume(_myLocation!, () => _load());
+    Future<void> visibleReadReturn() => _load();
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
+    ref.onPageResume(_myLocation!, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: '物料分析记录',

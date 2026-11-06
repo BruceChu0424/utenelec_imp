@@ -563,8 +563,12 @@ class OperationsWorkbenchData {
       size: size,
       total: total,
       totalPages: totalPages,
+      facets: facets,
+      facetNullCounts: nullCounts,
+      readScopeVersion: readScopeVersion,
     ),
     snapshot: this,
+    rebuildSnapshot: withPage,
   );
 
   /// Render the table controls before a query has returned. This is a UI-only
@@ -573,7 +577,7 @@ class OperationsWorkbenchData {
     required this.department,
     this.page = 1,
     this.size = 50,
-  }) : summary = const OperationsWorkbenchSummary(
+  }) : _summary = const OperationsWorkbenchSummary(
          totalTasks: 0,
          overdueTasks: 0,
          openTasks: 0,
@@ -585,11 +589,13 @@ class OperationsWorkbenchData {
        totalPages = 0,
        capabilities = const OperationsWorkbenchCapabilities(),
        facets = const {},
-       nullCounts = const {};
+       nullCounts = const {},
+       metadataIncluded = false,
+       readScopeVersion = null;
 
   const OperationsWorkbenchData({
     required this.department,
-    required this.summary,
+    required OperationsWorkbenchSummary? summary,
     required this.items,
     required this.page,
     required this.size,
@@ -598,10 +604,21 @@ class OperationsWorkbenchData {
     required this.capabilities,
     this.facets = const {},
     this.nullCounts = const {},
-  });
+    this.metadataIncluded = true,
+    this.readScopeVersion,
+    // Keep the public summary argument while representing omitted batch metadata.
+    // ignore: prefer_initializing_formals
+  }) : _summary = summary;
 
   final OperationsWorkbenchDepartment department;
-  final OperationsWorkbenchSummary summary;
+  final OperationsWorkbenchSummary? _summary;
+  OperationsWorkbenchSummary get summary =>
+      _summary ??
+      (throw StateError(
+        'This internal row batch deliberately omitted summary metadata',
+      ));
+  final bool metadataIncluded;
+  final String? readScopeVersion;
   final List<OperationsWorkbenchTask> items;
   final int page;
   final int size;
@@ -610,6 +627,23 @@ class OperationsWorkbenchData {
   final OperationsWorkbenchCapabilities capabilities;
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
+
+  OperationsWorkbenchData withPage(
+    PagedResult<OperationsWorkbenchTask> combined,
+  ) => OperationsWorkbenchData(
+    department: department,
+    summary: _summary,
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+    capabilities: capabilities,
+    facets: facets,
+    nullCounts: nullCounts,
+    metadataIncluded: metadataIncluded,
+    readScopeVersion: readScopeVersion,
+  );
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
 
@@ -642,14 +676,19 @@ class OperationsWorkbenchData {
   ) {
     final rawItems = json['items'];
     final rawSummary = json['summary'];
-    if (rawItems is! List || rawSummary is! Map) {
+    final metadataIncluded = json['metadataIncluded'] != false;
+    if (rawItems is! List || (metadataIncluded && rawSummary is! Map)) {
       throw const FormatException('履约工作台响应缺少 items 或 summary');
     }
     return OperationsWorkbenchData(
       department: department,
-      summary: OperationsWorkbenchSummary.fromJson(
-        rawSummary.cast<String, dynamic>(),
-      ),
+      summary: rawSummary is Map
+          ? OperationsWorkbenchSummary.fromJson(
+              rawSummary.cast<String, dynamic>(),
+            )
+          : null,
+      metadataIncluded: metadataIncluded,
+      readScopeVersion: json['readScopeVersion'] as String?,
       items: rawItems
           .map(
             (item) => OperationsWorkbenchTask.fromJson(

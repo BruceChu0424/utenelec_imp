@@ -242,6 +242,9 @@ class _RdTaskListPanel extends ConsumerStatefulWidget {
 
 class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     with ScopedPagedReadViewMixin<_RdTaskListPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   int _unitOperationRevision = 0;
   bool _openingUnit = false;
   Object? _unitOpeningToken;
@@ -582,6 +585,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     try {
       final cached = await readScopedPage<RdTaskRow>(
         requestedPage,
+        idOf: (row) => row.id,
         query: (
           repository,
           segment,
@@ -607,6 +611,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
             category: category.isEmpty ? null : category,
             keyword: keyword.isEmpty ? null : keyword,
             page: page,
+            size: 100,
             columns: {
               ...columns.searches,
               'search.status': ?statusFilter,
@@ -624,6 +629,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
               totalPages: data.totalPages,
             ),
             snapshot: data,
+            rebuildSnapshot: data.withPage,
           );
         },
       );
@@ -637,6 +643,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
         _loading = false;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (!mounted || requestId != _requestId) return;
       final message = error is ApiException ? error.message : '研发任务加载失败，请稍后重试';
       if (nativeReadAccessDenied(error)) {

@@ -13,6 +13,10 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/paging/scoped_paged_read.dart'
+    show pagedReadAccessDenied;
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -91,7 +95,9 @@ class _Line extends EditableGridRow {
 }
 
 class _AdjustmentState extends ConsumerState<_Adjustment>
-    with FormDraftMixin<_Adjustment> {
+    with FormDraftMixin<_Adjustment>, ReadViewActivityMixin<_Adjustment> {
+  @override
+  Future<void> onReadViewResumed() => _load();
   late final ApiClient _api;
   late final int _epoch;
   final _grid = UtenEditableGridController<_Line>();
@@ -99,8 +105,11 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
   Map<String, dynamic> _data = {};
   Map<String, dynamic>? _preview, _sent;
   String? _error;
-  int _page = 1, _pages = 1, _generation = 0, _recordPage = 1, _recordPages = 1;
-  bool _busy = false, _initialized = false, _unknown = false;
+  int _generation = 0;
+  bool _busy = false,
+      _initialized = false,
+      _unknown = false,
+      _readDenied = false;
   Map<String, dynamic> get _scope => {
     'statementReviewId': widget.statementReviewId,
     'expectedSourceFingerprint': widget.fingerprint,
@@ -115,7 +124,8 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
     'finance_payment:approve',
     'finance_post:execute',
   });
-  bool get _editable => _current && !_busy && _sent == null && _write;
+  bool get _editable =>
+      _current && !_readDenied && !_busy && _sent == null && _write;
   List<Map<String, dynamic>> get _targets => _maps(_data['targets']);
   List<Map<String, dynamic>> get _accounts => _maps(_data['accounts']);
   @override
@@ -211,7 +221,7 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
     _epoch = ref.read(exportContextEpochProvider);
     startFormDraftIdentityGuard();
     _grid.rowsListenable.addListener(_rowsChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -222,30 +232,95 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
     super.dispose();
   }
 
-  Future<void> _load(int page, {int? recordPage}) async {
+  Future<void> _load() async {
     if (!_current || _busy) return;
     final generation = ++_generation;
+    bool current() => _current && generation == _generation;
+    final query = Map<String, dynamic>.unmodifiable(_scope);
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final data = await _api.get(
-        _path,
-        query: {
-          ..._scope,
-          'page': page,
-          'size': 50,
-          'adjustmentPage': recordPage ?? _recordPage,
-        },
-      );
+      final data = await readViewActivity.runRead(current, () async {
+        Map<String, dynamic> first = {};
+
+        final targets =
+            await readVersionedSummarySnapshot<Map<String, dynamic>>(
+              isCurrent: current,
+              idOf: (row) => row['ledgerId'],
+              decode: Map<String, dynamic>.unmodifiable,
+              loadPage: (batch, size, revision) async {
+                final value = await _api.get(
+                  _path,
+                  query: {
+                    ...query,
+                    'part': 'targets',
+                    'page': batch,
+                    'size': size,
+                    'readSnapshotRevision': ?revision,
+                  },
+                );
+                if (batch == 1) first = value;
+                return {...value, 'items': value['targets']};
+              },
+            );
+        // Records have their own count, fixed internal batch and query token.
+        // They must never inherit the independent target count or token.
+        final records =
+            await readVersionedSummarySnapshot<Map<String, dynamic>>(
+              isCurrent: current,
+              batchSize: 50,
+              idOf: (row) => row['id'],
+              decode: Map<String, dynamic>.unmodifiable,
+              loadPage: (batch, size, revision) async {
+                final value = await _api.get(
+                  _path,
+                  query: {
+                    ...query,
+                    'part': 'adjustments',
+                    'adjustmentPage': batch,
+                    'readSnapshotRevision': ?revision,
+                  },
+                );
+                return {
+                  ...value,
+                  'items': value['adjustments'],
+                  'page': value['adjustmentPage'],
+                  'size': value['adjustmentSize'],
+                  'total': value['adjustmentTotal'],
+                  'totalPages': value['adjustmentPages'],
+                };
+              },
+            );
+        // Part-specific tokens are intentionally different. The shared domain
+        // and authority proofs must agree before publishing either collection.
+        if (targets.dataVersion == null || records.dataVersion == null) {
+          throw ApiException(
+            'INCOMPLETE_READ_PROTOCOL',
+            '服务端未提供完整调整范围凭据，请更新后重试',
+          );
+        }
+        if (targets.dataVersion != records.dataVersion ||
+            targets.readScopeVersion != records.readScopeVersion) {
+          throw ApiException('SNAPSHOT_CHANGED', '调整范围已变化，请重新读取');
+        }
+        return <String, dynamic>{
+          ...first,
+          'targets': targets.items,
+          'page': 1,
+          'total': targets.page.total,
+          'totalPages': targets.page.totalPages,
+          'adjustments': records.items,
+          'adjustmentPage': 1,
+          'adjustmentPages': records.page.totalPages,
+          'adjustmentTotal': records.page.total,
+        };
+      });
       if (!_current || generation != _generation) return;
       setState(() {
         _data = data;
-        _page = page;
-        _pages = (data['totalPages'] as num?)?.toInt() ?? 1;
-        _recordPage = (data['adjustmentPage'] as num?)?.toInt() ?? 1;
-        _recordPages = (data['adjustmentPages'] as num?)?.toInt() ?? 1;
+        _readDenied = false;
       });
       if (!_initialized) {
         await initializeFormDraft();
@@ -253,7 +328,16 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
         _initialized = true;
       }
     } catch (e) {
-      if (_current) setState(() => _error = _message(e));
+      if (isRetiredViewRead(e)) return;
+      if (_current && generation == _generation) {
+        setState(() {
+          _error = _message(e);
+          if (pagedReadAccessDenied(e)) {
+            _readDenied = _data.isNotEmpty || _grid.rows.isNotEmpty;
+            _data = {};
+          }
+        });
+      }
     } finally {
       if (_current && generation == _generation) setState(() => _busy = false);
     }
@@ -334,7 +418,7 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
   }
 
   Future<void> _submit() async {
-    if (!_current || _busy || !_write) return;
+    if (!_current || (_readDenied && _sent == null) || _busy || !_write) return;
     if (_sent == null) {
       if (_preview == null || _reference.text.trim().isEmpty) {
         setState(() => _error = '请填写处理依据并预览本次原币和本币金额');
@@ -564,17 +648,20 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
     ref.watch(apiClientProvider);
     ref.watch(exportContextEpochProvider);
     ref.watch(currentPermissionsProvider);
-    if (!_current) {
+    if (!_current || _readDenied) {
       return withFormDraft(
         UtenAlertDialog(
           showCloseButton: true,
           onClose: () => Navigator.pop(context),
 
-          title: const Row(
+          title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('手续费/尾数'),
-              UtenFieldHintIcon(info: '身份、权限或原件范围已变化。原私有草稿保留，请重新进入。'),
+              const Text('手续费/尾数'),
+              UtenFieldHintIcon(
+                info: '身份、权限或原件范围已变化。原私有草稿保留，请重新进入。',
+                errorMessage: _error,
+              ),
             ],
           ),
         ),
@@ -807,10 +894,7 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                             idOf: (r) => '${r['ledgerId']}',
                             busy: _busy,
                             error: _targets.isEmpty ? _error : null,
-                            retry: () => _load(_page),
-                            page: _page,
-                            pages: _pages,
-                            onPage: _load,
+                            retry: () => _load(),
                             scope: (_epoch, widget.statementReviewId),
                             selectable: _editable,
                             selectedIds: _grid.rows
@@ -927,9 +1011,6 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                               rows: _maps(_data['adjustments']),
                               idOf: (r) => '${r['id']}',
                               onOpen: _write ? _act : null,
-                              page: _recordPage,
-                              pages: _recordPages,
-                              onPage: (page) => _load(_page, recordPage: page),
                               scope: (_epoch, widget.statementReviewId),
                             ),
                           ),
@@ -940,9 +1021,7 @@ class _AdjustmentState extends ConsumerState<_Adjustment>
                 UtenDialogActions(
                   children: [
                     UtenButton(
-                      onPressed: _busy || _sent != null
-                          ? null
-                          : () => _load(_page),
+                      onPressed: _busy || _sent != null ? null : () => _load(),
                       child: const Text('刷新核对'),
                     ),
                     UtenButton(

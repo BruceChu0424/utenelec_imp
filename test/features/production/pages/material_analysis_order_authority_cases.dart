@@ -46,26 +46,83 @@ Future<void> _showMaterialSummary(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Map<String, Map<String, dynamic>> _storedPreparationDrafts(
-  WidgetTester tester,
-) {
-  final storage =
-      ProviderScope.containerOf(
-            tester.element(find.byType(ProductionMaterialAnalysisPage)),
-          ).read(formDraftStorageProvider)
-          as MemoryFormDraftStorage;
+String _materialDraftOwner(WidgetTester tester) {
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(ProductionMaterialAnalysisPage)),
+  );
+  final owner = container.read(formDraftsProvider.notifier).ownerKey;
+  expect(owner, isNotNull);
+  return owner!;
+}
+
+Future<Map<String, Map<String, dynamic>>> _storedPreparationDrafts(
+  MemoryFormDraftStorage storage,
+  String owner,
+) async {
+  final records = await storage.readAll(owner);
   return {
-    for (final entry in storage.records.entries)
+    for (final entry in records.entries)
       if (jsonDecode(entry.value) case final Map<String, dynamic> record)
         if (record['draftKind'] == 'material_preparation') entry.key: record,
   };
 }
 
+Future<List<Map<String, dynamic>>> _ownedMaterialPayloads(
+  MemoryFormDraftStorage storage,
+  String owner,
+) async => [
+  for (final record in (await _storedPreparationDrafts(storage, owner)).values)
+    if (record['data'] case final Map<String, dynamic> data)
+      Map<String, dynamic>.from(data),
+];
+
+Future<void> _expectMaterialOwnerRetired(
+  WidgetTester tester,
+  MemoryFormDraftStorage storage,
+  String owner,
+) async {
+  expect(find.text('登录身份或权限已变化，请重新打开分析。原输入和原请求保留在原账号下。'), findsOneWidget);
+  expect(
+    find.byKey(const Key('material-analysis-material-table')),
+    findsNothing,
+  );
+  expect(
+    find.byKey(const Key('material-analysis-submit-orders')),
+    findsNothing,
+  );
+  final payloads = await _ownedMaterialPayloads(storage, owner);
+  if (const bool.fromEnvironment('UTEN_MATERIAL_DIAGNOSTICS')) {
+    // Synthetic memory-store metadata only; preserve the original owner's
+    // actual record as evidence rather than inspecting a private page State.
+    // ignore: avoid_print
+    print(
+      'material-owned-draft-observation ${jsonEncode({
+        'owner': owner,
+        'payloads': [
+          for (final payload in payloads) {'selected': payload['selected'], 'uncertain': payload['uncertain'], 'hasSubmittedBody': payload['submittedBodyJson'] is String, 'keys': payload.keys.toList()},
+        ],
+      })}',
+    );
+  }
+  expect(payloads, isNotEmpty, reason: '界面退休不应删除原账号的私有草稿');
+  expect(
+    payloads.any(
+      (payload) => (payload['selected'] as Map?)?[_groupKey('m-2')] == true,
+    ),
+    isTrue,
+    reason: '原账号的已选来源仍保留在原owner草稿中，不交给新账号展示',
+  );
+}
+
 Future<Map<String, dynamic>> _expectOriginalPreparationRetained(
   WidgetTester tester,
   _OrderAuthoritySession session, {
+  required MemoryFormDraftStorage storage,
+  required String owner,
   Map<String, dynamic>? submitted,
+  String? submittedBodyJson,
 }) async {
+  await _expectMaterialOwnerRetired(tester, storage, owner);
   expect(
     find.byKey(const Key('material-analysis-material-table')),
     findsNothing,
@@ -77,7 +134,7 @@ Future<Map<String, dynamic>> _expectOriginalPreparationRetained(
   expect(find.textContaining('原输入和原请求保留在原账号下'), findsOneWidget);
   await tester.pump(const Duration(seconds: 1));
   await tester.pumpAndSettle();
-  final original = _storedPreparationDrafts(tester);
+  final original = await _storedPreparationDrafts(storage, owner);
   expect(original, hasLength(1), reason: '退休编辑器必须在原账号命名空间保留可恢复草稿');
   final data = Map<String, dynamic>.from(original.values.single['data'] as Map);
   expect((data['selected'] as Map)[_groupKey('m-2')], isTrue);
@@ -91,6 +148,9 @@ Future<Map<String, dynamic>> _expectOriginalPreparationRetained(
   );
   if (submitted != null) {
     expect(jsonDecode(data['submittedBodyJson'] as String), submitted);
+    if (submittedBodyJson != null) {
+      expect(data['submittedBodyJson'], submittedBodyJson);
+    }
     expect(data['_formDraftHasUnknownSubmission'], isTrue);
   }
   requests.clear();
@@ -121,7 +181,7 @@ Future<Map<String, dynamic>> _expectOriginalPreparationRetained(
     hasLength(1),
     reason: '回到原账号可从草稿恢复，原数据不能只留在已隐藏的Widget内存中',
   );
-  expect(_storedPreparationDrafts(tester).keys, original.keys);
+  expect((await _storedPreparationDrafts(storage, owner)).keys, original.keys);
   return data;
 }
 
@@ -563,15 +623,18 @@ void materialOrderAuthorityCases() {
   });
   testWidgets('来源办理权限：汇总预览途中换账号时旧预览不能继续提交', (tester) async {
     final session = _OrderAuthoritySession();
+    final storage = MemoryFormDraftStorage();
     await _pump(
       tester,
       session: session,
+      draftStorage: storage,
       requestObserver: (request) {
         if (request.path.endsWith('/aggregate-orders/preview')) {
           session.switchAccount('preview-changed');
         }
       },
     );
+    final originalOwner = _materialDraftOwner(tester);
     await tester.enterText(_orderQty('m-2'), '500');
     await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
@@ -582,20 +645,28 @@ void materialOrderAuthorityCases() {
       isNotEmpty,
     );
     expect(_aggregateSubmits(), isEmpty);
-    await _expectOriginalPreparationRetained(tester, session);
+    await _expectOriginalPreparationRetained(
+      tester,
+      session,
+      storage: storage,
+      owner: originalOwner,
+    );
   });
 
   testWidgets('来源办理权限：汇总提交回包途中换账号不套用旧结果或报告假成功', (tester) async {
     final session = _OrderAuthoritySession();
+    final storage = MemoryFormDraftStorage();
     await _pump(
       tester,
       session: session,
+      draftStorage: storage,
       requestObserver: (request) {
         if (request.path.endsWith('/aggregate-orders/submit')) {
           session.switchAccount('submit-changed');
         }
       },
     );
+    final originalOwner = _materialDraftOwner(tester);
     await tester.enterText(_orderQty('m-2'), '500');
     await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
@@ -609,6 +680,8 @@ void materialOrderAuthorityCases() {
     await _expectOriginalPreparationRetained(
       tester,
       session,
+      storage: storage,
+      owner: originalOwner,
       submitted: submitted,
     );
     expect(_notices(tester), isNot(contains('已下达 1 笔')));
@@ -616,11 +689,14 @@ void materialOrderAuthorityCases() {
 
   testWidgets('来源办理权限：网络不确定的原幂等请求不得换账号重放', (tester) async {
     final session = _OrderAuthoritySession();
+    final storage = MemoryFormDraftStorage();
     await _pump(
       tester,
       session: session,
+      draftStorage: storage,
       failOn: const {'/aggregate-orders/submit': 500},
     );
+    final originalOwner = _materialDraftOwner(tester);
     await tester.enterText(_orderQty('m-2'), '500');
     await _settleRebuild(tester);
     await _check(tester, _rowCheckbox('m-2'));
@@ -630,13 +706,50 @@ void materialOrderAuthorityCases() {
     final submitted = Map<String, dynamic>.from(
       _aggregateSubmits().single.body!,
     );
+    final originalPayloads = await _ownedMaterialPayloads(
+      storage,
+      originalOwner,
+    );
+    final pendingBody = originalPayloads
+        .where((payload) => payload['submittedBodyJson'] is String)
+        .last['submittedBodyJson'];
+    expect(
+      originalPayloads.any((payload) => payload['uncertain'] == true),
+      isTrue,
+    );
+    final queuedOldAction = tester
+        .widget<UtenButton>(
+          find.byKey(const Key('material-analysis-submit-orders')),
+        )
+        .onPressed;
+    expect(queuedOldAction, isNotNull);
     session.switchAccount('retry-changed');
     await tester.pumpAndSettle();
+    await _expectMaterialOwnerRetired(tester, storage, originalOwner);
     requests.clear();
+    // An input event queued by the former visible button still cannot replay
+    // its original business request under a different actor.
+    await Future<void>.sync(queuedOldAction!);
+    await tester.pumpAndSettle();
+    expect(_aggregateSubmits(), isEmpty);
+    expect(_notices(tester), isNot(contains('已下达 1 笔')));
+    expect(find.text('登录身份或权限已变化，请重新打开分析。原输入和原请求保留在原账号下。'), findsOneWidget);
+    final retained = await _ownedMaterialPayloads(storage, originalOwner);
+    expect(
+      retained.any(
+        (payload) =>
+            payload['uncertain'] == true &&
+            payload['submittedBodyJson'] == pendingBody,
+      ),
+      isTrue,
+    );
     await _expectOriginalPreparationRetained(
       tester,
       session,
+      storage: storage,
+      owner: originalOwner,
       submitted: submitted,
+      submittedBodyJson: pendingBody as String,
     );
     expect(_aggregateSubmits(), isEmpty);
   });

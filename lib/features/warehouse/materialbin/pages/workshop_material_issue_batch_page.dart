@@ -524,22 +524,16 @@ class _WorkshopMaterialIssueBatchPageState
               if (request.isReturn) {
                 materials.addAll(await _repo.materials(workshop));
               } else {
-                var page = 1;
-                while (true) {
-                  final result = await _repo.requestMaterials(
+                materials.addAll(
+                  await _repo.completeRequestMaterialsForGoods(
                     workshop,
                     goodsIds: selected
                         .map((line) => line.goodsId)
                         .toSet()
                         .toList(),
-                    page: page,
-                    size: 100,
-                  );
-                  scope.checkCurrent();
-                  materials.addAll(result.items);
-                  if (page >= result.totalPages) break;
-                  page++;
-                }
+                    isCurrent: () => scope.isCurrent,
+                  ),
+                );
               }
             }
           } catch (error) {

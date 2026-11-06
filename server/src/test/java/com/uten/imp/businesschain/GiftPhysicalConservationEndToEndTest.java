@@ -84,30 +84,42 @@ class GiftPhysicalConservationEndToEndTest {
         assertThat(number("SELECT received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isEqualByComparingTo("10");
     }
 
-    @Test void freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse(){
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"24,HALF_UP","30,DOWN"})
+    void freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse(int scale,String rounding) throws Exception{
         F f=fixture();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         UUID source=receipts.detail(receipt).getItems().getFirst().getId();BigDecimal originalValue=value(f);
-        UUID free=returned(f,source,"0","1");stockSlice(()->returns.approve(free));
+        UUID free=returned(f,source,"0","1");approveWithActualBookShare(free,scale,rounding);
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(ap(free)).isZero();
         assertThat(number("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_id=?",free)).isZero();
         assertThat(number("SELECT returned_qty FROM purchase_receipt_items WHERE id=?",source)).isZero();
         assertThat(number("SELECT gift_returned_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1");
         returns.reverse(free);assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo(originalValue);
-        UUID paid=returned(f,source,"1","0");stockSlice(()->returns.approve(paid));
+        UUID paid=returned(f,source,"1","0");approveWithActualBookShare(paid,scale,rounding);
         assertThat(ap(paid)).isEqualByComparingTo("-10");assertThat(stock(f)).isEqualByComparingTo("10");
         returns.reverse(paid);assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo(originalValue);
         assertThat(ap(receipt)).isEqualByComparingTo("100");
     }
 
     @SuppressWarnings("try")
-    private void stockSlice(Runnable action){
+    private void stockSlice(Runnable action){stockSlice(action,30,"DOWN");}
+    @SuppressWarnings("try")
+    private void stockSlice(Runnable action,int scale,String rounding){
         try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
-                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30,"DOWN")))){action.run();}
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(scale,rounding)))){action.run();}
         catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new AssertionError(failure);}
     }
 
     @Test void receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce(){
-        F f=fixture();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
+        F f=fixture();UUID receipt=receipt(f,"10","1",new BigDecimal("11.0000"));receipts.approve(receipt);passAndStock(f,receipt);
+        UUID originalItem=receipts.detail(receipt).getItems().getFirst().getId();
+        String evidenceSql="SELECT jsonb_agg(to_jsonb(evidence) ORDER BY id)::text FROM business_numeric_input_evidence evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'";
+        String originalEvidence=db.queryForObject(evidenceSql,String.class,receipt,originalItem);
+        assertThat(originalEvidence).isNotNull();
+        assertThat(db.queryForObject("SELECT original_decimal FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",String.class,receipt,originalItem)).isEqualTo("11.0000");
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",receipt)).isEqualByComparingTo("1");
+        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",receipt)).isEqualByComparingTo("1");
+        assertThat(db.queryForObject("SELECT precision_policy->'choices'='{}'::jsonb AND original_unit->>'code'='KG' AND recorded_unit=original_unit FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND source_row_id=? AND field_key='actualWeightKg'",Boolean.class,receipt,originalItem)).isTrue();
         var request=new DocumentUnapprovalService.UnapproveRequest("gift-unapprove-"+receipt,"收费和免费实物同代际守恒");
         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
         assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(receipt)).isZero();
@@ -115,9 +127,18 @@ class GiftPhysicalConservationEndToEndTest {
         var again=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,request);
         assertThat(again.getId()).isEqualTo(draft.getId());assertThat(stock(f)).isZero();
         assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("CHARGED_PLUS_GIFT_V1");
+        UUID draftItem=draft.getItems().getFirst().getId();
+        assertThat(number("SELECT weight FROM purchase_receipt_items WHERE id=?",draftItem)).isEqualByComparingTo("11");
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_receipt_items WHERE id=?",UUID.class,draftItem)).isEqualTo(originalItem);
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_id=?",draft.getId())).isZero();
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("1");
+        assertThat(number("SELECT count(DISTINCT source_action_id) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id IN (?,?) AND field_key='actualWeightKg'",receipt,draft.getId())).isEqualByComparingTo("1");
+        assertThat(db.queryForObject(evidenceSql,String.class,receipt,originalItem)).isEqualTo(originalEvidence);
         receipts.approve(draft.getId());passAndStock(f,draft.getId());
         assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");assertThat(ap(draft.getId())).isEqualByComparingTo("100");
         assertThat(number("SELECT count(*) FROM procurement_inspection_items WHERE receipt_id=? AND status='RESOLVED'",draft.getId())).isEqualByComparingTo("2");
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_id=?",draft.getId())).isZero();
+        assertThat(db.queryForObject(evidenceSql,String.class,receipt,originalItem)).isEqualTo(originalEvidence);
         assertThatThrownBy(()->receipts.approve(draft.getId())).isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThat(stock(f)).isEqualByComparingTo("11");
     }
@@ -132,8 +153,34 @@ class GiftPhysicalConservationEndToEndTest {
         receipts.approve(receipt);passAndStock(f,receipt);assertThat(stock(f)).isEqualByComparingTo("10");
         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",receipt,new DocumentUnapprovalService.UnapproveRequest("gift-legacy-"+receipt,"保原历史实物量"));
         assertThat(stock(f)).isZero();assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("LEGACY_RECORDED");
+        assertThat(db.queryForObject("SELECT weight IS NULL FROM purchase_receipt_items WHERE receipt_id=?",Boolean.class,draft.getId())).isTrue();
+        assertThat(number("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='PURCHASE_RECEIPT' AND owner_id=? AND field_key='actualWeightKg'",draft.getId())).isZero();
         receipts.approve(draft.getId());passAndStock(f,draft.getId());assertThat(stock(f)).isEqualByComparingTo("10");
         assertThat(number("SELECT gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
+    }
+
+    @Test void directPostedGiftReplacementIntentTamperingIsRejectedWithoutChangingOriginalFacts(){
+        F f=fixture();UUID received=receipt(f,"10","1");receipts.approve(received);
+        UUID line=db.queryForObject("SELECT id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,received);
+        String facts="""
+                SELECT header.status,header.total_original::text AS total_original,header.total_local::text AS total_local,
+                       item.qty::text AS qty,item.gift_qty::text AS gift_qty,
+                       item.charged_base_qty::text AS charged_base_qty,item.gift_base_qty::text AS gift_base_qty,
+                       item.gift_replacement_intent,ordered.received_qty::text AS ordered_received_qty,
+                       ordered.gift_received_qty::text AS ordered_gift_received_qty
+                FROM purchase_receipt_items item JOIN purchase_receipts header ON header.id=item.receipt_id
+                JOIN purchase_order_items ordered ON ordered.id=item.order_item_id WHERE item.id=?
+                """;
+        var before=db.queryForMap(facts,line);
+        assertThat(((Number)before.get("status")).intValue()).isEqualTo(1);
+        assertThat(before.get("gift_replacement_intent")).isEqualTo("NORMAL");
+        Throwable rejected=catchThrowable(()->db.update("UPDATE purchase_receipt_items SET gift_replacement_intent='RETURN_REPLACEMENT' WHERE id=?",line));
+        assertThat(rejected).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        Throwable cause=org.springframework.core.NestedExceptionUtils.getMostSpecificCause(rejected);
+        assertThat(cause).isInstanceOf(java.sql.SQLException.class);
+        assertThat(((java.sql.SQLException)cause).getSQLState()).isEqualTo("23514");
+        assertThat(cause).hasMessageContaining("posted charged/free input and base facts are immutable");
+        assertThat(db.queryForMap(facts,line)).isEqualTo(before);
     }
 
     private F fixture(){
@@ -150,10 +197,14 @@ class GiftPhysicalConservationEndToEndTest {
         UUID claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",caseId.toString()).claimId();finance.approveBatch(List.of(new BatchDecisionItem(caseId,((Number)approval.get("version")).longValue(),claim)),null,BigDecimal.ONE);harness.loginAs(w.superAdminUserId());
         return new F(w,requestItem,id,db.queryForObject("SELECT id FROM purchase_order_items WHERE order_id=?",UUID.class,id),currency);
     }
-    private UUID receipt(F f,String charged,String gift){
+    private UUID receipt(F f,String charged,String gift){return receipt(f,charged,gift,null);}
+    private UUID receipt(F f,String charged,String gift,BigDecimal weight){
         var request=new com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());
-        var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
+        var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(gift));line.setWeight(weight);line.setOrderItemId(f.orderItem());request.setItems(List.of(line));
         return receipts.create(request).getId();
+    }
+    private void approveWithActualBookShare(UUID returned,int scale,String rounding) {
+        stockSlice(()->returns.approve(returned),scale,rounding);
     }
     private UUID returned(F f,UUID source,String charged,String gift){
         var request=new com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.w().supplierId());request.setWarehouseId(f.w().warehouseId());

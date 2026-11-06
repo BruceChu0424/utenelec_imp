@@ -1,3 +1,5 @@
+import '../shared/finance_complete_summary_read.dart';
+import 'finance_summary_scope_field.dart';
 import '../shared/finance_workbench_panel.dart';
 import 'dart:convert';
 import 'package:collection/collection.dart';
@@ -218,6 +220,7 @@ class _FinanceAccountingImportSurfaceState
           UtenEditableGridController<_AccountingAllocationRow>();
   final _openingGrid = UtenEditableGridController<_AccountingOpeningRow>();
   bool _loading = true, _busy = false, _complete = false, _append = false;
+  FinanceSummaryScope _recentScope = FinanceSummaryScope.active;
   String? _error, _auxCurrency;
   int _tab = 0;
   int _optionsRead = 0, _pairRead = 0;
@@ -567,31 +570,74 @@ class _FinanceAccountingImportSurfaceState
   }
 
   Future<void> _loadOptions() async {
-    final generation = ++_optionsRead;
+    final generation = ++_optionsRead, range = _recentScope;
     final scope = await captureFormDraftRequestScope(),
         api = ref.read(apiClientProvider);
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        scope.isCurrent &&
+        generation == _optionsRead &&
+        range == _recentScope &&
+        identical(api, ref.read(apiClientProvider));
+    Future<Map<String, dynamic>> summaries(
+      String endpoint,
+      FinanceSummaryScope selected,
+    ) async => {
+      'items': await readCompleteFinanceSummaries(
+        isCurrent: current,
+        idOf: (row) => _accountingId(row),
+        loadPage: (page, size, revision) => api.get(
+          endpoint,
+          query: {
+            'scope': selected.name,
+            'page': page,
+            'size': size,
+            'readSnapshotRevision': ?revision,
+          },
+        ),
+      ),
+    };
     final values = await scope.run(
-      () => Future.wait([
-        api.get('/finance/accounting-imports'),
+      () => Future.wait<Map<String, dynamic>>([
+        summaries('/finance/accounting-imports/summaries', range),
         api.get('/finance/chart'),
         api.get('/finance/accounting-imports/options'),
+        // Applied directory imports remain legitimate accounting source evidence.
         _canEditDirectory
-            ? api.get('/finance/auxiliary-imports')
+            ? summaries(
+                '/finance/auxiliary-imports/summaries',
+                FinanceSummaryScope.all,
+              )
             : Future.value(<String, dynamic>{}),
-      ]),
+      ], eagerError: true),
     );
-    if (!mounted ||
-        !formDraftIdentityIsCurrent ||
-        !scope.isCurrent ||
-        generation != _optionsRead) {
-      return;
-    }
+    if (!current()) return;
     setState(() {
       _recent = _accountingMaps(values[0]['items']);
       _chart = _accountingMaps(values[1]['items']);
       _currencies = _accountingMaps(values[2]['currencies']);
       _auxSources = _accountingMaps(values[3]['items']);
     });
+  }
+
+  Future<void> _changeRecentScope(FinanceSummaryScope value) async {
+    if (_busy || _loading || _pending != null || value == _recentScope) return;
+    setState(() {
+      _recentScope = value;
+      _recent = [];
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await _loadOptions();
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _error = humanErrorMessage(error) ?? '原批次读取失败，请重试');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _refresh() async {
@@ -1960,6 +2006,20 @@ class _FinanceAccountingImportSurfaceState
                                               _vouchers == null &&
                                               _balances == null,
                                           info: '与原辅助明细使用相同原账套标识，不能按名称合并其他账套。',
+                                        ),
+                                        FinanceSummaryScopeField(
+                                          key: const Key(
+                                            'finance-accounting-import-record-scope',
+                                          ),
+                                          label: '原批次范围',
+                                          value: _recentScope,
+                                          enabled:
+                                              !_busy &&
+                                              !_loading &&
+                                              _pending == null,
+                                          info:
+                                              '待办理包含本人原草稿及待处理提交；退回和撤回回到原提交人草稿，已入账在历史保留查看。原请求恢复仍按原编号核实。',
+                                          onChanged: _changeRecentScope,
                                         ),
                                         UtenDropdownField(
                                           label: '原凭证批次',

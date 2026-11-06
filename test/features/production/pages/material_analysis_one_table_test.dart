@@ -196,12 +196,57 @@ Future<void> _toggle(WidgetTester tester, Finder checkbox) async {
   await tester.pump();
 }
 
-bool _nodeSelected(WidgetTester tester, String line) => tester
-    .widget<MasterDataTableView<dynamic>>(
-      find.byKey(const Key('material-analysis-material-table')),
-    )
-    .selectedIds
-    .contains(_groupKey(line));
+void _observeMaterialUi(WidgetTester tester, String phase) {
+  if (!const bool.fromEnvironment('UTEN_MATERIAL_DIAGNOSTICS')) {
+    return;
+  }
+  final texts = tester
+      .widgetList<Text>(find.byType(Text))
+      .map((widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '')
+      .where((text) => text.isNotEmpty)
+      .toSet()
+      .take(220)
+      .toList();
+  final tables = tester.widgetList<MasterDataTableView<dynamic>>(
+    find.byWidgetPredicate((widget) => widget is MasterDataTableView<dynamic>),
+  );
+  // This opt-in observer only prints synthetic test fixtures. It does not
+  // change any assertion, timer, command, source result or application log.
+  // ignore: avoid_print
+  print(
+    'material-public-ui-observation ${jsonEncode({
+      'phase': phase,
+      'texts': texts,
+      'tooltips': tester.widgetList<Tooltip>(find.byType(Tooltip)).map((widget) => widget.message ?? '').where((text) => text.isNotEmpty).toSet().take(50).toList(),
+      'tables': [
+        for (final table in tables) {
+            'key': table.key.toString(),
+            'rows': table.items.length,
+            'selected': table.selectedIds.toList(),
+            'columns': [
+              for (final column in table.columns) {'key': column.key, 'label': column.label},
+            ],
+          },
+      ],
+      'buttons': [
+        for (final button in tester.widgetList<UtenButton>(find.byType(UtenButton))) {'key': button.key.toString(), 'label': button.child is Text ? (button.child as Text).data : button.child.runtimeType.toString(), 'enabled': button.onPressed != null, 'busy': button.isLoading},
+      ],
+      'inputs': [
+        for (final field in tester.widgetList<TextField>(find.byType(TextField))) {'key': field.key.toString(), 'text': field.controller?.text, 'enabled': field.enabled},
+      ],
+    })}',
+  );
+}
+
+bool _nodeSelected(WidgetTester tester, String line) {
+  _observeMaterialUi(tester, 'node-selected-$line');
+  return tester
+      .widget<MasterDataTableView<dynamic>>(
+        find.byKey(const Key('material-analysis-material-table')),
+      )
+      .selectedIds
+      .contains(_groupKey(line));
+}
 
 Future<void> _onlyRoot(WidgetTester tester) async {
   await _check(tester, _productCheckbox('product-1'));
@@ -222,24 +267,21 @@ Future<void> _onlyRoot(WidgetTester tester) async {
   }
 }
 
-Future<void> _acceptAvailableQuantityChoice(WidgetTester tester) async {
-  if (find.text('本次下单是否使用可用数量抵扣？').evaluate().isNotEmpty) {
-    await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
-    );
-    await tester.pumpAndSettle();
-  }
-}
+// Main's entry name delegates to the same modal-aware implementation.
+Future<void> _acceptAvailableQuantityChoice(WidgetTester tester) =>
+    _continueMaterialSupplyChoice(tester);
 
-/// 编辑结束可能已打开可用数量选择；先完成它再点击真实的下单入口。
+/// Finish a real pre-existing supply modal before tapping the business action.
 Future<void> _openSubmitConfirmation(WidgetTester tester) async {
-  await _acceptAvailableQuantityChoice(tester);
+  await _continueMaterialSupplyChoice(tester);
+  _observeMaterialUi(tester, 'before-submit-selected');
   await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
   await tester.pumpAndSettle();
-  await _acceptAvailableQuantityChoice(tester);
+  await _continueMaterialSupplyChoice(tester);
+  _observeMaterialUi(tester, 'before-confirm-selected');
 }
 
-/// 「下单(N)」→ 确认框里点「下达」，等编排跑完；期间发出的请求记在 [requests]。
+/// 「下单(N)」→ 确认框里点「下达」，期间请求仍由真实动作发出。
 Future<void> _submitSelected(WidgetTester tester) async {
   requests.clear();
   await _openSubmitConfirmation(tester);
@@ -276,6 +318,20 @@ Future<void> _chooseMaterialAllocationPrecision(WidgetTester tester) async {
   await tester.tap(find.text('确认本次精度'));
   await tester.pumpAndSettle();
   expect(dialog, findsNothing);
+}
+
+Future<void> _continueMaterialSupplyChoice(WidgetTester tester) async {
+  final question = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('本次下单是否使用可用数量抵扣？'),
+  );
+  if (question.evaluate().isNotEmpty) {
+    expect(question, findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
+    );
+    await tester.pumpAndSettle();
+  }
 }
 
 /// 编排里真正落库的那些请求(采购/委外 notify、车间 issue-plans)，按发出顺序。
@@ -1984,6 +2040,9 @@ void main() {
     final frame = find
         .ancestor(of: field, matching: find.byType(RequiredCellFrame))
         .first;
+    await tester.showKeyboard(field);
+    await tester.pumpAndSettle();
+    await _continueMaterialSupplyChoice(tester);
     await tester.enterText(field, '1000');
     await tester.pump();
     expect(
@@ -2253,7 +2312,7 @@ void main() {
     expect(_qtyText(tester, _appendQty('shared-0')), '0');
   });
 
-  testWidgets('多订单按物料汇总：原始分摊与下限保留精确值，除不尽须明确精度且总量守恒', (tester) async {
+  testWidgets('多订单按物料汇总：原始分摊与下限保留精确值，有限与除不尽分配均守恒', (tester) async {
     await _pump(
       tester,
       session: _OrderAuthoritySession(),
@@ -2278,6 +2337,7 @@ void main() {
         'material-analysis-net-shortage-AGGREGATE|g-m-2|本色|unit-1',
       ),
     );
+    _observeMaterialUi(tester, 'integer-parent-shortage');
     expect(
       find.descendant(of: parentShortage, matching: find.text('1000.0002 个')),
       findsOneWidget,
@@ -2314,6 +2374,37 @@ void main() {
     await tester.enterText(field, '1000.0002');
     await tester.pump();
     expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isFalse);
+    // The original finite-surplus case remains exact: 1.9998 / 3 = 0.6666.
+    await tester.enterText(field, '999');
+    await tester.pump();
+    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isTrue);
+    await tester.enterText(field, '1002');
+    await tester.pump();
+    expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isFalse);
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    const finiteShares = ['84 个', '84 个', '834 个'];
+    for (var i = 0; i < 3; i++) {
+      final row = find.byKey(ValueKey('material-table-row-shared-$i'));
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text(finiteShares[i])),
+        findsOneWidget,
+        reason: '有限余量按精确来源守恒分配，保留原1002整数结果',
+      );
+    }
+    expect(
+      [
+        '84',
+        '84',
+        '834',
+      ].fold(BigInt.zero, (sum, value) => sum + materialQuantityUnits(value)),
+      materialQuantityUnits('1002'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
     // 富余 0.9998 分给三来源不能有限除尽；沿用本次明确的 24/DOWN，
     // 最后一来源承接精确余量，既不改原事实也不改变手输总量。
     await tester.enterText(field, '1001');
@@ -2506,6 +2597,8 @@ void main() {
     requests.clear();
     await _openSubmitConfirmation(tester);
     // 主确认框的路线分账说明同料合并：3 行同料只算 1 种采购，不再各下各的。
+    await _continueMaterialSupplyChoice(tester);
+    _observeMaterialUi(tester, 'mixed-root-order-summary');
     expect(find.textContaining('车间 3 种', findRichText: true), findsOneWidget);
     expect(find.textContaining('采购 1 种', findRichText: true), findsOneWidget);
     expect(find.textContaining('本次不会下单'), findsNothing);
@@ -3252,6 +3345,8 @@ void main() {
     requests.clear();
     await _openSubmitConfirmation(tester);
     // 混批共用按产品编排的主确认框：3 种顶层车间 + 1 种采购，共 4 种。
+    await _continueMaterialSupplyChoice(tester);
+    _observeMaterialUi(tester, 'mixed-aggregate-order-summary');
     expect(find.textContaining('车间 3 种', findRichText: true), findsOneWidget);
     expect(find.textContaining('采购 1 种', findRichText: true), findsOneWidget);
     await tester.tap(
@@ -3576,6 +3671,7 @@ void main() {
 
   testWidgets('列定稿为 17 列，交付要求及原销售生产要求与数量列保持完整', (tester) async {
     await _pump(tester);
+    _observeMaterialUi(tester, 'column-contract');
     expect(find.text('表头设置 17/17'), findsOneWidget);
     for (final label in const [
       '物料办理',
@@ -3662,6 +3758,7 @@ void main() {
 
   testWidgets('没有量可下的行：下单格只读 0，不再渲染成可编辑的红 0(2026-09-26)', (tester) async {
     await _pump(tester);
+    _observeMaterialUi(tester, 'readonly-zero-rows');
     // 同料兄弟行(需要数量 0)与现货盖住的行(缺口 0)都不给输入框——
     // 全选下单结束后满屏「可编辑的红 0」会让人以为中间很多行没下成。
     expect(_orderQty('m-sibling'), findsNothing);
@@ -3683,6 +3780,13 @@ void main() {
         reason: '零需求与现货覆盖必须分别说明真实来源，不只比对相同提示数量',
       );
     }
+    final readonly = find.byWidgetPredicate(
+      (widget) =>
+          widget is Tooltip && (widget.message ?? '').contains('没有要下单的量'),
+    );
+    // 未激活的需求行与已齐套的零量行保留各自生命周期含义。
+    expect(find.text('本批需求未激活'), findsWidgets);
+    expect(readonly, findsOneWidget);
     // 追加格照旧是「还没下达过」的纯文本 0。
     expect(_appendQty('m-sibling'), findsNothing);
     // 有缺口的行不受影响，照旧可填。
@@ -6523,9 +6627,13 @@ void main() {
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-7']),
     );
     // 顶层多填(600 → 1500)，已排满的自制子件追加 500 做纯公共备货。
+    await tester.showKeyboard(_orderQty('m-root'));
+    await tester.pumpAndSettle();
+    await _continueMaterialSupplyChoice(tester);
     await tester.enterText(_orderQty('m-root'), '1500');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
+    await _continueMaterialSupplyChoice(tester);
     await tester.enterText(_appendQty('m-7'), '500');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -7948,6 +8056,7 @@ Future<void> _pump(
   Set<String> permissions = _permissions,
   _OrderAuthoritySession? session,
   bool precisionPrompts = false,
+  MemoryFormDraftStorage? draftStorage,
   bool projectionOwnerControls = false,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
   // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
@@ -8294,7 +8403,9 @@ Future<void> _pump(
           ProductionPlanRepository(api),
         ),
         apiClientProvider.overrideWithValue(api),
-        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        formDraftStorageProvider.overrideWithValue(
+          draftStorage ?? MemoryFormDraftStorage(),
+        ),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,

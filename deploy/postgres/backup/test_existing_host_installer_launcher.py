@@ -77,7 +77,7 @@ class ExistingHostInstallerLauncherTests(unittest.TestCase):
     def test_embeds_frozen_installer_digest_and_fixed_bundle_path(self) -> None:
         self.assertEqual(
             launcher.REVIEWED_INSTALLER_SHA256,
-            "512b7c7132c2016d1557723b90bef520349b5cbd7875af296d6d0554b9ade727",
+            "3a18bcac6a66e17ea3e1e3055e4087d8a01f3bb152a1c4c2a327dd2113274fb6",
         )
         self.assertEqual(
             hashlib.sha256((HERE / "existing_host_installer.py").read_bytes()).hexdigest(),
@@ -98,10 +98,10 @@ class ExistingHostInstallerLauncherTests(unittest.TestCase):
             for asset in installer.ASSETS
         }
         actual = set(launcher.SOURCE_BUNDLE_RELATIVE_FILES)
-        self.assertEqual(18, len(actual))
+        self.assertEqual(19, len(actual))
         self.assertEqual(
             expected_assets,
-            actual - {"deploy/postgres/backup/existing_host_installer.py"},
+            actual - {"deploy/postgres/backup/existing_host_installer.py", "deploy/updater/release_guard.py"},
         )
         for relative in actual:
             self.assertTrue((repository_root / relative).is_file(), relative)

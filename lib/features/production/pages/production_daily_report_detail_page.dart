@@ -1,3 +1,4 @@
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
@@ -89,7 +90,8 @@ class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionDailyReportDetailPageState
-    extends ConsumerState<ProductionDailyReportDetailPage> {
+    extends ConsumerState<ProductionDailyReportDetailPage>
+    with ReadViewActivityMixin<ProductionDailyReportDetailPage> {
   final _navigation = PageNavigationSession();
 
   @override
@@ -1195,6 +1197,9 @@ class _ProductionDailyReportDetailPageState
         widget.returnToWorkshopTasks ? '$path?from=workshop-tasks' : path,
       );
       if (!mounted) return;
+      if (!await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+        return;
+      }
       await _load(background: !widget.returnToWorkshopTasks);
       if (mounted && savedId != null && savedId.isNotEmpty) {
         _signalExecutionChanged();

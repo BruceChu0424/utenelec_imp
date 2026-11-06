@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_riverpod/legacy.dart';
@@ -333,6 +334,108 @@ void main() {
       container.dispose();
     },
   );
+  for (final nonCash in [false, true]) {
+    testWidgets(
+      '${nonCash ? 'noncash voucher' : 'GL allocation'} picker completes every authorized page and preserves exact selected authority',
+      (tester) async {
+        final api = _Api()
+          ..candidateCount = 125
+          ..nonCashSource = nonCash;
+        final instruction = {
+          ..._instruction(),
+          'mode': 'EXISTING_CONFIRMED_LIABILITY',
+          'existingLiabilityBasis': nonCash
+              ? 'NET_AFTER_DEDUCTIONS'
+              : 'GROSS_BEFORE_DEDUCTIONS',
+        };
+        final container = await _mount(
+          tester,
+          api,
+          MemoryFormDraftStorage(),
+          instruction: instruction,
+        );
+        final button = find.text(nonCash ? '选择既有非现金原凭证' : '选择明确原应付工资GL来源');
+        await tester.ensureVisible(button);
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        final reads = api.sourceQueries;
+        expect(reads.map((q) => (q['page'], q['size'])), [(1, 100), (2, 100)]);
+        expect(
+          reads.every(
+            (q) =>
+                q['sourceFingerprint'] == _app['source_fingerprint'] &&
+                q['expectedClaimId'] != null &&
+                q['styleId'] == 'wage-custom',
+          ),
+          true,
+        );
+        final finder = find
+            .byType(MasterDataTableView<Map<String, dynamic>>)
+            .last;
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          finder,
+        );
+        expect(table.items, hasLength(125));
+        expect(table.items.map(table.rowKeyOf!).toSet(), hasLength(125));
+        final selected = table.items.last;
+        table.onRowTap!(selected);
+        table.onRowTap!(selected);
+        await tester.pumpAndSettle();
+        if (nonCash) {
+          expect(api.exactQueries, isEmpty);
+        } else {
+          expect(api.exactQueries.single['entryId'], 'entry-123');
+          expect(api.exactQueries.single['allocationNo'], 1);
+          expect(find.text('9.1234'), findsWidgets);
+        }
+        expect(find.textContaining('V124'), findsWidgets);
+        expect(api.requests, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        container.dispose();
+      },
+    );
+  }
+  testWidgets(
+    'a denied exact payroll-source preview retires the list even while cached local permissions still allow review',
+    (tester) async {
+      final api = _Api()
+        ..candidateCount = 125
+        ..denyCandidateSelection = true;
+      final container = await _mount(
+        tester,
+        api,
+        MemoryFormDraftStorage(),
+        instruction: {
+          ..._instruction(),
+          'mode': 'EXISTING_CONFIRMED_LIABILITY',
+          'existingLiabilityBasis': 'GROSS_BEFORE_DEDUCTIONS',
+        },
+      );
+      final button = find.text('选择明确原应付工资GL来源');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      final finder = find
+          .byType(MasterDataTableView<Map<String, dynamic>>)
+          .last;
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        finder,
+      );
+      table.onRowTap!(table.items.last);
+      await tester.pumpAndSettle();
+      expect(find.text('原GL读取已被拒绝'), findsOneWidget);
+      expect(find.text('V124'), findsNothing);
+      expect(api.requests, isEmpty);
+      expect(api.exactQueries, hasLength(1));
+      table.onRowTap!(table.items.first);
+      await tester.pump();
+      expect(api.exactQueries, hasLength(1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      container.dispose();
+    },
+  );
   testWidgets(
     'all-zero original source does not require a fabricated liability or noncash voucher',
     (tester) async {
@@ -518,6 +621,11 @@ class _Api extends ApiClient {
       allZero = false;
   Completer<void>? referencesGate;
   int receipts = 0, sourceReads = 0;
+  int candidateCount = 0;
+  bool nonCashSource = false;
+  bool denyCandidateSelection = false;
+  final sourceQueries = <Map<String, dynamic>>[];
+  final exactQueries = <Map<String, dynamic>>[];
   final requests = <Map<String, dynamic>>[];
   Map<String, dynamic> _result() => {
     'row_version': requests.length + 9,
@@ -543,9 +651,51 @@ class _Api extends ApiClient {
       receipts++;
       return {'found': true, 'result': _result()};
     }
+    if (path.endsWith('/payroll-gl-sources/page')) {
+      sourceReads++;
+      sourceQueries.add({...?query});
+      final page = query!['page'] as int;
+      final size = query['size'] as int;
+      return {
+        'items': [
+          for (
+            var i = (page - 1) * size;
+            i < page * size && i < candidateCount;
+            i++
+          )
+            {
+              'entryId': i == 124 ? 'entry-123' : 'entry-$i',
+              'allocationNo': i == 124 ? 1 : 0,
+              'voucherId': 'voucher-$i',
+              'voucherNo': 'V$i',
+              'sourceAmountLocal': '100.0001',
+              'ready': nonCashSource,
+            },
+        ],
+        'page': page,
+        'size': size,
+        'total': candidateCount,
+        'totalPages': (candidateCount + size - 1) ~/ size,
+      };
+    }
     if (path.endsWith('/payroll-gl-sources')) {
       sourceReads++;
-      return {'items': <Object?>[]};
+      exactQueries.add({...?query});
+      if (denyCandidateSelection) {
+        throw ApiException('FORBIDDEN', '原GL读取已被拒绝', httpStatus: 403);
+      }
+      return {
+        'items': [
+          {
+            ...query!,
+            'voucherNo': 'V124',
+            'ready': true,
+            'amountLocal': '9.1234',
+            'amountOriginal': '9.1234',
+            'sourceFingerprint': 'exact-selected-proof',
+          },
+        ],
+      };
     }
     if (referencesGate != null) {
       await referencesGate!.future;
@@ -569,8 +719,8 @@ class _Api extends ApiClient {
           : {
               'period': '2026-09',
               'grossIncome': '1000',
-              'totalDeduction': '100',
-              'netIncome': '900',
+              'totalDeduction': nonCashSource ? '1000' : '100',
+              'netIncome': nonCashSource ? '0' : '900',
               'slips': [
                 {
                   'id': 'slip-a',

@@ -24,6 +24,17 @@ public final class DocumentQuantitySavePlan {
         SUBCONTRACT_RECEIPT("subcontract_receipt_items","receipt_id","order_item_id","replacement_intent"),
         SUBCONTRACT_MATERIAL_RETURN("subcontract_material_return_items","material_return_id","order_item_id","material_issue_item_id","parent_goods_id","parent_color_id"),
         SALES_RETURN("sales_return_items","return_id","order_item_id","out_item_id");
+        String savedRowsSql() {
+            return switch (this) {
+                case PURCHASE_ORDER -> "SELECT (to_jsonb(line) || jsonb_build_object('request_item_ids',COALESCE((SELECT jsonb_agg(s.request_item_id::text ORDER BY s.request_item_id) FROM purchase_order_item_sources s WHERE s.order_item_id=line.id),'[]'::jsonb),'saved_source_splits',COALESCE((SELECT jsonb_agg(jsonb_build_object('source',s.request_item_id,'qty',s.alloc_qty,'gift',s.allocated_gift_qty) ORDER BY s.line_no,s.request_item_id) FROM purchase_order_item_sources s WHERE s.order_item_id=line.id),'[]'::jsonb)))::text FROM purchase_order_items line WHERE line.order_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case SUBCONTRACT_ORDER -> "SELECT (to_jsonb(line) || jsonb_build_object('application_item_ids',COALESCE((SELECT jsonb_agg(s.application_item_id::text ORDER BY s.application_item_id) FROM subcontract_order_item_sources s WHERE s.order_item_id=line.id),'[]'::jsonb),'saved_source_splits',COALESCE((SELECT jsonb_agg(jsonb_build_object('source',s.application_item_id,'qty',s.alloc_qty,'gift',0::numeric) ORDER BY s.line_no,s.application_item_id) FROM subcontract_order_item_sources s WHERE s.order_item_id=line.id),'[]'::jsonb)) || jsonb_build_object('reference_header',to_jsonb(saved_header)))::text FROM subcontract_order_items line JOIN subcontract_orders saved_header ON saved_header.id=line.order_id WHERE line.order_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case PURCHASE_RECEIPT -> "SELECT (to_jsonb(line))::text FROM purchase_receipt_items line WHERE line.receipt_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case PURCHASE_RETURN -> "SELECT (to_jsonb(line))::text FROM purchase_return_items line WHERE line.return_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case SUBCONTRACT_RECEIPT -> "SELECT (to_jsonb(line))::text FROM subcontract_receipt_items line WHERE line.receipt_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case SUBCONTRACT_MATERIAL_RETURN -> "SELECT (to_jsonb(line))::text FROM subcontract_material_return_items line WHERE line.material_return_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+                case SALES_RETURN -> "SELECT (to_jsonb(line))::text FROM sales_return_items line WHERE line.return_id=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line";
+            };
+        }
         final String table,parent;final Set<String> fields;
         Family(String table,String parent,String...extra){this.table=table;this.parent=parent;
             var fields=new LinkedHashSet<>(List.of("goods_id","color_id","unit_id","unit_rate","qty"));fields.addAll(List.of(extra));this.fields=Set.copyOf(fields);}
@@ -44,20 +55,7 @@ public final class DocumentQuantitySavePlan {
     public static Plan empty(){return new Plan(null,null,Map.of());}
     public static Plan prepare(EntityManager em,Family family,UUID parent,List<Intent> intents){return prepare(em,family,parent,intents,java.util.function.UnaryOperator.identity());}
     public static Plan prepare(EntityManager em,Family family,UUID parent,List<Intent> intents,java.util.function.UnaryOperator<Intent> normalize){
-        String source="",join="";
-        if(family==Family.PURCHASE_ORDER||family==Family.SUBCONTRACT_ORDER){
-            boolean purchase=family==Family.PURCHASE_ORDER;
-            String sourceTable=purchase?"purchase_order_item_sources":"subcontract_order_item_sources";
-            String sourceColumn=purchase?"request_item_id":"application_item_id";
-            String operand=purchase?"request_item_ids":"application_item_ids";
-            source=" || jsonb_build_object('"+operand+"',COALESCE((SELECT jsonb_agg(s."+sourceColumn+"::text ORDER BY s."+sourceColumn+") FROM "+sourceTable+" s WHERE s.order_item_id=line.id),'[]'::jsonb),"
-                +"'saved_source_splits',COALESCE((SELECT jsonb_agg(jsonb_build_object('source',s."+sourceColumn+",'qty',s.alloc_qty,'gift',"+(purchase?"s.allocated_gift_qty":"0::numeric")+") ORDER BY s.line_no,s."+sourceColumn+") FROM "+sourceTable+" s WHERE s.order_item_id=line.id),'[]'::jsonb))";
-        }
-        if(family==Family.SUBCONTRACT_ORDER){
-            join=" JOIN subcontract_orders saved_header ON saved_header.id=line.order_id";
-            source+=" || jsonb_build_object('reference_header',to_jsonb(saved_header))";
-        }
-        var query=em.createNativeQuery("SELECT (to_jsonb(line)"+source+")::text FROM "+family.table+" line"+join+" WHERE line."+family.parent+"=:parent AND NOT line.is_deleted ORDER BY line.line_no,line.id FOR UPDATE OF line").setParameter("parent",parent);
+        var query=em.createNativeQuery(family.savedRowsSql()).setParameter("parent",parent);
         var stored=new LinkedHashMap<UUID,Saved>();for(Object raw:query.getResultList()){
             JsonNode row=nativeRow(raw.toString());Saved saved=new Saved(family,row);stored.put(saved.id(),saved);}
         // Reserve every explicit locator before legacy fallback: a new cloned

@@ -36,9 +36,8 @@ public final class ProcurementOrderQuantityBounds {
         }
         /** Subcontract normal finished allowance uses its own floor ceiling, not purchase tolerance rounding. */
         public BigDecimal minimumSubcontractTargetQty(BigDecimal orderUnitRate,BigDecimal allowedLossPct) {
-            return SubcontractReceiptAllowance.minimumTarget(
-                    retainedBase.subtract(postedExcessBase).max(BigDecimal.ZERO)
-                            .divide(orderUnitRate,4,RoundingMode.CEILING),allowedLossPct);
+            return SubcontractReceiptAllowance.minimumTargetForRetainedBase(
+                    retainedBase.subtract(postedExcessBase).max(BigDecimal.ZERO),orderUnitRate,allowedLossPct);
         }
     }
 

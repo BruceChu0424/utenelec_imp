@@ -1,3 +1,5 @@
+import '../../../shared/paging/read_view_activity.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/formatters/exact_number_text.dart';
 // 销售订货单「排产进度」面板——销售端看业务链另一端。
 //
@@ -146,8 +148,8 @@ class SalesPlanProgressPanel extends ConsumerStatefulWidget {
       _SalesPlanProgressPanelState();
 }
 
-class _SalesPlanProgressPanelState
-    extends ConsumerState<SalesPlanProgressPanel> {
+class _SalesPlanProgressPanelState extends ConsumerState<SalesPlanProgressPanel>
+    with ReadViewActivityMixin<SalesPlanProgressPanel> {
   late Future<List<OrderPlanProgressLine>> _future;
   final _selected = <String>{};
   List<OrderPlanProgressLine>? _lines;
@@ -284,7 +286,10 @@ class _SalesPlanProgressPanelState
         ).toString(),
       );
       if (!mounted) return true;
-      _refresh();
+      if (!await readViewActivity.waitForForeground(captureReadOwner(ref))) {
+        return true;
+      }
+      await _refresh();
       refreshBadges(ref);
       await widget.onChanged?.call();
       return true;

@@ -20,6 +20,9 @@ import static com.uten.imp.features.finance.statement.FinanceAuxiliaryWorkbookPa
 /** Durable external evidence and explicit directory staging; no journal, receipt or payable writes. */
 @Service @RequiredArgsConstructor
 public class FinanceAuxiliaryImportService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
     private final JdbcTemplate db;
     private final EntityManager em;
     private final ObjectMapper json;
@@ -171,4 +174,19 @@ public class FinanceAuxiliaryImportService {
     private <T>T decode(String value,Class<T> type){try{return json.readValue(value,type);}catch(Exception ex){throw new IllegalStateException("辅助预览读取失败",ex);}}
     private static String kind(boolean receivable){return receivable?"AUXILIARY_RECEIVABLE":"AUXILIARY_PAYABLE";}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
+
+    /** Full selected lifecycle range through bounded summary batches; original detail/write contracts are unchanged. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> summaries(String requestedScope,int page,int size,String revision) {
+        authorize();UUID actor=current.requireId();
+        String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
+        String where="actor_id=?"+switch(scope) {
+            case "active" -> " AND (directory_applied_at IS NULL)";
+            case "history" -> " AND (directory_applied_at IS NOT NULL)";
+            default -> "";
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-auxiliary-imports","finance",Map.of("actor",actor),scope,page,size,1000,revision);
+        return summaryPages.page(request,()->{authorize();},
+                ()->db.queryForObject("SELECT count(*) FROM finance_statement_source_reviews WHERE "+where,Long.class,actor),
+                (readPage,readSize)->db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",kind,source_system AS \"sourceSystem\",date_from AS \"dateFrom\",date_to AS \"dateTo\",directory_applied_at AS \"directoryAppliedAt\" FROM finance_statement_source_reviews WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",actor,readSize,Math.multiplyExact((long)readPage-1,readSize)));
+    }
 }

@@ -1,0 +1,29 @@
+{
+  "atUtc": "2026-11-05T21:48:21.983776+00:00",
+  "scope": "Read-only current actual1009 source syntax. No company database/Main/source writes; expected legacy preflight failure preserved.",
+  "source": "374d8b8a3290a0b843fc72271298b6d104f01810d0eaf0735d27db3d2d7f2202",
+  "actualRejectedLegitimateFilenameCount": 14,
+  "actualRejectedLegitimateFilenames": [
+    "V990_1__explicit_business_precision_choices.sql",
+    "V999_10__procurement_reconciliation_first_payables.sql",
+    "V999_11__financial_application_original_six_workflows.sql",
+    "V999_12__shipment_finance_name_and_receipt_snapshots.sql",
+    "V999_13__finance_open_item_classification_allocations.sql",
+    "V999_1__finance_chart_code_imports.sql",
+    "V999_2__financial_voucher_evidence_and_auxiliary_allocations.sql",
+    "V999_3__finance_accounting_source_continuation.sql",
+    "V999_4__finance_auxiliary_items.sql",
+    "V999_5__finance_statement_source_reviews.sql",
+    "V999_6__finance_cost_template_inputs.sql",
+    "V999_7__finance_asset_template_facts.sql",
+    "V999_8__finance_sales_expense_attribution.sql",
+    "V999_9__finance_expense_report_notes_and_period_policy.sql"
+  ],
+  "pythonIntUnderscoreMisread": {
+    "999_10": 99910,
+    "999_1": 9991
+  },
+  "actualException": "invalid or non-regular migration resource",
+  "gitRunCalls": 0,
+  "gitOutputCalls": 0
+}

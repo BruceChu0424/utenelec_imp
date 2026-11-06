@@ -1,0 +1,173 @@
+package com.uten.imp.features.operations.workbench;
+
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import java.time.LocalDate;
+import java.util.UUID;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/** 履约工作台接口（/api/operations/workbench）：仓库备料 / 采购 / 委外任务聚合视图。
+ *
+ * 计数端点与列表端点同按会话主体浏览（2026-10-19 起，原 @BusinessTaskRead 任务改写
+ * 退役）：分段徽章数字须与旁边列表、工作台徽章汇总同一可见口径——任务改写会剥掉
+ * 超管镜像权限，超管打开任务中心时子分类徽章全为 0/403（ADR-184 修订二）。 */
+@RestController
+@RequestMapping("/api/operations/workbench")
+@RequiredArgsConstructor
+public class FulfillmentWorkbenchController {
+
+    private final FulfillmentWorkbenchQueryService queryService;
+    private final WarehouseTaskScopePort warehouseScopes;
+    private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
+
+    @GetMapping("/purchase/overview")
+    @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
+    public FulfillmentWorkbenchPage purchaseOverview(@RequestParam(defaultValue = "") String keyword) {
+        return queryService.overview("PURCHASE", keyword, WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    @GetMapping("/subcontract/overview")
+    @PreAuthorize("hasAnyAuthority('subcontract_inquiry:view','subcontract_application:view','subcontract_order:view','subcontract_receipt:view','subcontract_material_issue:view','subcontract_return:view','subcontract_material_return:view','subcontract_waste:view')")
+    public FulfillmentWorkbenchPage subcontractOverview(@RequestParam(defaultValue = "") String keyword) {
+        return queryService.overview("SUBCONTRACT", keyword, WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    @GetMapping("/warehouse/overview")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public FulfillmentWorkbenchPage warehouseOverview(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return queryService.overview("WAREHOUSE", keyword, warehouseScopes.currentForRead(scopeWarehouseId));
+    }
+
+    @GetMapping("/warehouse")
+    @PreAuthorize("hasAnyAuthority('stock_doc:view')")
+    public FulfillmentWorkbenchPage warehouse(
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String exception,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam Map<String, String> params) {
+        // 生产领料任务中心表头排序(2026-09-24): 不传 sort 保持原排序(需求日期), 传了走白名单字段。
+        // 2026-09-25 单号列统一: f.* 表头值筛选(docNo 领料单号)同样构建 table 走服务端精确过滤;
+        // 无排序也无列筛选时保持 table=null, 原默认行为一个不动。
+        boolean hasColumnFilters = params.keySet().stream().anyMatch(key -> key.startsWith("f."));
+        FulfillmentWorkbenchTableQuery table = sort.isBlank() && !hasColumnFilters ? null
+                : FulfillmentWorkbenchTableQuery.from(sort, order, params, null, null, null, null);
+        // 仓库数据范围(ADR-149): 服务端按本人范围强制过滤; scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
+        var scope=warehouseScopes.currentForRead(scopeWarehouseId);
+        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
+            return queryService.query("WAREHOUSE",status,keyword,exception,dateFrom,dateTo,page,size,table,scope,false);
+        return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,scope);
+    }
+
+    /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
+    @GetMapping("/warehouse/count")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
+        var stages = taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
+        long pending = stages.getOrDefault("OPEN_ANY", 0L);
+        return Map.of("count", pending, "pending", pending, "inProgress", 0L,
+                "READY_TO_PICK", stages.getOrDefault("READY_TO_PICK", 0L),
+                "PARTIAL", stages.getOrDefault("PARTIAL", 0L),
+                "MATERIALS_TO_DEFINE", stages.getOrDefault("MATERIALS_TO_DEFINE", 0L));
+    }
+
+    /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
+    @GetMapping("/warehouse/status-breakdown")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public Map<String, Long> warehouseStatusBreakdown(
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return taskRowCounts.productionDraw(warehouseScopes.current(scopeWarehouseId));
+    }
+
+    @GetMapping("/purchase")
+    @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
+    public FulfillmentWorkbenchPage purchase(
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String exception,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "needDate") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
+            @RequestParam Map<String, String> params) {
+        var table=FulfillmentWorkbenchTableQuery.from(sort,order,params,issuedFrom,issuedTo,needFrom,needTo);
+        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
+            return queryService.query("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table,
+                    WarehouseTaskScopePort.WarehouseTaskScope.ALL,false);
+        return queryService.query("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table);
+    }
+
+    @GetMapping("/purchase/count")
+    @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
+    public Map<String, Long> purchaseCount() {
+        return counts("PURCHASE", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    @GetMapping("/subcontract")
+    @PreAuthorize("hasAnyAuthority('subcontract_inquiry:view','subcontract_application:view','subcontract_order:view','subcontract_receipt:view','subcontract_material_issue:view','subcontract_return:view','subcontract_material_return:view','subcontract_waste:view')")
+    public FulfillmentWorkbenchPage subcontract(
+            @RequestParam(defaultValue = "") String status,
+            @RequestParam(defaultValue = "") String exception,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(defaultValue = "needDate") String sort,
+            @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate issuedTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
+            @RequestParam Map<String, String> params) {
+        var table=FulfillmentWorkbenchTableQuery.from(sort,order,params,issuedFrom,issuedTo,needFrom,needTo);
+        if (!com.uten.imp.common.web.PageMetadataRequest.included(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()))
+            return queryService.query("SUBCONTRACT",status,keyword,exception,dateFrom,dateTo,page,size,table,
+                    WarehouseTaskScopePort.WarehouseTaskScope.ALL,false);
+        return queryService.query("SUBCONTRACT",status,keyword,exception,dateFrom,dateTo,page,size,table);
+    }
+
+    @GetMapping("/subcontract/count")
+    @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
+    public Map<String, Long> subcontractCount() {
+        return counts("SUBCONTRACT", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /**
+     * 任务中心角标：pending = 等本部门动手的单据数(红)，inProgress = 已经在办、
+     * 现在不用本部门动手的单据数(黄，ADR-100)。仓库备料没有在办态，inProgress 恒 0。
+     *
+     * <p>count 是 pending 的旧键名：仓库任务中心的角标仍按这个键读，
+     * 两个键同值，不是两个口径。
+     */
+    private Map<String, Long> counts(String department, WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        var pending = queryService.pendingTaskCounts(department, warehouseScope);
+        return Map.of(
+                "count", pending.pending(),
+                "pending", pending.pending(),
+                "waitingOrder", pending.waitingOrder(),
+                "rework", pending.rework(),
+                "shortDelivery", pending.shortDelivery(),
+                "inProgress", queryService.countInProgress(department));
+    }
+}

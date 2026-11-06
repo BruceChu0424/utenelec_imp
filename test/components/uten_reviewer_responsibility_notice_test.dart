@@ -2,10 +2,64 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/components/feedback/uten_reviewer_responsibility_notice.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    'inline reviewer identity stays beside its title with accessible responsibility disclosure at large text',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const description = '逐项核对原件后承担本次审批责任';
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sessionProvider.overrideWith(_ReviewerSession.new)],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: const TextScaler.linear(2)),
+              child: child!,
+            ),
+            home: const Scaffold(
+              body: Padding(
+                padding: EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Text('审批意见'),
+                    Flexible(
+                      child: UtenReviewerResponsibilityNotice(
+                        actionLabel: '报销审批',
+                        inline: true,
+                        description: description,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('审核员：张三(QA001)'), findsOneWidget);
+      expect(find.text(description), findsNothing);
+      expect(find.byType(UtenFieldHintIcon), findsOneWidget);
+      final title = tester.getRect(find.text('审批意见'));
+      final identity = tester.getRect(find.text('审核员：张三(QA001)'));
+      expect(identity.left, greaterThanOrEqualTo(title.right));
+      expect(identity.right, lessThanOrEqualTo(348.1));
+      await tester.tap(find.byType(UtenFieldHintIcon));
+      await tester.pumpAndSettle();
+      expect(find.text(description), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'shows the current employee name and code with responsibility semantics',
     (tester) async {

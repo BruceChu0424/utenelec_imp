@@ -1,4 +1,6 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -7,7 +9,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../shared/paging/paged_read_intent.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
@@ -997,7 +998,15 @@ class _PaymentRecordPicker extends ConsumerStatefulWidget {
 }
 
 class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
-    with FormDraftMixin<_PaymentRecordPicker> {
+    with
+        FormDraftMixin<_PaymentRecordPicker>,
+        ReadViewActivityMixin<_PaymentRecordPicker> {
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_selected != null) _selectionToRestore = _selected!.id;
+    await _load();
+  }
+
   final _search = TextEditingController();
   final _reference = TextEditingController();
   FinanceDocType _type = FinanceDocType.payment;
@@ -1011,8 +1020,6 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
   bool _isQueryPending(String value) =>
       _activeSearchGeneration == _generation &&
       _activeSearchKeyword == value.trim();
-  int _page = 1;
-  int _pages = 1;
   String? _selectionToRestore;
   bool _confirming = false;
   bool _checkpointed = false;
@@ -1278,13 +1285,14 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
     super.dispose();
   }
 
-  Future<void> _load({int page = 1}) async {
+  Future<void> _load() async {
     if (_confirming || _cashPrepayment) return;
     final generation = ++_generation;
     final scope = ref.read(authenticatedScopeProvider);
     final keyword = _search.text.trim();
     bool current() =>
         mounted &&
+        formDraftIdentityIsCurrent &&
         generation == _generation &&
         scope == ref.read(authenticatedScopeProvider);
     _activeSearchGeneration = generation;
@@ -1294,55 +1302,63 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
       _error = null;
     });
     try {
-      final result = await PagedReadIntent.scopedRead(current, () async {
-        final PagedResult<FinanceDocListItem> result;
-        if (_linkFinance) {
-          final json = await ref
-              .read(businessApplicationRepositoryProvider)
-              .prepaymentFinanceCandidates(
-                widget.application.id,
-                page: page,
-                keyword: keyword,
-              );
-          result = await PagedResult.fromJsonResponsive(json, (row) {
-            // The neutral application candidate DTO supplies an exact text
-            // amount; adapt it to the existing finance row without a double.
-            final value = FinanceDocListItem.fromJson({
-              ...row,
-              if (row['amountBasis'] == 'ORIGINAL')
-                'amountOriginalExact': row['amountText']
-              else
-                'amountLocalExact':
-                    row['amountText'] ??
-                    row['amountLocalExact'] ??
-                    row['amountLocalText'],
-            });
-            if ((widget.application.originalAmount
-                        ? value.amountOriginalText
-                        : value.amountLocalText)
-                    ?.isNotEmpty !=
-                true) {
-              throw const FormatException('预付账务候选金额未完整返回，暂不能选择');
+      final result = await readViewActivity.runRead(
+        current,
+        () => loadCompletePagedResult<FinanceDocListItem>(
+          isCurrent: current,
+          idOf: (row) => row.id,
+          loadPage: (page, size) async {
+            final PagedResult<FinanceDocListItem> result;
+            if (_linkFinance) {
+              final json = await ref
+                  .read(businessApplicationRepositoryProvider)
+                  .prepaymentFinanceCandidates(
+                    widget.application.id,
+                    page: page,
+                    size: size,
+                    keyword: keyword,
+                  );
+              result = await PagedResult.fromJsonResponsive(json, (row) {
+                // The neutral application candidate DTO supplies an exact text
+                // amount; adapt it to the existing finance row without a double.
+                final value = FinanceDocListItem.fromJson({
+                  ...row,
+                  if (row['amountBasis'] == 'ORIGINAL')
+                    'amountOriginalExact': row['amountText']
+                  else
+                    'amountLocalExact':
+                        row['amountText'] ??
+                        row['amountLocalExact'] ??
+                        row['amountLocalText'],
+                });
+                if ((widget.application.originalAmount
+                            ? value.amountOriginalText
+                            : value.amountLocalText)
+                        ?.isNotEmpty !=
+                    true) {
+                  throw const FormatException('预付账务候选金额未完整返回，暂不能选择');
+                }
+                return value;
+              });
+            } else {
+              result = await ref
+                  .read(financeRepositoryProvider(_type))
+                  .list(
+                    page: page,
+                    size: size,
+                    filter: FinanceDocFilter(
+                      status: 1,
+                      keyword: keyword,
+                      partyId: _type == FinanceDocType.payment
+                          ? widget.application.fields['supplierId'] as String?
+                          : null,
+                    ),
+                  );
             }
-            return value;
-          });
-        } else {
-          result = await ref
-              .read(financeRepositoryProvider(_type))
-              .list(
-                page: page,
-                size: 24,
-                filter: FinanceDocFilter(
-                  status: 1,
-                  keyword: keyword,
-                  partyId: _type == FinanceDocType.payment
-                      ? widget.application.fields['supplierId'] as String?
-                      : null,
-                ),
-              );
-        }
-        return result;
-      });
+            return result;
+          },
+        ),
+      );
       if (!current()) {
         return;
       }
@@ -1351,10 +1367,9 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
         _selected = _rows
             .where((row) => row.id == _selectionToRestore)
             .firstOrNull;
-        _page = result.page;
-        _pages = result.totalPages;
       });
     } catch (error) {
+      if (isRetiredViewRead(error)) return;
       if (current()) {
         setState(() => _error = '财务单据读取失败，请重试');
       }
@@ -1541,27 +1556,6 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
                     padding: const EdgeInsets.all(UtenSpacing.s16),
                     child: Column(
                       children: [
-                        if (!_cashPrepayment)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              UtenButton(
-                                type: UtenButtonType.secondary,
-                                onPressed: _loading || _page <= 1
-                                    ? null
-                                    : () => _load(page: _page - 1),
-                                child: const Text('上一页'),
-                              ),
-                              Text('$_page / ${_pages < 1 ? 1 : _pages}'),
-                              UtenButton(
-                                type: UtenButtonType.secondary,
-                                onPressed: _loading || _page >= _pages
-                                    ? null
-                                    : () => _load(page: _page + 1),
-                                child: const Text('下一页'),
-                              ),
-                            ],
-                          ),
                         if (!_linkFinance)
                           const SizedBox(height: UtenSpacing.s12),
                         if (!_linkFinance)

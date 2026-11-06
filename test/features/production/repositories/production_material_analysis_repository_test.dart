@@ -4,11 +4,11 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/models/material_future_transfer.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/search/keyword_search.dart';
 
 void main() {
   test(
-    'future source search ranks goods names before codes across the complete list before paging',
+    'future source snapshot preserves all identities and shared local search ranking',
     () async {
       final repository = ProductionPlanRepository(
         _api(
@@ -59,35 +59,32 @@ void main() {
                   .toList(),
         ),
       );
-      Future<PagedResult<MaterialFutureTransferSource>> search(
-        String query, {
-        int page = 1,
-      }) => repository.materialFutureTransferSources(
+      final snapshot = await repository.materialFutureTransferSourceSnapshot(
         targetAnalysisId: 'target',
         targetMaterialId: 'material',
-        keyword: query,
-        page: page,
-        size: 1,
       );
-      final first = await search('Metric Screw');
-      expect(first.total, 3);
-      expect(first.totalPages, 3);
-      expect(first.items.single.sourceAllocationId, 'exact');
+      expect(snapshot, hasLength(5));
+      List<MaterialFutureTransferSource> search(String query) =>
+          rankedKeywordMatches(
+            snapshot,
+            query,
+            primaryFields: (source) => [source.goodsName],
+            fields: (source) => [source.sourceLabel, source.goodsCode],
+          );
       expect(
-        (await search('Metric Screw', page: 2)).items.single.sourceAllocationId,
-        'prefix',
+        search('Metric Screw').map((source) => source.sourceAllocationId),
+        ['exact', 'prefix', 'code'],
       );
-      expect(
-        (await search('Metric Screw', page: 3)).items.single.sourceAllocationId,
+      expect(search('原计划 Screw'), hasLength(3));
+      expect(search('特殊 A%_B').single.sourceAllocationId, 'literal');
+      expect(search('Metric missing'), isEmpty);
+      expect(search('').map((source) => source.sourceAllocationId), [
         'code',
-      );
-      expect((await search('原计划 Screw')).total, 3);
-      expect(
-        (await search('特殊 A%_B')).items.single.sourceAllocationId,
+        'prefix',
+        'exact',
         'literal',
-      );
-      expect((await search('Metric missing')).total, 0);
-      expect((await search('')).items.single.sourceAllocationId, 'code');
+        'lookalike',
+      ]);
     },
   );
   test(
@@ -144,7 +141,7 @@ void main() {
           return _analysisJson;
         }),
       );
-      final sources = await repository.materialFutureTransferSources(
+      final sources = await repository.materialFutureTransferSourceSnapshot(
         targetAnalysisId: 'analysis-1',
         targetMaterialId: 'target-material',
       );
@@ -152,12 +149,12 @@ void main() {
         requests.single.path,
         '/production/material-analyses/analysis-1/materials/target-material/future-transfer-sources',
       );
-      expect(sources.items.single.sourceAllocationId, 'allocation-exact');
-      expect(sources.items.single.shortageQty, 100);
+      expect(sources.single.sourceAllocationId, 'allocation-exact');
+      expect(sources.single.shortageQty, 100);
       await repository.createMaterialFutureTransfer(
         targetAnalysis: ProductionMaterialAnalysisView.fromJson(_analysisJson),
         targetMaterialId: 'target-material',
-        source: sources.items.single,
+        source: sources.single,
         qty: 80,
         allowLateSupply: true,
         reason: '调整专属供给',

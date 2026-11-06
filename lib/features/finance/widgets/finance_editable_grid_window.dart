@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_pagination.dart';
 import '../../../core/theme/uten_tokens.dart';
 
 /// A presentation window over an owned complete controller. Models, exact input,
@@ -45,19 +44,11 @@ class FinanceEditableGridWindow<T extends EditableGridRow>
 
 class _FinanceEditableGridWindowState<T extends EditableGridRow>
     extends State<FinanceEditableGridWindow<T>> {
-  final _view = UtenEditableGridController<T>();
   final _bodyScroll = ScrollController();
-  int _page = 1;
-  int get _pages => math.max(
-    1,
-    (widget.controller.length + widget.pageSize - 1) ~/ widget.pageSize,
-  );
   @override
   void initState() {
     super.initState();
-    _page = widget.initialPage;
     widget.controller.addListener(_sourceChanged);
-    _refresh();
   }
 
   @override
@@ -66,60 +57,27 @@ class _FinanceEditableGridWindowState<T extends EditableGridRow>
     if (old.controller != widget.controller) {
       old.controller.removeListener(_sourceChanged);
       widget.controller.addListener(_sourceChanged);
-      _page = widget.initialPage;
-    }
-    if (old.initialPage != widget.initialPage) _page = widget.initialPage;
-    _refresh();
-  }
-
-  void _refresh() {
-    _page = _page.clamp(1, _pages);
-    final begin = (_page - 1) * widget.pageSize,
-        end = math.min(_page * widget.pageSize, widget.controller.length);
-    final visible = widget.controller.rows.sublist(
-      math.min(begin, widget.controller.length),
-      end,
-    );
-    var changed = _view.length != visible.length;
-    if (!changed) {
-      for (var index = 0; index < visible.length; index++) {
-        if (!identical(_view[index], visible[index])) {
-          changed = true;
-          break;
-        }
-      }
-    }
-    if (changed) {
-      _view.clearSelection();
-      _view.swapRows(visible);
     }
   }
 
   void _sourceChanged() {
-    if (mounted) setState(_refresh);
-  }
-
-  void _change(int page) {
-    setState(() {
-      _page = page;
-      _refresh();
-    });
-    if (_bodyScroll.hasClients) _bodyScroll.jumpTo(0);
-    widget.onPageChanged?.call(_page);
+    if (mounted) setState(() {});
   }
 
   void _add() {
     final create = widget.createBlankRow;
     if (!widget.showAddRow || create == null) return;
     widget.controller.addRow(create());
-    _change(_pages);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _bodyScroll.hasClients) {
+        _bodyScroll.jumpTo(_bodyScroll.position.maxScrollExtent);
+      }
+    });
   }
 
   @override
   void dispose() {
     widget.controller.removeListener(_sourceChanged);
-    _view.swapRows(<T>[]);
-    _view.dispose();
     _bodyScroll.dispose();
     super.dispose();
   }
@@ -128,7 +86,7 @@ class _FinanceEditableGridWindowState<T extends EditableGridRow>
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final grid = UtenEditableGrid<T>(
-        controller: _view,
+        controller: widget.controller,
         columns: widget.columns,
         tableKey: widget.tableKey,
         showAddRow: false,
@@ -154,9 +112,7 @@ class _FinanceEditableGridWindowState<T extends EditableGridRow>
         children: [
           UtenResponsiveActionWrap(
             children: [
-              Text(
-                '共${widget.controller.length}行；每页${widget.pageSize}行，草稿与提交保留完整清单',
-              ),
+              Text('共${widget.controller.length}行'),
               if (widget.showAddRow)
                 UtenButton(
                   type: UtenButtonType.secondary,
@@ -170,14 +126,11 @@ class _FinanceEditableGridWindowState<T extends EditableGridRow>
             Expanded(child: body)
           else
             SizedBox(
-              height: math.min(360, 90 + _view.length * 48).toDouble(),
+              height: math
+                  .min(360, 90 + widget.controller.length * 48)
+                  .toDouble(),
               child: body,
             ),
-          UtenPagination(
-            currentPage: _page,
-            totalPages: _pages,
-            onPageChanged: _change,
-          ),
         ],
       );
     },

@@ -10,11 +10,10 @@ import 'package:uten_imp/features/production/models/production_material_analysis
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/material_future_transfer_history.dart';
 import 'package:uten_imp/features/production/widgets/material_reallocation_dialog.dart';
-import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets(
-    'future source pages reuse one complete response while retaining exact draft quantities',
+    'future sources scroll over one complete result while retaining exact draft quantities',
     (tester) async {
       final repository = _Repository(sourceCount: 50);
       await _pumpPicker(tester, repository);
@@ -23,7 +22,7 @@ void main() {
       );
       ListView list() => tester.widget<ListView>(finder);
       expect(repository.sourceSnapshotCalls, 1);
-      expect(list().childrenDelegate.estimatedChildCount, 41);
+      expect(list().childrenDelegate.estimatedChildCount, 99);
       final quantity = find.byKey(
         const Key('future-transfer-qty-allocation-1'),
       );
@@ -35,7 +34,7 @@ void main() {
       list().controller!.jumpTo(list().controller!.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(repository.sourceSnapshotCalls, 1);
-      expect(list().childrenDelegate.estimatedChildCount, 81);
+      expect(list().childrenDelegate.estimatedChildCount, 99);
       final controller = tester.widget<TextFormField>(quantity).controller!;
       expect(controller.text, '1.2345');
       expect(repository.creates, isEmpty);
@@ -572,22 +571,7 @@ class _Repository extends ProductionPlanRepository {
     bool Function()? isCurrent,
   }) async {
     sourceSnapshotCalls++;
-    return (await materialFutureTransferSources(
-      targetAnalysisId: targetAnalysisId,
-      targetMaterialId: targetMaterialId,
-    )).items;
-  }
-
-  @override
-  Future<PagedResult<MaterialFutureTransferSource>>
-  materialFutureTransferSources({
-    required String targetAnalysisId,
-    required String targetMaterialId,
-    int page = 1,
-    int size = 20,
-    String keyword = '',
-  }) async => PagedResult(
-    items: [
+    return [
       for (final id in [for (var i = 1; i <= sourceCount; i++) 'allocation-$i'])
         MaterialFutureTransferSource(
           sourceAllocationId: id,
@@ -603,12 +587,9 @@ class _Repository extends ProductionPlanRepository {
           targetUncoveredQty: 100,
           lateOrUnknown: late,
         ),
-    ],
-    page: page,
-    size: size,
-    total: 2,
-    totalPages: 1,
-  );
+    ];
+  }
+
   @override
   Future<ProductionMaterialAnalysisView> createMaterialFutureTransfer({
     required ProductionMaterialAnalysisView targetAnalysis,

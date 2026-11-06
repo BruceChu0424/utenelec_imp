@@ -161,6 +161,7 @@ class _Applications extends Fake implements BusinessApplicationRepository {
   Future<Map<String, dynamic>> prepaymentFinanceCandidates(
     String id, {
     int page = 1,
+    int size = 100,
     String? keyword,
   }) async {
     financeCandidateReads.add(id);

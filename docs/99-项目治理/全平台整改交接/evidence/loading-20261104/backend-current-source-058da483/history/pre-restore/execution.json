@@ -1,0 +1,27 @@
+{
+  "label": "pre-restore",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-pre-restore-selection.txt",
+  "selected": "DirectMakeDeliveryClosedCreditPostgresTest,InteractiveTaskReadScopePostgresTest,ProductionExecutionWorkbenchQueryPostgresTest#publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults,SalesDeliveryMixedScenarioEndToEndTest#restoredOriginalMakeReceiptKeepsItsPrivateBudgetWhenItIsReissuedAndActuallyShipped",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=DirectMakeDeliveryClosedCreditPostgresTest,InteractiveTaskReadScopePostgresTest,ProductionExecutionWorkbenchQueryPostgresTest#publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults,SalesDeliveryMixedScenarioEndToEndTest#restoredOriginalMakeReceiptKeepsItsPrivateBudgetWhenItIsReissuedAndActuallyShipped",
+    "surefire:test"
+  ],
+  "environment": {
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g",
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-pre-restore-empty-benchmark.json"
+  },
+  "sourceInputSha256": "5a1bcea10e4c1ed74510b497a8ecc02aa98cfebe96f48818f6c0d9df20eae500",
+  "startedAtUtc": "2026-11-05T10:29:10.6535572Z",
+  "wrapperPid": 46940,
+  "log": "build/loading-validation/combined-pre-restore.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T10:42:16.6525514Z",
+  "actualExitCode": 1
+}

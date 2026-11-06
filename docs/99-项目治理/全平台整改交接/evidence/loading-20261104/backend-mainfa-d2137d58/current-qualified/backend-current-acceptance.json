@@ -1,0 +1,1840 @@
+{
+  "sealedAtUtc": "2026-11-06T02:31:43.947888+00:00",
+  "sourceAggregateSha256": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29",
+  "priorSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "upstreamMainHead": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "sourceFilesChecked": 7411,
+  "sourcePathsetAndByteDrift": [],
+  "green": true,
+  "acceptanceMode": "Qualified exact-input/class-byte bridge plus current-source whole failed-class replacement; not an all-current native25 run.",
+  "originalWholeNativeJavaClasses": 25,
+  "originalWholeNativeJavaTests": 258,
+  "originalWholeFastNativeExitCode": 0,
+  "originalWhole15PgNativeExitCode": 1,
+  "originalWholeRedPreserved": true,
+  "currentNativeJavaClasses": 1,
+  "currentNativeJavaTests": 6,
+  "qualifiedCurrentJavaClasses": 25,
+  "qualifiedCurrentJavaTests": 258,
+  "qualifiedCaseLedger": [
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "synchronousProjectionContainsOnlySelectedTargetSectionWithExplicitScope",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "missingOrDuplicateSelectionPublishesNothingAndRestoresPreviousSink",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "realStreamingXlsxAndPdfKeepOnlyTheSecondarySelectedSectionIncludingFinalPage",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.export.SelectedDocumentProjectionTest",
+      "case": "interruptionAndUnknownOrAmbiguousTargetCannotExpandIntoAllSections",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "ordinaryStaffCannotOpenTheUsageDashboardEvenWithManageAuthority",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "superAdminStillNeedsStepUpBeforeSavingPersonalLimits",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "impersonationCannotReadTheUsageDashboardOrSaveLimits",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "aValidStepUpIsCheckedBeforeTheLimitsWriteAndExpirationIsRejected",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "superAdminStillNeedsStepUpBeforeSavingPrices",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "impersonationCannotReadCrossEmployeeQuestions",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "peopleBatchesKeepSuperAdminAndImpersonationReadBoundaries",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "ordinaryStaffCannotReadOtherEmployeesOrPricesEvenWithManageAuthority",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.ai.usage.AiUsageAuditControllerSecurityTest",
+      "case": "aValidStepUpAllowsContinuousWritesAndAnExpiredProofIsRejected",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "exactDomainFactsChangeTheOpaqueConfirmationSnapshotWithoutAnyWrite",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "requestWithoutSnapshotStillRequiresCurrentDomainEligibility",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "downstreamBusinessRefusalStaysSupportedAndUsesUnapprovalWording",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "dedicatedWorkflowIsUnsupportedEvenWhenItsDocumentIsStillADraft",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "impersonatedAndPasswordChangeIdentitiesCannotSubmitEvenWithReverseAuthority",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "lineageOmitsAHiddenRelatedNumberAndReason",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "missingStatusAndImportedGenerationFailClosed",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "hiddenSuccessorDoesNotRevealItsIdentityOrCreateAnotherDraft",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "alreadyCommittedRetryReturnsKnownSuccessorBeforeSnapshotRevalidation",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "viewOnlyIdentityCannotGainAReverseAction",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "draftNeverCallsDomainReversalEligibility",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.documents.DocumentUnapprovalCapabilityTest",
+      "case": "staleSnapshotCannotReachDomainMutationOrConsumeANumber",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "mineFacetsUseOnlyTheCurrentApplicantsClaimNumbers",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "submitAcceptsRejectedClaimAndClearsRejectionTrace",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "payableFacetsRequirePayPermission",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "pendingFacetsAggregateDepartmentsAndMonthsForApprovalStatuses",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "postingFailureDoesNotMarkClaimPaid",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "relabelingAStandardDigitalInvoiceAsOtherCannotBypassDeduplication",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "applicantCannotApproveOwnClaim",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "anotherApplicantsDraftIsNotExposedThroughAStaleVersionError",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "facetsRejectUnknownQueue",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approveBatchDecidesEveryClaimInStableOrder",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "invoiceArithmeticMatchDoesNotPretendToBeTaxVerification",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "invoiceAmountMismatchMarksCheckStateForReviewer",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "staleVersionCannotApproveAWithdrawnAndResubmittedRevision",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "summaryUsesTheSharedTaskAudienceInsteadOfPromotingAdministrativeBrowsing",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "detailWithoutAttachmentViewNeverIssuesDownloadCapabilities",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "detailWithAttachmentViewDelegatesToCentralOwnerPolicy",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "summaryRequiresApproveOrPayPermission",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approveRecordsApprovalEvent",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approverCannotReadSomeoneElsesDraft",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "precheckNeverLeaksSomeoneElsesApplicantAndClaimNumber",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "missingOriginalBlocksSubmissionWithoutChangingStateOrNotifying",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approvedPaymentPostsFinanceThenMarksClaimPaid",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "rejectionResolvesPreviousTaskBeforePublishingApplicantsCorrectionTask",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "addInvoiceBlocksClaimsAlreadyInApprovalFlow",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "optionalDetailDoesNotConvertARealReadFailureIntoUnavailable",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "detailResolvesApplicantDepartmentNameFromSnapshotId",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "createRecordsCreatedEventWithActorSnapshot",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "optionalDetailKeepsUnauthorizedAndDeletedClaimsUnavailableWithoutBuildingTheirDto",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "applicantCannotPayOwnClaim",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "mineActiveAndHistoricalFacetsUseTheSamePaymentBoundaryAsTheList",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "rejectBatchRequiresReason",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "invoiceNumberWithLettersIsRejectedRatherThanSilentlyRewritten",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "submitRejectsPaidClaim",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "sameClaimDuplicateInvoiceAlsoFailsBeforeDatabaseUniqueViolation",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "addInvoiceRejectsDuplicateAcrossLiveClaims",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "createCalculatesTotalOnServer",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approvedClaimCannotBeMarkedPaidWithoutPaymentEvidence",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "editReplacesItemsAndKeepsRejectedStatusForRework",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "mineFacetsRequireApplyPermissionEvenForAnApproverAndPayer",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "addInvoiceRequiresCodeForLegacyEightDigitNumber",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "addInvoiceAcceptsDigitalInvoiceWithoutCode",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "summaryDoesNotQueryOrRevealUnauthorizedPaymentAmounts",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "paidRetryWithSameParametersIsIdempotent",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "approvalActorCannotDisburseEvenWithPayPermission",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+      "case": "editRejectsClaimAlreadyInApprovalFlow",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.procurement.ProcurementApprovalHistoryQueryTest",
+      "case": "approvedRoundsAreReadonlyEvenForAnEligibleApproverAndUseOneStatusInCountAndList",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.procurement.ProcurementApprovalHistoryQueryTest",
+      "case": "invalidHistoryStatusFailsBeforeAnyQuery",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.procurement.ProcurementApprovalHistoryQueryTest",
+      "case": "workAndHistoryUseTheSameNarrowPredicateForRowsCountFacetsAndTypeCounts(String)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.procurement.ProcurementApprovalHistoryQueryTest",
+      "case": "workAndHistoryUseTheSameNarrowPredicateForRowsCountFacetsAndTypeCounts(String)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseSortOnlyColumnsAreWhitelistedAndNeverBecomeFilters",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountEndpointRequiresStockDocumentView",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "columnTextSearchesRemainBoundAndIndependentFromExactFacetValues",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseExportStreamsEveryAuthorizedSourceRowWithoutTableMetadataQueries",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "controllerReadPermissionsMatchFlutterAnyPermissionGuards",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountEndpointGuardsPurchaseReadPermissions",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "exceptionFilterAndOptionsAreEvaluatedByTheDatabaseNotTheCurrentPage",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractPendingCountLeavesDrawableTasksToTheDrawSegmentAndPurchaseStaysUntouched",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "pendingCardCountIgnoresTheActiveStatusCardFilter",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayOnlyDetailsMoveAfterThePageUnlessTheyControlGlobalSelection",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "maliciousFacetValuesStayBoundAndExcludedFacetsKeepTheOtherParameterIdentities",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "requestAndApplicationRowsExposeTheirApprovedPhysicalStageDifference",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "differenceHeaderUsesExactBoundComparisonsAndKeepsUnknownFactsUnknown",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountUsesTheFulfillmentProjectionAndOpenQuantity",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseListAndStatusBreakdownRequireTheSameExplicitRequest",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "legacyPurchaseExportRejects501RowsRatherThanPublishingTheFirst500",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "anEmptyPurchaseExportDoesNotRunBadgesFacetsOrSummary",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseCountUsesRequestLineDecompositionProjection",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseRowsUseTaskStatusAsDisplayStage",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportUsesTheSameTerminalStatusAndBoundTableFiltersAsItsHistoryList",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseRowsSortByPlanNumberAndCarryDocNoFacets",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "continuationResponseExplicitlyOmitsMetadataWhileKeepingExactTotalAndCapabilities",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseUnknownMaterialRequestsHaveTheirOwnStatusAndCountOnceWithoutInventingQuantity",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractExportRejectsTheDifferentPendingDrawProjectionBeforeReadingAnyFacts",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "inProgressCountOnlyCountsTheThreeFinanceStages",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "subcontractOrderStagesFollowTheDrawModelAndStatusCountsStayOnTaskStatus",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionMetadataIsMaskedWhenTheExactDocumentPermissionIsMissing",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseCountIsZeroOutsideTheWarehouseOrganizationScope",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "purchaseEntryUsesOneAggregateWithoutRowsTableFacetsOrDerivedJoins",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "warehouseEntryDoesNotReadRowsWithoutWarehouseTaskAccess",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "displayStageAndOrderCapabilityAreReadFromTheRowAndSurviveActionCopy",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "openAnyStatusSentinelFiltersByOpenQuantity",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest",
+      "case": "actionAndBatchCapabilitiesUseSeparateViewAndEditPermissions",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterOutputIdentityTest",
+      "case": "repeatedGoodsOnOneDocumentSelectTheOriginalPhysicalLine",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.FlywayChecksumManifestExporterTest",
+      "case": "exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.FlywayChecksumManifestExporterTest",
+      "case": "canonicalVersionIdentityMatchesTheSharedPythonContract",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.ForwardMigrationSequenceContractTest",
+      "case": "reproducesTheV774BeforeV773DeliveryFailure",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.ForwardMigrationSequenceContractTest",
+      "case": "rejectsTheTwoParallelV782FilesInsteadOfSilentlyDeduplicating",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.ForwardMigrationSequenceContractTest",
+      "case": "historicalGapsRemainHistoricalButNewReservedGapsAreRejected",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.ForwardMigrationSequenceContractTest",
+      "case": "currentForwardMigrationFilesHaveNoUnfinishedReservationGap",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "runtimeErpDoesNotExposeALegacyDatabaseMigrationChannel",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "hrImportsKeepIdentifierPiiAndAuditTriggersEnabled",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "bootstrapSqlNeverDisablesConstraintsOrUsesTruncate",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapPersistsStructuralReconciliationAndFailsClosed",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapPreflightsOneExactOfflineExportBeforeDatabaseMutation",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "hrKeyHandoffUsesPrivateUnpredictableTemporaryFiles",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "warehouseMasterAndEveryWarehouseReferenceComeOnlyFromTheReviewedCrosswalk",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "everyHistoricalGoodsStubHasAStableExplicitCode",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "currentUpgradeRehearsalsReplaceTheObsoleteFixedVersionCloneTest",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "fullBootstrapLoadsUuidAuthoritiesBeforeGoods",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "productListImporterRequiresAnExplicitDatabasePasswordAndLocalCapability",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyMigrationSafetyContractTest",
+      "case": "destructiveBootstrapRequiresTheExactCurrentFlywayInventory",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[3]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[4]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[5]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[6]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[7]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[8]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[9]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[10]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "nonClosedOrForeignCandidatesNeverCredit(String)[11]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "unknownCurrentCapacityDoesNotBecomeANewRightFromHistoricalShipments",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "restoredOriginalMakeKeepsItsExactProofAndOnlyTheUnrestoredHandoffCredits",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "originalFourPlaceQuantitiesAreAddedWithoutRoundingOrAChangedSourceTotal",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "exactClosedMakeAddsBackOnlyTheAlreadyAttributedPartOfThePrivateTotal",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "fullyDeliveredAndAlreadyAttributedQuantityLeavesNoNewAdmission",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DirectMakeDeliveryClosedCreditPostgresTest",
+      "case": "frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "previousPeriodGeneralCashDocumentsExposeTheSameBlockAsTheWriterWithoutChangingMoney",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aReceiptWithLaterRealSourceAllocationMustReverseInLifoOrder",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "repeatedOriginalDoesNotCreateASecondSuccessorAndTheApprovedSuccessorCanUnapproveAgain",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aNormallyFrozenSupplierMonthBlocksPaymentReversalOnTheActualClosingBusinessDay",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "appliedCustomerPrepaymentIsBlockedUntilItsRealApplicationIsReversed",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "inactiveAccountIsBlockedBySharedReadAndLockedReversalGuards",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "confirmedExpenseIsBlockedBeforeAndAfterAttemptedUnapproval",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "aReadableDocumentWithoutReversePermissionNeverExposesAReadyActionOrRelatedReferences",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.FinanceUnapprovalEligibilityEndToEndTest",
+      "case": "allFiveReadyPreflightsAreReadOnlyAndMatchActualAtomicUnapproval",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "combinedReceiptUsesItsFrozenGiftBaseForClosureFreeReturnAndUnapprovalReplay",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "paidFirstAndPartialGiftReceiptsCloseByTheirOwnFrozenBasesAndFreeReturnsRemainSeparate",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftUnitRateConservationEndToEndTest",
+      "case": "anIncompleteSuccessorRollsBackTheOriginalReversalAndEveryPosting",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.InventoryValueOutputRefreshContinuationPostgresTest",
+      "case": "sameConfirmedDocumentResumesItsOriginalRootWithoutRepricingOrInventingSourceFacts",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "customerReturnBeforeQualityDispositionCanReverseButAConfirmedCustomerDecisionCannot",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "reportWithActualMaterialUseHasPureSourceChecksAndAStaffReaderCannotWithdrawAnotherOwnersReport",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "originalStockCostReadinessChangesWithLaterReceiptOrActualUseAndRetiredMaterialReturnIsNotCloneable",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "partialCustomerQualityDispositionReturnsBlockedCapabilityWithoutPoisoningCallerTransaction(String)[3]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractIssueCanBeWithdrawnBeforeConsumptionButItsOrderCannotIgnoreTheActualIssue",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "manualPlanAndInquiryOnlyBecomeReadyWhenApprovedAndPureReadsDoNotChangeAnyLedger",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "missingReversePermissionAndHiddenOwnerReadDoNotBecomeAReadinessOracle",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "untouchedSupplierWasteRestoresTheOriginalMaterialAndRetiredOtherShipmentNeverCreatesADraft",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "salesWarehouseDraftBlocksAnOtherwiseUnusedOrderAndDeletingItRestoresReadiness",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "purchaseReceiptDraftIsARealReversalDependencyEvenBeforeReceivedCountersAdvance",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "directQualityPreflightMissingAndPartialFactsAllowCallerToCatchConflictAndCommit",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NonFinanceUnapprovalEligibilityEndToEndTest",
+      "case": "fullyDisposedCustomerQualityReturnsBlockedHttpCapabilityAndConflictPostWithoutEffects",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "pendingIqcBlocksWithoutWritesThenExactChargedAndGiftSourcesCanUnapprove",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "freeReturnUnapprovalRestoresTheSourceAndAnotherActiveReturnBlocksWithoutWrites",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "previousPeriodReturnProjectionBlocksBeforeEitherInventoryOrLedgerChanges",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractPassedButUnstoredReceiptCanRestoreTheExactOriginalMaterialCustody",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractStoredMaterialAndFeeCanUnapproveThroughTheProvenCostReleasePlan",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractReturnUsesOriginalActualIssueAndRemainsReversibleWithoutTouchingFeeCredit",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "viewOnlyAndHiddenOwnerCannotLearnOrExecuteOtherPersonsUnapproval",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "multipleSubcontractWarehouseBatchesUseOneProvenCostReleaseAndAllOriginalStoreSlices",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "confirmedAllFreeReceiptKeepsZeroMoneyProofWhileExactPhysicalQuantityUnapproves",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "unstartedReadyProductionKitCanDemoteThroughTheSamePureUnwindPlan",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "forwardMigrationRetainsAllOriginalCustodyAndZeroMoneyDispatchGuards",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.ProcurementUnapprovalEligibilityEndToEndTest",
+      "case": "subcontractSuccessorCanBeExplicitlySavedAndResubmittedWithoutRepeatingMaterialOrFee",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "unapprovalKeepsFrozenInputsThenAnExplicitDraftSaveCanRepostTheOriginalSourceCost",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "reverseRestoresOriginalFortyToSupplierAndRetainsLaterOneHundredTwentyInWarehouse",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SubcontractMaterialReturnOriginalCostEndToEndTest",
+      "case": "laterActualConsumptionBlocksWithdrawalEvenWhenPhysicalStockStillExceedsTheReturnedBatch",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "totalPriceReferenceProofIsInheritedWithoutRepricingTheAgreedTotal(Owner)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "totalPriceReferenceProofIsInheritedWithoutRepricingTheAgreedTotal(Owner)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[3]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aLaterRealQuantityEditUsesItsNewExplicitAdoption(Owner)[4]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "aCommittedLineageCannotBeReplayedForAnotherInsert",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "anotherFamilyHeaderOrSourceLineCannotBorrowTheProof",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[3]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[4]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[5]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritsTheOriginalFrozenFactsUnderAnotherActorsUnrelatedChoice(Owner)[6]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "inheritedReceiptWeightKeepsTheOriginalRawEvidenceWithoutInventingAnotherInput",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "noLineageOrRolledBackLineageCannotAuthorizeAnOrigin",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "duplicateMappingsAndCallerWrittenTransactionProofAreRejected",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.common.finance.UnapprovalFrozenAdoptionPostgresTest",
+      "case": "incompleteLineageCannotCommitAndMetadataCannotBeRetagged",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "approvedSupplierPrepaymentUsesOneActualPaymentAssetAndNoFabricatedPayable",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalTravelPathHasThreeDistinctStepsNoCashAndFrozenSignaturesAndDurableReplay",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[1]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "realReimbursementKeepsNativeInvoiceAndPaymentAuthorityAndCanReverse(String)[2]",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "guessingAnOriginalPayableUuidDoesNotBypassItsExistingReadPermission",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "nonzeroExpensePostsOnlyAfterPaymentAndConcurrentReplayCannotDuplicateCashOrGl",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "case": "originalPayrollHrFinanceManagementPathPaysOnceConfirmsAndReversesOnlyActualPayment",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "confirmedExpenseSurvivesRejectedPeriodRegenerationByteForByte",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "approveWinsAndWaitingDeletesObserveTheApprovedStateAcrossAllDocuments",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "pendingExpenseConfirmationStaysActiveAcrossPagingFacetsScopeAndRealConfirmation",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "localOnlyExpenseAndIncomeRejectHeaderCurrencyOrRateContradictingTheBaseAccount",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "localOnlyExpenseAndIncomeRejectAnActiveForeignCurrencyAccount",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "receiptGlAndAccountFlowsFinalizeThenReverseWithoutMutableBypasses",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "deleteWinsAndWaitingApprovalsObserveTheSoftDeleteAcrossAllDocuments",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest",
+      "case": "multiCurrencyReceiptPostsNetAndReverses",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "defaultListAndBadgeIncludeWaitingWithTheSameAssignmentAndPaginationScope",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "reportInspectionSplitsFullyReportedSegmentsOutOfInProgress",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "superAdminSeesAllWorkshopsOnReadSide",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "cancelledReversedAndOtherTasksNeverProvideTheCurrentTasksRoute",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "overviewSeparatesOwnerScopeFromAndAndLoadsRootWorkOrders",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "materialEntryFlagsUseActualLedgerBalancesInOneScopedBatch",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparationFilterRunsBeforePaginationAndPartialWarehouseRequestStaysSelectable",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "fixedSupplementUsesProvenSharedMaterialAndOnlyOffersRealQualityRecovery",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "unknownLeafMaterialsStayInDrawRequestFiltersAndNeverBecomeZeroMaterialStartable",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "historySegmentIncludesCancelledAndReversedWithinTheDateGate",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "publicSegmentReadsUseTheSameTransactionAndRestoreJitWithoutChangingResults",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "preparingAndInProgressFiltersExecuteWithAndWithoutKeyword",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "readyFiltersExecuteWithoutTrueOrderConcatenationAndPreserveReportPermissions",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "actualInProgressQueryUsesExactStateAndLiteralProductFilter",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest",
+      "case": "operatorRouteMemoryPrefillsOnlyWhenProductHasNoHistory",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyFlywayVersionIdentityPostgresTest",
+      "case": "completeCompoundHistoryAndEverySignificantIdentityStillFailClosed",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "allFiveProductionLegacySqlEntrypointsKeepOriginalFactsWithoutNewAdoptions",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "exactSourceTamperingAndIndependentAdoptionUpdatesRemainRejected",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "verifiedHistoricalUnknownUnitAndRateStayUnknownInsteadOfBecomingOneOrAComputedBase",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "realRuntimeSessionCannotForgeLegacyContextAndNativeVersionTwoStillWorks",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "evenTrustedBootstrapNeedsTheExactRowProofAndCannotAttachANewPrecisionPolicy",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityAdoptionCompatibilityPostgresTest",
+      "case": "replayedSourceProofFromAnEarlierTransactionCannotAuthorizeAnInsert",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.migration.LegacyQuantityUnapprovalCompositionPostgresTest",
+      "case": "actualForwardDefinitionsRetainEveryUnapprovalAndNativeGuardAfterRemovingOnlyLegacyBranches",
+      "status": "passed",
+      "nativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+      "currentSourceByExactSourceAndCompiledBytes": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "directPostedGiftReplacementIntentTamperingIsRejectedWithoutChangingOriginalFacts",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "freeOneCanArriveAfterAllTenChargedUnitsWithoutChangingApOrChargingAnOverage",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "receiptUnapprovalAndRepeatedCommandsRestoreBothSourceCountersThenNewGenerationPostsExactlyOnce",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "freeAndChargedReturnsCreditOnlyChargedUnitsAndMirrorOriginalIssueValueOnReverse",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "legacyGiftAnnotationKeepsRecordedTenOnReverseAndCloneUnlessOwnerExplicitlyUpgradesDraft",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    },
+    {
+      "class": "com.uten.imp.businesschain.GiftPhysicalConservationEndToEndTest",
+      "case": "chargedTenAndFreeOneCreateTwoQualityIdentitiesStockElevenAndOnlyOneHundredPayable",
+      "status": "passed",
+      "nativeSource": "d2137d58a65b46fd6e603d5dd25a2ab80a7c9f52fabd385913f1dfb59e4f5e29"
+    }
+  ],
+  "qualifiedPythonTests": 81,
+  "pythonNativeSource": "3c4971d02f38b69f411a9ad760776cfb51419d2d48e942def026101e337d6300",
+  "pythonAdditionalBridge": "Only one Java test source changed after776c; no Python/SQL/Guard/fixtures read by81 changed. Native81 remains3c4971.",
+  "fullCompileNativeSource": "776cda82c72d00e4e32a4ce9af90057fd5af710aacb43b29b3d1aefe1ce27a2d",
+  "fullCompileNativeExitCode": 0,
+  "currentSingleAffectedTestCompileExitCode": 0,
+  "compiledClassCount": 10175,
+  "compiledMigrationResourcesExact": 1013,
+  "externalCompiledResourcesExact": 296,
+  "sqlHead": 1074,
+  "returnSchemaGate": 1073,
+  "mappingVersion": "bootstrap-v22",
+  "canonicalTsvSha256": "3b41577abb65c05a9595808cc4125f254a99e1305cb17986860fdb65f99dde5c",
+  "rawHistorySha256": "4995ae6677dfb6b0f91b28840c8ec5f477de120314ec9270f20554f077870169",
+  "consumerResultSha256": "8b1712cdc53afe55c16ed0a1a2b0cb9e2a7c7c9e0f831b1a30b6c8e52368c0d0",
+  "fourSemanticPinsSha256": "aa5fa4419fdeb95c96acafe7268c8726e0f7fe35a31300c0413d39f513dbd37d",
+  "mainWritten": false,
+  "companyDbWritten": false,
+  "commitPushPackageDeploy": false
+}

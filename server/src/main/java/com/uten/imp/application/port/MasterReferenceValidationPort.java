@@ -22,6 +22,15 @@ public interface MasterReferenceValidationPort {
         for (UUID id : goodsIds) requireVisibleGoods(id);
     }
 
+    /** Same historical goods-read facts for set-based summary qualification.
+     * Missing implementations fail closed; they must not silently grant seeAll. */
+    default GoodsReadScopeFacts goodsReadScopeFacts() {
+        throw new UnsupportedOperationException("Goods read-scope facts are unavailable");
+    }
+    record GoodsReadScopeFacts(boolean ownerScopeEnabled,boolean seeAll,java.util.List<UUID> visibleOwners) {
+        public GoodsReadScopeFacts { visibleOwners=java.util.List.copyOf(visibleOwners); }
+    }
+
     /** Visibility probe for redacting an existing relationship without exposing its target. */
     boolean canViewGoods(UUID goodsId);
 

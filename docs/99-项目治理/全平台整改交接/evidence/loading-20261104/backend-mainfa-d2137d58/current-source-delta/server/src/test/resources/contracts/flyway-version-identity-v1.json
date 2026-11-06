@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "contract": "flyway-version-identity-v1",
+  "state": "reviewed_shared_contract",
+  "rules": {
+    "databaseVersion": "Canonical manifest/TSV identity is ASCII decimal components with positive first component, no leading-zero/trailing-zero aliases; this canonical API is NOT applied blindly to raw installed history.",
+    "filenameVersion": "V<components>__<nonempty-description>.sql; historical positive pure-integer filename padding (V01..V09) normalizes to canonical integer DB text without renaming. Compound filename components stay canonical. Dot and underscore separators normalize to dotted version. Preserve filenames in digests and retain caller-specific description validation.",
+    "comparison": "Lexicographic arbitrary-precision integer-component tuple; never float or concatenated integers.",
+    "inventory": "Duplicate canonical versions, including distinct filenames normalizing to one version, must be rejected.",
+    "receiptHead": "Health/receipt head remains an integer only when the maximum canonical version is a single component. A compound maximum is rejected, never truncated.",
+    "historyVersion": "Installed history raw text must equal the validated original filename token with underscores replaced by dots, including immutable V01..V09 padding. Return canonical tuple only for comparison/dedup/head; never rewrite the raw row or its audit/digest bytes. Expected raw projection is derived from the already-signed original filename.",
+    "historyDescription": "Keep manifest description exactly the original filename description. Expected installed history description is derived only from that signed filename by replacing underscores with spaces; never rewrite observed raw description/digest or ignore its mismatch."
+  },
+  "validVersions": [
+    {
+      "text": "1",
+      "parts": [
+        "1"
+      ]
+    },
+    {
+      "text": "999",
+      "parts": [
+        "999"
+      ]
+    },
+    {
+      "text": "999.1",
+      "parts": [
+        "999",
+        "1"
+      ]
+    },
+    {
+      "text": "999.2",
+      "parts": [
+        "999",
+        "2"
+      ]
+    },
+    {
+      "text": "999.10",
+      "parts": [
+        "999",
+        "10"
+      ]
+    },
+    {
+      "text": "999.0.1",
+      "parts": [
+        "999",
+        "0",
+        "1"
+      ]
+    },
+    {
+      "text": "999.10.1",
+      "parts": [
+        "999",
+        "10",
+        "1"
+      ]
+    },
+    {
+      "text": "1000",
+      "parts": [
+        "1000"
+      ]
+    },
+    {
+      "text": "1070",
+      "parts": [
+        "1070"
+      ]
+    },
+    {
+      "text": "9007199254740993.1",
+      "parts": [
+        "9007199254740993",
+        "1"
+      ]
+    }
+  ],
+  "invalidVersions": [
+    null,
+    true,
+    1,
+    "",
+    "0",
+    "01",
+    "999.01",
+    "999.0",
+    "999.10.0",
+    "999..10",
+    "999_10",
+    "999.",
+    "+999",
+    "-999",
+    " 999",
+    "999 ",
+    "١",
+    "９９９",
+    "999\n"
+  ],
+  "validFilenames": [
+    {
+      "file": "V1__initial.sql",
+      "canonical": "1"
+    },
+    {
+      "file": "V999_1__compat.sql",
+      "canonical": "999.1"
+    },
+    {
+      "file": "V999_10__compat.sql",
+      "canonical": "999.10"
+    },
+    {
+      "file": "V999.10__compat.sql",
+      "canonical": "999.10"
+    },
+    {
+      "file": "V999_0_1__compat.sql",
+      "canonical": "999.0.1"
+    },
+    {
+      "file": "V999_10.1__compat.sql",
+      "canonical": "999.10.1"
+    },
+    {
+      "file": "V01__enable_pgcrypto.sql",
+      "canonical": "1"
+    },
+    {
+      "file": "V09__legacy.sql",
+      "canonical": "9"
+    }
+  ],
+  "invalidFilenames": [
+    "V0999_10__compat.sql",
+    "V999_010__compat.sql",
+    "V999_10_0__compat.sql",
+    "V999_.10__compat.sql",
+    "V999_10__.sql",
+    "V999_10__compat.SQL",
+    "../V999_10__compat.sql",
+    "V999_10__sub/path.sql"
+  ],
+  "orderedVersions": [
+    "1",
+    "999",
+    "999.0.1",
+    "999.1",
+    "999.2",
+    "999.10",
+    "999.10.1",
+    "1000",
+    "1070"
+  ],
+  "integerHeadCases": [
+    {
+      "versions": [
+        "999",
+        "999.1",
+        "999.10",
+        "1000",
+        "1070"
+      ],
+      "head": 1070
+    },
+    {
+      "versions": [
+        "1070"
+      ],
+      "head": 1070
+    },
+    {
+      "versions": [
+        "999",
+        "999.10"
+      ],
+      "reject": true
+    },
+    {
+      "versions": [],
+      "reject": true
+    },
+    {
+      "versions": [
+        "1070",
+        "1070"
+      ],
+      "reject": true
+    }
+  ],
+  "duplicateFilenameInventories": [
+    [
+      "V999_10__one.sql",
+      "V999.10__two.sql"
+    ],
+    [
+      "V01__one.sql",
+      "V1__two.sql"
+    ]
+  ],
+  "legacyIntegerOutput": "Old integer migration TSV, manifest fields and digest byte format remain unchanged; 14 compound rows are included precisely, header remains v1 and head stays1070.",
+  "validHistoryVersions": [
+    {
+      "raw": "01",
+      "file": "V01__enable_pgcrypto.sql",
+      "canonical": "1",
+      "manifestDescription": "enable_pgcrypto",
+      "rawDescription": "enable pgcrypto"
+    },
+    {
+      "raw": "09",
+      "file": "V09__legacy.sql",
+      "canonical": "9",
+      "manifestDescription": "legacy",
+      "rawDescription": "legacy"
+    },
+    {
+      "raw": "1",
+      "file": "V1__base.sql",
+      "canonical": "1",
+      "manifestDescription": "base",
+      "rawDescription": "base"
+    },
+    {
+      "raw": "999.1",
+      "file": "V999_1__one.sql",
+      "canonical": "999.1",
+      "manifestDescription": "one",
+      "rawDescription": "one"
+    },
+    {
+      "raw": "999.10",
+      "file": "V999_10__ten.sql",
+      "canonical": "999.10",
+      "manifestDescription": "ten",
+      "rawDescription": "ten"
+    },
+    {
+      "raw": "999.10",
+      "file": "V999.10__ten.sql",
+      "canonical": "999.10",
+      "manifestDescription": "ten",
+      "rawDescription": "ten"
+    },
+    {
+      "raw": "999.10.1",
+      "file": "V999_10.1__nested.sql",
+      "canonical": "999.10.1",
+      "manifestDescription": "nested",
+      "rawDescription": "nested"
+    }
+  ],
+  "invalidHistoryVersions": [
+    {
+      "raw": "1",
+      "file": "V01__enable_pgcrypto.sql"
+    },
+    {
+      "raw": "001",
+      "file": "V01__enable_pgcrypto.sql"
+    },
+    {
+      "raw": "01",
+      "file": "V1__base.sql"
+    },
+    {
+      "raw": "1.0",
+      "file": "V1__base.sql"
+    },
+    {
+      "raw": "999_10",
+      "file": "V999_10__ten.sql"
+    },
+    {
+      "raw": "999.010",
+      "file": "V999_10__ten.sql"
+    },
+    {
+      "raw": "999.10.0",
+      "file": "V999_10__ten.sql"
+    },
+    {
+      "raw": "١",
+      "file": "V1__base.sql"
+    }
+  ],
+  "invalidSignedDescriptions": [
+    {
+      "file": "V01__enable_pgcrypto.sql",
+      "signedDescription": "forged_description"
+    },
+    {
+      "file": "V01__enable_pgcrypto.sql",
+      "signedDescription": "enable pgcrypto"
+    }
+  ]
+}

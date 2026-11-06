@@ -92,8 +92,27 @@ class PriceHistoryTableResult extends PagedResult<PriceObservation> {
         totalPages: page.totalPages,
         facets: page.facets,
         facetNullCounts: page.facetNullCounts,
+        totals: page.totals,
+        readScopeVersion: page.readScopeVersion,
       );
   final Map<String, dynamic> metadata;
+  @override
+  PriceHistoryTableResult withRows(
+    List<PriceObservation> rows, {
+    int page = 1,
+    int? size,
+    int? total,
+    int? totalPages,
+  }) => PriceHistoryTableResult._(
+    super.withRows(
+      rows,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: totalPages,
+    ),
+    metadata,
+  );
   bool hasMoreFacetValues(String key) =>
       priceMap(metadata['facetsHasMore'])[key] == true;
 }

@@ -246,3 +246,41 @@ test('case, news and job explicitly stage false, publish visibility changes and 
     assert.equal((await record()).published,true);assert.equal((await record()).id,original.id);
   }
 });
+
+
+test('identical pending deletions reuse only the same validated actor snapshot and payload',async()=>{
+  const {service,lease}=await actor(),f=await productFixture({published:false});
+  const expectedHash=await service.baseHash('product',f.product.id);
+  const input={entityType:'product' as const,entityId:f.product.id,operation:'DELETE' as const,title:'同一删除意图',payload:{},expectedHash};
+  const first=await service.stage(input),repeated=await service.stage(input);
+  assert.equal(repeated.revisionId,first.revisionId);
+  assert.equal(await db.cmsRevision.count({where:{entityId:f.product.id}}),1);
+  assert.equal(await db.cmsAuditEvent.count({where:{entityId:f.product.id,action:'DRAFT_CREATED'}}),1);
+  const differentPayload=await service.stage({...input,payload:{reason:'another intent'}});
+  assert.notEqual(differentPayload.revisionId,first.revisionId);
+  const another=await actor();assert.notEqual((await another.service.stage(input)).revisionId,first.revisionId);
+  await db.impPortalSession.update({where:{id:lease.id},data:{revokedAt:new Date()}});
+  await assert.rejects(service.stage(input),/授权/,'an existing pending revision cannot bypass revoked authorization');
+  await db.product.update({where:{id:f.product.id},data:{i18n:'{"zh":{"name":"其他设备已修改"}}'}});
+  await assert.rejects(another.service.stage(input),/过期/,'reuse cannot bypass a changed source snapshot');
+});
+
+test('concurrent identical deletion requests cannot commit two pending revisions',async()=>{
+  const {service}=await actor(),f=await productFixture({published:false});
+  const input={entityType:'product' as const,entityId:f.product.id,operation:'DELETE' as const,title:'并发删除意图',payload:{},expectedHash:await service.baseHash('product',f.product.id)};
+  const attempts=await Promise.allSettled([service.stage(input),service.stage(input)]);
+  const accepted=attempts.filter((attempt):attempt is PromiseFulfilledResult<Awaited<ReturnType<typeof service.stage>>>=>attempt.status==='fulfilled');
+  assert.ok(accepted.length>=1,'one original command must complete');assert.equal(new Set(accepted.map(attempt=>attempt.value.revisionId)).size,1);
+  assert.equal(await db.cmsRevision.count({where:{entityId:f.product.id,status:'DRAFT'}}),1);
+  assert.equal(await db.cmsAuditEvent.count({where:{entityId:f.product.id,action:'DRAFT_CREATED'}}),1);
+});
+
+test('discarded or published deletion revisions are never reused as pending work',async()=>{
+  const {service}=await actor(),f=await productFixture({published:false});
+  const input={entityType:'product' as const,entityId:f.product.id,operation:'DELETE' as const,title:'删除状态边界',payload:{},expectedHash:await service.baseHash('product',f.product.id)};
+  const first=await service.stage(input);await service.discard(first.revisionId);
+  const next=await service.stage(input);assert.notEqual(next.revisionId,first.revisionId);
+  assert.equal((await db.cmsRevision.findUniqueOrThrow({where:{id:first.revisionId}})).status,'DISCARDED');
+  await service.publish(next.revisionId);await assert.rejects(service.stage(input),/不存在|已删除/);
+  assert.equal(await db.cmsRevision.count({where:{entityId:f.product.id}}),2);
+});

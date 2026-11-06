@@ -1,0 +1,43 @@
+{
+  "label": "finance-b81-probe",
+  "createdAtUtc": "2026-11-05T12:13:38.898746+00:00",
+  "log": "build/loading-validation/combined-finance-current.log",
+  "selected": [
+    "FinanceApplicationsPostgresTest"
+  ],
+  "missingClasses": [],
+  "sourceInputSha256": "b81e056189d9998e0581e4494ca37123f0f63a8a0110b7b8cc8f8d7302243a63",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceMissing": [],
+  "legacyInputs": [],
+  "legacyInputDrift": [],
+  "counts": {
+    "passed": 0,
+    "failure": 0,
+    "error": 1,
+    "skipped": 0,
+    "flakyFailure": 0,
+    "flakyError": 0
+  },
+  "uniqueCases": 1,
+  "suites": [
+    {
+      "name": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "tests": "1",
+      "errors": "1",
+      "skipped": "0",
+      "failures": "0",
+      "time": "268.363"
+    }
+  ],
+  "cases": [
+    {
+      "class": "com.uten.imp.features.finance.application.FinanceApplicationsPostgresTest",
+      "name": "",
+      "status": "error",
+      "seconds": "268.363"
+    }
+  ],
+  "note": "Each receipt is independent. Never sum repeated cases across receipts; final unique ledger uses the final whole selection only."
+}

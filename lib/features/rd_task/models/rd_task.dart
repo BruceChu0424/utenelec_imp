@@ -1,3 +1,4 @@
+import '../../../shared/models/paged_result.dart';
 // 工程研发部任务模型（对应后端 RdTaskContracts.RdTaskRow / PageResponse）。
 // 后端 status: OPEN/IN_PROGRESS/DONE/CANCELED；category: BOM/DESIGN/SAMPLE/TRIAL/ECN/OTHER。
 
@@ -120,6 +121,14 @@ class RdTaskData {
   final int size;
   final int total;
   final int totalPages;
+
+  RdTaskData withPage(PagedResult<RdTaskRow> combined) => RdTaskData(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory RdTaskData.fromJson(Map<String, dynamic> json) => RdTaskData(
     items: (json['items'] as List? ?? const [])

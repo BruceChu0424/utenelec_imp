@@ -1,0 +1,37 @@
+{
+  "main": "fa657181a42ec750d97d5e5f7d37723d91067e51",
+  "decision": "Retire superseded pre-lineage Task clone compatibility; frozen same-transaction source inheritance owns original numeric proofs. No invented new input for an unedited clone.",
+  "sourceRows": [
+    {
+      "path": "server/src/main/java/com/uten/imp/application/port/DocumentUnapprovalPort.java",
+      "intermediateSha256": "578400ddafa678647ed7507727713e88017fb561ec60e5bef8097c3e57c1284e",
+      "originalTaskSha256": "5a5ea47494db98d8c82a3f2eb1ae1445310b2ac0162cf931b817b64dce592156",
+      "finalEqualsMainRawSha256": "0b1a8e13daf2c4761fcbb53383594832375629e4bcb9e9e74fe4c731e172678f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalService.java",
+      "intermediateSha256": "a68d9ccd1435877e719bcbeb37faa6dbd85effb056c5920173056a022e0613c4",
+      "originalTaskSha256": "7dd12057269f96a3c908ff5dd1cb0cef8b3e36cfb63478d5eb74b949d3130fe8",
+      "finalEqualsMainRawSha256": "be8a50098078b5666383fe74f09fa7191d41897829fbea0160720232487b00ec"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptUnapprovalAdapter.java",
+      "intermediateSha256": "0abfa885d595765cc0954b05ff3f09223293a9c237f49788ab4d3d23c9587eea",
+      "originalTaskSha256": "9c86169d746e6af9a12e265602d0eb84f4802e85f0de6bf5e3ff3ee898504136",
+      "finalEqualsMainRawSha256": "69c672078638f9dd6dbb8033387801ef36fb73ad9b00e3090811f0e1e117f82c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnUnapprovalAdapter.java",
+      "intermediateSha256": "512177bb36a7d10eb975f7c1f7ff02aad257b9555df05ea042adb9ab2f9aebdd",
+      "originalTaskSha256": "0a4e3ea02405a5b22bff818a98118f065478ffda3987ac86358ab1cb8923585f",
+      "finalEqualsMainRawSha256": "3e12efa60d23c10ced981ea386ce1ce961a34f1d7b8d882ddcb8013190434669"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptUnapprovalAdapter.java",
+      "intermediateSha256": "ef20ee77b6ded959c0baed410c22377320b9bceb00db77a2a3a5eddcbb91c66b",
+      "originalTaskSha256": "63221adde1c42b7ecf6314e58460553a50053aee437290985f0f62d5d731f16b",
+      "finalEqualsMainRawSha256": "6c478753acc281e955b60a8eeeeedc903f0a664b0032273746c341fb558e2d81"
+    }
+  ],
+  "tests": "Main real48-digit raw/24-DOWN immutable evidence test retained; service E2E proves source evidence complete JSON byte-equivalent, raw10, exact original action1, cloned kg10, new-owner evidence0. All lifecycle/forge/unknown guards retained."
+}

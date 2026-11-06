@@ -17,6 +17,7 @@ import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -306,6 +307,7 @@ class _WarehouseSalesOutboundWorkbenchState
               scope: WarehouseListScope.of(context),
             ),
       },
+      isCurrent: captureReadOwner(ref),
       onLoaded: () {
         if (mounted) setState(() {});
       },

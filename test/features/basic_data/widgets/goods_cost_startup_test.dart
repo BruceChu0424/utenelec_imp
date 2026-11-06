@@ -181,10 +181,29 @@ class _ScopeCostsAdapter implements HttpClientAdapter {
     } else if (options.path ==
         '/platform-columns/view_goods_cost/definitions') {
       data = <Object>[];
-    } else if (options.path == base) {
+    } else if (options.path == '$base/versions' ||
+        options.path == '$base/versions/summary' ||
+        options.path == '$base/templates/summary') {
       lists++;
       proof = 'cost-proof';
-      data = <Object>[];
+      if (options.path == '$base/versions') {
+        expect(options.queryParameters['page'], 1);
+        expect(options.queryParameters['size'], 1);
+        expect(options.queryParameters['sort'], 'updatedAt');
+        expect(options.queryParameters['order'], 'desc');
+      } else {
+        expect(options.queryParameters['size'], 1000);
+      }
+      data = {
+        'items': <Object>[],
+        'page': options.queryParameters['page'],
+        'size': options.queryParameters['size'],
+        'total': 0,
+        'totalPages': 0,
+        'readScopeVersion': 'cost-proof',
+        'readSnapshotRevision': 'cost-snapshot',
+        'readDataVersion': 'cost-facts',
+      };
       if (failFirstList && lists == 1) {
         status = 503;
         data = {'code': 'UNAVAILABLE', 'message': '成本暂时无法读取'};

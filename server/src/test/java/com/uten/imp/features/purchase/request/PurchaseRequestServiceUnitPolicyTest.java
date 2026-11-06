@@ -231,7 +231,7 @@ class PurchaseRequestServiceUnitPolicyTest {
     private static Query stubPendingPhysicalQuantity(EntityManager em, BigDecimal quantity) {
         Query query = mock(Query.class);
         String sql = """
-                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_request_items',archive_origin.id)) i
+                SELECT pending.pending_physical_qty FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
                 %s WHERE i.id=:itemId AND NOT i.is_deleted
                 """.formatted(PurchaseRequestQuantities.pendingJoin("i"));
         when(em.createNativeQuery(sql)).thenReturn(query);

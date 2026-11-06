@@ -27,9 +27,9 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly UnitService service;
         private readonly UnitColumnsService columnsService;
         private readonly TextBox search = new TextBox { MinWidth = 220, ToolTip = "按单位编号或名称搜索" };
-        private readonly DataGrid rows = new DataGrid { SelectionMode = DataGridSelectionMode.Extended, SelectionUnit = DataGridSelectionUnit.FullRow };
+        private readonly DataGrid rows = new DataGrid { SelectionMode = DataGridSelectionMode.Extended, SelectionUnit = DataGridSelectionUnit.FullRow,
+            EnableRowVirtualization = true, EnableColumnVirtualization = true };
         private readonly TextBlock status = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        private readonly TextBlock pager = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         private readonly Button create = new Button { Content = "新增单位" };
         private readonly Button edit = new Button { Content = "编辑" };
         private readonly Button changeStatus = new Button { Content = "更改状态" };
@@ -42,8 +42,6 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly Button inlineEdit = new Button { Content = "行内编辑" };
         private readonly Button refresh = new Button { Content = "刷新" };
         private readonly Button recovery = new Button { Content = "本机草稿与记录" };
-        private readonly Button previous = new Button { Content = "上一页" };
-        private readonly Button next = new Button { Content = "下一页" };
         private readonly TextBlock selectionText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
         private readonly Button clearSelection = new Button { Content = "清空选择" };
         private readonly PersistentRowSelection<UnitRecord> selection = new PersistentRowSelection<UnitRecord>(row => row.Id);
@@ -61,7 +59,6 @@ namespace Uten.Legacy.Desktop.Features.Units
         private IReadOnlyList<UnitRecord> currentRows = new UnitRecord[0];
         private bool disposed, subscribed, loading, openingEditor, changingFilters, changingSelection;
         private long sequence;
-        private int page = 1, totalPages;
         private long totalElements;
         public bool CanCloseForUpdate { get { return !openingEditor && editor == null && inlineWorkspace == null; } }
 
@@ -75,9 +72,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             BuildLayout();
             Loaded += OnLoaded;
             Unloaded += (sender, args) => Dispose();
-            refresh.Click += async (sender, args) => { await LoadPageAsync(page); await LoadFacetsAsync(); };
-            previous.Click += async (sender, args) => await LoadPageAsync(Math.Max(1, page - 1));
-            next.Click += async (sender, args) => await LoadPageAsync(page + 1);
+            refresh.Click += async (sender, args) => { await LoadPageAsync(1); await LoadFacetsAsync(); };
             create.Click += async (sender, args) => await OpenEditorAsync(MutationAction.UnitCreate);
             edit.Click += async (sender, args) => await OpenEditorAsync(MutationAction.UnitUpdate);
             changeStatus.Click += (sender, args) => OpenStatusMenu();
@@ -175,12 +170,6 @@ namespace Uten.Legacy.Desktop.Features.Units
             tableSurface = UtenSurfaces.Wrap(rows, UtenSurfaceRole.Table);
             Grid.SetRow(tableSurface, 3); layout.Children.Add(tableSurface);
             var footer = new DockPanel { Margin = new Thickness(0, Space("S12"), 0, 0) };
-            var paging = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            previous.Margin = new Thickness(Space("S8"), 0, Space("S8"), 0);
-            next.Margin = new Thickness(Space("S8"), 0, 0, 0);
-            previous.SetResourceReference(MinHeightProperty, "Uten.Height.Compact"); next.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
-            paging.Children.Add(previous); paging.Children.Add(pager); paging.Children.Add(next);
-            DockPanel.SetDock(paging, Dock.Right); footer.Children.Add(paging);
             var selectionPanel = new StackPanel { Orientation = Orientation.Horizontal };
             clearSelection.Margin = new Thickness(Space("S8"), 0, 0, 0);
             clearSelection.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
@@ -252,7 +241,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             searchDelay.Stop();
             sequence++; pageRead?.Cancel();
-            return LoadPageAsync(page);
+            return LoadPageAsync(1);
         }
 
         private object FilterIdentity(string field)
@@ -265,7 +254,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (disposed || !session.IsAuthenticated || inlineWorkspace != null) return Task.CompletedTask;
             long owner = session.Generation, revision = session.ReadScopeRevision, expectedRead = sequence + 1;
-            var key = Tuple.Create(target, (search.Text ?? "").Trim(), FilterIdentity("code"), FilterIdentity("name"),
+            var key = Tuple.Create((search.Text ?? "").Trim(), FilterIdentity("code"), FilterIdentity("name"),
                 FilterIdentity("status"), FilterIdentity("dimension"), Tuple.Create(owner, revision));
             return searchDelay.RunReadAsync(key,
                 () => !disposed && sequence == expectedRead && session.Generation == owner && session.ReadScopeRevision == revision,
@@ -277,23 +266,36 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (disposed || !session.IsAuthenticated || inlineWorkspace != null) return;
             pageRead?.Cancel(); pageRead?.Dispose(); pageRead = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             var token = pageRead.Token; long request = ++sequence;
+            long ownerGeneration = session.Generation, ownerReadRevision = session.ReadScopeRevision;
             loading = true; ClearSelection(false); status.Text = "正在读取单位资料…"; UpdateActions();
             try
             {
-                var snapshot = await service.ListAsync(new UnitQuery(target, 20, search.Text, filters), token);
+                var keyword = search.Text;
+                var queryFilters = new Dictionary<string, UnitFilter>(filters, StringComparer.Ordinal);
+                UnitReadSnapshot<UnitPageResult> snapshot = null;
+                var allRows = await CompletePagedSnapshot.ReadAsync<UnitRecord>(async (batch, size, ct) =>
+                {
+                    var response = await service.ListAsync(new UnitQuery(batch, size, keyword, queryFilters), ct).ConfigureAwait(false);
+                    if (!response.IsCurrent(session)) throw new ApiException("READ_SCOPE_CHANGED", "单位读取范围已变化。", 403);
+                    if (snapshot == null) snapshot = response;
+                    return new SnapshotPage<UnitRecord> { Items = response.Value.Items, Page = response.Value.Page,
+                        Size = response.Value.Size, Total = response.Value.TotalElements, TotalPages = response.Value.TotalPages,
+                        ReadScopeVersion = response.Owner.ReadScopeRevision.ToString(CultureInfo.InvariantCulture) };
+                }, item => item.Id,
+                    () => !disposed && request == sequence && session.Generation == ownerGeneration
+                        && session.ReadScopeRevision == ownerReadRevision,
+                    token, maximumRows: Int32.MaxValue);
                 if (disposed || request != sequence || !snapshot.IsCurrent(session)) return;
                 loadedOwner = snapshot.Owner;
-                currentRows = snapshot.Value.Items;
-                DisplayRows(snapshot.Value.Items);
-                page = snapshot.Value.Page; totalPages = snapshot.Value.TotalPages;
+                currentRows = allRows;
+                DisplayRows(allRows);
                 totalElements = snapshot.Value.TotalElements;
-                pager.Text = page.ToString(CultureInfo.InvariantCulture) + " / " + Math.Max(1, totalPages).ToString(CultureInfo.InvariantCulture);
                 status.Text = snapshot.Value.TotalElements == 0 ? "没有符合条件的单位。" : "共 " + snapshot.Value.TotalElements.ToString(CultureInfo.InvariantCulture) + " 项";
                 var previousColumns = columnSnapshot;
                 columnSnapshot = null;
                 try
                 {
-                    var projected = await columnsService.LoadAsync(snapshot.Value.Items.Select(item => item.Id).ToArray(), token, previousColumns);
+                    var projected = await columnsService.LoadAsync(allRows.Select(item => item.Id).ToArray(), token, previousColumns);
                     if (disposed || request != sequence || !snapshot.IsCurrent(session) || !projected.IsCurrent(session)) return;
                     columnSnapshot = projected; ApplyColumns();
                     if (projected.OverflowedDefinitionIds.Count > 0)
@@ -356,8 +358,6 @@ namespace Uten.Legacy.Desktop.Features.Units
             export.IsEnabled = canAct && projectionReady;
             inlineEdit.Visibility = user != null && (user.HasPermission("unit:edit") || user.HasPermission("unit:create")) ? Visibility.Visible : Visibility.Collapsed;
             inlineEdit.IsEnabled = canAct;
-            previous.IsEnabled = inlineWorkspace == null && !openingEditor && !loading && page > 1;
-            next.IsEnabled = inlineWorkspace == null && !openingEditor && !loading && page < totalPages;
             refresh.IsEnabled = !openingEditor && editor == null && inlineWorkspace == null;
             recovery.IsEnabled = !openingEditor && editor == null && inlineWorkspace == null && user?.HasPermission("unit:view") == true;
             selectionText.Text = selection.Count == 0 ? "" : "已选 " + selection.Count + " 项";
@@ -377,7 +377,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             try
             {
                 rows.ItemsSource = items;
-                if (items != null) foreach (var row in items)
+                if (items != null && selection.Count > 0) foreach (var row in items)
                     if (selection.Contains(row)) { selection.Remember(row); rows.SelectedItems.Add(row); }
             }
             finally { changingSelection = false; }

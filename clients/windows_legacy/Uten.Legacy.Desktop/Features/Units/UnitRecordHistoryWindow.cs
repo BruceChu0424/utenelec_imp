@@ -29,9 +29,8 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly StackPanel scopeBar = new StackPanel { Orientation = Orientation.Horizontal };
         private readonly DataGrid revisions = HistoryTable(215), changes = HistoryTable(185);
         private readonly TextBlock detail = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        private readonly TextBlock paging = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
-        private readonly Button refresh, previous, next, before, after;
-        private readonly List<long?> cursors = new List<long?> { null };
+        private readonly TextBlock count = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        private readonly Button refresh, before, after;
         private UnitReadSnapshot<UnitRecordHistoryPage> page;
         private UnitReadSnapshot<UnitRecordRevision> selected;
         private CancellationTokenSource pageRead, detailRead;
@@ -51,7 +50,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 scopeBar.Margin = new Thickness(0, 0, 0, Space("S8"));
                 scopeBar.Children.Add(new TextBlock { Text = "当前单位的修改历史", VerticalAlignment = VerticalAlignment.Center });
                 var all = new Button { Content = "显示全部单位", Margin = new Thickness(Space("S12"), 0, 0, 0) };
-                all.Click += async (sender, args) => { recordScopeId = null; InvalidateFilters(); scopeBar.Visibility = Visibility.Collapsed; cursors.Clear(); cursors.Add(null); await LoadPageAsync(); };
+                all.Click += async (sender, args) => { recordScopeId = null; InvalidateFilters(); scopeBar.Visibility = Visibility.Collapsed; await LoadPageAsync(); };
                 scopeBar.Children.Add(all); Body.Children.Add(scopeBar);
             }
             AddFilter("编号、名称或摘要", keyword, 180); AddFilter("操作人", actor, 130);
@@ -72,7 +71,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             clearDate.Click += (sender, args) =>
             {
                 if (!Current || Mutating) return;
-                dateFrom = dateTo = null; UpdateDateEntry(); InvalidateFilters(); cursors.Clear(); cursors.Add(null);
+                dateFrom = dateTo = null; UpdateDateEntry(); InvalidateFilters();
             };
             Grid.SetColumn(clearDate, 1); dateEntry.Children.Add(clearDate);
             var dateCard = UtenSurfaces.Wrap(dateEntry, UtenSurfaceRole.Card, outlined: false);
@@ -86,26 +85,21 @@ namespace Uten.Legacy.Desktop.Features.Units
             tableActions.Children.Add(dateCard);
             refresh = new Button { Content = "查询 / 刷新" };
             refresh.SetResourceReference(StyleProperty, "Uten.PrimaryButton");
-            refresh.Click += (sender, args) => { cursors.Clear(); cursors.Add(null); _ = LoadPageAsync(); };
-            tableActions.Children.Add(refresh); Body.Children.Add(tableActions);
+            refresh.Click += (sender, args) => { _ = LoadPageAsync(); };
+            tableActions.Children.Add(refresh);
+            count.Margin = new Thickness(Space("S12"), 0, 0, 0); tableActions.Children.Add(count);
+            Body.Children.Add(tableActions);
 
             revisions.Columns.Add(Column("编号", "RecordCode", 105)); revisions.Columns.Add(Column("单位", "RecordName", 130));
             revisions.Columns.Add(Column("动作", "ActionLabel", 90)); revisions.Columns.Add(Column("范围", "SourceLabel", 100));
             revisions.Columns.Add(Column("操作人", "ActorName", 115)); revisions.Columns.Add(Column("时间", "RecordedAtDisplay", 165));
             revisions.Columns.Add(Column("摘要", "Summary", 1, true)); Body.Children.Add(UtenSurfaces.Wrap(revisions, UtenSurfaceRole.Table));
-            var pager = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, Space("S8"), 0, Space("S8")) };
-            previous = new Button { Content = "上一页", Margin = new Thickness(0, 0, Space("S8"), 0) };
-            next = new Button { Content = "下一页", Margin = new Thickness(Space("S8"), 0, 0, 0) };
-            pager.Children.Add(previous); pager.Children.Add(paging); pager.Children.Add(next); Body.Children.Add(pager);
             detail.Margin = new Thickness(0, Space("S8"), 0, Space("S12")); Body.Children.Add(detail);
             changes.Columns.Add(Column("字段", "Label", 170)); changes.Columns.Add(DiffColumn("修改前", "BeforeValue"));
             changes.Columns.Add(DiffColumn("修改后", "AfterValue")); Body.Children.Add(UtenSurfaces.Wrap(changes, UtenSurfaceRole.Table));
             before = ActionButton("恢复到修改前", () => { _ = RestoreAsync(true); });
             after = ActionButton("恢复到修改后", () => { _ = RestoreAsync(false); }, primary: true);
 
-            previous.Click += async (sender, args) => { if (cursors.Count > 1) { cursors.RemoveAt(cursors.Count - 1); await LoadPageAsync(); } };
-            next.Click += async (sender, args) => { if (page?.Value.NextCursor != null) { cursors.Add(page.Value.NextCursor); await LoadPageAsync(); } };
             revisions.SelectionChanged += async (sender, args) => await LoadDetailAsync();
             foreach (var input in new[] { keyword, actor, summaryKeyword })
                 input.TextChanged += (sender, args) => InvalidateFilters();
@@ -138,13 +132,13 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (Ended || Retired) return;
             pageSequence++; pageRead?.Cancel(); detailSequence++; detailRead?.Cancel();
-            page = null; selected = null; revisions.ItemsSource = changes.ItemsSource = null; detail.Text = "筛选条件已变化，请点击查询。";
+            page = null; selected = null; revisions.ItemsSource = changes.ItemsSource = null; count.Text = ""; detail.Text = "筛选条件已变化，请点击查询。";
             loading = loadingDetail = false; UpdateActions();
         }
         private UnitHistoryQuery Query()
         {
-            return new UnitHistoryQuery(recordScopeId, cursors[cursors.Count - 1], (action.SelectedItem as Choice)?.Value,
-                null, Empty(actor.Text), Empty(keyword.Text), DateText(dateFrom), DateText(dateTo), 50,
+            return new UnitHistoryQuery(recordScopeId, null, (action.SelectedItem as Choice)?.Value,
+                null, Empty(actor.Text), Empty(keyword.Text), DateText(dateFrom), DateText(dateTo), 100,
                 (sourceType.SelectedItem as Choice)?.Value, Empty(summaryKeyword.Text));
         }
         private static string DateText(DateTime? value) { return value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture); }
@@ -156,7 +150,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (!Current || !dialog.Applied) return;
             dateFrom = dialog.SelectedStart; dateTo = dialog.SelectedEnd;
             UpdateDateEntry();
-            InvalidateFilters(); cursors.Clear(); cursors.Add(null);
+            InvalidateFilters();
         }
         private void UpdateDateEntry()
         {
@@ -171,20 +165,31 @@ namespace Uten.Legacy.Desktop.Features.Units
             var token = pageRead.Token; long request = ++pageSequence;
             detailSequence++; detailRead?.Cancel(); selected = null; changes.ItemsSource = null; detail.Text = "请选择一个历史版本查看差异。";
             loading = true; UpdateActions();
+            UtenBusyDialog waiting = null;
             try
             {
-                var query = Query(); var result = await Service.RecordsAsync(query, token); await ReadPendingGateAsync(token);
+                waiting = UtenBusyDialog.Show(this, "正在读取单位历史", pageRead.Cancel);
+                var query = Query(); var result = await Service.CompleteRecordsAsync(query, token); await ReadPendingGateAsync(token);
                 if (!Current || request != pageSequence || !result.IsCurrent(Session)) return;
                 page = result; revisions.ItemsSource = result.Value.Entries; NeedsRefresh = false;
-                paging.Text = "第 " + cursors.Count.ToString(CultureInfo.InvariantCulture) + " 页";
+                count.Text = "共 " + result.Value.Entries.Count.ToString(CultureInfo.InvariantCulture) + " 条";
                 if (!Unresolved && JournalConfirmed) ShowStatus(result.Value.Entries.Count == 0 ? "没有符合条件的单位历史。" : "请选择版本查看真实差异和可恢复范围。");
             }
             catch (OperationCanceledException) { }
-            catch (ApiException error) { if (Current && request == pageSequence) { page = null; ShowStatus(error.UserMessage, true); } }
+            catch (ApiException error)
+            {
+                if (Current && request == pageSequence)
+                {
+                    page = null;
+                    if (error.StatusCode == 401 || error.StatusCode == 403)
+                    { revisions.ItemsSource = null; count.Text = ""; }
+                    ShowStatus(error.UserMessage, true);
+                }
+            }
             catch (Exception error) when (error is FormatException || error is ArgumentException)
             { if (Current && request == pageSequence) { page = null; ShowStatus("筛选值或历史响应无效。请核对 UUID、日期及筛选条件后重试。", true); } }
             catch (Exception) { if (Current && request == pageSequence) { page = null; ShowStatus("读取修改历史失败，请点击查询重试。", true); } }
-            finally { if (!Ended && request == pageSequence) { loading = false; UpdateActions(); } }
+            finally { waiting?.Dispose(); if (!Ended && request == pageSequence) { loading = false; UpdateActions(); } }
         }
         private async Task LoadDetailAsync()
         {
@@ -194,8 +199,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (!Current || loading || row == null || page?.IsCurrent(Session) != true) { UpdateActions(); return; }
             detailRead = CancellationTokenSource.CreateLinkedTokenSource(Lifetime.Token); var token = detailRead.Token;
             loadingDetail = true; detail.Text = "正在读取完整历史差异…"; UpdateActions();
+            UtenBusyDialog waiting = null;
             try
             {
+                waiting = UtenBusyDialog.Show(this, "正在读取版本差异", detailRead.Cancel);
                 var result = await Service.DetailAsync(row.Id, token);
                 if (!Current || request != detailSequence || !result.IsCurrent(Session)) return;
                 selected = result; changes.ItemsSource = result.Value.Changes;
@@ -207,7 +214,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             catch (OperationCanceledException) { }
             catch (ApiException error) { if (Current && request == detailSequence) detail.Text = error.UserMessage; }
             catch (Exception) { if (Current && request == detailSequence) detail.Text = "读取版本差异失败，请重新选择该版本重试。"; }
-            finally { if (!Ended && request == detailSequence) { loadingDetail = false; UpdateActions(); } }
+            finally { waiting?.Dispose(); if (!Ended && request == detailSequence) { loadingDetail = false; UpdateActions(); } }
         }
         private async Task RestoreAsync(bool beforeState)
         {
@@ -226,19 +233,16 @@ namespace Uten.Legacy.Desktop.Features.Units
             bool available = Current && !Mutating && !loading && !loadingDetail && !Unresolved && !NeedsRefresh && JournalConfirmed && selected?.IsCurrent(Session) == true;
             before.IsEnabled = available && selected.Value.CanRestoreBefore; after.IsEnabled = available && selected.Value.CanRestoreAfter;
             refresh.IsEnabled = Current && !Mutating && !loading;
-            previous.IsEnabled = Current && !Mutating && !loading && page != null && cursors.Count > 1;
-            next.IsEnabled = Current && !Mutating && !loading && page?.Value.NextCursor != null;
             scopeBar.IsEnabled = filters.IsEnabled = revisions.IsEnabled = Current && !Mutating;
             CloseButton.IsEnabled = !Mutating;
         }
         protected override void ClearData()
         {
             pageSequence++; detailSequence++; pageRead?.Cancel(); detailRead?.Cancel(); page = null; selected = null;
-            revisions.ItemsSource = changes.ItemsSource = null; detail.Text = paging.Text = "";
+            revisions.ItemsSource = changes.ItemsSource = null; detail.Text = count.Text = "";
             scopeBar.Visibility = Visibility.Collapsed;
             recordScopeId = null; dateFrom = dateTo = null; UpdateDateEntry();
             foreach (var box in new[] { keyword, actor, summaryKeyword }) box.Clear();
-            cursors.Clear(); cursors.Add(null);
         }
         protected override void OnClosed(EventArgs args) { base.OnClosed(args); pageRead?.Dispose(); detailRead?.Dispose(); }
     }

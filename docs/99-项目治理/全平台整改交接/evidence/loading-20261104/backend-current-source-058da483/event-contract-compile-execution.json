@@ -1,0 +1,15 @@
+{
+  "label": "event-contract-final",
+  "startedAtUtc": "2026-11-05T12:34:12.3137670Z",
+  "endedAtUtc": "2026-11-05T12:37:34.0550863Z",
+  "state": "completed",
+  "actualExitCode": 0,
+  "sourceInputSha256": "058da483ca81d2d87250054649b3141143c8171820bc0a8ae64732dc69a192c6",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "log": "build/loading-validation/combined-event-contract-final-test-compile.log"
+}

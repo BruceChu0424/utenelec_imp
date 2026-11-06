@@ -13,6 +13,7 @@ public enum ErrorCode {
     // 单设备顶号：会话被新的一次登录撤销。与普通过期区分，客户端据此弹「当前设备已下线」。
     SESSION_REPLACED(401, "账号已在其他设备登录，本设备已自动下线"),
     FORBIDDEN(403, "此账号没有进行该操作的权限，请联系管理员"),
+    SNAPSHOT_CHANGED(409, "数据已变化，请重新读取完整范围"),
     READ_SCOPE_CHANGED(403, "数据访问范围已变化，请重新打开页面后核对"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),

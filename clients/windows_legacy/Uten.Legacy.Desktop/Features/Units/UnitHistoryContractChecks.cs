@@ -35,7 +35,153 @@ namespace Uten.Legacy.Desktop.Features.Units
             int count = RunModels();
             Action<bool, string> check = (condition, label) => { if (!condition) throw new InvalidOperationException("Unit history: " + label); count++; };
             HttpContracts(check).GetAwaiter().GetResult();
+            CompleteHistoryContracts(check).GetAwaiter().GetResult();
             return count;
+        }
+        private static async Task CompleteHistoryContracts(Action<bool, string> check)
+        {
+            using (var fixture = new Fixture())
+            {
+                await fixture.Login(); fixture.Handler.HistoryCount = 251;
+                var service = new UnitHistoryService(fixture.Session);
+                var query = new UnitHistoryQuery(recordId: RecordId, actorKeyword: "A&B", keyword: "kg + 箱",
+                    dateFrom: "2026-10-01", dateTo: "2026-11-05", sourceType: "RECORD", summaryKeyword: "x/y");
+                var result = await service.CompleteRecordsAsync(query, CancellationToken.None);
+                check(result.Value.Entries.Count == 251 && result.Value.NextCursor == null, "history publishes all 251 cursor rows once");
+                check(fixture.Handler.RecordSizes.SequenceEqual(new[] { 100, 100, 100 }), "history uses consistent bounded internal batches");
+                check(result.Value.Entries.Last().Id == RevisionId - 250 && result.Value.Entries.Select(row => row.Id).Distinct().Count() == 251,
+                    "history retains exact long identities and descending order beyond JavaScript integer precision");
+                check(fixture.Handler.RecordPaths.All(path => path.Contains("recordId=" + RecordId) && path.Contains("actorKeyword=A%26B")
+                    && path.Contains("keyword=kg%20%2B%20%E7%AE%B1") && path.Contains("dateFrom=2026-10-01")
+                    && path.Contains("dateTo=2026-11-05") && path.Contains("sourceType=RECORD") && path.Contains("summaryKeyword=x%2Fy")),
+                    "all history batches retain the original complete filter scope");
+                check(result.Value.Entries.All(row => !row.CanRestoreBefore && !row.CanRestoreAfter), "collecting history never promotes list rows into restore capabilities");
+            }
+            using (var fixture = new Fixture())
+            {
+                await fixture.Login(); fixture.Handler.HistoryCount = 251; fixture.Handler.FailRecordTail = true;
+                try { await new UnitHistoryService(fixture.Session).CompleteRecordsAsync(new UnitHistoryQuery(), CancellationToken.None); check(false, "history tail failure must reject partial rows"); }
+                catch (ApiException) { check(true, "history tail failure rejects partial rows"); }
+                fixture.Handler.FailRecordTail = false; fixture.Handler.RecordReads = 0;
+                var retry = await new UnitHistoryService(fixture.Session).CompleteRecordsAsync(new UnitHistoryQuery(), CancellationToken.None);
+                check(retry.Value.Entries.Count == 251 && fixture.Handler.RecordReads == 3, "explicit history retry restarts from the first cursor");
+            }
+            using (var fixture = new Fixture())
+            using (var cancelled = new CancellationTokenSource())
+            {
+                await fixture.Login(); fixture.Handler.HistoryCount = 251;
+                fixture.Handler.PendingRecordTail = new TaskCompletionSource<HttpResponseMessage>();
+                var pending = new UnitHistoryService(fixture.Session).CompleteRecordsAsync(new UnitHistoryQuery(), cancelled.Token);
+                for (int i = 0; i < 100 && fixture.Handler.RecordReads < 2; i++) await Task.Delay(5);
+                check(fixture.Handler.RecordReads == 2, "history cancellation fixture reaches an actual held tail");
+                cancelled.Cancel(); fixture.Handler.PendingRecordTail.TrySetResult(Reply(fixture.Handler.HistoryReply(RevisionId - 99, 100)));
+                try { await pending; check(false, "cancelled history cannot publish"); }
+                catch (OperationCanceledException) { check(true, "cancelled history cannot publish"); }
+                check(fixture.Handler.RecordReads == 2, "cancelled history never issues the next batch");
+            }
+            using (var fixture = new Fixture())
+            {
+                await fixture.Login(); fixture.Handler.HistoryCount = 251;
+                fixture.Handler.PendingRecordTail = new TaskCompletionSource<HttpResponseMessage>();
+                var pending = new UnitHistoryService(fixture.Session).CompleteRecordsAsync(new UnitHistoryQuery(), CancellationToken.None);
+                for (int i = 0; i < 100 && fixture.Handler.RecordReads < 2; i++) await Task.Delay(5);
+                check(fixture.Handler.RecordReads == 2, "history retirement fixture reaches an actual held tail");
+                fixture.Session.SelectEndpoint("second");
+                fixture.Handler.PendingRecordTail.TrySetResult(Reply(fixture.Handler.HistoryReply(RevisionId - 99, 100)));
+                try { await pending; check(false, "retired history owner cannot publish"); }
+                catch (ApiException) { check(true, "retired history owner cannot publish"); }
+                catch (OperationCanceledException) { check(true, "retired history owner cannot publish"); }
+                check(fixture.Handler.RecordReads == 2, "retired history owner never issues the next batch");
+            }
+        }
+
+        public static int RunContinuousUi()
+        {
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+            try
+            {
+                int count = 0; Action<bool, string> check = (condition, label) => { if (!condition) throw new InvalidOperationException("Continuous native history: " + label); count++; };
+                using (var fixture = new Fixture())
+                {
+                    fixture.Login().GetAwaiter().GetResult(); fixture.Handler.HistoryCount = 251;
+                    var window = new UnitRecordHistoryWindow(null, fixture.Session, RecordId);
+                    try
+                    {
+                        window.Show(); var rows = Field<DataGrid>(window, "revisions");
+                        PumpUntil(() => rows.Items.Count == 251 && window.IsEnabled);
+                        var source = rows.ItemsSource; int reads = fixture.Handler.RecordReads;
+                        check(reads == 3 && Field<TextBlock>(window, "count").Text == "共 251 条", "real history window receives the complete result before browsing");
+                        check(!Descendants<Button>(window).Any(button => Equals(button.Content, "上一页") || Equals(button.Content, "下一页")), "history dialog has no record pagination controls");
+                        check(rows.EnableRowVirtualization && rows.EnableColumnVirtualization, "history uses native local row virtualization");
+                        for (int turn = 0; turn < 12; turn++) { rows.ScrollIntoView(rows.Items[turn % 2 == 0 ? 250 : 0]); Pump(); rows.UpdateLayout(); }
+                        var tail = (UnitRecordRevision)rows.Items[250]; rows.ScrollIntoView(tail); Pump(); rows.UpdateLayout();
+                        check(rows.ItemContainerGenerator.ContainerFromItem(tail) is DataGridRow, "actual tail row is mounted and visible after native scrolling");
+                        check(ReferenceEquals(source, rows.ItemsSource) && fixture.Handler.RecordReads == reads, "scrolling retains ItemsSource and performs zero history reads");
+                        check(rows.Items.Cast<UnitRecordRevision>().All(row => !row.CanRestoreBefore), "loaded list rows do not enable restore");
+                        rows.SelectedItem = tail; var diff = Field<DataGrid>(window, "changes");
+                        PumpUntil(() => diff.Items.Count == 1 && window.IsEnabled);
+                        check(fixture.Handler.LastPath.Contains((RevisionId - 250).ToString(CultureInfo.InvariantCulture)), "tail selection reads its exact fresh detail");
+                        check(Field<Button>(window, "before").IsEnabled && !Field<Button>(window, "after").IsEnabled, "only fresh server detail enables its allowed restore direction");
+                        var selected = Field<UnitReadSnapshot<UnitRecordRevision>>(window, "selected");
+                        var command = new UnitHistoryService(fixture.Session).PrepareRestore(Guid.NewGuid().ToString("D"), selected, true);
+                        check(command.BodyJson == UnitHistoryContract.RestoreBody(selected.Value.ExpectedHead, true) && fixture.Handler.Writes == 0, "full history collection preserves the opaque restore head without sending a write");
+                        fixture.Handler.FailRecordTail = true; Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        PumpUntil(() => window.IsEnabled && !Field<Button>(window, "before").IsEnabled);
+                        check(ReferenceEquals(source, rows.ItemsSource) && Field<UnitReadSnapshot<UnitRecordHistoryPage>>(window, "page") == null,
+                            "ordinary tail failure retains the authorized complete rows and disables stale restore authority");
+                        fixture.Handler.FailRecordTail = false;
+                        fixture.Handler.PendingRecordTail = new TaskCompletionSource<HttpResponseMessage>();
+                        int beforeCancelledRead = fixture.Handler.RecordReads;
+                        Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        PumpUntil(() => fixture.Handler.RecordReads == beforeCancelledRead + 2 && window.OwnedWindows.Count == 1);
+                        check(!window.IsEnabled && ReferenceEquals(source, rows.ItemsSource), "actual held refresh has one waiting dialog and preserves the prior complete result");
+                        var waiting = window.OwnedWindows.Cast<Window>().Single();
+                        Descendants<Button>(waiting).Single(button => Equals(button.Content, "取消")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        fixture.Handler.PendingRecordTail.TrySetResult(Reply(fixture.Handler.HistoryReply(RevisionId - 99, 100)));
+                        PumpUntil(() => window.IsEnabled && window.OwnedWindows.Count == 0);
+                        check(fixture.Handler.RecordReads == beforeCancelledRead + 2 && ReferenceEquals(source, rows.ItemsSource), "cancelled held history performs no later read or partial replacement and closes the waiting dialog");
+                        using (var outer = UtenBusyDialog.Show(window, "处理中"))
+                        {
+                            using (var inner = UtenBusyDialog.Show(window, "读取最新历史"))
+                                check(window.OwnedWindows.Count == 1 && !window.IsEnabled, "nested write/read phases share one waiting dialog");
+                            check(window.OwnedWindows.Count == 1 && !window.IsEnabled, "inner read completion does not dismiss the outer operation");
+                        }
+                        check(window.IsEnabled && window.OwnedWindows.Count == 0, "all waiting phases restore the original window state");
+                    }
+                    finally { window.Close(); Pump(); }
+                }
+                using (var fixture = new Fixture())
+                {
+                    fixture.Login().GetAwaiter().GetResult(); fixture.Handler.HistoryCount = 251;
+                    fixture.Handler.PendingRecordTail = new TaskCompletionSource<HttpResponseMessage>();
+                    var window = new UnitRecordHistoryWindow(null, fixture.Session, RecordId);
+                    try
+                    {
+                        window.Show(); var rows = Field<DataGrid>(window, "revisions");
+                        PumpUntil(() => fixture.Handler.RecordReads == 2 && window.OwnedWindows.Count == 1);
+                        check(rows.Items.Count == 0, "held initial history does not expose its first partial batch");
+                        fixture.Session.SelectEndpoint("second");
+                        PumpUntil(() => !window.IsVisible && window.OwnedWindows.Count == 0);
+                        fixture.Handler.PendingRecordTail.TrySetResult(Reply(fixture.Handler.HistoryReply(RevisionId - 99, 100)));
+                        Pump(); Pump();
+                        check(rows.ItemsSource == null && fixture.Handler.RecordReads == 2 && fixture.Handler.Writes == 0,
+                            "actual owner retirement closes the waiting window, clears history and never loads a later batch or writes");
+                    }
+                    finally { if (window.IsVisible) window.Close(); Pump(); }
+                }
+                return count;
+            }
+            finally { SynchronizationContext.SetSynchronizationContext(previous); }
+        }
+        private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is T) yield return (T)child;
+                foreach (var nested in Descendants<T>(child)) yield return nested;
+            }
         }
         public static int RunModels()
         {
@@ -145,7 +291,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     var search = Field<TextBox>(window, "keyword"); search.Text = "保留的查询";
                     var dateEntry = Field<Button>(window, "dateRange");
                     check(Equals(dateEntry.Content, "近1个月"), "history shows compact recent calendar month label");
-                    check(dateEntry.ActualHeight == Field<Button>(window, "previous").ActualHeight,
+                    check(dateEntry.ActualHeight == Field<Button>(window, "refresh").ActualHeight,
                         "date selection has the same measured height as ordinary buttons");
                     check(ToolTipService.GetInitialShowDelay(dateEntry) == 0
                         && System.Windows.Automation.AutomationProperties.GetHelpText(dateEntry).Contains("-"),
@@ -319,6 +465,20 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private sealed class Handler : HttpMessageHandler
         {
+            internal int HistoryCount = 1, RecordReads;
+            internal bool FailRecordTail;
+            internal readonly List<int> RecordSizes = new List<int>();
+            internal readonly List<string> RecordPaths = new List<string>();
+            internal TaskCompletionSource<HttpResponseMessage> PendingRecordTail;
+            internal string HistoryReply(long? cursor, int size)
+            {
+                int start = cursor.HasValue ? (int)Math.Max(0, RevisionId - cursor.Value + 1) : 0;
+                int end = Math.Min(start + size, HistoryCount);
+                var entries = Enumerable.Range(start, Math.Max(0, end - start)).Select(index => Revision(false)
+                    .Replace("\"id\":\"" + RevisionId + "\"", "\"id\":\"" + (RevisionId - index).ToString(CultureInfo.InvariantCulture) + "\""));
+                return "{\"entries\":[" + String.Join(",", entries) + "],\"nextCursor\":"
+                    + (end < HistoryCount ? "\"" + (RevisionId - end + 1).ToString(CultureInfo.InvariantCulture) + "\"" : "null") + "}";
+            }
             internal string LastPath; internal int Writes; internal bool LoseReply, ReauthRead, WrongRevision;
             private readonly string[] permissions;
             private readonly string operationType;
@@ -341,8 +501,23 @@ namespace Uten.Legacy.Desktop.Features.Units
                 if (request.Method == HttpMethod.Get)
                 {
                     if (path == "/api/master/operation-history") return PendingOperations == null ? Reply(OperationReply()) : await PendingOperations.Task;
-                    if (path == "/api/master/record-history") return Reply("{\"entries\":[" + Revision(false) + "],\"nextCursor\":null}");
+                    if (path == "/api/master/record-history")
+                    {
+                        Interlocked.Increment(ref RecordReads); RecordPaths.Add(LastPath);
+                        var query = request.RequestUri.Query.TrimStart('?').Split('&').Select(part => part.Split(new[] { '=' }, 2))
+                            .ToDictionary(pair => pair[0], pair => pair.Length == 2 ? Uri.UnescapeDataString(pair[1]) : "");
+                        int size = Int32.Parse(query["size"], CultureInfo.InvariantCulture); RecordSizes.Add(size);
+                        long? cursor = query.ContainsKey("cursor") ? Int64.Parse(query["cursor"], CultureInfo.InvariantCulture) : (long?)null;
+                        if (cursor.HasValue && FailRecordTail) return Reply("{\"code\":\"INVALID_INPUT\",\"message\":\"controlled tail failure\"}", HttpStatusCode.BadRequest);
+                        if (cursor.HasValue && PendingRecordTail != null) return await PendingRecordTail.Task;
+                        return Reply(HistoryReply(cursor, size));
+                    }
                     if (path == "/api/master/record-history/" + RevisionId) return Reply(WrongRevision ? Revision(true).Replace("\"id\":\"" + RevisionId + "\"", "\"id\":\"51\"") : Revision(true));
+                    if (path.StartsWith("/api/master/record-history/", StringComparison.Ordinal))
+                    {
+                        long id = Int64.Parse(path.Substring(path.LastIndexOf('/') + 1), CultureInfo.InvariantCulture);
+                        return Reply(Revision(true).Replace("\"id\":\"" + RevisionId + "\"", "\"id\":\"" + id.ToString(CultureInfo.InvariantCulture) + "\""));
+                    }
                 }
                 if (request.Method == HttpMethod.Post && (path == "/api/master/operation-history/" + OperationId + "/undo"
                     || path == "/api/master/operation-history/" + OperationId + "/redo" || path == "/api/master/record-history/" + RevisionId + "/restore"))

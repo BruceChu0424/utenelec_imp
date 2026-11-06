@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -108,6 +109,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('保留模具滑窗返回只刷新一次且合法暂选更新为新摘要', (tester) async {
+    final repository = _Moulds();
+    String? picked;
+    await _open(
+      tester,
+      repository,
+      onChanged: (value) => picked = value as String?,
+    );
+    await tester.pumpAndSettle();
+    final finder = find.byType(MasterDataTableView<MouldListItem>);
+    var table = tester.widget<MasterDataTableView<MouldListItem>>(finder);
+    table.onRowTap!(table.items.first);
+    await tester.pump();
+    expect(
+      tester
+          .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+          .selectedCount,
+      1,
+    );
+    final context = tester.element(find.byType(UtenPickerConfirmBar));
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => const Scaffold(body: Text('opaque child')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final fresh = repository.hold('', 1);
+    Navigator.of(context).pop();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    expect(
+      tester
+          .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+          .selectedCount,
+      1,
+    );
+    fresh.complete(_page('更新模具', page: 1));
+    await tester.pumpAndSettle();
+    expect(repository.requests, [('', 1), ('', 2), ('', 1), ('', 2)]);
+    table = tester.widget<MasterDataTableView<MouldListItem>>(finder);
+    expect(table.items.first.name, '更新模具');
+    expect(
+      tester
+          .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+          .selectedLabel,
+      contains('更新模具'),
+    );
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(picked, 'mould-1');
+  });
+
   testWidgets('新输入防抖期间旧成功响应不能展示无关模具', (tester) async {
     final repository = _Moulds();
     final old = repository.hold('', 1);
@@ -142,7 +198,7 @@ void main() {
     expect(find.text('模具搜索失败，请重试'), findsNothing);
   });
 
-  testWidgets('模具可翻到首50条以后的页并回填稳定ID', (tester) async {
+  testWidgets('模具完整摘要包含首100条后的记录且无需可见翻页', (tester) async {
     final repository = _Moulds();
     String? picked;
     await _open(
@@ -151,10 +207,13 @@ void main() {
       onChanged: (value) => picked = value as String?,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('master-table-page-next')), findsNothing);
     expect(repository.requests, [('', 1), ('', 2)]);
-    await tester.tap(find.text('第2页模具'));
+    final table = tester.widget<MasterDataTableView<MouldListItem>>(
+      find.byType(MasterDataTableView<MouldListItem>),
+    );
+    expect(table.items, hasLength(101));
+    table.onRowTap!(table.items.last);
     await tester.pumpAndSettle();
     expect(picked, isNull);
     await tester.tap(find.text('确定'));
@@ -164,20 +223,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('后页失败可重试同一页', (tester) async {
+  testWidgets('后批失败不发布假完整结果且重试完整查询', (tester) async {
     final repository = _Moulds();
     final failing = repository.hold('', 2);
     await _open(tester, repository);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pump();
     failing.completeError(StateError('temporary failure'));
     await tester.pumpAndSettle();
     repository.release('', 2);
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
-    expect(repository.requests, [('', 1), ('', 2), ('', 2), ('', 1)]);
-    expect(find.text('第2页模具'), findsOneWidget);
+    expect(repository.requests, [('', 1), ('', 2), ('', 1), ('', 2)]);
+    final complete = tester.widget<MasterDataTableView<MouldListItem>>(
+      find.byType(MasterDataTableView<MouldListItem>),
+    );
+    expect(complete.items.last.name, '第2页模具');
+    expect(complete.items, hasLength(101));
   });
 
   for (final dismissal in ['取消', '关闭', '遮罩']) {
@@ -212,7 +273,7 @@ void main() {
     });
   }
 
-  testWidgets('搜索和翻页清除旧模具暂选，迟到确认不可提交', (tester) async {
+  testWidgets('搜索和分类变化清除旧模具暂选，迟到确认不可提交', (tester) async {
     final changes = <dynamic>[];
     await _open(tester, _Moulds(), onChanged: changes.add);
     await tester.pumpAndSettle();
@@ -228,7 +289,7 @@ void main() {
     expect(find.text('未选择'), findsOneWidget);
     await tester.tap(find.text('第1页模具'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
+    await tester.tap(find.text('五金模具'));
     await tester.pumpAndSettle();
     expect(find.text('未选择'), findsOneWidget);
     await tester.tap(find.text('确定'));
@@ -395,10 +456,26 @@ class _Moulds extends Fake implements MouldRepository {
 
 PagedResult<MouldListItem> _page(String name, {required int page}) =>
     PagedResult(
-      items: [MouldListItem(id: 'mould-$page', code: 'M$page', name: name)],
+      items: page == 1
+          ? [
+              MouldListItem(id: 'mould-1', code: 'M1', name: name),
+              for (var index = 1; index < 100; index++)
+                MouldListItem(
+                  id: 'filler-$index',
+                  code: 'F$index',
+                  name: '其它模具$index',
+                ),
+            ]
+          : [
+              MouldListItem(
+                id: 'mould-2',
+                code: 'M2',
+                name: name == '分类模具' ? '分类尾项模具' : name,
+              ),
+            ],
       page: page,
-      size: 50,
-      total: 51,
+      size: 100,
+      total: 101,
       totalPages: 2,
     );
 

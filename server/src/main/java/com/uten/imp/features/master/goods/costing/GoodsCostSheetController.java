@@ -24,9 +24,18 @@ public class GoodsCostSheetController {
     @GetMapping("/versions") public VersionPage versions(@RequestParam UUID goodsId,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
             @RequestParam(required=false) String status,@RequestParam(required=false) String currencyId,
-            @RequestParam(required=false) String sort,@RequestParam(required=false) String order) {
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            @RequestParam(required=false) String readSnapshotRevision) {
         return service.versions(goodsId,page,size,status,currencyId,
-                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()),sort,order);
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()),sort,order,readSnapshotRevision);
+    }
+    @GetMapping("/versions/summary") public VersionPage versionSummaries(@RequestParam UUID goodsId,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,
+            @RequestParam(required=false) String status,@RequestParam(required=false) String currencyId,
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.versionSummaries(goodsId,page,size,status,currencyId,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()),sort,order,readSnapshotRevision);
     }
     /** Keep the retired read route from being interpreted as the generic UUID detail route. */
     @GetMapping("/bootstrap") public void rejectBootstrapGet() {
@@ -54,6 +63,17 @@ public class GoodsCostSheetController {
         return snapshot;
     }
     @GetMapping("/templates") public List<Template> templates(@RequestParam(required=false) UUID goodsId,@RequestParam(required=false) UUID clientId){return service.templates(goodsId,clientId);}
+    @GetMapping("/templates/summary")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<TemplateSummary> templateSummaries(
+            @RequestParam(required=false) UUID goodsId,@RequestParam(required=false) UUID clientId,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.templateSummaries(goodsId,clientId,page,size,readSnapshotRevision);
+    }
+    @GetMapping("/templates/{id}") public Template templateDetail(@PathVariable UUID id,
+            @RequestParam(required=false) UUID goodsId,@RequestParam(required=false) UUID clientId) {
+        return service.templateDetail(id,goodsId,clientId);
+    }
     @PostMapping("/templates") public Template createTemplate(@RequestBody TemplateSave request){return service.saveTemplate(null,request);}
     @PutMapping("/templates/{id}") public Template saveTemplate(@PathVariable UUID id,@RequestBody TemplateSave request){return service.saveTemplate(id,request);}
     @GetMapping("/actual") public java.util.Map<String,Object> actual(@RequestParam UUID goodsId,

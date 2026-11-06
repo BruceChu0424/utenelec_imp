@@ -1,0 +1,202 @@
+{
+  "label": "integration-interrupted",
+  "createdAtUtc": "2026-11-05T02:19:06.222874-07:00",
+  "log": "build/loading-validation/combined-integration-regressions.log",
+  "selected": [
+    "FinanceApplicationsPostgresTest",
+    "LegacyQuantityAdoptionCompatibilityPostgresTest",
+    "ProductionExecutionWorkbenchQueryPostgresTest",
+    "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+    "SalesShipmentOwnerBoundaryTest",
+    "SalesBomDeliveryEndToEndTest",
+    "SalesDeliveryMakeSourceEndToEndTest",
+    "SalesDeliveryMixedScenarioEndToEndTest",
+    "SalesDeliveryOrderClaimEndToEndTest",
+    "SalesDeliveryPrivateSourceEndToEndTest",
+    "SalesDeliveryRevisionEndToEndTest",
+    "SalesDeliverySourceReverseUnitsEndToEndTest",
+    "SalesDeliveryWarehouseScopeEndToEndTest",
+    "SalesShipmentFinanceReleaseRateEndToEndTest",
+    "SalesShipmentCurrencyFilterTest",
+    "ArchitectureBoundaryTest"
+  ],
+  "missingClasses": [
+    "FinanceApplicationsPostgresTest",
+    "LegacyQuantityAdoptionCompatibilityPostgresTest",
+    "MaterialAnalysisSupplyWakeupQueryPostgresTest",
+    "ProductionExecutionWorkbenchQueryPostgresTest",
+    "SalesDeliveryMixedScenarioEndToEndTest",
+    "SalesDeliveryOrderClaimEndToEndTest",
+    "SalesDeliveryPrivateSourceEndToEndTest",
+    "SalesDeliveryRevisionEndToEndTest",
+    "SalesDeliverySourceReverseUnitsEndToEndTest",
+    "SalesDeliveryWarehouseScopeEndToEndTest",
+    "SalesShipmentCurrencyFilterTest",
+    "SalesShipmentFinanceReleaseRateEndToEndTest",
+    "SalesShipmentOwnerBoundaryTest"
+  ],
+  "sourceInputSha256": "f6196f9823965a2840ea9996943d7996463b7a4c5cf9ba5c5b46f77920c0b3dd",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceMissing": [],
+  "legacyInputs": [],
+  "legacyInputDrift": [],
+  "counts": {
+    "passed": 18,
+    "failure": 0,
+    "error": 0,
+    "skipped": 0,
+    "flakyFailure": 0,
+    "flakyError": 0
+  },
+  "uniqueCases": 18,
+  "suites": [
+    {
+      "name": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "tests": "11",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "11.824"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "tests": "6",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "417.926"
+    },
+    {
+      "name": "com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest",
+      "tests": "1",
+      "errors": "0",
+      "skipped": "0",
+      "failures": "0",
+      "time": "108.827"
+    }
+  ],
+  "cases": [
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "businessCodeNeverReadsTheAuditLog",
+      "status": "passed",
+      "seconds": "2.115"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "foundationPackagesDoNotDependOnBusinessFeatures",
+      "status": "passed",
+      "seconds": "0.236"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "highRiskAuthorizationWritesRequireStepUp",
+      "status": "passed",
+      "seconds": "0.023"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource",
+      "status": "passed",
+      "seconds": "2.525"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "endpointsReturningPlaintextCredentialsDeclareStepUp",
+      "status": "passed",
+      "seconds": "1.686"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "featureDependencyGraphDoesNotGrow",
+      "status": "passed",
+      "seconds": "0.989"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "controllersDoNotDependDirectlyOnRepositories",
+      "status": "passed",
+      "seconds": "0.16"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "privateMethodsDoNotCarryTransactional",
+      "status": "passed",
+      "seconds": "1.635"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "expenseClaimNeverReachesTheSharedAiPlatform",
+      "status": "passed",
+      "seconds": "0.038"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "moneyRoundingOnlyLivesInMoneyPolicy",
+      "status": "passed",
+      "seconds": "1.33"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "adminWriteEndpointsDeclareStepUpOrReasonedExemption",
+      "status": "passed",
+      "seconds": "1.003"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "requiredProcessingCannotBeAcknowledgedByWarehouseOrOmittedFromFullSelection",
+      "status": "passed",
+      "seconds": "6.651"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "changedBomCannotSilentlyReplaceTheApprovedPhysicalFrontier",
+      "status": "passed",
+      "seconds": "5.425"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "shortageAndIncompleteSelectionRollBackEveryComponentAndCommercialFact",
+      "status": "passed",
+      "seconds": "7.706"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "publicBOMLaserFlow",
+      "status": "passed",
+      "seconds": "10.66"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "componentStockAndCommercialRootArePostedOnceAndPhysicalHandoverCannotBeDirectlyReversed",
+      "status": "passed",
+      "seconds": "7.508"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesBomDeliveryEndToEndTest",
+      "name": "nonzeroComponentCostsMapOnceToTheCommercialParentAndKeepLateCostPendingUntilRealPropagation",
+      "status": "passed",
+      "seconds": "13.777"
+    },
+    {
+      "class": "com.uten.imp.businesschain.SalesDeliveryMakeSourceEndToEndTest",
+      "name": "wholeFrontierIsReallyManufacturedAndQualifiedBeforeItsPrivateStockShipsWithoutParentAssembly",
+      "status": "passed",
+      "seconds": "35.744"
+    }
+  ],
+  "note": "Each receipt is independent. Never sum repeated cases across receipts; final unique ledger uses the final whole selection only.",
+  "execution": {
+    "status": "incomplete_process_disappeared",
+    "observedAtUtc": "2026-11-05T09:19:15.0982788Z",
+    "originalUnifiedSession": 60650,
+    "wrapperPid": 28960,
+    "mavenPid": 49428,
+    "testJvmPid": 50572,
+    "processPresent": false,
+    "naturalMavenVerdict": null,
+    "actualExitCode": null,
+    "reason": "Old owner session inaccessible; all recorded processes absent at takeover, log ends during fourth class without BUILD verdict. No cancellation or termination issued by replacement owner."
+  }
+}

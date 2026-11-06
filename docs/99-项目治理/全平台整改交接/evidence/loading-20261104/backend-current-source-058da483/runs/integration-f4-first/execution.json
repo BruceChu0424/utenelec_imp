@@ -1,0 +1,27 @@
+{
+  "label": "integration-final",
+  "workingDirectory": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\server",
+  "selectionFile": "build/loading-validation/combined-integration-selection.txt",
+  "selected": "FinanceApplicationsPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,MaterialAnalysisSupplyWakeupQueryPostgresTest,SalesShipmentOwnerBoundaryTest,SalesBomDeliveryEndToEndTest,SalesDeliveryMakeSourceEndToEndTest,SalesDeliveryMixedScenarioEndToEndTest,SalesDeliveryOrderClaimEndToEndTest,SalesDeliveryPrivateSourceEndToEndTest,SalesDeliveryRevisionEndToEndTest,SalesDeliverySourceReverseUnitsEndToEndTest,SalesDeliveryWarehouseScopeEndToEndTest,SalesShipmentFinanceReleaseRateEndToEndTest,SalesShipmentCurrencyFilterTest,ArchitectureBoundaryTest",
+  "command": "mvn",
+  "arguments": [
+    "-Duten.build.directory=target-loading-combined",
+    "-Duten.test.jvm.heap.args=-Xmx3g",
+    "-Duten.test.context.cache.maxSize=2",
+    "-Duten.test.jvm.args=-Duten.loading.measurement.directory=build/loading-validation/combined-final-growth",
+    "-Dtest=FinanceApplicationsPostgresTest,LegacyQuantityAdoptionCompatibilityPostgresTest,ProductionExecutionWorkbenchQueryPostgresTest,MaterialAnalysisSupplyWakeupQueryPostgresTest,SalesShipmentOwnerBoundaryTest,SalesBomDeliveryEndToEndTest,SalesDeliveryMakeSourceEndToEndTest,SalesDeliveryMixedScenarioEndToEndTest,SalesDeliveryOrderClaimEndToEndTest,SalesDeliveryPrivateSourceEndToEndTest,SalesDeliveryRevisionEndToEndTest,SalesDeliverySourceReverseUnitsEndToEndTest,SalesDeliveryWarehouseScopeEndToEndTest,SalesShipmentFinanceReleaseRateEndToEndTest,SalesShipmentCurrencyFilterTest,ArchitectureBoundaryTest",
+    "surefire:test"
+  ],
+  "environment": {
+    "UTEN_LOADING_BENCHMARK_REPORT": "build/loading-validation/combined-integration-final-empty-benchmark.json",
+    "UTEN_RUN_DB_TESTS": "true",
+    "MAVEN_OPTS": "-Xmx2g"
+  },
+  "sourceInputSha256": "f4b6b01b0ebec63f9d2b87e12b59b9c874be65769d1635cd7c13761c8ea86dc3",
+  "startedAtUtc": "2026-11-05T10:59:59.5205199Z",
+  "wrapperPid": 26980,
+  "log": "build/loading-validation/combined-integration-final.log",
+  "state": "completed",
+  "endedAtUtc": "2026-11-05T11:40:32.5806879Z",
+  "actualExitCode": 1
+}

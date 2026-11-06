@@ -31,14 +31,10 @@ import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../materialbin/widgets/workshop_material_task_center.dart';
-import '../materialbin/providers/workshop_material_page_preparation.dart';
 import '../pages/warehouse_inbound_task_center_page.dart';
 import '../pages/warehouse_outbound_task_center_page.dart';
 import '../pages/warehouse_quality_results_page.dart';
 import '../providers/warehouse_count_refresh.dart';
-import '../providers/warehouse_task_page_preparation.dart';
-import '../providers/warehouse_quality_page_preparation.dart';
-import '../repositories/warehouse_task_center_repository.dart';
 import '../widgets/warehouse_document_history_view.dart';
 import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_scope_selector.dart';
@@ -247,35 +243,6 @@ class _WarehouseTaskCenterPageState
     final activeGroup = groups.any((group) => group.value == _group)
         ? _group
         : null;
-    final preparingGroup = activeGroup ?? groups.firstOrNull?.value;
-    final direction = switch (preparingGroup) {
-      'outbound' => WarehouseTaskDirection.outbound,
-      'inbound' => WarehouseTaskDirection.inbound,
-      _ => null,
-    };
-    if (activeGroup == null && direction != null) {
-      prepareWarehouseTaskPages(
-        ref,
-        context,
-        direction: direction,
-        sources: warehouseTaskSources(direction, permissions, superAdmin).keys,
-        scope: ref.watch(warehouseTaskScopeProvider),
-        keyword: _keyword,
-        refreshTick: _refreshTick,
-      );
-    } else if (activeGroup == null && preparingGroup == 'quality') {
-      prepareWarehouseQualityPages(ref, context, keyword: _keyword);
-    } else if (activeGroup == null && preparingGroup == 'workshopMaterial') {
-      prepareWorkshopMaterialPages(
-        ref,
-        context,
-        canReview: canReviewCounts,
-        canCycleCount: canCycleCount,
-        scope: ref.watch(warehouseTaskScopeProvider),
-        keyword: _keyword,
-      );
-    }
-
     // 大类行组件：选中大类后作为 externalHeader 传入正文，由分段视图挂进
     // 自己的折叠头一起随页滚走（2026-09-24「表格完全置顶」）。
     final categoryBar = Column(

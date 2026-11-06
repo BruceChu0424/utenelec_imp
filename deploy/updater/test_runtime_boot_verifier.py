@@ -35,6 +35,13 @@ assert SPEC is not None and SPEC.loader is not None
 boot = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(boot)
 
+GUARD_SPEC = importlib.util.spec_from_file_location(
+    "runtime_flyway_version_authority", MODULE_PATH.with_name("release_guard.py")
+)
+assert GUARD_SPEC is not None and GUARD_SPEC.loader is not None
+version_guard = importlib.util.module_from_spec(GUARD_SPEC)
+GUARD_SPEC.loader.exec_module(version_guard)
+
 STORAGE_MODULE_PATH = Path(__file__).with_name("storage_boot_verifier.py")
 STORAGE_SPEC = importlib.util.spec_from_file_location(
     "storage_boot_verifier_under_test", STORAGE_MODULE_PATH
@@ -51,7 +58,7 @@ def manifest() -> dict[str, object]:
         "flywayMigrationSetSha256": "b" * 64,
         "flywayMigrations": [
             {
-                "description": "attachment quarantine",
+                "description": "attachment_quarantine",
                 "file": "V255__attachment_quarantine.sql",
                 "flywayChecksum": 123456789,
                 "sha256": "c" * 64,
@@ -78,7 +85,7 @@ def rows() -> list[dict[str, object]]:
 
 
 def live_identity() -> dict[str, object]:
-    flyway = boot._canonical_live_flyway(rows(), manifest())
+    flyway = boot._canonical_live_flyway(rows(), manifest(), version_guard)
     return {
         **flyway,
         "systemIdentifier": "7523456789012345678",
@@ -95,7 +102,7 @@ def internal_runtime_contract() -> tuple[dict[str, object], str]:
 
 class CanonicalDatabaseTests(unittest.TestCase):
     def test_exact_signed_flyway_projection_is_accepted(self) -> None:
-        value = boot._canonical_live_flyway(rows(), manifest())
+        value = boot._canonical_live_flyway(rows(), manifest(), version_guard)
         self.assertEqual(value["headVersion"], 255)
         self.assertEqual(value["successfulMigrationCount"], 1)
         self.assertRegex(value["canonicalHistorySha256"], r"^[0-9a-f]{64}$")
@@ -104,13 +111,13 @@ class CanonicalDatabaseTests(unittest.TestCase):
         changed = rows()
         changed[0]["checksum"] = 123456790
         with self.assertRaisesRegex(boot.BootVerificationError, "version/script/checksum"):
-            boot._canonical_live_flyway(changed, manifest())
+            boot._canonical_live_flyway(changed, manifest(), version_guard)
 
     def test_failed_or_extra_migration_is_rejected(self) -> None:
         failed = rows()
         failed[0]["success"] = False
         with self.assertRaisesRegex(boot.BootVerificationError, "failed"):
-            boot._canonical_live_flyway(failed, manifest())
+            boot._canonical_live_flyway(failed, manifest(), version_guard)
 
 
 class RuntimeAuthorityTests(unittest.TestCase):
@@ -470,7 +477,7 @@ class RuntimeModeTests(unittest.TestCase):
         ):
             boot.verify_runtime_boot()
         query_database.assert_called_once_with(
-            manifest(), require_internal_role_acl=True
+            manifest(), require_internal_role_acl=True, version_guard=_guard.return_value
         )
         self.assertEqual(validate_active.call_args.args[-1], contract)
         self.assertEqual(validate_authority.call_args.args[-1], contract)

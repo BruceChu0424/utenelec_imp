@@ -1,3 +1,4 @@
+import '../../../shared/models/paged_result.dart';
 // 个人信息修改申请 — 前端模型。
 //
 // 文档：docs/03-页面/我的页.md（设计）、docs/04-数据模型/实体字典.md（实体段）。
@@ -274,6 +275,15 @@ class ProfileChangePage<T> {
   final int size;
   final int total;
   final int totalPages;
+
+  ProfileChangePage<T> withPage(PagedResult<T> combined) =>
+      ProfileChangePage<T>(
+        items: combined.items,
+        page: combined.page,
+        size: combined.size,
+        total: combined.total,
+        totalPages: combined.totalPages,
+      );
 
   factory ProfileChangePage.fromJson(
     Map<String, dynamic> json,

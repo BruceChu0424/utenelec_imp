@@ -51,6 +51,7 @@ extension EmployeeRepositoryPickerCandidates on EmployeeRepository {
       ],
       page: result.page,
       totalPages: result.totalPages,
+      total: result.total,
     );
   }
 }

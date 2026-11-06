@@ -1,3 +1,5 @@
+import '../../../../shared/models/paged_result.dart';
+
 String supplierSettlementStatusLabel(String? value) =>
     switch (value?.toUpperCase()) {
       'FROZEN' => '已冻结',
@@ -258,6 +260,16 @@ class SupplierSettlementPageResult {
   final int size;
   final int total;
   final int totalPages;
+
+  SupplierSettlementPageResult withPage(
+    PagedResult<SupplierSettlementSummary> combined,
+  ) => SupplierSettlementPageResult(
+    items: combined.items,
+    page: combined.page,
+    size: combined.size,
+    total: combined.total,
+    totalPages: combined.totalPages,
+  );
 
   factory SupplierSettlementPageResult.fromJson(Map<String, dynamic> json) =>
       SupplierSettlementPageResult(

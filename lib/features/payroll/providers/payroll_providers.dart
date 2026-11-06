@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/paging/read_view_activity.dart';
+import '../../../shared/paging/complete_paged_snapshot.dart';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -249,68 +251,53 @@ final payrollBatchScopeProvider = StateProvider.autoDispose<PayrollBatchScope>(
   (ref) => PayrollBatchScope.active,
 );
 
+final payrollBatchReadActivityProvider = Provider.autoDispose<ReadViewActivity>(
+  (ref) {
+    final activity = ReadViewActivity(onResume: ref.notifyListeners);
+    ref.onDispose(activity.dispose);
+    return activity;
+  },
+);
+
 final payrollBatchListProvider =
     AsyncNotifierProvider.autoDispose<
       PayrollBatchListNotifier,
       PagedResult<PayrollBatch>
-    >(PayrollBatchListNotifier.new);
+    >(
+      PayrollBatchListNotifier.new,
+      dependencies: [
+        exportContextEpochProvider,
+        payrollBatchReadActivityProvider,
+      ],
+    );
 
 class PayrollBatchListNotifier
     extends AsyncNotifier<PagedResult<PayrollBatch>> {
-  int _page = 1;
-  PayrollBatchScope? _lastScope;
-
   @override
   Future<PagedResult<PayrollBatch>> build() {
-    ref.listen(masterDataSessionKeyProvider, (previous, next) {
-      if (previous == next) return;
-      _page = 1;
-      state = const AsyncLoading();
-      ref.invalidateSelf();
-    });
+    ref.watch(masterDataSessionKeyProvider);
+    ref.watch(exportContextEpochProvider);
     final scope = ref.watch(payrollBatchScopeProvider);
-    if (_lastScope != scope) _page = 1;
-    _lastScope = scope;
-    return ref
-        .watch(payrollRepositoryProvider)
-        .listBatches(
+    final repository = ref.watch(payrollRepositoryProvider);
+    final activity = ref.watch(payrollBatchReadActivityProvider);
+    var current = true;
+    ref.onDispose(() => current = false);
+    return activity.runRead(
+      () => current,
+      () => loadCompletePagedResult<PayrollBatch>(
+        isCurrent: () => current,
+        idOf: (batch) => batch.id,
+        loadPage: (page, size) => repository.listBatches(
           status: scope == PayrollBatchScope.history ? 'HISTORY' : 'ACTIVE',
-          page: _page,
-        );
+          page: page,
+          size: size,
+        ),
+      ),
+    );
   }
 
-  Future<void> refresh() => _reloadPage(1);
-
-  Future<void> previousPage() async {
-    final current = state.value;
-    if (current == null || current.page <= 1) return;
-    await _goTo(current.page - 1);
-  }
-
-  Future<void> nextPage() async {
-    final current = state.value;
-    if (current == null || current.page >= current.totalPages) return;
-    await _goTo(current.page + 1);
-  }
-
-  Future<void> goToPage(int page) async {
-    final current = state.value;
-    if (current == null ||
-        page < 1 ||
-        page > current.totalPages ||
-        page == current.page) {
-      return;
-    }
-    await _goTo(page);
-  }
-
-  Future<void> _goTo(int page) async {
+  Future<void> refresh() async {
     if (state.isLoading) return;
-    await _reloadPage(page);
-  }
-
-  Future<void> _reloadPage(int page) async {
-    _page = page;
     state = const AsyncLoading<PagedResult<PayrollBatch>>().copyWithPrevious(
       state,
     );
@@ -318,7 +305,7 @@ class PayrollBatchListNotifier
     try {
       await future;
     } catch (_) {
-      /* Error remains visible in provider state. */
+      /* Provider exposes the read error. */
     }
   }
 }

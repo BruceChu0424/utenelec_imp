@@ -1,0 +1,118 @@
+--- Main/server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java
++++ Task/server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java
+@@ -217,20 +217,12 @@
+ 
+     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：财务审批态切片 + 基础过滤。 */
+     private Specification<SubcontractOrder> orderSpec(OrderQueryFilter originalFilter) {
+         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+         var readScope = access.scope();
+-        // 财务审批态切片（financeApproval）：与采购订货单同构——财务通过前 status
+-        // 保持 0，草稿段与「等待财务审核」段同为 status=0，按 PENDING case 集合区分。
+         String financeApproval = normalizeFinanceApprovalSlice(f.financeApproval());
+-        java.util.Set<UUID> pendingFinanceIds = financeApproval == null
+-                ? null
+-                : approvalProjection.pendingOrderIds(orderType());
+-        // 财务退回件(最新 case=REJECTED): 「财务已退回」段圈定; 草稿段(NONE)同时排除在审与退回.
+-        java.util.Set<UUID> rejectedFinanceIds = financeApproval == null
+-                ? null
+-                : approvalProjection.rejectedOrderIds(orderType());
++        // Keep qualification in SQL: no whole-company approval ID lists before paging.
+         return (Root<SubcontractOrder> root,
+                 jakarta.persistence.criteria.CriteriaQuery<?> q,
+                 CriteriaBuilder cb) -> {
+             List<Predicate> ps = new ArrayList<>();
+             ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
+@@ -251,47 +243,32 @@
+             if (f.billNo() != null && !f.billNo().isBlank()) {
+                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
+             }
+             if (financeApproval != null) {
+                 if (java.util.Set.of("PENDING", "REJECTED").contains(financeApproval)) {
+-                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
++                    ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.lifecycle(root, cb,
++                            root.get("status").in(STATUS_DRAFT, STATUS_APPROVED)));
+                 }
++                java.util.function.Supplier<Predicate> pending = () ->
++                        com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.pending(
++                                root.get("id"), q, cb, orderType());
++                java.util.function.Supplier<Predicate> rejected = () ->
++                        com.uten.imp.features.finance.procurement.ProcurementOrderApprovalPredicates.latestRejected(
++                                root.get("id"), q, cb, orderType());
+                 if ("IN_PROGRESS".equals(financeApproval)) {
+-                    // 实物结案不结束财务复核；在审/退回仍须显示原单，再加尚未结案的执行单。
+-                    // 聚合在数据库分页前完成，不能在前端拼接多份分页结果。
+-                    java.util.Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
+-                    financeIds.addAll(rejectedFinanceIds);
+-                    Predicate financePending = financeIds.isEmpty()
+-                            ? cb.disjunction()
+-                            : cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED),
+-                                    root.get("id").in(financeIds));
+-                    Predicate executing = cb.and(
+-                            cb.equal(root.get("status"), STATUS_APPROVED),
+-                            cb.isFalse(root.get("closed")));
++                    // Closed physical execution can still carry a live financial amendment.
++                    Predicate financePending = cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED),
++                            cb.or(pending.get(), rejected.get()));
++                    Predicate executing = cb.and(cb.equal(root.get("status"), STATUS_APPROVED), cb.isFalse(root.get("closed")));
+                     ps.add(cb.or(financePending, executing));
+                 } else if ("PENDING".equals(financeApproval)) {
+-                    // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
+-                    if (pendingFinanceIds.isEmpty()) {
+-                        ps.add(cb.disjunction());
+-                    } else {
+-                        ps.add(root.get("id").in(pendingFinanceIds));
+-                    }
++                    ps.add(pending.get());
+                 } else if ("REJECTED".equals(financeApproval)) {
+-                    // 财务已退回段: 无退回件 → 恒假.
+-                    if (rejectedFinanceIds.isEmpty()) {
+-                        ps.add(cb.disjunction());
+-                    } else {
+-                        ps.add(root.get("id").in(rejectedFinanceIds));
+-                    }
++                    ps.add(rejected.get());
+                 } else {
+-                    // NONE: 排除在审单与财务退回件(2026-09-21 起退回件有自己的段); 空集无需谓词.
+-                    if (!pendingFinanceIds.isEmpty()) {
+-                        ps.add(cb.not(root.get("id").in(pendingFinanceIds)));
+-                    }
+-                    if (!rejectedFinanceIds.isEmpty()) {
+-                        ps.add(cb.not(root.get("id").in(rejectedFinanceIds)));
+-                    }
++                    ps.add(cb.not(pending.get()));
++                    ps.add(cb.not(rejected.get()));
+                 }
+             }
+             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractOrder(), null, false, null, false);
+             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                     "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+@@ -1386,12 +1363,12 @@
+         }
+         List<UUID> sourceIds = refs.stream()
+                 .map(SourceRef::applicationItemId).distinct().sorted().toList();
+         List<?> lockedSources = em.createNativeQuery("""
+                         SELECT source.id
+-                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) source
+-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
++                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) source
++                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                           ON application.id = source.application_id
+                         WHERE source.id IN (:sourceIds)
+                           AND source.is_deleted = FALSE
+                           AND application.is_deleted = FALSE
+                         ORDER BY source.id
+@@ -1411,12 +1388,12 @@
+                                source.goods_id,
+                                source.color_id,
+                                source.unit_id,
+                                COALESCE(source.unit_rate, 1),
+                                application.status
+-                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_application_items',archive_origin.id)) source
+-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_applications',archive_origin.id)) application
++                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) source
++                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                           ON application.id = source.application_id
+                         WHERE source.id IN (:sourceIds)
+                           AND source.is_deleted = FALSE
+                           AND application.is_deleted = FALSE
+                         ORDER BY source.id

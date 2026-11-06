@@ -1,3 +1,4 @@
+import '../../support/versioned_summary_test_response.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
@@ -579,25 +580,23 @@ class _Api extends ApiClient {
         'totalPages': 1,
       };
     }
-    if (path == '/finance/accounting-imports') {
-      return {
-        'items': [
-          {
-            'id': _v,
-            'kind': 'VOUCHERS',
-            'sourceName': '匿名原凭证',
-            'sourceSystem': 'BOOK',
-            'status': 'PREVIEW',
-          },
-          {
-            'id': _b,
-            'kind': 'BALANCE',
-            'sourceName': '匿名原余额',
-            'sourceSystem': 'BOOK',
-            'status': 'PREVIEW',
-          },
-        ],
-      };
+    if (path == '/finance/accounting-imports/summaries') {
+      return versionedSummaryTestResponse([
+        {
+          'id': _v,
+          'kind': 'VOUCHERS',
+          'sourceName': '匿名原凭证',
+          'sourceSystem': 'BOOK',
+          'status': 'PREVIEW',
+        },
+        {
+          'id': _b,
+          'kind': 'BALANCE',
+          'sourceName': '匿名原余额',
+          'sourceSystem': 'BOOK',
+          'status': 'PREVIEW',
+        },
+      ], query);
     }
     if (path == '/finance/chart') {
       return {

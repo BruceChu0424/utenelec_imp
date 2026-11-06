@@ -1,0 +1,46 @@
+{
+  "createdAtUtc": "2026-11-05T22:54:08.940893+00:00",
+  "mainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+  "entries": [
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+      "reviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "reviewedMainSha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c",
+      "resolvedCandidateSha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering.",
+      "reviewedCommittedMainSha256": "3989c2789c2a0d7c84761b788c11617d78dba2ca780a5738ad50ad0f70cae04c"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java",
+      "reviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "reviewedMainSha256": "84fb0c4dec4d67c522284263f1bb34ab109eb62df6aa86466ee9b4af3d65ff5e",
+      "resolvedCandidateSha256": "cca08071a5fcdd53c5cd0e71d7443dc792fe74a9303b73524f6adacf2936992b",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering.",
+      "reviewedCommittedMainSha256": "84fb0c4dec4d67c522284263f1bb34ab109eb62df6aa86466ee9b4af3d65ff5e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java",
+      "reviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "reviewedMainSha256": "4bcb9076e8badc06bcd577f7b2e5d37b71f024fad48dfea6c408fd61bf41fc4b",
+      "resolvedCandidateSha256": "503d4681ed470595e7a725e8d0906d16eaecce15ce7adf1802c61fb2e79ae76c",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering.",
+      "reviewedCommittedMainSha256": "4bcb9076e8badc06bcd577f7b2e5d37b71f024fad48dfea6c408fd61bf41fc4b"
+    },
+    {
+      "path": "docs/数据迁移/README.md",
+      "reviewedMainHead": "6fb783e7a6c1a108d4593f2919bf6e3d6e97403d",
+      "reviewedMainSha256": "2f0eb11ad63be1986764f121133620482d1983d876a394af23dfddf91ab2e494",
+      "resolvedCandidateSha256": "8a62a2445fbfde62c5ddba0f945bee4debb4232d315373a23c7e28e735f6c824",
+      "strategy": "Use reviewed composed candidate against this exact Main baseline; do not reapply the original114 dirty baseline merge that removes the retained top-level fix or add-add guards.",
+      "reason": "Preserve explicit 2026-11-04 top-level product/child exclusion plus JIT/rowFn; retain all current Main ClosedCredit cases and new alias/precision/RESTORE tests; README preserves all Main text and actual forward numbering.",
+      "reviewedCommittedMainSha256": "2f0eb11ad63be1986764f121133620482d1983d876a394af23dfddf91ab2e494"
+    }
+  ],
+  "sameMain1058Sha256": "e5f8a1546cae0b053497c9e41becdbf36095a3038671131f497dfa0e69cc817a",
+  "oldExec1057": "moved to final1071 with body bytes unchanged; all1005 committed Main migrations byte exact",
+  "previousManifestSha256": "c097008aaf5d0ce78bbd05592e202f00c42cddd69216ca3ef665bb5e192cd6ac",
+  "latestCompositionReceiptSha256": "0965574386c6a9d2a427280a6d7950f427ee09be63a09902623bd7ccf3fcd29d"
+}

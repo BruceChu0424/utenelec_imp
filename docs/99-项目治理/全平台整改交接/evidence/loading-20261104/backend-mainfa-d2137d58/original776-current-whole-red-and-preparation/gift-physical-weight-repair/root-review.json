@@ -1,0 +1,11 @@
+{
+  "atUtc": "2026-11-06T01:57:58.728746+00:00",
+  "reviewer": "Root current chat",
+  "diffSha256": "f47456012713fed973475410e7c41945295925c82aba63c14f8f4b90ecb794c6",
+  "beforeSha256": "9e3d210d2d319d7b557531cdcfdaaf1fa4528e4a8683047144d896b6b12ac6c4",
+  "stagedSha256": "9def84fce03bac666c9d3e3e2ff491483e3f0658b6a57a47733b74432d6acfbb",
+  "review": "Root read changed blocks and approved alignment with Main frozen-source lineage: exact original raw11.0000/action1/KG/policy and complete original evidence JSON unchanged; draft weight11/source-item lineage/new-owner any evidence0; retain stock/value/AP/idempotency/IQC assertions. Apply exactly this one test only after original15PG naturally ends and releases source; fresh affected whole-class validation, never a filtered-method rerun.",
+  "runtimePassImplied": false,
+  "sourceWritten": false,
+  "historicalRedMustRemain": true
+}

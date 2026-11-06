@@ -24,6 +24,7 @@ import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu_policy.dart';
 import 'package:uten_imp/components/inputs/uten_drop_target.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
@@ -370,6 +371,7 @@ class _Repository extends CompanyFileRepository {
 }
 
 class _PagedRepository extends _Repository {
+  bool revokeOnContinuation = false;
   @override
   Future<CompanyFileListing> list({
     String? parentId,
@@ -387,7 +389,8 @@ class _PagedRepository extends _Repository {
       entries: [_items[page]],
       total: 3,
       size: 1,
-      allowedActions: actions,
+      page: page,
+      allowedActions: revokeOnContinuation && page > 0 ? {'view'} : actions,
     );
   }
 }
@@ -1184,50 +1187,45 @@ void main() {
   }
 
   testWidgets(
-    'page input translates display pages to zero-based file queries',
+    'all directory batches keep the zero-based API and scrolling performs no further reads',
     (tester) async {
       final repository = _PagedRepository();
       await _mount(tester, repository);
-      final input = find.descendant(
-        of: find.byType(UtenPagination),
-        matching: find.byType(TextFormField),
-      );
-      repository.gate = Completer<CompanyFileListing>();
-      await tester.enterText(input, '3');
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await tester.pump();
-      final arrows = find.descendant(
-        of: find.byType(UtenPagination),
-        matching: find.byType(IconButton),
-      );
-      expect(arrows, findsNWidgets(2));
-      expect(tester.widget<TextFormField>(input).enabled, isFalse);
-      expect(
-        tester
-            .widgetList<IconButton>(arrows)
-            .every((arrow) => arrow.onPressed == null),
-        isTrue,
-      );
-      expect(repository.orderingQueries.map((query) => query.page), [0, 2]);
-      repository.gate!.complete(
-        CompanyFileListing(
-          entries: [_items[2]],
-          total: 3,
-          size: 1,
-          allowedActions: _actions,
-        ),
+      await tester.pumpAndSettle();
+      expect(repository.orderingQueries.map((query) => query.page), [0, 1, 2]);
+      expect(find.byType(UtenPagination), findsNothing);
+      expect(find.byKey(const ValueKey('forms')), findsWidgets);
+      expect(find.byKey(const ValueKey('hr')), findsWidgets);
+      expect(find.byKey(const ValueKey('rules')), findsWidgets);
+      final calls = repository.orderingQueries.length;
+      await tester.drag(
+        find.byKey(const ValueKey('company-files-canvas')),
+        const Offset(0, -180),
       );
       await tester.pumpAndSettle();
-      expect(repository.orderingQueries.map((query) => query.page), [0, 2]);
-      expect(
-        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
-        3,
-      );
-      expect(find.text('公司制度'), findsWidgets);
-      expect(tester.widget<TextFormField>(input).enabled, isTrue);
+      expect(repository.orderingQueries.length, calls);
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'changed directory ACL in a continuation retires the previously accepted private listing',
+    (tester) async {
+      final repository = _PagedRepository();
+      await _mount(tester, repository);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('forms')), findsWidgets);
+      repository.revokeOnContinuation = true;
+      repository.orderingQueries.clear();
+      await tester.tap(find.byKey(const ValueKey('company-files-refresh')));
+      await tester.pumpAndSettle();
+      expect(repository.orderingQueries.map((query) => query.page), [0, 1]);
+      expect(find.byKey(const ValueKey('forms')), findsNothing);
+      expect(find.byKey(const ValueKey('rules')), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('compact main canvas owns one page end with or without shell', (
     tester,
   ) async {
@@ -2134,6 +2132,25 @@ void main() {
     },
   );
 
+  testWidgets(
+    'identity retirement removes a manual-read overlay before a late directory reply',
+    (tester) async {
+      final repository = _Repository();
+      final container = await _mount(tester, repository);
+      repository.gate = Completer<CompanyFileListing>();
+      await tester.tap(find.byKey(const ValueKey('company-files-refresh')));
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsWidgets);
+      container.read(_testIdentity.notifier).state = _identity('B');
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('公司公文模板.docx'), findsNothing);
+      repository.gate!.complete(const CompanyFileListing());
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('a modal editor is hidden on identity change', (tester) async {
     final repository = _Repository();
     final container = await _mount(tester, repository);
@@ -2144,6 +2161,7 @@ void main() {
     await tester.pump();
     expect(find.text('访问权限已变化，请刷新后重试'), findsOneWidget);
     expect(find.text('名称'), findsNothing);
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 

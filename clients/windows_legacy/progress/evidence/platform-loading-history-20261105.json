@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "scope": "Existing native unit record-history cursor dialog and touched history operations; continuous/search callers rechecked on final same-source build. Not full native ERP support.",
+  "executedAtWorktree": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105",
+  "atUtc": "2026-11-05T10:51:13.710496+00:00",
+  "sourceInputs": 166,
+  "sourceDrift": [],
+  "files": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenBusyDialog.cs",
+      "sha256": "cc9bcb9fc59dca4a686941169cbbbf033a93a99f3ff41196c2b8843deebaf224"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryService.cs",
+      "sha256": "47ffc96a76a7f1db7398fd20713e597aeaf9da288c22f7b6535d6665beabc19a"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs",
+      "sha256": "fa9bb0b30376f95215eecf26b1a356321ae205031316ddbd0626a015c9e5c9c7"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryWindows.cs",
+      "sha256": "68061b99a93695ac4cb475f3e99885a6357e075aa9abe0def0b46b2ba68f46ee"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryContractChecks.cs",
+      "sha256": "82ef3f8eff999bc30039bcef704c627442c51adb551408d7784535f860483da5"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "sha256": "08deddd166e4a39ec0ad56ac428693821419f3db06c435b2b72d15c1d9a54d6e"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "854bf127722ef94efbd7f2bbcb1640949269c4110b840b6c4bb466b9b4be7306"
+    }
+  ],
+  "perArchitectureAssertions": {
+    "historyModelAndHttp": 44,
+    "historyOriginalReadAndMutationUi": 20,
+    "historyCompleteCursorAndWaitingUi": 17,
+    "existingContinuous": 22,
+    "existingSearch": 125,
+    "uniqueTotal": 228
+  },
+  "architectures": [
+    "x64",
+    "x86"
+  ],
+  "buildFlags": {
+    "configuration": "Debug",
+    "warnAsError": true,
+    "scope": "loading-history-closure-20261105",
+    "restore": false
+  },
+  "result": "passed both architectures; actual STA visible-window history/scroller/cancel/owner-retirement and original durable mutation checks",
+  "behaviour": [
+    "All251 immutable history cursor rows collected with three consistent100-row bounded requests, exact64-bit identity/order, original record/date/actor/action/source/summary filters.",
+    "No record-page UI/next/previous controls; native virtual rows scroll12times without data requests or ItemsSource replacement.",
+    "First/batch failure publishes no partial result; ordinary refresh failure retains prior authorized rows with restore capability disabled;401/403 clears rows.",
+    "Restore capabilities require freshly read selected detail; original opaque expectedHead/direction, permissions, journal and unknown-submission guards preserved.",
+    "Cancellation and real held owner retirement stop subsequent batches and close waiting UI without writes.",
+    "One common owned waiting dialog follows actual read/detail/write/nested-refresh lifetime; cancel and retirement clean up and restore parent state.",
+    "Existing shared100000-row/64MiB text capacity retained; oversized complete result fails explicitly rather than returning a truncated list."
+  ],
+  "retainedDifferences": [
+    "Server transport remains bounded100-row cursor reads; this is not scroll-triggered paging.",
+    "Personal undo/redo endpoint intentionally retains its original last10operations/30events safety contract; full record-history reading does not expand undo authority.",
+    "PDF print-preview paper pages are retained."
+  ],
+  "logs": [
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/source-input-v5.json",
+      "sha256": "88a45da79a16a3e1336b0d4703d9971c27e956c0b3864292ac522e28e5a20c19"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/build-x64-v5.log",
+      "sha256": "d994ee3ac52d1ac7209915f7354d9384f46359f6b12163dbfd39d2d6ca8a511c"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/build-x64-v5-exit.json",
+      "sha256": "57704c13d6006c22d1c6e2d1ebf73cbbb43ce8f8ba333835369df0a1593e09fc"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/contracts-x64-v5-exit.json",
+      "sha256": "e0e3fbca72854ac6fd62dcc3af36d871d5f802a4a8de449152699e74a4a9c8e4"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/unit-history-contracts-x64-v5.log",
+      "sha256": "5600bc9292759cb858d3661a78f85f67f455dddfb0c303bed62f240a02d90a38"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/continuous-list-contracts-x64-v5.log",
+      "sha256": "e2af4a668ad249e36a61df3318ab95c46c226fb4c39ce9b025df99195295b602"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/search-input-contracts-x64-v5.log",
+      "sha256": "f8adc94660c878c37e4d3e272c3a39a28108affe9ce99729fa106b52c48db4c6"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/build-x86-v5.log",
+      "sha256": "4cfe4c8948fdab2cbaececa64fbdd976d68a5e75b208f9cd5d9f8505b6eebffc"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/build-x86-v5-exit.json",
+      "sha256": "4ddf55fc210d78e3e4a76aa40d146d706bf9b63b6d8b554616c8f325439ef81f"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/contracts-x86-v5-exit.json",
+      "sha256": "f6c491a30355fee53fb65ab23cc668f597052e38375bf806eaf8f61228102a12"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/unit-history-contracts-x86-v5.log",
+      "sha256": "fff6ec23ff46cf7549b3232e7700c644d9d39506cc85f6d4decbcb0a9a6156a9"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/continuous-list-contracts-x86-v5.log",
+      "sha256": "e0025513b1348bf6c51e353ac1810b534e18a081d2921f41ccc9fdf402b74977"
+    },
+    {
+      "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/search-input-contracts-x86-v5.log",
+      "sha256": "d5902633e6e89c847ec34c59f09ee60571f0f31a3a0df28e0e412f3e0895f25b"
+    }
+  ],
+  "priorRuns": {
+    "v1": "Two initial builds failed because a removed generic using was still needed by Choice list construction; fixed, raw logs retained in build/loading-validation/wpf-history-final.",
+    "v2": "Tests runner local variable shadowed original outer history variable; renamed, raw logs retained.",
+    "v3": "Both builds and79 history assertions perarchitecture passed before the final shared memory constants/operation wait and visible-owner-retirement coverage. Not counted on top of final228.",
+    "v4": "Both warnaserror builds passed; no runtime claim, followed by one added visible-owner-retirement test fixture."
+  },
+  "noStatusPromotion": true,
+  "notRun": [
+    "Win7 target-machine UAT",
+    "complete native ERP migration",
+    "formal release packaging",
+    "push",
+    "company migration or deployment"
+  ],
+  "visualReview": {
+    "reviewed": true,
+    "windowWidths": [
+      1080,
+      480
+    ],
+    "captures": [
+      {
+        "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/unit-record-history-fixture.png",
+        "sha256": "c302482564bf178d35deaff144c349b50833435462b7cd4011cf69eed2cc2a46"
+      },
+      {
+        "path": "clients/windows_legacy/progress/evidence/loading-history-20261105-files/unit-record-history-narrow-fixture.png",
+        "sha256": "cd1095858cb46ef94e65f08800792b2483d3b8ddc88ba0c00be32da2a2ac9338"
+      }
+    ],
+    "state": "Existing read-UI fixture after a filter change: rows intentionally invalidated, filters retained, controls and close/restore actions remain reachable, no record pager. Complete251-row and actual scrolling proofs are the separate visible-window assertions, not inferred from empty screenshots."
+  }
+}

@@ -59,6 +59,9 @@ class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
 class _FinanceAssetLedgerPanelState
     extends ConsumerState<FinanceAssetLedgerPanel>
     with ScopedPagedReadViewMixin<FinanceAssetLedgerPanel> {
+  @override
+  Future<void> onReadViewResumed() => _load();
+
   final _requestGuard = LatestRequestGuard();
   final _categoryGuard = LatestRequestGuard();
   final _draftGuard = LatestRequestGuard();
@@ -171,11 +174,14 @@ class _FinanceAssetLedgerPanelState
     try {
       var result = await readScopedPage<FinanceAssetSummary>(
         query.page,
+        idOf: (row) => row.id,
         query: cacheQuery,
         currentQuery: () => _cacheQuery,
         useCache: useCache,
-        fetchPage: (target) =>
-            repository.list(ledger, query: query.copyWith(page: target)),
+        fetchPage: (target) => repository.list(
+          ledger,
+          query: query.copyWith(page: target, size: 100),
+        ),
       );
       if (result.items.isEmpty &&
           query.page > 1 &&
@@ -183,10 +189,13 @@ class _FinanceAssetLedgerPanelState
         _query = _query.copyWith(page: result.totalPages.clamp(1, query.page));
         result = await readScopedPage<FinanceAssetSummary>(
           _query.page,
+          idOf: (row) => row.id,
           query: cacheQuery,
           currentQuery: () => _cacheQuery,
-          fetchPage: (target) =>
-              repository.list(ledger, query: query.copyWith(page: target)),
+          fetchPage: (target) => repository.list(
+            ledger,
+            query: query.copyWith(page: target, size: 100),
+          ),
         );
       }
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
@@ -197,6 +206,7 @@ class _FinanceAssetLedgerPanelState
         if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
     } catch (caughtError) {
+      if (isRetiredViewRead(caughtError)) return;
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _loading = false;

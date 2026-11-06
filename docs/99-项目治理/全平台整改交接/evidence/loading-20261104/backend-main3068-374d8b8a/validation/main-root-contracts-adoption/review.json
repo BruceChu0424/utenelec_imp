@@ -1,0 +1,21 @@
+{
+  "baseMain": "f6e0d8532e6e11239243b4fb2149fb90410395ba",
+  "reviewedMainHead": "3068fbcb793908d3869bfb56a09f8f90ed232840",
+  "entries": [
+    {
+      "path": "contracts/table-output-cost-identities.json",
+      "mainBlobSha256": "63e8d996a50d5c578f9aee35e5503532eb6709394a563548cc1b1dcc97d30422",
+      "candidateSha256": null,
+      "worktreeEqualsCommit": true
+    },
+    {
+      "path": "contracts/table-output-selection/v1.json",
+      "mainBlobSha256": "521afe4b8586a2a5ddfc46b71ef6dc73f8dc7dd10682d3c5a665a967a56202d6",
+      "candidateSha256": null,
+      "worktreeEqualsCommit": true
+    }
+  ],
+  "candidateWritten": false,
+  "mainWritten": false,
+  "scope": "Read-only exact committed root contracts pending both active validation source windows"
+}

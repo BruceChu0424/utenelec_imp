@@ -78,6 +78,11 @@ class WorkshopMaterialReportsPage extends ConsumerStatefulWidget {
 class _WorkshopMaterialReportsPageState
     extends ConsumerState<WorkshopMaterialReportsPage>
     with ScopedPagedReadViewMixin<WorkshopMaterialReportsPage> {
+  Future<void> Function()? _activityReturnRead;
+  @override
+  Future<void> onReadViewResumed() =>
+      _activityReturnRead?.call() ?? Future<void>.value();
+
   static const _pollInterval = Duration(seconds: 2);
   static const _pollWindow = Duration(seconds: 60);
 
@@ -356,10 +361,12 @@ class _WorkshopMaterialReportsPageState
           }
       }
     } on ApiException catch (e) {
+      if (isRetiredViewRead(e)) return;
       if (mounted && request == _dataRequest) {
         setState(() => _dataError = e.message);
       }
-    } catch (_) {
+    } catch (retiredReadError) {
+      if (isRetiredViewRead(retiredReadError)) return;
       if (mounted && request == _dataRequest) {
         setState(() => _dataError = '报表读取失败，请重试');
       }
@@ -568,7 +575,11 @@ class _WorkshopMaterialReportsPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    ref.onPageResume(RouteName.workshopMaterialReports, _refresh);
+    final visibleReadReturn = _refresh;
+    _activityReturnRead = () async {
+      await Future<void>.sync(visibleReadReturn);
+    };
+    ref.onPageResume(RouteName.workshopMaterialReports, visibleReadReturn);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.workshopMaterialReports,

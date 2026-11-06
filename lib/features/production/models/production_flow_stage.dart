@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'production_exact_quantity.dart';
 
 /// 生产全链路「流程阶段」词表 —— 全站唯一口径。
 ///
@@ -275,12 +276,12 @@ class ProductionFlowStage {
     ProductionMaterialFacts? materials,
     double? reportedQty,
     double? plannedQty,
-    double? remainingReportQty,
+    Object? remainingReportQty,
 
     /// 未审核报工草稿（SR status=0）已承接的数量：占住待报额度但不计入已报。
     /// 生产中工单的待报被草稿全部承接时，阶段是「报工草稿待审核」而不是
     /// 「已报完」——审核通过才进入品质/仓库环节，删除草稿则待报恢复。
-    double draftReportedQty = 0,
+    Object? draftReportedQty = 0,
     double fqcPendingQty = 0,
     double fqcFailedQty = 0,
     double finishedInboundPendingQty = 0,
@@ -367,12 +368,14 @@ class ProductionFlowStage {
             : ProductionFlowTone.waiting,
       );
     }
-    if (status == 'IN_PROGRESS' &&
-        remainingReportQty != null &&
-        remainingReportQty - draftReportedQty <= 0.000001) {
+    final reportPreview = ProductionReportPreview(
+      remaining: remainingReportQty,
+      draft: draftReportedQty,
+    );
+    if (status == 'IN_PROGRESS' && reportPreview.atMostThreshold) {
       // 待报原本还有，是草稿承接完的：走「草稿待审核」，不能伪装成已报完
       // （品质/仓库环节要等审核通过才开始）。
-      if (draftReportedQty > 0.000001 && remainingReportQty > 0.000001) {
+      if (reportPreview.draftAwaitingApproval) {
         return _make(4, '报工草稿待审核', ProductionFlowTone.pending);
       }
       final label = fqcPendingQty > 0

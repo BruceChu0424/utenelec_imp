@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "contract": "Exact owning publication domains; a header-only version retains the authoritative server profile. Native domain headers include the browse/task mode.",
+  "cases": [
+    {
+      "method": "GET",
+      "path": "/finance/asset-opening-groups/summaries",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/accounting-imports/summaries",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/auxiliary-imports/summaries",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/chart/imports/summaries",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/expense-analysis/note-imports/summaries",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/payable-statement-adjustments",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/statement-documents/reviews/11111111-1111-4111-8111-111111111111/summary",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/finance/statement-documents/reviews/11111111-1111-4111-8111-111111111111/original-table",
+      "profile": "finance",
+      "domain": "finance",
+      "headerDomain": null
+    },
+    {
+      "method": "GET",
+      "path": "/subcontract/short-deliveries/supplier-summary/goods/summaries",
+      "profile": "native_subcontract_owner",
+      "domain": "native_subcontract_owner:browse",
+      "headerDomain": "native_subcontract_owner:browse"
+    },
+    {
+      "method": "GET",
+      "path": "/business-columns/summaries",
+      "profile": "native_feature",
+      "domain": "native_feature:browse",
+      "headerDomain": "native_feature:browse"
+    },
+    {
+      "method": "GET",
+      "path": "/platform-columns/expense_claim/definitions/summaries",
+      "profile": "native_feature",
+      "domain": "native_feature:browse",
+      "headerDomain": "native_feature:browse"
+    },
+    {
+      "method": "GET",
+      "path": "/notices/11111111-1111-4111-8111-111111111111/blessings/summaries",
+      "profile": "native_feature",
+      "domain": "native_feature:browse",
+      "headerDomain": "native_feature:browse"
+    },
+    {
+      "method": "GET",
+      "path": "/production/overproduction-rate/requests/facets",
+      "profile": "native_production_owner",
+      "domain": "native_production_owner:browse",
+      "headerDomain": "native_production_owner:browse"
+    },
+    {
+      "method": "POST",
+      "path": "/production/overproduction-rate/requests/facets",
+      "profile": "native_production_owner",
+      "domain": "native_production_owner:browse",
+      "headerDomain": "native_production_owner:browse"
+    }
+  ],
+  "unclassified": [
+    {
+      "method": "GET",
+      "path": "/finance/asset-opening-groups/summaries/extra"
+    },
+    {
+      "method": "GET",
+      "path": "/finance/asset-opening-groups"
+    },
+    {
+      "method": "POST",
+      "path": "/finance/asset-opening-groups/summaries"
+    },
+    {
+      "method": "GET",
+      "path": "/finance/statement-documents/reviews/not-a-uuid/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/subcontract/short-deliveries/supplier-summary/goods/summaries/extra"
+    },
+    {
+      "method": "POST",
+      "path": "/subcontract/short-deliveries/supplier-summary/goods/summaries"
+    },
+    {
+      "method": "GET",
+      "path": "/finance/statement-documents/reviews/------------------------------------/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/finance/statement-documents/reviews/111111111111111111111111111111111111/summary"
+    }
+  ]
+}

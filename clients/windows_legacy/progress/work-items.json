@@ -531,10 +531,11 @@
       "evidence": [
         "clients/windows_legacy/progress/evidence/category-loading-20261101.json",
         "clients/windows_legacy/progress/evidence/platform-search-20261103.json",
-        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json"
+        "clients/windows_legacy/progress/evidence/platform-search-integration-20261104.json",
+        "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106.json"
       ],
-      "notes": "2026-11-01 分类/表格公共读取优化：托管 TLS 保留原 8 连接上限，facets/lookup/dict 最多占 2 条；队列继续沿用会话取消、来源和 read proof。当前源码 x86/x64 公共门及既有完整 runner 通过，证据 E-CATEGORY-LOADING-20261101。只验证本次传输增量；本工作包其余 DoD、完整 ERP 和 Win7 真机验收未完成，原 implemented 状态保留。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。",
-      "lastUpdated": "2026-11-04T09:49:55.978207+00:00"
+      "notes": "2026-11-01 分类/表格公共读取优化：托管 TLS 保留原 8 连接上限，facets/lookup/dict 最多占 2 条；队列继续沿用会话取消、来源和 read proof。当前源码 x86/x64 公共门及既有完整 runner 通过，证据 E-CATEGORY-LOADING-20261101。只验证本次传输增量；本工作包其余 DoD、完整 ERP 和 Win7 真机验收未完成，原 implemented 状态保留。\n2026-11-04 搜索契约及c8eb95cb1合成双架构读取/草稿fixture证据追加；仅证明当前读取增量，原status、owner、DoD和依赖保留，未声明原生业务迁移、Win7真机或正式交付完成。\n2026-11-06 complete-summary-v1共享读范围增量：仅同步Core精确GET finance Version头fallback、真实HTTP method与显式native owning domain；14正/8负合同及13GET×25真实Session/HTTP调用、四独立authority变更、原CoreContractChecks.Run在x86/x64均实际0。相关finance/notice/production/subcontract业务UI仍未迁移，不推进业务DoD或Win7验收；见E-NATIVE-COMPLETE-SUMMARY-SCOPE-20261106。",
+      "lastUpdated": "2026-11-06T18:19:19.709925+00:00"
     },
     {
       "id": "W7-CORE-004",

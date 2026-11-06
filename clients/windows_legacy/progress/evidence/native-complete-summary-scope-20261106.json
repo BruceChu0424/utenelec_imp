@@ -1,0 +1,252 @@
+{
+  "id": "E-NATIVE-COMPLETE-SUMMARY-SCOPE-20261106",
+  "classification": "shared-contract; existing Core transport only",
+  "contract": "contracts/read-scope-domains/complete-summary-v1.json",
+  "contractSha256": "99eb2b7132a5568d4972cb0a5c90415ebfb25d35451742ecfd986e569db7f759",
+  "fixtureCases": 14,
+  "fixtureNegativeCases": 8,
+  "authorityRules": [
+    "Only eight exact GET finance summary/import/adjustment/review routes use the existing finance Version-only-header fallback; reviews require canonical 8-4-4-4-12 hexadecimal UUID syntax.",
+    "Two column summaries and notice blessing summaries honor explicit native_feature:browse; supplier goods/summaries honors native_subcontract_owner:browse because its first summary includes owner-scoped recentCases. Existing company-wide supplier aggregate SQL and old legacy GET are unchanged by this Core change.",
+    "Overproduction facet GET/POST honor the explicit native_production_owner:browse header. Native task/browse headers remain distinct; exact method is captured from SessionCoordinator and does not turn POST finance neighbors into GET fallbacks."
+  ],
+  "sourceSha256": {
+    "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs": "525fa260fc8e6fe3a0be36bc3c79aaa5d064a396889402804d98ec04863b9368",
+    "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs": "ab602afa88873813b9665a18c46ad45d4ec637ee7d55f67be6cfc585e9a85496",
+    "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs": "29c38cdb137850ba7d09ddaeac7e127c9d6e9f7630a35c6027674fcbdcd51ef9",
+    "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj": "0e8786f3e4b02de2425f083bdddd1dce4cd0cefc6eb03a69c816ea9a86ca35b4"
+  },
+  "actualValidation": {
+    "startedAtUtc": "2026-11-06T18:14:26.488385+00:00",
+    "completedAtUtc": "2026-11-06T18:17:04.364826+00:00",
+    "runs": [
+      {
+        "name": "build-x86",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\tree\\clients\\windows_legacy\\Uten.Legacy.Core\\Uten.Legacy.Core.csproj",
+          "/nologo",
+          "/m:1",
+          "/verbosity:minimal",
+          "/t:Rebuild",
+          "/warnaserror",
+          "/p:Configuration=Debug",
+          "/p:Platform=x86",
+          "/p:PlatformTarget=x86",
+          "/p:UtenBuildScope=summary-scope-final",
+          "/p:OutputPath=D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x86\\"
+        ],
+        "startedAtUtc": "2026-11-06T18:14:27.095992+00:00",
+        "completedAtUtc": "2026-11-06T18:15:26.081708+00:00",
+        "actualExitCode": 0,
+        "logSha256": "9787df2657470644377f773fa1d72bc3160fee6515ef88266b560cf6f13da7a4"
+      },
+      {
+        "name": "runner-compile-x86",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+          "/nologo",
+          "/warnaserror",
+          "/target:exe",
+          "/platform:x86",
+          "/out:D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x86\\CoreScopeRunner.exe",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x86\\Uten.Legacy.Core.dll",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\CoreScopeRunner.cs"
+        ],
+        "startedAtUtc": "2026-11-06T18:15:26.291962+00:00",
+        "completedAtUtc": "2026-11-06T18:15:32.087638+00:00",
+        "actualExitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "corechecks-x86",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x86\\CoreScopeRunner.exe"
+        ],
+        "startedAtUtc": "2026-11-06T18:15:32.189698+00:00",
+        "completedAtUtc": "2026-11-06T18:16:30.749397+00:00",
+        "actualExitCode": 0,
+        "logSha256": "fee4ef2cb6c885324d6fb94aa29f97c42c5aa660b4b53590c54ca8ff3423cb91"
+      },
+      {
+        "name": "build-x64",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\tree\\clients\\windows_legacy\\Uten.Legacy.Core\\Uten.Legacy.Core.csproj",
+          "/nologo",
+          "/m:1",
+          "/verbosity:minimal",
+          "/t:Rebuild",
+          "/warnaserror",
+          "/p:Configuration=Debug",
+          "/p:Platform=x64",
+          "/p:PlatformTarget=x64",
+          "/p:UtenBuildScope=summary-scope-final",
+          "/p:OutputPath=D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x64\\"
+        ],
+        "startedAtUtc": "2026-11-06T18:16:30.874692+00:00",
+        "completedAtUtc": "2026-11-06T18:16:34.050393+00:00",
+        "actualExitCode": 0,
+        "logSha256": "92f8ef4f840677e8b539cd6bd0037566e1ae1baefe86f5ecbe80e2a837ec9ebd"
+      },
+      {
+        "name": "runner-compile-x64",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+          "/nologo",
+          "/warnaserror",
+          "/target:exe",
+          "/platform:x64",
+          "/out:D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x64\\CoreScopeRunner.exe",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x64\\Uten.Legacy.Core.dll",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\CoreScopeRunner.cs"
+        ],
+        "startedAtUtc": "2026-11-06T18:16:34.153027+00:00",
+        "completedAtUtc": "2026-11-06T18:16:36.302330+00:00",
+        "actualExitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "corechecks-x64",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\native-complete-summary-scope-20261106\\bin\\x64\\CoreScopeRunner.exe"
+        ],
+        "startedAtUtc": "2026-11-06T18:16:36.397666+00:00",
+        "completedAtUtc": "2026-11-06T18:17:04.313086+00:00",
+        "actualExitCode": 0,
+        "logSha256": "9b66c224faa443d1afc62e5b04b05f2b78564aa80ff224f6fcb726c89b19e56d"
+      }
+    ],
+    "exactPrivateAndMainSourceInputs": 65,
+    "binarySha256": {
+      "x86": "db5d07e91f76bf12ef87372b1ddb61e5e6e9a8996c3d1c2beb8eb571e2b68340",
+      "x64": "7e5abcd0fe0c9808827b0b1ad7132b5408b80c73b94b61ca75222baed2248323"
+    },
+    "allActualExitCodes": 0,
+    "command": "Debug net48 x86/x64 /warnaserror; original CoreContractChecks.Run via CoreScopeRunner; no Desktop build"
+  },
+  "newRegression": {
+    "sharedMethodRouteChecks": 14,
+    "unclassifiedExactNeighborOrWrongMethodChecks": 8,
+    "actualSessionHttpGetRoutes": 13,
+    "repeatedReadRounds": 25,
+    "distinctOwningAuthorityCount": 4,
+    "headerOnlyBodyPreserved": true,
+    "changedProofRetiresEachAuthorityOnce": true,
+    "authenticationGenerationAndPersistedRefreshPreserved": true,
+    "businessWritesOrAutomaticAuthenticationTriggered": false
+  },
+  "historicalEvidenceBoundary": "Old native16-family x25 and earlier source/test clocks remain historical evidence. This receipt qualifies only its exact 65 input files and actual x86/x64 run clocks; no old failed/skipped/OOM or prior family evidence is relabelled as current success.",
+  "nativeBusinessStatus": {
+    "implementedFeatureDirectories": [
+      "Columns",
+      "Downloads",
+      "Goods",
+      "Publish",
+      "Units"
+    ],
+    "financeNoticeProductionSubcontractFeatureDirectoriesPresent": false,
+    "listedRelatedBusinessTasks": [
+      {
+        "id": "W7-BIZ-060",
+        "businessSource": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-061",
+        "businessSource": "lib/features/finance/pages/finance_assets_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-066",
+        "businessSource": "lib/features/finance/pages/finance_hub_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-071",
+        "businessSource": "lib/features/finance/pages/finance_reconciliation_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-072",
+        "businessSource": "lib/features/finance/pages/finance_report_table_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-077",
+        "businessSource": "lib/features/finance/pages/finance_statement_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-078",
+        "businessSource": "lib/features/finance/payables/pages/finance_payables_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-084",
+        "businessSource": "lib/features/notice/pages/notice_detail_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-085",
+        "businessSource": "lib/features/notice/pages/notice_list_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-086",
+        "businessSource": "lib/features/notice/pages/notice_publish_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-161",
+        "businessSource": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+        "status": "todo",
+        "nativeTargets": []
+      },
+      {
+        "id": "W7-BIZ-220",
+        "businessSource": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+        "status": "todo",
+        "nativeTargets": []
+      }
+    ],
+    "nativeSummaryBusinessUiAdded": false,
+    "businessTaskStatusesAdvanced": false,
+    "fullErpEquivalent": false,
+    "win7TargetPcAcceptance": false,
+    "formalPackageCreated": false,
+    "companyBusinessRequestOrDeployment": false
+  },
+  "mainAdoption": {
+    "headFresh": "1db4f269cdf5763893f36bef49f5235b20e5867f",
+    "indexBefore": "0973b0539cb0e91a8822ef5d9e0fbdadfdc8bced6ff94daf29a934bcea291c63",
+    "indexAfter": "0973b0539cb0e91a8822ef5d9e0fbdadfdc8bced6ff94daf29a934bcea291c63",
+    "all64ProtectedInputPreimagesChecked": true
+  },
+  "durableArtifacts": {
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/review.json": "ca5c29cfdfef212f4405dacbc30329bfdbda9476aadc7b5fc41ef48a7105e9a0",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/validation.json": "912d0fdd6f3aa33b6331ead2f34437e7b19f8972b6f4edf19270c485e5e7eca1",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/main-adoption-receipt.json": "daeb2ceb7907889f8d625b572284fe59980e3cd5aeccd44ba7c014bfc2f437d8",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/CoreScopeRunner.cs": "5d7e5d9ad00a452515e541d46c02a7a3d37bf222060f5c4c2b85bd47bd1eb7fd",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/prepare_native_complete_summary_scope.py": "2aa396a21b8b68622a358ba388e24334b51a0f3b688e503efb8977de77cf8186",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/run_native_complete_summary_scope.py": "b28ea26e567370461a41c809780e58aaee0f234cc00cbc02f3cb334bf6e228a7",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/adopt_native_complete_summary_scope.py": "174417bc244e9eab56c8dc38c9187cd43940d6d8e2bb51c4213548f60a5e48f5",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/build-x86.log": "9787df2657470644377f773fa1d72bc3160fee6515ef88266b560cf6f13da7a4",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/runner-compile-x86.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/corechecks-x86.log": "fee4ef2cb6c885324d6fb94aa29f97c42c5aa660b4b53590c54ca8ff3423cb91",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/build-x64.log": "92f8ef4f840677e8b539cd6bd0037566e1ae1baefe86f5ecbe80e2a837ec9ebd",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/runner-compile-x64.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/corechecks-x64.log": "9b66c224faa443d1afc62e5b04b05f2b78564aa80ff224f6fcb726c89b19e56d"
+  },
+  "noCommitPushPackageOrDeployment": true
+}

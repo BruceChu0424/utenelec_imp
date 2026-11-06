@@ -27,6 +27,8 @@ namespace Uten.Legacy.Core.Tests
             NativeDomainsAreIndependent().GetAwaiter().GetResult();
             MasterAndReportDomainsAreIndependent().GetAwaiter().GetResult();
             GoodsCostDomainsAreIndependent().GetAwaiter().GetResult();
+            CompleteSummaryMethodsAndExactRoutes();
+            CompleteSummaryDomainsAreIndependent().GetAwaiter().GetResult();
             IdentityChangesForgetProofsAndRejectOldResponses().GetAwaiter().GetResult();
             ReaderRetirementDoesNotCancelSharedRefresh().GetAwaiter().GetResult();
             ConcurrentScopeErrorsRetireOnce().GetAwaiter().GetResult();
@@ -235,6 +237,96 @@ namespace Uten.Legacy.Core.Tests
                 await fixture.Session.GetAsync("master/goods/cost-sheets/versions", CancellationToken.None);
                 await fixture.Session.GetAsync("master/goods/cost-sheets/actual", CancellationToken.None);
                 Equal(revision + 1, fixture.Session.ReadScopeRevision, "real cost visibility change still retires reads once");
+                NoAutomaticAuthenticationOrWrite(fixture);
+            }
+        }
+
+
+        private static Dictionary<string, object> CompleteSummaryContract()
+        {
+            using (var stream = typeof(SessionCoordinator).Assembly.GetManifestResourceStream("Uten.Legacy.Core.CompleteSummaryReadScopeFixture.json"))
+            using (var reader = new StreamReader(stream, Encoding.UTF8))
+            {
+                var contract = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
+                Equal(1, Convert.ToInt32(contract["schemaVersion"]), "shared complete summary scope contract version");
+                return contract;
+            }
+        }
+
+        private static void CompleteSummaryMethodsAndExactRoutes()
+        {
+            var contract = CompleteSummaryContract();
+            var cases = ((IEnumerable)contract["cases"]).Cast<Dictionary<string, object>>().ToArray();
+            foreach (var item in cases)
+            {
+                var state = new ReadScopeRevisionState();
+                var method = new HttpMethod((string)item["method"]);
+                var headers = new ReadScopeHeaders { Version = "owning-first", Domain = (string)item["headerDomain"] };
+                var original = ReadScopeProof.Read("{\"items\":[],\"total\":0}", headers);
+                Equal(ReadProofDisposition.Accepted, state.Observe(new ReadRequest(0, 1, CancellationToken.None, method), "/api" + (string)item["path"], original),
+                    "first exact route/method establishes its owning proof");
+                headers = new ReadScopeHeaders { Version = "owning-changed", Domain = (string)item["headerDomain"] };
+                Equal(ReadProofDisposition.Retired, state.Observe(new ReadRequest(0, 2, CancellationToken.None, method), (string)item["path"],
+                    ReadScopeProof.Read("{\"items\":[],\"total\":0}", headers)), "each shared fixture route observes a changed header-only owning proof");
+                Equal(1L, state.Revision, "api and bare route aliases share the owning proof");
+            }
+            var negatives = ((IEnumerable)contract["unclassified"]).Cast<Dictionary<string, object>>().ToArray();
+            foreach (var item in negatives)
+            {
+                var state = new ReadScopeRevisionState();
+                var method = new HttpMethod((string)item["method"]);
+                for (var index = 0; index < 2; index++)
+                    Equal(ReadProofDisposition.Accepted, state.Observe(new ReadRequest(0, index + 1, CancellationToken.None, method), "/api" + (string)item["path"],
+                        ReadScopeProof.Read("{\"items\":[]}", new ReadScopeHeaders { Version = "unclassified-" + index })),
+                        "neighboring route or wrong method must not create a fallback finance authority");
+                Equal(0L, state.Revision, "unclassified route proofs cannot retire unrelated readers");
+            }
+        }
+
+        private static async Task CompleteSummaryDomainsAreIndependent()
+        {
+            var cases = ((IEnumerable)CompleteSummaryContract()["cases"]).Cast<Dictionary<string, object>>()
+                .Where(item => (string)item["method"] == "GET").ToArray();
+            var byPath = cases.ToDictionary(item => "/api" + (string)item["path"]);
+            var proofs = cases.Select(item => (string)item["domain"]).Distinct()
+                .ToDictionary(domain => domain, domain => "separate-authority-" + domain);
+            var requests = 0;
+            const string headerOnlyBody = " { \"items\" : [], \"total\" : 0 } \n";
+            using (var fixture = new Fixture((request, token) =>
+            {
+                requests++;
+                var item = byPath[request.RequestUri.AbsolutePath];
+                var version = proofs[(string)item["domain"]];
+                // Finance's real producer publishes only the version header; it has no body proof.
+                return Ready(Proof(headerOnlyBody, version, (string)item["headerDomain"]));
+            }))
+            {
+                await fixture.Login();
+                var revision = fixture.Session.ReadScopeRevision;
+                var generation = fixture.Session.Generation;
+                var refresh = fixture.Store.Load().RefreshToken;
+                var events = 0;
+                fixture.Session.ReadScopeChanged += (sender, args) => events++;
+                for (var round = 0; round < 25; round++)
+                    foreach (var item in cases)
+                        Equal(headerOnlyBody, await fixture.Session.GetAsync(((string)item["path"]).TrimStart('/'), CancellationToken.None),
+                            "real SessionCoordinator preserves original response and the published owning header");
+                Equal(cases.Length * 25, requests, "all fixture GET callers traversed the actual HTTP/session/proof chain");
+                Equal(revision, fixture.Session.ReadScopeRevision, "different finance/native proofs never replace another authority");
+                var changed = 0;
+                foreach (var domain in proofs.Keys.ToArray())
+                {
+                    proofs[domain] += "-changed";
+                    var selected = cases.First(item => (string)item["domain"] == domain);
+                    await Changed(() => fixture.Session.GetAsync(((string)selected["path"]).TrimStart('/'), CancellationToken.None));
+                    changed++;
+                    foreach (var item in cases)
+                        await fixture.Session.GetAsync(((string)item["path"]).TrimStart('/'), CancellationToken.None);
+                    Equal(revision + changed, fixture.Session.ReadScopeRevision, "all owning aliases adopt one real authority change without cross-domain retirement");
+                }
+                Equal(proofs.Count, events, "one retirement per changed owning authority");
+                Equal(generation, fixture.Session.Generation, "owning proof changes retain authentication generation");
+                Equal(refresh, fixture.Store.Load().RefreshToken, "owning proof changes retain persisted login");
                 NoAutomaticAuthenticationOrWrite(fixture);
             }
         }

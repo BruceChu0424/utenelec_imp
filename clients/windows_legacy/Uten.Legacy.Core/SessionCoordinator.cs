@@ -263,7 +263,7 @@ namespace Uten.Legacy.Core
                 RequireAuthenticated();
                 if (requiredPermission != null) RequireMutationPermissionsLocked(new[] { requiredPermission });
                 scope = CaptureLocked();
-                reader = new ReadRequest(readScopes.Revision, ++readSequence, readCancellation.Token);
+                reader = new ReadRequest(readScopes.Revision, ++readSequence, readCancellation.Token, method);
             }
             using (var readWait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, reader.Cancellation))
             {

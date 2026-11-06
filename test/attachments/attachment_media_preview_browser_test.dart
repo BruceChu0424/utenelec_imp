@@ -97,15 +97,12 @@ void main() {
       expect(controller.value.hasError, isFalse);
 
       // Before removal this local URL contains precisely the verified original.
-      final response = await tester.runAsync(
-        () => web.window.fetch(blobUrl.toJS).toDart,
-      );
-      expect(response!.ok, isTrue);
-      final original = await response.arrayBuffer().toDart;
-      expect(
-        sha256.convert(original.toDart.asUint8List()).toString(),
-        syntheticH264Sha256,
-      );
+      final original = await tester.runAsync(() async {
+        final response = await web.window.fetch(blobUrl.toJS).toDart;
+        expect(response.ok, isTrue);
+        return (await response.arrayBuffer().toDart).toDart.asUint8List();
+      });
+      expect(sha256.convert(original!).toString(), syntheticH264Sha256);
 
       await tester.pumpWidget(const SizedBox.shrink());
       await _until(

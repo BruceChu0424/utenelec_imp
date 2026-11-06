@@ -2208,6 +2208,11 @@ abstract class _MaterialAnalysisMaterialTableState
         UtenTreeTableCell.compactMinimumWidthOf(
           context,
           depth: identityMaxDepth,
+          titleWidth:
+              UtenSpacing.s24 +
+              (_bomAggregateByMaterial
+                  ? MaterialTopLevelBadge.widthOf(context) + UtenSpacing.s4
+                  : 0),
         ),
       ),
       value: _materialTableIdentityText,
@@ -2216,6 +2221,8 @@ abstract class _MaterialAnalysisMaterialTableState
       measureWidthOf: _materialTableIdentityMeasureWidth,
       measureWidthScope: (
         Directionality.of(context),
+        _bomAggregateByMaterial,
+        MaterialTopLevelBadge.widthOf(context),
         UtenTreeTableCell.toggleExtentOf(
           context,
           desktop: _materialTableDesktopToggleExtent,
@@ -2632,6 +2639,10 @@ abstract class _MaterialAnalysisMaterialTableState
       title: _materialTableIdentityText(row) ?? '',
       depth: row.depth,
       textScaler: scaler,
+      titleChrome: _bomAggregateByMaterial && row.product != null
+          ? MaterialTopLevelBadge.widthOf(context, textScaler: scaler) +
+                UtenSpacing.s4
+          : 0,
     );
   }
 

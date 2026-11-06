@@ -1353,6 +1353,23 @@ class _MaterialAnalysisBucketPageState
 class MaterialTopLevelBadge extends StatelessWidget {
   const MaterialTopLevelBadge({super.key});
 
+  static double widthOf(BuildContext context, {TextScaler? textScaler}) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '顶层',
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: textScaler ?? MediaQuery.textScalerOf(context),
+    )..layout();
+    // Container combines its 6dp horizontal padding and 1dp border on each side.
+    final width = painter.width + 14;
+    painter.dispose();
+    return width;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);

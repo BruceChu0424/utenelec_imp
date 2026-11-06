@@ -541,3 +541,23 @@ d89ec11ae4ae1f19bd4b22cdd4c3b1e4e885523c:clients/windows_legacy/progress/evidenc
 75758eec0b387c826ce50189d2b4b080559e6f14:clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/review.json:generic-api-key:49
 75758eec0b387c826ce50189d2b4b080559e6f14:clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/validation.json:generic-api-key:21
 75758eec0b387c826ce50189d2b4b080559e6f14:clients/windows_legacy/progress/evidence/native-complete-summary-scope-20261106-files/validation.json:generic-api-key:8
+
+# Reviewed 2026-11-06: sixteen exact historical WPF source SHA-256 findings.
+# Owning Git C#/XAML bytes (including recorded Windows CRLF forms) were recomputed.
+# No credential; future commit/path/rule/line findings remain enforced.
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:14
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:27
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:93
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:165
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:14
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:27
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:93
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:165
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:14
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:27
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:93
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:165
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:14
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:27
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:93
+e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:165

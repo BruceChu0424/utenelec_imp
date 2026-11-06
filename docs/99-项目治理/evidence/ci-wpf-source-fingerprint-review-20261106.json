@@ -1,0 +1,189 @@
+{
+  "sourceCommit": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "findings": [
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:14",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json",
+      "line": 14,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/ApiErrorMessage.cs",
+      "gitBlobIdentity": "7504ffd73e87cec87ee79706e69f0abbe5f66373",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:27",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json",
+      "line": 27,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/DpapiPublishDraftStore.cs",
+      "gitBlobIdentity": "712d57b301ea9a95cf164d2c5abd0101890955ba",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:93",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json",
+      "line": 93,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/StepUpPasswordDialog.cs",
+      "gitBlobIdentity": "24a80999e079d5f45fcc2ee20c5aa488c6ce79eb",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json:generic-api-key:165",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json",
+      "line": 165,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+      "gitBlobIdentity": "08ac46ace8cb2ef62bdb95aa98f7baf32e42c03c",
+      "matchingByteForms": [
+        "exactGitBlob",
+        "LF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:14",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json",
+      "line": 14,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/ApiErrorMessage.cs",
+      "gitBlobIdentity": "7504ffd73e87cec87ee79706e69f0abbe5f66373",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:27",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json",
+      "line": 27,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/DpapiPublishDraftStore.cs",
+      "gitBlobIdentity": "712d57b301ea9a95cf164d2c5abd0101890955ba",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:93",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json",
+      "line": 93,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/StepUpPasswordDialog.cs",
+      "gitBlobIdentity": "24a80999e079d5f45fcc2ee20c5aa488c6ce79eb",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json:generic-api-key:165",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json",
+      "line": 165,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+      "gitBlobIdentity": "08ac46ace8cb2ef62bdb95aa98f7baf32e42c03c",
+      "matchingByteForms": [
+        "exactGitBlob",
+        "LF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:14",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json",
+      "line": 14,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/ApiErrorMessage.cs",
+      "gitBlobIdentity": "7504ffd73e87cec87ee79706e69f0abbe5f66373",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:27",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json",
+      "line": 27,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/DpapiPublishDraftStore.cs",
+      "gitBlobIdentity": "712d57b301ea9a95cf164d2c5abd0101890955ba",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:93",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json",
+      "line": 93,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/StepUpPasswordDialog.cs",
+      "gitBlobIdentity": "24a80999e079d5f45fcc2ee20c5aa488c6ce79eb",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json:generic-api-key:165",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json",
+      "line": 165,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+      "gitBlobIdentity": "08ac46ace8cb2ef62bdb95aa98f7baf32e42c03c",
+      "matchingByteForms": [
+        "exactGitBlob",
+        "LF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:14",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json",
+      "line": 14,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/ApiErrorMessage.cs",
+      "gitBlobIdentity": "7504ffd73e87cec87ee79706e69f0abbe5f66373",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:27",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json",
+      "line": 27,
+      "source": "clients/windows_legacy/Uten.Legacy.Core/DpapiPublishDraftStore.cs",
+      "gitBlobIdentity": "712d57b301ea9a95cf164d2c5abd0101890955ba",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:93",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json",
+      "line": 93,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/StepUpPasswordDialog.cs",
+      "gitBlobIdentity": "24a80999e079d5f45fcc2ee20c5aa488c6ce79eb",
+      "matchingByteForms": [
+        "CRLF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    },
+    {
+      "fingerprint": "e157c9757208ec28ccf493bb3a65c15953214e49:clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json:generic-api-key:165",
+      "document": "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json",
+      "line": 165,
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+      "gitBlobIdentity": "08ac46ace8cb2ef62bdb95aa98f7baf32e42c03c",
+      "matchingByteForms": [
+        "exactGitBlob",
+        "LF"
+      ],
+      "classification": "public C#/XAML source digest, not authentication material"
+    }
+  ],
+  "findingCount": 16,
+  "uniqueSourceCount": 4,
+  "allRecordedSha256ValuesRecomputedFromOwningGitSource": true,
+  "scope": "exact historical commit/path/rule/line only; no rule or path exclusions"
+}

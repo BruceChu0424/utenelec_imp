@@ -614,12 +614,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.queriesOf('/stock/insights/weight-alerts').last['days'], 30);
-    // 类别文案、折算数量与偏差都用服务端算好的值 (按件计取整)。
+    // 类别、折算数量和偏差保留服务端事实，不按单位名称静默取整。
     expect(find.text('来料少数'), findsOneWidget);
     expect(find.text('单重可能已变化(换批/换料?)'), findsOneWidget);
     expect(find.text('东莞五金厂'), findsOneWidget);
-    expect(find.text('≈4,762个'), findsOneWidget);
-    expect(find.text('少约238个 (-4.8%)'), findsOneWidget);
+    expect(find.text('≈4,761.9个'), findsOneWidget);
+    expect(find.text('少约238.1个 (-4.8%)'), findsOneWidget);
 
     await selectFilterSegment(tester, '按往来方汇总');
     await tester.pumpAndSettle();
@@ -677,8 +677,8 @@ void main() {
     final (path, body) = api.posts.single;
     expect(path, '/stock/weight/goods/g-l1/samples');
     final json = body! as Map<String, Object?>;
-    expect(json['qty'], 20);
-    expect(json['weight'], 46.2);
+    expect(json['qty'], '20');
+    expect(json['weight'], '46.2');
     expect(json['weightUnit'], 'G');
     expect(json['idempotencyKey'], startsWith('weight-sample-'));
 

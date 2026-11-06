@@ -114,7 +114,18 @@ void main() {
     await tester.pumpAndSettle();
     final tooltip = find.byKey(const ValueKey('inbound-weight-check-1'));
     expect(tooltip, findsOneWidget);
-    expect(tester.widget<Tooltip>(tooltip).message, contains('应重 2 kg'));
+    final message = tester.widget<Tooltip>(tooltip).message!;
+    final expected = RegExp(
+      r'应重 ([0-9]+(?:\.[0-9]+)?) kg,',
+    ).firstMatch(message);
+    expect(expected, isNotNull, reason: message);
+    // exp(logMean) 是统计浮点推导，保留模型完整位数；不为展示增加业务取位。
+    expect(double.parse(expected!.group(1)!), closeTo(2, 1e-12));
+    expect(message, contains('实称 20 kg'));
+    expect(message, contains('依据: 称重学习, 可靠'));
+    expect(message, isNot(contains('库存均重')));
+    expect(line.weight.kgText, '20');
+    expect(params.value.stockBalance!.weightKg, 20);
     final context = tester.element(tooltip);
     expect(
       column.cellColor!(context, line),

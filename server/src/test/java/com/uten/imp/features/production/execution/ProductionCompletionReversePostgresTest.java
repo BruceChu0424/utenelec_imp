@@ -114,6 +114,8 @@ class ProductionCompletionReversePostgresTest {
             SegmentFixture segment = fixture.segments().getFirst();
 
             connection.setAutoCommit(false);
+
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
             try {
                 authorize(connection, fixture.finishedInboundId());
                 reopen(connection, fixture.finishedInboundId(), segment);
@@ -163,6 +165,8 @@ class ProductionCompletionReversePostgresTest {
             SegmentFixture second = fixture.segments().get(1);
 
             connection.setAutoCommit(false);
+
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
             try {
                 authorize(connection, fixture.finishedInboundId());
                 reopen(connection, fixture.finishedInboundId(), first);
@@ -254,6 +258,7 @@ class ProductionCompletionReversePostgresTest {
 
         List<SegmentFixture> segments = new ArrayList<>();
         connection.setAutoCommit(false);
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
         try {
             insert(connection, """
                     INSERT INTO production_planning_packages(
@@ -416,6 +421,7 @@ class ProductionCompletionReversePostgresTest {
             issuedPostingByDemand.put(segment.demandId(),issuePostingId);
             UUID stockEvent = com.uten.imp.support.ProductionMaterialMovementTestSupport.beginEvent(
                     connection,segment.drawId(),"ISSUE","issue-"+UUID.randomUUID());
+            com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
             update(connection,"""
                     UPDATE stock_balances balance SET qty=balance.qty-10
                     FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
@@ -515,6 +521,7 @@ class ProductionCompletionReversePostgresTest {
             List<SegmentFixture> segments,
             boolean reverseDocument) throws Exception {
         connection.setAutoCommit(false);
+        com.uten.imp.testsupport.FixtureAuditTransactions.bindJdbc(connection);
         try {
             authorize(connection, documentId);
             for (SegmentFixture segment : segments) {
@@ -676,12 +683,7 @@ class ProductionCompletionReversePostgresTest {
             Connection connection,
             String sql,
             Object... values) throws Exception {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            for (int index = 0; index < values.length; index++) {
-                statement.setObject(index + 1, values[index]);
-            }
-            return statement.executeUpdate();
-        }
+        return com.uten.imp.testsupport.FixtureAuditTransactions.executeUpdate(connection,sql,values);
     }
 
     private static String canonicalSegmentCode(UUID segmentId) {

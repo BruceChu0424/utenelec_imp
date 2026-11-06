@@ -31,7 +31,9 @@ import static org.mockito.Mockito.*;
 class GoodsOperationHistoryPostgresTest {
     static MigratedSchemaBaseline.ScopedDatabase database;
     static EntityManagerFactory factory;
+    static javax.sql.DataSource source;
     EntityManager em;
+    org.springframework.transaction.support.TransactionTemplate transactions;
     UUID actor;
     SecurityContextCurrentUser current;
     GoodsOperationHistoryService service;
@@ -53,7 +55,8 @@ class GoodsOperationHistoryPostgresTest {
                     """);
         }
         var bean=new LocalContainerEntityManagerFactoryBean();
-        bean.setDataSource(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
+        source=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
+        bean.setDataSource(source);
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         bean.setPackagesToScan("com.uten.imp.security");
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
@@ -68,19 +71,18 @@ class GoodsOperationHistoryPostgresTest {
         }
     }
     @BeforeEach void prepare() {
-        actor=UUID.randomUUID();em=factory.createEntityManager();current=mock(SecurityContextCurrentUser.class);
+        actor=UUID.randomUUID();em=org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);current=mock(SecurityContextCurrentUser.class);
         when(current.requireId()).thenAnswer(invocation->actor);
         login(Set.of(),true);
-        var tx=mock(TxSessionVars.class);
-        doAnswer(invocation->{set("app.actor_id",actor.toString());set("app.audit_request_path","/api/master/goods/history");return null;}).when(tx).bind();
+        var tx=com.uten.imp.testsupport.FixtureAuditTransactions.session(em,current);
+        var manager=new org.springframework.orm.jpa.JpaTransactionManager(factory);
+        com.uten.imp.testsupport.FixtureAuditTransactions.install(manager,tx);
+        transactions=new org.springframework.transaction.support.TransactionTemplate(manager);
         var access=mock(MasterObjectAccess.class);
         when(access.readableLabelOwner(anyString())).thenReturn(owner->true);
         service=new GoodsOperationHistoryService(em,new ObjectMapper(),current,tx,new MasterReferenceGuard(em,access),mock(OwnerVisibility.class),mock(BusinessEventPublisher.class));
     }
     @AfterEach void close() {
-        if (em.getTransaction().isActive()) {
-            em.getTransaction().rollback();
-        }
         em.close();
     }
 
@@ -108,7 +110,7 @@ class GoodsOperationHistoryPostgresTest {
         var entry=service.list().entries().getFirst();
         assertFalse(entry.canUndo());assertTrue(entry.blockedReason().contains("goods:price:edit"));assertTrue(entry.blockedReason().contains("goods:cost:view"));
         assertThrows(ApiException.class,()->inTx(()->service.undo(op,0)));
-        assertEquals("0.9000",scalar("SELECT zk::text FROM goods WHERE id=:id",id));
+        assertEquals("0.9",scalar("SELECT zk::text FROM goods WHERE id=:id",id));
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
     }
     @Test void costPermissionIsRecheckedEvenForDecimalDifferencesBeyondDoublePrecision() {
@@ -152,17 +154,17 @@ class GoodsOperationHistoryPostgresTest {
         var denied=service.list().entries().stream().filter(entry->entry.id().equals(operation)).findFirst().orElseThrow();
         assertFalse(denied.canUndo(),"A full-form loss edit retains the dedicated command's cost-view requirement");
         assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
-        assertEquals("25.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        assertEquals("25",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
         login(Set.of("goods:view","goods:purchase:edit","goods:cost:view"),false);
         inTx(()->service.undo(operation,0));
-        assertEquals("15.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        assertEquals("15",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
         login(Set.of("goods:view","goods:purchase:edit"),false);
         assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
-        assertEquals("15.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        assertEquals("15",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
         assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
         login(Set.of("goods:view","goods:purchase:edit","goods:cost:view"),false);
         inTx(()->service.redo(operation,1));
-        assertEquals("25.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        assertEquals("25",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
     }
     @Test void englishSourceOnlyHistoryRequiresTheSalesOrDedicatedAuthority() {
         UUID id=goods("English source role");
@@ -193,10 +195,10 @@ class GoodsOperationHistoryPostgresTest {
         assertEquals(0,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
         login(Set.of("goods:view","goods:edit","goods:cost:view"),false);
         inTx(()->service.undo(operation,0));
-        assertEquals("16.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        assertEquals("16",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
         login(Set.of("goods:view","goods:cost:view"),false);
         assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
-        assertEquals("16.0000",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
+        assertEquals("16",scalar("SELECT g_total::text FROM goods WHERE id=:id",id));
         assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
     }
     @Test void importedPriceDiscountAndStatusChangesRecheckTheirRightsForUndoAndRedo() {
@@ -433,7 +435,12 @@ class GoodsOperationHistoryPostgresTest {
         inTx(()->service.undo(edit,0));assertEquals("drag parent",scalar("SELECT name FROM goods WHERE id=:id",parent));
     }
 
-    private void login(Set<String> permissions,boolean superAdmin) {when(current.get()).thenReturn(Optional.of(new AuthUser(actor,UUID.randomUUID(),"history-test",permissions,false,true,superAdmin)));}
+    private void login(Set<String> permissions,boolean superAdmin) {
+        var principal=new AuthUser(actor,com.uten.imp.testsupport.FixtureAuditTransactions.employee(actor),
+                com.uten.imp.testsupport.FixtureAuditTransactions.account(actor),permissions,false,true,superAdmin);
+        com.uten.imp.testsupport.FixtureAuditTransactions.ensureIdentity(source,principal);
+        when(current.get()).thenReturn(Optional.of(principal));
+    }
     private UUID goods(String name){return goodsIn(null,name);}
     private UUID goodsIn(UUID category,String name){UUID id=UUID.randomUUID();return inTx(()->{insertGoods(id,category,name);return id;});}
     private void insertGoods(UUID id,UUID category,String name){em.createNativeQuery("INSERT INTO goods(id,code,name,category_id,code_sequence) VALUES(:id,:code,:name,:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))")
@@ -451,16 +458,6 @@ class GoodsOperationHistoryPostgresTest {
         return Math.toIntExact(value.longValue());
     }
     private <T>T inTx(Supplier<T> action) {
-        em.getTransaction().begin();
-        try {
-            T result=action.get();
-            em.getTransaction().commit();
-            return result;
-        } catch (RuntimeException|Error error) {
-            if (em.getTransaction().isActive()) {
-                em.getTransaction().rollback();
-            }
-            throw error;
-        }
+        return transactions.execute(status->action.get());
     }
 }

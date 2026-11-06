@@ -56,6 +56,7 @@ import static org.mockito.Mockito.*;
  "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
  "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @FinanceScopedChain
+@org.springframework.context.annotation.Import(FinanceDocumentReviewCommandsPostgresTest.PoolObservation.class)
 class FinanceDocumentReviewCommandsPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FinanceScopedChainDatabase.register(registry,FinanceDocumentReviewCommandsPostgresTest.class);}
     @Autowired AutowireCapableBeanFactory beans;
@@ -63,7 +64,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
     @Autowired ObjectMapper json;
     @Autowired TransactionTemplate transaction;
     @Autowired jakarta.persistence.EntityManagerFactory entityManagers;
-    @MockitoSpyBean(name="dataSource") javax.sql.DataSource dataSource;
+    @Autowired javax.sql.DataSource dataSource;
     @Autowired TxSessionVars variables;
     @Autowired FinanceDocumentActions actions;
     @Autowired FinanceReceiptService receipts;
@@ -591,9 +592,9 @@ class FinanceDocumentReviewCommandsPostgresTest {
         var statistics=entityManagers.unwrap(org.hibernate.SessionFactory.class).getStatistics();boolean previous=statistics.isStatisticsEnabled();statistics.setStatisticsEnabled(true);statistics.clear();
         clearInvocations(expenses);harness.loginAs(f.reviewer());statistics.clear();
         var observer=new com.uten.imp.support.ObservedSqlDataSource();
-        doAnswer(call->observer.observeConnection((java.sql.Connection)call.callRealMethod())).when(dataSource).getConnection();
+        var observed=(com.uten.imp.support.ObservedSqlDataSource.Pooled)dataSource;
         long started=System.nanoTime();FinanceExpenseDetail shown;
-        try{shown=actions.reviewedDetail(d.family(),id,false);}finally{statistics.setStatisticsEnabled(previous);doCallRealMethod().when(dataSource).getConnection();}
+        try(var scope=observed.observe(observer)){shown=actions.reviewedDetail(d.family(),id,false);}finally{statistics.setStatisticsEnabled(previous);}
         long elapsed=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started),prepared=statistics.getPrepareStatementCount();
         long reloads=mockingDetails(expenses).getInvocations().stream().filter(call->call.getMethod().getName().equals("detail")&&id.equals(call.getArgument(0))).count();
         System.out.println("FINANCE_REVIEW_ROWS="+count+";elapsedMs="+elapsed+";jdbcExecutions="+observer.statements.get()+";hibernatePreparedStatements="+prepared+";domainDetailReloads="+reloads);
@@ -704,4 +705,17 @@ class FinanceDocumentReviewCommandsPostgresTest {
     private static void await(CountDownLatch gate){try{if(!gate.await(20,TimeUnit.SECONDS))throw new AssertionError("review gate timeout");}catch(InterruptedException error){Thread.currentThread().interrupt();throw new IllegalStateException(error);}}
     private static void conflict(Runnable action){assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));}
     private static void forbidden(Runnable action){assertThatThrownBy(action::run).satisfies(error->{if(error instanceof ApiException api)assertThat(api.getCode()).isEqualTo(ErrorCode.FORBIDDEN);else assertThat(error).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);});}
+
+    @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods=false)
+    static class PoolObservation {
+        @org.springframework.context.annotation.Bean
+        static org.springframework.beans.factory.config.BeanPostProcessor observeOwnedPool() {
+            return new org.springframework.beans.factory.config.BeanPostProcessor() {
+                @Override public Object postProcessAfterInitialization(Object bean,String name) {
+                    return name.equals("dataSource")&&bean instanceof com.zaxxer.hikari.HikariDataSource pool
+                        ?new com.uten.imp.support.ObservedSqlDataSource.Pooled(pool):bean;
+                }
+            };
+        }
+    }
 }

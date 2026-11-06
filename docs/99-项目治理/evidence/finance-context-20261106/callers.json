@@ -1,0 +1,33 @@
+{
+  "count": 28,
+  "paths": [
+    "server/src/test/java/com/uten/imp/businesschain/FinanceAuxiliaryPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartImportOriginalCommandsPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartImportPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartInactiveCurrencyAccountingPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartOriginalCommandsPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceClassificationCorrectionPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceConfigurationCommandsPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceConfigurationWirePostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentIntakeOperationsPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceDocumentReviewCommandsPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceMaterialStatementPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceOpenItemClassificationPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinancePayrollPaymentPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceReceivableMaterialPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceReviewedJanuaryUiFixtureTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceShipmentReproductionEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceSubcontractOriginalPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceSubcontractQuantityEvidencePostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinancialUnapprovalAssemblyPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/NonFinanceUnapprovalEligibilityEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceEffectiveExchangeRateEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFinanceReviewReadOnlyEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/ProcurementFirstPayablePostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SalesShipmentFinanceReleaseRateEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/StandardFinanceApprovalReadOnlyEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SupplierAdvanceStatementReplayPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SupplierPrepaymentPostgresTest.java",
+    "server/src/test/java/com/uten/imp/common/finance/ProcurementTotalAmountPostgresTest.java"
+  ]
+}

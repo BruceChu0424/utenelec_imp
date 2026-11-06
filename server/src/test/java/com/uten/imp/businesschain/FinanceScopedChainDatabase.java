@@ -1,29 +1,25 @@
 package com.uten.imp.businesschain;
+
 import com.uten.imp.support.MigratedSchemaBaseline;
-import com.uten.imp.testsupport.FixtureDatabaseProperties;
+import com.uten.imp.support.MigratedSchemaContextInitializer;
+import com.zaxxer.hikari.HikariDataSource;
+import com.zaxxer.hikari.HikariPoolMXBean;
 import java.nio.file.Files;
-import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.test.annotation.DirtiesContext;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.*;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 
-/** Uses the existing migrated template; closes each context before releasing its owned clone. */
+/** One private database lease per real Spring context; pools close before that lease. */
 public final class FinanceScopedChainDatabase {
-    private static final ConcurrentHashMap<Class<?>,MigratedSchemaBaseline.ScopedDatabase> OWNED=new ConcurrentHashMap<>();
+    static final String LEASE_BEAN="financeScopedChainDatabaseLease";
     private FinanceScopedChainDatabase() { }
-    public static void register(DynamicPropertyRegistry registry,Class<?> owner){
-        try{
-            var lease=OWNED.computeIfAbsent(owner,type->{
-                try{
-                    String simple=type.getSimpleName().toLowerCase(Locale.ROOT);
-                    String label="finance_"+simple.substring(0,Math.min(14,simple.length()))+"_"
-                        +Integer.toUnsignedString(type.getName().hashCode(),36);
-                    return MigratedSchemaBaseline.openDatabase(label);
-                }
-                catch(Exception error){throw new IllegalStateException("Cannot open owned finance fixture",error);}
-            });
-            FixtureDatabaseProperties.bindSameRole(registry,lease::getJdbcUrl,lease::getUsername,lease::getPassword);
+
+    public static void register(DynamicPropertyRegistry registry,Class<?> owner) {
+        Objects.requireNonNull(owner,"Finance fixture owner");
+        try {
             String storage=Files.createTempDirectory("uten-finance-chain-").toString();
             registry.add("uten.storage.local-dir",()->storage);
             registry.add("uten.bootstrap.admin-login",()->FullChainEndToEndTest.SHARED_ADMIN_LOGIN);
@@ -31,27 +27,65 @@ public final class FinanceScopedChainDatabase {
             registry.add("uten.jwt.secret",()->FullChainEndToEndTest.SHARED_JWT_SECRET);
             registry.add("uten.crypto.pgp-master-key",()->FullChainEndToEndTest.SHARED_PGP_KEY);
             registry.add("uten.crypto.hmac-key",()->FullChainEndToEndTest.SHARED_HMAC_KEY);
-        }catch(Exception error){throw new IllegalStateException("Cannot prepare owned finance fixture",error);}
+        } catch(java.io.IOException failure) {
+            throw new IllegalStateException("Cannot prepare finance fixture storage",failure);
+        }
     }
-    public static final class Cleanup extends AbstractTestExecutionListener {
-        @Override public int getOrder(){return 1900;}
-        @Override public void afterTestClass(TestContext context)throws Exception{
-            var lease=OWNED.get(context.getTestClass());if(lease==null)return;
-            if(!context.hasApplicationContext())
-                throw new IllegalStateException("Finance fixture context did not remain available; retain its owned clone without reloading it");
-            // A Mockito-spied primary DataSource can lose Spring's inferred
-            // destroy method. Capture only this context's actual owned pool
-            // before closing the context; never reopen it or enumerate others.
-            var data=context.getApplicationContext().getBean("dataSource",javax.sql.DataSource.class);
-            var pool=data instanceof com.zaxxer.hikari.HikariDataSource hikari?hikari:
-                data.unwrap(com.zaxxer.hikari.HikariDataSource.class);
-            if(pool==null||!java.util.Objects.equals(pool.getJdbcUrl(),lease.getJdbcUrl()))
-                throw new IllegalStateException("Finance fixture cleanup cannot claim a different datasource");
-            context.markApplicationContextDirty(DirtiesContext.HierarchyMode.EXHAUSTIVE);
-            if(!pool.isClosed())pool.close();
-            if(!pool.isClosed())throw new IllegalStateException("Owned finance fixture pool is still open after context shutdown");
-            lease.close();
-            OWNED.remove(context.getTestClass(),lease);
+
+    public static final class Initializer extends MigratedSchemaContextInitializer {
+        @Override protected String databaseLabel() { return "finance_chain"; }
+        @Override protected String leaseBeanName() { return LEASE_BEAN; }
+    }
+
+    /** Evidence only: observes already-created pools without reopening a retired context. */
+    public static final class BoundaryEvidence extends AbstractTestExecutionListener {
+        private static final String KEY=BoundaryEvidence.class.getName();
+        private record Pool(String name,HikariDataSource source,HikariPoolMXBean physical) { }
+        private record Boundary(ConfigurableApplicationContext context,List<Pool> pools) { }
+        @Override public int getOrder() { return 1000; }
+        @Override public void beforeTestMethod(TestContext context) throws Exception { capture(context); }
+        @Override public void afterTestExecution(TestContext context) throws Exception { capture(context); }
+
+        @SuppressWarnings("unchecked")
+        private static void capture(TestContext test) throws Exception {
+            if(!test.hasApplicationContext()) { return; }
+            var context=(ConfigurableApplicationContext)test.getApplicationContext();
+            if(!context.isActive()) { return; }
+            var boundaries=(List<Boundary>)test.getAttribute(KEY);
+            if(boundaries==null) { boundaries=new ArrayList<>();test.setAttribute(KEY,boundaries); }
+            Boundary current=null;
+            for(var boundary:boundaries) { if(boundary.context()==context) { current=boundary;break; } }
+            if(current==null) { current=new Boundary(context,new ArrayList<>());boundaries.add(current); }
+            var factory=context.getBeanFactory();
+            var lease=context.getBean(LEASE_BEAN,MigratedSchemaBaseline.ScopedDatabase.class);
+            for(String name:factory.getSingletonNames()) {
+                if(!(factory.getSingleton(name) instanceof javax.sql.DataSource source)) { continue; }
+                var pool=source instanceof HikariDataSource hikari?hikari:source.unwrap(HikariDataSource.class);
+                if(!Objects.equals(pool.getJdbcUrl(),lease.getJdbcUrl())) {
+                    throw new IllegalStateException("Finance boundary cannot claim a foreign datasource");
+                }
+                boolean known=false;
+                for(var recorded:current.pools()) { if(recorded.source()==pool) { known=true;break; } }
+                if(!known) { current.pools().add(new Pool(name,pool,pool.getHikariPoolMXBean())); }
+            }
+        }
+
+        @Override @SuppressWarnings("unchecked")
+        public void afterTestClass(TestContext test) {
+            var boundaries=(List<Boundary>)test.removeAttribute(KEY);
+            if(boundaries==null) { return; }
+            for(var boundary:boundaries) {
+                if(boundary.context().isActive()) { throw new IllegalStateException("Finance context did not retire at class boundary"); }
+                for(var pool:boundary.pools()) {
+                    var physical=pool.physical()==null?pool.source().getHikariPoolMXBean():pool.physical();
+                    int total=physical==null?0:physical.getTotalConnections();
+                    System.out.println("FINANCE_CONTEXT_BOUNDARY owner="+test.getTestClass().getSimpleName()+" pool="
+                        +pool.name()+" closed="+pool.source().isClosed()+" actualConnections="+total);
+                    if(!pool.source().isClosed()||total!=0) {
+                        throw new IllegalStateException("Finance context left an actual pool alive: "+pool.name());
+                    }
+                }
+            }
         }
     }
 }

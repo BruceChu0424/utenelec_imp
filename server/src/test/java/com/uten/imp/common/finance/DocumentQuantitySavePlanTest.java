@@ -74,4 +74,30 @@ class DocumentQuantitySavePlanTest {
         var em=database(original(ONE,1,"1","1.0001",1));var missing=operands("1");missing.remove("order_item_id");
         assertThatThrownBy(()->DocumentQuantitySavePlan.prepare(em,DocumentQuantitySavePlan.Family.PURCHASE_RECEIPT,PARENT,List.of(new DocumentQuantitySavePlan.Intent(1,ONE,missing)))).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(DocumentQuantitySavePlan.Family.class)
+    void savedReadsKeepTheOriginalSqlAndBindParentForEveryFamily(DocumentQuantitySavePlan.Family family) throws Exception {
+        var expected = Map.ofEntries(
+                Map.entry(DocumentQuantitySavePlan.Family.PURCHASE_ORDER, "391ffdc77938892494680bd44d7c35d5eb910c819756ebd5aa3e7d5421a96c5a"),
+                Map.entry(DocumentQuantitySavePlan.Family.SUBCONTRACT_ORDER, "17f3f2446e385200d9d832f5461458c5db42e0e3230290d305e8599fbd0a198d"),
+                Map.entry(DocumentQuantitySavePlan.Family.PURCHASE_RECEIPT, "40eccc15f08b9e44c33a1433caf05afd9a7028a3949a5d99fc7238ea34d088e3"),
+                Map.entry(DocumentQuantitySavePlan.Family.PURCHASE_RETURN, "0eaa92db9349aebbc60dade13233ec404324519034b192014face9981fae37d4"),
+                Map.entry(DocumentQuantitySavePlan.Family.SUBCONTRACT_RECEIPT, "d8091eb991e2cd975185f2910baf2a106a09051db58cfdd5e0966f6e5d0fd70b"),
+                Map.entry(DocumentQuantitySavePlan.Family.SUBCONTRACT_MATERIAL_RETURN, "9359d0c3bc3e9b848960dce3b39abac1a415e0d0e82717b65b7c7bc7b0cd5a40"),
+                Map.entry(DocumentQuantitySavePlan.Family.SALES_RETURN, "bf765fc207e1afe78bd64e6a57dc4ced0d5e1c08ea24035177fe7e37b14b67ae"));
+        var em = mock(EntityManager.class);
+        var query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter("parent", PARENT)).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        DocumentQuantitySavePlan.prepare(em, family, PARENT, List.of());
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        String sha = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(sql.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThat(sha).as(family.name()).isEqualTo(expected.get(family));
+        assertThat(sql.getValue()).doesNotContain(PARENT.toString());
+        verify(query).setParameter("parent", PARENT);
+    }
 }

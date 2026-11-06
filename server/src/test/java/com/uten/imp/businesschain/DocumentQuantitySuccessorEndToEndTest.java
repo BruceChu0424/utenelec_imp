@@ -132,7 +132,7 @@ class DocumentQuantitySuccessorEndToEndTest {
         assertThat(edited).as("current public editing replaces detail identities without rewriting the initial lineage").isNotEqualTo(initial);
         assertThat(version(adapter,edited)).isEqualTo(2);
         assertThat(db.queryForObject("SELECT line_id_map->>? FROM document_unapprovals WHERE family=? AND original_id=?",String.class,sourceLine.toString(),family,source)).isEqualTo(initial.toString());
-        assertThat(db.queryForObject("SELECT (payload->>'"+(family.equals("salesReturn")?"receipt_quantity_version":"quantity_adoption_version")+"')::int FROM business_record_history WHERE source_table=? AND source_id=? AND parent_id=? ORDER BY id DESC LIMIT 1",Integer.class,adapter.lines().table(),initial.toString(),draft.toString())).isEqualTo(legacy?1:2);
+        assertThat(db.queryForObject("SELECT (payload->>?)::int FROM business_record_history WHERE source_table=? AND source_id=? AND parent_id=? ORDER BY id DESC LIMIT 1",Integer.class,family.equals("salesReturn")?"receipt_quantity_version":"quantity_adoption_version",adapter.lines().table(),initial.toString(),draft.toString())).isEqualTo(legacy?1:2);
         assertThat(facts(adapter,sourceLine)).isEqualTo(before);
     }
 

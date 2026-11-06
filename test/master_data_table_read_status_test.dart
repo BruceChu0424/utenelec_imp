@@ -94,8 +94,9 @@ class _PageHarnessState extends State<_PageHarness> {
           totalPages: widget.prepend ? 2 : 3,
           paginationScope: 'same-query',
           onPageChange: load,
-          loadingMore: loading,
-          error: error,
+          isRefreshing: loading,
+          refreshError: error,
+          onRetry: () => load(page),
         ),
       ),
     ),
@@ -269,16 +270,19 @@ void main() {
 
   for (final prepend in [false, true]) {
     testWidgets(
-      'huge ${prepend ? 'previous' : 'next'} page failure stays compact and retries the same page',
+      'huge complete refresh failure retains rows and retries its original scope with legacy page ${prepend ? 2 : 1}',
       (tester) async {
         final key = GlobalKey<_PageHarnessState>();
         await tester.pumpWidget(_PageHarness(key: key, prepend: prepend));
         await tester.pumpAndSettle();
         final host = key.currentState!;
         final originalRows = List.of(host.rows.items);
-        final request = prepend
+        final retiredRequest = prepend
             ? host.rows.loadPreviousPage()
             : host.rows.loadNextPage();
+        await retiredRequest;
+        expect(host.pending, isEmpty);
+        final request = host.load(host.page);
         await tester.pump();
         host.pending.single.completeError(StateError('read failed'));
         await request;
@@ -290,14 +294,14 @@ void main() {
         }
         expect(host.rows.items, originalRows);
         final status = find.byKey(
-          const ValueKey('master-table-page-read-error'),
+          const ValueKey('master-table-refresh-read-error'),
         );
         expect(status, findsOneWidget);
         expect(tester.getSize(status).height, lessThanOrEqualTo(48));
         expect(find.text(_longReason), findsNothing);
         await _touch(
           tester,
-          find.byKey(const ValueKey('master-table-page-read-details')),
+          find.byKey(const ValueKey('master-table-refresh-read-details')),
         );
         expect(
           find.byWidgetPredicate(
@@ -305,14 +309,17 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(_dialogText('已加载的数据仍可查看。重试只会重新读取失败的页面。'), findsOneWidget);
+        expect(
+          _dialogText('下方为上次成功读取的数据，尚未核对最新变化。重试只会重新读取数据。'),
+          findsOneWidget,
+        );
         await tester.tap(_dialogText('重试'));
         await tester.pump();
-        expect(host.requests, prepend ? [1, 1] : [2, 2]);
+        expect(host.requests, [host.page, host.page]);
         host.pending.last.complete(const ['重新读取的记录']);
         await tester.pumpAndSettle();
         expect(
-          find.byKey(const ValueKey('master-table-page-read-error')),
+          find.byKey(const ValueKey('master-table-refresh-read-error')),
           findsNothing,
         );
         expect(host.rows.items, contains('重新读取的记录'));

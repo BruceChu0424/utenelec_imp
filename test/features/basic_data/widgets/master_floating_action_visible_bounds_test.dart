@@ -113,6 +113,7 @@ void main() {
           SharedPreferences.setMockInitialValues({});
           final preferences = await SharedPreferences.getInstance();
           var creates = 0;
+          var reads = 0;
           final config = MasterEntityPaneConfig<String, String>(
             noun: '货品',
             icon: Icons.inventory_2_outlined,
@@ -142,13 +143,25 @@ void main() {
               childCount: 0,
               effectivePrefix: 'HP',
             ),
-            loadPage: (query) async => PagedResult<String>(
-              items: [for (var i = 0; i < 20; i++) '货品${query.page}-$i'],
-              page: query.page,
-              size: 20,
-              total: 9691,
-              totalPages: 485,
-            ),
+            loadPage: (query) async {
+              reads++;
+              expect(query.size, 100);
+              final size = query.size!;
+              return PagedResult<String>(
+                items: [
+                  for (
+                    var i = 0;
+                    i < size && (query.page - 1) * size + i < 9691;
+                    i++
+                  )
+                    '货品${query.page}-$i',
+                ],
+                page: query.page,
+                size: size,
+                total: 9691,
+                totalPages: (9691 + size - 1) ~/ size,
+              );
+            },
             loadFacets: (_) async =>
                 const MasterPaneFacets(fields: {}, nullCounts: {}),
             batchEntityPath: '/master/goods',
@@ -195,6 +208,9 @@ void main() {
           await tester.pumpAndSettle();
           final tableFinder = find.byType(MasterDataTableView<String>);
           MasterDataTableView<String> table() => tester.widget(tableFinder);
+          expect(reads, 97);
+          expect(table().items.length, 9691);
+          expect(table().items.last, '货品97-90');
           if (selected) {
             table().onSelectedIdsChanged!({'货品1-0'});
             await tester.pumpAndSettle();
@@ -236,6 +252,12 @@ void main() {
           outer.jumpTo(outer.minScrollExtent);
           await tester.pumpAndSettle();
           visibleActions('expanded again');
+          expect(
+            reads,
+            97,
+            reason:
+                'Scrolling, fullscreen and local selection do not read again',
+          );
           expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
           expect(tester.takeException(), isNull);
         },

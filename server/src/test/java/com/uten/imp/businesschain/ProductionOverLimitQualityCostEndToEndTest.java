@@ -41,6 +41,15 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ProductionOverLimitQualityCostEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5, "HALF_UP"),
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -122,6 +131,7 @@ class ProductionOverLimitQualityCostEndToEndTest {
         var pending=dispositions.detail(s.caseId());
         dispositions.decide(s.caseId(),new DecisionRequest("ACCEPT_PUBLIC","暂存超限产品已批准接收",pending.rowVersion(),"held-prestock-accept-"+s.report()));
         amount("1100",balance(s));amount("100",draftQty(s.report()));
+        ReflectionTestUtils.invokeMethod(s.fixture(),"drainValuation",s.task());
         s.fixture().fixture.confirmFinishedInboundFully(drafts(s.report()).getFirst());
         amount("1200",balance(s));
     }
@@ -158,6 +168,7 @@ class ProductionOverLimitQualityCostEndToEndTest {
         amount("100",draftQty(recoveryReport));
         amount("1200",scalar("SELECT fn_production_execution_cost_target(?)",s.segment()));
         s.fixture().fixture.confirmFinishedInboundFully(drafts(s.report()).getFirst());
+        ReflectionTestUtils.invokeMethod(s.fixture(),"drainValuation",s.task());
         s.fixture().fixture.confirmFinishedInboundFully(drafts(recoveryReport).getFirst());
         amount("1200",balance(s));
     }

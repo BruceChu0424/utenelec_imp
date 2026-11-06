@@ -409,12 +409,12 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     exactValueOf: (r) => r.isRegimeChange ? null : r.deviationQty?.toString(),
     value: (r) {
       final diff = r.deviationQty;
-      final pct = r.deviationPct;
+      final pct = r.deviationPctText;
       if (r.isRegimeChange) return '—';
       final parts = [
         if (diff != null)
           '${diff > 0 ? '多' : '少'}约${_withUnit(_qty(diff.abs(), integer: r.integerQty), r)}',
-        if (pct != null) '(${_pct(pct)})',
+        if (pct != null) '(${formatSignedPct(pct)})',
       ];
       return parts.isEmpty ? '—' : parts.join(' ');
     },

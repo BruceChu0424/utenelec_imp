@@ -388,6 +388,7 @@ class InsightWeightAlertRow {
     this.expectedUnitWeightKg,
     this.expectedUnitWeightKgExact,
     this.deviationPct,
+    this.deviationPctExact,
     this.alertLevel = WeightAlertLevel.none,
     this.tierUsed,
     this.integerQty = true,
@@ -442,6 +443,9 @@ class InsightWeightAlertRow {
   String? get expectedUnitWeightKgText =>
       financeExactDecimal(expectedUnitWeightKgExact ?? expectedUnitWeightKg);
   final double? deviationPct;
+  final String? deviationPctExact;
+  String? get deviationPctText =>
+      financeExactDecimal(deviationPctExact ?? deviationPct);
   final WeightAlertLevel alertLevel;
 
   /// 记录当时的单重可靠度 (REGIME 为当前可靠度)。
@@ -500,7 +504,10 @@ class InsightWeightAlertRow {
       expectedUnitWeightKgExact: financeExactDecimal(
         j['expectedUnitWeightKgExact'] ?? j['expectedUnitWeightKg'],
       ),
-      deviationPct: _num(j['deviationPct']),
+      deviationPct: _num(j['deviationPctExact'] ?? j['deviationPct']),
+      deviationPctExact: financeExactDecimal(
+        j['deviationPctExact'] ?? j['deviationPct'],
+      ),
       alertLevel: WeightAlertLevel.parse(j['alertLevel']?.toString()),
       tierUsed: WeightTier.parse(j['estimateTierUsed']?.toString()),
       integerQty:

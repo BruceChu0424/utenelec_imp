@@ -47,6 +47,20 @@ class StockDocWeightJsonContractTest {
     private static final UUID DOC = new UUID(0, 6);
 
     @Test
+    void persistedStatisticalDeviationHasExactReadFieldsAndIsNotAWeighingInput() throws Exception {
+        String raw="-0.00000000000002220446049250313";
+        String json="{\"deviationPct\":\""+raw+"\"}";
+        var observation=STRICT.readValue(json,com.uten.imp.features.stock.weight.dto.WeightObservationRow.class);
+        var alert=STRICT.readValue(json,com.uten.imp.features.stock.insight.dto.WeightAlertRow.class);
+        assertEquals(raw,STRICT.valueToTree(observation).path("deviationPctExact").asText());
+        assertEquals(raw,STRICT.valueToTree(alert).path("deviationPctExact").asText());
+        org.junit.jupiter.api.Assertions.assertThrows(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.class,
+                ()->STRICT.readValue(json,com.uten.imp.features.stock.weight.dto.WeightSampleRequest.class));
+        org.junit.jupiter.api.Assertions.assertThrows(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.class,
+                ()->STRICT.readValue(json,com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest.class));
+    }
+
+    @Test
     void drawIssueLineCarriesWeightKgAndQtyFromWeightAndCancelCarriesQuantitiesOnly() throws Exception {
         StockDocIssueRequest issue = STRICT.readValue("""
                 {"lines":[{"itemId":"%s","qty":5.0,"weightKg":0.025,"qtyFromWeight":true}],

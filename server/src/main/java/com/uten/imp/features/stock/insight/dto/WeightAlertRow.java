@@ -95,4 +95,7 @@ public record WeightAlertRow(
 
     @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
     public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("deviationPctExact")
+    public String getDeviationPctExact(){return com.uten.imp.common.util.DecimalText.of(deviationPct);}
 }

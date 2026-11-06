@@ -86,6 +86,48 @@ class StockDocWeightCapturePostgresTest {
     }
 
     @Test
+    void automaticStatisticalDeviationKeepsItsFullValueAndReplayDoesNotAddObservations() {
+        Fixture f=fixture("derived-deviation");
+        weightProfiles.updateProfile(f.goods(),new com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest(
+                0L,null,null,null,new BigDecimal("0.002"),"独立称样单重",true,"AUTO"));
+        StockDocSaveRequest incoming=document("OTHER_IN",f);
+        StockDocItemLine input=line(f.goods(),f.unit(),"1000","2");
+        input.setPrice(BigDecimal.ONE);input.setAmountOriginal(new BigDecimal("1000"));input.setAmountLocal(new BigDecimal("1000"));
+        incoming.setItems(List.of(input));
+        StockDocDetail approved=stockDocs.approve(stockDocs.create(incoming).getId());
+        String capture="OTHER_IN:"+approved.getItems().getFirst().getId();
+        String raw="-0.00000000000002220446049250313";
+        assertEquals(raw,jdbc.queryForObject("SELECT deviation_pct::text FROM goods_weight_observations WHERE capture_key=?",String.class,capture));
+        assertEquals(1,count("SELECT count(*) FROM goods_weight_observations WHERE capture_key=?",capture));
+        ApiException repeatedApproval=assertThrows(ApiException.class,()->stockDocs.approve(approved.getId()));
+        assertEquals(ErrorCode.BUSINESS,repeatedApproval.getCode());
+        assertEquals(1,count("SELECT count(*) FROM goods_weight_observations WHERE capture_key=?",capture));
+
+        var sample=new com.uten.imp.features.stock.weight.dto.WeightSampleRequest(new BigDecimal("1000"),new BigDecimal("2"),"KG",null,
+                f.supplier(),f.warehouse(),false,"派生统计重复提交","derived-sample-"+UUID.randomUUID());
+        weightProfiles.recordSample(f.goods(),sample);weightProfiles.recordSample(f.goods(),sample);
+        assertEquals(raw,jdbc.queryForObject("SELECT deviation_pct::text FROM goods_weight_observations WHERE capture_key=?",String.class,"SAMPLE:"+f.goods()+":"+sample.idempotencyKey()));
+        assertEquals(1,count("SELECT count(*) FROM goods_weight_observations WHERE capture_key=?","SAMPLE:"+f.goods()+":"+sample.idempotencyKey()));
+        int before=count("SELECT count(*) FROM goods_weight_observations WHERE goods_id=?",f.goods());
+        var tooFine=new com.uten.imp.features.stock.weight.dto.WeightSampleRequest(BigDecimal.ONE,new BigDecimal("0.0000000000000000000000001"),"KG",null,
+                f.supplier(),f.warehouse(),false,"超出实称边界","invalid-weight-"+UUID.randomUUID());
+        assertThrows(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class,()->weightProfiles.recordSample(f.goods(),tooFine));
+        assertEquals(before,count("SELECT count(*) FROM goods_weight_observations WHERE goods_id=?",f.goods()));
+
+        Fixture tiny=fixture("tiny-derived");
+        weightProfiles.updateProfile(tiny.goods(),new com.uten.imp.features.stock.weight.dto.WeightProfileUpdateRequest(
+                0L,null,null,null,new BigDecimal("0.000000000000000000000001"),"极小正常单重",true,"AUTO"));
+        var tinySample=new com.uten.imp.features.stock.weight.dto.WeightSampleRequest(new BigDecimal("1000000000000000000000000"),BigDecimal.ONE,"KG",null,
+                tiny.supplier(),tiny.warehouse(),false,"极小正常统计","tiny-derived-"+UUID.randomUUID());
+        weightProfiles.recordSample(tiny.goods(),tinySample);weightProfiles.recordSample(tiny.goods(),tinySample);
+        Map<String,Object> tinyRow=jdbc.queryForMap("SELECT weight_kg,deviation_pct,fn_financial_book_amount_is_exact(deviation_pct) valid FROM goods_weight_observations WHERE capture_key=?","SAMPLE:"+tiny.goods()+":"+tinySample.idempotencyKey());
+        assertThat((BigDecimal)tinyRow.get("weight_kg")).isEqualByComparingTo("1");
+        assertThat(tinyRow.get("deviation_pct")).isNotNull();assertEquals(true,tinyRow.get("valid"));
+        assertEquals(1,count("SELECT count(*) FROM goods_weight_observations WHERE capture_key=?","SAMPLE:"+tiny.goods()+":"+tinySample.idempotencyKey()));
+        assertEquals(true,jdbc.queryForObject("SELECT fn_financial_book_amount_is_exact(1e-30) AND NOT fn_financial_book_amount_is_exact(1e-31) AND NOT fn_financial_book_amount_is_exact('NaN'::numeric) AND NOT fn_financial_book_amount_is_exact('Infinity'::numeric) AND fn_financial_amount_is_exact(1e-24) AND NOT fn_financial_amount_is_exact(1e-25)",Boolean.class));
+    }
+
+    @Test
     void explicitWeightChoiceKeepsPrivateOriginalOperandsAndOnlyMetadataReachesGeneralAudit() throws Exception {
         Fixture f=fixture("raw-proof");String original="1.123456789012345678901234567",recorded="1.123456789012345678901234";
         StockDocSaveRequest incoming=document("OTHER_IN",f);StockDocItemLine input=line(f.goods(),f.unit(),"1",original);

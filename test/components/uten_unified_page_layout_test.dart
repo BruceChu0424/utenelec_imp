@@ -29,7 +29,7 @@ Widget _table({
   primary: primary,
   bottomContentPadding: 16,
   totalPages: 2,
-  onPageChange: (_) {},
+  onPageChange: (_) => fail('Presentation must not request a business page'),
   toolbarLeadingActions: manyToolbarActions
       ? [
           for (var i = 0; i < 80; i++)
@@ -153,9 +153,11 @@ void main() {
             closeTo(end, .001),
           );
           expect(
-            tester
-                .getRect(find.byKey(const ValueKey('master-table-page-next')))
-                .right,
+            find.byKey(const ValueKey('master-table-page-next')),
+            findsNothing,
+          );
+          expect(
+            tester.getRect(find.byType(UtenTableSurface)).right,
             closeTo(end, .001),
           );
           for (final scroll in find.byType(SingleChildScrollView).evaluate()) {

@@ -15,6 +15,48 @@ const salesDocumentColumnKeys = <String>[
   'remark',
 ];
 
+const salesOrderItemsTableKey = 'sales.order.items';
+const salesOrderColumnLayoutVersion = 1;
+
+/// The platform table profile and the declared business columns must agree on
+/// which fields are visible. Optional customer/pricing fields stay opt-in.
+List<String> salesDocumentDefaultColumns({required bool order}) => [
+  'goods',
+  'nameEn',
+  'goodsCode',
+  'color',
+  'qty',
+  if (order) 'deliveryPlan',
+  'unit',
+  'price',
+  'discount',
+  'amount',
+  'remark',
+];
+
+/// Version 0's platform profile hid deliveryPlan, including when another
+/// column change persisted that unintended hidden state. Repair just that
+/// field once; subsequent versions retain the user's own hide/order choices.
+({List<String> order, Set<String> hidden})
+migrateSalesOrderDeliveryColumnLayout({
+  required List<String> order,
+  required Set<String> hidden,
+}) {
+  final migrated = order.where((key) => key != 'deliveryPlan').toList();
+  if (order.isNotEmpty) {
+    final quantity = migrated.indexOf('qty');
+    final price = migrated.indexOf('price');
+    migrated.insert(
+      quantity >= 0 ? quantity + 1 : (price >= 0 ? price : migrated.length),
+      'deliveryPlan',
+    );
+  }
+  return (
+    order: List.unmodifiable(migrated),
+    hidden: Set.unmodifiable({...hidden}..remove('deliveryPlan')),
+  );
+}
+
 String salesDocumentColumnKey(String key) => switch (key) {
   'goodsName' => 'goods',
   '英文名称' => 'nameEn',

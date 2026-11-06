@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -180,7 +181,13 @@ void main() {
       expect((draft.data['upload'] as Map)['storageSize'], _bytes.length);
       expect(jsonEncode(draft.data), isNot(contains('原件字面科目名称')));
       expect(jsonEncode(draft.data), isNot(contains(base64Encode(_bytes))));
-      await t.tap(button('稍后核对'));
+      await t.tap(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+            )
+            .hitTestable(),
+      );
       await t.pumpAndSettle();
       await env.close(t);
       env = await _open(
@@ -216,7 +223,13 @@ void main() {
       expect(transport.applyCalls.single.body, {'importId': _root});
       final draft = env.container.read(formDraftsProvider).single;
       expect((draft.data['pending'] as Map)['body'], {'importId': _root});
-      await t.tap(button('稍后核对'));
+      await t.tap(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+            )
+            .hitTestable(),
+      );
       await t.pumpAndSettle();
       await env.close(t);
       env = await _open(
@@ -335,7 +348,13 @@ void main() {
       await t.tap(button('核对原上传'));
       await t.pumpAndSettle();
       expect(find.textContaining('不能据此认定未上传'), findsOneWidget);
-      await t.tap(button('稍后核对'));
+      await t.tap(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+            )
+            .hitTestable(),
+      );
       await t.pumpAndSettle();
       expect(env.container.read(formDraftsProvider), hasLength(1));
       expect(transport.applyCalls, isEmpty);

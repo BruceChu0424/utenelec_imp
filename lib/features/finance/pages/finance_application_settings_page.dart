@@ -798,7 +798,7 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor>
     if (_busy || _recoveryMenuOpen || _confirming) return;
     if (_sent != null) {
       try {
-        await saveFormDraftNow();
+        if (!await saveFormDraftBeforeExit()) return;
         if (mounted && formDraftIdentityIsCurrent) Navigator.pop(context);
       } catch (error) {
         if (mounted) context.appApiError(error, fallback: '原设置请求尚未保存，请保留当前窗口');
@@ -847,15 +847,10 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor>
     ref.watch(currentPermissionsProvider);
     if (!_canAccess || !formDraftIdentityIsCurrent) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
         title: const Text('访问范围已变化'),
         content: const Text('原设置草稿与请求保留在原账号下，恢复权限后可继续核对。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final current = ref.watch(exportContextEpochProvider) == _epoch;
@@ -868,6 +863,10 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor>
         _sent == null;
     return withFormDraft(
       UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _close,
+        closeEnabled: !_busy,
+        closeTooltip: _sent == null ? '关闭' : '稍后核对',
         title: UtenDialogTitleWithHint(
           title: Text(widget.settings ? '启用/关闭原申请流程' : '明确配置原岗位人员'),
           info: _needsCurrentReview
@@ -995,11 +994,7 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor>
                   : null,
               child: const Text('移除岗位人员'),
             ),
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _busy ? null : _close,
-            child: Text(_sent == null ? '关闭' : '稍后核对'),
-          ),
+
           UtenButton(
             onPressed:
                 current &&

@@ -496,8 +496,18 @@ class _FinanceDocumentReviewCommandState
   Future<void> _close() async {
     if (_busy || _menu) return;
     if (_intent != null) {
-      await saveFormDraftNow();
-      if (mounted) Navigator.pop(context);
+      try {
+        if (await saveFormDraftBeforeExit() && mounted) Navigator.pop(context);
+      } catch (error) {
+        if (mounted && formDraftIdentityIsCurrent) {
+          setState(
+            () => _error = describeSubmitError(
+              error,
+              fallback: '原请求尚未保存，请保留当前窗口',
+            ),
+          );
+        }
+      }
     } else if (await confirmFormDraftExit() && mounted) {
       Navigator.pop(context);
     }
@@ -514,14 +524,10 @@ class _FinanceDocumentReviewCommandState
     ref.watch(currentPermissionsProvider);
     if (!formDraftIdentityIsCurrent || !_read) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
         title: const Text('访问范围已变化'),
         content: const Text('原请求和草稿已保留，请恢复原身份及读取权限后核对。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return withFormDraft(

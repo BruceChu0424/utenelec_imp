@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uten_imp/core/performance/responsive_data_codec.dart';
@@ -1775,6 +1776,215 @@ void main() {
       var sends = 0;
       await editor.runFormDraftSubmission(() async => sends++);
       expect(sends, 1, reason: '被明确拒绝后改正可再次提交');
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  for (final decision in ['save', 'discard']) {
+    testWidgets(
+      'exit persistence shows one wait only after $decision confirmation',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(tester, storage);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        editor.text.text = '原草稿';
+        await editor.saveFormDraftNow();
+        env.router.go('/home');
+        await tester.pumpAndSettle();
+        expect(find.text('是否保存为草稿？'), findsOneWidget);
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        final gate = Completer<void>();
+        storage.writeGate = gate.future;
+        if (decision == 'save') editor.text.text = '退出前最后输入 0001.';
+        await tester.tap(find.text(decision == 'save' ? '保存草稿' : '不保存'));
+        await tester.pump();
+        try {
+          expect(find.byType(UtenBusyOverlay), findsOneWidget);
+          expect(find.text('任务中心'), findsNothing);
+          expect(await editor.confirmFormDraftExit(), isFalse);
+          expect(find.byType(UtenBusyOverlay), findsOneWidget);
+        } finally {
+          gate.complete();
+        }
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenBusyOverlay), findsNothing);
+        expect(find.text('任务中心'), findsOneWidget);
+        if (decision == 'save') {
+          expect(
+            env.container.read(formDraftsProvider).single.data['text'],
+            '退出前最后输入 0001.',
+          );
+        } else {
+          expect(env.container.read(formDraftsProvider), isEmpty);
+        }
+        await tester.pumpWidget(const SizedBox());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
+
+  testWidgets(
+    'explicit exit owns one permit while background checkpoints stay quiet',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '自动草稿 0001.';
+      final backgroundGate = Completer<void>();
+      storage.writeGate = backgroundGate.future;
+      final background = editor.saveFormDraftNow();
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      backgroundGate.complete();
+      await background;
+      editor.text.text = '显式退出最后输入 0002.';
+      final exitGate = Completer<void>();
+      storage.writeGate = exitGate.future;
+      final owner = editor.saveFormDraftBeforeExit();
+      final duplicate = editor.saveFormDraftBeforeExit();
+      await tester.pump();
+      try {
+        expect(await duplicate, isFalse);
+        expect(await editor.confirmFormDraftExit(), isFalse);
+        expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      } finally {
+        exitGate.complete();
+      }
+      expect(await owner, isTrue);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(
+        env.container.read(formDraftsProvider).single.data['text'],
+        '显式退出最后输入 0002.',
+      );
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'explicit exit storage failure releases wait and preserves input for retry',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '原草稿';
+      await editor.saveFormDraftNow();
+      final original = Map<String, String>.of(storage.records);
+      storage.failWrites = true;
+      editor.text.text = '重要退出输入 0003.';
+      await expectLater(editor.saveFormDraftBeforeExit(), throwsStateError);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(editor.text.text, '重要退出输入 0003.');
+      expect(storage.records, original);
+      expect(find.byType(TestEditor), findsOneWidget);
+      storage.failWrites = false;
+      expect(await editor.saveFormDraftBeforeExit(), isTrue);
+      await tester.pumpAndSettle();
+      expect(
+        env.container.read(formDraftsProvider).single.data['text'],
+        '重要退出输入 0003.',
+      );
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'identity retirement during explicit exit cannot grant navigation or bind new owner',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '原身份草稿';
+      await editor.saveFormDraftNow();
+      final originalKeys = storage.records.keys.toSet();
+      editor.text.text = '原身份最后输入';
+      final gate = Completer<void>();
+      storage.writeGate = gate.future;
+      final permit = editor.saveFormDraftBeforeExit().then(
+        (value) => value,
+        onError: (Object error) {
+          expect(error, isA<StateError>());
+          return false;
+        },
+      );
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      env.container.read(_testScope.notifier).state = const AuthenticatedScope(
+        userId: 'user-2',
+      );
+      await tester.pump();
+      gate.complete();
+      expect(await permit, isFalse);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      expect(storage.records.keys.toSet(), originalKeys);
+      expect(await editor.saveFormDraftBeforeExit(), isFalse);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'discard storage failure retires its wait but keeps original draft and page',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '不能误删的草稿';
+      await editor.saveFormDraftNow();
+      final original = Map<String, String>.of(storage.records);
+      env.router.go('/home');
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      storage.failWrites = true;
+      await tester.tap(find.text('不保存'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(TestEditor), findsOneWidget);
+      expect(editor.text.text, '不能误删的草稿');
+      expect(storage.records, original);
+      storage.failWrites = false;
+      env.router.go('/home');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('不保存'));
+      await tester.pumpAndSettle();
+      expect(find.text('任务中心'), findsOneWidget);
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'repeated exit confirmation stays interactive and cancellation opens no wait',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.text.text = '原始未保存输入';
+      final first = editor.confirmFormDraftExit();
+      final second = editor.confirmFormDraftExit();
+      await tester.pumpAndSettle();
+      expect(find.text('是否保存为草稿？'), findsOneWidget);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.text('继续填写'));
+      await tester.pumpAndSettle();
+      expect(await first, isFalse);
+      expect(await second, isFalse);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(editor.text.text, '原始未保存输入');
+      expect(find.byType(TestEditor), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
       env.container.dispose();

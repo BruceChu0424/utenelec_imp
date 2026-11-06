@@ -1,0 +1,79 @@
+{
+  "sourceBase": "ab72afeb57c7125a7427ac67daeeb73bb52b926f",
+  "sourceFiles": {
+    "lib/features/basic_data/widgets/goods_cost_editor.dart": "b86d7ca686b2513cb84168ba5a4c8b600b209ec4a699a703b380cd11f5fec65b",
+    "lib/features/finance/pages/finance_application_settings_page.dart": "68f19015fe7272ae6aa38b2365052f80455e32fc1d08612fb4a4ab47456b11cf",
+    "lib/features/finance/widgets/finance_accounting_import_dialog.dart": "d56bd725dc1a97c91aabc3b07b5fb676df4b1444ee9b0c14e76a43e1333085d3",
+    "lib/features/finance/widgets/finance_auxiliary_dialog.dart": "e7fa7724f7817f782129c5909e04eb78bd874cb0195020de2a7868c7e0e4123e",
+    "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart": "0f30d4e140516a1a4db35e5a935cd9ea73d0b30dc37134374dd1c0c8ea7f8ff6",
+    "lib/features/finance/widgets/finance_batch_recovery_panel.dart": "eaee7e05d287fd415152531f22ee9f913146d16b11ca1c40325b63d6098a703b",
+    "lib/features/finance/widgets/finance_chart_dialog.dart": "9770e0ce522329cf14f33128813aa04c095a14bbacc44e6d3c5e3e0d34a61a27",
+    "lib/features/finance/widgets/finance_chart_import_workbench.dart": "3967a8e0f055da6c4f5b058c9b12f26b7ec79ca1618fca3403cb345fb8113626",
+    "lib/features/finance/widgets/finance_chart_metadata_dialog.dart": "c0dc5e9fe2fb69d418de0207f5e63b309694f84dd69fe450f5fea0b5d6b6167c",
+    "lib/features/finance/widgets/finance_document_review_command.dart": "467535c5c6012e4bb3f546df59d9efd2c5bd10feeeead89658150402e9093b27",
+    "lib/features/finance/widgets/finance_durable_command_dialog.dart": "638d4b1ccc5f675bc9748baab0e9385b4fc39219bed9adf362997999f18f5df9",
+    "lib/features/finance/widgets/finance_expense_analysis_dialog.dart": "8d2dfaba6363363a74d27320419a042b8f9969b7d9cdde9fb4ff686b08d88bd7",
+    "lib/features/finance/widgets/finance_material_statement_dialog.dart": "31993cef7a2fa8542bf67be0b11bc0ec52d0f10ff33b8c6e498b87d065fca818",
+    "lib/features/finance/widgets/finance_template_input_dialog.dart": "4179e6d9bb940c7b2a27ab1e438b2f36dd92227c70ab29a696f71564d9c21c27",
+    "test/features/finance/finance_application_settings_page_test.dart": "af18780bf745bfd1091a14b37dcc185275f2c913d26df33306ed800a4d30470e",
+    "test/features/finance/finance_chart_import_recovery_test.dart": "b756c61300e7ba9dc0d37964d8d6fb141d043aadebe77e55f7c167ab10b34b44",
+    "test/features/finance/finance_chart_metadata_recovery_test.dart": "ab6e05f96b1b08f874f31338abba1eac3db98ee6f12ed8616d269f404d76c292",
+    "test/features/finance/finance_chart_dialog_test.dart": "ccb29c5c0a3876752554f7edc74121c14a5ffa2700876f06c66cab2afe5b7ed8"
+  },
+  "validationOverlay": {
+    "path": "lib/features/finance/widgets/finance_summary_scope_field.dart",
+    "owner": "D:\\Projects\\uten_imp\\lib\\features\\finance\\widgets\\finance_summary_scope_field.dart",
+    "beforeSha256": "b02695eb5ce643663684fdc2668080240f23aecbaa86284afeada164d430dc89",
+    "ownerSha256": "980af3ab4dd26cdddeb849f4472ef917ccf429e38808de9623ed20628acd8d37",
+    "excludedFromDonor": true
+  },
+  "checks": {
+    "originalSourceAudit": {
+      "pass": 20,
+      "fail": 1
+    },
+    "migratedSourceAudit": {
+      "pass": 21,
+      "fail": 0
+    },
+    "original12Ui": {
+      "pass": 178,
+      "fail": 8,
+      "naturallyCompleted": true
+    },
+    "current17Wholes": {
+      "pass": 296,
+      "fail": 1,
+      "skip": 1,
+      "naturallyCompleted": true,
+      "failure": "extra finance_batch_entry two-shipment AR selector; delegated root",
+      "skipReason": "existing native runner cannot exercise browser DOM dropdown mode"
+    },
+    "strict18": {
+      "exit": 0,
+      "warnings": 0,
+      "errors": 0
+    },
+    "chromeThreeWholes": {
+      "pass": 27,
+      "fail": 10,
+      "naturallyCompleted": true,
+      "passScope": "all chart metadata recovery10 and UtenCloseButton17",
+      "failScope": "chart import recovery10, pumpAndSettle timeout; precise original CDP console retained; baseline investigation pending"
+    }
+  },
+  "evidenceSha256": {
+    "original-close-audit-full.log": "e64a1ec0c5b70096d0f70c7274dd0e841ca9ed794f22aa77fa9fb989ae0b04cd",
+    "close-audit-current-full.log": "1299e14da596b7f70cf4b8edb73281dfff4153ad98f3a84b639fa19d84c5e2ad",
+    "affected-original-contract-whole.log": "c55f76056584c49d6a6c5c467b738ff180e23dbe04078dd8902f9eb0dbb9a29e",
+    "affected-current-17-wholes.log": "bd6a8ca127bb9aeba2c95069b14b4bec1b7b80311855069385cfc5cb4e2630e7",
+    "strict-current-18.log": "baeccf70bb52f2c67351c4dd05f6f3e0cf9fb1684882c84ffb88efc0b3f559f5",
+    "chrome-close-recovery-three-wholes.log": "b2145b3bd6930740e1c73b5bd92a8f6ef8d4518a41c132cfb889b95725e19f2f",
+    "chrome-console-original.json": "64b2db8bc8ceb6c0427ff996caa1bb725628c315119f0ea5001867e4dbe10849"
+  },
+  "limitations": [
+    "Latest main f8+full integration not yet rerun; this record identifies bd5/ab72 plus exact ScopeField overlay",
+    "Chart import Chrome timeout not classified as a product/fixture defect yet",
+    "No native Flutter/WPF full-window or Win7 UAT proof"
+  ]
+}

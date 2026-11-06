@@ -22,7 +22,7 @@
 
 ## W7-BIZ-129 · lib/features/quality/pages/production_fqc_inspections_page.dart
 
-模块 `quality`；697 行；SHA256 `b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e`。
+模块 `quality`；698 行；SHA256 `0bf615908ed260e35f29292a688333fee60b11fbbef54a586482092433803312`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -32,7 +32,7 @@
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/quality/repositories/production_fqc_repository.dart；接口：/production/quality-inspections、/production/quality-inspections/capability、/production/quality-inspections/decisions/pass-all、/production/quality-inspections/lots/{lotId}/decisions、/production/quality-inspections/sheets、/production/quality-inspections/sheets/{sheetId} |
-| 动作处理 | update @68 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>addPostFrameCallback @88 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>addPostFrameCallback @145 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeWhere @150 [action-like-invocation] 提示 ['remove']；() => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),<br>removeAt @264 [action-like-invocation] 提示 ['remove']；items.removeAt(index);<br>remove @275 [action-like-invocation] 提示 ['remove']；if (!remainsVisible) _selectedIds.remove(updated.id); |
+| 动作处理 | update @68 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>addPostFrameCallback @88 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>addPostFrameCallback @146 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeWhere @151 [action-like-invocation] 提示 ['remove']；() => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),<br>removeAt @265 [action-like-invocation] 提示 ['remove']；items.removeAt(index);<br>remove @276 [action-like-invocation] 提示 ['remove']；if (!remainsVisible) _selectedIds.remove(updated.id); |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

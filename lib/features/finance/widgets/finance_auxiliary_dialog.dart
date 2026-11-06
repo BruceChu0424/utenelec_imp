@@ -286,14 +286,7 @@ class _AuxiliaryDirectoryState extends ConsumerState<_AuxiliaryDirectory>
               },
             ),
           ),
-          UtenDialogActions(
-            children: [
-              TextButton(
-                onPressed: _busy ? null : () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
-          ),
+
           if (_busy)
             const UtenBusyOverlay(
               title: '正在读取辅助核算项目',

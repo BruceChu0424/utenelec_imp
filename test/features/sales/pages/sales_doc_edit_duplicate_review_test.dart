@@ -6,12 +6,21 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
+import 'package:uten_imp/platform_table_registry.dart';
+import 'package:uten_imp/shared/delivery/order_delivery_window.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -42,8 +51,11 @@ Map<String, dynamic> _orderDetail({
 
 Future<_DupApi> _pumpEditor(
   WidgetTester tester,
-  List<Map<String, dynamic>> items,
-) async {
+  List<Map<String, dynamic>> items, {
+  bool usePlatformCatalog = false,
+  bool legacyDeliveryHidden = false,
+  String? orderId = 'order-dup',
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -60,26 +72,41 @@ Future<_DupApi> _pumpEditor(
         apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         // 本用例断言合并行保留单价：看不到价格的账号会被客户端脱敏、
         // 不随保存提交 price，须显式授予价格查看权限。
-        currentPermissionsProvider.overrideWithValue(const {
+        currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderView,
+          if (orderId == null) Perm.salesOrderCreate,
           Perm.salesOrderEdit,
           Perm.salesOrderPriceView,
         }),
+        if (legacyDeliveryHidden)
+          platformTableLayoutProvider(
+            'sales.order.items',
+          ).overrideWith(_LegacyOrderLayout.new),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
       ],
       child: MaterialApp.router(
+        locale: usePlatformCatalog ? const Locale('zh') : null,
+        localizationsDelegates: usePlatformCatalog
+            ? const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ]
+            : null,
+        supportedLocales: usePlatformCatalog
+            ? const [Locale('zh')]
+            : const [Locale('en', 'US')],
         routerConfig: GoRouter(
           initialLocation: '/edit',
           routes: [
             GoRoute(
               path: '/edit',
-              builder: (_, _) => const SalesDocEditPage(
-                docType: SalesDocType.order,
-                id: 'order-dup',
-              ),
+              builder: (_, _) =>
+                  SalesDocEditPage(docType: SalesDocType.order, id: orderId),
             ),
             GoRoute(
               path: '/:rest(.*)',
@@ -87,17 +114,25 @@ Future<_DupApi> _pumpEditor(
             ),
           ],
         ),
-        builder: (context, child) => Stack(
-          children: [
-            Positioned.fill(child: child!),
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AppNotificationHost(),
-            ),
-          ],
-        ),
+        builder: (context, child) {
+          final content = Stack(
+            children: [
+              Positioned.fill(child: child!),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+            ],
+          );
+          return usePlatformCatalog
+              ? PlatformTableCatalogScope(
+                  resolver: resolvePlatformTable,
+                  child: content,
+                )
+              : content;
+        },
       ),
     ),
   );
@@ -117,7 +152,148 @@ class _ExistingSnapshot extends SessionSnapshotNotifier {
   Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
+class _LegacyOrderLayout extends PlatformTableLayoutNotifier {
+  _LegacyOrderLayout() : super('sales.order.items');
+
+  @override
+  PlatformTableLayout build() => decode({
+    'order': [
+      'goods',
+      'nameEn',
+      'goodsCode',
+      'color',
+      'qty',
+      'price',
+      'discount',
+      'amount',
+      'remark',
+      'clientModel',
+      'clientGoodsName',
+      'machiningPrice',
+      'circumference',
+      'inboundQty',
+      'deliveryPlan',
+    ],
+    'hidden': [
+      'clientModel',
+      'clientGoodsName',
+      'machiningPrice',
+      'circumference',
+      'inboundQty',
+      'deliveryPlan',
+    ],
+    'widths': {'goods': 200, 'qty': 160},
+  })!;
+}
+
+Future<void> _revealOrderCell(
+  WidgetTester tester,
+  UtenEditableGridController<SalesGridRow> rows,
+  SalesGridRow row,
+  String key,
+) async {
+  final revealed = rows.revealCell(row, key, requestFocus: false);
+  await tester.pumpAndSettle();
+  expect(await revealed, isTrue);
+}
+
 void main() {
+  for (final scenario in [
+    (name: '编辑旧单默认表头', orderId: 'order-dup', legacy: false),
+    (name: '编辑旧单恢复v0错误隐藏', orderId: 'order-dup', legacy: true),
+    (name: '新建订单默认表头', orderId: null, legacy: false),
+  ]) {
+    testWidgets('${scenario.name}通过真实平台表格打开交付浮窗且保留未保存输入', (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        [
+          {
+            'id': 'it-1',
+            'goodsId': 'goods-1',
+            'unitId': 'unit-box',
+            'unitRate': 1,
+            'qty': 10,
+            'price': 10,
+          },
+        ],
+        usePlatformCatalog: true,
+        legacyDeliveryHidden: scenario.legacy,
+        orderId: scenario.orderId,
+      );
+      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+        find.byType(UtenEditableGrid<SalesGridRow>),
+      );
+      final row = grid.controller.rows.single;
+      if (scenario.orderId == null) {
+        row
+          ..goods = const GoodsOption(
+            id: 'goods-1',
+            code: 'DEMO-001',
+            name: '演示产品',
+          )
+          ..unitId = 'unit-box'
+          ..unitRate = 1;
+        row.qty.text = '10';
+        grid.controller.notifyListeners();
+        await tester.pumpAndSettle();
+      }
+
+      // Inspect mounted headers and click the page's real cell, including the
+      // registry defaults that the isolated delivery-window test cannot cover.
+      Finder grip(String label) => find.byWidgetPredicate(
+        (widget) => widget is UtenColumnResizeHandle && widget.label == label,
+      );
+      expect(grip('交付方式'), findsOneWidget);
+      expect(
+        tester.getCenter(grip('数量')).dx,
+        lessThan(tester.getCenter(grip('交付方式')).dx),
+      );
+      expect(
+        tester.getCenter(grip('交付方式')).dx,
+        lessThan(tester.getCenter(grip('单价')).dx),
+      );
+      await _revealOrderCell(tester, grid.controller, row, 'remark');
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && identical(widget.controller, row.remark),
+        ),
+        '尚未保存的演示备注',
+      );
+      await _revealOrderCell(tester, grid.controller, row, 'deliveryPlan');
+      final deliveryCell = find.byType(OrderDeliveryPlanCell).hitTestable();
+      expect(deliveryCell, findsOneWidget);
+      await tester.tap(deliveryCell);
+      await tester.pumpAndSettle();
+
+      final window = find.byType(UtenFloatingWindow);
+      expect(window, findsOneWidget);
+      expect(find.text('设置交付方式'), findsOneWidget);
+      expect(api.deliveryBomReads, 1);
+      await tester.tap(
+        find.descendant(
+          of: window,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenWindowControlButton &&
+                widget.control == UtenWindowControl.close,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UtenFloatingWindow), findsNothing);
+      expect(grid.controller.rows.single, same(row));
+      expect(row.goods?.id, 'goods-1');
+      expect(row.qty.text, '10');
+      expect(row.remark.text, '尚未保存的演示备注');
+      expect(row.deliveryPlan, isNull);
+      expect(api.lastPutBody, isNull);
+      expect(api.postPaths, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('同货品不同交付配置分别保留并透传保存', (tester) async {
     final plan = <String, dynamic>{
       'version': 1,
@@ -354,12 +530,48 @@ class _DupApi extends ApiClient {
 
   final Map<String, dynamic> detail;
   Map<String, dynamic>? lastPutBody;
+  int deliveryBomReads = 0;
+  final postPaths = <String>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/sales/orders/delivery-bom') {
+      deliveryBomReads++;
+      return {
+        'bomFingerprint': 'synthetic-delivery-v1',
+        'root': {
+          'path': <String>[],
+          'goodsId': query!['goodsId'],
+          'name': '演示产品',
+          'childrenState': 'LOADED',
+          'children': [
+            {
+              'path': ['demo-module-edge'],
+              'goodsId': 'demo-module',
+              'code': 'DEMO-M',
+              'name': '演示功能组件',
+              'qtyExact': '2',
+              'childrenState': 'LOADED',
+              'children': [
+                {
+                  'path': ['demo-module-edge', 'demo-part-edge'],
+                  'goodsId': 'demo-part',
+                  'code': 'DEMO-P',
+                  'name': '演示加工底板',
+                  'qtyExact': '3',
+                  'childrenState': 'NONE',
+                  'requiredOperations': ['LASER'],
+                  'children': <Map<String, dynamic>>[],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
     if (path.endsWith('/${detail['id']}')) return detail;
     return const {
       'items': <Map<String, dynamic>>[],
@@ -375,6 +587,17 @@ class _DupApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => const [];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    postPaths.add(path);
+    throw StateError('此测试不允许提交写入：$path');
+  }
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {

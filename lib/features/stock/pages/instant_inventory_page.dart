@@ -1005,7 +1005,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           // 「重量单位: 自动▾」: 用户级显示偏好 (与库存详情/分析页共用), 只改显示。
           const WeightDisplayUnitButton(),
           // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
-          // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
+          // 预览打印（A4 预览 → 系统打印；同一筛选口径完整读取，有界内部分批）
           UtenPrintPreviewButton(
             enabled: _resultsReady,
             title: '即时库存',

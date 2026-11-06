@@ -1,6 +1,7 @@
 // Typed app composition: shared table widgets never import business features.
 import 'package:flutter/foundation.dart';
 import 'shared/platform_tables/platform_table_binding.dart';
+import 'shared/widgets/sales_document_layout.dart';
 import 'platform_table_display_facts.dart';
 import 'features/basic_data/models/goods_node.dart';
 import 'features/basic_data/models/client_node.dart';
@@ -40,18 +41,6 @@ import 'features/visitor/models/visitor_application.dart';
 import 'features/suggestion/models/suggestion.dart';
 import 'features/rd_task/models/rd_task.dart';
 
-const _salesBase = [
-  'goods',
-  'nameEn',
-  'goodsCode',
-  'color',
-  'qty',
-  'unit',
-  'price',
-  'discount',
-  'amount',
-  'remark',
-];
 const _aliases = <String, String>{
   'goodsName': 'goods',
   'goodsNameEn': 'nameEn',
@@ -437,6 +426,9 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
   final salesItems =
       (sale == 'sales_quote' || sale == 'sales_order') &&
       key.endsWith('.items');
+  final salesDefaultColumns = salesItems
+      ? salesDocumentDefaultColumns(order: sale == 'sales_order')
+      : null;
   return PlatformTableBinding<T>(
     tableKey: key,
     scope: 'view_${_viewFamily(key)}',
@@ -444,8 +436,8 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
     factValuesOf: (row) => platformDisplayFacts(row),
     factListenablesOf: platformDisplayListenables,
     columnAliases: _aliases,
-    defaultVisibleColumnKeys: salesItems ? _salesBase : null,
-    defaultColumnOrder: salesItems ? _salesBase : null,
+    defaultVisibleColumnKeys: salesDefaultColumns,
+    defaultColumnOrder: salesDefaultColumns,
     revealPopulatedColumnKeys: salesItems
         ? const {'clientModel', 'clientGoodsName', 'clientPrice'}
         : const {},

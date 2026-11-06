@@ -1,0 +1,2 @@
+PASS shared user error display cases=20; wire/outcome fields unchanged
+PASS original CoreContractChecks.Run including complete summary fixture; process=x86

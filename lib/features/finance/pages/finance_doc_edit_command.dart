@@ -185,7 +185,14 @@ extension _FinanceExistingEditCommand on _FinanceDocEditPageState {
   Future<void> _leaveEditor() async {
     if (_saving || _editMenu) return;
     if (_editIntent != null) {
-      await saveFormDraftNow();
+      try {
+        if (!await saveFormDraftBeforeExit()) return;
+      } catch (error) {
+        if (mounted && formDraftIdentityIsCurrent) {
+          context.appApiError(error, fallback: '原保存请求尚未保存，请保留当前页面');
+        }
+        return;
+      }
       if (!mounted) return;
     }
     if (mounted) popOrBackTo(context, defaultPath: RouteName.finance);

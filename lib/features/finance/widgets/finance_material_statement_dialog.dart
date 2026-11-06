@@ -903,16 +903,26 @@ class _MaterialDirectory extends ConsumerState<FinanceMaterialStatementSurface>
     if (!_current || _readDenied) {
       return Material(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              _readDenied
-                  ? (_error ?? '数据访问范围已变化，请重新进入。')
-                  : '登录身份、权限或服务器已变化，请重新进入；原草稿仍属于原账号。',
+            UtenDialogSurface(
+              child: UtenDialogHeader(
+                title: const Text('访问范围已变化'),
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(_changed),
+              ),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(_changed),
-              child: const Text('关闭'),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: Text(
+                    _readDenied
+                        ? (_error ?? '数据访问范围已变化，请重新进入。')
+                        : '登录身份、权限或服务器已变化，请重新进入；原草稿仍属于原账号。',
+                  ),
+                ),
+              ),
             ),
           ],
         ),

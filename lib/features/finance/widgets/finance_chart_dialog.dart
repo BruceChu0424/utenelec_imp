@@ -547,17 +547,10 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
     if (ref.watch(exportContextEpochProvider) != _ownerEpoch) {
       return UtenAlertDialog(
         showCloseButton: true,
-        onClose: () => Navigator.pop(context, _changed),
+        onClose: _closeDirectory,
 
         title: const Text('访问范围已变化'),
         content: const Text('请关闭后以当前账号重新打开科目对应。原导入批次保留在所属账号。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _closeDirectory,
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return PopScope(
@@ -567,7 +560,7 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
       },
       child: UtenAlertDialog(
         showCloseButton: true,
-        onClose: _locked ? null : () => Navigator.pop(context, _changed),
+        onClose: _closeDirectory,
         closeEnabled: !_locked,
 
         maxWidth: 1140,
@@ -606,13 +599,6 @@ class _FinanceChartDialogState extends ConsumerState<FinanceChartDialog> {
             ],
           ),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _locked ? null : _closeDirectory,
-            child: const Text('关闭'),
-          ),
-        ],
       ),
     );
   }

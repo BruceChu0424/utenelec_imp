@@ -12,8 +12,9 @@ namespace Uten.Legacy.Core
         internal readonly long Revision;
         internal readonly long Sequence;
         internal readonly CancellationToken Cancellation;
-        internal ReadRequest(long revision, long sequence, CancellationToken cancellation)
-        { Revision = revision; Sequence = sequence; Cancellation = cancellation; }
+        internal readonly HttpMethod Method;
+        internal ReadRequest(long revision, long sequence, CancellationToken cancellation, HttpMethod method = null)
+        { Revision = revision; Sequence = sequence; Cancellation = cancellation; Method = method ?? HttpMethod.Get; }
     }
 
     internal sealed class ReadScopeHeaders
@@ -76,6 +77,9 @@ namespace Uten.Legacy.Core
         private static readonly Regex MasterPath = new Regex("^/(?:api/)?master/(clients|suppliers|goods|accounts|currencies|colors|units|moulds|warehouses)(?:/|$)", RegexOptions.CultureInvariant);
         private static readonly Regex SettlementPath = new Regex("^/(?:api/)?master/reference-methods/settlement-admin(?:/page)?$", RegexOptions.CultureInvariant);
         private static readonly Regex GoodsCostPath = new Regex("^/(?:api/)?master/goods/cost-sheets(?:/versions(?:/summary)?|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates(?:/summary|/[0-9a-fA-F-]{36})?|/export)?$", RegexOptions.CultureInvariant);
+        private static readonly Regex FinanceSummaryPath = new Regex(
+            "^/(?:api/)?finance/(?:(?:asset-opening-groups|accounting-imports|auxiliary-imports)/summaries|chart/imports/summaries|expense-analysis/note-imports/summaries|payable-statement-adjustments|statement-documents/reviews/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/(?:summary|original-table))$",
+            RegexOptions.CultureInvariant);
         private static readonly Dictionary<string, string> MasterDomains = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             { "clients", "client" }, { "suppliers", "supplier" }, { "goods", "master_goods" },
@@ -102,7 +106,7 @@ namespace Uten.Legacy.Core
             if (header.Domain?.StartsWith("native_", StringComparison.Ordinal) == true && native == null)
                 return ReadProofDisposition.Rejected;
             var version = header.Version ?? proof.BodyVersion as string;
-            var domain = native ?? DomainFromPath(path);
+            var domain = native ?? DomainFromPath(path, request.Method);
             if (version == null || domain == null) return ReadProofDisposition.Accepted;
             Observation prior;
             versions.TryGetValue(domain, out prior);
@@ -121,7 +125,7 @@ namespace Uten.Legacy.Core
         private ReadProofDisposition Retired() { Retire(); return ReadProofDisposition.Retired; }
         private static bool ValidVersion(string value)
         { return !String.IsNullOrEmpty(value) && value.Length <= 256 && !value.Any(Char.IsControl); }
-        private static string DomainFromPath(string path)
+        private static string DomainFromPath(string path, HttpMethod method)
         {
             // Cost versions also belong to their frozen customer. Actual costs
             // retain master_goods, matching the owning server interceptors.
@@ -129,6 +133,9 @@ namespace Uten.Legacy.Core
             if (path.StartsWith("/api/platform-columns/master_unit/", StringComparison.Ordinal)
                 || path.StartsWith("/platform-columns/master_unit/", StringComparison.Ordinal)) return "master_unit";
             if (SettlementPath.IsMatch(path)) return "master_settlement_method";
+            // Only the owning GET routes publish a finance version without a domain header.
+            // Native response domains take precedence above; other finance reads stay unclassified.
+            if (method.Equals(HttpMethod.Get) && FinanceSummaryPath.IsMatch(path)) return "finance";
             if (Regex.IsMatch(path, "^/(?:api/)?business-applications/[0-9a-fA-F-]{36}/prepayment-finance-candidates$", RegexOptions.CultureInvariant)) return "finance";
             if (Regex.IsMatch(path, "^/(?:api/)?(?:expense-claims|business-applications|platform-columns/expense_claim(?:_item)?)(?:/|$)", RegexOptions.CultureInvariant)) return "expense";
             var report = ReportPath.Match(path);

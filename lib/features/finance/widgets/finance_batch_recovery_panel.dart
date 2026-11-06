@@ -382,11 +382,7 @@ class _FinanceBatchRecoveryState extends ConsumerState<_FinanceBatchRecovery>
                         onPressed: _busy || !_mayCancel ? null : _cancel,
                         child: const Text('核实未写并保留输入'),
                       ),
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _busy ? null : () => widget.onFinish(null),
-                      child: const Text('关闭'),
-                    ),
+
                     if (permitted &&
                         _checkpoint != null &&
                         ref

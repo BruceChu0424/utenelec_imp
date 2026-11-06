@@ -58,7 +58,7 @@
 
 ## W7-BIZ-152 · lib/features/stock/pages/instant_inventory_page.dart
 
-模块 `stock`；1235 行；SHA256 `8f10dbc746b09872b511dcb3efe0c5cc67f13a03a12ca855453c18af5df99d19`。
+模块 `stock`；1235 行；SHA256 `cd3a8d1b9c5802262eebc5804436359e3ee2efa1c4365e64eccf1b02a6c51e24`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

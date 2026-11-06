@@ -117,6 +117,7 @@ class _ProductionFqcInspectionsPageState
 
       final result = await readScopedPage(
         requestedPage,
+        idOf: (inspection) => inspection.id,
         slot: '_load',
         query: [pageRepository, pageStatus, pageKeyword, requestedColumns],
         currentQuery: () => [

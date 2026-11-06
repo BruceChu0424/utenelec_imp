@@ -1557,13 +1557,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ref.watch(costWorkbenchCapabilityProvider);
           if (!current()) {
             return UtenAlertDialog(
+              showCloseButton: true,
+              onClose: () => Navigator.pop(dialogContext),
               title: const Text('读取范围已变化'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('关闭'),
-                ),
-              ],
             );
           }
           return StatefulBuilder(

@@ -1,0 +1,75 @@
+{
+  "baseMain": "f8b8a0733decc0109dd6e6c479866b548e86a948",
+  "productCandidate": "966c7ee632ef4eb891db3c86d0f56546ac4d3f47",
+  "combinedWithCloseMigration": "33fb5df05bfa296000dcfddc8de885fefa390638",
+  "sourceSha256": {
+    "lib/shared/drafts/form_draft_mixin.dart": "d51cc5bd6d556b81c9081d8e4889dc05b8308542516aa8a204724918a02f5900",
+    "lib/features/finance/pages/finance_application_settings_page.dart": "d28093ecaa2f1168af2ad0f902a5241986ec6668dbec0e767ad8dbf13f7b97ba",
+    "lib/features/finance/widgets/finance_chart_metadata_dialog.dart": "4e611b1735dbddd9a1eec7c71ebb10aef4a12a3effd35d2244a382f8e3ebd19f",
+    "lib/features/finance/widgets/finance_document_review_command.dart": "c77a8cacc96d73dfb73ba3d4e94a525cd99759071b132e05fe0b93070448df41",
+    "lib/features/finance/pages/finance_doc_edit_command.dart": "1fb27696bbf2cdf34a53f8d0c3b91d21326260a3d06906a2732bc97507270cf6",
+    "lib/features/finance/widgets/finance_chart_import_workbench.dart": "4ec5354e188bd14d0b02367d9b91108cad73d39480044db336c2d0c0db6207f3",
+    "lib/features/finance/widgets/finance_durable_command_dialog.dart": "60b677b307413d4b5f8079564c311c840e5ac54fb7487777d0464f7dbb23e88a",
+    "test/shared/drafts/form_draft_mixin_test.dart": "519892cb20a13f45f25651030e81953e696b8cda906a7b0d49feba20b9e1b6a6",
+    "test/shared/drafts/form_draft_exit_interruption_test.dart": "50720e2eb3d8e2b9f705ac7405a40007524b76397dd7529fe61de951ca34722e"
+  },
+  "exitCallers": [
+    "SettingsEditor._close",
+    "ChartMetadataDialog._close",
+    "FinanceDocumentReviewCommand._close",
+    "FinanceExistingEditCommand._leaveEditor",
+    "ChartImport._close",
+    "FinanceDurableCommandDialog._close"
+  ],
+  "scope": "common save/discard confirmed exit plus all six existing direct exit persistence callers; normal autosave/pre-submit/source-recovery checkpoints remain on saveFormDraftNow",
+  "checks": {
+    "originalNewSaveDiscardContract": {
+      "pass": 0,
+      "fail": 2
+    },
+    "firstFullMixinFix": {
+      "pass": 69,
+      "fail": 1,
+      "rootCause": "discard temporarily sets _draftFinished before its CAS; a second exit mistakes it for confirmed business completion"
+    },
+    "finalMixinWhole": {
+      "pass": 70,
+      "fail": 0
+    },
+    "combinedNineNativeWholes": {
+      "pass": 197,
+      "fail": 0,
+      "skip": 0
+    },
+    "hardDisposalWhole": {
+      "pass": 1,
+      "fail": 0
+    },
+    "chromeNewExitCases": {
+      "pass": 7,
+      "fail": 0,
+      "fullFile": false,
+      "scope": "all seven new persistence/duplicate/cancel/storage/identity cases; actual Chrome with private read-only Windows host tool shim"
+    },
+    "strictEight": {
+      "exit": 0,
+      "warnings": 0,
+      "errors": 0
+    }
+  },
+  "evidenceSha256": {
+    "original-explicit-exit-two.log": "e0f3fb8e3274768810f652190a98c3f6040ed5cbd2e435fc476da37f0a1f061b",
+    "mixin-whole.log": "d3af1d44e074c83b532bed1c8462dd3a031f28e46c80a71eee732eb528f32fcb",
+    "mixin-whole-v2.log": "b8343eb41b35d7d8dc692067933f49fbaf9ee1ac32db0f33cc9c475176a26a65",
+    "combined-nine.log": "1c8dd6d0eaa8c44abb8d9012db1db96193910db8f3a1ed5f10208229b4df89fa",
+    "combined-nine.jsonl": "ac99a073e337ece076e59920fafb60405d3c2979533ae936d3d94c208e511313",
+    "chrome-seven-new-exit-cases.log": "cd785248063d639608fde67959b092213deb192d47177c60a94c413777eeb0f3",
+    "interruption-whole.log": "44f817c9dec9ea79aaa386f413c664b21f72cbd83a7b48e9829a09ca9f98413d",
+    "strict-eight.log": "b0f45aa587c81042545dd97daab23ae5be01345b307d770d1ea8d4fe3bea7317"
+  },
+  "limits": [
+    "No claim all Chrome finance imports pass: existing initialization pump timeout is separately retained in window-close evidence",
+    "No WPF/Win7 complete migration or native target UAT claim",
+    "Public UtenBusyOverlay was reused without modification; source from visual workflow never read or imported"
+  ]
+}

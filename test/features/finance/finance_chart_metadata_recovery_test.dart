@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -145,7 +146,13 @@ void main() {
       final api = _Api()..rejectSaves = true;
       final harness = await _mount(tester, api, MemoryFormDraftStorage());
       await _editAndSend(tester);
-      await tester.tap(find.text('稍后核对'));
+      await tester.tap(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+            )
+            .hitTestable(),
+      );
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('finance-chart-metadata-editor')),

@@ -694,11 +694,7 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
     if (_pending != null || _upload != null && _previewId == null) {
       setState(() => _busy = true);
       try {
-        await UtenBusyOverlay.run(
-          context,
-          title: '正在保留原导入资料',
-          action: saveFormDraftNow,
-        );
+        if (!await saveFormDraftBeforeExit(title: '正在保留原导入资料')) return;
         if (mounted) {
           Navigator.pop(context, _changed);
         }
@@ -725,15 +721,10 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
     ref.watch(currentPermissionsProvider);
     if (!_current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context, _changed),
         title: const Text('访问范围已变化'),
         content: const Text('原导入资料与未决请求已保留，请以具备原读取权限的账号重新打开。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context, _changed),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final rows = _maps(_preview?['rows']), issues = _maps(_preview?['issues']);
@@ -754,11 +745,15 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
       },
       child: withFormDraft(
         UtenAlertDialog(
+          closeTooltip:
+              _pending != null || _upload != null && _previewId == null
+              ? '稍后核对'
+              : '关闭',
           key: const ValueKey('finance-chart-import-workbench'),
           maxWidth: 1140,
           scrollable: false,
           showCloseButton: true,
-          onClose: _busy || _menuOpen ? null : _close,
+          onClose: _close,
           closeEnabled: !(_busy || _menuOpen),
           title: UtenDialogTitleWithHint(
             title: const Text('科目目录导入'),
@@ -982,15 +977,6 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
                   }
                 },
               ),
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: _busy ? null : _close,
-              child: Text(
-                _pending != null || _upload != null && _previewId == null
-                    ? '稍后核对'
-                    : '关闭',
-              ),
-            ),
             if (_pending != null)
               UtenButton(
                 onPressed: _busy || !_canWrite

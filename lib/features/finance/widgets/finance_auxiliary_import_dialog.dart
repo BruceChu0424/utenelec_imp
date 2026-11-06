@@ -955,20 +955,6 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
                     : null,
               ),
             ),
-            UtenDialogActions(
-              children: [
-                TextButton(
-                  onPressed:
-                      _busy ||
-                          _loading ||
-                          (_unknownUpload || _unknownApply) &&
-                              formDraftRecoveryId == null
-                      ? null
-                      : _close,
-                  child: const Text('关闭'),
-                ),
-              ],
-            ),
             if (_busy)
               const UtenBusyOverlay(
                 title: '正在核对辅助账来源',

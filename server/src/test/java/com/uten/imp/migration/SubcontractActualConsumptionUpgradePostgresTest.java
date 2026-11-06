@@ -358,22 +358,50 @@ class SubcontractActualConsumptionUpgradePostgresTest {
             for(String scenario:List.of("exact","legacy-reversal-tail","actual-corrupt")) {
                 boolean corrupted="actual-corrupt".equals(scenario);
                 var initial=connection.setSavepoint();UUID receipt=UUID.randomUUID(),detail=UUID.randomUUID(),reversed=UUID.randomUUID();
+                UUID reversedDetail=UUID.randomUUID(),reversedConsumption=UUID.randomUUID();
                 BigDecimal consumed=corrupted?output.subtract(new BigDecimal("0.00005")):output;
+                // Isolate unrelated posting fixtures as above, while the ALWAYS
+                // native consumption guard validates each real draft/source/reversal.
                 db.execute("SET LOCAL session_replication_role=replica");
-                try {
-                    db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,status) VALUES(?,'UP-ACTUAL',current_date,1),(?,'UP-ACTUAL-REVERSED',current_date,-1)",receipt,reversed);
-                    for(UUID header:List.of(receipt,reversed))
-                        db.update("""
-                                INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,
-                                  qty,material_basis_qty,order_item_id,goods_snapshot_source,amount_original,amount_local)
-                                SELECT ?,id,bill_no,bill_date,1,?,?,1,?,?,?,'MASTER_AT_SAVE',0,0 FROM subcontract_receipts WHERE id=?
-                                """,header.equals(receipt)?detail:UUID.randomUUID(),goods,unit,output,output,orderItem,header);
-                    db.update("UPDATE subcontract_material_issue_items SET consumed_qty=? WHERE id=?",new BigDecimal("22").subtract("legacy-reversal-tail".equals(scenario)?new BigDecimal("0.00005"):BigDecimal.ZERO).add(consumed),issueItem);
+                db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,status) VALUES(?,'UP-ACTUAL',current_date,0),(?,'UP-ACTUAL-REVERSED',current_date,0)",receipt,reversed);
+                for(UUID header:List.of(receipt,reversed)) {
+                    UUID source=header.equals(receipt)?detail:reversedDetail;
                     db.update("""
-                            INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
-                            VALUES(?,?,?,?,'FROZEN_BASE_BOM_ACTUAL',?)
-                            """,detail,issueItem,consumed,consumed,actor);
-                } finally {db.execute("SET LOCAL session_replication_role=origin");}
+                            INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,
+                              qty,material_basis_qty,order_item_id,goods_snapshot_source,amount_original,amount_local)
+                            SELECT ?,id,bill_no,bill_date,1,?,?,1,?,?,?,'MASTER_AT_SAVE',0,0 FROM subcontract_receipts WHERE id=?
+                            """,source,goods,unit,output,output,orderItem,header);
+                    db.update("""
+                            INSERT INTO procurement_receipt_consideration_parts(id,receipt_type,receipt_id,receipt_item_id,
+                              billing_mode,base_qty,nominal_original,nominal_local,payable_original,payable_local,created_by)
+                            VALUES(?,'SUBCONTRACT',?,?,'STANDARD',?,0,0,0,0,?)
+                            """,UUID.randomUUID(),header,source,output,actor);
+                }
+                // Establish an actual v2 reversal through its immutable original
+                // slice, rather than inventing an already-reversed header.
+                db.update("""
+                        INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
+                        VALUES(?,?,?,?,?,'FROZEN_BASE_BOM_ACTUAL',?)
+                        """,reversedConsumption,reversedDetail,issueItem,output,output,actor);
+                db.update("UPDATE subcontract_material_issue_items SET consumed_qty=22+? WHERE id=?",output,issueItem);
+                db.update("UPDATE subcontract_receipts SET status=1 WHERE id=?",reversed);
+                db.update("""
+                        INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,qty_base,
+                          consumption_basis,created_by,reversal_of)
+                        SELECT receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,?,id
+                        FROM subcontract_receipt_material_consumptions WHERE id=?
+                        """,actor,reversedConsumption);
+                db.update("UPDATE subcontract_material_issue_items SET consumed_qty=22 WHERE id=?",issueItem);
+                db.update("UPDATE subcontract_receipts SET status=-1 WHERE id=?",reversed);
+                db.update("""
+                        INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
+                        VALUES(?,?,?,?,'FROZEN_BASE_BOM_ACTUAL',?)
+                        """,detail,issueItem,consumed,consumed,actor);
+                db.update("UPDATE subcontract_material_issue_items SET consumed_qty=? WHERE id=?",new BigDecimal("22").subtract("legacy-reversal-tail".equals(scenario)?new BigDecimal("0.00005"):BigDecimal.ZERO).add(consumed),issueItem);
+                db.update("UPDATE subcontract_receipts SET status=1 WHERE id=?",receipt);
+                // A failed setup closes/rolls back this connection; do not issue
+                // another command in an aborted transaction and mask its cause.
+                db.execute("SET LOCAL session_replication_role=origin");
                 assertDecimal(new BigDecimal("0.0001"),db.queryForObject("SELECT fn_subcontract_material_consumption_reversal_allowance(?,1)",BigDecimal.class,orderItem),"historical v1 reversal grid");
                 assertDecimal(new BigDecimal("0.000000000000000000000001"),db.queryForObject("SELECT fn_subcontract_material_consumption_reversal_allowance(?,2)",BigDecimal.class,orderItem),"actual v2 reversal grid");
                 if(corrupted) {

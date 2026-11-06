@@ -1,0 +1,41 @@
+{
+  "atUtc": "20261106T181746307139Z",
+  "mainHeadFresh": "1db4f269cdf5763893f36bef49f5235b20e5867f",
+  "mainIndexSha256Before": "0973b0539cb0e91a8822ef5d9e0fbdadfdc8bced6ff94daf29a934bcea291c63",
+  "proposalHeadHistorical": "6e13854a4d886120eb39b05907ce231db14660ed",
+  "fixtureSha256": "99eb2b7132a5568d4972cb0a5c90415ebfb25d35451742ecfd986e569db7f759",
+  "validationSha256": "912d0fdd6f3aa33b6331ead2f34437e7b19f8972b6f4edf19270c485e5e7eca1",
+  "changes": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
+      "beforeSha256": "8d2bb70e9507236fe04914b8969e4f24894d2b62a8636b1e53c071f6a075cdc7",
+      "proposedSha256": "525fa260fc8e6fe3a0be36bc3c79aaa5d064a396889402804d98ec04863b9368",
+      "actualMainSha256": "525fa260fc8e6fe3a0be36bc3c79aaa5d064a396889402804d98ec04863b9368"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+      "beforeSha256": "54b11dfc40d13008f71f1b67348a0561866f4b0fc6249f1456b0055e76b2bb08",
+      "proposedSha256": "ab602afa88873813b9665a18c46ad45d4ec637ee7d55f67be6cfc585e9a85496",
+      "actualMainSha256": "ab602afa88873813b9665a18c46ad45d4ec637ee7d55f67be6cfc585e9a85496"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
+      "beforeSha256": "5c491419ee0bafbe24555a3046d2324b1efce8133213e066b7de4fe133bfa803",
+      "proposedSha256": "29c38cdb137850ba7d09ddaeac7e127c9d6e9f7630a35c6027674fcbdcd51ef9",
+      "actualMainSha256": "29c38cdb137850ba7d09ddaeac7e127c9d6e9f7630a35c6027674fcbdcd51ef9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "beforeSha256": "bdd40fb9cc3d848c85a8b67e22c806b33d974d7f123e6338f02ff121b30e6ba6",
+      "proposedSha256": "0e8786f3e4b02de2425f083bdddd1dce4cd0cefc6eb03a69c816ea9a86ca35b4",
+      "actualMainSha256": "0e8786f3e4b02de2425f083bdddd1dce4cd0cefc6eb03a69c816ea9a86ca35b4"
+    }
+  ],
+  "sourceCommittedPushedPackagedOrDeployed": false,
+  "actualExitCode": 0,
+  "mainHeadAfter": "1db4f269cdf5763893f36bef49f5235b20e5867f",
+  "mainIndexSha256After": "0973b0539cb0e91a8822ef5d9e0fbdadfdc8bced6ff94daf29a934bcea291c63",
+  "all64ProtectedInputPreimagesChecked": true,
+  "MainWritten": true,
+  "fullErpOrWin7Accepted": false
+}

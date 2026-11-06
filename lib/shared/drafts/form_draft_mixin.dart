@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -383,6 +384,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   Object? _draftError;
   Future<void>? _draftWriting;
   Future<bool>? _draftExitPrompt;
+  bool _draftExitPersistenceBusy = false;
+  bool _draftExitDiscarding = false;
   FormDraftsNotifier? _draftStore;
   FormDraftPreservationLease? _draftPreservationLease;
   String? _draftOwnerKey;
@@ -752,6 +755,36 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     return completion.future;
   }
 
+  /// Persist an explicitly requested exit without changing background autosave.
+  /// Only the owner that started this wait receives navigation permission.
+  /// Callers retain their business busy guards and handle storage failures.
+  Future<bool> saveFormDraftBeforeExit({String? title}) =>
+      _runDraftExitPersistence(
+        title: title ?? (formDraftHasUnknownSubmission ? '正在保留原提交' : '正在保存草稿'),
+        action: () async {
+          await saveFormDraftNow();
+          return formDraftIdentityIsCurrent;
+        },
+      );
+
+  Future<bool> _runDraftExitPersistence({
+    required String title,
+    required Future<bool> Function() action,
+  }) async {
+    if (_draftExitPersistenceBusy || !formDraftIdentityIsCurrent) return false;
+    // Claim synchronously: a second close/back action must not share a true
+    // result and navigate again after the first owner completes its write.
+    _draftExitPersistenceBusy = true;
+    try {
+      return await UtenBusyOverlay.run(context, title: title, action: action);
+    } catch (error) {
+      _draftError = error;
+      rethrow;
+    } finally {
+      _draftExitPersistenceBusy = false;
+    }
+  }
+
   Future<void> _drainDraftWrites(Completer<void> completion) async {
     try {
       do {
@@ -1049,8 +1082,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     // The business operation already completed; its own navigation commonly
     // runs before the page's finally block clears _saving. Do not veto it.
-    if (_draftFinished) return Future.value(true);
-    if (formDraftBusy) return Future.value(false);
+    if (_draftFinished && !_draftExitDiscarding) return Future.value(true);
+    if (formDraftBusy || _draftExitPersistenceBusy) return Future.value(false);
     if (_draftExitAllowed || !_draftReady || _draftRestoreBlocked) {
       return Future.value(true);
     }
@@ -1112,40 +1145,51 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     if (decision != 'save' && decision != 'discard') return false;
     try {
       if (decision == 'save') {
-        await saveFormDraftNow();
+        if (!await saveFormDraftBeforeExit()) return false;
         if (formDraftBusy) return false;
         _draftExitAllowed = true;
-      } else {
-        // Recheck after the dialog: an outcome may have become unknown while
-        // it was open, or a stale/programmatic dialog result may say discard.
-        if (formDraftHasUnknownSubmission) return false;
-        // Discard is different from successful business completion.
-        try {
-          await _draftWriting;
-        } catch (_) {}
-        if (formDraftBusy || formDraftHasUnknownSubmission) return false;
-        if (_draftIdentityChanged || _draftStore?.ownerKey != _draftOwnerKey) {
-          return true;
-        }
-        _draftFinished = true;
-        try {
-          if (_draftRevision != null) {
-            try {
-              await _draftStore!.delete(
-                _draftId,
-                expectedRevision: _draftRevision,
-              );
-            } on FormDraftConflict {
-              // Discard this editor's stale changes, never delete another tab's work.
-            }
-          }
-          _draftExitAllowed = true;
-        } catch (_) {
-          _draftFinished = false;
-          rethrow;
-        }
+        return true;
       }
-      return true;
+      return await _runDraftExitPersistence(
+        title: '正在退出草稿',
+        action: () async {
+          // Recheck after the dialog: an outcome may have become unknown while
+          // it was open, or a stale/programmatic dialog result may say discard.
+          if (formDraftHasUnknownSubmission) return false;
+          // Discard is different from successful business completion.
+          try {
+            await _draftWriting;
+          } catch (_) {}
+          if (formDraftBusy || formDraftHasUnknownSubmission) return false;
+          if (_draftIdentityChanged ||
+              _draftStore?.ownerKey != _draftOwnerKey) {
+            return true;
+          }
+          // This terminal marker prevents an autosave from recreating a
+          // discarded draft, but it is not confirmed business completion.
+          _draftExitDiscarding = true;
+          _draftFinished = true;
+          try {
+            if (_draftRevision != null) {
+              try {
+                await _draftStore!.delete(
+                  _draftId,
+                  expectedRevision: _draftRevision,
+                );
+              } on FormDraftConflict {
+                // Discard this editor's stale changes, never delete another tab's work.
+              }
+            }
+            _draftExitAllowed = true;
+          } catch (_) {
+            _draftFinished = false;
+            rethrow;
+          } finally {
+            _draftExitDiscarding = false;
+          }
+          return true;
+        },
+      );
     } catch (error) {
       _draftError = error;
       // 底部状态条已退役（2026-10-24）：退出保存失败改为瞬时通知，

@@ -172,7 +172,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
         List<Path> migrations;
         try (var files = Files.list(migrationDirectory)) {
             migrations = files.filter(path -> path.getFileName().toString().endsWith(".sql"))
-                    .sorted(Comparator.comparingInt(LegacyBootstrapCoordinatorPostgresTest::version)).toList();
+                    .sorted(Comparator.comparing(LegacyBootstrapCoordinatorPostgresTest::version)).toList();
         }
         StringBuilder manifest = new StringBuilder("# uten-imp-flyway-checksums-v1\n");
         for (Path file : migrations) {
@@ -180,7 +180,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
             put(ROOT + "/server/src/main/resources/db/migration/" + name, Files.readAllBytes(file));
             var resource = new FileSystemResource(Location.fromPath("filesystem:", migrationDirectory.toString()),
                     file.toString(), StandardCharsets.UTF_8, false);
-            manifest.append(version(file)).append('\t').append(name).append('\t')
+            manifest.append(version(file).getVersion()).append('\t').append(name).append('\t')
                     .append(ChecksumCalculator.calculate(resource)).append('\n');
         }
         put(ROOT + "/server/target/uten-imp-flyway-checksums.tsv", manifest.toString());
@@ -728,8 +728,8 @@ class LegacyBootstrapCoordinatorPostgresTest {
         assertThat(scalar("SELECT count(*) FROM legacy_migration_runs WHERE target='--bootstrap-all' AND status <> 'FAILED'")).isEqualTo("0");
     }
 
-    private static int version(Path file) {
+    private static org.flywaydb.core.api.MigrationVersion version(Path file) {
         String name = file.getFileName().toString();
-        return com.uten.imp.testsupport.FixtureNumbers.integer(name.substring(1, name.indexOf("__")));
+        return org.flywaydb.core.api.MigrationVersion.fromVersion(name.substring(1, name.indexOf("__")));
     }
 }

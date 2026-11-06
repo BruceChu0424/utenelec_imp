@@ -481,6 +481,7 @@ class WorkshopContinuousSupplyEndToEndTest {
 
         fixture.loginAs(c.workerUser());
         // V599：直送料已在线边仓、工单未被动过——先确认持续生产路线再开工。
+        drainPriorValueWork(c);
         confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
         var started = segments.start(c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "cs-late-start-" + c.segment()));
@@ -598,6 +599,7 @@ class WorkshopContinuousSupplyEndToEndTest {
 
     /** 子件报工「转下一道工序」，投给父件对本子件的需求。 */
     private void transfer(Case c, String quantity, boolean isFinal) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         var report = new DailyReportSaveRequest();
         report.setIdempotencyKey("cs-report-" + c.childSegment() + "-" + quantity + "-" + UUID.randomUUID());
@@ -624,6 +626,7 @@ class WorkshopContinuousSupplyEndToEndTest {
 
     /** 父件按普通报工(送仓库)申报完工。 */
     private void reportParent(Case c, String quantity, boolean isFinal) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         var report = new DailyReportSaveRequest();
         report.setIdempotencyKey("cs-parent-" + c.segment() + "-" + quantity + "-" + UUID.randomUUID());
@@ -652,6 +655,7 @@ class WorkshopContinuousSupplyEndToEndTest {
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.world().superAdminUserId());
         var request = new StockDocSaveRequest();
         request.setDocType("OTHER_IN");
@@ -667,6 +671,21 @@ class WorkshopContinuousSupplyEndToEndTest {
         line.setAmountLocal(line.getAmountOriginal());
         request.setItems(List.of(line));
         stock.approve(stock.create(request).getId());
+    }
+
+    /** The next independent business action starts after its preceding committed cost phase.
+     * The actual inbound callback and its synchronous assertions still run without a worker inside them. */
+    private void drainPriorValueWork(Case c) {
+        var goods=new java.util.LinkedHashSet<>(List.of(c.parent(),c.child()));
+        goods.addAll(db.queryForList("""
+                SELECT DISTINCT goods_id FROM production_material_demands
+                WHERE execution_segment_id IN (?,?) AND NOT is_deleted
+                UNION SELECT DISTINCT pool.goods_id FROM stock_value_pools pool
+                JOIN warehouses warehouse ON warehouse.id=pool.warehouse_id
+                WHERE pool.warehouse_id=? OR warehouse.workshop_department_id=?
+                """,UUID.class,c.segment(),c.childSegment(),c.leaf(),c.workshop()));
+        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
+                db,List.copyOf(goods));
     }
 
     /** Exercise the real report picker; do not duplicate its material arithmetic in the test. */

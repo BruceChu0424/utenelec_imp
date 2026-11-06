@@ -5,6 +5,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../widgets/procurement_document_layout.dart';
+import '../widgets/sales_document_layout.dart';
 import 'uten_page_prefs_notifier.dart';
 
 /// 一个模式下的列设置快照：order=完整列顺序（含隐藏列），hidden=隐藏列 key，
@@ -113,6 +114,30 @@ class SalesDocGridColumnPrefsNotifier
     extends EditableGridColumnPrefsNotifierBase {
   @override
   String get prefKey => 'sales.docEdit.gridColumns';
+
+  @override
+  int currentLayoutVersion(String mode) =>
+      mode == 'order' ? salesOrderColumnLayoutVersion : 0;
+
+  @override
+  Map<String, EditableGridColumnsPrefs>? decode(Object? raw) {
+    final decoded = super.decode(raw);
+    final order = decoded?['order'];
+    if (order == null || order.layoutVersion >= salesOrderColumnLayoutVersion) {
+      return decoded;
+    }
+    final migrated = migrateSalesOrderDeliveryColumnLayout(
+      order: order.order,
+      hidden: order.hidden,
+    );
+    decoded!['order'] = EditableGridColumnsPrefs(
+      order: migrated.order,
+      hidden: migrated.hidden,
+      pinned: order.pinned,
+      layoutVersion: salesOrderColumnLayoutVersion,
+    );
+    return decoded;
+  }
 }
 
 class PurchaseDocGridColumnPrefsNotifier

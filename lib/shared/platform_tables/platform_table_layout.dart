@@ -5,6 +5,7 @@ import '../providers/uten_page_prefs_notifier.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../stock_inventory/instant_inventory_column_layout.dart';
 import '../widgets/procurement_document_layout.dart';
+import '../widgets/sales_document_layout.dart';
 import 'platform_table_models.dart';
 import 'procurement_review_column_layout.dart';
 import 'goods_column_layout.dart';
@@ -156,6 +157,8 @@ class PlatformTableLayoutNotifier
         ? goodsColumnLayoutVersion
         : tableKey == purchaseOrderItemsTableKey
         ? purchaseOrderColumnLayoutVersion
+        : tableKey == salesOrderItemsTableKey
+        ? salesOrderColumnLayoutVersion
         : _instantInventory
         ? instantInventoryColumnLayoutVersion
         : _financeReview || _materialPreparation || _financeEntry
@@ -168,6 +171,18 @@ class PlatformTableLayoutNotifier
     final decoded = PlatformTableLayout.fromJson(
       Map<String, dynamic>.from(raw),
     );
+    if (tableKey == salesOrderItemsTableKey &&
+        decoded.layoutVersion < salesOrderColumnLayoutVersion) {
+      final migrated = migrateSalesOrderDeliveryColumnLayout(
+        order: decoded.order,
+        hidden: decoded.hidden,
+      );
+      return decoded.copyWith(
+        order: migrated.order,
+        hidden: migrated.hidden,
+        layoutVersion: salesOrderColumnLayoutVersion,
+      );
+    }
     if (tableKey == goodsMasterTableKey &&
         decoded.layoutVersion < goodsColumnLayoutVersion) {
       return decoded.copyWith(

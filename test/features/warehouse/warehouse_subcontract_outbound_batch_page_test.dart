@@ -538,7 +538,7 @@ void main() {
     await _confirm(tester);
     final items = (api.savedBodies.first['items'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items.first['weight'], 1.5);
+    expect(items.first['weight'], '1.5');
     expect(items.first['qtyFromWeight'], isFalse);
     expect(tester.takeException(), isNull);
   });
@@ -692,7 +692,7 @@ void main() {
         .cast<Map<String, dynamic>>();
     expect(items, hasLength(2));
     expect(items.last['remark'], '保留原行交接记录');
-    expect(items.last['weight'], 2.25);
+    expect(items.last['weight'], '2.25');
     expect(api.approvals, ['issue-2', 'issue-3', 'issue-1']);
     expect(tester.takeException(), isNull);
   });

@@ -889,8 +889,14 @@ void main() {
     expect(find.text('计划实收进度'), findsNothing);
     expect(find.text('实际产出'), findsOneWidget);
     expect(find.text('生产路线'), findsNothing);
-    // 不可勾选：分类不可选时表格没有全选框也没有行选择框。
-    expect(find.byType(Checkbox), findsNothing);
+    // Output selection is available without granting business batch actions.
+    expect(_workshopOutputTable(tester).selectable, isFalse);
+    await tester.tap(
+      find.byKey(const ValueKey('master-data-table-select-all')),
+    );
+    await tester.pumpAndSettle();
+    expect(_workshopOutputTable(tester).selectedIds, isEmpty);
+    expect(find.textContaining('批量报工'), findsNothing);
   });
 
   testWidgets(
@@ -2649,7 +2655,12 @@ void reportSourceSelectionTests() {
     'multi-source reporting still requires report creation permission',
     (tester) async {
       await mount(tester, createPermission: false);
-      expect(find.byType(Checkbox), findsNothing);
+      expect(_workshopOutputTable(tester).selectable, isFalse);
+      await tester.tap(
+        find.byKey(const ValueKey('master-data-table-select-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(_workshopOutputTable(tester).selectedIds, isEmpty);
       expect(find.textContaining('批量报工'), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -2671,6 +2682,15 @@ void reportSourceSelectionTests() {
     expect(tester.takeException(), isNull);
   });
 }
+
+MasterDataTableView<ProductionExecutionWorkbenchSegment> _workshopOutputTable(
+  WidgetTester tester,
+) => tester.widget(
+  find.byWidgetPredicate(
+    (widget) =>
+        widget is MasterDataTableView<ProductionExecutionWorkbenchSegment>,
+  ),
+);
 
 GoRouter _router() => GoRouter(
   initialLocation: '/',

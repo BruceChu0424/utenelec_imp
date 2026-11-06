@@ -25,6 +25,7 @@ import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 
 import '../support/dialog_fixture_capture.dart';
+import '../support/pump_until.dart';
 
 Widget _app({
   required Set<String> permissions,
@@ -402,7 +403,11 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.results.length == 1,
+        reason: 'The first confirmed export must enter its held download',
+      );
       expect(api.results, hasLength(1));
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pumpAndSettle();
@@ -416,7 +421,11 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.results.length == 2,
+        reason: 'The new identity must own a distinct held export',
+      );
       expect(api.results, hasLength(2));
       api.results.first.completeError(StateError('old request failed'));
       await tester.pump();
@@ -533,7 +542,12 @@ void main() {
       }
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.downloads == 1,
+        reason:
+            'The original export must be in flight before retiring its owner',
+      );
       expect(api.downloads, 1);
       current = false;
       api.result.complete(Uint8List.fromList([1, 2, 3]));

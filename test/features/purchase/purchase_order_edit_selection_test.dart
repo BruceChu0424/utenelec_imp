@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker_models.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -24,6 +26,7 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/widgets/business_employee_picker.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   testWidgets('采购编辑权限可选择业务员且不读取员工档案', (tester) async {
@@ -46,8 +49,18 @@ void main() {
       reason:
           'Actual reads: ${api.reads}; candidate queries: ${api.personQueries}',
     );
-    expect(find.text('采购专员'), findsOneWidget);
-    expect(find.text('职位'), findsOneWidget);
+    final candidates = tester
+        .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+          find.byKey(const Key('uten-employee-picker-candidates')),
+        );
+    expect(candidates.columns.map((column) => column.label), [
+      '工号',
+      '姓名',
+      '部门',
+    ]);
+    expect(candidates.items.single.positionName, '采购专员');
+    expect(find.text('采购专员'), findsNothing);
+    expect(find.text('职位'), findsNothing);
     expect(find.text('账号状态'), findsNothing);
     await tester.tap(find.text('业务经办甲'));
     await tester.pump();
@@ -714,8 +727,8 @@ Future<void> _openSourcePreview(
   _SelectionApi api, {
   MemoryFormDraftStorage? drafts,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [

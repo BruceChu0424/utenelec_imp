@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyProfileChangesPage @44 (page-class)<br>_MyProfileChangesPageState @52 (state-class)<br>_MyBatchDetailDialog @369 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2490；builder ['MyProfileChangesPage']；redirect None |
+| 真实路由绑定 | /profile/me/changes；router @2500；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-119 · lib/features/profile/pages/profile_edit_page.dart
 
-模块 `profile`；641 行；SHA256 `7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb`。
+模块 `profile`；641 行；SHA256 `a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2475；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2485；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @760 (supporting-class)<br>_EditFieldPencil @885 (supporting-class)<br>_PolicyBadge @914 (supporting-class)<br>_IdentityGroup @932 (supporting-class)<br>_HeroCard @944 (supporting-class)<br>_RoleChip @1075 (supporting-class)<br>_MyDepartmentShortcut @1123 (supporting-class)<br>_MyChangesShortcut @1175 (supporting-class) |
-| 真实路由绑定 | /profile；router @642；builder ['ProfilePage']；redirect None |
+| 真实路由绑定 | /profile；router @643；builder ['ProfilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

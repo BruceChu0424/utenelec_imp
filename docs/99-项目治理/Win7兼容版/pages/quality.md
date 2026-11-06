@@ -22,12 +22,12 @@
 
 ## W7-BIZ-129 · lib/features/quality/pages/production_fqc_inspections_page.dart
 
-模块 `quality`；697 行；SHA256 `b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e`。
+模块 `quality`；697 行；SHA256 `0c3b878c126bf686fb702475f42cc1448e076d3a6b37f1ffb50a53ce1587c686`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFqcInspectionsPage @45 (page-class)<br>_ProductionFqcInspectionsPageState @53 (state-class) |
-| 真实路由绑定 | /quality/production-inspections；router @1511；builder ['ProductionFqcInspectionsPage']；redirect None |
+| 真实路由绑定 | /quality/production-inspections；router @1512；builder ['ProductionFqcInspectionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityBatchApprovalSelection @66 (supporting-class)<br>_FqcSheetGroup @79 (supporting-class)<br>_EditableIqcRow @92 (supporting-class)<br>_IqcReceiptGroup @175 (supporting-class)<br>_ApprovalRow @187 (supporting-class)<br>QualityBatchApprovalPage @233 (page-class)<br>_QualityBatchApprovalPageState @248 (state-class) |
-| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1377；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
+| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1378；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -58,17 +58,17 @@
 
 ## W7-BIZ-131 · lib/features/quality/pages/quality_inspection_records_page.dart
 
-模块 `quality`；1321 行；SHA256 `0eb8b31aafda141f814e706f7dedf1bbc69b53456266bf4b3d3138013392472c`。
+模块 `quality`；1333 行；SHA256 `9d066c95673a4a4e29461fa344ba0e0a29f220fb819e2a3003110dad1e4e64cf`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | QualityInspectionRecordsPage @42 (page-class)<br>_QualityInspectionRecordsPageState @82 (state-class)<br>_QualityInspectionRecordDetailPanel @864 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @874 (state-class)<br>_DetailSection @1165 (supporting-class)<br>_DetailField @1195 (supporting-class)<br>_DetailFieldTable @1206 (supporting-class)<br>_DetailQuantityRow @1245 (supporting-class)<br>_InlineRecordError @1257 (supporting-class) |
-| 真实路由绑定 | /quality/inspection-records；router @1499；builder ['QualityInspectionRecordsPage']；redirect None |
+| 页面/状态类 | QualityInspectionRecordsPage @42 (page-class)<br>_QualityInspectionRecordsPageState @82 (state-class)<br>_QualityInspectionRecordDetailPanel @876 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @886 (state-class)<br>_DetailSection @1177 (supporting-class)<br>_DetailField @1207 (supporting-class)<br>_DetailFieldTable @1218 (supporting-class)<br>_DetailQuantityRow @1257 (supporting-class)<br>_InlineRecordError @1269 (supporting-class) |
+| 真实路由绑定 | /quality/inspection-records；router @1500；builder ['QualityInspectionRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | procurement_inspection:view @140；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @143；定义 lib/shared/auth/permissions.dart:468 |
+| 权限 | procurement_inspection:view @145；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @148；定义 lib/shared/auth/permissions.dart:468 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/quality/repositories/quality_inspection_record_repository.dart；接口：/procurement/inspection/records、/procurement/inspection/records/{recordId}、/production/quality-inspections/records、/production/quality-inspections/records/{recordId} |
-| 动作处理 | update @99 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @133 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @567 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @934 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @991 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1002 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1185 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
+| 动作处理 | update @104 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @138 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @579 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @946 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @1003 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1014 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1197 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityPendingDisposalPage @78 (page-class)<br>_QualityPendingDisposalPageState @86 (state-class)<br>_DisposalRow @995 (supporting-class)<br>ProcurementInspectionDetailPage @1075 (page-class)<br>_ProcurementInspectionDetailPageState @1095 (state-class)<br>_InspectionReportRow @1972 (supporting-class)<br>_InlineWorkbenchError @2002 (supporting-class)<br>_ReceiptHeaderRow @2043 (supporting-class) |
-| 真实路由绑定 | /warehouse/inspections；router @1365；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1402；builder ['ProcurementInspectionDetailPage']；redirect None |
+| 真实路由绑定 | /warehouse/inspections；router @1366；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1403；builder ['ProcurementInspectionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @130；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @136；定义 lib/shared/auth/permissions.dart:468<br>procurement_inspection:handle @142；定义 lib/shared/auth/permissions.dart:344<br>production_quality_inspection:approve @271；定义 lib/shared/auth/permissions.dart:470<br>procurement_inspection:handle @1167；定义 lib/shared/auth/permissions.dart:344 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityTaskCenterPage @38 (page-class)<br>_QualityEntry @169 (supporting-class)<br>_QualityDisposalPendingBadge @191 (supporting-class) |
-| 真实路由绑定 | /quality/task-center；router @1494；builder ['QualityTaskCenterPage']；redirect None |
+| 真实路由绑定 | /quality/task-center；router @1495；builder ['QualityTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @49；定义 lib/shared/auth/permissions.dart:343<br>production_quality_inspection:view @52；定义 lib/shared/auth/permissions.dart:468 |
 | 接口常量 | 未静态确认；不能当作不存在 |

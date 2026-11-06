@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeDetailPage @93 (page-class)<br>_EmployeeDetailPageState @102 (state-class) |
-| 真实路由绑定 | /employee/:id；router @930；builder ['EmployeeDetailPage']；redirect None |
+| 真实路由绑定 | /employee/:id；router @931；builder ['EmployeeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:avatar_edit @83；定义 lib/shared/auth/permissions.dart:804<br>employee:edit @84；定义 lib/shared/auth/permissions.dart:14<br>employee:pii:edit @85；定义 lib/shared/auth/permissions.dart:134<br>employee:contract_renew @87；定义 lib/shared/auth/permissions.dart:803<br>employee:confirm @89；定义 lib/shared/auth/permissions.dart:801<br>employee:rehire @90；定义 lib/shared/auth/permissions.dart:802<br>employee:view @183；定义 lib/shared/auth/permissions.dart:12<br>authorization:manage @241；定义 lib/shared/auth/permissions.dart:22<br>attachment:view @376；定义 lib/shared/auth/permissions.dart:141<br>employee:pii:view @377；定义 lib/shared/auth/permissions.dart:133<br>attachment:upload @383；定义 lib/shared/auth/permissions.dart:807<br>employee:transfer @548；定义 lib/shared/auth/permissions.dart:798<br>employee:offboard @569；定义 lib/shared/auth/permissions.dart:800<br>account:support @655；定义 lib/shared/auth/permissions.dart:19<br>attachment:view @987；定义 lib/shared/auth/permissions.dart:141<br>employee:pii:view @988；定义 lib/shared/auth/permissions.dart:133<br>authorization:manage @1578；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeEditPage @79 (page-class)<br>_EmployeeEditPageState @87 (state-class) |
-| 真实路由绑定 | /employee/:id/edit；router @917；builder ['EmployeeEditPage']；redirect None |
+| 真实路由绑定 | /employee/:id/edit；router @918；builder ['EmployeeEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:pii:edit @70；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @73；定义 lib/shared/auth/permissions.dart:136<br>employee:pii:edit @309；定义 lib/shared/auth/permissions.dart:134<br>employee:pii:edit @397；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @402；定义 lib/shared/auth/permissions.dart:136<br>employee:pii:edit @492；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @494；定义 lib/shared/auth/permissions.dart:136<br>employee:edit @676；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,21 +40,21 @@
 
 ## W7-BIZ-048 · lib/features/employee/pages/employee_list_page.dart
 
-模块 `employee`；485 行；SHA256 `eb1172cb95f6411f210d7a4a3461bde6b8065b5215c5b89a27f270bc705c97f4`。
+模块 `employee`；499 行；SHA256 `f8ca533529d91efbcf3513d692d479ea45b53a55c3a9cb32c7c392c7875015b9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | EmployeeListPage @49 (page-class)<br>_EmployeeListPageState @56 (state-class) |
-| 真实路由绑定 | /employee；router @905；builder ['EmployeeListPage']；redirect None |
+| 页面/状态类 | EmployeeListPage @50 (page-class)<br>_EmployeeListPageState @57 (state-class) |
+| 真实路由绑定 | /employee；router @906；builder ['EmployeeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | employee:create @251；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @252；定义 lib/shared/auth/permissions.dart:134 |
+| 权限 | employee:create @265；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @266；定义 lib/shared/auth/permissions.dart:134 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/employee/repositories/employee_repository.dart；接口：/org/employees、/org/employees/similar、/org/employees/{id}、/org/employees/{id}/account、/org/employees/{id}/account/lock、/org/employees/{id}/account/readiness、/org/employees/{id}/account/reset-password、/org/employees/{id}/account/unlock、/org/employees/{id}/avatar、/org/employees/{id}/change-identity、/org/employees/{id}/change-phone、/org/employees/{id}/confirm、/org/employees/{id}/contracts、/org/employees/{id}/offboard、/org/employees/{id}/rehire、/org/employees/{id}/secondary-departments、/org/employees/{id}/transfer、/profile/me<br>lib/features/employee/repositories/employee_roster_loader.dart；接口： |
-| 动作处理 | addPostFrameCallback @88 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _reload());<br>remove @188 [action-like-invocation] 提示 ['remove']；next.remove(key); // 选「所有」= 不筛 |
+| 动作处理 | addPostFrameCallback @92 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _reload());<br>remove @202 [action-like-invocation] 提示 ['remove']；next.remove(key); // 选「所有」= 不筛 |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/org/employee/EmployeeController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/EmployeeSecondaryDepartmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/MyProfileController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/MyVehiclePhoneController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/inputs/uten_search_bar.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/paging/paged_read_intent.dart` (sharedComponents)；`lib/shared/drafts/form_draft_catalog.dart` (sharedComponents)；`lib/shared/drafts/form_draft_store.dart` (sharedComponents)；`lib/shared/drafts/task_form_drafts.dart` (sharedComponents)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/employee/models/employee_api_models.dart` (models)；`lib/features/employee/models/work_years.dart` (models)；`lib/features/employee/repositories/employee_repository.dart` (repositories)；`lib/features/employee/repositories/employee_roster_loader.dart` (repositories)；`lib/features/employee/widgets/employee_leadership_badge.dart` (featureWidgets)；`lib/features/employee/widgets/employee_status_badge.dart` (featureWidgets)。
+直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/inputs/uten_search_bar.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/paging/paged_read_intent.dart` (sharedComponents)；`lib/shared/paging/read_view_activity.dart` (sharedComponents)；`lib/shared/drafts/form_draft_catalog.dart` (sharedComponents)；`lib/shared/drafts/form_draft_store.dart` (sharedComponents)；`lib/shared/drafts/task_form_drafts.dart` (sharedComponents)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/employee/models/employee_api_models.dart` (models)；`lib/features/employee/models/work_years.dart` (models)；`lib/features/employee/repositories/employee_repository.dart` (repositories)；`lib/features/employee/repositories/employee_roster_loader.dart` (repositories)；`lib/features/employee/widgets/employee_leadership_badge.dart` (featureWidgets)；`lib/features/employee/widgets/employee_status_badge.dart` (featureWidgets)。
 
 ## W7-BIZ-049 · lib/features/employee/pages/employee_offboarding_workflow_page.dart
 
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOffboardingWorkflowPage @49 (page-class)<br>_EmployeeOffboardingWorkflowPageState @59 (state-class) |
-| 真实路由绑定 | /employee/:id/offboarding；router @923；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
+| 真实路由绑定 | /employee/:id/offboarding；router @924；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOnboardingPage @62 (page-class)<br>_EmployeeOnboardingPageState @73 (state-class)<br>_EducationEntry @1496 (supporting-class)<br>_EmergencyContactEntry @1528 (supporting-class) |
-| 真实路由绑定 | /employee/onboarding；router @910；builder ['EmployeeOnboardingPage']；redirect None |
+| 真实路由绑定 | /employee/onboarding；router @911；builder ['EmployeeOnboardingPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:create @78；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @79；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @81；定义 lib/shared/auth/permissions.dart:136<br>account:support @83；定义 lib/shared/auth/permissions.dart:19 |
 | 接口常量 | 未静态确认；不能当作不存在 |

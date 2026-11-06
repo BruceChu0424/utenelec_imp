@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeDetailPage @30 (page-class)<br>_Content @92 (supporting-class)<br>_CompleteTodoButton @458 (supporting-class)<br>_CompleteTodoButtonState @468 (state-class) |
-| 真实路由绑定 | /notice/:id；router @861；builder ['NoticeDetailPage']；redirect None |
+| 真实路由绑定 | /notice/:id；router @862；builder ['NoticeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,17 +22,17 @@
 
 ## W7-BIZ-085 · lib/features/notice/pages/notice_list_page.dart
 
-模块 `notice`；427 行；SHA256 `ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107`。
+模块 `notice`；428 行；SHA256 `76d8f544b411c52140a2f680454ffc4800bcaa9786cd203307892c820a0f07ad`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeListPage @42 (page-class)<br>_NoticeListPageState @53 (state-class) |
-| 真实路由绑定 | /notice；router @829；builder ['NoticeListPage']；redirect None |
+| 真实路由绑定 | /notice；router @830；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @66 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @102 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @107 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @135 [action-like-invocation] 提示 ['delete']；action: () => deleteNotices(ref, _selected.toList()),<br>removeAll @349 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @418 [callback-reference] 提示 ['delete']；onAction |
+| 动作处理 | addPostFrameCallback @66 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @102 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @107 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @135 [action-like-invocation] 提示 ['delete']；action: () => deleteNotices(ref, _selected.toList()),<br>removeAll @350 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @419 [callback-reference] 提示 ['delete']；onAction |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -40,17 +40,17 @@
 
 ## W7-BIZ-086 · lib/features/notice/pages/notice_publish_page.dart
 
-模块 `notice`；950 行；SHA256 `5f04455460405ab002ff93932b1334ae9a631de814f4989161deaa22a765c274`。
+模块 `notice`；951 行；SHA256 `80ee278dc036a6781d7bf4a272dd9d8b929e0634535a6ab76ef49f9ce234d8ec`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @887 (supporting-class)<br>_CelebrationTemplateCurator @905 (supporting-class) |
-| 真实路由绑定 | /notice/publish；router @841；builder ['NoticePublishPage']；redirect None |
+| 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @888 (supporting-class)<br>_CelebrationTemplateCurator @906 (supporting-class) |
+| 真实路由绑定 | /notice/publish；router @842；builder ['NoticePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | restoreFormDraft @104 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftDepartments @115 [action-like-invocation] 提示 ['restore']；_departments = restoreDraftDepartments(data['departments']);<br>restoreDraftEmployees @117 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(employees, data['employees']);<br>restoreDraftEmployees @120 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(subject, data['celebrationSubject']);<br>startFormDraftIdentityGuard @171 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @179 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) async {<br>_confirmPublish @387 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmPublish(l10n, preview);<br>saveFormDraftNow @390 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @419 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>_confirmPublish @443 [method-declaration-candidate] 提示 ['confirm']；Future<bool?> _confirmPublish(<br>noticePublishConfirmAudience @449 [action-like-invocation] 提示 ['confirm']；: l10n.noticePublishConfirmAudience(<br>copyWith @611 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @702 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @929 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelMedium?.copyWith( |
+| 动作处理 | restoreFormDraft @104 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftDepartments @115 [action-like-invocation] 提示 ['restore']；_departments = restoreDraftDepartments(data['departments']);<br>restoreDraftEmployees @117 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(employees, data['employees']);<br>restoreDraftEmployees @120 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(subject, data['celebrationSubject']);<br>startFormDraftIdentityGuard @171 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @179 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) async {<br>_confirmPublish @388 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmPublish(l10n, preview);<br>saveFormDraftNow @391 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @420 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>_confirmPublish @444 [method-declaration-candidate] 提示 ['confirm']；Future<bool?> _confirmPublish(<br>noticePublishConfirmAudience @450 [action-like-invocation] 提示 ['confirm']；: l10n.noticePublishConfirmAudience(<br>copyWith @612 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @703 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @930 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelMedium?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

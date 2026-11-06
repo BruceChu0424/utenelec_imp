@@ -513,6 +513,9 @@ class WorkshopContinuousSupplyEndToEndTest {
 
     /** 父件→自制子件→真实原料；主仓下挂普通叶仓，收料车间开通内料仓(来源仓 = 普通叶仓)。 */
     private Case create(String tag, boolean withBuyMaterial) {
+        // Repeated independent worlds retain the earlier world's permanent
+        // identifiers; a new world must claim its own genuine identities.
+        tag = tag + "-" + UUID.randomUUID();
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
         UUID parent = UUID.randomUUID(), child = UUID.randomUUID();

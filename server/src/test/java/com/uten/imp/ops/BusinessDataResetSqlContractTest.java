@@ -537,29 +537,13 @@ public class BusinessDataResetSqlContractTest {
         Path migrations = resolve(
                 Path.of("src", "main", "resources", "db", "migration"),
                 Path.of("server", "src", "main", "resources", "db", "migration"));
-        int head = 0;
-        int count = 0;
-        try (var files = Files.list(migrations)) {
-            for (Path file : files.toList()) {
-                Matcher matcher = MIGRATION_FILE.matcher(file.getFileName().toString());
-                if (!matcher.matches()) continue;
-                count++;
-                head = Math.max(head, com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1)));
-            }
-        }
-        assertThat(head).as("迁移目录里没找到任何 V*.sql").isGreaterThan(0);
-
-        // MigrationRehearsalSupport 从 classpath db/migration 目录自动推导迁移头与条数(目录是唯一事实源)。
-        String rehearsal = read(
-                Path.of("src", "test", "java", "com", "uten", "imp", "migration",
-                        "MigrationRehearsalSupport.java"),
-                Path.of("server", "src", "test", "java", "com", "uten", "imp", "migration",
-                        "MigrationRehearsalSupport.java"));
-        assertThat(rehearsal)
-                .as("MigrationRehearsalSupport 自动推导迁移头时条数也必须来自目录")
-                .contains("CURRENT_HEAD_VERSION = Integer.toString(head)")
-                .contains("CURRENT_MIGRATION_COUNT = count");
-        assertThat(MigrationRehearsalSupport.CURRENT_HEAD_VERSION).isEqualTo(Integer.toString(head));
+        // The same catalog reader owns whole and dotted Flyway versions;
+        // another integer-only filename parser must not silently omit a script.
+        var catalog = MigrationRehearsalSupport.readMigrationCatalog(migrations);
+        String head = catalog.headVersion();
+        int count = catalog.versions().size();
+        assertThat(count).as("迁移目录里没找到任何 V*.sql").isGreaterThan(0);
+        assertThat(MigrationRehearsalSupport.CURRENT_HEAD_VERSION).isEqualTo(head);
         assertThat(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT).isEqualTo(count);
 
         // 迁移总览文档的「当前源码目录」(LegacyMigrationSafetyContractTest 同样锁这一行)。
@@ -568,7 +552,7 @@ public class BusinessDataResetSqlContractTest {
                 Path.of("docs", "数据迁移", "README.md"));
         assertThat(migrationReadme)
                 .as("docs/数据迁移/README.md 的「当前本地候选源码目录」没跟上："
-                        + "请改成 **当前本地候选源码目录：V%d/%d …**（并补一句新迁移做了什么）"
+                        + "请改成 **当前本地候选源码目录：V%s/%d …**（并补一句新迁移做了什么）"
                                 .formatted(head, count))
                 .contains("当前本地候选源码目录：V" + head + "/" + count);
     }
@@ -652,10 +636,6 @@ public class BusinessDataResetSqlContractTest {
     private static String read(Path direct, Path fallback) throws IOException {
         return Files.readString(resolve(direct, fallback), StandardCharsets.UTF_8);
     }
-
-    /** {@code V552__xxx.sql} / {@code V990_1__xxx.sql}（点分 990.1）→ 捕获主版本号；R__/U__ 等非版本迁移不计。 */
-    private static final Pattern MIGRATION_FILE =
-            Pattern.compile("^V([0-9]+)(?:_([0-9]+))?__.*\\.sql$");
 
     public static Map<String, String> policy(String sql) {
         Map<String, String> result = new LinkedHashMap<>();

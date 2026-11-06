@@ -42,9 +42,17 @@ public class FinanceStatementOriginalReadAdapter implements FinanceStatementOrig
             var records=db.queryForList("SELECT item.id,item.receipt_id FROM "+table+" item JOIN "+header+" document ON document.id=item.receipt_id WHERE item.id IN("+String.join(",",Collections.nCopies(part.size(),"?"))+") AND document.supplier_id=? AND document.currency_id=? AND document.status=1 AND NOT document.is_deleted AND NOT item.is_deleted",args.toArray());
             for(var row:records)matched.computeIfAbsent((UUID)row.get("receipt_id"),ignored->new LinkedHashSet<>()).add((UUID)row.get("id"));
         }
+        // Qualify every receipt's complete live item set in bounded batches,
+        // instead of repeating one SQL round trip per matched receipt.
+        var allItems=new HashMap<UUID,Set<UUID>>();var receiptIds=new ArrayList<>(matched.keySet());
+        for(int at=0;at<receiptIds.size();at+=500){
+            var part=receiptIds.subList(at,Math.min(receiptIds.size(),at+500));
+            var records=db.queryForList("SELECT receipt_id,id FROM "+table+" WHERE receipt_id IN("+String.join(",",Collections.nCopies(part.size(),"?"))+") AND NOT is_deleted",part.toArray());
+            for(var row:records)allItems.computeIfAbsent((UUID)row.get("receipt_id"),ignored->new HashSet<>()).add((UUID)row.get("id"));
+        }
         var complete=new ArrayList<SourceDocument>();
         for(var entry:matched.entrySet()){
-            var actual=new HashSet<>(db.queryForList("SELECT id FROM "+table+" WHERE receipt_id=? AND NOT is_deleted",UUID.class,entry.getKey()));
+            var actual=allItems.getOrDefault(entry.getKey(),Set.of());
             // A monthly row subset cannot silently stand for an entire AP bill.
             if(actual.equals(entry.getValue()))complete.add(new SourceDocument(subcontract?"SUBCONTRACT_RECEIPT":"PURCHASE_RECEIPT",entry.getKey(),entry.getValue().stream().sorted().toList()));
         }

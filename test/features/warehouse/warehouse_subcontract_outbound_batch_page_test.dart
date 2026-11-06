@@ -473,12 +473,13 @@ void main() {
       expect(visibleQueries.single['source'], 'SUBCONTRACT');
       expect(visibleQueries.single['page'], 1);
       expect(
-        api.taskQueries
-            .where((query) => query['status'] == null)
-            .map((query) => query['source']),
-        unorderedEquals(['SUBCONTRACT', 'ALL']),
+        api.taskQueries.where((query) => query['status'] == null),
+        isEmpty,
+        reason:
+            'Returning reads only the selected pending scope, with no hidden source warmup.',
       );
-      expect(api.listRequests, 3);
+      expect(api.taskQueries, hasLength(1));
+      expect(api.listRequests, 1);
       expect(router.routeInformationProvider.value.uri.queryParameters, {
         'section': 'subcontract',
         'view': 'tasks',

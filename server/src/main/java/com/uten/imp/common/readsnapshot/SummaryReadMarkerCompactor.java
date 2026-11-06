@@ -12,6 +12,7 @@ import java.util.Objects;
 /** Metadata-only compaction; never takes or waits for a business-row lock. */
 @Component
 @Profile("!cloud")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix="uten.read-summary",name="compaction-enabled",havingValue="true",matchIfMissing=true)
 public class SummaryReadMarkerCompactor {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;

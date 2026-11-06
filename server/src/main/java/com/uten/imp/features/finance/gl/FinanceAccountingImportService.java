@@ -364,10 +364,10 @@ public class FinanceAccountingImportService {
         String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
         String where="(actor_id=? OR status<>'PREVIEW')"+switch(scope) {
             case "active" -> " AND (status IN ('PREVIEW','SUBMITTED'))";
-            case "history" -> " AND (status='POSTED')";
+            case "history" -> " AND (status IN ('POSTED','REJECTED','CANCELLED'))";
             default -> "";
         };
-        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-accounting-imports","finance",Map.of("actor",actor),scope,page,size,1000,revision);
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-accounting-imports","finance",Map.of("actor",actor,"lifecycleContract","accounting-import-lifecycle-v2"),scope,page,size,1000,revision);
         return summaryPages.page(request,()->{authorize();},
                 ()->db.queryForObject("SELECT count(*) FROM finance_accounting_import_batches WHERE "+where,Long.class,actor),
                 (readPage,readSize)->db.queryForList("SELECT id,kind,source_name AS \"sourceName\",source_system AS \"sourceSystem\",status,row_version AS version,actor_id AS \"actorId\",submitted_by AS \"submittedBy\" FROM finance_accounting_import_batches WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",actor,readSize,Math.multiplyExact((long)readPage-1,readSize)));

@@ -1,3 +1,6 @@
+import '../shared/finance_complete_summary_read.dart';
+import 'finance_summary_scope_field.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
 import '../../../shared/paging/read_view_activity.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import 'package:flutter/material.dart';
@@ -108,6 +111,7 @@ class _ManagerState extends ConsumerState<_Manager>
   late final int _epoch;
   late final ApiClient _api;
   List<Map<String, dynamic>> _rows = [], _recent = [];
+  FinanceSummaryScope _summaryScope = FinanceSummaryScope.active;
   Map<String, dynamic>? _preview, _pendingApply;
   bool _busy = false, _changed = false, _unknown = false;
   String? _error;
@@ -163,11 +167,23 @@ class _ManagerState extends ConsumerState<_Manager>
           );
         }
         final recent = widget.mode == 'note'
-            ? await _api.get(
-                '$_base/note-imports',
-                query: {'period': widget.period},
+            ? await readCompleteVersionedSummaries<Map<String, dynamic>>(
+                isCurrent: () => _current,
+                batchSize: 1000,
+                loadPage: (page, size, revision) => _api.get(
+                  '$_base/note-imports/summaries',
+                  query: {
+                    'period': widget.period,
+                    'scope': _summaryScope.name,
+                    'page': page,
+                    'size': size,
+                    'readSnapshotRevision': ?revision,
+                  },
+                ),
+                decode: Map<String, dynamic>.unmodifiable,
+                idOf: (row) => row['importId'],
               )
-            : <String, dynamic>{};
+            : <Map<String, dynamic>>[];
         return (value: value, recent: recent);
       });
       if (!_current) return;
@@ -175,7 +191,7 @@ class _ManagerState extends ConsumerState<_Manager>
         _rows = _items(
           loaded.value[widget.mode == 'assignment' ? 'rows' : 'items'],
         );
-        _recent = _items(loaded.recent['items']);
+        _recent = loaded.recent;
       });
     } catch (error) {
       if (isRetiredViewRead(error)) return;
@@ -409,6 +425,20 @@ class _ManagerState extends ConsumerState<_Manager>
                       child: const Text('载入原表分组目录'),
                     ),
                   ],
+                  if (widget.mode == 'note')
+                    FinanceSummaryScopeField(
+                      value: _summaryScope,
+                      includeAll: true,
+                      enabled: !_busy && !_unknown,
+                      onChanged: (scope) {
+                        if (_busy || _unknown) return;
+                        setState(() {
+                          _summaryScope = scope;
+                          _recent = [];
+                        });
+                        _load();
+                      },
+                    ),
                   if (widget.mode == 'note')
                     UtenButton(
                       onPressed: _busy || _unknown ? null : _pick,

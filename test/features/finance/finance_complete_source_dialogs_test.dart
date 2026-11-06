@@ -422,6 +422,12 @@ void main() {
       expect(find.textContaining('sha-review-250'), findsWidgets);
       expect(find.textContaining('保留完整原件页头'), findsOneWidget);
       await _tail(tester, api, key, '原件行250');
+      expect(
+        api.reads.where(
+          (read) => read.$1.endsWith('/reviews/review-250/summary'),
+        ),
+        hasLength(1),
+      );
       final original = api.reads.where((r) => r.$1.endsWith('/original-table'));
       expect(original.map((r) => r.$2['page']), [1, 2, 3]);
       expect(original.every((r) => r.$2['size'] == 100), isTrue);
@@ -519,7 +525,8 @@ class _Api extends ApiClient {
         'offsets': <Object>[],
       };
     }
-    if (path.endsWith('/reviews/review-250')) {
+    if (path.endsWith('/reviews/review-250') ||
+        path.endsWith('/reviews/review-250/summary')) {
       return {
         'id': 'review-250',
         'status': 'SUBMITTED',

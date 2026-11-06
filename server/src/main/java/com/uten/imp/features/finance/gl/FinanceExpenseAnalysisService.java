@@ -29,6 +29,8 @@ public class FinanceExpenseAnalysisService {
     private final SecurityContextCurrentUser current;
     private final FinanceDocumentAccessPolicy access;
     private final TxSessionVars tx;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
     private void read(){CurrentAuthorityGuard.requireAll("finance_report:view");FinanceCompanyReportAccess.require(access);}
     private void write(){read();CurrentAuthorityGuard.requireAll("payment_style:edit");}
     private void lock(String period){db.query("SELECT pg_advisory_xact_lock(hashtextextended(?,7103))",rs->{},"finance-expense-analysis:"+period);}
@@ -209,6 +211,26 @@ public class FinanceExpenseAnalysisService {
         db.update("INSERT INTO finance_expense_note_imports(id,actor_id,period,source_name,sha256,storage_provider,storage_key,storage_version,storage_size,preview) VALUES(?,?,?,?,?,?,?,?,?,?::jsonb)",id,actor,period,name,hash,stored.provider(),stored.key(),stored.version(),stored.size(),encode(result));
         db.update("INSERT INTO attachment_object_outbox(operation,storage_provider,storage_key,storage_version,dedupe_key) VALUES('DELETE_STAGING',?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING",stored.provider(),stored.key(),stored.version(),stored.provider()+"|DELETE_STAGING|"+stored.key()+"|"+Objects.toString(stored.version(),"<local>"));return result;
     }
+    /** Complete authorized import metadata, never the encrypted preview/body. */
+    @Transactional(readOnly=true)
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> noteImportSummaries(
+            String rawPeriod,String requestedScope,int page,int size,String revision) {
+        write();String period=period(rawPeriod);
+        String scope=com.uten.imp.common.readsnapshot.VersionedSummaryPages.scope(requestedScope);
+        UUID actor=current.requireId();
+        String where="actor_id=? AND period=?"+switch(scope) {
+            case "active" -> " AND applied_at IS NULL";
+            case "history" -> " AND applied_at IS NOT NULL";
+            default -> "";
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+                "finance-expense-note-imports","finance",List.of("lifecycle-v1",actor,period,scope),
+                scope,page,size,1000,revision);
+        return summaryPages.page(request,this::write,
+                ()->Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM finance_expense_note_imports WHERE "+where,Long.class,actor,period)),
+                (readPage,readSize)->db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\" FROM finance_expense_note_imports WHERE "+where+" ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",actor,period,readSize,Math.multiplyExact((long)readPage-1,readSize)));
+    }
+
     @Transactional(readOnly=true)
     public List<Map<String,Object>> recentNoteImports(String rawPeriod){write();String period=period(rawPeriod);return db.queryForList("SELECT id AS \"importId\",source_name AS \"sourceName\",applied_at AS \"appliedAt\" FROM finance_expense_note_imports WHERE actor_id=? AND period=? ORDER BY created_at DESC,id LIMIT 10",current.requireId(),period);}
     @Transactional(readOnly=true)

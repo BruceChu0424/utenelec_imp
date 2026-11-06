@@ -201,7 +201,7 @@ void main() {
   );
 
   testWidgets(
-    'an initially inactive draft pane admits at most one bounded bootstrap',
+    'an initially inactive pane sends no speculative read while an explicit complete consumer gets every batch',
     (tester) async {
       final source = _Source(), active = ValueNotifier(false);
       final read = source.read();
@@ -212,9 +212,21 @@ void main() {
       await _mount(tester, read, active);
       read.start();
       await _drain(tester);
-      expect(source.calls, [(1, 1)]);
+      expect(source.calls, isEmpty);
       expect(read.snapshot.complete, isFalse);
       expect(read.snapshot.rows, isEmpty);
+      final completion = read.completion;
+      await _drain(tester);
+      expect(source.calls, [(1, 1), (1, 2)]);
+      source.tail.complete(source.page(1, 2));
+      await _drain(tester);
+      final rows = await completion;
+      expect(rows, hasLength(300));
+      expect(rows.first, 1000);
+      expect(rows.last, 1299);
+      expect(rows.toSet(), hasLength(300));
+      expect(source.calls, [(1, 1), (1, 2), (1, 3)]);
+      expect(read.snapshot.complete, isTrue);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

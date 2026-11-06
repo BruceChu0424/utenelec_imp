@@ -128,6 +128,9 @@ Future<void> _pump(
   );
   await tester.tap(find.text('打开'));
   await tester.pumpAndSettle();
+  expect(api.summaryQueries, [
+    {'scope': 'active', 'page': 1, 'size': 1000},
+  ]);
 }
 
 class _ImportApi extends ApiClient {
@@ -136,6 +139,7 @@ class _ImportApi extends ApiClient {
   int uploads = 0, actualDirectories = 0;
   final applyIds = <String>[], paths = <String>[];
   final uploadedBytes = <List<int>>[];
+  final summaryQueries = <Map<String, dynamic>>[];
   final preview = <String, dynamic>{
     'importId': 'batch-1',
     'receivable': true,
@@ -196,6 +200,20 @@ class _ImportApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/auxiliary-imports/summaries') {
+      summaryQueries.add(Map<String, dynamic>.of(query ?? const {}));
+      return {
+        'items': <Object>[],
+        'page': query!['page'],
+        'size': query['size'],
+        'total': 0,
+        'totalPages': 0,
+        'scope': query['scope'],
+        'readScopeVersion': 'auxiliary-import-authority',
+        'readDataVersion': 'auxiliary-import-data',
+        'readSnapshotRevision': 'auxiliary-import-empty-active',
+      };
+    }
     if (path.contains('/operations/')) {
       return {
         'requestId': path.split('/').last,

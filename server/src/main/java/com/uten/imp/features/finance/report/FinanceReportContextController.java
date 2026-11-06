@@ -19,6 +19,46 @@ import java.util.*;
 public class FinanceReportContextController {
     private final EntityManager em;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+
+    /** Equivalent membership of the original period report: at least one
+     * period line and an active close. Do not evaluate monetary projections or
+     * join close-material multiplicity merely to select a bin identity. */
+    private static final String BIN_SCOPE="""
+        FROM workshop_material_periods period JOIN warehouses bin ON bin.id=period.bin_warehouse_id
+        WHERE period.end_date BETWEEN :from AND :to
+          AND EXISTS(SELECT 1 FROM workshop_material_period_lines line WHERE line.period_id=period.id)
+          AND EXISTS(SELECT 1 FROM workshop_material_period_closes closed WHERE closed.period_id=period.id AND closed.status='ACTIVE')
+        """;
+
+    @GetMapping("/plastic-bins/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> plasticBinSummaries(
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="1000") int size,
+            @RequestParam(required=false) String readSnapshotRevision){
+        validatePeriod(dateFrom,dateTo);
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+            "finance-plastic-bin-contexts","finance",Arrays.asList("plastic-bin-context-v1",dateFrom,dateTo),"all",page,size,1000,readSnapshotRevision);
+        return summaryPages.page(request,()->{FinanceCompanyReportAccess.require(access);validatePeriod(dateFrom,dateTo);},
+            ()->((Number)em.createNativeQuery("SELECT count(*) FROM (SELECT DISTINCT bin.id "+BIN_SCOPE+") scoped")
+                .setParameter("from",dateFrom).setParameter("to",dateTo).getSingleResult()).longValue(),
+            (batch,batchSize)->{
+                @SuppressWarnings("unchecked") List<Object[]> values=em.createNativeQuery(
+                    "SELECT DISTINCT bin.id,bin.code,bin.name "+BIN_SCOPE+" ORDER BY bin.code,bin.name,bin.id LIMIT :batchSize OFFSET :offset")
+                    .setParameter("from",dateFrom).setParameter("to",dateTo).setParameter("batchSize",batchSize)
+                    .setParameter("offset",Math.multiplyExact((long)batch-1,batchSize)).getResultList();
+                var rows=new ArrayList<Map<String,Object>>();
+                for(var value:values){var row=new LinkedHashMap<String,Object>();row.put("id",value[0].toString());row.put("code",value[1]);row.put("name",value[2]);rows.add(row);}
+                return rows;
+            });
+    }
+    private static void validatePeriod(LocalDate from,LocalDate to){
+        if(from==null||to==null||from.isAfter(to))throw new com.uten.imp.common.web.ApiException(
+            com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"请选择先后正确的期间");
+    }
+
     @GetMapping("/plastic-bins")
     public Map<String,Object> plasticBins(
             @RequestParam @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate dateFrom,

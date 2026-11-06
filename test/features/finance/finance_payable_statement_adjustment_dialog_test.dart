@@ -92,15 +92,48 @@ void main() {
       expect(targets.onPageChange, isNull);
       expect(records.onPageChange, isNull);
       expect(
-        api.queries.map((q) => (q['page'], q['size'], q['adjustmentPage'])),
+        api.queries.map(
+          (q) => (q['part'], q['page'], q['size'], q['adjustmentPage']),
+        ),
         [
-          (1, 100, 1),
-          (2, 100, 1),
-          (3, 100, 1),
-          (1, 1, 2),
-          (1, 1, 3),
-          (1, 1, 4),
+          ('targets', 1, 100, null),
+          ('targets', 2, 100, null),
+          ('targets', 3, 100, null),
+          ('adjustments', null, null, 1),
+          ('adjustments', null, null, 2),
+          ('adjustments', null, null, 3),
+          ('adjustments', null, null, 4),
         ],
+      );
+      expect(api.queries.map((q) => q['readSnapshotRevision']), [
+        null,
+        'targets-snapshot',
+        'targets-snapshot',
+        null,
+        'adjustments-snapshot',
+        'adjustments-snapshot',
+        'adjustments-snapshot',
+      ]);
+      expect(
+        targets.items.map((row) => row['ledgerId']).toSet(),
+        hasLength(251),
+      );
+      expect(records.items.map((row) => row['id']).toSet(), hasLength(151));
+      expect(
+        targets.items.every(
+          (row) =>
+              row['balanceOriginal'] == '0.000000000000000000000001' &&
+              row['balanceLocal'] == '90071992547409.0001',
+        ),
+        isTrue,
+      );
+      expect(
+        records.items.every(
+          (row) =>
+              row['released_original'] == '0.000000000000000000000001' &&
+              row['released_local'] == '90071992547409.0001',
+        ),
+        isTrue,
       );
       final before = api.queries.length;
       await tester.drag(
@@ -115,48 +148,54 @@ void main() {
       environment.dispose();
     },
   );
-  for (final drift in [false, true]) {
-    testWidgets(
-      'later record ${drift ? 'scope change' : 'denial'} publishes neither directory nor write',
-      (tester) async {
-        final api = _CompleteApi()
-          ..scopeDrift = drift
-          ..denyRecordTail = !drift;
-        final environment = await _pump(tester, api);
-        final tables = tester
-            .widgetList<MasterDataTableView<Map<String, dynamic>>>(
-              find.byWidgetPredicate(
-                (w) => w is MasterDataTableView<Map<String, dynamic>>,
-              ),
-            );
-        expect(tables, isNotEmpty);
-        final targets = tables.singleWhere(
-          (w) => w.tableKey == 'finance.payable-statement-adjustments.targets',
-        );
-        expect(targets.items, isEmpty);
-        expect(targets.error, isNotNull);
-        expect(
-          tables
-              .where(
-                (w) =>
-                    w.tableKey ==
-                    'finance.payable-statement-adjustments.records',
-              )
-              .every((w) => w.items.isEmpty),
-          isTrue,
-        );
-        final original = tables.singleWhere(
-          (w) => w.tableKey == 'finance.payable-statement-adjustments.original',
-        );
-        expect(original.items.single['periodAmountOriginal'], isNull);
-        expect(original.items.single['releasedOriginal'], isNull);
-        expect(original.items.single['currency'], '待核');
-        expect(api.saved, isEmpty);
-        expect(tester.takeException(), isNull);
-        await tester.pumpWidget(const SizedBox());
-        environment.dispose();
-      },
-    );
+  for (final failure in ['denial', 'scope change', 'data version mismatch']) {
+    testWidgets('later record $failure publishes neither directory nor write', (
+      tester,
+    ) async {
+      final api = _CompleteApi()
+        ..scopeDrift = failure == 'scope change'
+        ..dataDrift = failure == 'data version mismatch'
+        ..denyRecordTail = failure == 'denial';
+      final environment = await _pump(tester, api);
+      final tables = tester
+          .widgetList<MasterDataTableView<Map<String, dynamic>>>(
+            find.byWidgetPredicate(
+              (w) => w is MasterDataTableView<Map<String, dynamic>>,
+            ),
+          );
+      expect(tables, isNotEmpty);
+      final targets = tables.singleWhere(
+        (w) => w.tableKey == 'finance.payable-statement-adjustments.targets',
+      );
+      expect(targets.items, isEmpty);
+      expect(
+        targets.error,
+        contains(switch (failure) {
+          'denial' => 'record tail forbidden',
+          'scope change' => '数据在读取期间已变化',
+          _ => '调整范围已变化',
+        }),
+      );
+      expect(
+        tables
+            .where(
+              (w) =>
+                  w.tableKey == 'finance.payable-statement-adjustments.records',
+            )
+            .every((w) => w.items.isEmpty),
+        isTrue,
+      );
+      final original = tables.singleWhere(
+        (w) => w.tableKey == 'finance.payable-statement-adjustments.original',
+      );
+      expect(original.items.single['periodAmountOriginal'], isNull);
+      expect(original.items.single['releasedOriginal'], isNull);
+      expect(original.items.single['currency'], '待核');
+      expect(api.saved, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      environment.dispose();
+    });
   }
   testWidgets(
     'document fee has no default decision and unknown result replays exactly one original request',
@@ -455,7 +494,13 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (readError != null) throw readError!;
+    final part = query?['part'];
+    expect(part, anyOf('targets', 'adjustments'));
     return {
+      'scope': 'all',
+      'readScopeVersion': 'same-owner',
+      'readDataVersion': 'same-data',
+      'readSnapshotRevision': '$part-snapshot',
       'original': {'periodAmountOriginal': '80.0000'},
       'currency': {'code': 'TEST', 'name': '匿名原币'},
       'targets': [
@@ -476,6 +521,8 @@ class _Api extends ApiClient {
       'totalPages': 1,
       'adjustmentPage': 1,
       'adjustmentPages': 0,
+      'adjustmentSize': 50,
+      'adjustmentTotal': 0,
     };
   }
 
@@ -569,6 +616,7 @@ class _RecordApi extends _Api {
       ...await super.get(path, query: query),
       'adjustmentPage': 1,
       'adjustmentPages': 1,
+      'adjustmentTotal': 1,
       'adjustments': [
         {
           'id': id,
@@ -600,7 +648,7 @@ class _RecordApi extends _Api {
 
 class _CompleteApi extends _Api {
   final queries = <Map<String, dynamic>>[];
-  bool denyRecordTail = false, scopeDrift = false;
+  bool denyRecordTail = false, scopeDrift = false, dataDrift = false;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -610,7 +658,13 @@ class _CompleteApi extends _Api {
     final page = query?['page'] as int? ?? 1;
     final size = query?['size'] as int? ?? 100;
     final recordPage = query?['adjustmentPage'] as int? ?? 1;
-    if (denyRecordTail && recordPage == 2) {
+    final part = query?['part'];
+    final partPage = part == 'targets' ? page : recordPage;
+    expect(
+      query?['readSnapshotRevision'],
+      partPage == 1 ? isNull : '$part-snapshot',
+    );
+    if (denyRecordTail && part == 'adjustments' && recordPage == 2) {
       throw ApiException('FORBIDDEN', 'record tail forbidden', httpStatus: 403);
     }
     final start = (page - 1) * size, recordStart = (recordPage - 1) * 50;
@@ -620,9 +674,12 @@ class _CompleteApi extends _Api {
       'size': size,
       'total': 251,
       'totalPages': (251 + size - 1) ~/ size,
-      'readScopeVersion': scopeDrift && recordPage > 1
+      'readScopeVersion': scopeDrift && part == 'adjustments' && recordPage > 1
           ? 'changed-owner'
           : 'same-owner',
+      'readDataVersion': dataDrift && part == 'adjustments'
+          ? 'changed-data'
+          : 'same-data',
       'targets': [
         for (var i = start; i < start + size && i < 251; i++)
           {
@@ -636,6 +693,7 @@ class _CompleteApi extends _Api {
       ],
       'adjustmentPage': recordPage,
       'adjustmentPages': 4,
+      'adjustmentTotal': 151,
       'adjustments': [
         for (var i = recordStart; i < recordStart + 50 && i < 151; i++)
           {

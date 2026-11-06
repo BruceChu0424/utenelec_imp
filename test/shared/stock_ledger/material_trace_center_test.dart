@@ -597,30 +597,44 @@ void main() {
     );
   }
 
-  for (final paging in ['append', 'jump', 'failure']) {
-    testWidgets('subject draft follows the settled $paging page window', (
+  for (final action in [
+    'local-scroll',
+    'compatibility-page',
+    'denied-refresh',
+  ]) {
+    testWidgets('subject selection follows the complete $action result', (
       tester,
     ) async {
       final nextPage = Completer<Map<String, dynamic>>();
+      var holdContinuation = false;
+      Map<String, dynamic> subjectPage(int page) => {
+        'items': [
+          if (page == 1) ...[
+            _identity(_subject),
+            for (var index = 1; index < 30; index++)
+              {
+                'type': 'PURCHASE_ORDER',
+                'id': 'first-$index',
+                'code': 'CG-$index',
+                'label': '采购订货',
+              },
+          ] else
+            {
+              'type': 'PURCHASE_ORDER',
+              'id': 'next',
+              'code': 'CG-NEXT',
+              'label': '采购订货',
+            },
+        ],
+        'page': page,
+        'size': 30,
+        'total': 31,
+        'totalPages': 2,
+      };
       final api = _Api()
-        ..subjects = (query) async => query['page'] == 2
+        ..subjects = (query) async => query['page'] == 2 && holdContinuation
             ? nextPage.future
-            : {
-                'items': [
-                  _identity(_subject),
-                  for (var index = 1; index < 30; index++)
-                    {
-                      'type': 'PURCHASE_ORDER',
-                      'id': 'first-$index',
-                      'code': 'CG-$index',
-                      'label': '采购订货',
-                    },
-                ],
-                'page': 1,
-                'size': 30,
-                'total': 31,
-                'totalPages': 2,
-              };
+            : subjectPage(query['page'] as int);
       final results = <MaterialTraceSubject?>[];
       await _pump(tester, api, _pickerButton(onSelected: results.add));
       await tester.tap(find.text('选择单据'));
@@ -643,57 +657,21 @@ void main() {
             find.byType(MasterDataTableView<MaterialTraceSubject>),
           )
           .rowsController!;
-      if (paging == 'jump') {
-        rows.goToPage(2);
-      } else {
-        unawaited(rows.loadNextPage());
-      }
-      await tester.pump();
-      expect(api.calls.last.query['page'], 2);
-      expect(
+      expect(api.calls.map((call) => call.query['page']), [1, 2]);
+      expect(api.calls.map((call) => call.query['size']), everyElement(30));
+      expect(rows.items, hasLength(31));
+      final completedReads = api.calls.length;
+      if (action == 'denied-refresh') {
+        holdContinuation = true;
         tester
-            .widget<UtenButton>(
-              find.byKey(const Key('material-trace-subject-confirm')),
+            .widget<MasterDataTableView<MaterialTraceSubject>>(
+              find.byType(MasterDataTableView<MaterialTraceSubject>),
             )
-            .onPressed,
-        isNull,
-      );
-      expect(results, isEmpty);
-      if (paging == 'failure') {
-        nextPage.completeError(ApiException('FORBIDDEN', '候选范围已变化'));
-      } else {
-        nextPage.complete({
-          'items': [
-            {
-              'type': 'PURCHASE_ORDER',
-              'id': 'next',
-              'code': 'CG-NEXT',
-              'label': '采购订货',
-            },
-          ],
-          'page': 2,
-          'size': 30,
-          'total': 31,
-          'totalPages': 2,
-        });
-      }
-      await tester.pumpAndSettle();
-      final bar = tester.widget<UtenPickerConfirmBar>(
-        find.byType(UtenPickerConfirmBar),
-      );
-      if (paging == 'append') {
-        expect(
-          rows.items.map((row) => row.id),
-          containsAll(['order-1', 'next']),
-        );
-        expect(bar.selectedCount, 1);
-        await tester.tap(
-          find.byKey(const Key('material-trace-subject-confirm')),
-        );
-        await tester.pumpAndSettle();
-        expect(results.single?.identity, _subject.identity);
-      } else {
-        expect(bar.selectedCount, 0);
+            .onRetry!();
+        await tester.pump();
+        expect(api.calls.map((call) => call.query['page']), [1, 2, 1, 2]);
+        // A retained complete result is allowed; a new partial30 is not.
+        expect(rows.items, anyOf(isEmpty, hasLength(31)));
         expect(
           tester
               .widget<UtenButton>(
@@ -703,7 +681,68 @@ void main() {
           isNull,
         );
         expect(results, isEmpty);
+        nextPage.completeError(
+          ApiException('FORBIDDEN', '候选范围已变化', httpStatus: 403),
+        );
+        await tester.pumpAndSettle();
+        expect(rows.items, isEmpty);
+        expect(
+          tester
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          0,
+        );
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('material-trace-subject-confirm')),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(results, isEmpty);
+      } else {
+        if (action == 'compatibility-page') {
+          rows.goToPage(2);
+        } else {
+          await rows.loadNextPage();
+          final body = find
+              .descendant(
+                of: find.byType(MasterDataTableView<MaterialTraceSubject>),
+                matching: find.byWidgetPredicate(
+                  (widget) =>
+                      widget is Scrollable &&
+                      widget.axisDirection == AxisDirection.down,
+                ),
+              )
+              .last;
+          await tester.drag(body, const Offset(0, -600));
+          await tester.pumpAndSettle();
+          expect(
+            tester.state<ScrollableState>(body).position.pixels,
+            greaterThan(0),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(api.calls, hasLength(completedReads));
+        expect(rows.items, hasLength(31));
+        expect(
+          rows.items.map((row) => row.id),
+          containsAll(['order-1', 'next']),
+        );
+        expect(
+          tester
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          1,
+        );
+        await tester.tap(
+          find.byKey(const Key('material-trace-subject-confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(results.single?.identity, _subject.identity);
       }
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -919,12 +958,25 @@ void main() {
   );
 
   testWidgets(
-    'object-scope revocation on paging clears cached rows and source evidence',
+    'object-scope revocation during a refreshed internal batch clears cached rows and source evidence',
     (tester) async {
+      var revokeOnContinuation = false;
       final api = _Api()
         ..trace = (query) async {
-          if (query['page'] == 2) {
+          if (revokeOnContinuation && query['page'] == 2) {
             throw ApiException('FORBIDDEN', '负责范围已变化', httpStatus: 403);
+          }
+          if (revokeOnContinuation) {
+            final first = _response();
+            final original =
+                (first['items'] as List).single as Map<String, dynamic>;
+            first['items'] = [
+              for (var index = 0; index < 50; index++)
+                {...original, 'id': 'new-demand-$index'},
+            ];
+            first['total'] = 51;
+            first['totalPages'] = 2;
+            return first;
           }
           return _response();
         };
@@ -937,8 +989,12 @@ void main() {
       final table = tester.widget<MasterDataTableView<GoodsProductionTraceRow>>(
         find.byType(MasterDataTableView<GoodsProductionTraceRow>),
       );
-      table.onPageChange!(2);
+      expect(find.text('插座成品'), findsOneWidget);
+      expect(find.text('来源凭证 · 1'), findsOneWidget);
+      revokeOnContinuation = true;
+      table.onRetry!();
       await tester.pumpAndSettle();
+      expect(api.calls.map((call) => call.query['page']), [1, 1, 2]);
       await expectTableReadFailureDetails(tester, '负责范围已变化');
       expect(find.text('插座成品'), findsNothing);
       expect(find.text('来源凭证 · 1'), findsNothing);

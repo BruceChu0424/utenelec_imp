@@ -1,0 +1,58 @@
+{
+  "baseMain": "450aa53519754019be35e86215f5e052a2194042",
+  "sourceSha256": {
+    "test/shared/stock_ledger/material_trace_center_test.dart": "ce7c5dd967bd6d2a920a2023f716ecb4c0e95665e4363de857e81dcf744ab9db"
+  },
+  "originalWhole": {
+    "pass": 20,
+    "fail": 4
+  },
+  "finalWhole": {
+    "pass": 24,
+    "fail": 0,
+    "skip": 0
+  },
+  "strictFatalInfos": {
+    "exit": 0,
+    "issues": 0
+  },
+  "productionChanges": [],
+  "pickerContract": {
+    "records": 31,
+    "physicalBatches": [
+      1,
+      2
+    ],
+    "batchSize": 30,
+    "localScrollRequestDelta": 0,
+    "compatibilityPageRequestDelta": 0,
+    "selectionIdentityPreserved": true,
+    "deniedRefreshRequests": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "noNewPartialSnapshotPublished": true,
+    "revokedRowsAndSelectionCleared": true
+  },
+  "traceContract": {
+    "initialAcceptedRows": 1,
+    "newFirstInternalBatchRows": 50,
+    "newTotal": 51,
+    "requests": [
+      1,
+      1,
+      2
+    ],
+    "secondBatchResult": "403",
+    "clearsPriorRowsAndSourceEvidence": true
+  },
+  "evidenceSha256": {
+    "original-whole.log": "69b1907e69c33e754b28c7f6d4db834f4f184a16bd7a2180455d01be3a8d8e33",
+    "original-whole.jsonl": "9aede0eb3d01239dea7e651c6367d930be453d0899454f75d3320df4907c2e2c",
+    "current-whole.log": "3d64ac1655700c514b86aabf55a9e6143a99a51a27ea3496886154cfa2978c62",
+    "current-whole.jsonl": "7ee454cad75f25fd584ac68687daad869b48ded0a67c5e755c7803cf67d4de29",
+    "strict.log": "bbf6bb756238279f6520e8bded3fa671ed0ed4938337fbdbbd536083daea08c8"
+  }
+}

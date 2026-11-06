@@ -1,0 +1,27 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart
+00:00 +0: subject trace headers retain typed identity and dates in every server query
+00:01 +1: stock ledger entry is absent with only where-used permission
+00:02 +2: stock ledger entry opens the permitted original material
+00:02 +3: stock ledger cached callback cannot navigate after stock permission revocation
+00:03 +4: stock ledger cached callback cannot navigate after account scope change
+00:03 +5: subject identity, source precision and output batches preserve distinct facts
+00:03 +6: repository binds typed UUID, direction and dates rather than display number
+00:03 +7: picker starts without a request and distinguishes equal numbers by type and UUID
+00:04 +8: subject draft is discarded by 取消
+00:04 +9: subject draft is discarded by 关闭
+00:04 +10: subject draft is discarded by 遮罩
+00:04 +11: subject draft and cached confirmation expire on keyword change
+00:05 +12: subject draft and cached confirmation expire on exact filter change
+00:05 +13: subject selection follows the complete local-scroll result
+00:05 +14: subject selection follows the complete compatibility-page result
+00:06 +15: subject selection follows the complete denied-refresh result
+00:06 +16: typing a replacement invalidates old results before debounce and ignores late response
+00:06 +17: source-only records remain visible instead of claiming the document does not exist
+00:06 +18: picker keeps equal permissions but clears results on actual revocation
+00:07 +19: new query subject rejects a delayed previous order response
+00:07 +20: query results use the shared table and expose output batch facts
+00:07 +21: wrong subject response is rejected rather than presented under another order
+00:07 +22: object-scope revocation during a refreshed internal batch clears cached rows and source evidence
+00:08 +23: a cached row callback cannot expose old details between permission change and repaint
+00:08 +24: All tests passed!

@@ -1,0 +1,134 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart
+00:00 +0: subject trace headers retain typed identity and dates in every server query
+00:01 +1: stock ledger entry is absent with only where-used permission
+00:01 +2: stock ledger entry opens the permitted original material
+00:02 +3: stock ledger cached callback cannot navigate after stock permission revocation
+00:02 +4: stock ledger cached callback cannot navigate after account scope change
+00:03 +5: subject identity, source precision and output batches preserve distinct facts
+00:03 +6: repository binds typed UUID, direction and dates rather than display number
+00:03 +7: picker starts without a request and distinguishes equal numbers by type and UUID
+00:03 +8: subject draft is discarded by 取消
+00:03 +9: subject draft is discarded by 关闭
+00:03 +10: subject draft is discarded by 遮罩
+00:03 +11: subject draft and cached confirmation expire on keyword change
+00:04 +12: subject draft and cached confirmation expire on exact filter change
+00:04 +13: subject draft follows the settled append page window
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart:630:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  subject draft follows the settled append page window
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:09 +13 -1: subject draft follows the settled append page window [E]
+  Test failed. See exception logs above.
+  The test description was: subject draft follows the settled append page window
+  
+00:09 +13 -1: subject draft follows the settled jump page window
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart:630:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  subject draft follows the settled jump page window
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:12 +13 -2: subject draft follows the settled jump page window [E]
+  Test failed. See exception logs above.
+  The test description was: subject draft follows the settled jump page window
+  
+00:12 +13 -2: subject draft follows the settled failure page window
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+pumpAndSettle timed out
+
+When the exception was thrown, this was the stack:
+#0      WidgetTester.pumpAndSettle.<anonymous closure> (package:flutter_test/src/widget_tester.dart:717:11)
+<asynchronous suspension>
+#1      TestAsyncUtils.guard.<anonymous closure> (package:flutter_test/src/test_async_utils.dart:130:27)
+<asynchronous suspension>
+#2      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart:630:7)
+<asynchronous suspension>
+#3      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#4      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+The test description was:
+  subject draft follows the settled failure page window
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:16 +13 -3: subject draft follows the settled failure page window [E]
+  Test failed. See exception logs above.
+  The test description was: subject draft follows the settled failure page window
+  
+00:16 +13 -3: typing a replacement invalidates old results before debounce and ignores late response
+00:16 +14 -3: source-only records remain visible instead of claiming the document does not exist
+00:16 +15 -3: picker keeps equal permissions but clears results on actual revocation
+00:16 +16 -3: new query subject rejects a delayed previous order response
+00:16 +17 -3: query results use the shared table and expose output batch facts
+00:17 +18 -3: wrong subject response is rejected rather than presented under another order
+00:17 +19 -3: object-scope revocation on paging clears cached rows and source evidence
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: exactly one matching candidate
+  Actual: _KeyWidgetFinder:<Found 0 widgets with key [<'master-table-initial-read-details'>]: []>
+   Which: means none were found but one was expected
+
+When the exception was thrown, this was the stack:
+#4      expectTableReadFailureDetails (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/support/table_read_status.dart:13:3)
+#5      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart:942:13)
+<asynchronous suspension>
+#6      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#7      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/support/table_read_status.dart line 13
+The test description was:
+  object-scope revocation on paging clears cached rows and source evidence
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:17 +19 -4: object-scope revocation on paging clears cached rows and source evidence [E]
+  Test failed. See exception logs above.
+  The test description was: object-scope revocation on paging clears cached rows and source evidence
+  
+00:17 +19 -4: a cached row callback cannot expose old details between permission change and repaint
+00:18 +20 -4: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart: object-scope revocation on paging clears cached rows and source evidence
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart: subject draft follows the settled append page window
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart: subject draft follows the settled failure page window
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/stock_ledger/material_trace_center_test.dart: subject draft follows the settled jump page window

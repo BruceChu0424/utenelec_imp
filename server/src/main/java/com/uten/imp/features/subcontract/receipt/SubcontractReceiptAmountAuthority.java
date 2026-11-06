@@ -44,7 +44,8 @@ public class SubcontractReceiptAmountAuthority {
                            source_order.settlement_method_id, fn_procurement_approved_tax_rate('SUBCONTRACT', source_order.id, source_order.tax_rate),
                            source_order.status,
                            COALESCE(source_item.arrival_overage_posted_qty,0),
-                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input, source_order.id
+                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input, source_order.id,
+                           fn_subcontract_normal_receipt_limit(source_item.id)
                     FROM subcontract_order_items source_item
                     JOIN subcontract_orders source_order ON source_order.id=source_item.order_id
                     WHERE source_item.id=:itemId
@@ -99,9 +100,12 @@ public class SubcontractReceiptAmountAuthority {
             if (currentAllowance.size() > 1) throw conflict("委外到货超量财务授权缺失或重复");
             BigDecimal currentApproved = currentAllowance.isEmpty()
                     ? BigDecimal.ZERO : decimal(currentAllowance.getFirst());
+            BigDecimal normalAllowance = Short.valueOf((short) 1).equals(item.getMaterialConsumptionVersion())
+                    ? BigDecimal.ZERO : decimal(source[13]).subtract(sourceQty).max(BigDecimal.ZERO);
             AuthorizedSource authorized = authorizedSource(
                     sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
-                    postedOverageQty, currentApproved, decimal(source[11]));
+                    postedOverageQty.add(normalAllowance),
+                    currentApproved, decimal(source[11]));
             Object[] prior = (Object[]) em.createNativeQuery("""
                     SELECT COALESCE(SUM(receipt_item.qty),0),
                            COALESCE(SUM(receipt_item.amount_original),0),
@@ -123,7 +127,7 @@ public class SubcontractReceiptAmountAuthority {
             BigDecimal rawPriorQty=decimal(prior[0]);
             BigDecimal rawPriorOriginal=decimal(prior[1]);
             BigDecimal rawPriorLocal=decimal(prior[2]);
-            var released=replacementAllocation.releasedCapacity(
+            var released=replacementAllocation.releasedCapacityWithOrdinaryReturns(
                     "SUBCONTRACT",item.getOrderItemId());
             BigDecimal effectivePriorQty=rawPriorQty.subtract(released.qty());
             boolean exactPriceBasis=MoneyPolicy.exactProduct(sourceQty,sourcePrice).compareTo(sourceOriginal)==0

@@ -89,7 +89,7 @@ class SubcontractShortDeliveryPreStockHoldTest {
     void setUp() {
         jdbc = new FakeJdbc(trace);
         waste = mock(SubcontractWasteService.class);
-        when(waste.recordShortDeliveryLoss(any(), any(), any(), any(), any(), any())).thenReturn(WASTE_ID);
+        when(waste.recordShortDeliveryLoss(any(), any(), any(), any())).thenReturn(WASTE_ID);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(ACTOR_USER);
         when(currentUser.requireEmployeeId()).thenReturn(ACTOR_EMPLOYEE);
@@ -204,7 +204,7 @@ class SubcontractShortDeliveryPreStockHoldTest {
         assertTrue(steps.indexOf("update:ACCEPTED_LOSS") < steps.indexOf("release:[" + ITEM_ID + "]"),
                 "接受损耗写完才补做转正: " + steps);
         verify(waste).recordShortDeliveryLoss(eq(ITEM_ID), argThat(q -> q.compareTo(new BigDecimal("50")) == 0),
-                argThat(q -> q.compareTo(new BigDecimal("5")) == 0), eq(new BigDecimal("5")), anyString(), any());
+                anyString(), any());
     }
 
     @Test

@@ -247,6 +247,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('预计去向(基本量)'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('warehouse-arrival-qty-unit-rate-order-item')),
+      '2',
+    );
+    await tester.pumpAndSettle();
     // 行级入库仓库默认跟随建议仓（成品仓）；跨仓预定提示按行计算。
     expect(find.text('当前有 1 行包含跨仓预定'), findsOneWidget);
     expect(find.text('跨仓部分 24 个 不绑定计划 · 其余按预定分配'), findsOneWidget);
@@ -499,6 +504,15 @@ void main() {
     );
     await tester.tap(find.text('打开登记'));
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('warehouse-arrival-qty-order-item-1')),
+      '5',
+    );
+    await tester.enterText(
+      find.byKey(const Key('warehouse-arrival-qty-order-item-2')),
+      '8',
+    );
+    await tester.pumpAndSettle();
 
     // 「移出本次登记」只在行右键菜单里（表头上方不再有常驻按钮）。
     expect(find.text('移出本次登记 (0)'), findsNothing);
@@ -540,6 +554,7 @@ void main() {
     expect(api.arrivalPostBodies, isEmpty);
 
     // 移出后选中集已空（提交集=勾选集）：勾回「明细 A」才能提交。
+    await tester.ensureVisible(find.byType(Checkbox).at(0));
     await tester.tap(find.byType(Checkbox).at(0));
     await tester.pump();
 
@@ -981,7 +996,11 @@ void main() {
     // 「到货来源」列已删(2026-10-10)：来源歧义(订单同时有正常待到货与已退未补)由服务端
     // 409 弹「到货来源」二选一兜底。第一次提交被 409 拒 → 选「先补退货」→ 全部行 source
     // 设为先补退货并自动重提(内容变了，幂等键换新)。
-    // 登记页：数量已按批准剩余预填（5），仓库已按建议仓预填，直接登记并送检。
+    // 委外按实际清点5个登记；理论供料容量不会代填实收。
+    await tester.enterText(
+      find.byKey(const Key('warehouse-arrival-qty-order-item-1')),
+      '5',
+    );
     await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     // 审核责任确认框 → 确认登记送检。
@@ -1084,6 +1103,10 @@ void main() {
     await tester.tap(find.byKey(const Key('warehouse-picker-confirm')));
     await tester.pumpAndSettle();
     // 新一次到货同样先撞来源歧义 409，弹窗选「先补退货」后自动重提成功。
+    await tester.enterText(
+      find.byKey(const Key('warehouse-arrival-qty-order-item-1')),
+      '5',
+    );
     await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));

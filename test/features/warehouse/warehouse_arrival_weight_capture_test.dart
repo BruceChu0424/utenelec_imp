@@ -78,6 +78,7 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
   required ProcurementReceiptPrefill prefill,
   Map<String, WeightUnit> massUnits = const {},
   bool failFirstArrival = false,
+  String actualQty = '5',
 }) async {
   tester.view.physicalSize = const Size(2200, 1600);
   tester.view.devicePixelRatio = 1;
@@ -147,6 +148,15 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
   );
   router.push<void>('/receipt');
   await tester.pumpAndSettle();
+  if (prefill.orderType == ProcurementInboundOrderType.subcontract) {
+    // Receiving records an operator's physical count; a material capacity is
+    // never an actual receipt. The weight cases start after counting 5 units.
+    await tester.enterText(
+      find.byKey(const ValueKey('warehouse-arrival-qty-$_itemId')),
+      actualQty,
+    );
+    await tester.pumpAndSettle();
+  }
   return (api: api, weights: weights);
 }
 
@@ -501,6 +511,7 @@ void main() {
     final (:api, weights: _) = await _open(
       tester,
       prefill: _prefill(approvedRemainingQty: 10000),
+      actualQty: '10000',
     );
 
     await tester.ensureVisible(find.byKey(const ValueKey('weight-cell-weigh')));

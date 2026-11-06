@@ -57,7 +57,15 @@ Map<String, dynamic> expectationJsonOf(ProcurementReceiptPrefill prefill) {
           'baseUnitName': item.baseUnitName,
           'unitRate': item.unitRate,
           'unitPrice': item.unitPrice,
-          'orderedQty': item.approvedRemainingQty,
+          'orderedQty': item.orderedQty ?? item.approvedRemainingQty,
+          if (item.orderedQtyText != null)
+            'orderedQtyExact': item.orderedQtyText,
+          'pendingReturnQty': item.pendingReturnQty,
+          'pendingReturnQtyExact': item.pendingReturnQtyText,
+          'materialReceivableQty': item.materialReceivableQty,
+          'materialReceivableQtyExact': item.materialReceivableQtyText,
+          'normalMaxReceivableQty': item.normalMaxReceivableQty,
+          'normalMaxReceivableQtyExact': item.normalMaxReceivableQtyText,
           'acceptedQty': 0,
           'remainingQty': item.approvedRemainingQty,
           if (item.approvedRemainingQtyText != null)

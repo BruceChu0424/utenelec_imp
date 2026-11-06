@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ApprovalCenterPage @23 (page-class)<br>_ApprovalCenterPageState @38 (state-class) |
-| 真实路由绑定 | /approvals/:departmentCode；router @756；builder ['ApprovalCenterPage']；redirect None<br>/sales/manager-review；router @1941；builder ['ApprovalCenterPage']；redirect None |
+| 真实路由绑定 | /approvals/:departmentCode；router @757；builder ['ApprovalCenterPage']；redirect None<br>/sales/manager-review；router @1942；builder ['ApprovalCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:approve @85；定义 lib/shared/auth/permissions.dart:58<br>expense:approve:finance_initial @86；定义 lib/shared/auth/permissions.dart:60<br>expense:approve:finance_review @87；定义 lib/shared/auth/permissions.dart:61<br>expense:pay @88；定义 lib/shared/auth/permissions.dart:109<br>expense:view @89；定义 lib/shared/auth/permissions.dart:56<br>expense:approve:executive @92；定义 lib/shared/auth/permissions.dart:62<br>expense:approve:department @93；定义 lib/shared/auth/permissions.dart:59<br>application:approve:finance_initial @96；定义 lib/shared/auth/permissions.dart:78<br>application:approve:finance_review @97；定义 lib/shared/auth/permissions.dart:80<br>application:receive @98；定义 lib/shared/auth/permissions.dart:87<br>application:pay @99；定义 lib/shared/auth/permissions.dart:88<br>application:prepayment:link_finance @100；定义 lib/shared/auth/permissions.dart:89<br>application:view @101；定义 lib/shared/auth/permissions.dart:76<br>application:approve:executive @105；定义 lib/shared/auth/permissions.dart:84<br>application:approve:vice_executive @106；定义 lib/shared/auth/permissions.dart:82<br>application:approve:department @110；定义 lib/shared/auth/permissions.dart:77<br>application:approve:procurement @111；定义 lib/shared/auth/permissions.dart:85<br>application:approve:department @113；定义 lib/shared/auth/permissions.dart:77<br>sales_order_manager:view @121；定义 lib/shared/auth/permissions.dart:527<br>sales_quote_manager:view @122；定义 lib/shared/auth/permissions.dart:523<br>approval_policy:manage @280；定义 lib/shared/auth/permissions.dart:63 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ApprovalPolicySettingsPage @32 (page-class)<br>_ApprovalPolicySettingsPageState @39 (state-class)<br>_PolicyEditor @220 (supporting-class)<br>_PolicyEditorState @227 (state-class) |
-| 真实路由绑定 | /approvals/settings；router @751；builder ['ApprovalPolicySettingsPage']；redirect None |
+| 真实路由绑定 | /approvals/settings；router @752；builder ['ApprovalPolicySettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | approval_policy:manage @95；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @278；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @322；定义 lib/shared/auth/permissions.dart:63 |
 | 接口常量 | 未静态确认；不能当作不存在 |

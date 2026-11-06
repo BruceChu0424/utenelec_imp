@@ -163,7 +163,7 @@ class SubcontractDocConfig {
   final bool itemHasGirth; // 围数（进仓/退货/材料退）
   final bool itemHasStep; // 工序（进仓/退货）
   final bool itemHasBoxQty; // 胶箱数量（材料出）
-  final bool itemHasAllowedLossPct; // 允许损耗%（订货；主档记忆预填，回厂短交判定的下限）
+  final bool itemHasAllowedLossPct; // 供料损耗上限%（订货；主档记忆预填，成品目标不折减）
 
   // 明细链路差异（编辑页"从上游引入"按钮 + 回写 *ItemId）
   final bool linkToApplicationItem; // 订货 → 申请
@@ -257,7 +257,7 @@ class SubcontractDocConfig {
     // 订货不选仓库：委外成品入库仓库在进仓（到货登记）时填写。
     hasWarehouse: false,
     itemHasWeight: true,
-    // ADR-098：每行允许损耗%（货品主档记忆预填），回厂累计低于下限时仓库确认并通知委外判定。
+    // 每行供料损耗上限来自货品主档记忆；回厂不足成品目标仍需仓库确认并交委外判定。
     itemHasAllowedLossPct: true,
     linkToApplicationItem: true,
     showReceived: true,
@@ -391,7 +391,7 @@ class SubcontractDocConfig {
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
     approveEffect:
-        '订货允许损耗的正常用料已包含在回厂估算核销中，请勿重复登记；'
+        '损耗上限不代表必须发生的损耗；按实际回厂、退料与损耗记录核对材料结存，请勿重复登记；'
         '本单只登记委外商处尚未核销、确已发生的额外材料损失。'
         '审核只登记来源发料物料已损耗量(发料时已转出公司仓，不会再次扣公司库存)；'
         '建议索赔金额仅供后续财务责任决定参考，不自动扣款、抵销或生成负应付。',

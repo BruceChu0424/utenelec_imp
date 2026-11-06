@@ -1,6 +1,54 @@
 part of 'material_analysis_one_table_test.dart';
 
 void _appendQuantityRegressionTests() {
+  for (final gap in ['98.5049', '0.0001']) {
+    testWidgets('已完工自制件的新私有缺口 $gap 自动预填并保持需求归属', (tester) async {
+      await _pump(
+        tester,
+        permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+        mutate: (data) {
+          _withIssuedMakeRow(data, canIssueSurplus: false);
+          final material = _fixtureMaterial(data, 'm-7');
+          material.addAll({
+            'requiredQty': double.parse(gap),
+            'allocatedAvailableQty': 0,
+            'additionalSupplyRecommendedQty': double.parse(gap),
+            'planningUncoveredQty': double.parse(gap),
+            'netShortageQty': double.parse(gap),
+            'quantityFactsExact': {
+              'planningUncoveredQty': gap,
+              'additionalSupplyRecommendedQty': gap,
+              'netShortageQty': gap,
+            },
+          });
+          final anchor = _records(
+            data['products'],
+          ).singleWhere((product) => product['analysisLineId'] == 'anchor-7');
+          anchor['planExecutionStatus'] = 'COMPLETED';
+          return data;
+        },
+      );
+      expect(
+        _qtyText(tester, _appendQty('m-7')),
+        gap,
+        reason: '历史锚点remaining=0不应覆盖服务端当前真实物料缺口',
+      );
+      expect(tester.widget<Checkbox>(_rowCheckbox('m-7')).onChanged, isNotNull);
+      await _check(tester, _rowCheckbox('m-7'));
+      await _submitSelected(tester);
+      final groups = _aggregateSubmits()
+          .expand((request) => _records(request.body!['groups']))
+          .toList();
+      final group = groups.singleWhere(
+        (group) => (group['materialLineIds'] as List).contains('m-7'),
+      );
+      expect(group['qty'], gap);
+      expect(group['publicSurplusOnly'], isNot(true), reason: '新缺口必须先覆盖原需求');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final proof in [
     (total: 8000, exact: true, growable: 8000, output: 8000),
     (total: 12000, exact: true, growable: 8000, output: 8000),

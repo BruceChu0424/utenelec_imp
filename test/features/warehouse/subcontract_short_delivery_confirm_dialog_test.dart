@@ -109,7 +109,7 @@ void main() {
     final (host, pending) = await submit(tester, calls: calls);
     await pumpFrames(tester);
 
-    expect(find.text('到货数量明显少于订货量'), findsOneWidget);
+    expect(find.text('回厂数量尚未达到成品目标'), findsOneWidget);
     expect(find.textContaining('最少应到 95 件'), findsOneWidget);
     expect(find.textContaining('属严重短交'), findsOneWidget);
     // 弹窗期间遮罩必须已撤：否则它盖在弹窗路由之上，按钮吃不到点击。
@@ -138,7 +138,7 @@ void main() {
     await tester.tapAt(tester.getCenter(find.text('返回修改')));
     await pumpFrames(tester);
     expect(
-      find.text('到货数量明显少于订货量'),
+      find.text('回厂数量尚未达到成品目标'),
       findsNothing,
       reason: '点中了返回修改弹窗才会关；点不中说明弹窗又被遮罩盖住了',
     );
@@ -169,7 +169,7 @@ void main() {
     expect(host.saving, isTrue);
     host.setSaving(false);
     await tester.pumpAndSettle();
-    expect(find.text('到货数量明显少于订货量'), findsNothing);
+    expect(find.text('回厂数量尚未达到成品目标'), findsNothing);
     expect(find.byType(UtenBusyOverlay), findsNothing);
   });
 }

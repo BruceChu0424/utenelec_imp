@@ -461,7 +461,16 @@ public final class ProcurementArrivalContracts {
              * 预计到货仍在收满订货量时关闭，本值只用于显示「最多可收」。委外为 null。
              */
             BigDecimal maxReceivableQty,
-            String quantitySemantics, BigDecimal remainingGiftQty, BigDecimal registeredGiftQty) {
+            String quantitySemantics, BigDecimal remainingGiftQty, BigDecimal registeredGiftQty,
+            /** Original finished target still awaiting actual delivery; drafts are not receipts. */
+            BigDecimal pendingReturnQty,
+            /** Remaining base-BOM physical capacity after other registered drafts, before the contract ceiling. */
+            BigDecimal materialReceivableQty,
+            /** Normal remaining receipt capacity: approved ceiling and physical capacity, minus other drafts. */
+            BigDecimal normalMaxReceivableQty) {
+        public InboundExpectationItem(UUID id, UUID orderItemId, Integer lineNo, UUID goodsId, String goodsCode, String goodsName, String goodsSeries, String goodsStockPlace, UUID colorId, String colorName, UUID unitId, String unitName, UUID baseUnitId, String baseUnitName, BigDecimal unitRate, BigDecimal unitPrice, BigDecimal orderedQty, BigDecimal acceptedQty, BigDecimal remainingQty, BigDecimal registeredQty, LocalDate expectedDate, List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations, UUID lastReceiptWarehouseId, String lastReceiptWarehouseName, BigDecimal allowedOverReceiptPct, BigDecimal maxReceivableQty, String quantitySemantics, BigDecimal remainingGiftQty, BigDecimal registeredGiftQty) {
+            this(id,orderItemId,lineNo,goodsId,goodsCode,goodsName,goodsSeries,goodsStockPlace,colorId,colorName,unitId,unitName,baseUnitId,baseUnitName,unitRate,unitPrice,orderedQty,acceptedQty,remainingQty,registeredQty,expectedDate,expectedAllocations,lastReceiptWarehouseId,lastReceiptWarehouseName,allowedOverReceiptPct,maxReceivableQty,quantitySemantics,remainingGiftQty,registeredGiftQty,null,null,null);
+        }
         public InboundExpectationItem(UUID id, UUID orderItemId, Integer lineNo, UUID goodsId, String goodsCode, String goodsName, String goodsSeries, String goodsStockPlace, UUID colorId, String colorName, UUID unitId, String unitName, UUID baseUnitId, String baseUnitName, BigDecimal unitRate, BigDecimal unitPrice, BigDecimal orderedQty, BigDecimal acceptedQty, BigDecimal remainingQty, BigDecimal registeredQty, LocalDate expectedDate, List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations, UUID lastReceiptWarehouseId, String lastReceiptWarehouseName, BigDecimal allowedOverReceiptPct, BigDecimal maxReceivableQty) {
             this(id, orderItemId, lineNo, goodsId, goodsCode, goodsName, goodsSeries, goodsStockPlace, colorId, colorName, unitId, unitName, baseUnitId, baseUnitName, unitRate, unitPrice, orderedQty, acceptedQty, remainingQty, registeredQty, expectedDate, expectedAllocations, lastReceiptWarehouseId, lastReceiptWarehouseName, allowedOverReceiptPct, maxReceivableQty, "LEGACY_RECORDED", BigDecimal.ZERO, BigDecimal.ZERO);
         }
@@ -481,6 +490,12 @@ public final class ProcurementArrivalContracts {
         public String getRemainingGiftQtyExact() { return remainingGiftQty == null ? null : remainingGiftQty.toPlainString(); }
 
         public String getRegisteredGiftQtyExact() { return registeredGiftQty == null ? null : registeredGiftQty.toPlainString(); }
+
+        public String getPendingReturnQtyExact() { return pendingReturnQty == null ? null : pendingReturnQty.toPlainString(); }
+
+        public String getMaterialReceivableQtyExact() { return materialReceivableQty == null ? null : materialReceivableQty.toPlainString(); }
+
+        public String getNormalMaxReceivableQtyExact() { return normalMaxReceivableQty == null ? null : normalMaxReceivableQty.toPlainString(); }
 
 
         public InboundExpectationItem {

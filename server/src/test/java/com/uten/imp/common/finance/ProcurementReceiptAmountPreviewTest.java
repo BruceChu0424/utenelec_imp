@@ -108,4 +108,35 @@ class ProcurementReceiptAmountPreviewTest {
         assertNull(preview.original());
         assertNull(preview.local());
     }
+
+    @Test void subcontractActualAllowanceContinuesAfterTheOriginalTargetAndKeepsHistoricalVersionOne() {
+        var em=org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class);
+        var replacement=org.mockito.Mockito.mock(ProcurementIqcReplacementAllocationService.class);
+        var source=org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        var prior=org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        var allowance=org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        var history=org.mockito.Mockito.mock(jakarta.persistence.Query.class);
+        org.mockito.Mockito.when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call->{
+            String sql=call.getArgument(0);
+            return sql.contains("i.extra_columns")?source:sql.contains("approved_excess_qty")?allowance:
+                    sql.contains("r.exchange_rate IS NULL")?history:prior;
+        });
+        for(var query:java.util.List.of(source,prior,allowance,history))
+            org.mockito.Mockito.when(query.setParameter(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any())).thenReturn(query);
+        org.mockito.Mockito.when(source.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{
+                n("1000"),n("50"),n("50000"),n("50000"),n("1"),n("0"),"[]",null,null,java.util.UUID.randomUUID(),n("1100")}));
+        org.mockito.Mockito.when(history.getSingleResult()).thenReturn(0L);
+        org.mockito.Mockito.when(prior.getSingleResult()).thenReturn(new Object[]{n("1000"),n("50000"),n("50000")});
+        org.mockito.Mockito.when(allowance.getSingleResult()).thenReturn(n("0"));
+        var item=java.util.UUID.randomUUID();
+        org.mockito.Mockito.when(replacement.releasedCapacityWithOrdinaryReturns("SUBCONTRACT",item)).thenReturn(
+                new ProcurementIqcReplacementAllocationService.ReleasedCapacity(n("0"),n("0"),n("0"),n("0")));
+        var preview=new ProcurementReceiptAmountPreview(em,replacement);
+        var draft=preview.draft("SUBCONTRACT",java.util.UUID.randomUUID());
+        assertEquals(0,n("2500").compareTo(draft.line(item,n("50"),n("50"),n("1"),2).original()));
+        assertEquals(0,n("2500").compareTo(draft.line(item,n("50"),n("50"),n("1"),2).original()));
+        assertNull(draft.line(item,n("0.0001"),n("50"),n("1"),2).original());
+        assertNull(preview.draft("SUBCONTRACT",java.util.UUID.randomUUID()).line(item,n("50"),n("50"),n("1"),1).original(),
+                "a previously posted v1 receipt keeps its original consideration basis");
+    }
 }

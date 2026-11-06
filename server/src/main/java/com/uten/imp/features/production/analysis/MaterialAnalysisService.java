@@ -1644,7 +1644,7 @@ public class MaterialAnalysisService {
             }
             allocation = computeAllocationSnapshot(
                     analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
-                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE, suggestionRoutes);
+                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE, tree.subcontractSupplies(),suggestionRoutes);
             if (autoConfirmRoutes) {
                 firstConfirm = planFirstSnapshotAutoConfirm(analysisId, sources, snapshotRows, allocation);
             }
@@ -1674,7 +1674,7 @@ public class MaterialAnalysisService {
         if (!firstSnapshot) {
             allocation = computeAllocationSnapshot(
                     analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
-                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE, tree.subcontractSupplies());
         }
         if (allocation.hasBorrows()) {
             persistBorrowEffectiveQuantities(allocation.borrowEffective());
@@ -1856,7 +1856,7 @@ public class MaterialAnalysisService {
      * 各节点有效路线(写入本次快照之前的库内值)。
      */
     private record RefreshTree(List<SourceLine> sources, Map<UUID, SourceLine> sourcesById, List<BomNode> nodes,
-            Map<String, String> usageRoutes) {}
+            Map<String, String> usageRoutes,List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies) {}
 
     /**
      * 选用量时看的路线与写入快照后的有效路线是否不同(ADR-129 §2.5)。子节点用量按父节点路线选，
@@ -1895,6 +1895,20 @@ public class MaterialAnalysisService {
         // 已有节点沿用快照锁定的用量，只按当前路线重新选择(ADR-129 §2.5)。
         BomUsageContext usageContext = bomUsageContext(analysisId);
         List<BomNode> nodes = frozenDelivery ? frozenDeliveryNodes(analysisId, sources) : loadBomTrees(sources, usageContext);
+        Map<String,BomNode> supplyParents=nodes.stream().collect(Collectors.toMap(
+                node->nodeRef(node.analysisItemId(),node.nodeKey()),node->node));
+        Map<UUID,SourceLine> supplySources=sources.stream().collect(Collectors.toMap(SourceLine::analysisItemId,source->source));
+        List<SubcontractSupplyTarget> supplyTargets=nodes.stream().filter(node->{
+            if(node.deliveryContext())return false;
+            if(node.depth()==1)return "SUBCONTRACT".equals(supplySources.get(node.analysisItemId()).rootRoute());
+            String parentKey=nodeRef(node.analysisItemId(),node.parentNodeKey());
+            BomNode parent=supplyParents.get(parentKey);
+            return parent!=null&&"SUBCONTRACT".equals(usageContext.routes().getOrDefault(parentKey,parent.suggestion()));
+        }).map(node->new SubcontractSupplyTarget(nodeRef(node.analysisItemId(),node.nodeKey()),node.parentGoodsId())).toList();
+        List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies=SubcontractComponentCustodyProjection.supplyForAnalysis(em,analysisId);
+        Map<String,SubcontractMaterialSupplyRequirement> supplyRules=subcontractSupplyRules(supplyTargets,subcontractSupplies);
+        nodes=nodes.stream().map(node->node.withSupplyRequirement(supplyRules.getOrDefault(
+                nodeRef(node.analysisItemId(),node.nodeKey()),SubcontractMaterialSupplyRequirement.NONE))).toList();
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId, overlay);
@@ -1925,18 +1939,60 @@ public class MaterialAnalysisService {
                 ) adopted GROUP BY adopted.analysis_item_id
                 """).setParameter("analysisId",analysisId)))rootAdoptedPending.put(uuid(row[0]),decimal(row[1]));
         overlay.rootPublicAdoption().forEach((id,qty)->rootAdoptedPending.merge(id,qty,BigDecimal::add));
-        nodes = nodes.stream().map(node -> {
+        List<BomNode> supplyBudgetNodes=new ArrayList<>(nodes.size());
+        for(BomNode node:nodes) {
             BomNode batched = node.withOutputBatches(plannedBatches.getOrDefault(
                     node.analysisItemId()+"|"+Objects.toString(node.parentNodeKey(),""),List.of()));
             // 第 1 层按来源「计划产出量」展开（需求与已下达计划取大，ADR-099）。
-            return node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
+            BomNode budgeted=node.depth()==1 ? batched.withSnapshotRequiredQty(batched.requiredForOutput(
                     plannedSourceOutput(sourcesById.get(node.analysisItemId()), typedSourceOutput,
                             rootAdoptedPending.getOrDefault(node.analysisItemId(),BigDecimal.ZERO),
                             overlay.rootPublicAdoption().getOrDefault(node.analysisItemId(),BigDecimal.ZERO))))
                     : batched;
-        }).toList();
+            supplyBudgetNodes.add(budgeted);
+        }
+        nodes=withGrossSupplyBudget(supplyBudgetNodes);
         validateExactPegRefreshCompatibility(analysisId, nodes);
-        return new RefreshTree(sources, sourcesById, nodes, usageContext.routes());
+        return new RefreshTree(sources, sourcesById, nodes, usageContext.routes(),subcontractSupplies);
+    }
+
+    private record SubcontractSupplyTarget(String nodeRef,UUID parentGoodsId) { }
+
+    /** Protect the full material budget before private pegs are partitioned from the shared pool. */
+    static List<BomNode> withGrossSupplyBudget(List<BomNode> nodes) {
+        List<BomNode> result=new ArrayList<>(nodes.size());
+        Map<String,BomNode> parents=new HashMap<>();
+        for(BomNode node:nodes) {
+            BomNode budgeted=node;
+            if(node.depth()>1&&!node.deliveryContext()&&!node.deliveryFrontier()) {
+                BomNode parent=parents.get(nodeRef(node.analysisItemId(),node.parentNodeKey()));
+                if(parent==null)throw conflict("BOM 层级路径不完整，无法保护委外供料归属");
+                budgeted=node.withSnapshotRequiredQty(node.requiredForParentOutput(parent.snapshotRequiredQty()));
+            }
+            result.add(budgeted);parents.put(nodeRef(node.analysisItemId(),node.nodeKey()),budgeted);
+        }
+        return List.copyOf(result);
+    }
+
+    private Map<String,SubcontractMaterialSupplyRequirement> subcontractSupplyRules(
+            List<SubcontractSupplyTarget> targets,List<SubcontractComponentCustodyProjection.ChildCoverage> supplies) {
+        if(targets.isEmpty())return Map.of();
+        Set<UUID> parentGoods=targets.stream().map(SubcontractSupplyTarget::parentGoodsId).collect(Collectors.toSet());
+        Map<UUID,BigDecimal> losses=new HashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "SELECT id,COALESCE(subcontract_allowed_loss_pct,0) FROM goods WHERE id IN (:ids)")
+                .setParameter("ids",parentGoods)))losses.put(uuid(row[0]),decimal(row[1]));
+        Map<String,SubcontractComponentCustodyProjection.ChildCoverage> byNode=supplies.stream().collect(Collectors.toMap(
+                row->nodeRef(row.analysisItemId(),row.childNodeKey()),row->row));
+        Map<String,SubcontractMaterialSupplyRequirement> result=new HashMap<>();
+        for(SubcontractSupplyTarget target:targets) {
+            var supply=byNode.get(target.nodeRef());
+            result.put(target.nodeRef(),new SubcontractMaterialSupplyRequirement(
+                    losses.getOrDefault(target.parentGoodsId(),BigDecimal.ZERO),
+                    supply==null?BigDecimal.ZERO:supply.frozenParentOutputQty(),
+                    supply==null?BigDecimal.ZERO:supply.requiredQty()));
+        }
+        return Map.copyOf(result);
     }
 
     private List<BomNode> frozenDeliveryNodes(UUID analysisId, List<SourceLine> sources) {
@@ -2892,9 +2948,10 @@ public class MaterialAnalysisService {
             AvailabilitySnapshot availability,
             List<NodeSnapshotRow> inputs,
             Map<UUID, BigDecimal> typedOutputByMaterialLine,
-            MaterialAnalysisIssuePreviewOverlay overlay) {
+            MaterialAnalysisIssuePreviewOverlay overlay,
+            List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies) {
         return computeAllocationSnapshot(analysisId, warehouseId, sources, nodes, availability, inputs,
-                typedOutputByMaterialLine, overlay, null);
+                typedOutputByMaterialLine, overlay, subcontractSupplies,null);
     }
 
     /**
@@ -2910,6 +2967,7 @@ public class MaterialAnalysisService {
             List<NodeSnapshotRow> inputs,
             Map<UUID, BigDecimal> typedOutputByMaterialLine,
             MaterialAnalysisIssuePreviewOverlay overlay,
+            List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies,
             Map<String, String> preloadedEffectiveRoutes) {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
@@ -2942,7 +3000,7 @@ public class MaterialAnalysisService {
                 .combinedWith(planFormalCoverage(
                         previewFormalCoverage(formalMaterialCoverage(analysisId, warehouseId), overlay), nodes))
                 .combinedWith(planFormalCoverage(
-                        subcontractChildCoverage(analysisId), nodes));
+                        subcontractChildCoverage(subcontractSupplies), nodes));
         // 现货层借用（调货）：存在 ACTIVE 借用记录时，先按当前库存跑一次
         // 无借用的基线投影，据此计算每笔的精确生效量 m（min(申请, 借出方
         // 基线分配, 借入方基线缺口)），再用 cap+secured 重跑主投影：
@@ -3633,9 +3691,14 @@ public class MaterialAnalysisService {
      * 每行是一个物料节点的一份归属，行自带唯一的覆盖编号，同节点多行按各自 U_n 封顶。
      */
     private List<FormalMaterialCoverage> subcontractChildCoverage(UUID analysisId) {
+        return subcontractChildCoverage(SubcontractComponentCustodyProjection.coverageForAnalysis(em, analysisId));
+    }
+
+    private static List<FormalMaterialCoverage> subcontractChildCoverage(
+            List<SubcontractComponentCustodyProjection.ChildCoverage> supplies) {
         List<FormalMaterialCoverage> result = new ArrayList<>();
         for (SubcontractComponentCustodyProjection.ChildCoverage row
-                : SubcontractComponentCustodyProjection.coverageForAnalysis(em, analysisId)) {
+                : supplies) {
             if (row.netQty() == null || row.netQty().signum() <= 0) continue;
             result.add(new FormalMaterialCoverage(UUID.randomUUID(), row.analysisItemId(), row.childNodeKey(),
                     row.netQty(), row.remainingParentOutputQty() == null
@@ -4718,6 +4781,7 @@ public class MaterialAnalysisService {
                         stored.externalQty().add(projected.externalQty()))));
         Map<UUID, SourceLine> sourcesById = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId, source -> source));
+        Map<UUID,BigDecimal> pendingPrivateMake=new MaterialPreparationBudgetReader(em).privateMakePending(analysisId);
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
                 materialRows.stream().collect(Collectors.toMap(
                         MaterialRow::nodeIdentity, row -> row));
@@ -4898,12 +4962,11 @@ public class MaterialAnalysisService {
                     BigDecimal plannedOutput = row.requiredQty().max(anchorPlanned);
                     // 本节点已下达自制计划里归本需求的那一份: 顶层 = 来源行自己的计划(换成
                     // 基本单位), 其余 = 锚点的计划。只用来从「还缺数量」里扣(见 toView)。
-                    BigDecimal committedPlan = (sharedAnchor||anchor==null?BigDecimal.ZERO:anchor.committedPlanQty())
-                            .add(aggregateCommitments.getOrDefault(row.id(),BigDecimal.ZERO));
+                    // Completed output is already physical/issued coverage. Only still-pending
+                    // output may hide a new private material obligation after a loss-budget change.
+                    BigDecimal committedPlan = pendingPrivateMake.getOrDefault(row.id(),BigDecimal.ZERO);
                     if (row.depth() == 0 && materialSource != null) {
                         plannedOutput = plannedOutput.max(materialSource.plannedOutputQty()
-                                .multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));
-                        committedPlan = committedPlan.max(materialSource.committedPlanQty()
                                 .multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));
                     }
                     // 转交投影：份额与目标行一次取齐；需求整体转出且无自有引用的行
@@ -4976,13 +5039,23 @@ public class MaterialAnalysisService {
             return row.withPreparationSupply(row.selectedWarehousesAvailableQty().add(activeFuture.getOrDefault(row.materialLineId(),FutureCoverage.NONE).totalQty()).add(publicPlanned).add(makePlanned),candidates)
                     .withPreparationAdoptedQty(adoptedByMaterial.getOrDefault(row.materialLineId(),BigDecimal.ZERO));
         }).toList();
-        var budgetFacts=new MaterialPreparationBudgetReader(em).read(analysisId,header.warehouseId(),materials,selectedWarehouseIds,aliasCoverage.outgoing());
+        var budgetFacts=new MaterialPreparationBudgetReader(em).read(analysisId,header.warehouseId(),materials,selectedWarehouseIds,aliasCoverage.outgoing(),pendingPrivateMake);
         Map<String,String> preparationWireKeys=new HashMap<>();
+        List<SubcontractComponentCustodyProjection.ChildCoverage> detailSupply=SubcontractComponentCustodyProjection.supplyForAnalysis(em,analysisId);
+        List<SubcontractSupplyTarget> detailSupplyTargets=materialRows.stream().filter(row->{
+            if(row.deliveryContext()||row.depth()==0)return false;
+            if(row.depth()==1)return "SUBCONTRACT".equals(sourcesById.get(row.analysisItemId()).rootRoute());
+            MaterialRow parent=materialRowsByNode.get(new MaterialNodeIdentity(row.analysisItemId(),row.parentNodeKey()));
+            return parent!=null&&"SUBCONTRACT".equals(parent.confirmedRoute()!=null?parent.confirmedRoute():parent.suggestion());
+        }).map(row->new SubcontractSupplyTarget(nodeRef(row.analysisItemId(),row.nodeKey()),row.parentGoodsId())).toList();
+        Map<String,SubcontractMaterialSupplyRequirement> detailSupplyRules=subcontractSupplyRules(detailSupplyTargets,detailSupply);
         Map<String,FormalCoverageRule> budgetRules=materialRows.stream().collect(Collectors.toMap(row->nodeRef(row.analysisItemId(),row.nodeKey()),
-                row->new FormalCoverageRule(row.requiredQty(),row::requiredForSingleParentOutput)));
+                row->new FormalCoverageRule(row.requiredQty(),output->detailSupplyRules.getOrDefault(
+                        nodeRef(row.analysisItemId(),row.nodeKey()),SubcontractMaterialSupplyRequirement.NONE)
+                        .required(output,row.bomQty(),row.consumptionBasis(),row.basisOutputQty(),row.allowPartialPackage()))));
         Map<String,BigDecimal> formalPrivate=new HashMap<>(formalCoverageQuantities(formalMaterialCoverage(analysisId,header.warehouseId()),budgetRules));
         // 委外领料覆盖(ADR-143 §4.5)：与刷新同一套逐种覆盖与封顶；带专属交接的草稿已在精确归属里，只补其余部分。
-        formalCoverageQuantities(subcontractChildCoverage(analysisId),budgetRules).forEach((key,covered)->{
+        formalCoverageQuantities(subcontractChildCoverage(detailSupply),budgetRules).forEach((key,covered)->{
             BigDecimal extra=covered.subtract(componentDraftHeldByNode.getOrDefault(key,BigDecimal.ZERO)).max(BigDecimal.ZERO);
             if(extra.signum()>0)formalPrivate.merge(key,extra,BigDecimal::add);
         });
@@ -5668,7 +5741,7 @@ public class MaterialAnalysisService {
         AvailabilitySnapshot availability = availability(analysisId, warehouseId, tree.nodes(), overlay);
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
         AllocationSnapshot allocation = computeAllocationSnapshot(analysisId, warehouseId, tree.sources(),
-                tree.nodes(), availability, snapshotRows, typedOutputByMaterialLine, overlay);
+                tree.nodes(), availability, snapshotRows, typedOutputByMaterialLine, overlay, tree.subcontractSupplies());
         Map<String, MaterialAnalysisIssuePreviewOverlay.NodeSnapshot> nodes = new HashMap<>();
         for (NodeAllocationRow row : allocation.nodeRows()) {
             nodes.put(nodeRef(row.analysisItemId(), row.nodeKey()), new MaterialAnalysisIssuePreviewOverlay.NodeSnapshot(
@@ -9867,7 +9940,24 @@ public class MaterialAnalysisService {
             boolean hasChildren, String controlStage, String consumptionBasis,
             BigDecimal basisOutputQty, boolean allowPartialPackage,
             boolean hardGate, List<BigDecimal> outputBatches,
-            boolean deliveryContext, boolean deliveryFrontier, List<String> deliveryOperations) {
+            boolean deliveryContext, boolean deliveryFrontier, List<String> deliveryOperations,
+            SubcontractMaterialSupplyRequirement supplyRequirement) {
+        BomNode(UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
+            UUID goodsId, UUID colorId, UUID unitId, int depth,
+            String nodeKey, String parentNodeKey, BigDecimal parentPerProductQty, BomUsage usage,
+            BigDecimal perProductQty, BigDecimal snapshotRequiredQty,
+            String goodsCode, String goodsName, String spec, String colorName,
+            String unitName, BigDecimal safetyStock, String suggestion,
+            boolean hasChildren, String controlStage, String consumptionBasis,
+            BigDecimal basisOutputQty, boolean allowPartialPackage, boolean hardGate,
+            List<BigDecimal> outputBatches, boolean deliveryContext, boolean deliveryFrontier,
+            List<String> deliveryOperations) {
+            this(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,nodeKey,parentNodeKey,
+                    parentPerProductQty,usage,perProductQty,snapshotRequiredQty,goodsCode,goodsName,spec,colorName,
+                    unitName,safetyStock,suggestion,hasChildren,controlStage,consumptionBasis,basisOutputQty,
+                    allowPartialPackage,hardGate,outputBatches,deliveryContext,deliveryFrontier,deliveryOperations,
+                    SubcontractMaterialSupplyRequirement.NONE);
+        }
         BomNode(
             UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
             UUID goodsId, UUID colorId, UUID unitId, int depth,
@@ -9921,7 +10011,7 @@ public class MaterialAnalysisService {
         }
         BigDecimal requiredForSingleParentOutput(BigDecimal parentOutputQty) {
             try {
-                return MaterialConsumptionMath.required(
+                return supplyRequirement.required(
                         parentOutputQty, bomQty(),
                         consumptionBasis, basisOutputQty, allowPartialPackage);
             } catch (IllegalArgumentException ex) {
@@ -9935,14 +10025,21 @@ public class MaterialAnalysisService {
                     parentPerProductQty, usage, perProductQty, requiredQty,
                     goodsCode, goodsName, spec, colorName, unitName, safetyStock,
                     suggestion, hasChildren, controlStage, consumptionBasis,
-                    basisOutputQty, allowPartialPackage, hardGate,outputBatches, deliveryContext, deliveryFrontier, deliveryOperations);
+                    basisOutputQty, allowPartialPackage, hardGate,outputBatches, deliveryContext, deliveryFrontier, deliveryOperations,supplyRequirement);
         }
         BomNode withOutputBatches(List<BigDecimal> batches) {
             return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
                     nodeKey,parentNodeKey,parentPerProductQty,usage,perProductQty,snapshotRequiredQty,
                     goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,
                     hasChildren,controlStage,consumptionBasis,basisOutputQty,allowPartialPackage,
-                    hardGate,List.copyOf(batches), deliveryContext, deliveryFrontier, deliveryOperations);
+                    hardGate,List.copyOf(batches), deliveryContext, deliveryFrontier, deliveryOperations,supplyRequirement);
+        }
+        BomNode withSupplyRequirement(SubcontractMaterialSupplyRequirement requirement) {
+            return new BomNode(analysisItemId,bomItemId,parentGoodsId,goodsId,colorId,unitId,depth,
+                    nodeKey,parentNodeKey,parentPerProductQty,usage,perProductQty,snapshotRequiredQty,
+                    goodsCode,goodsName,spec,colorName,unitName,safetyStock,suggestion,hasChildren,controlStage,
+                    consumptionBasis,basisOutputQty,allowPartialPackage,hardGate,outputBatches,
+                    deliveryContext,deliveryFrontier,deliveryOperations,requirement);
         }
         BomNode withDelivery(boolean context, boolean frontier, List<String> operations,
                 BigDecimal parentPer, BomUsage deliveryUsage, BigDecimal per, BigDecimal required) {

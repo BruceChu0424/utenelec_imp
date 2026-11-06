@@ -26,6 +26,10 @@ final class MaterialPreparationBudgetReader {
     }
     Facts read(UUID analysisId,UUID warehouseId,List<MaterialView> materials,Set<UUID> selectedWarehouseIds,
             Map<UUID,BigDecimal> outgoingSnapshot) {
+        return read(analysisId,warehouseId,materials,selectedWarehouseIds,outgoingSnapshot,null);
+    }
+    Facts read(UUID analysisId,UUID warehouseId,List<MaterialView> materials,Set<UUID> selectedWarehouseIds,
+            Map<UUID,BigDecimal> outgoingSnapshot,Map<UUID,BigDecimal> privateMakeSnapshot) {
         if (materials.isEmpty()) return new Facts(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         String scope = selectedWarehouseIds.stream().map(UUID::toString).sorted().collect(Collectors.joining(","));
         Map<UUID, String> keys = new HashMap<>();
@@ -105,11 +109,11 @@ final class MaterialPreparationBudgetReader {
         quantitiesByPool.forEach((pool,values)->shared.put(pool,values.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add)));
         Map<UUID,List<PreparationSharedSupplySlice>> perMaterial=new HashMap<>();
         slices.forEach((id,values)->perMaterial.put(id,List.copyOf(values.values())));
-        return new Facts(privateMakePending(analysisId), outgoingSnapshot==null?outgoingPending(analysisId):outgoingSnapshot,
+        return new Facts(privateMakeSnapshot==null?privateMakePending(analysisId):privateMakeSnapshot, outgoingSnapshot==null?outgoingPending(analysisId):outgoingSnapshot,
                 Map.copyOf(shared), Map.copyOf(keys),Map.copyOf(perMaterial));
     }
 
-    private Map<UUID, BigDecimal> privateMakePending(UUID analysisId) {
+    Map<UUID, BigDecimal> privateMakePending(UUID analysisId) {
         Map<UUID, BigDecimal> result = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH private_plans AS MATERIALIZED (

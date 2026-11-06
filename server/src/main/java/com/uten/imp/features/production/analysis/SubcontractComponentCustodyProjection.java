@@ -33,7 +33,11 @@ final class SubcontractComponentCustodyProjection {
      * 质检中的按仓库已确认入库量)，扣除已退回委外商的量。分析侧唯一口径：
      * 申请 DONE 判定、P 的计划产出与本投影的物料消耗都用它。
      */
-    static final String ORDER_ITEM_STOCKED_BASE_SQL = """
+    static final String ORDER_ITEM_STOCKED_BASE_SQL = orderItemStockedBaseSql(false);
+    private static final String ORDER_ITEM_STOCKED_LEGACY_BASE_SQL = orderItemStockedBaseSql(true);
+
+    private static String orderItemStockedBaseSql(boolean legacyOnly) {
+        return """
             GREATEST(COALESCE((
                 SELECT SUM(CASE WHEN inspection.id IS NULL
                                 THEN receipt_item.qty*COALESCE(receipt_item.unit_rate,1)
@@ -59,9 +63,18 @@ final class SubcontractComponentCustodyProjection {
                   AND receipt.status=1 AND NOT receipt.is_deleted
                 LEFT JOIN procurement_inspection_items inspection ON inspection.receipt_type='SUBCONTRACT'
                   AND inspection.receipt_item_id=receipt_item.id
-                WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted),0)
-              -COALESCE(item.returned_qty,0)*COALESCE(item.unit_rate,1),0)
-            """;
+                WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted%s),0)
+              -(%s),0)
+            """.formatted(legacyOnly?" AND receipt_item.material_consumption_version=1":"",
+                legacyOnly?"""
+                    COALESCE((SELECT SUM(receipt_item.returned_qty*COALESCE(receipt_item.unit_rate,1))
+                        FROM subcontract_receipt_items receipt_item
+                        JOIN subcontract_receipts receipt ON receipt.id=receipt_item.receipt_id
+                          AND receipt.status=1 AND NOT receipt.is_deleted
+                        WHERE receipt_item.order_item_id=item.id AND NOT receipt_item.is_deleted
+                          AND receipt_item.material_consumption_version=1),0)
+                    """:"COALESCE(item.returned_qty,0)*COALESCE(item.unit_rate,1)");
+    }
 
     /**
      * 委外供给行动 {@code action}(preplan_supply_actions 别名)的已合格入库回厂量 R_a(P 基本量)：
@@ -112,7 +125,8 @@ final class SubcontractComponentCustodyProjection {
      */
     record ChildCoverage(UUID analysisItemId, String childNodeKey, UUID childMaterialId,
                          UUID goodsId, UUID colorId, BigDecimal netQty,
-                         BigDecimal remainingParentOutputQty) {
+                         BigDecimal remainingParentOutputQty, BigDecimal requiredQty,
+                         BigDecimal frozenParentOutputQty) {
     }
 
     /**
@@ -164,6 +178,15 @@ final class SubcontractComponentCustodyProjection {
      * 直属节点，覆盖全部记到路径最靠前的那个。</p>
      */
     static List<ChildCoverage> coverageForAnalysis(EntityManager em, UUID analysisId) {
+        return readSupply(em, analysisId, false);
+    }
+
+    /** Preparation and custody share the same frozen source allocation and exact material arithmetic. */
+    static List<ChildCoverage> supplyForAnalysis(EntityManager em, UUID analysisId) {
+        return readSupply(em,analysisId,true);
+    }
+
+    private static List<ChildCoverage> readSupply(EntityManager em, UUID analysisId, boolean includeUncovered) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery(("""
                 WITH RECURSIVE live_actions AS MATERIALIZED (
                     SELECT action.id,action.requested_qty,action.public_surplus_qty,
@@ -195,17 +218,28 @@ final class SubcontractComponentCustodyProjection {
                         SELECT relevant.order_item_id FROM subcontract_order_item_sources relevant
                         WHERE relevant.application_item_id IN (SELECT application_item_id FROM live_items))
                 ), stocked AS MATERIALIZED (
-                    SELECT item.id AS order_item_id,COALESCE(item.unit_rate,1) AS order_unit_rate,
-                           %s AS stocked_base
+                    SELECT item.id AS order_item_id,item.qty AS ordered_qty,COALESCE(item.unit_rate,1) AS order_unit_rate,
+                           %s AS stocked_base,%s AS legacy_stocked_base
                     FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
                     WHERE EXISTS (SELECT 1 FROM sources)
                       AND item.id IN (SELECT order_item_id FROM sources)
+                ), source_progress AS MATERIALIZED (
+                    -- One physical application source can have hundreds of owners. Its
+                    -- FIFO receipt slice is immutable within this read and belongs to
+                    -- the source, rather than each allocation's rational expression.
+                    SELECT source.*,
+                           CASE WHEN stocked.stocked_base>0 THEN fn_subcontract_order_source_share(
+                               source.order_item_id,source.application_item_id,stocked.stocked_base)
+                               ELSE 0::numeric END AS source_stocked_base,
+                           CASE WHEN LEAST(stocked.stocked_base,stocked.legacy_stocked_base)>0
+                               THEN fn_subcontract_order_source_share(source.order_item_id,source.application_item_id,
+                                   LEAST(stocked.stocked_base,stocked.legacy_stocked_base))
+                               ELSE 0::numeric END AS source_legacy_stocked_base
+                    FROM sources source JOIN stocked ON stocked.order_item_id=source.order_item_id
                 ), received AS (
-                    SELECT live.action_id,SUM(fn_subcontract_order_source_share(
-                               source.order_item_id,source.application_item_id,stocked.stocked_base)) AS qty
+                    SELECT live.action_id,SUM(source.source_stocked_base) AS qty
                     FROM live_items live
-                    JOIN sources source ON source.application_item_id=live.application_item_id
-                    JOIN stocked ON stocked.order_item_id=source.order_item_id
+                    JOIN source_progress source ON source.application_item_id=live.application_item_id
                     GROUP BY live.action_id
                 ), public_owners AS MATERIALIZED (
                     SELECT responsibility.*
@@ -275,20 +309,36 @@ final class SubcontractComponentCustodyProjection {
                     SELECT owner.order_item_id,owner.analysis_id,owner.analysis_material_id AS parent_material_id,
                            owner.allocated_qty,SUM(owner.allocated_qty) OVER(
                                PARTITION BY owner.order_item_id,owner.application_item_id) AS owner_total,
-                           owner.alloc_qty,stocked.order_unit_rate,
-                           fn_subcontract_order_source_share(owner.order_item_id,owner.application_item_id,
-                               stocked.stocked_base) AS source_stocked_base
+                           owner.alloc_qty,stocked.order_unit_rate,stocked.ordered_qty,
+                           progress.source_stocked_base,progress.source_legacy_stocked_base
                     FROM owner_allocations owner
                     JOIN stocked ON stocked.order_item_id=owner.order_item_id
+                    JOIN source_progress progress ON progress.order_item_id=owner.order_item_id
+                      AND progress.application_item_id=owner.application_item_id
+                ), frozen_parent_output AS (
+                    SELECT parent_material_id,ROUND(SUM(GREATEST(
+                        alloc_qty*order_unit_rate-source_stocked_base,0)
+                        *allocated_qty/NULLIF(owner_total,0)),4) AS remaining_qty
+                    FROM owner_shares WHERE analysis_id=:analysisId GROUP BY parent_material_id
                 ), plan_lines AS MATERIALIZED (
                     SELECT line.*,
                            GREATEST(line.gross_qty-(
-                """ + ceilMaterialFractionSql("stocked.stocked_base*line.bom_unit_qty", "stocked.order_unit_rate") + """
+                """ + ceilMaterialFractionSql("LEAST(stocked.stocked_base,stocked.legacy_stocked_base)*line.bom_unit_qty", "stocked.order_unit_rate") + "+" +
+                ceilMaterialFractionSql("GREATEST(stocked.stocked_base-stocked.legacy_stocked_base,0)*line.base_bom_unit_qty", "stocked.order_unit_rate") + """
                            ),0) AS pool_qty
                     FROM (
                         SELECT plan_item.id AS plan_item_id,plan_item.order_item_id,
-                               plan_item.goods_id,plan_item.color_id,plan_item.bom_unit_qty,
-                               plan_item.issued_qty+COALESCE((
+                               plan_item.goods_id,plan_item.color_id,plan_item.bom_unit_qty,plan_item.base_bom_unit_qty,
+                               COALESCE((SELECT SUM(issue_item.wasted_qty)
+                                   FROM subcontract_material_issue_items issue_item
+                                   JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
+                                     AND issue.status=1 AND NOT issue.is_deleted
+                                   WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0) AS wasted_qty,
+                               plan_item.issued_qty+COALESCE((SELECT SUM(issue_item.compensated_qty-issue_item.wasted_qty)
+                                   FROM subcontract_material_issue_items issue_item
+                                   JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
+                                     AND issue.status=1 AND NOT issue.is_deleted
+                                   WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0)+COALESCE((
                                    SELECT SUM(issue_item.qty)
                                    FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issue_items',archive_origin.id)) issue_item
                                    JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_material_issues',archive_origin.id)) issue ON issue.id=issue_item.issue_id
@@ -304,30 +354,35 @@ final class SubcontractComponentCustodyProjection {
                 ), owner_material_raw AS (
                     -- Material factors stay in numerators until the final ceiling.
                     SELECT line.plan_item_id,owner.analysis_id,owner.parent_material_id,
-                           owner.alloc_qty*owner.allocated_qty*line.bom_unit_qty*owner.order_unit_rate AS owned_numerator,
-                           owner.source_stocked_base*owner.allocated_qty*line.bom_unit_qty AS stocked_numerator,
-                           owner.owner_total*owner.order_unit_rate AS denominator
+                           owner.alloc_qty*owner.allocated_qty*line.bom_unit_qty*owner.order_unit_rate*owner.ordered_qty AS owned_numerator,
+                           owner.source_legacy_stocked_base*line.bom_unit_qty*owner.allocated_qty*owner.ordered_qty
+                             +line.wasted_qty*owner.alloc_qty*owner.allocated_qty*owner.order_unit_rate AS stocked_numerator,
+                           (owner.source_stocked_base-owner.source_legacy_stocked_base)*line.base_bom_unit_qty
+                               *owner.allocated_qty*owner.ordered_qty AS actual_numerator,
+                           owner.owner_total*owner.order_unit_rate*owner.ordered_qty AS denominator
                     FROM owner_shares owner
                     JOIN plan_lines line ON line.order_item_id=owner.order_item_id
                 ), owner_material_integers AS (
                     SELECT raw.plan_item_id,raw.analysis_id,raw.parent_material_id,
                            raw.owned_numerator*factor.value AS owned_numerator,
                            raw.stocked_numerator*factor.value AS stocked_numerator,
+                           raw.actual_numerator*factor.value AS actual_numerator,
                            raw.denominator*factor.value AS denominator
                     FROM owner_material_raw raw
                     CROSS JOIN LATERAL (
                         SELECT POWER(10::numeric,GREATEST(SCALE(raw.owned_numerator),
-                            SCALE(raw.stocked_numerator),SCALE(raw.denominator))) AS value
+                            SCALE(raw.stocked_numerator),SCALE(raw.actual_numerator),SCALE(raw.denominator))) AS value
                     ) factor
                 ), owner_material_parts AS (
                     -- Merge equal denominators before the recursive fold, not raw allocation rows.
                     SELECT part.plan_item_id,part.analysis_id,part.parent_material_id,
                            SUM(div(part.owned_numerator,reduced.factor)) AS owned_numerator,
                            SUM(div(part.stocked_numerator,reduced.factor)) AS stocked_numerator,
+                           SUM(div(part.actual_numerator,reduced.factor)) AS actual_numerator,
                            div(part.denominator,reduced.factor) AS denominator
                     FROM owner_material_integers part
                     CROSS JOIN LATERAL (
-                        SELECT gcd(gcd(part.owned_numerator,part.stocked_numerator),part.denominator) AS factor
+                        SELECT gcd(gcd(gcd(part.owned_numerator,part.stocked_numerator),part.actual_numerator),part.denominator) AS factor
                     ) reduced
                     GROUP BY part.plan_item_id,part.analysis_id,part.parent_material_id,
                              div(part.denominator,reduced.factor)
@@ -335,24 +390,26 @@ final class SubcontractComponentCustodyProjection {
                     SELECT part.plan_item_id,part.analysis_id,part.parent_material_id,
                            div(part.owned_numerator,reduced.factor) AS owned_numerator,
                            div(part.stocked_numerator,reduced.factor) AS stocked_numerator,
+                           div(part.actual_numerator,reduced.factor) AS actual_numerator,
                            div(part.denominator,reduced.factor) AS denominator,
                            ROW_NUMBER() OVER w AS part_number,
                            COUNT(*) OVER(PARTITION BY part.plan_item_id,part.analysis_id,part.parent_material_id) AS part_count
                     FROM owner_material_parts part
                     CROSS JOIN LATERAL (
-                        SELECT gcd(gcd(part.owned_numerator,part.stocked_numerator),part.denominator) AS factor
+                        SELECT gcd(gcd(gcd(part.owned_numerator,part.stocked_numerator),part.actual_numerator),part.denominator) AS factor
                     ) reduced
                     WINDOW w AS (PARTITION BY part.plan_item_id,part.analysis_id,part.parent_material_id
                                  ORDER BY part.denominator)
                 ), owner_material_sums AS (
                     -- Exact GCD/LCM addition preserves 1/6 + 1/13 + 10/39 = 1/2.
-                    SELECT plan_item_id,analysis_id,parent_material_id,owned_numerator,stocked_numerator,
+                    SELECT plan_item_id,analysis_id,parent_material_id,owned_numerator,stocked_numerator,actual_numerator,
                            denominator,part_number,part_count
                     FROM owner_material_terms WHERE part_number=1
                     UNION ALL
                     SELECT part.plan_item_id,part.analysis_id,part.parent_material_id,
                            div(combined.owned_numerator,reduced.factor),
                            div(combined.stocked_numerator,reduced.factor),
+                           div(combined.actual_numerator,reduced.factor),
                            div(combined.denominator,reduced.factor),part.part_number,part.part_count
                     FROM owner_material_sums running
                     JOIN owner_material_terms part ON part.plan_item_id=running.plan_item_id
@@ -368,15 +425,17 @@ final class SubcontractComponentCustodyProjection {
                                    +part.owned_numerator*factors.part_factor AS owned_numerator,
                                running.stocked_numerator*factors.running_factor
                                    +part.stocked_numerator*factors.part_factor AS stocked_numerator,
+                               running.actual_numerator*factors.running_factor
+                                   +part.actual_numerator*factors.part_factor AS actual_numerator,
                                running.denominator*factors.running_factor AS denominator
                     ) combined
                     CROSS JOIN LATERAL (
                         -- Evaluate this large GCD once instead of inlining it into each output.
-                        SELECT gcd(gcd(combined.owned_numerator,combined.stocked_numerator),combined.denominator) AS factor
+                        SELECT gcd(gcd(gcd(combined.owned_numerator,combined.stocked_numerator),combined.actual_numerator),combined.denominator) AS factor
                         OFFSET 0
                     ) reduced
                 ), owner_materials AS MATERIALIZED (
-                    SELECT plan_item_id,analysis_id,parent_material_id,owned_numerator,stocked_numerator,denominator
+                    SELECT plan_item_id,analysis_id,parent_material_id,owned_numerator,stocked_numerator,actual_numerator,denominator
                     FROM owner_material_sums WHERE part_number=part_count
                 ), material_denominator_terms AS (
                     SELECT plan_item_id,denominator,
@@ -416,6 +475,8 @@ final class SubcontractComponentCustodyProjection {
                     CROSS JOIN LATERAL (
                         SELECT GREATEST(owner.owned_numerator*10000-(
                 """ + ceilMaterialFractionSql("owner.stocked_numerator", "owner.denominator") + """
+                            )*10000*owner.denominator-(
+                """ + ceilMaterialFractionSql("owner.actual_numerator", "owner.denominator") + """
                             )*10000*owner.denominator,0)*div(units.base_denominator,owner.denominator) AS qty
                     ) owner_need
                     LEFT JOIN exact ON exact.plan_item_id=line.plan_item_id
@@ -449,6 +510,8 @@ final class SubcontractComponentCustodyProjection {
                     FROM opens
                 ), nets AS (
                     SELECT parent_material_id,goods_id,color_id,
+                """ + ceilMaterialFractionSql("need_units", "base_denominator*10000") + """
+                           AS required_qty,
                            GREATEST((exact_ticks+(
                 """ + halfUpIntegerFractionSql(
                         "public_pool_units*open_running_units", "open_total_units*base_denominator") + """
@@ -459,9 +522,11 @@ final class SubcontractComponentCustodyProjection {
                     FROM ranked WHERE analysis_id=:analysisId
                 )
                 SELECT parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id,
-                       SUM(nets.net_qty)::numeric,MAX(parent_output.remaining_qty)::numeric
+                       SUM(nets.net_qty)::numeric,MAX(parent_output.remaining_qty)::numeric,
+                       SUM(nets.required_qty)::numeric,MAX(frozen_output.remaining_qty)::numeric
                 FROM nets
                 JOIN parent_output ON parent_output.parent_material_id=nets.parent_material_id
+                JOIN frozen_parent_output frozen_output ON frozen_output.parent_material_id=nets.parent_material_id
                 JOIN production_material_analysis_materials parent ON parent.id=nets.parent_material_id
                   AND parent.analysis_id=:analysisId AND parent.active
                 JOIN LATERAL (
@@ -477,12 +542,12 @@ final class SubcontractComponentCustodyProjection {
                     LIMIT 1
                 ) child ON TRUE
                 GROUP BY parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id
-                HAVING SUM(nets.net_qty)>0
+                HAVING SUM(nets.net_qty)>0 OR (%s AND SUM(nets.required_qty)>0)
                 ORDER BY parent.analysis_item_id,child.node_key
-                """).formatted(ORDER_ITEM_STOCKED_BASE_SQL)).setParameter("analysisId", analysisId))
+                """).formatted(ORDER_ITEM_STOCKED_BASE_SQL,ORDER_ITEM_STOCKED_LEGACY_BASE_SQL,includeUncovered?"TRUE":"FALSE")).setParameter("analysisId", analysisId))
                 .stream()
                 .map(row -> new ChildCoverage((UUID) row[0], (String) row[1], (UUID) row[2],
-                        (UUID) row[3], (UUID) row[4], decimal(row[5]), decimal(row[6])))
+                        (UUID) row[3], (UUID) row[4], decimal(row[5]), decimal(row[6]),decimal(row[7]),decimal(row[8])))
                 .toList();
     }
 

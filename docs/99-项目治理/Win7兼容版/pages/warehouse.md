@@ -4,21 +4,21 @@
 
 ## W7-BIZ-173 · lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart
 
-模块 `warehouse`；1489 行；SHA256 `b1c36592eb5fe9652c1724ed706a9e8ab710bda73d43fac292ef04b0aa158391`。
+模块 `warehouse`；1512 行；SHA256 `e71473500e8f1adf08f6e43e0cbff271fda32979d2946429d5957e0b20b06734`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | WorkshopMaterialBinPage @63 (page-class)<br>_WorkshopMaterialBinPageState @74 (state-class) |
-| 真实路由绑定 | /workshop-material/bin；router @1883；builder ['WorkshopMaterialBinPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:1921","routerLine":1921,"path":"/workshop-material/count","targetConstants":["workshopMaterialBin"],"redirectExpression":"(_, s) =>\n                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)\n                ? null\n                : RouteName.workshopMaterialBin","status":"possible alias; 需人工核实"} |
-| 权限 | workshop_material:view @224；定义 lib/shared/auth/permissions.dart:322 |
+| 页面/状态类 | WorkshopMaterialBinPage @64 (page-class)<br>_WorkshopMaterialBinPageState @75 (state-class) |
+| 真实路由绑定 | /workshop-material/bin；router @1884；builder ['WorkshopMaterialBinPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:1922","routerLine":1922,"path":"/workshop-material/count","targetConstants":["workshopMaterialBin"],"redirectExpression":"(_, s) =>\n                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)\n                ? null\n                : RouteName.workshopMaterialBin","status":"possible alias; 需人工核实"} |
+| 权限 | workshop_material:view @225；定义 lib/shared/auth/permissions.dart:322 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/stock/counts/repositories/stock_count_request_repository.dart；接口：/stock/count-requests<br>lib/features/warehouse/materialbin/repositories/workshop_material_repository.dart；接口：/master/goods/periodic-bom/batch、/master/goods/periodic-bom/preparation、/workshop-material/bins/{binId}/position、/workshop-material/containers/batch、/workshop-material/counts/{countId}、/workshop-material/counts/{countId}/lines/{Uri.encodeComponent(key)}、/workshop-material/counts/{countId}/submit、/workshop-material/counts/{countId}/zero-rest、/workshop-material/direct-issues、/workshop-material/direct-issues/defaults、/workshop-material/machines、/workshop-material/machines/batch、/workshop-material/materials、/workshop-material/other-issues、/workshop-material/periods、/workshop-material/periods/{periodId}、/workshop-material/periods/{periodId}/close-retry、/workshop-material/periods/{periodId}/close-status、/workshop-material/periods/{periodId}/correct-count、/workshop-material/periods/{periodId}/start-count、/workshop-material/periods/{periodId}/withdraw-count、/workshop-material/request-materials、/workshop-material/request-materials/categories、/workshop-material/request-materials/category-ids、/workshop-material/requisitions、/workshop-material/requisitions/{id}、/workshop-material/requisitions/{id}/cancel、/workshop-material/requisitions/{id}/fulfil、/workshop-material/settings、/workshop-material/settings/batch-disable、/workshop-material/settings/batch-enable、/workshop-material/settings/in-progress-pending、/workshop-material/settings/source-warehouses、/workshop-material/task-status |
-| 动作处理 | WebUpdateSafetyState @98 [action-like-invocation] 提示 ['update']；WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(<br>WmClosePoller @188 [action-like-invocation] 提示 ['close']；late final WmClosePoller _poller = WmClosePoller(<br>closeStatus @191 [action-like-invocation] 提示 ['close']；.closeStatus(_statusPeriod!.id),<br>addPostFrameCallback @295 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());<br>stop @302 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>removeListener @303 [action-like-invocation] 提示 ['remove']；_countEditor.structureSignal.removeListener(_countChanged);<br>removeListener @304 [action-like-invocation] 提示 ['remove']；_countEditor.removeListener(_reloadSafetyChanged);<br>removeListener @306 [action-like-invocation] 提示 ['remove']；_requestEditor.structureSignal.removeListener(_countChanged);<br>removeListener @307 [action-like-invocation] 提示 ['remove']；_requestEditor.removeListener(_reloadSafetyChanged);<br>stop @318 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>stop @396 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>stop @423 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>closeStatus @481 [action-like-invocation] 提示 ['close']；closeStatus = await _repo.closeStatus(statusPeriod.id);<br>WmCloseStatus @488 [action-like-invocation] 提示 ['close']；closeStatus = WmCloseStatus(<br>WmCloseStatus @494 [action-like-invocation] 提示 ['close']；closeStatus = WmCloseStatus(<br>start @515 [action-like-invocation] 提示 ['start']；if (!_poller.active) _poller.start();<br>_openOtherIssue @624 [method-declaration-candidate] 提示 ['issue']；Future<void> _openOtherIssue() async {<br>showWorkshopMaterialOtherIssueDialog @636 [action-like-invocation] 提示 ['issue']；final done = await showWorkshopMaterialOtherIssueDialog(<br>_retryClose @664 [method-declaration-candidate] 提示 ['close']；Future<void> _retryClose() async {<br>showWmCloseRetryDialog @669 [action-like-invocation] 提示 ['close']；final status = await showWmCloseRetryDialog(context, periodId: period.id);<br>start @673 [action-like-invocation] 提示 ['start']；_poller.start();<br>_cancelRequisition @683 [method-declaration-candidate] 提示 ['cancel']；Future<void> _cancelRequisition(WmRequisition requisition) async {<br>cancelRequisition @692 [action-like-invocation] 提示 ['cancel']；await _repo.cancelRequisition(<br>WmCloseStatusBanner @958 [action-like-invocation] 提示 ['close']；WmCloseStatusBanner(<br>close @1135 [action-like-invocation] 提示 ['close']；: () => menu.isOpen ? menu.close() : menu.open(),<br>remove @1358 [action-like-invocation] 提示 ['remove']；onTap: () => _requestEditor.remove(row.key),<br>_cancelRequisition @1473 [action-like-invocation] 提示 ['cancel']；onTap: () => _cancelRequisition(r),<br>_retryClose @963 [callback-reference] 提示 ['close']；onRetry<br>_openOtherIssue @1112 [callback-reference] 提示 ['issue']；onPressed<br>startInventoryCount @1146 [callback-reference] 提示 ['start']；onPressed |
+| 动作处理 | WebUpdateSafetyState @99 [action-like-invocation] 提示 ['update']；WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(<br>WmClosePoller @189 [action-like-invocation] 提示 ['close']；late final WmClosePoller _poller = WmClosePoller(<br>closeStatus @192 [action-like-invocation] 提示 ['close']；.closeStatus(_statusPeriod!.id),<br>addPostFrameCallback @296 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());<br>stop @303 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>removeListener @304 [action-like-invocation] 提示 ['remove']；_countEditor.structureSignal.removeListener(_countChanged);<br>removeListener @305 [action-like-invocation] 提示 ['remove']；_countEditor.removeListener(_reloadSafetyChanged);<br>removeListener @307 [action-like-invocation] 提示 ['remove']；_requestEditor.structureSignal.removeListener(_countChanged);<br>removeListener @308 [action-like-invocation] 提示 ['remove']；_requestEditor.removeListener(_reloadSafetyChanged);<br>stop @319 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>stop @397 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>stop @424 [action-like-invocation] 提示 ['stop']；_poller.stop();<br>closeStatus @482 [action-like-invocation] 提示 ['close']；closeStatus = await _repo.closeStatus(statusPeriod.id);<br>WmCloseStatus @489 [action-like-invocation] 提示 ['close']；closeStatus = WmCloseStatus(<br>WmCloseStatus @495 [action-like-invocation] 提示 ['close']；closeStatus = WmCloseStatus(<br>start @516 [action-like-invocation] 提示 ['start']；if (!_poller.active) _poller.start();<br>_openOtherIssue @625 [method-declaration-candidate] 提示 ['issue']；Future<void> _openOtherIssue() async {<br>showWorkshopMaterialOtherIssueDialog @637 [action-like-invocation] 提示 ['issue']；final done = await showWorkshopMaterialOtherIssueDialog(<br>_retryClose @671 [method-declaration-candidate] 提示 ['close']；Future<void> _retryClose() async {<br>showWmCloseRetryDialog @692 [action-like-invocation] 提示 ['close']；final status = await showWmCloseRetryDialog(context, periodId: period.id);<br>start @696 [action-like-invocation] 提示 ['start']；_poller.start();<br>_cancelRequisition @706 [method-declaration-candidate] 提示 ['cancel']；Future<void> _cancelRequisition(WmRequisition requisition) async {<br>cancelRequisition @715 [action-like-invocation] 提示 ['cancel']；await _repo.cancelRequisition(<br>WmCloseStatusBanner @981 [action-like-invocation] 提示 ['close']；WmCloseStatusBanner(<br>close @1158 [action-like-invocation] 提示 ['close']；: () => menu.isOpen ? menu.close() : menu.open(),<br>remove @1381 [action-like-invocation] 提示 ['remove']；onTap: () => _requestEditor.remove(row.key),<br>_cancelRequisition @1496 [action-like-invocation] 提示 ['cancel']；onTap: () => _cancelRequisition(r),<br>_retryClose @986 [callback-reference] 提示 ['close']；onRetry<br>_openOtherIssue @1135 [callback-reference] 提示 ['issue']；onPressed<br>startInventoryCount @1169 [callback-reference] 提示 ['start']；onPressed |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/master/MasterIdentifierAvailabilityController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsIssueMethodController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsPeriodicBomPreparationController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsBomImportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceAnalysisController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsSubcontractSupplierController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleWorkspaceController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/stock/StockQueryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMachineController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialBadgeController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialChoiceController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialCountController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialPositionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialRequisitionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialSettingsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialTaskStatusController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/materialbin/close/WorkshopMaterialCloseController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/features/warehouse/materialbin/widgets/workshop_material_close_retry_dialog.dart` (featureWidgets)；`lib/shared/paging/scoped_paged_read_view_mixin.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_scroll_scope.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_refresh_button.dart` (sharedComponents)；`lib/components/buttons/uten_app_bar_action_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_inline_notice.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/web_update/web_update_safety.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/drafts/form_draft_navigation.dart` (sharedComponents)；`lib/shared/formatters/quantity_display.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/stock/counts/models/stock_count_request.dart` (models)；`lib/features/stock/counts/repositories/stock_count_request_repository.dart` (repositories)；`lib/features/stock/counts/widgets/stock_count_inline_editor.dart` (featureWidgets)；`lib/features/warehouse/materialbin/models/workshop_material_models.dart` (models)；`lib/features/warehouse/materialbin/repositories/workshop_material_repository.dart` (repositories)；`lib/features/warehouse/materialbin/widgets/workshop_material_close_poller.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_close_status_banner.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_enable_panel.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_labels.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_other_issue_dialog.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_request_dialog.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_request_inline_editor.dart` (featureWidgets)。
+直接源依赖：`lib/features/warehouse/materialbin/widgets/workshop_material_close_retry_dialog.dart` (featureWidgets)；`lib/shared/drafts/task_form_drafts.dart` (sharedComponents)；`lib/shared/paging/scoped_paged_read_view_mixin.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_scroll_scope.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_refresh_button.dart` (sharedComponents)；`lib/components/buttons/uten_app_bar_action_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_inline_notice.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/web_update/web_update_safety.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/drafts/form_draft_navigation.dart` (sharedComponents)；`lib/shared/formatters/quantity_display.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/stock/counts/models/stock_count_request.dart` (models)；`lib/features/stock/counts/repositories/stock_count_request_repository.dart` (repositories)；`lib/features/stock/counts/widgets/stock_count_inline_editor.dart` (featureWidgets)；`lib/features/warehouse/materialbin/models/workshop_material_models.dart` (models)；`lib/features/warehouse/materialbin/repositories/workshop_material_repository.dart` (repositories)；`lib/features/warehouse/materialbin/widgets/workshop_material_close_poller.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_close_status_banner.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_enable_panel.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_labels.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_other_issue_dialog.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_request_dialog.dart` (featureWidgets)；`lib/features/warehouse/materialbin/widgets/workshop_material_request_inline_editor.dart` (featureWidgets)。
 
 ## W7-BIZ-174 · lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart
 
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WorkshopMaterialCountPage @53 (page-class)<br>_WorkshopMaterialCountPageState @68 (state-class) |
-| 真实路由绑定 | /workshop-material/count；router @1921；builder ['WorkshopMaterialCountPage']；redirect (_, s) =><br>                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)<br>                ? null<br>                : RouteName.workshopMaterialBin |
+| 真实路由绑定 | /workshop-material/count；router @1922；builder ['WorkshopMaterialCountPage']；redirect (_, s) =><br>                (s.uri.queryParameters['periodId']?.trim().isNotEmpty ?? false)<br>                ? null<br>                : RouteName.workshopMaterialBin |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _BatchSupplement @49 (supporting-class)<br>WorkshopMaterialIssueBatchPage @63 (page-class)<br>_WorkshopMaterialIssueBatchPageState @76 (state-class) |
-| 真实路由绑定 | /workshop-material/issue/batch；router @1891；builder ['WorkshopMaterialIssueBatchPage']；redirect None |
+| 真实路由绑定 | /workshop-material/issue/batch；router @1892；builder ['WorkshopMaterialIssueBatchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | workshop_material:issue @116；定义 lib/shared/auth/permissions.dart:325<br>goods:edit @635；定义 lib/shared/auth/permissions.dart:190<br>goods:bom:edit @636；定义 lib/shared/auth/permissions.dart:612 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WorkshopMaterialIssuePage @62 (page-class)<br>_WorkshopMaterialIssuePageState @90 (state-class) |
-| 真实路由绑定 | /workshop-material/issue；router @1902；builder ['WorkshopMaterialIssuePage']；redirect None |
+| 真实路由绑定 | /workshop-material/issue；router @1903；builder ['WorkshopMaterialIssuePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | workshop_material:issue @131；定义 lib/shared/auth/permissions.dart:325<br>goods:edit @157；定义 lib/shared/auth/permissions.dart:190<br>goods:bom:edit @158；定义 lib/shared/auth/permissions.dart:612 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WorkshopMaterialSetupPage @33 (page-class)<br>_WorkshopMaterialSetupPageState @51 (state-class) |
-| 真实路由绑定 | /warehouse/workshop-material/setup；router @1793；builder ['WorkshopMaterialSetupPage']；redirect None |
+| 真实路由绑定 | /warehouse/workshop-material/setup；router @1794；builder ['WorkshopMaterialSetupPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | workshop_material:setup @119；定义 lib/shared/auth/permissions.dart:337<br>goods:view @120；定义 lib/shared/auth/permissions.dart:189 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceArrivalExceptionTasksPage @46 (page-class)<br>_FinanceArrivalExceptionTasksPageState @72 (state-class)<br>_FinanceTaskCard @349 (supporting-class)<br>FinanceArrivalExceptionDetailPage @437 (page-class)<br>_FinanceArrivalExceptionDetailPageState @447 (state-class)<br>_FinanceStatusBanner @753 (supporting-class)<br>_ArrivalFactsCard @799 (supporting-class)<br>_FinanceDecisionPanel @885 (supporting-class)<br>_DecisionOption @989 (supporting-class)<br>_Fact @1074 (supporting-class)<br>_Pager @1095 (supporting-class) |
-| 真实路由绑定 | /finance/procurement-arrival-exceptions；router @2299；builder ['FinanceArrivalExceptionTasksPage']；redirect None<br>/finance/procurement-arrival-exceptions/:id；router @2304；builder ['FinanceArrivalExceptionDetailPage']；redirect None |
+| 真实路由绑定 | /finance/procurement-arrival-exceptions；router @2300；builder ['FinanceArrivalExceptionTasksPage']；redirect None<br>/finance/procurement-arrival-exceptions/:id；router @2305；builder ['FinanceArrivalExceptionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_order_approval:view @102；定义 lib/shared/auth/permissions.dart:520 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -112,21 +112,21 @@
 
 ## W7-BIZ-178 · lib/features/warehouse/pages/inbound_arrival_registration_page.dart
 
-模块 `warehouse`；1882 行；SHA256 `85fe6c743089ac5a907fe89bd8761055453bb396a34f54ead284d19ada655fe5`。
+模块 `warehouse`；1986 行；SHA256 `cc27c2063a017c598678e72881c94138fb6c4232ae75979feb7ee81ccc503f52`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | InboundArrivalRegistrationPage @99 (page-class)<br>_InboundArrivalRegistrationPageState @127 (state-class)<br>_BatchArrivalLine @1805 (supporting-class) |
-| 真实路由绑定 | /warehouse/inbound/arrivals/register；router @1572；builder ['InboundArrivalRegistrationPage']；redirect None |
+| 页面/状态类 | InboundArrivalRegistrationPage @101 (page-class)<br>_InboundArrivalRegistrationPageState @129 (state-class)<br>_BatchArrivalLine @1908 (supporting-class) |
+| 真实路由绑定 | /warehouse/inbound/arrivals/register；router @1573；builder ['InboundArrivalRegistrationPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | warehouse_inbound:view @318；定义 lib/shared/auth/permissions.dart:299<br>warehouse_inbound:stock_in @319；定义 lib/shared/auth/permissions.dart:836<br>warehouse_iqc_stock_in:before_inspection @328；定义 lib/shared/auth/permissions.dart:317 |
+| 权限 | warehouse_inbound:view @320；定义 lib/shared/auth/permissions.dart:299<br>warehouse_inbound:stock_in @321；定义 lib/shared/auth/permissions.dart:836<br>warehouse_iqc_stock_in:before_inspection @330；定义 lib/shared/auth/permissions.dart:317 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/warehouse/repositories/warehouse_place_suggestion_repository.dart；接口：/warehouse/place-suggestions<br>lib/features/warehouse/repositories/procurement_inbound_repository.dart；接口：/finance/procurement-arrival-exceptions/tasks、/finance/procurement-arrival-exceptions/{id}、/finance/procurement-arrival-exceptions/{id}/decision、/procurement/arrival-exceptions/return-tasks/{id}/complete、/procurement/arrival-exceptions/tasks、/procurement/arrival-exceptions/{id}、/warehouse/inbound/arrival-exceptions、/warehouse/inbound/arrival-exceptions/batch-stock-in、/warehouse/inbound/arrival-exceptions/facets、/warehouse/inbound/arrival-exceptions/{id}/stock-in、/warehouse/inbound/arrivals/batch、/warehouse/inbound/arrivals/batch-complete、/warehouse/inbound/arrivals/{receiptId}/complete、/warehouse/inbound/expectations、/warehouse/inbound/expectations/by-ids、/warehouse/inbound/expectations/facets |
-| 动作处理 | restoreFormDraft @191 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftEmployees @224 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(_empCache, data['employees']);<br>restoreArrivalPrefillDraft @227 [action-like-invocation] 提示 ['restore']；MapEntry(key, restoreArrivalPrefillDraft(draftMap(value))),<br>restoreDraftGrid @229 [action-like-invocation] 提示 ['restore']；restoreDraftGrid(<br>restoreArrivalItemDraft @235 [action-like-invocation] 提示 ['restore']；restoreArrivalItemDraft(draftMap(row['item'])),<br>restoreArrivalDraftText @254 [action-like-invocation] 提示 ['restore']；restoreArrivalDraftText(<br>restoreArrivalDraftText @259 [action-like-invocation] 提示 ['restore']；restoreArrivalDraftText(<br>restoreWeightEntryDraft @264 [action-like-invocation] 提示 ['restore']；restoreWeightEntryDraft(<br>startFormDraftIdentityGuard @444 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @457 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _init());<br>describeSubmitError @530 [action-like-invocation] 提示 ['submit']；_loadError = describeSubmitError(<br>_removeFromThisRegistration @586 [method-declaration-candidate] 提示 ['remove']；void _removeFromThisRegistration(List<_BatchArrivalLine> rows) {<br>removeRows @588 [action-like-invocation] 提示 ['remove']；_lineGrid.removeRows(rows);<br>copyWith @812 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_save @828 [method-declaration-candidate] 提示 ['save']；Future<void> _save(InboundRoute route) async {<br>_saveWithScope @836 [action-like-invocation] 提示 ['save']；() => _saveWithScope(route, requestScope, selectedLines),<br>_saveWithScope @849 [method-declaration-candidate] 提示 ['save']；Future<void> _saveWithScope(<br>inboundRowIssueMessage @935 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(badWeight, '的重量输入无效，原输入已保留', action: '请核对后再提交'),<br>inboundRowIssueMessage @937 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(<br>inboundRowIssueMessage @943 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),<br>inboundRowIssueMessage @945 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(<br>showWarehouseInboundAllocationConfirmDialog @991 [action-like-invocation] 提示 ['confirm']；final confirmed = await showWarehouseInboundAllocationConfirmDialog(<br>saveFormDraftNow @1080 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @1149 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>InboundRouteSubmitButton @1764 [action-like-invocation] 提示 ['submit']；InboundRouteSubmitButton(<br>_save @1767 [action-like-invocation] 提示 ['save']；onPressed: canSubmit ? () => _save(route) : null,<br>updateUnitWeightQuantity @1840 [action-like-invocation] 提示 ['update']；void _syncUnitWeight() => weight.updateUnitWeightQuantity(physicalQtyText);<br>removeListener @1872 [action-like-invocation] 提示 ['remove']；qty.removeListener(onChanged);<br>removeListener @1873 [action-like-invocation] 提示 ['remove']；giftQty.removeListener(onChanged);<br>removeListener @1874 [action-like-invocation] 提示 ['remove']；qty.removeListener(_syncUnitWeight);<br>removeListener @1875 [action-like-invocation] 提示 ['remove']；giftQty.removeListener(_syncUnitWeight);<br>removeListener @1877 [action-like-invocation] 提示 ['remove']；weight.removeListener(onChanged);<br>canSubmit @1767 [callback-reference] 提示 ['submit']；onPressed |
+| 动作处理 | restoreFormDraft @193 [method-declaration-candidate] 提示 ['restore']；Future<void> restoreFormDraft(Map<String, dynamic> data) async {<br>restoreDraftEmployees @226 [action-like-invocation] 提示 ['restore']；restoreDraftEmployees(_empCache, data['employees']);<br>restoreArrivalPrefillDraft @229 [action-like-invocation] 提示 ['restore']；MapEntry(key, restoreArrivalPrefillDraft(draftMap(value))),<br>restoreDraftGrid @231 [action-like-invocation] 提示 ['restore']；restoreDraftGrid(<br>restoreArrivalItemDraft @237 [action-like-invocation] 提示 ['restore']；restoreArrivalItemDraft(draftMap(row['item'])),<br>restoreArrivalDraftText @256 [action-like-invocation] 提示 ['restore']；restoreArrivalDraftText(<br>restoreArrivalDraftText @261 [action-like-invocation] 提示 ['restore']；restoreArrivalDraftText(<br>restoreWeightEntryDraft @266 [action-like-invocation] 提示 ['restore']；restoreWeightEntryDraft(<br>startFormDraftIdentityGuard @449 [action-like-invocation] 提示 ['start']；startFormDraftIdentityGuard();<br>addPostFrameCallback @462 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _init());<br>describeSubmitError @535 [action-like-invocation] 提示 ['submit']；_loadError = describeSubmitError(<br>_removeFromThisRegistration @591 [method-declaration-candidate] 提示 ['remove']；void _removeFromThisRegistration(List<_BatchArrivalLine> rows) {<br>removeRows @593 [action-like-invocation] 提示 ['remove']；_lineGrid.removeRows(rows);<br>copyWith @817 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_save @833 [method-declaration-candidate] 提示 ['save']；Future<void> _save(InboundRoute route) async {<br>_saveWithScope @841 [action-like-invocation] 提示 ['save']；() => _saveWithScope(route, requestScope, selectedLines),<br>_saveWithScope @854 [method-declaration-candidate] 提示 ['save']；Future<void> _saveWithScope(<br>inboundRowIssueMessage @940 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(badWeight, '的重量输入无效，原输入已保留', action: '请核对后再提交'),<br>inboundRowIssueMessage @942 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(<br>inboundRowIssueMessage @948 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),<br>inboundRowIssueMessage @950 [action-like-invocation] 提示 ['issue']；inboundRowIssueMessage(<br>showWarehouseInboundAllocationConfirmDialog @996 [action-like-invocation] 提示 ['confirm']；final confirmed = await showWarehouseInboundAllocationConfirmDialog(<br>saveFormDraftNow @1085 [action-like-invocation] 提示 ['save']；await saveFormDraftNow();<br>completeFormDraft @1154 [action-like-invocation] 提示 ['complete']；await completeFormDraft();<br>InboundRouteSubmitButton @1867 [action-like-invocation] 提示 ['submit']；InboundRouteSubmitButton(<br>_save @1870 [action-like-invocation] 提示 ['save']；onPressed: canSubmit ? () => _save(route) : null,<br>updateUnitWeightQuantity @1944 [action-like-invocation] 提示 ['update']；void _syncUnitWeight() => weight.updateUnitWeightQuantity(physicalQtyText);<br>removeListener @1976 [action-like-invocation] 提示 ['remove']；qty.removeListener(onChanged);<br>removeListener @1977 [action-like-invocation] 提示 ['remove']；giftQty.removeListener(onChanged);<br>removeListener @1978 [action-like-invocation] 提示 ['remove']；qty.removeListener(_syncUnitWeight);<br>removeListener @1979 [action-like-invocation] 提示 ['remove']；giftQty.removeListener(_syncUnitWeight);<br>removeListener @1981 [action-like-invocation] 提示 ['remove']；weight.removeListener(onChanged);<br>canSubmit @1870 [callback-reference] 提示 ['submit']；onPressed |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/FinanceProcurementArrivalExceptionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalExceptionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseInboundController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/place/WarehousePlaceSuggestionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/models/employee_reference.dart` (models)；`lib/shared/widgets/business_employee_picker.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/data_display/uten_totals_summary_bar.dart` (sharedComponents)；`lib/shared/measurement/exact_measurement_totals.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_totals.dart` (sharedComponents)；`lib/shared/models/procurement_quantity.dart` (models)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/shared/widgets/warehouse_selection.dart` (sharedComponents)；`lib/shared/presentation/workflow_field_guidance.dart` (sharedComponents)；`lib/shared/drafts/form_draft_mixin.dart` (sharedComponents)；`lib/shared/drafts/form_draft_catalog.dart` (sharedComponents)；`lib/shared/drafts/form_draft_values.dart` (sharedComponents)；`lib/shared/measurement/weight_mass_units.dart` (sharedComponents)；`lib/shared/measurement/weight_params.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_params_load_notice.dart` (sharedComponents)；`lib/shared/measurement/weight_prefs.dart` (sharedComponents)；`lib/shared/measurement/weight_unit.dart` (sharedComponents)；`lib/shared/measurement/widgets/weigh_count_dialog.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_grid_column.dart` (sharedComponents)；`lib/features/warehouse/models/arrival_form_draft_codec.dart` (models)；`lib/features/warehouse/models/warehouse_form_draft_codec.dart` (models)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/inputs/uten_autofill_text_controller.dart` (sharedComponents)；`lib/components/inputs/uten_date_field.dart` (sharedComponents)；`lib/components/inputs/uten_employee_picker.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_editable_grid.dart` (sharedComponents)；`lib/components/layout/uten_grid_page_scrollbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_form_grid.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/authenticated_request_scope.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/core/utils/idempotency_key.dart` (core)；`lib/shared/formatters/quantity_display.dart` (sharedComponents)；`lib/shared/formatters/exact_decimal.dart` (sharedComponents)；`lib/shared/models/department_node.dart` (models)；`lib/features/purchase/config/purchase_doc_config.dart` (other)；`lib/features/purchase/models/purchase_doc.dart` (models)；`lib/features/subcontract/config/subcontract_doc_config.dart` (other)；`lib/features/subcontract/models/subcontract_doc.dart` (models)；`lib/features/warehouse/widgets/arrival_registration_failure.dart` (featureWidgets)；`lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart` (featureWidgets)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/models/inbound_allocation.dart` (models)；`lib/shared/models/procurement_inbound.dart` (models)；`lib/shared/providers/list_refresh_provider.dart` (sharedComponents)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/widgets/warehouse_picker_panel.dart` (sharedComponents)；`lib/features/warehouse/models/inbound_registration_line.dart` (models)；`lib/features/warehouse/models/arrival_registration_selection.dart` (models)；`lib/features/warehouse/providers/inbound_warehouse_fill_memory.dart` (providers)；`lib/features/warehouse/providers/warehouse_count_refresh.dart` (providers)；`lib/features/warehouse/repositories/warehouse_place_suggestion_repository.dart` (repositories)；`lib/features/warehouse/widgets/batch_place_fill_dialog.dart` (featureWidgets)；`lib/features/warehouse/widgets/inbound_registration_widgets.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_inbound_allocation_view.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_autofill_text_field.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_arrival_source_field.dart` (featureWidgets)；`lib/features/warehouse/repositories/procurement_inbound_repository.dart` (repositories)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)。
+直接源依赖：`lib/shared/models/employee_reference.dart` (models)；`lib/shared/widgets/business_employee_picker.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/data_display/uten_totals_summary_bar.dart` (sharedComponents)；`lib/shared/measurement/exact_measurement_totals.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_totals.dart` (sharedComponents)；`lib/shared/models/procurement_quantity.dart` (models)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/shared/widgets/warehouse_selection.dart` (sharedComponents)；`lib/shared/presentation/workflow_field_guidance.dart` (sharedComponents)；`lib/shared/drafts/form_draft_mixin.dart` (sharedComponents)；`lib/shared/drafts/form_draft_catalog.dart` (sharedComponents)；`lib/shared/drafts/form_draft_values.dart` (sharedComponents)；`lib/shared/measurement/weight_mass_units.dart` (sharedComponents)；`lib/shared/measurement/weight_params.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_params_load_notice.dart` (sharedComponents)；`lib/shared/measurement/weight_prefs.dart` (sharedComponents)；`lib/shared/measurement/weight_unit.dart` (sharedComponents)；`lib/shared/measurement/widgets/weigh_count_dialog.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_grid_column.dart` (sharedComponents)；`lib/features/warehouse/models/arrival_form_draft_codec.dart` (models)；`lib/features/warehouse/models/warehouse_form_draft_codec.dart` (models)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/inputs/uten_autofill_text_controller.dart` (sharedComponents)；`lib/components/inputs/uten_date_field.dart` (sharedComponents)；`lib/components/inputs/uten_field_hint_icon.dart` (sharedComponents)；`lib/components/inputs/uten_employee_picker.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_editable_grid.dart` (sharedComponents)；`lib/components/layout/uten_grid_page_scrollbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_form_grid.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/authenticated_request_scope.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/core/utils/idempotency_key.dart` (core)；`lib/shared/formatters/quantity_display.dart` (sharedComponents)；`lib/shared/formatters/exact_decimal.dart` (sharedComponents)；`lib/shared/models/department_node.dart` (models)；`lib/features/purchase/config/purchase_doc_config.dart` (other)；`lib/features/purchase/models/purchase_doc.dart` (models)；`lib/features/subcontract/config/subcontract_doc_config.dart` (other)；`lib/features/subcontract/models/subcontract_doc.dart` (models)；`lib/features/warehouse/widgets/arrival_registration_failure.dart` (featureWidgets)；`lib/features/warehouse/widgets/subcontract_short_delivery_confirm_dialog.dart` (featureWidgets)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/models/inbound_allocation.dart` (models)；`lib/shared/models/procurement_inbound.dart` (models)；`lib/shared/providers/list_refresh_provider.dart` (sharedComponents)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/widgets/warehouse_picker_panel.dart` (sharedComponents)；`lib/features/warehouse/models/inbound_registration_line.dart` (models)；`lib/features/warehouse/models/arrival_registration_selection.dart` (models)；`lib/features/warehouse/providers/inbound_warehouse_fill_memory.dart` (providers)；`lib/features/warehouse/providers/warehouse_count_refresh.dart` (providers)；`lib/features/warehouse/repositories/warehouse_place_suggestion_repository.dart` (repositories)；`lib/features/warehouse/widgets/batch_place_fill_dialog.dart` (featureWidgets)；`lib/features/warehouse/widgets/inbound_registration_widgets.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_inbound_allocation_view.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_autofill_text_field.dart` (featureWidgets)；`lib/features/warehouse/widgets/warehouse_arrival_source_field.dart` (featureWidgets)；`lib/features/warehouse/repositories/procurement_inbound_repository.dart` (repositories)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)。
 
 ## W7-BIZ-223 · lib/features/warehouse/pages/procurement_return_task_pages.dart
 
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProcurementReturnTasksPage @47 (page-class)<br>_ProcurementReturnTasksPageState @60 (state-class)<br>_ReturnTaskListCard @525 (supporting-class)<br>ProcurementReturnTaskDetailPage @605 (page-class)<br>_ProcurementReturnTaskDetailPageState @615 (state-class)<br>_ReturnStatusBanner @863 (supporting-class)<br>_ReturnFactsCard @903 (supporting-class)<br>_Fact @961 (supporting-class)<br>_Pager @982 (supporting-class) |
-| 真实路由绑定 | /procurement/arrival-exceptions；router @1170；builder ['ProcurementReturnTasksPage']；redirect None<br>/procurement/arrival-exceptions/:id；router @1179；builder ['ProcurementReturnTaskDetailPage']；redirect None |
+| 真实路由绑定 | /procurement/arrival-exceptions；router @1171；builder ['ProcurementReturnTasksPage']；redirect None<br>/procurement/arrival-exceptions/:id；router @1180；builder ['ProcurementReturnTaskDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -171,7 +171,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFinishedArrivalRegistrationPage @76 (page-class)<br>_ProductionFinishedArrivalRegistrationPageState @104 (state-class)<br>_FinishedLotLine @1354 (supporting-class) |
-| 真实路由绑定 | /warehouse/production-finished-in/arrival-registrations；router @1550；builder ['ProductionFinishedArrivalRegistrationPage']；redirect None |
+| 真实路由绑定 | /warehouse/production-finished-in/arrival-registrations；router @1551；builder ['ProductionFinishedArrivalRegistrationPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:approve @139；定义 lib/shared/auth/permissions.dart:690<br>production_finished_in:before_inspection @152；定义 lib/shared/auth/permissions.dart:698 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -189,7 +189,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFinishedBatchStockInPage @41 (page-class)<br>_ProductionFinishedBatchStockInPageState @59 (state-class) |
-| 真实路由绑定 | /warehouse/production-finished-in/batch-stock-in；router @1537；builder ['ProductionFinishedBatchStockInPage']；redirect None |
+| 真实路由绑定 | /warehouse/production-finished-in/batch-stock-in；router @1538；builder ['ProductionFinishedBatchStockInPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:approve @335；定义 lib/shared/auth/permissions.dart:690<br>stock_doc:approve @370；定义 lib/shared/auth/permissions.dart:690<br>stock_doc:approve @519；定义 lib/shared/auth/permissions.dart:690 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -207,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFinishedInboundTasksPage @6 (page-class) |
-| 真实路由绑定 | /warehouse/production-finished-in/tasks；router @1526；builder ['ProductionFinishedInboundTasksPage']；redirect None |
+| 真实路由绑定 | /warehouse/production-finished-in/tasks；router @1527；builder ['ProductionFinishedInboundTasksPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -225,7 +225,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DiscoveryMaterialRow @35 (supporting-class)<br>ProductionMaterialDiscoveryPage @109 (page-class)<br>_DiscoveryPageState @118 (state-class) |
-| 真实路由绑定 | /warehouse/material-discovery/:requestId；router @1371；builder ['ProductionMaterialDiscoveryPage']；redirect None |
+| 真实路由绑定 | /warehouse/material-discovery/:requestId；router @1372；builder ['ProductionMaterialDiscoveryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:issue @201；定义 lib/shared/auth/permissions.dart:701<br>stock_doc:approve @202；定义 lib/shared/auth/permissions.dart:690 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -243,7 +243,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ShelfLabelPage @65 (page-class)<br>_ShelfLabelPageState @72 (state-class)<br>_ShelfLabelPrintDialog @815 (supporting-class)<br>_ShelfLabelPrintDialogState @836 (state-class)<br>_BlankCell @1386 (supporting-class) |
-| 真实路由绑定 | /warehouse/shelf-labels；router @1618；builder ['ShelfLabelPage']；redirect None |
+| 真实路由绑定 | /warehouse/shelf-labels；router @1619；builder ['ShelfLabelPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_report:export @603；定义 lib/shared/auth/permissions.dart:296<br>stock_report:export @1192；定义 lib/shared/auth/permissions.dart:296 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -261,7 +261,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | StockDocDetailPage @81 (page-class)<br>_StockDocDetailPageState @94 (state-class)<br>_FinishedInReceiptInput @2136 (supporting-class)<br>_CancelIssueDialog @2147 (supporting-class)<br>_CancelIssueDialogState @2162 (state-class)<br>_ReturnedWeightHint @2277 (supporting-class)<br>_FinishedInboundWeightHint @2321 (supporting-class) |
-| 真实路由绑定 | /warehouse/:code/:id；router @1837；builder ['StockDocDetailPage']；redirect _rejectUnknownStockDoc |
+| 真实路由绑定 | /warehouse/:code/:id；router @1838；builder ['StockDocDetailPage']；redirect _rejectUnknownStockDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:view @258；定义 lib/shared/auth/permissions.dart:288<br>stock_doc:issue @262；定义 lib/shared/auth/permissions.dart:701<br>stock_doc:reverse_issue @266；定义 lib/shared/auth/permissions.dart:702 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -279,7 +279,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | StockDocEditPage @95 (page-class)<br>_StockDocEditPageState @133 (state-class) |
-| 真实路由绑定 | /warehouse/:code/new；router @1804；builder ['StockDocEditPage']；redirect _rejectStockDocManualEdit<br>/warehouse/:code/:id/edit；router @1819；builder ['StockDocEditPage']；redirect _rejectStockDocManualEdit |
+| 真实路由绑定 | /warehouse/:code/new；router @1805；builder ['StockDocEditPage']；redirect _rejectStockDocManualEdit<br>/warehouse/:code/:id/edit；router @1820；builder ['StockDocEditPage']；redirect _rejectStockDocManualEdit |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:approve @928；定义 lib/shared/auth/permissions.dart:690<br>stock_doc:issue @929；定义 lib/shared/auth/permissions.dart:701<br>stock_doc:view @1404；定义 lib/shared/auth/permissions.dart:288 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -297,7 +297,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _StockDocSeg @58 (supporting-class)<br>StockDocListPage @74 (page-class)<br>_StockDocListPageState @89 (state-class) |
-| 真实路由绑定 | /warehouse/:code；router @1849；builder ['StockDocListPage']；redirect _rejectUnknownStockDoc |
+| 真实路由绑定 | /warehouse/:code；router @1850；builder ['StockDocListPage']；redirect _rejectUnknownStockDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -315,7 +315,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseArrivalExceptionsPage @18 (page-class)<br>_WarehouseArrivalExceptionsPageState @26 (state-class) |
-| 真实路由绑定 | /warehouse/inbound/arrival-exceptions；router @1521；builder ['WarehouseArrivalExceptionsPage']；redirect None |
+| 真实路由绑定 | /warehouse/inbound/arrival-exceptions；router @1522；builder ['WarehouseArrivalExceptionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -333,7 +333,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseDocumentHistoryDetailPage @35 (page-class)<br>_WarehouseDocumentHistoryDetailPageState @50 (state-class) |
-| 真实路由绑定 | /warehouse/history/:type/:id；router @1733；builder ['WarehouseDocumentHistoryDetailPage']；redirect _rejectUnknownWarehouseHistoryType |
+| 真实路由绑定 | /warehouse/history/:type/:id；router @1734；builder ['WarehouseDocumentHistoryDetailPage']；redirect _rejectUnknownWarehouseHistoryType |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -351,7 +351,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseDocumentHistoryListPage @19 (page-class)<br>_WarehouseDocumentHistoryListPageState @29 (state-class) |
-| 真实路由绑定 | /warehouse/history/:type；router @1744；builder ['WarehouseDocumentHistoryListPage']；redirect _rejectUnknownWarehouseHistoryType |
+| 真实路由绑定 | /warehouse/history/:type；router @1745；builder ['WarehouseDocumentHistoryListPage']；redirect _rejectUnknownWarehouseHistoryType |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -387,7 +387,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseHubPage @51 (page-class)<br>_StockQueryEntry @303 (supporting-class) |
-| 真实路由绑定 | /warehouse；router @1360；builder ['WarehouseHubPage']；redirect None |
+| 真实路由绑定 | /warehouse；router @1361；builder ['WarehouseHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -405,7 +405,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseInboundExpectationsPage @6 (page-class) |
-| 真实路由绑定 | /warehouse/inbound/expectations；router @1516；builder ['WarehouseInboundExpectationsPage']；redirect None |
+| 真实路由绑定 | /warehouse/inbound/expectations；router @1517；builder ['WarehouseInboundExpectationsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -441,7 +441,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseInsightPage @66 (page-class)<br>_WarehouseInsightPageState @77 (state-class) |
-| 真实路由绑定 | /warehouse/insights；router @1625；builder ['WarehouseInsightPage']；redirect None |
+| 真实路由绑定 | /warehouse/insights；router @1626；builder ['WarehouseInsightPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -459,7 +459,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseMaterialReturnBatchReceivePage @41 (page-class)<br>_Row @56 (supporting-class)<br>_WarehouseMaterialReturnBatchReceivePageState @65 (state-class) |
-| 真实路由绑定 | /warehouse/material-returns/batch-receive；router @1664；builder ['WarehouseMaterialReturnBatchReceivePage']；redirect None |
+| 真实路由绑定 | /warehouse/material-returns/batch-receive；router @1665；builder ['WarehouseMaterialReturnBatchReceivePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_doc:approve @456；定义 lib/shared/auth/permissions.dart:690<br>stock_doc:approve @491；定义 lib/shared/auth/permissions.dart:690<br>stock_doc:approve @613；定义 lib/shared/auth/permissions.dart:690 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -495,7 +495,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseQualityBatchStockInPage @51 (page-class)<br>_WarehouseQualityBatchStockInPageState @69 (state-class)<br>_MessagePanel @685 (supporting-class) |
-| 真实路由绑定 | /warehouse/quality-results/batch-stock-in；router @1436；builder ['WarehouseQualityBatchStockInPage']；redirect None |
+| 真实路由绑定 | /warehouse/quality-results/batch-stock-in；router @1437；builder ['WarehouseQualityBatchStockInPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | warehouse_iqc_stock_in:view @198；定义 lib/shared/auth/permissions.dart:313<br>warehouse_iqc_stock_in:confirm @199；定义 lib/shared/auth/permissions.dart:314 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -513,7 +513,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseQualityPreStockInPage @52 (page-class)<br>_WarehouseQualityPreStockInPageState @69 (state-class)<br>WarehousePreStockRow @784 (supporting-class) |
-| 真实路由绑定 | /warehouse/quality-results/pre-stock-in/:receiptType/:receiptId；router @1462；builder ['WarehouseQualityPreStockInPage']；redirect None |
+| 真实路由绑定 | /warehouse/quality-results/pre-stock-in/:receiptType/:receiptId；router @1463；builder ['WarehouseQualityPreStockInPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | warehouse_iqc_stock_in:view @197；定义 lib/shared/auth/permissions.dart:313<br>warehouse_iqc_stock_in:before_inspection @198；定义 lib/shared/auth/permissions.dart:317 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -531,7 +531,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseQualityResultDetailPage @58 (page-class)<br>_WarehouseQualityResultDetailPageState @75 (state-class)<br>_OwnReleaseNotice @1198 (supporting-class)<br>_MessagePanel @1245 (supporting-class)<br>_RecordReturnDialog @1279 (supporting-class)<br>_RecordReturnDialogState @1288 (state-class) |
-| 真实路由绑定 | /warehouse/quality-results/:receiptType/:receiptId；router @1478；builder ['WarehouseQualityResultDetailPage']；redirect None |
+| 真实路由绑定 | /warehouse/quality-results/:receiptType/:receiptId；router @1479；builder ['WarehouseQualityResultDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | warehouse_iqc_stock_in:view @193；定义 lib/shared/auth/permissions.dart:313<br>warehouse_iqc_stock_in:confirm @194；定义 lib/shared/auth/permissions.dart:314<br>procurement_iqc_rejection:record_return @208；定义 lib/shared/auth/permissions.dart:826<br>warehouse_iqc_stock_in:view @235；定义 lib/shared/auth/permissions.dart:313<br>warehouse_iqc_stock_in:before_inspection @236；定义 lib/shared/auth/permissions.dart:317 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -567,7 +567,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseReportTablePage @65 (page-class)<br>_WarehouseReportTablePageState @74 (state-class) |
-| 真实路由绑定 | detail；router @1601；builder ['WarehouseReportTablePage']；redirect None<br>summary；router @1608；builder ['WarehouseReportTablePage']；redirect None |
+| 真实路由绑定 | detail；router @1602；builder ['WarehouseReportTablePage']；redirect None<br>summary；router @1609；builder ['WarehouseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_report:export @552；定义 lib/shared/auth/permissions.dart:296<br>stock_report:export @561；定义 lib/shared/auth/permissions.dart:296 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -585,7 +585,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSalesOutboundBatchPage @50 (page-class)<br>_WarehouseSalesOutboundBatchPageState @69 (state-class) |
-| 真实路由绑定 | /warehouse/sales-outbound/batch；router @1675；builder ['WarehouseSalesOutboundBatchPage']；redirect None |
+| 真实路由绑定 | /warehouse/sales-outbound/batch；router @1676；builder ['WarehouseSalesOutboundBatchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -603,7 +603,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSalesOutboundDetailPage @40 (page-class)<br>_WarehouseSalesOutboundDetailPageState @50 (state-class) |
-| 真实路由绑定 | /warehouse/sales-outbound/:id；router @1687；builder ['WarehouseSalesOutboundDetailPage']；redirect None |
+| 真实路由绑定 | /warehouse/sales-outbound/:id；router @1688；builder ['WarehouseSalesOutboundDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -621,7 +621,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSalesOutboundPage @6 (page-class) |
-| 真实路由绑定 | /warehouse/sales-outbound；router @1708；builder ['WarehouseSalesOutboundPage']；redirect None |
+| 真实路由绑定 | /warehouse/sales-outbound；router @1709；builder ['WarehouseSalesOutboundPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -657,7 +657,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSubcontractOutboundBatchPage @65 (page-class)<br>_BatchDraft @83 (supporting-class)<br>_WarehouseSubcontractOutboundBatchPageState @123 (state-class) |
-| 真实路由绑定 | /warehouse/subcontract-outbound/batch；router @1714；builder ['WarehouseSubcontractOutboundBatchPage']；redirect None |
+| 真实路由绑定 | /warehouse/subcontract-outbound/batch；router @1715；builder ['WarehouseSubcontractOutboundBatchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | subcontract_outbound:view @471；定义 lib/shared/auth/permissions.dart:426<br>subcontract_outbound:execute @472；定义 lib/shared/auth/permissions.dart:835<br>subcontract_material_issue:view @473；定义 lib/shared/auth/permissions.dart:409<br>subcontract_material_issue:edit @474；定义 lib/shared/auth/permissions.dart:410<br>subcontract_material_issue:approve @475；定义 lib/shared/auth/permissions.dart:749 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -675,7 +675,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSubcontractOutboundEditPage @97 (page-class)<br>_WarehouseSubcontractOutboundEditPageState @111 (state-class)<br>_PickGate @1174 (supporting-class)<br>_ReturnToDrawReasonDialog @1204 (supporting-class)<br>_ReturnToDrawReasonDialogState @1214 (state-class)<br>_PickFact @1295 (supporting-class) |
-| 真实路由绑定 | /warehouse/subcontract-outbound/:issueId；router @1725；builder ['WarehouseSubcontractOutboundEditPage']；redirect None |
+| 真实路由绑定 | /warehouse/subcontract-outbound/:issueId；router @1726；builder ['WarehouseSubcontractOutboundEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | subcontract_outbound:execute @1187；定义 lib/shared/auth/permissions.dart:835<br>subcontract_material_issue:edit @1189；定义 lib/shared/auth/permissions.dart:410<br>subcontract_material_issue:approve @1193；定义 lib/shared/auth/permissions.dart:749 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -693,7 +693,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseSubcontractOutboundPage @6 (page-class) |
-| 真实路由绑定 | /warehouse/subcontract-outbound；router @1659；builder ['WarehouseSubcontractOutboundPage']；redirect None |
+| 真实路由绑定 | /warehouse/subcontract-outbound；router @1660；builder ['WarehouseSubcontractOutboundPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -711,8 +711,8 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _GroupSpec @47 (supporting-class)<br>WarehouseTaskCenterPage @61 (page-class)<br>_WarehouseTaskCenterPageState @83 (state-class) |
-| 真实路由绑定 | /warehouse/quality-results；router @1426；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks；router @1757；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/outbound；router @1766；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/inbound；router @1775；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/draw；router @1783；builder ['WarehouseTaskCenterPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:1421","routerLine":1421,"path":"/warehouse/iqc-stock-ins","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1697","routerLine":1697,"path":"/warehouse/iqc-returns/:id","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1703","routerLine":1703,"path":"/warehouse/iqc-returns","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /warehouse/quality-results；router @1427；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks；router @1758；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/outbound；router @1767；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/inbound；router @1776；builder ['WarehouseTaskCenterPage']；redirect None<br>/warehouse/tasks/draw；router @1784；builder ['WarehouseTaskCenterPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:1422","routerLine":1422,"path":"/warehouse/iqc-stock-ins","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1698","routerLine":1698,"path":"/warehouse/iqc-returns/:id","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1704","routerLine":1704,"path":"/warehouse/iqc-returns","targetConstants":["warehouseQualityResults"],"redirectExpression":"(_, _) => RouteName.warehouseQualityResults","status":"possible alias; 需人工核实"} |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/warehouse/repositories/warehouse_task_center_repository.dart；接口：/warehouse/task-center/{direction.name} |
@@ -729,7 +729,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehouseWeighCountPage @31 (page-class)<br>_WarehouseWeighCountPageState @39 (state-class) |
-| 真实路由绑定 | /warehouse/weigh-count；router @1653；builder ['WarehouseWeighCountPage']；redirect None |
+| 真实路由绑定 | /warehouse/weigh-count；router @1654；builder ['WarehouseWeighCountPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

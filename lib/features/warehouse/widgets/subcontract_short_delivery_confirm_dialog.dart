@@ -1,6 +1,6 @@
 // ADR-098 到货登记的「回厂短交确认」弹窗。
 //
-// 服务端在登记前评估委外订货行：累计回厂低于允许损耗下限时先以 409
+// 服务端在登记前评估委外订货行：累计回厂尚未达到成品目标时先以 409
 // SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED 拒绝，fieldErrors 逐行给出大白话数字。
 // 仓库看过后点「继续登记并通知委外」，原请求体加 shortDeliveryAcknowledged=true 原样重发；
 // 登记成功即开立短交案件并通知委外跟单员判定。仓库只登记事实并确认知情，判定权在委外。
@@ -24,7 +24,7 @@ Future<bool> showSubcontractShortDeliveryConfirmDialog(
   final lines = error.fieldErrors ?? const [];
   final confirmed = await UtenDialog.show(
     context,
-    title: '到货数量明显少于订货量',
+    title: '回厂数量尚未达到成品目标',
     danger: true,
     confirmLabel: '继续登记并通知委外',
     cancelLabel: '返回修改',

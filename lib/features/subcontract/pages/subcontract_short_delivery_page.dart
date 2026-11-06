@@ -433,11 +433,11 @@ class _SubcontractShortDeliveryPageState
         title: '委外回厂短交判定',
         info: switch (_seg) {
           SubcontractShortDeliverySegment.pending =>
-            '低于允许损耗下限的短交与过了预计到齐日的分批等待；「严重」为短交率超过允许损耗两倍或 20%。仓库照实登记，判定权在委外。',
+            '未达到成品目标的短交与过了预计到齐日的分批等待。损耗比例用于供料上限，不自动减少成品目标；仓库照实登记，是否继续等货或接受短交由委外判定。',
           SubcontractShortDeliverySegment.tolerant =>
-            '已按损耗增加供料的新计划，仍须补齐成品目标或由委外明确接受短交。历史未加料计划在容差内完成质检入库后自动结清；其余由委外判定。',
+            '保留历史案件当时的容差状态供核对；当前未结案件按成品目标判定，短交须补齐或由负责人说明并明确接受，不因供料损耗上限自动结清。',
           SubcontractShortDeliverySegment.waiting =>
-            '已判定分批到货；新加料计划继续等齐成品目标。历史未加料计划进入容差并入库后自动结清；仍低于下限且逾期的回到「待判定」。',
+            '已判定分批到货，继续等待补齐成品目标；不足最少应到数量且逾期的案件回到「待判定」。历史已关闭案件保留原判定事实。',
           SubcontractShortDeliverySegment.history =>
             '已接受损耗结清、自然到齐或作废的案件；原订货量保留，实收与核销损耗分别记录。',
         },
@@ -937,7 +937,7 @@ class _SubcontractShortDeliveryPageState
   }
 
   /// 程度列（ADR-169 档位：风险按 灰→橙→红 分层）：
-  /// 容差内=中性灰（新加料计划须明确判定，历史未加料计划质检入库后可自动结清）、
+  /// 容差内=中性灰（保留历史状态；当前未结案件依成品目标判定）、
   /// 低于允许下限=橙（超出容差的风险中间态，未到严重）、严重短交=红（异常）。
   static UtenStatusBadgeType _severityType(SubcontractShortDeliveryCase c) =>
       switch (c.severity) {
@@ -948,7 +948,7 @@ class _SubcontractShortDeliveryPageState
       };
 
   /// 状态列（ADR-169 档位）：待判定=橙（短交待判定的风险中间态；过了预计
-  /// 到齐日仍没到齐/没判=红，逾期升级）；容差内待结案=灰（中性，自动结清）；
+  /// 到齐日仍没到齐/没判=红，逾期升级）；历史容差内待结案=灰（中性）；
   /// 分批等待=品红（分类强调）；接受损耗结案=灰（中性终态，与自然到齐的绿区分）；
   /// 已到齐=绿。
   static UtenStatusBadgeType _statusType(SubcontractShortDeliveryCase c) =>

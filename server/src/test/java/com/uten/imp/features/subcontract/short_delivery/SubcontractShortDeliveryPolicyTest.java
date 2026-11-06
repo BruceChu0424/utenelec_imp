@@ -9,15 +9,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** ADR-098 短交口径纯函数：允许下限、短交率、程度分档。 */
 class SubcontractShortDeliveryPolicyTest {
 
+    @Test void thousandTargetAndTenPercentMaterialBudgetRequireAtLeastThousandActualProducts() {
+        assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("1000"),bd("10"))).isEqualByComparingTo("1000");
+        for(String actual:new String[]{"900","950","999.9999"})
+            assertThat(SubcontractShortDeliveryPolicy.severity(bd("1000"),bd("10"),bd(actual)))
+                    .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
+        for(String actual:new String[]{"1000","1050","1100"})
+            assertThat(SubcontractShortDeliveryPolicy.severity(bd("1000"),bd("10"),bd(actual))).isNull();
+        assertThat(SubcontractShortDeliveryPolicy.allowedLossQty(bd("1000"),bd("10"))).isZero();
+    }
+
     @Test
-    void floorIsOrderedTimesOneMinusAllowedLoss() {
+    void finishedFloorIsTheWholeTargetRegardlessOfMaterialAllowance() {
         assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("100"), bd("5")))
-                .isEqualByComparingTo("95.0000");
+                .isEqualByComparingTo("100");
         assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("33"), bd("5")))
-                .isEqualByComparingTo("31.3500");
-        assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("100"), null)).isNull();
+                .isEqualByComparingTo("33");
+        assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("100"), null)).isEqualByComparingTo("100");
         assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("100"), bd("100")))
-                .isEqualByComparingTo("0");
+                .isEqualByComparingTo("100");
     }
 
     @Test
@@ -28,15 +38,15 @@ class SubcontractShortDeliveryPolicyTest {
     }
 
     @Test
-    void withinToleranceWhenDeliveredReachesTheFloor() {
+    void reachingTheHistoricalDiscountedFloorDoesNotFulfillTheFinishedTarget() {
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), bd("5"), bd("95")))
-                .isEqualTo(SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE);
+                .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), bd("5"), bd("99.5")))
-                .isEqualTo(SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE);
+                .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
     }
 
     @Test
-    void belowFloorSplitsIntoSevereAtTwiceToleranceOrTwentyPercent() {
+    void finishedShortfallSeverityDoesNotDependOnTheMaterialBudget() {
         // 5%：低于 95 是 BELOW_FLOOR；短交率 >= max(10, 20) = 20% 才是 SEVERE。
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), bd("5"), bd("94")))
                 .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
@@ -46,15 +56,15 @@ class SubcontractShortDeliveryPolicyTest {
                 .isEqualTo(SubcontractShortDeliveryPolicy.SEVERE);
         // 15%：阈值 max(30, 20) = 30%。
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), bd("15"), bd("75")))
-                .isEqualTo(SubcontractShortDeliveryPolicy.BELOW_FLOOR);
+                .isEqualTo(SubcontractShortDeliveryPolicy.SEVERE);
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), bd("15"), bd("70")))
                 .isEqualTo(SubcontractShortDeliveryPolicy.SEVERE);
     }
 
     @Test
-    void unsetToleranceIsNeutralWheneverShort() {
+    void missingMaterialAllowanceDoesNotHideARealFinishedShortfall() {
         assertThat(SubcontractShortDeliveryPolicy.severity(bd("100"), null, bd("1")))
-                .isEqualTo(SubcontractShortDeliveryPolicy.UNSET_TOLERANCE);
+                .isEqualTo(SubcontractShortDeliveryPolicy.SEVERE);
         assertThat(SubcontractShortDeliveryPolicy.isBelowFloor(SubcontractShortDeliveryPolicy.UNSET_TOLERANCE))
                 .isFalse();
         assertThat(SubcontractShortDeliveryPolicy.isBelowFloor(SubcontractShortDeliveryPolicy.SEVERE)).isTrue();
@@ -72,13 +82,13 @@ class SubcontractShortDeliveryPolicyTest {
         assertThat(SubcontractShortDeliveryPolicy.shortfallPct(bd("0"), bd("0")))
                 .isEqualByComparingTo("0");
         assertThat(SubcontractShortDeliveryPolicy.allowedLossQty(bd("100"), bd("5")))
-                .isEqualByComparingTo("5");
+                .isEqualByComparingTo("0");
         assertThat(SubcontractShortDeliveryPolicy.allowedLossQty(bd("100"), null))
                 .isEqualByComparingTo("0");
         assertThat(SubcontractShortDeliveryPolicy.severeThresholdPct(bd("5")))
                 .isEqualByComparingTo("20");
         assertThat(SubcontractShortDeliveryPolicy.severeThresholdPct(bd("15")))
-                .isEqualByComparingTo("30");
+                .isEqualByComparingTo("20");
     }
 
     private static BigDecimal bd(String value) {
@@ -87,7 +97,7 @@ class SubcontractShortDeliveryPolicyTest {
 
     @Test void finiteThresholdAndOneQuantumShortfallRemainExact(){
         assertThat(SubcontractShortDeliveryPolicy.floorQty(bd("0.000000000000000000000001"),bd("0.000000000000000000000001")))
-                .isEqualByComparingTo("0.00000000000000000000000099999999999999999999999999");
+                .isEqualByComparingTo("0.000000000000000000000001");
         assertThat(SubcontractShortDeliveryPolicy.shortfallQty(bd("1"),bd("0.999999999999999999999999")))
                 .isEqualByComparingTo("0.000000000000000000000001");
     }

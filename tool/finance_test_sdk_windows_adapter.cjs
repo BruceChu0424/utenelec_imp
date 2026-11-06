@@ -1,10 +1,19 @@
 // Private Flutter headless-test plumbing only. Never changes product, SDK or assertions.
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const crypto = require('node:crypto');
 async function run(options) {
   const debugPort=Number(options['debug-port']);
   const origin=new URL(options['test-origin']);
   const canvasRoot=path.resolve(options['canvas-kit']);
+  // Flutter's static test-host route also matches product *_host.dart.js
+  // modules. An explicitly owned compiler manifest lets the adapter return
+  // the original, unmodified module bytes instead of the test-host bootstrap.
+  const manifestPath=options['compiled-manifest'];
+  const codePath=options['compiled-code'];
+  if(Boolean(manifestPath)!==Boolean(codePath))throw Error('Both own compiled manifest and code are required');
+  const compiledManifest=manifestPath?JSON.parse(await fs.readFile(manifestPath,'utf8')):null;
+  const compiledCode=codePath?await fs.readFile(codePath):null;
   if(!Number.isInteger(debugPort)||debugPort<1024||debugPort>65535||origin.protocol!=='http:'||
     !['localhost','127.0.0.1'].includes(origin.hostname))throw Error('Only an explicitly owned local test browser is allowed');
   const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
@@ -33,6 +42,18 @@ async function run(options) {
   }
   async function intercept(event) {
     const url = new URL(event.request.url);
+    if(compiledManifest&&url.origin===origin.origin&&url.pathname==='/packages/uten_imp/components/layout/uten_page_scrollbar_host.dart.js') {
+      const modulePath=url.pathname.replace(/\.dart\.js$/,'.dart.lib.js');
+      const offsets=compiledManifest[modulePath]?.code;
+      if(!Array.isArray(offsets)||offsets.length!==2||offsets[0]<0||offsets[1]>compiledCode.length)throw Error('The intercepted module is absent from this compiler output');
+      const bytes=compiledCode.subarray(offsets[0],offsets[1]);
+      const source=bytes.toString('utf8');
+      if(!source.includes('// Module: packages/uten_imp/components/layout/uten_page_scrollbar_host.dart')||!source.includes('\ndefine(')||!source.includes('uten_imp__components__layout__uten_page_scrollbar_host'))throw Error('Expected the exact page-scrollbar AMD module');
+      await call('Fetch.fulfillRequest',{requestId:event.requestId,responseCode:200,
+        responseHeaders:[{name:'Content-Type',value:'text/javascript'}],body:bytes.toString('base64')});
+      console.log(JSON.stringify({adapted:'same-compile-module-host-route',module:modulePath,bytes:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')}));
+      return;
+    }
     if (url.origin !== origin.origin) throw Error('Interception escaped its declared test origin');
     if (url.pathname.startsWith('/canvaskit/')) {
       const relative = decodeURIComponent(url.pathname.slice('/canvaskit/'.length));
@@ -81,6 +102,7 @@ async function run(options) {
   await call('Fetch.enable', { patterns: [
     { urlPattern: `${origin.origin}/canvaskit/*`, requestStage: 'Request' },
     { urlPattern: `${origin.origin}/*.html*`, requestStage: 'Response' },
+    ...(compiledManifest?[{urlPattern:`${origin.origin}/packages/uten_imp/components/layout/uten_page_scrollbar_host.dart.js`,requestStage:'Request'}]:[]),
   ] });
   if(options.initialHostUrl) {
     await call('Page.navigate',{url:options.initialHostUrl});

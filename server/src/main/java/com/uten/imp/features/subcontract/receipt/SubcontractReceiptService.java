@@ -715,12 +715,16 @@ public class SubcontractReceiptService {
      * 回厂核销委外商处物料：目标跟踪(ADR-143 §三.7)。
      *
      * <p>R = 本订货明细有效回厂(已审 + 本单已落定的行)的物料口径回厂量之和(订货单位)。
-     * 每种冻结物料(计划行)本次核销 = GREATEST(0, f_i(R) − 当前有效核销量_i)，
-     * f_i(S) = CEIL(S × b_i, 4)，再按发料先进先出(发料日期、创建时间、行号)切片记账；
+     * 新回厂按冻结原始 BOM 单耗核销，损耗加成只作供料预算；实际报损、退料独立入账。
+     * 历史已审核行沿原含损耗估算，分版本累计取整，由数据库公共目标函数统一计算，
+     * 再按发料先进先出(发料日期、创建时间、行号)切片记账；
      * 不同物料各算各的，绝不相加。前批红冲留下的尾差由这一次自动纠正。
      * 某种物料委外商处不够核销即整单回滚并点名该物料。
      */
     private void consumeTowardsTarget(UUID receiptId, UUID receiptItemId, UUID orderItemId) {
+        int materialVersion=((Number) em.createNativeQuery(
+                "SELECT material_consumption_version FROM subcontract_receipt_items WHERE id=:id")
+                .setParameter("id",receiptItemId).getSingleResult()).intValue();
         // 先按 id 顺序锁住本订货明细的全部发料明细，再读先进先出顺序(锁序与其它台账写入一致)。
         em.createNativeQuery("""
                 SELECT issue_item.id FROM subcontract_material_issue_items issue_item
@@ -741,14 +745,19 @@ public class SubcontractReceiptService {
                 )
                 SELECT plan_item.id,
                        COALESCE(goods.name, ''),
-                       fn_subcontract_draw_f(basis.received_basis, plan_item.bom_unit_qty) AS target_qty,
+                       fn_subcontract_material_consumption_cohort_target(plan_item.id,:materialVersion,:receiptId) AS target_qty,
                        COALESCE((
-                           SELECT SUM(issue_item.consumed_qty)
-                           FROM subcontract_material_issue_items issue_item
-                           JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
-                            AND issue.status = 1 AND issue.is_deleted = FALSE
-                           WHERE issue_item.plan_item_id = plan_item.id
-                             AND issue_item.is_deleted = FALSE
+                           SELECT SUM(consumption.qty_doc)
+                           FROM subcontract_receipt_material_consumptions consumption
+                           JOIN subcontract_receipt_items source_receipt ON source_receipt.id=consumption.receipt_item_id
+                             AND source_receipt.material_consumption_version=:materialVersion
+                           JOIN subcontract_material_issue_items issue_item ON issue_item.id=consumption.issue_item_id
+                           JOIN subcontract_material_issues issue ON issue.id=issue_item.issue_id
+                             AND issue.status=1 AND NOT issue.is_deleted
+                           WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted
+                             AND consumption.reversal_of IS NULL
+                             AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal
+                                 WHERE reversal.reversal_of=consumption.id)
                        ), 0) AS consumed_qty
                 FROM subcontract_material_plan_items plan_item
                 JOIN goods ON goods.id = plan_item.goods_id
@@ -756,7 +765,7 @@ public class SubcontractReceiptService {
                 WHERE plan_item.order_item_id = :orderItemId AND plan_item.is_deleted = FALSE
                 ORDER BY plan_item.line_no ASC NULLS LAST, plan_item.id
                 """).setParameter("receiptId", receiptId).setParameter("orderItemId", orderItemId)
-                .getResultList();
+                .setParameter("materialVersion",materialVersion).getResultList();
         UUID actor = currentUser.requireId();
         for (Object[] material : materials) {
             BigDecimal remaining = decimal(material[2]).subtract(decimal(material[3]));
@@ -812,8 +821,12 @@ public class SubcontractReceiptService {
                 em.createNativeQuery("""
                         INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
                             qty_doc,qty_base,consumption_basis,created_by)
-                        SELECT :receipt,issue.id,:qty,:qty*issue.unit_rate,'FROZEN_BOM_ESTIMATE',:actor
-                        FROM subcontract_material_issue_items issue WHERE issue.id=:issue
+                        SELECT :receipt,issue.id,:qty,:qty*issue.unit_rate,
+                            CASE WHEN receipt.material_consumption_version=1 THEN 'FROZEN_BOM_ESTIMATE'
+                                 ELSE 'FROZEN_BASE_BOM_ACTUAL' END,:actor
+                        FROM subcontract_material_issue_items issue
+                        JOIN subcontract_receipt_items receipt ON receipt.id=:receipt
+                        WHERE issue.id=:issue
                         """).setParameter("receipt", receiptItemId).setParameter("issue", (UUID) source[0])
                         .setParameter("qty", take).setParameter("actor", actor).executeUpdate();
                 remaining = remaining.subtract(take);
@@ -1066,7 +1079,7 @@ public class SubcontractReceiptService {
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
             MoneyPolicy.LineAmounts amounts = amountDraft.line(l.getOrderItemId(),
-                    l.getQty(), it.getPrice(), r.getExchangeRate());
+                    l.getQty(), it.getPrice(), r.getExchangeRate(),it.getMaterialConsumptionVersion());
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setCheckQty(l.getCheckQty());

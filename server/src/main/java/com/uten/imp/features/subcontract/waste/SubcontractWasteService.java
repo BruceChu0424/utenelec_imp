@@ -251,18 +251,16 @@ public class SubcontractWasteService {
     /**
      * ADR-098 委外回厂短交「接受损耗结案」自动登记并审核一张损耗单：整单结损耗时，把该订货明细
      * 在委外商处的剩余物料(发出 + 补料 − 已核销 − 已退 − 已损耗)逐种全部记损耗(ADR-143 §二.13，
-     * 不按短交量×单耗重算，避免 0.0001 尾差)。每种物料的允许量 = f_i(允许短交量)
-     * = CEIL(允许短交量 × 冻结单耗, 4)，其余是超耗(审核后走 ADR-047 责任判定)。
+     * 不按短交量×单耗重算，避免 0.0001 尾差)。每种物料的正常上限独立取成品目标
+     * ×(冻结预算单耗−基础单耗)原精确值，扣本计划有效显式正常报损及历史v1已核销正常份额；
+     * 领料向上取整尾差不自动免责，其余按原责任流程处理。
      * 权限点是 subcontract_short_delivery:decide(判定服务校验), 不再要求 subcontract_waste:create/approve;
      * 守恒 CAS、期间、来源一致等业务守卫与手工损耗单完全一致。委外商处没有剩料时不生成, 返回 null。
      *
      * @param shortfallQty        短交量(订货单位)，不大于 0 时不结损耗
-     * @param allowedShortfallQty 短交量里落在允许损耗范围内的份额(订货单位)
-     * @param allowedLossPct      允许损耗百分比(写进损耗率列, 只作说明)
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID recordShortDeliveryLoss(UUID orderItemId, BigDecimal shortfallQty,
-                                        BigDecimal allowedShortfallQty, BigDecimal allowedLossPct,
                                         String cause, java.time.LocalDate billDate) {
         if (orderItemId == null || shortfallQty == null || shortfallQty.signum() <= 0) return null;
         // 先按 id 顺序锁住本订货明细的发料明细，再按物料与发料先进先出读取。
@@ -273,25 +271,9 @@ public class SubcontractWasteService {
                 FOR UPDATE
                 """).setParameter("orderItemId", orderItemId).getResultList();
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT issue_item.id, issue_item.goods_id, issue_item.color_id, issue_item.unit_id,
-                       issue_item.unit_rate, plan_item.bom_unit_qty,
-                       issue.warehouse_id, issue.supplier_id,
-                       GREATEST(COALESCE(issue_item.at_supplier_qty, 0) + COALESCE(issue_item.compensated_qty, 0)
-                                - COALESCE(issue_item.consumed_qty, 0) - COALESCE(issue_item.returned_qty, 0)
-                                - COALESCE(issue_item.wasted_qty, 0), 0) AS remaining,
-                       plan_item.id
-                FROM subcontract_material_issue_items issue_item
-                JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
-                 AND issue.status = 1 AND issue.is_deleted = FALSE
-                JOIN subcontract_material_plan_items plan_item ON plan_item.id = issue_item.plan_item_id
-                WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
-                ORDER BY plan_item.line_no ASC NULLS LAST, plan_item.id,
-                         issue.bill_date ASC NULLS LAST, issue.created_at ASC,
-                         issue_item.line_no ASC NULLS LAST, issue_item.id
-                """).setParameter("orderItemId", orderItemId).getResultList();
-        BigDecimal allowed = allowedShortfallQty == null ? BigDecimal.ZERO : allowedShortfallQty.max(BigDecimal.ZERO);
-        // 按物料(冻结计划行)分组：每组的允许量 = f_i(允许短交量)，组内按发料先进先出先占允许量。
+        List<Object[]> rows = em.createNativeQuery(shortDeliveryLossSourcesSql()).setParameter("orderItemId", orderItemId).getResultList();
+        // Per-material frozen budgets are basic quantities. Each actual issue keeps its
+        // own document unit; previously approved normal loss cannot be granted again.
         Map<UUID, List<Object[]>> groups = new java.util.LinkedHashMap<>();
         for (Object[] row : rows) {
             if (((BigDecimal) row[8]).signum() <= 0) continue;
@@ -299,21 +281,22 @@ public class SubcontractWasteService {
         }
         List<WasteItemLine> lines = new ArrayList<>();
         Map<UUID,BigDecimal> originalStandards=new java.util.LinkedHashMap<>();
+        Map<UUID,UUID> standardBaseUnits=new java.util.LinkedHashMap<>();
         UUID warehouseId = null;
         UUID supplierId = null;
         for (List<Object[]> group : groups.values()) {
-            BigDecimal perSet = (BigDecimal) group.getFirst()[5];
-            BigDecimal allowedRemaining = allowed.multiply(perSet);
+            Object[] first=group.getFirst();
+            BigDecimal allowedRemaining = remainingNormalMaterialBudgetForSource(first);
             for (Object[] row : group) {
                 BigDecimal take = (BigDecimal) row[8];
                 com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown((UUID)row[3],(BigDecimal)row[4]);
-                BigDecimal originalStandard=take.min(allowedRemaining);
-                BigDecimal standard=com.uten.imp.common.util.FinancialExactAmount.quantity(
-                    com.uten.imp.common.finance.BusinessPrecisionContext.limit(originalStandard,"subcontract.normal-loss-quantity","本次委外允许损耗材料数量",24),"允许损耗材料数量");
-                if(standard.signum()<0||standard.compareTo(originalStandard)>0||standard.compareTo(take)>0)
-                    throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("subcontract.normal-loss-quantity","本次委外允许损耗材料数量：所选精度超过原允许量，请明确重新选择",24,"PRECISION_LIMIT",true);
-                originalStandards.put((UUID)row[0],originalStandard);
-                allowedRemaining = allowedRemaining.subtract(standard);
+                BigDecimal unitRate=(BigDecimal)row[4];
+                var normal=allocateNormalMaterialBudget(allowedRemaining,take,unitRate);
+                BigDecimal normalBase=normal.originalBase(),standard=normal.standardDoc();
+                com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown((UUID)row[14],BigDecimal.ONE);
+                originalStandards.put((UUID)row[0],normalBase);
+                standardBaseUnits.put((UUID)row[0],(UUID)row[14]);
+                allowedRemaining = normal.remainingBase();
                 WasteItemLine line = new WasteItemLine();
                 line.setMaterialIssueItemId((UUID) row[0]);
                 line.setGoodsId((UUID) row[1]);
@@ -322,7 +305,7 @@ public class SubcontractWasteService {
                 line.setUnitRate((BigDecimal) row[4]);
                 line.setQty(take);
                 line.setStandardQty(standard);
-                line.setWasteRate(allowedLossPct);
+                line.setWasteRate((BigDecimal)row[5]);
                 line.setCause(cause);
                 lines.add(line);
                 if (warehouseId == null) warehouseId = (UUID) row[6];
@@ -351,13 +334,124 @@ public class SubcontractWasteService {
             if(raw==null)throw new ApiException(ErrorCode.CONFLICT,"原允许损耗数量依据缺失");
             if(numericInputEvidence==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法保存原损耗数量依据，请保留输入");
             var unit=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("LINE_QUANTITY",null,item.getUnitId());
-            var choice=raw.stripTrailingZeros().scale()>24?com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get("subcontract.normal-loss-quantity"):null;
+            var originalUnit=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("BASE_QUANTITY",null,
+                    standardBaseUnits.get(item.getMaterialIssueItemId()));
+            var choice=com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get("subcontract.normal-loss-quantity");
             numericInputEvidence.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
-                "SUBCONTRACT_WASTE",r.getId(),item.getId(),"standardQty","1",raw,unit,item.getStandardQty(),unit,
+                "SUBCONTRACT_WASTE",r.getId(),item.getId(),"standardQty","1",raw,originalUnit,item.getStandardQty(),unit,
                 choice==null?Map.of():Map.of("subcontract.normal-loss-quantity",choice)));
         }
         approveInternal(r.getId());
         return r.getId();
+    }
+
+    /** One authoritative source read for explicit normal loss and immutable legacy consumption. */
+    static String shortDeliveryLossSourcesSql() {
+        return """
+                WITH prior_normal AS MATERIALIZED (
+                    SELECT source.plan_item_id,SUM(normal.standard_qty*normal.unit_rate) AS used_base_qty,
+                           BOOL_OR(normal.standard_qty IS NULL OR (normal.standard_qty>0
+                               AND (normal.unit_id IS NULL OR normal.unit_rate IS NULL OR normal.unit_rate<=0))) AS unknown_basis
+                    FROM subcontract_waste_items normal
+                    JOIN subcontract_wastes waste ON waste.id=normal.waste_id AND waste.status=1 AND NOT waste.is_deleted
+                    JOIN subcontract_material_issue_items source ON source.id=normal.material_issue_item_id
+                    WHERE source.order_item_id=:orderItemId AND NOT normal.is_deleted
+                    GROUP BY source.plan_item_id
+                ), legacy_receipts AS MATERIALIZED (
+                    SELECT item.id,item.material_basis_qty,
+                           item.material_basis_qty IS NULL OR item.unit_id IS NULL OR item.unit_rate IS NULL OR item.unit_rate<=0 AS unknown_basis
+                    FROM subcontract_receipt_items item
+                    JOIN subcontract_receipts receipt ON receipt.id=item.receipt_id AND receipt.status=1 AND NOT receipt.is_deleted
+                    WHERE item.order_item_id=:orderItemId AND NOT item.is_deleted
+                      AND item.material_consumption_version=1
+                ), legacy_basis AS (
+                    SELECT COALESCE(SUM(material_basis_qty),0) AS qty,COALESCE(BOOL_OR(unknown_basis),FALSE) AS unknown_basis FROM legacy_receipts
+                ), legacy_consumption AS (
+                    SELECT source.plan_item_id,SUM(consumption.qty_base) AS consumed_base_qty
+                    FROM subcontract_receipt_material_consumptions consumption
+                    JOIN legacy_receipts receipt ON receipt.id=consumption.receipt_item_id
+                    JOIN subcontract_material_issue_items source ON source.id=consumption.issue_item_id AND NOT source.is_deleted
+                    JOIN subcontract_material_issues issue ON issue.id=source.issue_id AND issue.status=1 AND NOT issue.is_deleted
+                    WHERE consumption.reversal_of IS NULL
+                      AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed WHERE reversed.reversal_of=consumption.id)
+                    GROUP BY source.plan_item_id
+                )
+                SELECT issue_item.id, issue_item.goods_id, issue_item.color_id, issue_item.unit_id,
+                       issue_item.unit_rate, plan_item.material_loss_pct,
+                       issue.warehouse_id, issue.supplier_id,
+                       GREATEST(COALESCE(issue_item.at_supplier_qty, 0) + COALESCE(issue_item.compensated_qty, 0)
+                                - COALESCE(issue_item.consumed_qty, 0) - COALESCE(issue_item.returned_qty, 0)
+                                - COALESCE(issue_item.wasted_qty, 0), 0) AS remaining,
+                       plan_item.id,order_item.qty,plan_item.bom_unit_qty,
+                       COALESCE(prior_normal.used_base_qty,0),COALESCE(prior_normal.unknown_basis,FALSE) OR legacy_basis.unknown_basis,plan_item.unit_id,
+                       plan_item.base_bom_unit_qty,legacy_basis.qty,COALESCE(legacy_consumption.consumed_base_qty,0),
+                       fn_subcontract_draw_f(legacy_basis.qty,plan_item.base_bom_unit_qty) AS legacy_base_qty
+                FROM subcontract_material_issue_items issue_item
+                JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
+                 AND issue.status = 1 AND issue.is_deleted = FALSE
+                JOIN subcontract_material_plan_items plan_item ON plan_item.id = issue_item.plan_item_id
+                JOIN subcontract_order_items order_item ON order_item.id=plan_item.order_item_id
+                LEFT JOIN prior_normal ON prior_normal.plan_item_id=plan_item.id
+                LEFT JOIN legacy_consumption ON legacy_consumption.plan_item_id=plan_item.id
+                CROSS JOIN legacy_basis
+                WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
+                ORDER BY plan_item.line_no ASC NULLS LAST, plan_item.id,
+                         issue.bill_date ASC NULLS LAST, issue.created_at ASC,
+                         issue_item.line_no ASC NULLS LAST, issue_item.id
+                """;
+    }
+
+    static BigDecimal normalMaterialAllowance(BigDecimal outputQty,BigDecimal supplyUnitQty,BigDecimal baseUnitQty) {
+        if(outputQty==null||supplyUnitQty==null||baseUnitQty==null||outputQty.signum()<0
+                ||supplyUnitQty.signum()<=0||baseUnitQty.signum()<=0||supplyUnitQty.compareTo(baseUnitQty)<0)
+            throw new ApiException(ErrorCode.CONFLICT,"冻结供料或已使用的正常损耗预算不完整，请先核对原记录");
+        return outputQty.multiply(supplyUnitQty.subtract(baseUnitQty));
+    }
+
+    static BigDecimal remainingNormalMaterialBudgetForSource(Object[] source) {
+        if(Boolean.TRUE.equals(source[13]))throw new ApiException(ErrorCode.CONFLICT,"原材料正常损耗记录的数量或单位尚未核对，不能重复授予预算");
+        BigDecimal exactBudget=normalMaterialAllowance((BigDecimal)source[10],(BigDecimal)source[11],(BigDecimal)source[15]);
+        BigDecimal legacyBudget=normalMaterialAllowance((BigDecimal)source[16],(BigDecimal)source[11],(BigDecimal)source[15]);
+        BigDecimal historicalUsed=historicalNormalMaterialUsed((BigDecimal)source[17],(BigDecimal)source[18],legacyBudget);
+        return remainingNormalMaterialBudget(exactBudget,(BigDecimal)source[12],historicalUsed);
+    }
+
+    static BigDecimal historicalNormalMaterialUsed(BigDecimal liveConsumedBase,BigDecimal sameCohortBaseQty,
+            BigDecimal exactCohortAllowance) {
+        if(liveConsumedBase==null||sameCohortBaseQty==null||exactCohortAllowance==null
+                ||liveConsumedBase.signum()<0||sameCohortBaseQty.signum()<0||exactCohortAllowance.signum()<0)
+            throw new ApiException(ErrorCode.CONFLICT,"历史回厂原核销或基础用量不完整，请先核对原切片");
+        // Legacy consumption stays immutable. A document ceiling or old reversal
+        // remainder is not another normal-loss allowance for the new settlement.
+        return liveConsumedBase.subtract(sameCohortBaseQty).max(BigDecimal.ZERO).min(exactCohortAllowance);
+    }
+
+    static BigDecimal remainingNormalMaterialBudget(BigDecimal exactAllowanceBase,BigDecimal explicitUsedNormalBase,
+            BigDecimal historicalUsedNormalBase) {
+        if(exactAllowanceBase==null||explicitUsedNormalBase==null||historicalUsedNormalBase==null
+                ||exactAllowanceBase.signum()<0||explicitUsedNormalBase.signum()<0||historicalUsedNormalBase.signum()<0)
+            throw new ApiException(ErrorCode.CONFLICT,"冻结材料正常损耗额度或原已用份额不完整，请先核对原记录");
+        return exactAllowanceBase.subtract(explicitUsedNormalBase).subtract(historicalUsedNormalBase).max(BigDecimal.ZERO);
+    }
+
+    record NormalMaterialAllocation(BigDecimal originalBase,BigDecimal standardDoc,BigDecimal remainingBase) { }
+
+    static NormalMaterialAllocation allocateNormalMaterialBudget(BigDecimal remainingBase,BigDecimal documentQty,
+            BigDecimal unitRate) {
+        if(remainingBase==null||documentQty==null||unitRate==null||remainingBase.signum()<0
+                ||documentQty.signum()<0||unitRate.signum()<=0)
+            throw new ApiException(ErrorCode.CONFLICT,"材料正常损耗的数量或换算率不完整，请先核对原记录");
+        BigDecimal originalBase=documentQty.multiply(unitRate).min(remainingBase);
+        BigDecimal originalDoc=com.uten.imp.common.finance.BusinessPrecisionContext.divide(originalBase,unitRate,
+                "subcontract.normal-loss-quantity","本次委外允许损耗材料数量",24);
+        BigDecimal standard=com.uten.imp.common.util.FinancialExactAmount.quantity(
+                com.uten.imp.common.finance.BusinessPrecisionContext.limit(originalDoc,"subcontract.normal-loss-quantity",
+                        "本次委外允许损耗材料数量",24),"允许损耗材料数量");
+        if(standard.signum()<0||standard.compareTo(originalDoc)>0||standard.compareTo(documentQty)>0
+                ||standard.multiply(unitRate).compareTo(remainingBase)>0)
+            throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("subcontract.normal-loss-quantity",
+                    "本次委外允许损耗材料数量：所选精度超过原允许量，请明确重新选择",24,"PRECISION_LIMIT",true);
+        return new NormalMaterialAllocation(originalBase,standard,remainingBase.subtract(standard.multiply(unitRate)));
     }
 
     private WasteDetail approveInternal(UUID id) {
@@ -416,7 +510,7 @@ public class SubcontractWasteService {
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
                             "委外损耗量超过可损耗余量(在供应商处 − 已消费 − 已退 − 已损耗)，禁止超损耗；"
-                                    + "正常用料损耗已包含在回厂估算核销中的部分不能重复登记");
+                                    + "请核对实际耗料、已退料与已登记损耗；历史估算已核销的部分不能重复登记");
                 }
             }
         }

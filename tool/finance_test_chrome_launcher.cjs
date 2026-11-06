@@ -18,7 +18,29 @@ const {run}=require('./finance_test_sdk_windows_adapter.cjs');
   try {
     const debugPort=Number(port.split('=')[1]);
     for(;;){try{await fetch(`http://127.0.0.1:${debugPort}/json/list`);break;}catch{if(exited||Date.now()>limit)throw Error('Own headless Chrome did not start');await new Promise(resolve=>setTimeout(resolve,25));}}
+    const moduleOptions={};
+    if(process.env.UTEN_TEST_MODULE_HOST_WORKAROUND==='1') {
+      // The compiler and the isolated browser profile belong to this same
+      // Flutter test invocation. Never select another run's generated code.
+      const ownTemp=path.dirname(profile.slice('--user-data-dir='.length));
+      const candidates=[];
+      for(const entry of await fs.readdir(ownTemp,{withFileTypes:true})) {
+        if(!entry.isDirectory()||!entry.name.startsWith('flutter_test.'))continue;
+        const output=path.join(ownTemp,entry.name);
+        try {
+          const registry=await fs.readFile(path.join(output,'main.dart'),'utf8');
+          const workspace=process.cwd().replaceAll('\\','/');
+          if(!registry.includes(workspace+'/test/'))continue;
+          await fs.access(path.join(output,'out.json'));
+          await fs.access(path.join(output,'out.sources'));
+          candidates.push(output);
+        }catch(error){if(error.code!=='ENOENT')throw error;}
+      }
+      if(candidates.length!==1)throw Error('Expected exactly one compiler output owned by this browser test');
+      moduleOptions['compiled-manifest']=path.join(candidates[0],'out.json');
+      moduleOptions['compiled-code']=path.join(candidates[0],'out.sources');
+    }
     await run({'debug-port':debugPort,'test-origin':new URL(host).origin,
-      'canvas-kit':process.env.UTEN_TEST_CANVASKIT,initialHostUrl:host});
+      'canvas-kit':process.env.UTEN_TEST_CANVASKIT,initialHostUrl:host,...moduleOptions});
   } finally {if(!exited)chrome.kill();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

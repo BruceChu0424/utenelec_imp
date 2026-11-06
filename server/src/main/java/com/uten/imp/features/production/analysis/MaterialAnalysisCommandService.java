@@ -1631,8 +1631,8 @@ public class MaterialAnalysisCommandService {
      * 下达车间的候选锚点（2026-09-05 简化）：按操作组只补建「剩余缺口」的
      * MAKE_COMPONENT 锚点行——不建 preplan action、不委托权益、不展开子树，
      * 物料行保持原位（计划员照常在采购/委外桶下达）。已有锚点只消费其
-     * remainingQty，不从普通物理缺口再次增加来源需求；明确来源变更及V568
-     * 有让料事实/净补供额度的追加责任例外，均保留独立证据。新锚点才按当前缺口建立需求。
+     * remainingQty；已完工或已全部下达后新出现的权威净私有缺口，先扣未下达配额再补足，
+     * 不重复累计旧计划/已产出覆盖。V568让料补供继续保留原独立额度证据。
      */
     private boolean ensureWorkshopChildAnchors(
             UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
@@ -1645,6 +1645,11 @@ public class MaterialAnalysisCommandService {
                 if(material.priorityMakeSupplementQty().signum()>0) {
                     new PreplanReallocationMakeSupplement(em).append(analysisId,material.materialLineId(),
                             demand.existingAnchorId(),material.priorityMakeSupplementQty(),currentUser.requireId());
+                    changed=true;
+                } else if(demand.newQuota().signum()>0) {
+                    // An executed batch stays immutable. A newly proven private material
+                    // gap receives its own quota before a replacement plan is issued.
+                    createOrIncrementMakeDemand(analysisId,demand.group(),demand.newQuota());
                     changed=true;
                 }
                 continue;
@@ -1680,7 +1685,10 @@ public class MaterialAnalysisCommandService {
                 if (anchor == null || !"MAKE_COMPONENT".equals(anchor.sourceType())) {
                     throw conflict("物料节点的计划锚点来源不一致，请刷新后核对路线");
                 }
-                result.add(new WorkshopAnchorDemand(group, anchorId, BigDecimal.ZERO));
+                BigDecimal privateNeed=group.materials().stream().map(MaterialView::planningUncoveredQty)
+                        .reduce(BigDecimal.ZERO,BigDecimal::add);
+                result.add(new WorkshopAnchorDemand(group, anchorId,
+                        additionalPrivateMakeQuota(privateNeed,anchor.remainingQty())));
                 continue;
             }
             BigDecimal delta = group.demandRequiredQty()
@@ -1692,6 +1700,11 @@ public class MaterialAnalysisCommandService {
             result.add(new WorkshopAnchorDemand(group, null, delta));
         }
         return result;
+    }
+
+    static BigDecimal additionalPrivateMakeQuota(BigDecimal privateNeed,BigDecimal unissuedQuota) {
+        return privateNeed.max(BigDecimal.ZERO).subtract(unissuedQuota.max(BigDecimal.ZERO))
+                .max(BigDecimal.ZERO).setScale(4,RoundingMode.CEILING);
     }
 
     /**

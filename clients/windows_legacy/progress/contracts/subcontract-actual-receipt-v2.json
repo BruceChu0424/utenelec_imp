@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "contractId": "subcontract-actual-receipt-v2",
+  "auditDate": "2026-11-06",
+  "status": "native-not-migrated; server-and-flutter-owning-contract",
+  "sharedVectors": "contracts/subcontract-actual-receipt/v1.json",
+  "workItemIds": ["W7-BIZ-108", "W7-BIZ-155", "W7-BIZ-156", "W7-BIZ-159", "W7-BIZ-161", "W7-BIZ-178", "W7-BIZ-207", "W7-BIZ-208", "W7-BIZ-209"],
+  "owningSources": [
+    "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractMaterialSupplyRequirement.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjection.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReturnCapacity.java",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+    "lib/shared/models/procurement_inbound.dart",
+    "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+    "lib/features/production/pages/material_analysis_material_table.dart"
+  ],
+  "nativeConsumers": [],
+  "nativeImplementationComplete": false,
+  "targetPcAcceptance": false,
+  "rules": [
+    "Finished target Q remains unchanged; loss upper bound p prepares up to Q*(1+p/100) material at the frozen base BOM.",
+    "The operator supplies actual receipt quantity; never initialize it from a theoretical capacity.",
+    "With sufficient own material, receipts between Q and Q*(1+p/100) are normal; partial deliveries preserve their unfulfilled target.",
+    "Consume base BOM against new actual receipt quantities. Reported waste and returns remain independent facts.",
+    "Preserve all previously approved version-1 quantities, costs and reversal slices.",
+    "Private demand coverage is capped by original demand; normal excess is public supply.",
+    "Use exact server fields orderedQty, pendingReturnQty, materialReceivableQty and normalMaxReceivableQty; clients do not recalculate authoritative quantities.",
+    "Actual IQC and warehouse stock confirmation, not a registration draft or theoretical capacity, release usable stock.",
+    "Preserve authorization, source identity, request generations, drafts, idempotency and unknown submission recovery."
+  ],
+  "futureNativeRequirements": [
+    "Port the full owning business entry and applicable write lifecycle before exposing a native action.",
+    "Use the shared vectors and actual service contracts for both architectures.",
+    "Keep existing task status, owner, dependencies and DoD until native implementation and target-machine evidence exist."
+  ]
+}

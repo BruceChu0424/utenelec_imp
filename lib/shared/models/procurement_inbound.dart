@@ -79,6 +79,13 @@ class InboundExpectationItem {
     this.lastReceiptWarehouseName,
     this.allowedOverReceiptPct,
     this.maxReceivableQty,
+    this.orderedQtyText,
+    this.pendingReturnQty,
+    this.pendingReturnQtyText,
+    this.materialReceivableQty,
+    this.materialReceivableQtyText,
+    this.normalMaxReceivableQty,
+    this.normalMaxReceivableQtyText,
   });
 
   final String id;
@@ -102,6 +109,19 @@ class InboundExpectationItem {
   /// 订货单价（服务端从订货明细带出；到货登记预填携带、价格列隐藏，审核时服务端权威重算）。
   final num? unitPrice;
   final num orderedQty;
+  final String? orderedQtyText;
+
+  /// 委外尚未真实回厂的成品目标；已登记待审核不视为已完成。
+  final num? pendingReturnQty;
+  final String? pendingReturnQtyText;
+
+  /// 已发物料还能接纳的理论回厂量，已扣已登记在途；不是实际到货。
+  final num? materialReceivableQty;
+  final String? materialReceivableQtyText;
+
+  /// 冻结损耗上限与已发物料共同约束的正常可登记回厂余量。
+  final num? normalMaxReceivableQty;
+  final String? normalMaxReceivableQtyText;
   final num acceptedQty;
 
   /// 服务端当前允许继续登记的数量。采购为财务批准未收量；V436 新委外仅为
@@ -180,6 +200,19 @@ class InboundExpectationItem {
       ),
       unitPrice: json['unitPrice'] == null ? null : _number(json['unitPrice']),
       orderedQty: _number(json['orderedQty']),
+      orderedQtyText: receiptRecordedDecimal(json, 'orderedQty'),
+      pendingReturnQty: _numberOrNull(json['pendingReturnQty']),
+      pendingReturnQtyText: receiptRecordedDecimal(json, 'pendingReturnQty'),
+      materialReceivableQty: _numberOrNull(json['materialReceivableQty']),
+      materialReceivableQtyText: receiptRecordedDecimal(
+        json,
+        'materialReceivableQty',
+      ),
+      normalMaxReceivableQty: _numberOrNull(json['normalMaxReceivableQty']),
+      normalMaxReceivableQtyText: receiptRecordedDecimal(
+        json,
+        'normalMaxReceivableQty',
+      ),
       acceptedQty: _number(json['acceptedQty']),
       remainingQty: _number(json['remainingQty']),
       registeredQty: _number(json['registeredQty']),
@@ -350,6 +383,14 @@ class InboundExpectation {
               unitPrice: item.unitPrice,
               approvedRemainingQty: item.effectiveRemainingQty,
               approvedRemainingQtyText: item.effectiveRemainingQtyText,
+              orderedQty: item.orderedQty,
+              orderedQtyText: item.orderedQtyText,
+              pendingReturnQty: item.pendingReturnQty,
+              pendingReturnQtyText: item.pendingReturnQtyText,
+              materialReceivableQty: item.materialReceivableQty,
+              materialReceivableQtyText: item.materialReceivableQtyText,
+              normalMaxReceivableQty: item.normalMaxReceivableQty,
+              normalMaxReceivableQtyText: item.normalMaxReceivableQtyText,
               approvedRemainingGiftQtyText: item.effectiveRemainingGiftQtyText,
               quantitySemantics: item.quantitySemantics,
               expectedAllocations: item.expectedAllocations,
@@ -454,6 +495,14 @@ class ProcurementReceiptPrefillItem {
     this.expectedAllocations = const [],
     this.allowedOverReceiptPct,
     this.maxReceivableQty,
+    this.orderedQty,
+    this.orderedQtyText,
+    this.pendingReturnQty,
+    this.pendingReturnQtyText,
+    this.materialReceivableQty,
+    this.materialReceivableQtyText,
+    this.normalMaxReceivableQty,
+    this.normalMaxReceivableQtyText,
   });
 
   final String orderItemId;
@@ -499,6 +548,14 @@ class ProcurementReceiptPrefillItem {
   /// 服务端审核时仍按订货明细权威重算，防客户端篡改。
   final num? unitPrice;
   final num approvedRemainingQty;
+  final num? orderedQty;
+  final String? orderedQtyText;
+  final num? pendingReturnQty;
+  final String? pendingReturnQtyText;
+  final num? materialReceivableQty;
+  final String? materialReceivableQtyText;
+  final num? normalMaxReceivableQty;
+  final String? normalMaxReceivableQtyText;
   final String? quantitySemantics;
   final String? approvedRemainingGiftQtyText;
   final String? approvedRemainingQtyText;

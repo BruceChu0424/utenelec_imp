@@ -25,12 +25,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -48,37 +45,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * ADR-101 容差内自动结案跑在「仓库确认入库」的同一个事务里 (真库全链)。
- *
- * <p>仓库账号确认 IQC 合格入库时，原订货 1000、实际入库 950、独立损耗 50 三项事实分别保留。
- * 损耗履约结案不调用订货改量、不增加财务复核，也不因仓库没有订货单属主权限而阻断入库。
- *
- * <p>所以本用例是一正一反两面:
- * 正面 —— 用一个既不是制单人、也没有 subcontract:view:all 的仓库账号走完 IQC 合格入库,
- * 库存真的加上、案件落 ACCEPTED_LOSS、原订货数量不变、损耗单真的生成;
- * 反面 —— 同一个仓库账号直接调人工自由改量的公开入口 {@code changeQty} 仍然拿 FORBIDDEN,
- * 证明正常损耗结案没有放宽人工改量的属主守卫。
- */
+/** Real warehouse, owner-decision, rollback, cost and permission boundaries for partial actual receipts. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
-        "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false",
-        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
-        "uten.storage.malware-scan.provider=test-only",
-        "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
-        "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
-        "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
-        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
-        "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
-// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
-class SubcontractToleranceAutoSettleEndToEndTest {
+// Historical supply snapshots stay frozen; new actual receipts preserve the full finished target.
+class SubcontractToleranceAutoSettleEndToEndTest extends SubcontractFullChainTestContext {
 
-    @DynamicPropertySource
-    static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
-    }
 
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -106,193 +77,150 @@ class SubcontractToleranceAutoSettleEndToEndTest {
     }
 
     @Test
-    void warehouseStockInAutoSettlesToleratedShortDeliveryWithoutWeakeningTheManualOwnerGuard() {
-        var w = fixture.seedWorld("sc-tolerance-settle");
+    void warehouseStockInPreservesTheShortfallUntilItsOwnerExplicitlyDecidesAndAllWritesRemainAtomic() {
+        var w = fixture.seedWorld("sc-actual-shortfall");
         fixture.loginAs(w.superAdminUserId());
-        // ADR-143: 我方供料是委外件的直属物料 M(按件用量 1): 先把 1000 件 M 铺进仓, 才领得出去。
         UUID material = fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
         fixture.receiveSubcontractMaterial(w, material, "1000");
-
-        // ① 订 1000 件、允许损耗 10% -> 允许下限 900。用户口径就是这一组数。
         UUID orderId = orders.create(orderRequest(w, "1000", "10")).getId();
-        UUID itemId = db.queryForObject(
-                "SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
-        UUID makerId = db.queryForObject(
-                "SELECT maker_id FROM subcontract_orders WHERE id=?", UUID.class, orderId);
-        assertNotNull(makerId, "订货单必须有制单人, 否则属主守卫这一维根本没在测");
-
-        // ② 首次订货财务批准；之后正常允许损耗无需再次发起改量审批。
+        UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
+        UUID makerId = db.queryForObject("SELECT maker_id FROM subcontract_orders WHERE id=?", UUID.class, orderId);
+        assertNotNull(makerId);
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);
         fixture.loginAs(reviewer);
-        fixture.approvePendingFinance("SUBCONTRACT", orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);
+        fixture.approvePendingFinance("SUBCONTRACT", orderId);
+        // Preserve an old frozen supply plan while all new receipts obey the actual-quantity rule.
+        fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);
         fixture.loginAs(w.superAdminUserId());
+        fixture.drawAndIssueSubcontract(itemId, new BigDecimal("1000"), "actual-shortfall-draw-" + itemId);
+        qty("1000", db.queryForObject("SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?", BigDecimal.class, itemId));
 
-        // ③ 我方供料全部发完。severity 判定的前提是 materialFullyIssued(): 料没发完一律不判短交,
-        //    这一步不做的话后面整条自动结案根本不会触发, 用例会假绿。
-        fixture.drawAndIssueSubcontract(itemId, new BigDecimal("1000"), "sc-tolerance-draw-" + itemId);
-        qty("1000", db.queryForObject(
-                "SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",
-                BigDecimal.class, itemId));
-        assertEquals(0, count("""
-                SELECT COUNT(*) FROM subcontract_material_plan_items plan_item
-                JOIN subcontract_material_plans plan ON plan.id=plan_item.plan_id
-                 AND plan.status='OPEN' AND plan.is_deleted=FALSE
-                WHERE plan_item.order_item_id=? AND plan_item.is_deleted=FALSE
-                  AND plan_item.issued_qty < plan_item.planned_qty
-                """, itemId), "料必须真的全部发完 (与服务端 material_fully_issued 同一口径)");
-
-        // ④ 回厂 950: 950 >= 下限 900 -> WITHIN_TOLERANCE。中性档既不弹窗也不锁入库。
-        var receipt = arrivals.register(arrival(w, itemId, "950", "tol-1"));
-        assertEquals("SUBMITTED_FOR_INSPECTION", receipt.outcome(), "容差内到货不该要仓库二次确认");
+        var unconfirmed = arrival(w, itemId, "950", "partial");
+        assertThrows(ApiException.class, () -> arrivals.register(unconfirmed));
+        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_receipt_items WHERE order_item_id=?", itemId));
+        qty("0", db.queryForObject("SELECT SUM(consumed_qty) FROM subcontract_material_issue_items WHERE order_item_id=?", BigDecimal.class, itemId));
+        var receipt = arrivals.register(new WarehouseArrivalRegisterRequest(unconfirmed.idempotencyKey(),
+                "SUBCONTRACT", BusinessTime.today(), w.supplierId(), w.warehouseId(), null,
+                w.employeeId(), null, unconfirmed.items(), null, true));
+        assertEquals("SUBMITTED_FOR_INSPECTION", receipt.outcome());
         Map<String, Object> pending = caseRow(itemId);
         UUID caseId = (UUID) pending.get("id");
         assertEquals("PENDING_OWNER", pending.get("status"));
-        assertEquals("WITHIN_TOLERANCE", pending.get("severity"));
-        qty("900", (BigDecimal) pending.get("floor_qty"));
-        qty("950", (BigDecimal) pending.get("delivered_qty"));
+        assertEquals("BELOW_FLOOR", pending.get("severity"));
+        qty("1000", (BigDecimal) pending.get("floor_qty"));
         qty("50", (BigDecimal) pending.get("shortfall_qty"));
-        assertNull(shortDeliveries.stockInHoldReason(receipt.receiptId()),
-                "容差内短交不挂入库闸, 货照常上架");
+        assertNotNull(shortDeliveries.stockInHoldReason(receipt.receiptId()));
+        shortDeliveries.decide(caseId, new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                "WAIT_MORE", BusinessTime.today().plusDays(3), "实际先到950，剩余50分批等待", ((Number) pending.get("version")).longValue()));
+        assertNull(shortDeliveries.stockInHoldReason(receipt.receiptId()));
 
-        // ⑤ 质检合格 (委外跟单员做), 留下一个可入库的放行切片。
-        UUID inspectionItemId = db.queryForObject("""
-                SELECT id FROM procurement_inspection_items
-                WHERE receipt_type='SUBCONTRACT' AND receipt_id=?
-                """, UUID.class, receipt.receiptId());
+        UUID inspectionItemId = db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?", UUID.class, receipt.receiptId());
         inspections.dispose("SUBCONTRACT", receipt.receiptId(), inspectionItemId,
-                new InspectionDispositionRequest("PASS", null, "回厂件检查合格", "sc-tolerance-pass-1"));
-        UUID passEventId = db.queryForObject("""
-                SELECT id FROM procurement_inspection_events
-                WHERE inspection_item_id=? AND action='PASS'
-                """, UUID.class, inspectionItemId);
-        BigDecimal passedQty = db.queryForObject(
-                "SELECT base_qty FROM procurement_inspection_events WHERE id=?", BigDecimal.class, passEventId);
+                new InspectionDispositionRequest("PASS", null, "实际950检查合格", "actual-shortfall-pass"));
+        UUID passEventId = db.queryForObject("SELECT id FROM procurement_inspection_events WHERE inspection_item_id=? AND action='PASS'", UUID.class, inspectionItemId);
+        BigDecimal passedQty = db.queryForObject("SELECT base_qty FROM procurement_inspection_events WHERE id=?", BigDecimal.class, passEventId);
         qty("950", passedQty);
 
-        // ⑥ 切到仓库账号。它多拿一个 subcontract_order:change_qty 只是为了让第 ⑧ 步的反向断言
-        //    能穿过权限点、真正落到属主守卫上; 关键的两条仍然成立: 不是本单制单人、没有
-        //    subcontract:view:all (也没有 subcontract_order:view, 拿不到任何委外读范围豁免)。
-        UUID keeper = fixture.createUserWithPerms(w, "sc-tolerance-keeper",
-                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm",
-                "subcontract_order:change_qty");
-        UUID keeperEmployeeId = db.queryForObject(
-                "SELECT employee_id FROM users WHERE id=?", UUID.class, keeper);
-        assertNotEquals(makerId, keeperEmployeeId, "仓库账号不能恰好是本单制单人, 否则属主守卫测不到");
+        UUID keeper = fixture.createUserWithPerms(w, "sc-actual-shortfall-keeper",
+                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm", "subcontract_order:change_qty");
+        UUID keeperEmployeeId = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, keeper);
+        assertNotEquals(makerId, keeperEmployeeId);
         fixture.loginAs(keeper);
-        Set<String> keeperAuthorities = SecurityContextHolder.getContext().getAuthentication()
-                .getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
-        assertFalse(keeperAuthorities.contains("subcontract:view:all"),
-                "仓库账号必须没有委外全量查看权, 这正是修复前拿 FORBIDDEN 的原因");
-        assertFalse(keeperAuthorities.contains("subcontract_order:view"),
-                "也不许有委外订货查看权, 否则读范围会被操作级 authority 豁免掉");
-        assertTrue(keeperAuthorities.contains("warehouse_iqc_stock_in:confirm"));
-        assertFalse(db.queryForObject("SELECT is_super_admin FROM users WHERE id=?", Boolean.class, keeper),
-                "超管旁路一切归属判定, 用超管测等于没测");
-
-        // ⑦ 仓库确认入库 —— 修复前这里整笔回滚, 货入不了库。
-        BigDecimal onHandBefore = onHand(w.goodsE(), w.warehouseId());
-        String apBefore=db.queryForObject("SELECT md5(COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id)::text,'[]')) FROM ar_ap_ledger l WHERE l.source_doc_id=?",String.class,receipt.receiptId());
-        var publicationObserved=new java.util.concurrent.atomic.AtomicBoolean();
-        ApiException publicationFailure=assertThrows(ApiException.class,()->
-                new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
-                    iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),
-                            new ConfirmRequest("sc-tolerance-stock-in-1",List.of(new ConfirmItem(passEventId,passedQty,passedQty,"SC-TOL-01",w.warehouseId()))));
+        Set<String> permissions = SecurityContextHolder.getContext().getAuthentication().getAuthorities()
+                .stream().map(GrantedAuthority::getAuthority).collect(Collectors.toSet());
+        assertFalse(permissions.contains("subcontract:view:all"));
+        assertFalse(permissions.contains("subcontract_order:view"));
+        assertFalse(db.queryForObject("SELECT is_super_admin FROM users WHERE id=?", Boolean.class, keeper));
+        var confirmation = new ConfirmRequest("actual-shortfall-stock", List.of(
+                new ConfirmItem(passEventId, passedQty, passedQty, "SC-ACTUAL", w.warehouseId())));
+        BigDecimal before = onHand(w.goodsE(), w.warehouseId());
+        String apBefore = apSnapshot(receipt.receiptId());
+        assertThrows(ApiException.class, () -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> {
+                    iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(), confirmation);
                     org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                            new org.springframework.transaction.support.TransactionSynchronization(){
-                                @Override public void beforeCommit(boolean readOnly){
-                                    UUID stagedWaste=(UUID)caseRow(itemId).get("waste_id");
-                                    assertEquals(1,count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?",stagedWaste));
-                                    publicationObserved.set(true);
-                                    throw new ApiException(ErrorCode.CONFLICT,"匿名验收：模拟责任发布后的提交异常");
+                            new org.springframework.transaction.support.TransactionSynchronization() {
+                                @Override public void beforeCommit(boolean readOnly) {
+                                    assertEquals("WAITING_MORE", caseRow(itemId).get("status"));
+                                    assertNull(caseRow(itemId).get("waste_id"));
+                                    throw new ApiException(ErrorCode.CONFLICT, "模拟实际入库提交中断");
                                 }
                             });
                 }));
-        assertEquals(ErrorCode.CONFLICT,publicationFailure.getCode());
-        assertTrue(publicationObserved.get(),"必须在真实责任写入之后触发提交异常");
-        assertEquals(0,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",receipt.receiptId()));
-        assertEquals(0,onHandBefore.compareTo(onHand(w.goodsE(),w.warehouseId())));
-        assertEquals(apBefore,db.queryForObject("SELECT md5(COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id)::text,'[]')) FROM ar_ap_ledger l WHERE l.source_doc_id=?",String.class,receipt.receiptId()));
-        assertEquals("PENDING_OWNER",caseRow(itemId).get("status"));
-        assertNull(caseRow(itemId).get("waste_id"));
-        assertEquals(0,count("SELECT COUNT(*) FROM subcontract_loss_cases c JOIN subcontract_waste_items i ON i.waste_id=c.waste_id JOIN subcontract_material_issue_items issue ON issue.id=i.material_issue_item_id WHERE issue.order_item_id=?",itemId));
-        var confirmed = iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(),
-                new ConfirmRequest("sc-tolerance-stock-in-1",
-                        List.of(new ConfirmItem(passEventId, passedQty, passedQty, "SC-TOL-01", w.warehouseId()))));
-        assertFalse(confirmed.replayed(), "这是第一次确认, 不该走幂等重放");
-        assertEquals(1, count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",
-                receipt.receiptId()), "入库批次必须真的落盘");
-        assertEquals(0, onHandBefore.add(new BigDecimal("950")).compareTo(onHand(w.goodsE(), w.warehouseId())),
-                "库存必须真的加上 950; 修复前这一笔连同结案一起被回滚");
+        assertEquals(0, count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", receipt.receiptId()));
+        assertEquals(0, before.compareTo(onHand(w.goodsE(), w.warehouseId())));
+        assertEquals(apBefore, apSnapshot(receipt.receiptId()));
+        assertFalse(iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(), confirmation).replayed());
+        qty("950", onHand(w.goodsE(), w.warehouseId()).subtract(before));
+        assertEquals("WAITING_MORE", caseRow(itemId).get("status"));
+        assertNull(caseRow(itemId).get("waste_id"), "仓库入库不得替负责人自动认损耗");
+        assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId));
 
-        // 自动结案保留原订货 1000，实际回厂 950，另记损耗 50。
         fixture.loginAs(w.superAdminUserId());
-        Map<String, Object> settled = caseRow(itemId);
-        assertEquals(caseId, settled.get("id"), "结的必须是同一个案件, 不是另开一张");
-        assertEquals("ACCEPTED_LOSS", settled.get("status"));
-        assertEquals("ACCEPT_LOSS", settled.get("decision"));
-        qty("50", (BigDecimal) settled.get("loss_qty"));
-        qty("5", (BigDecimal) settled.get("loss_pct"));
-        assertEquals(keeperEmployeeId, settled.get("decided_by_employee_id"),
-                "结案的发起人就是仓库账号 —— 正是属主守卫此前拦下的那个身份");
-        qty("1000", db.queryForObject(
-                "SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
-        qty("950", db.queryForObject(
-                "SELECT received_qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
-        assertEquals(0, count("""
-                SELECT COUNT(*) FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=?
-                """, itemId), "损耗独立结清履约，不生成缩单日志");
-        assertNull(settled.get("qty_change_log_id"), "案件不再关联改量日志");
-        assertEquals(0, count("""
-                SELECT COUNT(*) FROM procurement_order_approval_cases
-                WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'
-                """, orderId), "正常允许损耗不新增财务改量复核");
-        assertEquals(1,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=?",orderId),
-                "只有首次订货审批");
-        assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),
-                "合格实收 950 加有效损耗 50，完成原订货 1000");
-        UUID wasteId = (UUID) settled.get("waste_id");
-        assertNotNull(wasteId, "接受损耗结案必须先开一张损耗单核销供应商处剩料");
-        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_wastes WHERE id=? AND status=1", wasteId),
-                "损耗单必须已审核");
-        qty("50", db.queryForObject(
-                "SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, wasteId));
-        qty("50", db.queryForObject(
-                "SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, wasteId));
-        UUID lossCase=db.queryForObject("SELECT id FROM subcontract_loss_cases WHERE waste_id=?",UUID.class,wasteId);
-        assertNotNull(lossCase);
-        assertEquals("MISSING_COST",db.queryForObject("SELECT valuation_status FROM subcontract_loss_case_lines WHERE case_id=?",String.class,lossCase),
-                "责任快照须在本事务最终成本计划之后发布，不能把即将重估的正常损耗当成已定成本");
-        assertNull(db.queryForObject("SELECT unit_book_value_local FROM subcontract_loss_case_lines WHERE case_id=?",BigDecimal.class,lossCase));
-        qty("0",db.queryForObject("SELECT loss_book_value_local FROM subcontract_loss_case_lines WHERE case_id=?",BigDecimal.class,lossCase));
-        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(material,w.goodsE()));
-        assertTrue(db.queryForObject("SELECT complete FROM v_subcontract_waste_actual_value WHERE waste_item_id=(SELECT waste_item_id FROM subcontract_loss_case_lines WHERE case_id=?)",Boolean.class,lossCase),
-                "真实持久化成本任务完成后，原损耗来源须恢复为可核验的最终成本");
-        assertEquals(0, shortDeliveries.list("TOLERANT", null, null, orderId, null, null, 1, 20).getTotal(),
-                "结完之后不再挂在「容差内待结案」等人点一下");
+        // The harness disables the production worker poller. Complete the real stock
+        // value work before the next department makes an independent loss decision.
+        InventoryValueWorkTestSupport.drain(inventoryValueWork, db, List.of(material, w.goodsE()));
+        long version = ((Number) caseRow(itemId).get("version")).longValue();
+        var decision = new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                "ACCEPT_LOSS", null, "负责人核实后明确接受实际少交50并追踪责任", version);
+        var published = new java.util.concurrent.atomic.AtomicBoolean();
+        ApiException publicationFailure = assertThrows(ApiException.class, () -> new org.springframework.transaction.support.TransactionTemplate(transactionManager)
+                .executeWithoutResult(status -> {
+                    shortDeliveries.decide(caseId, decision);
+                    org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                            new org.springframework.transaction.support.TransactionSynchronization() {
+                                @Override public void beforeCommit(boolean readOnly) {
+                                    UUID waste = (UUID) caseRow(itemId).get("waste_id");
+                                    assertNotNull(waste);
+                                    assertEquals(1, count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?", waste));
+                                    published.set(true);
+                                    throw new ApiException(ErrorCode.CONFLICT, "模拟实际责任发布后的提交中断");
+                                }
+                            });
+                }));
+        assertTrue(published.get(), publicationFailure.getMessage());
+        assertEquals("模拟实际责任发布后的提交中断", publicationFailure.getMessage());
+        assertEquals("WAITING_MORE", caseRow(itemId).get("status"));
+        assertNull(caseRow(itemId).get("waste_id"));
+        qty("950", onHand(w.goodsE(), w.warehouseId()).subtract(before));
+        assertEquals(apBefore, apSnapshot(receipt.receiptId()));
+        qty("0", db.queryForObject("SELECT SUM(wasted_qty) FROM subcontract_material_issue_items WHERE order_item_id=?", BigDecimal.class, itemId));
+
+        shortDeliveries.decide(caseId, decision);
+        Map<String, Object> accepted = caseRow(itemId);
+        assertEquals(caseId, accepted.get("id"));
+        assertEquals("ACCEPTED_LOSS", accepted.get("status"));
+        assertEquals(makerId, accepted.get("decided_by_employee_id"));
+        qty("50", (BigDecimal) accepted.get("loss_qty"));
+        qty("1000", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
+        qty("950", db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
+        UUID waste = (UUID) accepted.get("waste_id");
+        assertNotNull(waste);
+        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_wastes WHERE id=? AND status=1", waste));
+        qty("50", db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, waste));
+        qty("0", db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?", BigDecimal.class, waste));
+        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?", waste));
+        assertEquals(0, count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_type='SUBCONTRACT' AND order_item_id=?", itemId));
+        assertEquals(1, count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=?", orderId));
+        assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId));
+        InventoryValueWorkTestSupport.drain(inventoryValueWork, db, List.of(material, w.goodsE()));
+        assertTrue(db.queryForObject("SELECT complete FROM v_subcontract_waste_actual_value WHERE waste_item_id=(SELECT id FROM subcontract_waste_items WHERE waste_id=?)", Boolean.class, waste));
+        assertThrows(ApiException.class, () -> shortDeliveries.decide(caseId, decision));
+        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?", waste));
 
         fixture.loginAs(keeper);
-        var replay=iqcStockIn.confirm("SUBCONTRACT",receipt.receiptId(),
-                new ConfirmRequest("sc-tolerance-stock-in-1",List.of(new ConfirmItem(passEventId,passedQty,passedQty,"SC-TOL-01",w.warehouseId()))));
-        assertTrue(replay.replayed());
-        assertEquals(1,count("SELECT COUNT(*) FROM subcontract_loss_cases WHERE waste_id=?",wasteId));
-        qty("950",onHand(w.goodsE(),w.warehouseId()).subtract(onHandBefore));
-
-        // ⑧ 反向: 同一个仓库账号直接走人工自由改量的公开入口, 属主守卫照旧拦死。
-        //    正常损耗结案没有给仓库账号额外授予人工改量权。
-        fixture.loginAs(keeper);
+        assertTrue(iqcStockIn.confirm("SUBCONTRACT", receipt.receiptId(), confirmation).replayed());
+        qty("950", onHand(w.goodsE(), w.warehouseId()).subtract(before));
         ApiException denied = assertThrows(ApiException.class, () -> orders.changeQty(orderId,
                 new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(itemId, new BigDecimal("900"))))));
-        assertEquals(ErrorCode.FORBIDDEN, denied.getCode(), "人工改量必须仍然是 403");
-        assertTrue(denied.getMessage().contains("只能操作本人负责的委外订货单"), denied.getMessage());
-        fixture.loginAs(w.superAdminUserId());
-        qty("1000", db.queryForObject(
-                "SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId));
-        assertEquals(0, count("""
-                SELECT COUNT(*) FROM procurement_order_qty_change_logs
-                WHERE order_type='SUBCONTRACT' AND order_item_id=? AND new_qty=900
-                """, itemId), "被拒的人工改量一个字节都不许落盘");
+        assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
+        assertTrue(denied.getMessage().contains("只能操作本人负责的委外订货单"));
+        assertEquals(0, count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_type='SUBCONTRACT' AND order_item_id=? AND new_qty=900", itemId));
+    }
+
+    private String apSnapshot(UUID receiptId) {
+        return db.queryForObject("SELECT md5(COALESCE(jsonb_agg(to_jsonb(l) ORDER BY l.id)::text,'[]')) FROM ar_ap_ledger l WHERE l.source_doc_id=?", String.class, receiptId);
     }
 
     // ===================== 夹具 =====================

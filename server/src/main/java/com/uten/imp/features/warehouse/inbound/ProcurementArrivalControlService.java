@@ -147,88 +147,76 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * 待检与损耗结账仍由品质放行后的原流程处理。本方法仅用于任务查询，不改变财务批准额度。
      */
     private static String currentReceivableQty(String itemAlias) {
-        // 共享片段作为 %2$s **参数**注入，而不是拼进文本块：`.formatted(...)` 只会
-        // 作用于紧挨它的那一段字面量，把带 %1$s 的模板拆成多段拼接会让前面几段的
-        // 占位符原样留在 SQL 里（真库直接 42601）。这条 SQL 一旦拆段就必炸，别再拆。
-        // 供料上限按订货单位算, 再换算成预计到货明细单位; 换算率缺失时按 0 处理(fail-closed)。
+        // The normal finished allowance and base-BOM physical capacity are independent
+        // bounds. Neither is an actual receipt or a loss deduction.
         return """
-                CASE
-                  WHEN EXISTS (
-                      SELECT 1
-                      FROM subcontract_short_delivery_cases tolerance_case
-                      JOIN subcontract_order_items tolerance_order
-                        ON tolerance_order.id = tolerance_case.order_item_id
-                       AND tolerance_order.order_id = tolerance_case.order_id
-                       AND NOT tolerance_order.is_deleted
-                      JOIN inbound_expectations tolerance_expectation
-                        ON tolerance_expectation.id = %1$s.expectation_id
-                       AND tolerance_expectation.order_type = 'SUBCONTRACT'
-                       AND tolerance_expectation.order_id = tolerance_order.order_id
-                      CROSS JOIN LATERAL (
-                          SELECT GREATEST(COALESCE(tolerance_order.received_qty, 0)
-                              - COALESCE(tolerance_order.returned_qty, 0)
-                              - COALESCE((
-                                  SELECT SUM(rejection.failed_qty)
-                                  FROM procurement_iqc_rejection_cases rejection
-                                  WHERE rejection.receipt_type = 'SUBCONTRACT'
-                                    AND rejection.order_item_id = tolerance_order.id
-                                    AND NOT rejection.is_deleted
-                                    AND rejection.return_recorded_at IS NOT NULL
-                                    AND rejection.status IN ('RETURN_RECORDED', 'CREDIT_CONFIRMED',
-                                                             'CLOSED_NO_CREDIT', 'FINANCE_EXCEPTION')
-                              ), 0), 0) AS delivered_qty
-                      ) tolerance_delivery
-                      WHERE tolerance_case.order_item_id = %1$s.order_item_id
-                        AND tolerance_case.status IN ('PENDING_OWNER', 'WAITING_MORE')
-                        AND tolerance_order.allowed_loss_pct IS NOT NULL
-                        AND tolerance_order.qty > 0
-                        AND tolerance_delivery.delivered_qty > 0
-                        AND tolerance_delivery.delivered_qty < tolerance_order.qty
-                        AND tolerance_delivery.delivered_qty >= ROUND(tolerance_order.qty
-                            * (100 - tolerance_order.allowed_loss_pct) / 100, 4)
-                        AND NOT EXISTS (
-                            SELECT 1 FROM subcontract_material_plan_items tolerance_plan_item
-                            JOIN subcontract_material_plans tolerance_plan
-                              ON tolerance_plan.id = tolerance_plan_item.plan_id
-                             AND tolerance_plan.status = 'OPEN' AND NOT tolerance_plan.is_deleted
-                            WHERE tolerance_plan_item.order_item_id = tolerance_order.id
-                              AND NOT tolerance_plan_item.is_deleted
-                              AND tolerance_plan_item.draw_closed_at IS NULL
-                              -- 「料已发完」按我方需发量(ADR-143 §三.4a, 委外商自带料那部分不用我方物料)
-                              AND tolerance_plan_item.issued_qty < fn_subcontract_draw_needed_qty(
-                                  tolerance_order.id, tolerance_plan_item.planned_qty,
-                                  tolerance_plan_item.bom_unit_qty)
-                        )
-                  ) THEN 0::numeric
-                  ELSE COALESCE((
-                      SELECT LEAST(
-                          %2$s,
-                          COALESCE(ROUND(GREATEST(
-                              COALESCE(supplied.returnable_qty, 0)
-                              + COALESCE(supplied_item.arrival_overage_posted_qty, 0)
-                              + COALESCE((
-                                  SELECT SUM(rejection.failed_qty)
-                                  FROM procurement_iqc_rejection_cases rejection
-                                  WHERE rejection.receipt_type = 'SUBCONTRACT'
-                                    AND rejection.order_item_id = supplied_item.id
-                                    AND rejection.is_deleted = FALSE
-                                    AND rejection.return_recorded_at IS NOT NULL
-                                    AND rejection.status IN (
-                                        'RETURN_RECORDED','CREDIT_CONFIRMED',
-                                        'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
-                              ), 0)
-                              - COALESCE(supplied_item.received_qty, 0), 0)
-                              * COALESCE(supplied_item.unit_rate, 1)
-                              / NULLIF(%1$s.unit_rate, 0), 4), 0))
-                      FROM subcontract_order_items supplied_item
-                      CROSS JOIN LATERAL (
-                          SELECT fn_subcontract_returnable_qty(supplied_item.id) AS returnable_qty
-                      ) supplied
-                      WHERE supplied_item.id = %1$s.order_item_id
-                  ), %2$s)
-                END
-                """.formatted(itemAlias,
-                        SubcontractLossSettlementSql.expectationRemainingQty(itemAlias, "'SUBCONTRACT'"));
+                COALESCE((SELECT LEAST(
+                    GREATEST(fn_subcontract_normal_receipt_limit(supplied_item.id)
+                        + COALESCE(supplied_item.arrival_overage_posted_qty,0)
+                        + COALESCE(supplied_item.returned_qty,0)
+                        + COALESCE((SELECT SUM(rejection.failed_qty)
+                            FROM procurement_iqc_rejection_cases rejection
+                            WHERE rejection.receipt_type='SUBCONTRACT'
+                              AND rejection.order_item_id=supplied_item.id AND NOT rejection.is_deleted
+                              AND rejection.return_recorded_at IS NOT NULL
+                              AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
+                        - COALESCE(supplied_item.received_qty,0)
+                        - fn_subcontract_settled_loss_qty(supplied_item.id),0),
+                    GREATEST(fn_subcontract_returnable_qty(supplied_item.id)
+                        + COALESCE(supplied_item.arrival_overage_posted_qty,0)
+                        + COALESCE((SELECT SUM(rejection.failed_qty)
+                            FROM procurement_iqc_rejection_cases rejection
+                            WHERE rejection.receipt_type='SUBCONTRACT'
+                              AND rejection.order_item_id=supplied_item.id AND NOT rejection.is_deleted
+                              AND rejection.return_recorded_at IS NOT NULL
+                              AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
+                        - COALESCE(supplied_item.received_qty,0),0))
+                    * supplied_item.unit_rate / NULLIF(%1$s.unit_rate,0)
+                    FROM subcontract_order_items supplied_item
+                    WHERE supplied_item.id=%1$s.order_item_id AND NOT supplied_item.is_deleted),
+                  GREATEST(%1$s.ordered_qty-%1$s.accepted_qty,0))
+                """.formatted(itemAlias);
+    }
+
+    /** The original finished target in the expectation's frozen unit, independent of approved public excess. */
+    private static String originalFinishedTargetQty(String itemAlias) {
+        return """
+                (SELECT source.qty*source.unit_rate/NULLIF(%1$s.unit_rate,0)
+                 FROM subcontract_order_items source WHERE source.id=%1$s.order_item_id AND NOT source.is_deleted
+                   AND source.unit_rate>0 AND %1$s.unit_rate>0)
+                """.formatted(itemAlias);
+    }
+
+    /** Contract-only normal remainder; explicit finance-approved excess stays in legacy authority fields. */
+    private static String normalFinishedRemainderQty(String itemAlias) {
+        return """
+                COALESCE((SELECT GREATEST(fn_subcontract_normal_receipt_limit(source.id)+COALESCE(source.returned_qty,0)
+                    +COALESCE((SELECT SUM(rejection.failed_qty) FROM procurement_iqc_rejection_cases rejection
+                        WHERE rejection.receipt_type='SUBCONTRACT' AND rejection.order_item_id=source.id
+                          AND NOT rejection.is_deleted AND rejection.return_recorded_at IS NOT NULL
+                          AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
+                    -COALESCE(source.received_qty,0)-fn_subcontract_settled_loss_qty(source.id),0)
+                    *source.unit_rate/NULLIF(%1$s.unit_rate,0)
+                  FROM subcontract_order_items source WHERE source.id=%1$s.order_item_id AND NOT source.is_deleted
+                    AND source.unit_rate>0 AND %1$s.unit_rate>0),0)
+                """.formatted(itemAlias);
+    }
+
+    /** Physical base-BOM capacity before the normal finished allowance is applied. */
+    private static String materialReceivableQty(String itemAlias) {
+        return """
+                COALESCE((SELECT GREATEST(fn_subcontract_physical_receipt_capacity(supplied_item.id)
+                    + COALESCE(supplied_item.arrival_overage_posted_qty,0)
+                    + COALESCE((SELECT SUM(rejection.failed_qty)
+                        FROM procurement_iqc_rejection_cases rejection
+                        WHERE rejection.receipt_type='SUBCONTRACT' AND rejection.order_item_id=supplied_item.id
+                          AND NOT rejection.is_deleted AND rejection.return_recorded_at IS NOT NULL
+                          AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
+                    - COALESCE(supplied_item.received_qty,0),0)
+                    * supplied_item.unit_rate / NULLIF(%1$s.unit_rate,0)
+                    FROM subcontract_order_items supplied_item
+                    WHERE supplied_item.id=%1$s.order_item_id AND NOT supplied_item.is_deleted),0)
+                """.formatted(itemAlias);
     }
 
     /** 一条委外预计到货明细正在等待登记、续办、品质或异常处理。 */
@@ -674,7 +662,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND item.order_item_id IN (%s)
                   )
                 """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
-                                ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
+                                ? "(" + currentReceivableQty("item") + ") > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", placeholders),
                 prepend(orderType, orderItemIds));
         if (SUBCONTRACT.equals(orderType) && chainNotice != null) {
@@ -1448,7 +1436,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        warehouse.name AS warehouse_name, expectation.expected_date,
                        expectation.owner_employee_id, owner.full_name AS owner_name,
                        expectation.status,
-                       COALESCE(SUM(item.ordered_qty), 0) AS ordered_qty,
+                       COALESCE(SUM(CASE WHEN expectation.order_type='SUBCONTRACT' THEN (
+                """ + originalFinishedTargetQty("item") + """
+                       ) ELSE item.ordered_qty END), 0) AS ordered_qty,
                        COALESCE(SUM(item.accepted_qty), 0) AS accepted_qty,
                        COALESCE(SUM(CASE
                            WHEN expectation.order_type = 'SUBCONTRACT'
@@ -1930,7 +1920,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        -- 2026-08-18 起不再向仓库端返回订货单价：价格对仓库不可见，
                        -- 收货审核时服务端按订货明细权威回填金额。
                        NULL AS unit_price,
-                       item.ordered_qty, item.accepted_qty,
+                       CASE WHEN expectation.order_type='SUBCONTRACT' THEN (
+                """ + originalFinishedTargetQty("item") + """
+                       ) ELSE item.ordered_qty END AS ordered_qty,item.accepted_qty,
                        COALESCE(purchase_item.quantity_semantics,'LEGACY_RECORDED') AS quantity_semantics,
                 """ + currentReceivableGiftQty("item") + """
                        AS remaining_gift_qty,
@@ -1967,7 +1959,22 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                              'RETURN_RECORDED','CREDIT_CONFIRMED',
                                              'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
                                    ), 0)), 0)
-                       END AS max_receivable_qty
+                       END AS max_receivable_qty,
+                       CASE WHEN expectation.order_type='SUBCONTRACT' THEN CASE WHEN (
+                """ + originalFinishedTargetQty("item") + """
+                       ) IS NULL THEN NULL ELSE GREATEST((
+                """ + originalFinishedTargetQty("item") + """
+                       )-item.accepted_qty-(
+                """ + SubcontractLossSettlementSql.acceptedLossInExpectationUnits("item") + """
+                       ),0) END ELSE NULL END AS pending_return_qty,
+                       CASE WHEN expectation.order_type='SUBCONTRACT' THEN GREATEST((
+                """ + materialReceivableQty("item") + """
+                       )-COALESCE(inflight.registered_qty,0),0) ELSE NULL END AS material_receivable_qty,
+                       CASE WHEN expectation.order_type='SUBCONTRACT' THEN GREATEST(LEAST((
+                """ + normalFinishedRemainderQty("item") + """
+                       ),(
+                """ + materialReceivableQty("item") + """
+                       ))-COALESCE(inflight.registered_qty,0),0) ELSE NULL END AS normal_max_receivable_qty
                 FROM inbound_expectation_items item
                 JOIN inbound_expectations expectation
                   ON expectation.id = item.expectation_id
@@ -2038,7 +2045,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getString("last_receipt_warehouse_name"),
                         rs.getBigDecimal("allowed_over_receipt_pct"),
                         rs.getBigDecimal("max_receivable_qty"),rs.getString("quantity_semantics"),
-                        rs.getBigDecimal("remaining_gift_qty"),rs.getBigDecimal("registered_gift_qty")),
+                        rs.getBigDecimal("remaining_gift_qty"),rs.getBigDecimal("registered_gift_qty"),
+                        rs.getBigDecimal("pending_return_qty"),rs.getBigDecimal("material_receivable_qty"),
+                        rs.getBigDecimal("normal_max_receivable_qty")),
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 header.id());
@@ -2069,7 +2078,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         item.lastReceiptWarehouseId(),
                         item.lastReceiptWarehouseName(),
                         item.allowedOverReceiptPct(),
-                        item.maxReceivableQty(),item.quantitySemantics(),item.remainingGiftQty(),item.registeredGiftQty())).toList();
+                        item.maxReceivableQty(),item.quantitySemantics(),item.remainingGiftQty(),item.registeredGiftQty(),
+                        item.pendingReturnQty(),item.materialReceivableQty(),item.normalMaxReceivableQty())).toList();
         BigDecimal registeredQty = items.stream()
                 .map(InboundExpectationItem::registeredQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -2735,7 +2745,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND allocation.replacement_receipt_id<>?
                 """,BigDecimal.class,orderType,row.orderItemId(),row.receiptId()));
         // 欠交 owed(原口径, 不含允许超收量): 财务批准量 + 已退货 + 其它收货单的补回分配 − 已收。
-        BigDecimal owedRaw=row.financeApprovedQty().add(zero(row.returnedQty()))
+        BigDecimal normalAllowance=SUBCONTRACT.equals(orderType)
+                ? nonNegative(zero(jdbc.queryForObject(
+                    "SELECT fn_subcontract_normal_receipt_limit(?)",BigDecimal.class,row.orderItemId()))
+                    .subtract(row.orderQty())) : BigDecimal.ZERO;
+        BigDecimal owedRaw=row.financeApprovedQty().add(normalAllowance).add(zero(row.returnedQty()))
                 .add(allocated).subtract(zero(row.receivedQty()));
         BigDecimal owed=nonNegative(owedRaw);
         BigDecimal replacement=nonNegative(returnedIqcFailureQty(orderType,row.orderItemId()).subtract(allocated));
@@ -2780,7 +2794,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        + COALESCE(order_item.arrival_overage_posted_qty, 0) AS supplied_qty
                 FROM subcontract_order_items order_item
                 CROSS JOIN LATERAL (
-                    SELECT fn_subcontract_returnable_qty(order_item.id) AS returnable_qty
+                    SELECT fn_subcontract_physical_receipt_capacity(order_item.id) AS returnable_qty
                 ) supplied
                 WHERE order_item.id = ?
                 """,(rs,rowNum)->rs.getBigDecimal("supplied_qty"),row.orderItemId());
@@ -3043,7 +3057,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND receipt_item.receipt_id = ?
                   )
                 """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
-                                ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
+                                ? "(" + currentReceivableQty("item") + ") > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", receiptItemTable), orderType, receiptId);
         // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」
         // 行动卡；订单红冲路径置 CANCELED 时同样撤回（见 cancelForOrderReversal

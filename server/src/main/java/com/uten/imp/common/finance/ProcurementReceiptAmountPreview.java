@@ -25,7 +25,7 @@ public class ProcurementReceiptAmountPreview {
 
     public MoneyPolicy.LineAmounts line(String kind, UUID orderItemId, UUID receiptId,
             BigDecimal qty, BigDecimal price, BigDecimal rate) {
-        return line(kind, orderItemId, receiptId, qty, price, rate, new HashMap<>());
+        return line(kind, orderItemId, receiptId, qty, price, rate, new HashMap<>(),2);
     }
 
     /** One draft can contain several rows for the same source; they share a cumulative remainder. */
@@ -37,14 +37,17 @@ public class ProcurementReceiptAmountPreview {
         private final Map<UUID, Pending> pending = new HashMap<>();
         private Draft(String kind, UUID receiptId) { this.kind = kind; this.receiptId = receiptId; }
         public MoneyPolicy.LineAmounts line(UUID orderItemId, BigDecimal qty, BigDecimal price, BigDecimal rate) {
-            return ProcurementReceiptAmountPreview.this.line(kind, orderItemId, receiptId, qty, price, rate, pending);
+            return line(orderItemId,qty,price,rate,2);
+        }
+        public MoneyPolicy.LineAmounts line(UUID orderItemId,BigDecimal qty,BigDecimal price,BigDecimal rate,int materialVersion) {
+            return ProcurementReceiptAmountPreview.this.line(kind,orderItemId,receiptId,qty,price,rate,pending,materialVersion);
         }
     }
 
     private record Pending(BigDecimal qty, BigDecimal original, BigDecimal local, boolean unresolved) { }
 
     private MoneyPolicy.LineAmounts line(String kind, UUID orderItemId, UUID receiptId,
-            BigDecimal qty, BigDecimal price, BigDecimal rate, Map<UUID, Pending> pending) {
+            BigDecimal qty, BigDecimal price, BigDecimal rate, Map<UUID, Pending> pending,int materialVersion) {
         if (qty != null) com.uten.imp.common.util.FinancialExactAmount.quantity(qty, "收货数量");
         String prefix = switch (kind) {
             case "PURCHASE" -> "purchase";
@@ -54,10 +57,11 @@ public class ProcurementReceiptAmountPreview {
         if (orderItemId == null) return MoneyPolicy.line(qty, price, null, rate);
         // Only purchase lines carry an over-receipt tolerance (ADR-144); the column is fixed per kind.
         String tolerancePct = "PURCHASE".equals(kind) ? "i.allowed_over_receipt_pct" : "CAST(NULL AS numeric)";
+        String normalLimit="SUBCONTRACT".equals(kind)?"fn_subcontract_normal_receipt_limit(i.id)":"CAST(NULL AS numeric)";
         @SuppressWarnings("unchecked")
         List<Object[]> sources = em.createNativeQuery("SELECT i.qty,i.price,i.amount_original,i.amount_local,"
                 + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text,i.total_amount_input,"
-                + tolerancePct + ",h.id "
+                + tolerancePct + ",h.id,"+normalLimit+" "
                 + "FROM " + prefix + "_order_items i JOIN " + prefix + "_orders h ON h.id=i.order_id "
                 + "WHERE i.id=:id AND NOT i.is_deleted AND NOT h.is_deleted")
                 .setParameter("id", orderItemId).getResultList();
@@ -81,7 +85,9 @@ public class ProcurementReceiptAmountPreview {
                 + "WHERE i.order_item_id=:id AND h.id<>:receipt AND h.status=1 "
                 + "AND NOT i.is_deleted AND NOT h.is_deleted")
                 .setParameter("id", orderItemId).setParameter("receipt", receiptId).getSingleResult();
-        var released = replacementAllocation.releasedCapacity(kind, orderItemId);
+        var released = "SUBCONTRACT".equals(kind)
+                ? replacementAllocation.releasedCapacityWithOrdinaryReturns(kind,orderItemId)
+                : replacementAllocation.releasedCapacity(kind,orderItemId);
         boolean exactPriceBasis = MoneyPolicy.exactProduct(sourceQty, sourcePrice).compareTo(sourceOriginal) == 0
                 && MoneyPolicy.local(sourceOriginal, sourceRate).compareTo(sourceLocal) == 0;
         if (!exactPriceBasis && (released.amountOriginal() == null || released.amountLocal() == null))
@@ -104,7 +110,9 @@ public class ProcurementReceiptAmountPreview {
                 + "AND decision IN('APPROVE_ALL','APPROVE_CUSTOM')")
                 .setParameter("kind", kind).setParameter("receipt", receiptId)
                 .setParameter("id", orderItemId).getSingleResult());
-        BigDecimal approvedOverage = decimal(source[5]).add(allowance);
+        BigDecimal normalAllowance="SUBCONTRACT".equals(kind)&&materialVersion!=1
+                ? decimal(source[10]).subtract(sourceQty).max(BigDecimal.ZERO):BigDecimal.ZERO;
+        BigDecimal approvedOverage = decimal(source[5]).add(allowance).add(normalAllowance);
         BigDecimal overage = approvedOverage.add(PurchaseOverReceiptTolerance.usedTolerance(
                 priorQty.add(qty), sourceQty.add(approvedOverage),
                 PurchaseOverReceiptTolerance.toleranceQty(sourceQty, decimal(source[8]))));

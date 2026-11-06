@@ -1,0 +1,233 @@
+package com.uten.imp.businesschain;
+
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
+import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
+import com.uten.imp.features.production.execution.*;
+import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.dto.StockDocIssueRequest;
+import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
+import com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnService;
+import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
+import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest;
+import com.uten.imp.features.subcontract.order.SubcontractOrderService;
+import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
+import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.*;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest.ArrivalLine;
+import com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest.amount;
+import static org.junit.jupiter.api.Assertions.*;
+
+/** Follow the quantities suggested by analysis through real manufacturing, dispatch and actual receipt. */
+@EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+class SubcontractMaterialAnalysisSupplyEndToEndTest extends SubcontractFullChainTestContext {
+    @Autowired AutowireCapableBeanFactory beans;
+    @Autowired ProcurementFinanceApprovalService finance;
+    @Autowired WarehouseArrivalRegistrationService arrivals;
+    AggregateMaterialOrderEndToEndTest h;
+
+    @BeforeEach void before() { h=new AggregateMaterialOrderEndToEndTest();beans.autowireBean(h);h.before(); }
+    @AfterEach void after() { h.after(); }
+
+    @Test void initialMaximumLossBudgetManufactures1100AndActual1050Fulfills1000With50Public() {
+        var c=h.createWithChildAndLoss("1000","10");
+        MaterialView child=child(c);
+        amount("1000",child.sourceRequiredQty());amount("1",child.bomQty());amount("1100",child.requiredQty());
+        UUID plan=issue(c,"1100").plans().getFirst().planId();
+        produce(c,plan);
+        UUID item=order(c,"10");
+        amount("1000",h.db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,item));
+        amount("1100",h.db.queryForObject("SELECT planned_qty FROM subcontract_material_plan_items WHERE order_item_id=? AND goods_id=?",BigDecimal.class,item,c.child()));
+        h.fixture.drawAndIssueSubcontract(item,new BigDecimal("1000"),"initial-budget-draw-"+item);
+        receiveAndStock(c,item,"1050");
+        var refreshed=refresh(c);MaterialView parent=material(refreshed,c.common());
+        amount("1000",parent.exactPeggedQty());amount("0",parent.planningUncoveredQty());
+        amount("0",material(refreshed,c.child()).requiredQty());
+        amount("0",material(refreshed,c.child()).planningUncoveredQty());
+        amount("1050",h.db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.common()));
+        amount("50",h.db.queryForObject("SELECT SUM(available_qty) FROM v_stock_available WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.common()));
+
+        // The completed parent's unused material returns through the real
+        // supplier-custody/warehouse/cost chain, without reviving its old claim.
+        InventoryValueWorkTestSupport.drain(beans.getBean(InventoryValueWorkService.class),h.db,
+                List.of(c.material(),c.child(),c.common()));
+        UUID issueItem=h.db.queryForObject("""
+                SELECT source.id FROM subcontract_material_issue_items source
+                JOIN subcontract_material_issues issue ON issue.id=source.issue_id
+                  AND issue.status=1 AND NOT issue.is_deleted
+                WHERE source.order_item_id=? AND source.goods_id=? AND NOT source.is_deleted
+                """,UUID.class,item,c.child());
+        amount("50",h.db.queryForObject("""
+                SELECT at_supplier_qty+COALESCE(compensated_qty,0)-consumed_qty
+                    -COALESCE(returned_qty,0)-COALESCE(wasted_qty,0)
+                FROM subcontract_material_issue_items WHERE id=?
+                """,BigDecimal.class,issueItem));
+        var returnLine=new MaterialReturnItemLine();returnLine.setGoodsId(c.child());
+        returnLine.setUnitId(c.world().unitId());returnLine.setUnitRate(BigDecimal.ONE);
+        returnLine.setQty(new BigDecimal("50"));returnLine.setOrderItemId(item);
+        returnLine.setParentGoodsId(c.common());returnLine.setMaterialIssueItemId(issueItem);
+        var returnRequest=new MaterialReturnSaveRequest();returnRequest.setBillDate(BusinessTime.today());
+        returnRequest.setSupplierId(c.world().supplierId());returnRequest.setWarehouseId(c.world().warehouseId());
+        returnRequest.setItems(List.of(returnLine));
+        var materialReturns=beans.getBean(SubcontractMaterialReturnService.class);
+        UUID returned=materialReturns.create(returnRequest).getId();materialReturns.approve(returned);
+        InventoryValueWorkTestSupport.drain(beans.getBean(InventoryValueWorkService.class),h.db,
+                List.of(c.material(),c.child(),c.common()));
+        var afterReturn=refresh(c);
+        amount("1000",material(afterReturn,c.common()).exactPeggedQty());
+        amount("0",material(afterReturn,c.common()).planningUncoveredQty());
+        amount("0",material(afterReturn,c.child()).requiredQty());
+        amount("0",material(afterReturn,c.child()).planningUncoveredQty());
+        amount("50",h.db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.child()));
+        amount("50",h.db.queryForObject("SELECT SUM(available_qty) FROM v_stock_available WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.child()));
+        amount("0",h.db.queryForObject("""
+                SELECT COALESCE(SUM(lot.remaining_qty),0)
+                FROM v_preplan_stock_entitlement_lot_balance lot
+                JOIN stock_reservations reservation ON reservation.id=lot.stock_reservation_id
+                  AND reservation.status=0 AND NOT reservation.is_deleted
+                WHERE lot.beneficiary_analysis_id=? AND reservation.goods_id=? AND lot.remaining_qty>0
+                """,BigDecimal.class,c.analysis(),c.child()));
+        assertEquals(1L,h.db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Long.class,c.analysis()));
+        amount("1100",h.db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,plan));
+    }
+
+    @Test void lateAllowanceCreatesPrivateSupplementAfterActualCompletionWithoutChangingTheOldPlan() {
+        var c=h.createWithChildAndLoss("1000","0");
+        UUID original=issue(c,"1000").plans().getFirst().planId();produce(c,original);
+        h.db.update("UPDATE goods SET subcontract_allowed_loss_pct=10 WHERE id=?",c.common());
+        order(c,"10");
+        var refreshed=refresh(c);amount("100",material(refreshed,c.child()).planningUncoveredQty());
+        var request=issueRequest(c,"100");
+        var result=h.ordinary.issueWorkshopPlans(c.analysis(),request);
+        assertEquals(1,result.plans().size());UUID replacement=result.plans().getFirst().planId();
+        assertNotEquals(original,replacement);
+        amount("1000",h.db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,original));
+        amount("100",h.db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,replacement));
+        amount("100",h.db.queryForObject("SELECT submitted_qty FROM production_material_analysis_plan_links WHERE plan_id=?",BigDecimal.class,replacement));
+        amount("0",h.db.queryForObject("SELECT public_surplus_qty FROM production_material_analysis_plan_links WHERE plan_id=?",BigDecimal.class,replacement));
+        assertTrue(h.ordinary.issueWorkshopPlans(c.analysis(),request).replayed());
+        assertEquals(2L,h.db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Long.class,c.analysis()));
+        amount("0",child(c).planningUncoveredQty());
+    }
+
+    @Test void actual1000From1000SuppliedMaterialCompletesTheTargetWithoutForcingTheUnsentBudget() {
+        var c=h.createWithChildAndLoss("1000","0");
+        UUID plan=issue(c,"1000").plans().getFirst().planId();produce(c,plan);
+        h.db.update("UPDATE goods SET subcontract_allowed_loss_pct=10 WHERE id=?",c.common());
+        UUID item=order(c,"10");
+        refresh(c);amount("100",child(c).planningUncoveredQty());
+        h.fixture.drawAndIssueSubcontract(item,null,"actual-target-draw-"+item);
+        amount("1000",h.db.queryForObject("SELECT SUM(issued_qty) FROM subcontract_material_plan_items WHERE order_item_id=?",BigDecimal.class,item));
+        receiveAndStock(c,item,"1000");
+        var refreshed=refresh(c);
+        amount("0",material(refreshed,c.common()).planningUncoveredQty());
+        amount("0",material(refreshed,c.child()).requiredQty());
+        amount("0",material(refreshed,c.child()).planningUncoveredQty());
+        assertEquals(1L,h.db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Long.class,c.analysis()));
+    }
+
+    private GenerateResult issue(AggregateMaterialOrderEndToEndTest.Case c,String qty) {
+        return h.ordinary.issueWorkshopPlans(c.analysis(),issueRequest(c,qty));
+    }
+    private IssueWorkshopPlansRequest issueRequest(AggregateMaterialOrderEndToEndTest.Case c,String qty) {
+        var view=h.analyses.detail(c.analysis());MaterialView child=material(view,c.child());
+        return new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"supply-plan-"+UUID.randomUUID(),c.world().warehouseId(),
+                BusinessTime.today(),BusinessTime.today().plusDays(5),true,List.of(new IssueWorkshopPlansRequest.IssuePlanLine(
+                child.materialLineId(),null,new BigDecimal(qty),null,null,c.workshop(),null,c.worker(),null,null,false,BigDecimal.ZERO)));
+    }
+    private void produce(AggregateMaterialOrderEndToEndTest.Case c,UUID plan) {
+        var stock=beans.getBean(StockDocService.class);
+        BigDecimal raw=h.db.queryForObject("SELECT SUM(required_qty) FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,plan);
+        h.receive(c,c.material(),raw.toPlainString());
+        UUID segment=h.db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,plan);
+        var draws=beans.getBean(ProductionDrawRequestService.class);
+        var pick=new ProductionDrawRequest.Item(segment,h.version(segment));
+        var preview=draws.preview(new ProductionDrawRequest.PreviewRequest(List.of(pick)));
+        draws.submit(new ProductionDrawRequest.SubmitRequest(List.of(pick),"supply-draw-"+segment,preview.fingerprint()));
+        for(UUID document:preview.lines().stream().map(ProductionDrawRequest.Line::drawId).distinct().toList()) {
+            var request=new StockDocIssueRequest();request.setIdempotencyKey("supply-issue-"+document);
+            request.setLines(preview.lines().stream().filter(line->line.drawId().equals(document)).map(line->{
+                var issued=new StockDocIssueRequest.Line();issued.setItemId(line.drawItemId());issued.setQty(line.qty());return issued;}).toList());
+            stock.approveAndIssue(document,request);
+        }
+        beans.getBean(ProductionExecutionSegmentService.class).start(plan,segment,new SegmentTransitionRequest(h.version(segment),"supply-start-"+segment));
+        UUID planItem=h.db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",UUID.class,plan);
+        UUID demand=h.db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,segment);
+        var use=new DailyReportMaterialUsageLine();use.setDemandId(demand);use.setQtyBase(raw);
+        BigDecimal output=h.db.queryForObject("SELECT qty FROM production_plan_items WHERE id=?",BigDecimal.class,planItem);
+        UUID report=h.fixture.reportAndApproveExecutionSegment(c.world(),planItem,null,c.child(),segment,null,output.toPlainString(),false,"0",null,null,List.of(use));
+        for(UUID inbound:h.db.queryForList("SELECT id FROM stock_documents WHERE doc_type='FINISHED_IN' AND source_daily_report_id=? AND NOT is_deleted",UUID.class,report))
+            h.fixture.confirmFinishedInboundFully(inbound);
+        amount(output.toPlainString(),h.db.queryForObject("SELECT iqty FROM production_plan_items WHERE id=?",BigDecimal.class,planItem));
+        // This context deliberately disables automatic inventory-value polling.
+        // Warehouse confirmation persists real production-cost closure work;
+        // consume it before the next department can issue the manufactured stock.
+        Map<String,Object> before=productionValueState(c,segment);
+        System.out.println("subcontract-supply-value BEFORE plan="+plan+" "+before);
+        InventoryValueWorkTestSupport.drain(beans.getBean(InventoryValueWorkService.class),h.db,
+                List.of(c.material(),c.child()));
+        Map<String,Object> after=productionValueState(c,segment);
+        System.out.println("subcontract-supply-value AFTER plan="+plan+" "+after);
+        assertEquals("FINAL",after.get("state"),after::toString);
+        assertEquals(Boolean.FALSE,after.get("business_refresh_pending"),after::toString);
+        assertEquals(Boolean.FALSE,after.get("material_marked"),after::toString);
+        assertEquals(Boolean.FALSE,after.get("child_marked"),after::toString);
+    }
+    private Map<String,Object> productionValueState(AggregateMaterialOrderEndToEndTest.Case c,UUID segment) {
+        return h.db.queryForMap("""
+                SELECT object.state,object.business_refresh_pending,
+                       object.precision_closure_pending,object.precision_closure_complete,
+                       fn_inventory_value_precision_marked(ARRAY[
+                           fn_inventory_value_precision_key(CAST(? AS uuid),NULL::uuid)]) AS material_marked,
+                       fn_inventory_value_precision_marked(ARRAY[
+                           fn_inventory_value_precision_key(CAST(? AS uuid),NULL::uuid)]) AS child_marked
+                FROM stock_value_production_cost_objects object
+                WHERE object.execution_segment_id=fn_production_execution_cost_scope(?)
+                """,c.material(),c.child(),segment);
+    }
+    private UUID order(AggregateMaterialOrderEndToEndTest.Case c,String loss) {
+        var batch=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"SUBCONTRACT","1000",false)))).batches().getFirst();
+        UUID application=h.db.queryForObject("SELECT id FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",UUID.class,batch.documentId());
+        var request=new OrderSaveRequest();request.setSettlementMethodId(ReflectionTestUtils.invokeMethod(h.fixture,"activeSettlementMethodId"));
+        request.setBillDate(BusinessTime.today());request.setSupplierId(c.world().supplierId());request.setWarehouseId(c.world().warehouseId());
+        request.setCurrencyId(c.world().currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
+        var line=new OrderItemLine();line.setGoodsId(c.common());line.setApplicationItemId(application);line.setUnitId(c.world().unitId());
+        line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("1000"));line.setPrice(BigDecimal.ONE);line.setAllowedLossPct(new BigDecimal(loss));
+        request.setItems(List.of(line));UUID order=beans.getBean(SubcontractOrderService.class).create(request).getId();
+        UUID reviewer=ReflectionTestUtils.invokeMethod(h.fixture,"createApprover",c.world());finance.submit("SUBCONTRACT",order);
+        h.fixture.loginAs(reviewer);h.fixture.approvePendingFinance("SUBCONTRACT",order);h.fixture.loginAs(c.world().superAdminUserId());
+        return h.db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,order);
+    }
+    private void receiveAndStock(AggregateMaterialOrderEndToEndTest.Case c,UUID item,String actual) {
+        var received=arrivals.register(new WarehouseArrivalRegisterRequest("supply-receive-"+UUID.randomUUID(),"SUBCONTRACT",BusinessTime.today(),
+                c.world().supplierId(),c.world().warehouseId(),null,c.world().employeeId(),null,List.of(new ArrivalLine(c.common(),new BigDecimal(actual),
+                item,null,c.world().unitId(),BigDecimal.ONE,null,null)),null,null));
+        assertEquals("SUBMITTED_FOR_INSPECTION",received.outcome());
+        var inbound=new SubcontractComponentReturnLegEndToEndTest();beans.autowireBean(inbound);ReflectionTestUtils.setField(inbound,"fixture",h.fixture);
+        Object pass=ReflectionTestUtils.invokeMethod(inbound,"passIqc",received.receiptId(),"supply-iqc-"+UUID.randomUUID());
+        UUID keeper=ReflectionTestUtils.invokeMethod(h.fixture,"createIqcWarehouseConfirmer",c.world(),"supply-keeper-"+UUID.randomUUID().toString().substring(0,8));
+        ReflectionTestUtils.invokeMethod(inbound,"stockIn",keeper,received.receiptId(),pass,"supply-stock-"+UUID.randomUUID(),c.world());
+        h.fixture.loginAs(c.world().superAdminUserId());
+    }
+    private AnalysisView refresh(AggregateMaterialOrderEndToEndTest.Case c) {
+        var view=h.analyses.detail(c.analysis());
+        return h.analyses.preview(new PreviewRequest(c.analysis(),view.version(),view.fingerprint(),c.world().warehouseId(),"supply-refresh-"+UUID.randomUUID(),
+                view.products().stream().filter(row->"SALES_ORDER_ITEM".equals(row.sourceType())).map(row->new PreviewItem("SALES_ORDER_ITEM",row.salesOrderItemId(),
+                        null,null,null,null,null,row.deliveryDate(),row.requestedQty())).toList()));
+    }
+    private MaterialView child(AggregateMaterialOrderEndToEndTest.Case c) { return material(h.analyses.detail(c.analysis()),c.child()); }
+    private static MaterialView material(AnalysisView view,UUID goods) { return view.flatMaterials().stream().filter(row->row.goodsId().equals(goods)).findFirst().orElseThrow(); }
+}

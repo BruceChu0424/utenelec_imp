@@ -808,16 +808,96 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         return rows;
     }
 
-    private static String productionSql() {
+    private static String productionSql() { return productionSql(false); }
+
+    private static String productionSql(boolean preparation) {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(java.util.List.of());
-        SubcontractComponentCustodyProjection.coverageForAnalysis(em, UUID.randomUUID());
+        if(preparation)SubcontractComponentCustodyProjection.supplyForAnalysis(em, UUID.randomUUID());
+        else SubcontractComponentCustodyProjection.coverageForAnalysis(em, UUID.randomUUID());
         var sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         return sql.getValue();
+    }
+
+    private BigDecimal[] preparation(UUID analysisId,UUID child) throws SQLException {
+        String sql=productionSql(true).replace(":analysisId","'"+analysisId+"'::uuid");
+        try(var statement=connection.createStatement();var rows=statement.executeQuery(sql)) {
+            while(rows.next())if(child.toString().equals(rows.getString(3)))
+                return new BigDecimal[]{rows.getBigDecimal(6),rows.getBigDecimal(7),rows.getBigDecimal(8),rows.getBigDecimal(9)};
+        }
+        throw new AssertionError("No preparation fact for "+child);
+    }
+
+    @Test void lateLossBudgetKeepsExactRemainingMaterialInsteadOfReapplyingLossToRoundedOutput() throws Exception {
+        World w=new World(UUID.randomUUID());Parent parent=w.parent("parent",false);
+        UUID child=w.child(parent,"child",w.goodsA);
+        UUID action=w.action("3382","0");UUID application=w.allocation(action,parent,"3382");
+        UUID item=w.orderItem("1",application,"3382");UUID line=w.planLine(item,w.goodsA,"1.03","3382");
+        update("UPDATE subcontract_material_plan_items SET base_bom_unit_qty=1,material_loss_pct=3 WHERE id=?",line);
+        w.stockedReceipt(item,"3283.4951");
+        BigDecimal[] fact=preparation(w.analysis,child);
+        assertThat(fact[0]).isEqualByComparingTo("0");
+        assertThat(fact[2]).isEqualByComparingTo("101.46");
+        assertThat(fact[3]).isEqualByComparingTo("98.5049");
+        var rule=new SubcontractMaterialSupplyRequirement(new BigDecimal("3"),fact[3],fact[2]);
+        assertThat(rule.required(fact[3],BigDecimal.ONE,"PER_UNIT",BigDecimal.ONE,true)).isEqualByComparingTo("101.46");
+    }
+
+    @Test void mixedHistoricalAndActualReceiptsKeepSeparateConsumptionAndDoNotRefillSpentLoss() throws Exception {
+        World w=new World(UUID.randomUUID());Parent parent=w.parent("parent",false);
+        UUID child=w.child(parent,"child",w.goodsA);
+        UUID action=w.action("1000","0");UUID application=w.allocation(action,parent,"1000");
+        UUID item=w.orderItem("1",application,"1000");UUID line=w.planLine(item,w.goodsA,"1.1","1100");
+        update("UPDATE subcontract_material_plan_items SET base_bom_unit_qty=1,material_loss_pct=10 WHERE id=?",line);
+        w.stockedReceipt(item,"500");w.stockedReceipt(item,"300");
+        update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE order_item_id=? AND qty=300",item);
+        BigDecimal[] before=preparation(w.analysis,child);
+        assertThat(before[0]).isEqualByComparingTo("250");
+        assertThat(before[2]).isEqualByComparingTo("250");
+        assertThat(before[3]).isEqualByComparingTo("200");
+        UUID issue=UUID.randomUUID();
+        update("INSERT INTO subcontract_material_issues(id,status,is_deleted) VALUES(?,1,false)",issue);
+        update("INSERT INTO subcontract_material_issue_items(issue_id,plan_item_id,qty,wasted_qty,compensated_qty,is_deleted) VALUES(?,?,10,10,0,false)",issue,line);
+        BigDecimal[] after=preparation(w.analysis,child);
+        assertThat(after[0]).isEqualByComparingTo("240");
+        assertThat(after[2]).isEqualByComparingTo("240");
+    }
+
+    @Test void actualTargetCompletionLeavesUnusedAllowanceWithoutAnotherMaterialObligation() throws Exception {
+        World w=new World(UUID.randomUUID());Parent parent=w.parent("parent",false);
+        UUID child=w.child(parent,"child",w.goodsA);
+        UUID action=w.action("1000","0");UUID application=w.allocation(action,parent,"1000");
+        UUID item=w.orderItem("1",application,"1000");UUID line=w.planLine(item,w.goodsA,"1.1","1100");
+        update("UPDATE subcontract_material_plan_items SET base_bom_unit_qty=1,material_loss_pct=10 WHERE id=?",line);
+        w.stockedReceipt(item,"1000");
+        update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE order_item_id=?",item);
+        BigDecimal[] fact=preparation(w.analysis,child);
+        assertThat(fact[0]).isEqualByComparingTo("100");
+        assertThat(fact[3]).isEqualByComparingTo("0");
+        var rule=new SubcontractMaterialSupplyRequirement(new BigDecimal("10"),fact[3],fact[2]);
+        assertThat(rule.required(BigDecimal.ZERO,BigDecimal.ONE,"PER_UNIT",BigDecimal.ONE,true)).isEqualByComparingTo("0");
+    }
+
+    @Test void eachConsumptionVersionKeepsItsOwnHalfTickCeiling() throws Exception {
+        World w=new World(UUID.randomUUID());Parent parent=w.parent("parent",false);
+        UUID child=w.child(parent,"child",w.goodsA);
+        UUID action=w.action("1","0");UUID application=w.allocation(action,parent,"1");
+        UUID item=w.orderItem("1",application,"1");w.planLine(item,w.goodsA,"0.5","0.5");
+        w.stockedReceipt(item,"0.0001");
+        UUID legacy;
+        try(var statement=connection.prepareStatement("SELECT id FROM subcontract_receipt_items WHERE order_item_id=?")) {
+            statement.setObject(1,item);try(var rows=statement.executeQuery()){rows.next();legacy=rows.getObject(1,UUID.class);}
+        }
+        w.stockedReceipt(item,"0.0001");
+        update("UPDATE subcontract_receipt_items SET material_consumption_version=2 WHERE order_item_id=? AND id<>?",item,legacy);
+        BigDecimal[] fact=preparation(w.analysis,child);
+        assertThat(fact[0]).isEqualByComparingTo("0.4998");
+        assertThat(fact[2]).isEqualByComparingTo("0.4998");
+        assertThat(fact[3]).isEqualByComparingTo("0.9998");
     }
 
     private void execute(String sql) throws SQLException {
@@ -933,6 +1013,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         void source(UUID orderItem, UUID application, String allocQty, int lineNo) throws SQLException {
             update("INSERT INTO subcontract_order_item_sources(order_item_id,application_item_id,alloc_qty,line_no) VALUES (?,?,?,?)",
                     orderItem, application, new BigDecimal(allocQty), lineNo);
+            update("UPDATE subcontract_order_items SET qty=(SELECT SUM(alloc_qty) FROM subcontract_order_item_sources WHERE order_item_id=?) WHERE id=?",orderItem,orderItem);
         }
 
         UUID planLine(UUID orderItem, UUID goods, String bomUnitQty, String issued) throws SQLException {
@@ -941,8 +1022,8 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 planCreated = true;
             }
             UUID line = UUID.randomUUID();
-            update("INSERT INTO subcontract_material_plan_items(id,plan_id,order_item_id,goods_id,color_id,bom_unit_qty,issued_qty,is_deleted) VALUES(?,?,?,?,NULL,?,?,false)",
-                    line, plan, orderItem, goods, new BigDecimal(bomUnitQty), new BigDecimal(issued));
+            update("INSERT INTO subcontract_material_plan_items(id,plan_id,order_item_id,goods_id,color_id,bom_unit_qty,base_bom_unit_qty,issued_qty,is_deleted) VALUES(?,?,?,?,NULL,?,?,?,false)",
+                    line, plan, orderItem, goods, new BigDecimal(bomUnitQty),new BigDecimal(bomUnitQty), new BigDecimal(issued));
             return line;
         }
 
@@ -964,7 +1045,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
             UUID receipt = UUID.randomUUID();
             UUID item = UUID.randomUUID();
             update("INSERT INTO subcontract_receipts(id,status,is_deleted) VALUES(?,1,false)", receipt);
-            update("INSERT INTO subcontract_receipt_items(quantity_adoption_version,id,receipt_id,order_item_id,qty,unit_rate,is_deleted) VALUES(1,?,?,?,?,1,false)", item, receipt, orderItem, new BigDecimal(qty));
+            update("INSERT INTO subcontract_receipt_items(quantity_adoption_version,material_consumption_version,id,receipt_id,order_item_id,qty,unit_rate,returned_qty,is_deleted) VALUES(1,1,?,?,?,?,1,0,false)", item, receipt, orderItem, new BigDecimal(qty));
             update("INSERT INTO procurement_inspection_items(receipt_type,receipt_item_id,status,warehouse_stocked_base_qty) VALUES ('SUBCONTRACT',?,'RESOLVED',?)",
                     item, new BigDecimal(qty));
         }

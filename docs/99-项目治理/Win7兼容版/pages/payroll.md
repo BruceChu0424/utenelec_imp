@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PayrollGeneratePage @30 (page-class)<br>_PayrollGeneratePageState @38 (state-class)<br>_PayrollItemSwitch @462 (supporting-class)<br>_ServerBatchPreview @483 (supporting-class)<br>_SlipPreviewRow @574 (supporting-class) |
-| 真实路由绑定 | /payroll/generate；router @677；builder ['PayrollGeneratePage']；redirect None |
+| 真实路由绑定 | /payroll/generate；router @678；builder ['PayrollGeneratePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PayrollReviewPage @43 (page-class)<br>_PayrollReviewPageState @50 (state-class)<br>_BatchChip @388 (supporting-class)<br>_BatchDetail @446 (supporting-class)<br>_BatchDetailState @455 (state-class) |
-| 真实路由绑定 | /payroll/review；router @682；builder ['PayrollReviewPage']；redirect None |
+| 真实路由绑定 | /payroll/review；router @683；builder ['PayrollReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | payroll:generate @195；定义 lib/shared/auth/permissions.dart:51<br>payroll:review @209；定义 lib/shared/auth/permissions.dart:52<br>payroll:publish @231；定义 lib/shared/auth/permissions.dart:53 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PayrollSlipDetailPage @31 (page-class)<br>_PayrollSlipDetailPageState @41 (state-class)<br>_LoadingView @124 (supporting-class)<br>_DetailContent @138 (supporting-class) |
-| 真实路由绑定 | /payroll/slip/:id；router @671；builder ['PayrollSlipDetailPage']；redirect None |
+| 真实路由绑定 | /payroll/slip/:id；router @672；builder ['PayrollSlipDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PayrollSlipListPage @38 (page-class)<br>_PayrollSlipListPageState @46 (state-class) |
-| 真实路由绑定 | /payroll/slip；router @666；builder ['PayrollSlipListPage']；redirect None |
+| 真实路由绑定 | /payroll/slip；router @667；builder ['PayrollSlipListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

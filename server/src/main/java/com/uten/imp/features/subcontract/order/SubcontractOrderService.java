@@ -923,7 +923,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     "SELECT fn_subcontract_settled_loss_qty(CAST(:item AS uuid))")
                     .setParameter("item",item.getId()).getSingleResult();
             if (settledLoss == null) settledLoss = BigDecimal.ZERO;
-            BigDecimal locked = receiptBound.minimumOrderedQty(unitRate).add(settledLoss)
+            BigDecimal locked = receiptBound.minimumSubcontractTargetQty(unitRate,item.getAllowedLossPct()).add(settledLoss)
                     .max(materialPlanService.minimumOrderQtyFromIssued(item.getId(),unitRate));
             if (newQty.compareTo(locked) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT,

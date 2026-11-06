@@ -40,18 +40,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * ADR-103 §2.5 容差内自动结案的状态覆盖(1000 / 10% / 料已全发)：
- * <ul>
- *   <li>「分批到货」判定后的 WAITING_MORE 案件, 最后一批把累计送进允许损耗范围 → 与 PENDING_OWNER
- *       一样当场按允许损耗结案, 结案备注区分两种来路, decision/decided_* 与人工「接受损耗」同款;</li>
- *   <li>累计仍低于下限的 WAITING_MORE 案件不动;</li>
- *   <li>仓库「不再出仓」关计划(没有本次到货)：一件都没回厂的行不开案件, 已回厂进容差的行
- *       补开案件(receipt_id 记空)并结案;</li>
- *   <li>自动结案保留原订货量，不调用人工或系统改量入口，不增加财务改量复核。</li>
- * </ul>
- * 真库全链见 SubcontractToleranceAutoSettleEndToEndTest / SubcontractSoleComponentUnlockEndToEndTest。
- */
+/** Maximum material allowance never automatically settles a finished-product shortfall. */
 class SubcontractShortDeliveryAutoSettleTest {
 
     private static final UUID RECEIPT_ID = UUID.randomUUID();
@@ -82,7 +71,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         when(currentUser.requireEmployeeId()).thenReturn(ACTOR_EMPLOYEE);
         SubcontractMaterialPlanService plans = mock(SubcontractMaterialPlanService.class);
         when(plans.minimumOrderQtyFromIssued(eq(ITEM_ID), any())).thenReturn(new BigDecimal("1000"));
-        when(waste.recordShortDeliveryLoss(any(), any(), any(), any(), any(), any())).thenReturn(WASTE_ID);
+        when(waste.recordShortDeliveryLoss(any(), any(), any(), any())).thenReturn(WASTE_ID);
         EntityManager em = mock(EntityManager.class);
         Query closure = mock(Query.class, RETURNS_SELF);
         when(em.createNativeQuery(anyString())).thenReturn(closure);
@@ -92,42 +81,23 @@ class SubcontractShortDeliveryAutoSettleTest {
     }
 
     @Test
-    void waitingMoreCaseEnteringToleranceSettlesLikePendingOwner() {
+    void waitingMoreAtTheHistoricalToleranceStillNeedsTheFinishedTarget() {
         jdbc.openStatus = "WAITING_MORE";
         jdbc.delivered = new BigDecimal("950");
-
         service.settleAfterStockIn(RECEIPT_ID);
-
-        Object[] accepted = jdbc.acceptedLossArgs();
-        assertEquals(WAITING_NOTE, accepted[0], "结案备注要说明这是分批到货之后累计进容差");
-        assertEquals(ACTOR_USER, accepted[1]);
-        assertEquals(ACTOR_EMPLOYEE, accepted[2], "decided_by 与人工接受损耗同款, 三列同非空过 V636 CHECK");
-        assertEquals(0, new BigDecimal("50").compareTo((BigDecimal) accepted[3]), "loss_qty = 1000 - 950");
-        assertEquals(0, new BigDecimal("1000").compareTo((BigDecimal) accepted[5]), "原订货数量独立保留");
-        assertEquals(0, new BigDecimal("950").compareTo((BigDecimal) accepted[6]), "实际回厂不加损耗冒充实收");
-        assertEquals(CASE_ID, accepted[accepted.length - 1]);
-        String sql = jdbc.acceptedLossSql();
-        assertTrue(sql.contains("decision = 'ACCEPT_LOSS'"), sql);
-        assertTrue(sql.contains("expected_complete_by = NULL"), "分批等待的预计到齐日随结案清空");
-        assertTrue(sql.contains("status IN ('PENDING_OWNER', 'WAITING_MORE')"), "WAITING_MORE 案件必须能被这条 UPDATE 命中");
-        assertTrue(sql.contains("qty_change_log_id = NULL"), "新损耗履约事实不挂缩单日志");
-        verify(waste).recordShortDeliveryLoss(eq(ITEM_ID), argThat(q -> q.compareTo(new BigDecimal("50")) == 0),
-                argThat(q -> q.compareTo(new BigDecimal("50")) == 0), eq(new BigDecimal("10")), anyString(), any());
+        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"));
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any());
         verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
-        verify(orders, never()).changeQtyForShortDelivery(any(), any());
-        verify(events).publishOnce(eq(SubcontractShortDeliveryService.EVENT_RESOLVED),
-                eq(SubcontractShortDeliveryService.AGGREGATE_KIND), eq(CASE_ID), any(), anyString());
+        verify(events, never()).publishOnce(eq(SubcontractShortDeliveryService.EVENT_RESOLVED),any(),any(),any(),any());
     }
 
     @Test
-    void pendingOwnerCaseKeepsThePlainToleranceNote() {
+    void pendingOwnerAt900Of1000CannotBeAutomaticallyClosedByTheMaterialBudget() {
         jdbc.openStatus = "PENDING_OWNER";
         jdbc.delivered = new BigDecimal("900");
-
         service.settleAfterStockIn(RECEIPT_ID);
-
-        assertEquals(PENDING_NOTE, jdbc.acceptedLossArgs()[0]);
-        verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
+        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"));
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any());
         verify(orders, never()).changeQtyForShortDelivery(any(), any());
     }
 
@@ -140,7 +110,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         service.settleAfterStockIn(RECEIPT_ID);
 
         assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"), "已为损耗加料的1000目标不能到900自动结案");
-        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any(), any(), any());
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any());
     }
 
     @Test
@@ -150,9 +120,9 @@ class SubcontractShortDeliveryAutoSettleTest {
 
         service.settleAfterStockIn(RECEIPT_ID);
 
-        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"), "累计 890 < 下限 900, 继续分批等待");
+        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"), "累计 890 < 成品目标1000, 继续分批等待");
         verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
-        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any(), any(), any());
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any());
     }
 
     @Test
@@ -167,7 +137,7 @@ class SubcontractShortDeliveryAutoSettleTest {
     }
 
     @Test
-    void closedPlanWithArrivalInsideToleranceOpensCaseWithoutReceiptAndSettles() {
+    void closedPlanBelowTheFinishedTargetOpensAnOwnerCaseWithoutInventingDeliveredProducts() {
         jdbc.openStatus = null;
         jdbc.delivered = new BigDecimal("950");
 
@@ -178,7 +148,9 @@ class SubcontractShortDeliveryAutoSettleTest {
         Object[] insertArgs = jdbc.updateArgs.get(opened);
         assertNull(insertArgs[10], "关计划那条路没有收货单, receipt_id 记空");
         assertNull(insertArgs[11]);
-        assertEquals(PENDING_NOTE, jdbc.acceptedLossArgs()[0], "补开的是 PENDING_OWNER 案件, 随即按允许损耗结案");
+        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"));
+        assertEquals("BELOW_FLOOR",insertArgs[16]);
+        verify(waste, never()).recordShortDeliveryLoss(any(),any(),any(),any());
         verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
         verify(orders, never()).changeQtyForShortDelivery(any(), any());
     }

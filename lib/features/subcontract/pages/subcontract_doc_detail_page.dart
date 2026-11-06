@@ -1392,7 +1392,7 @@ class _SubcontractDocDetailPageState
                             qtyWithUnit(it, it.counterText('settledLossQty')) ??
                             '—',
                       ),
-                    // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
+                    // 订货行供料损耗上限%；是否短交以服务端成品目标及案件最少应到数量为准。
                     if (_cfg.itemHasAllowedLossPct)
                       MasterColumnDef(
                         key: 'allowedLossPct',
@@ -1496,6 +1496,9 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'wasteCause',
                         label: '损耗率/原因',
+                        info:
+                            '保留原单记录比例。短交结案自动单记录约定供料损耗上限，不代表实际发生比例；'
+                            '实际按报损数量、标准用量及结存核对。手工单保留原输入比例，不据此推导历史实际损耗率。',
                         sortable: true,
                         width: 140,
                         value: (it) => [

@@ -15,7 +15,8 @@ import '../../../shared/models/procurement_quantity.dart';
 // 产成品登记页(production_finished_arrival_registration_page)同一骨架，
 // 路线按钮 / 共用列 / 仓库格 / 库位建议 / 选仓记忆都走 inbound_registration_* 共用层；
 // 改仓后按「该仓 × 货品 × 颜色记住的库位 → 货品资料通用库位」重新带出库位(黄框待核对)。
-// 本次实收默认=批准剩余、入库仓库行级必填(建议仓预填；**勾选多行后在其中任意一行改仓/写库位
+// 采购实收默认=批准剩余；委外必须填写实际回厂量，不把理论供料容量当作实收。
+// 入库仓库行级必填(建议仓预填；**勾选多行后在其中任意一行改仓/写库位
 // 即整批落值**)。提交 = 一个服务端命令、一个事务：服务端按「订货单 × 入库仓库」分组逐张登记并
 // 送检；某张实到超量时只隔离那张，其余照常。超收容差与超量判定沿用收货审核既有规则。
 // 实称重量(ADR-135)：数量组之后录净重(可选)，按各行订货单供应商学到的单重核对；称重计数默认
@@ -50,6 +51,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -333,6 +335,9 @@ class _InboundArrivalRegistrationPageState
   /// 来源里有采购明细(ADR-144「最多可收」只对采购有意义)。
   bool get _hasPurchaseLine => _lines.any(
     (line) => line.prefill.orderType == ProcurementInboundOrderType.purchase,
+  );
+  bool get _hasSubcontractLine => _lines.any(
+    (line) => line.prefill.orderType == ProcurementInboundOrderType.subcontract,
   );
 
   String? _warehouseLabel(String? id) =>
@@ -1118,7 +1123,7 @@ class _InboundArrivalRegistrationPageState
       ],
     };
     if (!mounted) return;
-    // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发(一个事务，任何一组都还没写)。
+    // 委外回厂累计尚未达到成品目标时服务端先409，确认后按原实收重发；不把供料损耗上限当成品减交额度。
     final batch = await registerArrivalConfirmingShortDelivery(
       context: context,
       body: body,
@@ -1250,8 +1255,8 @@ class _InboundArrivalRegistrationPageState
       Scaffold(
         appBar: UtenAppBar(
           title: workflowFieldText(context).inboundArrivalRegistrationTitle,
-          // 多选时路线在任务中心已选定：标题下标明本页走哪条，底部只此一个提交按钮。
-          subtitle: _route == null ? null : '路线：${_route!.label}',
+          // 路线在任务中心已选定，复用标题同排提示入口；底部只保留该路线按钮。
+          info: _route == null ? null : '本次登记路线：${_route!.label}',
           leading: UtenBackButton(
             onPressed: () => popOrBackTo(
               context,
@@ -1511,6 +1516,61 @@ class _InboundArrivalRegistrationPageState
     return pct > 0 ? '$value(含允许超收 ${procurementQty(pct)}%)' : value;
   }
 
+  EditableGridColumn<_BatchArrivalLine> _subcontractQuantityColumn({
+    required String key,
+    required String label,
+    required String headerInfo,
+    required String? Function(ProcurementReceiptPrefillItem) exactOf,
+    String? Function(ProcurementReceiptPrefillItem)? rowInfo,
+  }) {
+    String? value(_BatchArrivalLine line) =>
+        line.prefill.orderType == ProcurementInboundOrderType.subcontract
+        ? exactOf(line.item)
+        : null;
+    String text(_BatchArrivalLine line) => value(line) == null
+        ? '—'
+        : formatExactQtyWithUnit(value(line), line.item.unitName);
+    return EditableGridColumn(
+      key: key,
+      label: label,
+      width: rowInfo == null ? 180 : 200,
+      numeric: true,
+      headerInfo: headerInfo,
+      textOf: text,
+      exactValueOf: value,
+      cellBuilder: (context, line) {
+        final info = value(line) == null ? null : rowInfo?.call(line.item);
+        return Row(
+          children: [
+            Flexible(
+              child: Text(
+                text(line),
+                key: ValueKey(
+                  'warehouse-arrival-$key-${line.item.orderItemId}',
+                ),
+              ),
+            ),
+            if (info != null) UtenFieldHintIcon(info: info, dense: true),
+          ],
+        );
+      },
+    );
+  }
+
+  String? _remainingReferenceQty(_BatchArrivalLine line) =>
+      line.prefill.orderType == ProcurementInboundOrderType.subcontract
+      ? line.item.pendingReturnQtyText ?? line.item.pendingReturnQty?.toString()
+      : line.item.approvedRemainingQtyText ??
+            line.item.approvedRemainingQty.toString();
+
+  String _remainingReferenceText(_BatchArrivalLine line) =>
+      _remainingReferenceQty(line) == null
+      ? '—'
+      : formatExactQtyWithUnit(
+          _remainingReferenceQty(line),
+          line.item.unitName,
+        );
+
   // 明细表列(与产成品批量页同一套共用列，列名/列序/格式一致)：来源订货单 → 类型 →
   // 货品名称 → 编号 → 颜色 → 批准剩余 → 本次实收 → 实称重量 → 称重核对 → 入库仓库 →
   // 预计去向 → 库位号 → 物料系列。数量一律「数字 + 单位」内联(2026-10-10 T9，独立单位列
@@ -1561,11 +1621,52 @@ class _InboundArrivalRegistrationPageState
       shared.goodsName(),
       shared.goodsCode(),
       shared.color(),
-      shared.quantity(
-        key: 'approvedRemainingQty',
-        label: '批准剩余',
-        valueOf: (line) => line.item.approvedRemainingQty,
-      ),
+      if (_hasSubcontractLine)
+        _subcontractQuantityColumn(
+          key: 'orderedQty',
+          label: '成品目标',
+          headerInfo: '订货约定的成品目标。损耗上限增加供料，不降低这个目标；实际回厂量由收货人员清点填写。',
+          exactOf: (item) => item.orderedQtyText ?? item.orderedQty?.toString(),
+        ),
+      if (_hasSubcontractLine && !_hasPurchaseLine)
+        _subcontractQuantityColumn(
+          key: 'pendingReturnQty',
+          label: '待回厂',
+          headerInfo: '尚未真实完成的成品目标，已登记待审核量仍计入其中；请核对已登记单据，避免重复登记。',
+          exactOf: (item) =>
+              item.pendingReturnQtyText ?? item.pendingReturnQty?.toString(),
+        )
+      else
+        EditableGridColumn(
+          key: 'approvedRemainingQty',
+          label: _hasSubcontractLine ? '待回厂 / 批准剩余' : '批准剩余',
+          width: 160,
+          numeric: true,
+          headerInfo: _hasSubcontractLine
+              ? '委外显示尚未真实完成的成品目标，包含已登记待审核量；采购显示批准剩余可登记量。'
+              : null,
+          textOf: _remainingReferenceText,
+          exactValueOf: _remainingReferenceQty,
+          cellBuilder: (context, line) => Text(_remainingReferenceText(line)),
+        ),
+      if (_hasSubcontractLine)
+        _subcontractQuantityColumn(
+          key: 'normalMaxReceivableQty',
+          label: '正常最多回厂',
+          headerInfo:
+              '按订货冻结的损耗上限、已发物料及已登记量核对的正常可登记余量，不代表实际到货。实际回厂可以高于成品目标；超过正常上限由服务端按到货异常办理。',
+          exactOf: (item) =>
+              item.normalMaxReceivableQtyText ??
+              item.normalMaxReceivableQty?.toString(),
+          rowInfo: (item) {
+            final capacity =
+                item.materialReceivableQtyText ??
+                item.materialReceivableQty?.toString();
+            return capacity == null
+                ? null
+                : '已发物料理论上还能回厂 ${formatExactQtyWithUnit(capacity, item.unitName)}；这是供料容量，实际回厂量须按清点结果填写。';
+          },
+        ),
       // ADR-144：采购明细显示「最多可收(含允许超收 p%)」，超过它的部分才转财务；
       // 委外明细显示「—」；来源全是委外时不出这一列。
       if (_hasPurchaseLine)
@@ -1587,7 +1688,9 @@ class _InboundArrivalRegistrationPageState
       shared.receivedQuantity(
         controllerOf: (line) => line.qty,
         enabled: editable,
-        headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
+        headerInfo: _hasSubcontractLine
+            ? '${workflowFieldText(context).workflowArrivalQuantityHint}\n委外请填写本次实际清点的回厂数量，成品目标、待回厂与正常上限均不会自动代填实收。'
+            : workflowFieldText(context).workflowArrivalQuantityHint,
       ),
       // 实称重量跟在数量组之后；按该行订货单供应商学到的单重核对(称重核对列)。
       EditableGridColumn<_BatchArrivalLine>(
@@ -1805,9 +1908,10 @@ class _InboundArrivalRegistrationPageState
 class _BatchArrivalLine extends InboundRegistrationLine {
   _BatchArrivalLine(this.prefill, this.item, {required this.onChanged})
     : qty = UtenAutofillTextController(
-        text:
-            item.approvedRemainingQtyText ??
-            procurementQty(item.approvedRemainingQty),
+        text: prefill.orderType == ProcurementInboundOrderType.subcontract
+            ? ''
+            : item.approvedRemainingQtyText ??
+                  procurementQty(item.approvedRemainingQty),
         autofilled: false,
       ),
       giftQty = TextEditingController(

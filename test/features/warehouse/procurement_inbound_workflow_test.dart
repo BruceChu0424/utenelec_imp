@@ -8,8 +8,63 @@ import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/features/warehouse/widgets/arrival_qty_revision_table.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
+import 'package:uten_imp/features/warehouse/models/arrival_form_draft_codec.dart';
 
 void main() {
+  test('委外成品目标与回厂容量的精确合同贯穿预填和草稿', () {
+    final expectation = InboundExpectation.fromJson({
+      'id': 'actual-exact',
+      'orderType': 'SUBCONTRACT',
+      'orderId': 'order-1',
+      'billNo': 'EO-EXACT',
+      'supplierId': 'supplier-1',
+      'status': 'OPEN',
+      'orderedQty': 1000,
+      'acceptedQty': 0,
+      'remainingQty': 1100,
+      'allowedActions': ['CREATE_SUBCONTRACT_RECEIPT'],
+      'items': [
+        {
+          'id': 'expectation-item-1',
+          'orderItemId': 'item-1',
+          'goodsId': 'goods-1',
+          'goodsCode': 'Q7BJ',
+          'goodsName': '委外成品',
+          'unitRate': 1,
+          'orderedQty': 9007199254740993,
+          'orderedQtyExact': '9007199254740993.1234',
+          'acceptedQty': 0,
+          'remainingQty': 1100,
+          'registeredQty': 20,
+          'pendingReturnQty': 1000,
+          'pendingReturnQtyExact': '1000.0001',
+          'materialReceivableQty': 1080,
+          'materialReceivableQtyExact': '1080.0001',
+          'normalMaxReceivableQty': 1050,
+          'normalMaxReceivableQtyExact': '1050.0001',
+        },
+      ],
+    });
+    final item = expectation.toReceiptPrefill()!.items.single;
+    expect(item.orderedQtyText, '9007199254740993.1234');
+    expect(item.pendingReturnQtyText, '1000.0001', reason: '待真实回厂目标不再次扣草稿');
+    expect(
+      item.materialReceivableQtyText,
+      '1080.0001',
+      reason: '服务端已扣草稿，客户端不能再扣一次',
+    );
+    expect(item.normalMaxReceivableQtyText, '1050.0001');
+    final restored = restoreArrivalItemDraft(arrivalItemDraft(item));
+    expect(restored.orderedQtyText, item.orderedQtyText);
+    expect(restored.pendingReturnQtyText, item.pendingReturnQtyText);
+    expect(restored.materialReceivableQtyText, item.materialReceivableQtyText);
+    expect(
+      restored.normalMaxReceivableQtyText,
+      item.normalMaxReceivableQtyText,
+    );
+    expect(restored.approvedRemainingQty, 1080, reason: '既有登记容量仍保持原合同');
+  });
+
   test('finance arrival task parses exact quantities, money and actions', () {
     final task = ProcurementArrivalException.fromJson(_financeTaskJson());
 

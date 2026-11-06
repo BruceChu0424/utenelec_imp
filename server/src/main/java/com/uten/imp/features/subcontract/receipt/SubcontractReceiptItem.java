@@ -66,6 +66,10 @@ public class SubcontractReceiptItem extends BaseEntity {
     @Column(name = "replacement_intent", length = 24)
     private String replacementIntent;
 
+    /** Posted v1 estimates remain immutable; new receipts consume only their frozen base BOM. */
+    @Column(name = "material_consumption_version", nullable = false)
+    private Short materialConsumptionVersion = 2;
+
     @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;
 

@@ -134,7 +134,7 @@ class ProcurementArrivalMaterialBoundTest {
     private static CapacityProbe probe(String orderType, String orderQty, String financeApproved,
                                        String received, String pct, String supplied,
                                        String returnedIqcFailure) throws Exception {
-        CapacityJdbc jdbc = new CapacityJdbc(new BigDecimal(supplied), new BigDecimal(returnedIqcFailure));
+        CapacityJdbc jdbc = new CapacityJdbc(new BigDecimal(supplied), new BigDecimal(returnedIqcFailure),new BigDecimal(orderQty));
         ProcurementArrivalControlService service = new ProcurementArrivalControlService(
                 jdbc,
                 new ObjectMapper(),
@@ -192,15 +192,17 @@ class ProcurementArrivalMaterialBoundTest {
 
     /**
      * arrivalCapacity 走 queryForObject 标量查询与一条供料上限列表查询, 按 SQL 片段分发。
-     * 委外明细总能查到一行; 没有计划行时 fn_subcontract_returnable_qty 为 0。
+     * 委外明细总能查到一行; 没有计划行时 fn_subcontract_physical_receipt_capacity 为 0。
      */
     private static final class CapacityJdbc extends JdbcTemplate {
         private final BigDecimal supplied;
         private final BigDecimal returnedIqcFailure;
+        private final BigDecimal normalLimit;
 
-        private CapacityJdbc(BigDecimal supplied, BigDecimal returnedIqcFailure) {
+        private CapacityJdbc(BigDecimal supplied, BigDecimal returnedIqcFailure,BigDecimal normalLimit) {
             this.supplied = supplied;
             this.returnedIqcFailure = returnedIqcFailure;
+            this.normalLimit=normalLimit;
         }
 
         @Override
@@ -209,13 +211,14 @@ class ProcurementArrivalMaterialBoundTest {
             if (sql.contains("procurement_iqc_rejection_cases")) return requiredType.cast(returnedIqcFailure);
             // ADR-114(V688): 委外行已独立结清的损耗量从可到货上限里扣掉; 本用例无损耗。
             if (sql.contains("fn_subcontract_settled_loss_qty")) return requiredType.cast(BigDecimal.ZERO);
+            if (sql.contains("fn_subcontract_normal_receipt_limit")) return requiredType.cast(normalLimit);
             throw new IllegalStateException("unexpected scalar query: " + sql);
         }
 
         @Override
         @SuppressWarnings("unchecked")
         public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
-            if (sql.contains("fn_subcontract_returnable_qty")) {
+            if (sql.contains("fn_subcontract_physical_receipt_capacity")) {
                 return List.of((T) supplied);
             }
             throw new IllegalStateException("unexpected list query: " + sql);

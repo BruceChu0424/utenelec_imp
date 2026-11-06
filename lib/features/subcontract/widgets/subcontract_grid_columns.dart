@@ -625,9 +625,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 120,
         numeric: true,
         headerInfo:
-            '新批准时按此比例增加直属物料领料量，成品目标数量不变。'
-            '例如订 100 件、损耗 10%，基准用料 100 的物料领 110，仍应回厂 100 件。'
-            '正常损耗已包含在回厂材料估算核销中，不要重复登记损耗单。'
+            '新批准时按此损耗上限增加直属物料领料量，成品目标数量不变。'
+            '例如目标 1000 件、损耗上限 10%，基准物料备 1100，实际回厂 1000～1100 件均属正常范围。'
+            '回厂按实际清点数量填写，不把理论可回厂量当作实收，也不强制耗尽余料。'
             '已加损耗用料的新单若成品短交，须补齐或由负责人明确接受，不能自动减交。'
             '历史已批准计划不补增用料。留空 = 不增加。'
             '按货品主档记忆预填，保存后记住本次填写值。',
@@ -801,6 +801,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       EditableGridColumn<SubcontractGridRow>(
         key: 'wasteRate',
         label: '损耗率%',
+        headerInfo:
+            '保留原单记录比例。短交结案自动单记录约定供料损耗上限，不代表实际发生比例；'
+            '实际按报损数量、标准用量及结存核对。手工单保留原输入比例，不据此推导历史实际损耗率。',
         width: 100,
         numeric: true,
         frozenTextOf: (r) => r.wasteRate.text,

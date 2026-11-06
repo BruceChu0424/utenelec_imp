@@ -54,6 +54,31 @@ public class ProcurementIqcReplacementAllocationService {
                 decimal(row[0]),decimal(row[1]),money(row[2]),money(row[3]));
     }
 
+    /** Ordinary finished returns release their own recorded consideration; they are not IQC repair allocations. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public ReleasedCapacity releasedCapacityWithOrdinaryReturns(String rawType,UUID orderItemId) {
+        String kind=type(rawType),prefix="PURCHASE".equals(kind)?"purchase":"subcontract";
+        ReleasedCapacity iqc=releasedCapacity(kind,orderItemId);
+        Object[] ordinary=(Object[]) em.createNativeQuery("""
+                SELECT COALESCE(SUM(item.qty*item.unit_rate/source.unit_rate),0),
+                       COALESCE(SUM(item.qty*item.unit_rate),0),
+                       COALESCE(SUM(item.amount_original),0),COALESCE(SUM(item.amount_local),0),
+                       COUNT(*) FILTER(WHERE item.qty IS NULL OR item.qty<=0 OR item.unit_rate IS NULL OR item.unit_rate<=0
+                           OR source.unit_rate IS NULL OR source.unit_rate<=0
+                           OR item.amount_original IS NULL OR item.amount_original<0
+                           OR item.amount_local IS NULL OR item.amount_local<0)
+                FROM %1$s_return_items item
+                JOIN %1$s_returns header ON header.id=item.return_id AND header.status=1 AND NOT header.is_deleted
+                JOIN %1$s_order_items source ON source.id=item.order_item_id
+                WHERE item.order_item_id=:id AND NOT item.is_deleted
+                """.formatted(prefix)).setParameter("id",orderItemId).getSingleResult();
+        if(((Number)ordinary[4]).longValue()!=0)
+            throw conflict("原普通退货的数量或金额依据不完整，请先核对原始退货，不能默认按零释放收货额度");
+        return new ReleasedCapacity(iqc.qty().add(decimal(ordinary[0])),iqc.baseQty().add(decimal(ordinary[1])),
+                iqc.amountOriginal()==null?null:iqc.amountOriginal().add(decimal(ordinary[2])),
+                iqc.amountLocal()==null?null:iqc.amountLocal().add(decimal(ordinary[3])));
+    }
+
     /** Free physical failures release only the separate gift capacity, with zero commercial amounts. */
     @Transactional(propagation=Propagation.MANDATORY)
     public ReleasedCapacity releasedGiftCapacity(String rawType,UUID orderItemId) {

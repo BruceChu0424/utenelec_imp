@@ -2391,6 +2391,8 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'netShortageQty',
       label: _l10n.materialShortage,
+      info:
+          '需要数量保留原始订单/BOM基线。委外直属物料的当前缺口与默认备料量已计入生效的供料损耗上限，委外件自身的订货数量仍是成品目标。已完工表示既有任务结束，新的缺口仍可继续追加。',
       width: 145,
       minimumWidthOf: (_) => 72,
       type: 'number',
@@ -3735,14 +3737,40 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 残差是否精确为零（10^-4 tick 口径）。来源不可核对时返回 false：
   /// 没有证据就不把这一行当「无剩余、纯公共备货」。
-  bool _tableExactResidualZero(_MaterialGroup group) {
+  bool _tableExactResidualZero(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
     try {
-      final text = _tableGroupResidualText(group);
+      final text = _tableGroupResidualText(group, authoritative: authoritative);
       if (text == 'NaN') return false;
       return materialQuantityUnits(text) == BigInt.zero;
     } on FormatException {
       return false;
     }
+  }
+
+  /// Only an explicit current node budget can reopen an exhausted MAKE anchor.
+  /// A missing/invalid fact keeps the existing schedule gate closed.
+  bool _tableHasCurrentPlanningGap(_MaterialGroup group) {
+    for (final path in group.paths) {
+      final material = _tablePreviewed(path, authoritative: true);
+      final preparation = material.aggregatePreparation;
+      final uncovered =
+          preparation?.planningUncoveredQty ?? material.planningUncoveredQty;
+      if (uncovered == null) continue;
+      final exact =
+          preparation?.planningUncoveredQtyExact ??
+          material.quantityFactsExact['planningUncoveredQty'];
+      try {
+        if (materialQuantityUnits(_quantityFact(exact, uncovered)) >
+            BigInt.zero)
+          return true;
+      } on FormatException {
+        return false;
+      }
+    }
+    return false;
   }
 
   /// 这一行的「已下达 / 还需安排 / 能不能再追加」是不是按计划锚点判：只有自制行
@@ -3931,6 +3959,18 @@ abstract class _MaterialAnalysisMaterialTableState
           ),
         );
       } else {
+        // A completed MAKE plan can expose a new private supply gap (for
+        // example a parent's frozen loss allowance). Its current node budget
+        // is authoritative; the historical anchor can still have remaining=0.
+        if (shown.planningUncoveredQty case final uncovered?) {
+          parts.add(
+            _quantityFact(
+              shown.quantityFactsExact['planningUncoveredQty'],
+              uncovered,
+            ),
+          );
+          continue;
+        }
         final anchor = _tableIssuedMakeAnchorOf(
           group,
           authoritative: authoritative,
@@ -4540,10 +4580,9 @@ abstract class _MaterialAnalysisMaterialTableState
         net: preparation.netShortageQty,
       );
     }
-    final anchorResidual = _tableAnchorResidual(
-      material,
-      authoritative: authoritative,
-    );
+    final anchorResidual =
+        shown.planningUncoveredQty ??
+        _tableAnchorResidual(material, authoritative: authoritative);
     return (
       required: shown.requiredQty,
       residual: anchorResidual ?? shown.additionalSupplyRecommendedQty,
@@ -4583,6 +4622,11 @@ abstract class _MaterialAnalysisMaterialTableState
       authoritative: authoritative,
     );
     if (anchor == null) return null;
+    final uncovered = _tablePreviewed(
+      material,
+      authoritative: authoritative,
+    ).planningUncoveredQty;
+    if (uncovered != null) return uncovered;
     return anchor.canSchedule
         ? anchor.remainingQty * _tableAnchorUnitRate(group, anchor)
         : 0;
@@ -5416,7 +5460,10 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     if (_tableRootMakePlanLineId(group) != null) {
       final product = _tableMakeAnchorOf(group);
-      if (product != null && !product.canSchedule && !product.canIssueSurplus) {
+      if (product != null &&
+          !product.canSchedule &&
+          !product.canIssueSurplus &&
+          !_tableHasCurrentPlanningGap(group)) {
         return product.scheduleBlockedReason ?? '当前产品暂不可下达生产计划，请核对计划状态';
       }
     }
@@ -5426,7 +5473,8 @@ abstract class _MaterialAnalysisMaterialTableState
     if (issuedAnchor != null &&
         !group.representative.hasPriorityMakeSupplement &&
         !issuedAnchor.canSchedule &&
-        !issuedAnchor.canIssueSurplus) {
+        !issuedAnchor.canIssueSurplus &&
+        !_tableHasCurrentPlanningGap(group)) {
       return '这一行的生产计划已排满，当前不能再追加公共备货产出';
     }
     // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
@@ -7062,15 +7110,14 @@ abstract class _MaterialAnalysisMaterialTableState
     final inputs = <_BucketCandidatePlanInput>[];
     final drafts = <_BucketPlanDraft>[];
     for (final group in batch) {
-      // 锚点(顶层 = 产品行自己)已无剩余需求时，本次填的全是追加的公共备货产出。
-      // 自制行直接按锚点产品判(服务端同一判据 canSchedule / canIssueSurplus)，不经
-      // 估算值——估算值在分段提交期间是清空的，别的时候也可能还带着父行的比例。
-      final anchor = _tableIssuedMakeAnchorOf(group);
+      // 当前节点权威预算无剩余需求时，追加才全是公共备货。
+      // 完工后的旧锚点仍可能 remaining=0，而当前节点已有新的私有补料缺口；
+      // 不能凭历史锚点把该缺口误送为公共产出。手输预览不作为这一判据。
       // 残差按 10^-4 tick 精确判零：剩余 0.0001 也是私有需求，不能被
       // 0.0001 容差当成「无剩余、纯公共备货」（2026-10-07 数量完整性）。
-      final publicSurplusOnly = anchor != null
-          ? !anchor.canSchedule && anchor.canIssueSurplus
-          : _tableGroupIssued(group) && _tableExactResidualZero(group);
+      final publicSurplusOnly =
+          _tableGroupIssued(group) &&
+          _tableExactResidualZero(group, authoritative: true);
       final rootMakeLineId = _tableRootMakePlanLineId(group);
       if (rootMakeLineId != null) {
         final exact = _tableRootPlanQtyText(group);

@@ -25,10 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -49,15 +46,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 接受损耗结案(自动损耗单 + 独立履约量 + 记损耗率，原订货不变) → 供应商汇总视图。
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
-        "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
-        "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
-        "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
-        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 // Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
-class SubcontractShortDeliveryEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+class SubcontractShortDeliveryEndToEndTest extends SubcontractFullChainTestContext {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired SubcontractOrderService orders;
@@ -101,13 +91,13 @@ class SubcontractShortDeliveryEndToEndTest {
         fixture.drawAndIssueSubcontract(itemId,new BigDecimal("20"),"sc-short-draw-"+itemId);
         rate("20",db.queryForObject("SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",BigDecimal.class,itemId));
 
-        // ③ 第一批回厂 12：下限 19、短交率 40% → 严重短交，未确认先 409 逐行说明；仓库确认后登记成功。
+        // 成品目标仍为20；供料预算5%不能把下限改成19。
         ApiException blocked=assertThrows(ApiException.class,()->arrivals.register(arrival(w,itemId,"12",false,"sd-1")));
         assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,blocked.getCode());
         assertNotNull(blocked.getFieldErrors());assertEquals(1,blocked.getFieldErrors().size());
         assertEquals(itemId.toString(),blocked.getFieldErrors().getFirst().field());
         String line=blocked.getFieldErrors().getFirst().message();
-        assertTrue(line.contains("订 20")&&line.contains("最少应到 19")&&line.contains("累计 12")&&line.contains("少 8")&&line.contains("属严重短交"),line);
+        assertTrue(line.contains("订 20")&&line.contains("最少应到 20")&&line.contains("累计 12")&&line.contains("少 8")&&line.contains("属严重短交"),line);
         assertEquals(0,count("SELECT COUNT(*) FROM subcontract_short_delivery_cases WHERE order_item_id=?",itemId),"409 之前不得留下任何案件");
         assertEquals(0,count("SELECT COUNT(*) FROM subcontract_receipts r JOIN subcontract_receipt_items i ON i.receipt_id=r.id WHERE i.order_item_id=?",itemId),"409 之前不得建收货单");
 
@@ -116,7 +106,7 @@ class SubcontractShortDeliveryEndToEndTest {
         Map<String,Object> c=caseRow(itemId);
         assertEquals("PENDING_OWNER",c.get("status"));assertEquals("SEVERE",c.get("severity"));
         rate("12",(BigDecimal)c.get("delivered_qty"));rate("8",(BigDecimal)c.get("shortfall_qty"));rate("40",(BigDecimal)c.get("shortfall_pct"));
-        rate("19",(BigDecimal)c.get("floor_qty"));assertEquals(1,((Number)c.get("arrival_count")).intValue());
+        rate("20",(BigDecimal)c.get("floor_qty"));assertEquals(1,((Number)c.get("arrival_count")).intValue());
         assertEquals(w.superAdminUserId(),c.get("owner_user_id"));
         UUID caseId=(UUID)c.get("id");
         assertEquals(1,shortDeliveries.list("PENDING","短交检索 M3_20%",null,orderId,null,null,1,1).getTotal());
@@ -205,7 +195,7 @@ class SubcontractShortDeliveryEndToEndTest {
         // through the real worker before submitting another arrival for that source.
         ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
 
-        // ⑤ 第二批 5 件：累计 17 仍低于下限 19 → 仓库仍要确认(弹窗说明已判定分批)，但案件只刷新数字、不再通知。
+        // 已判定分批等待的再次到货只更新进度，不重复通知负责人。
         ApiException again=assertThrows(ApiException.class,()->arrivals.register(arrival(w,itemId,"5",false,"sd-2")));
         assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,again.getCode());
         assertTrue(again.getFieldErrors().getFirst().message().contains("委外已判定分批到货"),again.getFieldErrors().getFirst().message());
@@ -219,7 +209,7 @@ class SubcontractShortDeliveryEndToEndTest {
         assertEquals(1,count("SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED' AND audience_user_id=?",w.superAdminUserId()),
                 "分批等待未过预计到齐日：再次到货不再打扰");
 
-        // ⑥ 接受损耗结案：原订货 20、实际回厂 17、损耗 3 (允许 1 + 超耗 2) 分开记录，不修改合同数量。
+        // 负责人明确接受成品差额3；材料预算不自动授予成品正常损耗免责份额。
         long version2=((Number)c.get("version")).longValue();
         CaseDetail accepted=stockPrecision(()->shortDeliveries.decide(caseId,new DecisionRequest("ACCEPT_LOSS",null,"委外商确认 3 件加工报废",version2)));
         assertEquals("ACCEPTED_LOSS",accepted.row().status());
@@ -227,7 +217,7 @@ class SubcontractShortDeliveryEndToEndTest {
         assertNotNull(accepted.row().wasteId());assertNotNull(accepted.row().wasteBillNo());
         assertEquals(1,count("SELECT COUNT(*) FROM subcontract_wastes WHERE id=? AND status=1",accepted.row().wasteId()));
         rate("3",db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,accepted.row().wasteId()));
-        rate("1",db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,accepted.row().wasteId()));
+        rate("0",db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,accepted.row().wasteId()));
         rate("3",db.queryForObject("SELECT SUM(wasted_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",BigDecimal.class,itemId));
         rate("20",db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
         rate("17",db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
@@ -281,10 +271,17 @@ class SubcontractShortDeliveryEndToEndTest {
         assertEquals(0,shortDeliveries.list("PENDING",null,null,orderId,null,null,1,20).getTotal());
     }
 
-    @Test void completeArrivalAndUnsetToleranceNeverAskTheWarehouseAndCloseWaitingCasesOnArrival() {
+    @Test void missingMaterialAllowanceDoesNotLowerTheFinishedTargetAndFullArrivalClosesTheCase() {
         var w=fixture.seedWorld("sc-short-complete");fixture.loginAs(w.superAdminUserId());
+        // Notifications require an explicitly assigned responsible decision maker;
+        // the super-admin's implicit permissions do not subscribe that account.
+        db.update("""
+                insert into user_permission_overrides(user_id, permission_id, effect)
+                select ?, p.id, 'grant' from permissions p
+                where p.code = any(array['notice:read','subcontract_order:view','subcontract_short_delivery:decide'])
+                """, w.superAdminUserId());
         UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"10");
-        // 未设允许损耗：短交只开中性案件, 登记不需要确认; 到齐后案件自然完成。
+        // 未设材料损耗预算仍须交足10；未到齐需确认，到齐自然完成。
         UUID orderId=orders.create(orderRequest(w,"10",null)).getId();
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         assertNull(db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
@@ -295,18 +292,19 @@ class SubcontractShortDeliveryEndToEndTest {
         // 判定页分段计数是全库口径(同一测试库里别的用例也会留下容差内案件), 这里只看本单带来的变化。
         var countsBefore=shortDeliveries.counts();
 
-        assertEquals("SUBMITTED_FOR_INSPECTION",arrivals.register(arrival(w,itemId,"4",false,"sc-1")).outcome(),"未设允许损耗不弹窗");
+        assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,
+                assertThrows(ApiException.class,()->arrivals.register(arrival(w,itemId,"4",false,"sc-1"))).getCode());
+        assertEquals("SUBMITTED_FOR_INSPECTION",arrivals.register(arrival(w,itemId,"4",true,"sc-1")).outcome());
         Map<String,Object> c=caseRow(itemId);
-        assertEquals("PENDING_OWNER",c.get("status"));assertEquals("UNSET_TOLERANCE",c.get("severity"));
+        assertEquals("PENDING_OWNER",c.get("status"));assertEquals("SEVERE",c.get("severity"));
+        rate("10",(BigDecimal)c.get("floor_qty"));
         drainOutbox();
-        assertEquals(0,count("SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED' AND audience_user_id=?",w.superAdminUserId()),
-                "中性案件不发紧急通知");
-        // 中性案件：任务中心状态列「容差内待结案」不标红、不算异常；红徽章不计, 判定页计入容差内段。
-        assertEquals("TOLERANT_SHORT",workbenchRow(orderId).displayStage());
-        assertNull(workbenchRow(orderId).exceptionCode());
-        assertEquals(countsBefore.pending(),shortDeliveries.counts().pending());
-        assertEquals(countsBefore.tolerant()+1,shortDeliveries.counts().tolerant());
-        assertEquals(1,shortDeliveries.list("TOLERANT",null,null,orderId,null,null,1,20).getTotal());
+        assertEquals(1,count("SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED' AND audience_user_id=?",w.superAdminUserId()));
+        assertEquals("SHORT_DELIVERY",workbenchRow(orderId).displayStage());
+        assertEquals("SHORT_DELIVERY",workbenchRow(orderId).exceptionCode());
+        assertEquals(countsBefore.pending()+1,shortDeliveries.counts().pending());
+        assertEquals(countsBefore.tolerant(),shortDeliveries.counts().tolerant());
+        assertEquals(1,shortDeliveries.list("PENDING",null,null,orderId,null,null,1,20).getTotal());
 
         assertEquals("SUBMITTED_FOR_INSPECTION",arrivals.register(arrival(w,itemId,"6",false,"sc-2")).outcome(),"到齐不弹窗");
         assertEquals("COMPLETED",db.queryForObject("SELECT status FROM subcontract_short_delivery_cases WHERE id=?",String.class,c.get("id")));

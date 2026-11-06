@@ -297,12 +297,10 @@ public class SubcontractShortDeliveryService
                 WHERE receipt_item.receipt_id = ?
                   AND order_doc.termination_case_id IS NULL
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
-                  AND current_return.delivered_qty < oi.qty
-                  AND ((c.status='PENDING_OWNER' AND oi.allowed_loss_pct IS NOT NULL
-                        AND current_return.delivered_qty < (oi.qty*(100-oi.allowed_loss_pct)*0.01))
-                       OR (c.status='WAITING_MORE' AND c.expected_complete_by<CURRENT_DATE
-                           AND (oi.allowed_loss_pct IS NULL OR current_return.delivered_qty
-                                < (oi.qty*(100-oi.allowed_loss_pct)*0.01))))
+                  AND GREATEST(fn_subcontract_finished_delivery_floor(oi.qty)-current_return.delivered_qty
+                        -fn_subcontract_settled_loss_qty(oi.id),0)>0
+                  AND (c.status='PENDING_OWNER'
+                       OR (c.status='WAITING_MORE' AND c.expected_complete_by<CURRENT_DATE))
                 ORDER BY goods_name
                 """.formatted(DELIVERED_SQL), receiptId);
         if (rows.isEmpty()) return null;
@@ -471,7 +469,7 @@ public class SubcontractShortDeliveryService
             releaseHeldPreStock(locked.orderItemId());
             return detail(caseId);
         }
-        CaseDetail decided = acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee, false);
+        CaseDetail decided = acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee);
         releaseHeldPreStock(locked.orderItemId());
         return decided;
     }
@@ -502,14 +500,10 @@ public class SubcontractShortDeliveryService
 
     /**
      * 接受损耗：核销供应商处损耗，追加独立履约事实，按合格实收加损耗重算结清。
-     * 人工判定({@link #decide})与容差内自动结案({@link #settleAfterStockIn} /
-     * {@link #settleAfterMaterialIssueClosed})共用，权限/归属校验在各自入口做完。
-     *
-     * <p>人工判定在入口核对属主权限；仓库自动结清不修改商业合同，
-     * 也不返回仓库无权查看的委外案件详情。
+     * 只由负责人通过 {@link #decide} 明确授权；仓库确认与供料预算不会自动触发认损。
      */
     private CaseDetail acceptLoss(UUID caseId, LockedCase locked, ItemFacts fact, String note,
-                                  UUID actorUser, UUID actorEmployee, boolean systemInitiated) {
+                                  UUID actorUser, UUID actorEmployee) {
         BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         if (shortfall.signum() <= 0) {
             closeCase(new OpenCase(caseId, locked.status(), null, locked.version(), locked.ownerEmployeeId()),
@@ -524,7 +518,7 @@ public class SubcontractShortDeliveryService
         String severity = SubcontractShortDeliveryPolicy.severity(
                 fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
         if (SubcontractShortDeliveryPolicy.isBelowFloor(severity) && (note == null || note.isBlank())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "低于允许损耗下限的短交结案必须填写说明");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "成品未达到订货目标，短交结案必须填写说明");
         }
         BigDecimal allowedShortfall = SubcontractShortDeliveryPolicy.allowedLossQty(
                 fact.orderedQty(), fact.allowedLossPct()).subtract(fact.settledLossQty())
@@ -533,8 +527,7 @@ public class SubcontractShortDeliveryService
                 + plain(shortfall) + (fact.unitName() == null ? "" : " " + fact.unitName()) + ")";
         // 数量合同不变。成本分摊在事务提交前读最终损耗事实，不需要制造财务改量复核。
         UUID wasteId = wasteService.recordShortDeliveryLoss(
-                fact.orderItemId(), shortfall, allowedShortfall,
-                fact.allowedLossPct(), cause, BusinessTime.today());
+                fact.orderItemId(), shortfall, cause, BusinessTime.today());
         // ADR-103 §2.5：WAITING_MORE 案件也走这一条 UPDATE。V636 的 CHECK 要求 status<>'WAITING_MORE'
         // OR decision='WAIT_MORE', 以及 decision/decided_at/decided_by_* 三列同空同非空——这里把
         // status、decision、decided_* 一起改成 ACCEPT_LOSS 那一套, 与人工「接受损耗」落库完全一致,
@@ -566,37 +559,10 @@ public class SubcontractShortDeliveryService
         if (note != null && !note.isBlank()) snapshot.put("note", note);
         appendEvent(caseId, "ACCEPT_LOSS_DECIDED", actorUser, actorEmployee, snapshot);
         publishResolved(caseId, locked.version() + 1, "ACCEPT_LOSS_DECIDED");
-        if (systemInitiated) {
-            // 与 SubcontractOrderService.changeQtyInternal 末尾同一道理: 自动结案的返回值在
-            // settleAfterStockIn 那里就被丢弃, 而 detail(caseId) 走的是
-            // nativeReadScope(owner_employee_id, VIEW_AUTHORITY=subcontract_order:view) —— 案件
-            // 归属人是订货单制单人, 仓库账号既没有这个权限点也不在可见归属集里, 会抛
-            // NOT_FOUND「短交案件不存在或无权查看」, 把仓库确认入库的整个事务毒死。
-            return null;
-        }
         return detail(caseId);
     }
 
-    /**
-     * ADR-101(推翻 ADR-098 §四「不做容差内自动结案」)：仓库把货确认入库的那一刻，
-     * 累计回厂已经落在允许损耗范围内、并且本行的料已经全部发出去了，就直接按接受损耗结案。
-     *
-     * <p>用户口径：「需要 1000 个、损耗比 10%，我仓库收货只要大于 900 就能正常入库，然后这个
-     * 单子结束，不需要再等那 100 个了，但这 100 个算损耗件。」允许损耗本身就是双方事先约定
-     * 的「交到这个数就算交完」，所以它就是 ADR-098 当初说缺的那个「供应商说交完了」的信号；
-     * 再要人去判定页点一次，只是把一件已经谈好的事又挂起来等人。
-     *
-     * <p>只对历史/零正常加成计划自动结 WITHIN_TOLERANCE 一档。V961 正常损耗已经增加供料的
-     * 新计划不能再自动接受成品短交；保持目标数量，接受损耗须由负责人通过 decide 明确确认。
-     * 没填允许损耗与低于下限的两档继续保持人工。
-     *
-     * <p>ADR-103 §2.5：开放案件不分 PENDING_OWNER 还是 WAITING_MORE。「分批到货」判定只是
-     * 委外说「后面还有」, 最后一批把累计送进允许损耗范围时, 与一次到齐进容差是同一件事,
-     * 用户口径「最后一批 >= 100 就可以直接入库并结束, 损耗 100」——此前 WAITING_MORE 案件
-     * 只刷数字不结案, 单子要等预计到齐日过期、调度器催人再点一次。
-     *
-     * <p>同一收货单的多行分别记录损耗履约，不改变商业订货数量，不产生改量财务待办。
-     */
+    /** Warehouse completion can close a fully delivered target; every real shortfall needs its owner decision. */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleAfterStockIn(UUID receiptId) {
@@ -631,52 +597,19 @@ public class SubcontractShortDeliveryService
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
         Map<UUID, OpenCase> openCases = openCases(orderItemIds, true);
-        List<ItemFacts> tolerant = new ArrayList<>();
         for (ItemFacts fact : loadFacts(orderItemIds, false)) {
-            if (!fact.materialFullyIssued()) continue;
             String severity = remainingSeverity(fact, fact.deliveredQty());
             OpenCase open = openCases.get(fact.orderItemId());
             if (severity == null) {
-                // 到齐即完结。补开路径开的案件没有「登记 → recordArrival」替它落 COMPLETED——
-                // 这里不收口，它就永远挂在「容差内待结案」(ADR-098 中性档零通知, 没有人会被
-                // 提醒)。与 recordArrival 的「累计回厂已到齐」同款收口。
-                if (open != null) {
-                    closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
-                            snapshot(fact, null, "累计回厂已到齐"));
-                }
+                if (open != null) closeCase(open, STATUS_COMPLETED, "COMPLETED", actorUser, actorEmployee,
+                        snapshot(fact, null, "累计回厂已到齐"));
                 continue;
             }
-            if (open == null) {
-                // ADR-103：关计划那条路没有本次到货, 一件都没回厂的行不开案件——短交是「回厂比
-                // 订货少」, 没有回厂就没有可判的事, 留给下一次登记(recordArrival)按料已发完评估。
-                if (receiptId == null && fact.deliveredQty().signum() <= 0) continue;
-                // 料是在最后一批货到齐之后才发完的：登记那一刻还判不出短交，这里补开。
+            // Partial material dispatch is allowed. It does not establish that the supplier
+            // has finished delivering, and does not turn each partial receipt into an exception.
+            if (!fact.materialFullyIssued()) continue;
+            if (open == null && (receiptId != null || fact.deliveredQty().signum() > 0))
                 openCase(fact, receiptId, null, severity, actorUser, actorEmployee, true);
-                open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
-                if (open == null) continue;
-            }
-            if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)
-                    // 正常损耗已经加料：成品仍须交足，不能再把同一比例自动认作成品损耗。
-                    // 旧计划的损耗快照为0，保留原自动结案规则；人工受控认损耗仍由decide处理。
-                    && !fact.normalLossSupplied()
-                    && (STATUS_PENDING.equals(open.status()) || STATUS_WAITING.equals(open.status()))
-                    && fact.deliveredQty().signum() > 0
-                    && autoCloseWouldSucceed(fact)) {
-                tolerant.add(fact);
-            }
-        }
-        if (tolerant.isEmpty()) return;
-        for (ItemFacts fact : tolerant) {
-            OpenCase open = openCases(List.of(fact.orderItemId()), true).get(fact.orderItemId());
-            if (open == null) continue;
-            String note = STATUS_WAITING.equals(open.status())
-                    ? "分批到货后累计回厂已进入允许损耗范围, 系统按约定的允许损耗自动结案"
-                    : "累计回厂已在本单允许损耗范围内, 系统按约定的允许损耗自动结案";
-            acceptLoss(open.id(),
-                    new LockedCase(open.id(), open.status(), fact.orderItemId(), fact.orderId(),
-                            open.version(), open.ownerEmployeeId(),
-                            SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE),
-                    fact, note, actorUser, actorEmployee, true);
         }
     }
 
@@ -1040,32 +973,6 @@ public class SubcontractShortDeliveryService
         }
     }
 
-    /** Automatic loss closure requires the delivered quantity to have passed quality and reached stock. */
-    private boolean autoCloseWouldSucceed(ItemFacts fact) {
-        BigDecimal stocked = jdbc.queryForObject("""
-                SELECT GREATEST(COALESCE(SUM(
-                    CASE WHEN inspection.id IS NULL THEN item.qty*item.unit_rate
-                         WHEN inspection.status='REVERSED' THEN 0
-                         ELSE inspection.warehouse_stocked_base_qty END),0)
-                    - MAX(COALESCE(order_item.returned_qty,0)*order_item.unit_rate),0)
-                FROM subcontract_order_items order_item
-                LEFT JOIN subcontract_receipt_items item ON item.order_item_id=order_item.id AND NOT item.is_deleted
-                LEFT JOIN subcontract_receipts receipt ON receipt.id=item.receipt_id
-                LEFT JOIN procurement_inspection_items inspection
-                  ON inspection.receipt_type='SUBCONTRACT' AND inspection.receipt_item_id=item.id
-                WHERE order_item.id=? AND (item.id IS NULL OR (receipt.status=1 AND NOT receipt.is_deleted))
-                """, BigDecimal.class, fact.orderItemId());
-        if (stocked == null || stocked.compareTo(fact.deliveredQty().multiply(fact.orderUnitRate())) < 0) return false;
-        try {
-            BigDecimal supplierHeld = materialPlans.minimumOrderQtyFromIssued(
-                    fact.orderItemId(), fact.orderUnitRate());
-            return supplierHeld == null || supplierHeld.compareTo(fact.orderedQty()) <= 0;
-        } catch (ApiException probeFailed) {
-            // 历史行缺冻结单耗之类推算不出来的，一律留给人工，不在入库路径上冒险。
-            return false;
-        }
-    }
-
     /**
      * 程度判定的唯一入口(ADR-101)：本行的料还没全部发给委外商时一律不判短交。
      *
@@ -1152,10 +1059,10 @@ public class SubcontractShortDeliveryService
                 INSERT INTO subcontract_short_delivery_cases (
                     id, order_id, order_item_id, order_bill_no_snapshot, supplier_id, goods_id, color_id, unit_id,
                     goods_code_snapshot, goods_name_snapshot, receipt_id, receipt_bill_no_snapshot,
-                    ordered_qty, allowed_loss_pct, delivered_qty, shortfall_qty,
+                    ordered_qty, allowed_loss_pct, delivered_qty, shortfall_qty, delivery_policy_version,
                     severity, status, arrival_count, owner_employee_id, owner_user_id,
                     detected_by_user_id, detected_by_employee_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_OWNER', 1, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 2, ?, 'PENDING_OWNER', 1, ?, ?, ?, ?)
                 """, caseId, fact.orderId(), fact.orderItemId(), fact.orderBillNo(), fact.supplierId(),
                 fact.goodsId(), fact.colorId(), fact.unitId(), fact.goodsCode(), fact.goodsName(),
                 receiptId, receiptBillNo, fact.orderedQty(), fact.allowedLossPct(),
@@ -1178,11 +1085,6 @@ public class SubcontractShortDeliveryService
         snapshot.put("acknowledgedByWarehouse", acknowledged);
         snapshot.put("waitingMoreActive", waitingActive);
         appendEvent(open.id(), "REDETECTED", actorUser, actorEmployee, snapshot);
-        // 后续批次已达到约定下限时不再需要催货或重新判定。保留 WAIT_MORE 的原始日期与决定，
-        // 等 IQC 合格入库再自动核销损耗；即使原日期已过，也不能用旧逾期状态挡住这次入库。
-        if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)) {
-            publishResolved(open.id(), open.version() + 1, "WITHIN_TOLERANCE");
-        }
         // 已判定分批到货且未过预计日：只刷新数字, 不再打扰; 其余情况低于下限就再通知一次。
         if (!waitingActive && SubcontractShortDeliveryPolicy.isBelowFloor(severity)) {
             publishDetected(open.id(), open.version() + 1);
@@ -1194,7 +1096,7 @@ public class SubcontractShortDeliveryService
         BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         jdbc.update("""
                 UPDATE subcontract_short_delivery_cases
-                SET ordered_qty = ?, allowed_loss_pct = ?, delivered_qty = ?,
+                SET ordered_qty = ?, allowed_loss_pct = ?, delivered_qty = ?, delivery_policy_version=2,
                     shortfall_qty = ?, severity = ?,
                     receipt_id = COALESCE(?, receipt_id), receipt_bill_no_snapshot = COALESCE(?, receipt_bill_no_snapshot),
                     arrival_count = arrival_count + ?, last_evaluated_at = now(),
@@ -1252,6 +1154,8 @@ public class SubcontractShortDeliveryService
         snapshot.put("goods", fact.goodsLabel());
         snapshot.put("orderedQty", fact.orderedQty());
         snapshot.put("allowedLossPct", fact.allowedLossPct());
+        snapshot.put("deliveryPolicyVersion", 2);
+        snapshot.put("floorQty", SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(),fact.allowedLossPct()));
         snapshot.put("deliveredQty", fact.deliveredQty());
         snapshot.put("shortfallQty", outstandingShortfall(fact, fact.deliveredQty()));
         snapshot.put("settledLossQtyBefore", fact.settledLossQty());

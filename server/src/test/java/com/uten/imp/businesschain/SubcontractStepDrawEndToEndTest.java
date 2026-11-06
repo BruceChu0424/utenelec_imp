@@ -73,11 +73,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -125,25 +122,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * B 走真实采购订货 → 到货登记 → 来料质检 → 仓库确认入库。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
-        "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
-        "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false",
-        "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
-        "uten.storage.malware-scan.provider=test-only",
-        "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
-        "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
-        "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
-        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
-        "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
-class SubcontractStepDrawEndToEndTest {
+class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
 
     private static final String DRAW_ROUTE = "/operations/workbench/subcontract?segment=DRAW&orderItemId=";
 
-    @DynamicPropertySource
-    static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
-    }
 
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -479,12 +461,21 @@ class SubcontractStepDrawEndToEndTest {
                 List.of(new DrawItemRequest(item, null)), "normal-loss-draw-" + item)).replayed(),
                 "重放不重复增加损耗或发料");
         materialIssues.approve(issue);
-        qty("100", returnable(item), "110/220材料可回厂100件");
-        Receipt first = registerReturn(w, item, p, "90", tag + "-first");
-        qty("99", consumed(item, a), "首批90件核销含正常损耗材料99");
-        qty("198", consumed(item, b), "第二种物料独立按单耗核销");
+        qty("110", returnable(item), "按原始BOM，110/220材料最多可回厂110件；原成品目标仍100");
+        var firstRequest=arrival(w,item,p,"90",tag+"-first");
+        var firstResult=arrivals.register(new WarehouseArrivalRegisterRequest(firstRequest.idempotencyKey(),firstRequest.orderType(),
+                firstRequest.billDate(),firstRequest.supplierId(),firstRequest.warehouseId(),firstRequest.purchaserId(),
+                firstRequest.receiverEmployeeId(),firstRequest.remark(),firstRequest.items(),null,true));
+        assertEquals("SUBMITTED_FOR_INSPECTION",firstResult.outcome());
+        Receipt first=new Receipt(firstResult.receiptId(),receiptItem(firstResult.receiptId()));
+        var partialCase=db.queryForMap("SELECT id,version FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status IN('PENDING_OWNER','WAITING_MORE') ORDER BY detected_at DESC LIMIT 1",item);
+        shortDelivery.decide((UUID)partialCase.get("id"),new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                "WAIT_MORE",BusinessTime.today().plusDays(1),"确认分批回厂，仍须补齐原成品目标100",((Number)partialCase.get("version")).longValue()));
+        qty("90", consumed(item, a), "首批90件只按原始BOM核销90；损耗预算不是实际损耗");
+        qty("180", consumed(item, b), "第二种物料按实际90件的原始单耗独立核销");
         stockIn("SUBCONTRACT", first.receiptId(), passIqc("SUBCONTRACT", first.receiptId(), tag + "-pass1"),
                 tag + "-stock1", w.warehouseId());
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
         assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId),
                 "损耗已加料，回厂90不能按原10%容差自动结案");
         qty("0", db.queryForObject("SELECT fn_subcontract_settled_loss_qty(?)", BigDecimal.class, item),
@@ -492,20 +483,21 @@ class SubcontractStepDrawEndToEndTest {
         Receipt last = registerReturn(w, item, p, "10", tag + "-last");
         stockIn("SUBCONTRACT", last.receiptId(), passIqc("SUBCONTRACT", last.receiptId(), tag + "-pass2"),
                 tag + "-stock2", w.warehouseId());
-        qty("110", consumed(item, a), "100件累计核销110材料，含正常损耗");
-        qty("220", consumed(item, b), "B累计核销220材料");
-        qty("0", supplierEnding(item), "正常损耗包含核销，供应商处不遗留占用");
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
+        qty("100", consumed(item, a), "100件累计只核销实际基准材料100");
+        qty("200", consumed(item, b), "B累计核销原始单耗所需200材料");
+        qty("30", supplierEnding(item), "未实际耗用的A10与B20仍为供应商处余料，不能自动抹为损耗");
         qty("100", onHand(p, w.warehouseId()), "实际成品回厂目标100全部入库");
         qty("22", onHand(a, w.warehouseId()), "仓库只扣本单含损耗所需110，不多发");
         qty("44", onHand(b, w.warehouseId()), "第二种物料仓库只扣220");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId));
         for (Receipt receipt : List.of(first, last)) {
             assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(?)", Boolean.class,
-                    receipt.receiptItemId()), "含损耗材料核销满足数据库成本完整性守卫");
+                    receipt.receiptItemId()), "实际BOM核销满足数据库成本完整性守卫，预算余料仍独立保留");
         }
         var loss = new com.uten.imp.features.subcontract.waste.dto.WasteItemLine();
         loss.setGoodsId(a); loss.setUnitId(w.unitId()); loss.setUnitRate(BigDecimal.ONE);
-        loss.setQty(new BigDecimal("10"));
+        loss.setQty(new BigDecimal("10"));loss.setStandardQty(new BigDecimal("10"));loss.setCause("供应商确认实际材料损耗10，单独登记");
         loss.setMaterialIssueItemId(db.queryForObject(
                 "SELECT id FROM subcontract_material_issue_items WHERE issue_id=? AND goods_id=? AND NOT is_deleted",
                 UUID.class, issue, a));
@@ -513,9 +505,22 @@ class SubcontractStepDrawEndToEndTest {
         request.setBillDate(BusinessTime.today()); request.setSupplierId(w.supplierId());
         request.setWarehouseId(w.warehouseId()); request.setItems(List.of(loss));
         var wasteDraft = materialWaste.create(request);
-        assertThrows(ApiException.class, () -> materialWaste.approve(wasteDraft.getId()),
-                "已包含在估算核销中的10材料不能重复报损");
-        qty("0", supplierEnding(item), "重复报损失败后库存事实不变");
+        materialWaste.approve(wasteDraft.getId());
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
+        qty("20",supplierEnding(item),"只扣实际登记的A损耗10，B余料20仍保留");
+        var duplicateWaste=materialWaste.create(request);
+        assertThrows(ApiException.class,()->materialWaste.approve(duplicateWaste.getId()),"同一份A实际损耗不能重复登记");
+        qty("20",supplierEnding(item),"重复报损失败后供应商处事实不变");
+        var returnedLine=new MaterialReturnItemLine();returnedLine.setGoodsId(b);returnedLine.setUnitId(w.unitId());
+        returnedLine.setUnitRate(BigDecimal.ONE);returnedLine.setQty(new BigDecimal("20"));returnedLine.setOrderItemId(item);
+        returnedLine.setParentGoodsId(p);returnedLine.setMaterialIssueItemId(db.queryForObject(
+                "SELECT id FROM subcontract_material_issue_items WHERE issue_id=? AND goods_id=? AND NOT is_deleted",UUID.class,issue,b));
+        var returned=new MaterialReturnSaveRequest();returned.setBillDate(BusinessTime.today());returned.setSupplierId(w.supplierId());
+        returned.setWarehouseId(w.warehouseId());returned.setItems(List.of(returnedLine));
+        materialReturns.approve(materialReturns.create(returned).getId());
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
+        qty("0",supplierEnding(item),"实际材料报损与余料退回逐笔收口，绝不靠成品回厂强制抹掉预算");
+        qty("64",onHand(b,w.warehouseId()),"B未用余料20实际回仓并增加原始库存");
     }
 
     @Test
@@ -544,7 +549,7 @@ class SubcontractStepDrawEndToEndTest {
             UUID item = itemOf(order);
             String supplyUnit = "10".equals(loss) ? "0.0000011" : "0.0000010001";
             String total = "10".equals(loss) ? "0.0110" : "0.0101";
-            String firstUsed = "10".equals(loss) ? "0.0055" : "0.0051";
+            String firstUsed = "0.0050";
             var line = planLines(item).get(a);
             qty("0.000001", line.get("base_bom_unit_qty"), "最小原始BOM单耗不变");
             qty(supplyUnit, line.get("bom_unit_qty"), "损耗加成保留第7至10位");
@@ -576,16 +581,19 @@ class SubcontractStepDrawEndToEndTest {
             qty(firstUsed, consumed(item, a), "首批按累积5000件向上核销");
             stockIn("SUBCONTRACT", first.receiptId(), passIqc("SUBCONTRACT", first.receiptId(), tag + "-pass1"),
                     tag + "-stock1", w.warehouseId());
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a));
             var lastResult = arrivals.register(new WarehouseArrivalRegisterRequest(
                     tag + "-last-" + item,"SUBCONTRACT",BusinessTime.today(),w.supplierId(),w.warehouseId(),
                     null,w.employeeId(),null,List.of(new ArrivalLine(p,new BigDecimal("5000"),item,null,
                             orderUnit,new BigDecimal("0.1"),null,null))));
             assertEquals("SUBMITTED_FOR_INSPECTION",lastResult.outcome());
             Receipt last = new Receipt(lastResult.receiptId(),receiptItem(lastResult.receiptId()));
-            qty(total, consumed(item, a), "第二批补到累积目标，不能逐批ceil多扣0.0001");
+            qty("0.0100", consumed(item, a), "实际回厂只累计核销base用量，不能把预算加成或逐批ceil计为实际耗损");
             stockIn("SUBCONTRACT", last.receiptId(), passIqc("SUBCONTRACT", last.receiptId(), tag + "-pass2"),
                     tag + "-stock2", w.warehouseId());
-            qty("0", supplierEnding(item), "最小单耗两批回厂在外料清零");
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a));
+            qty(new BigDecimal(total).subtract(new BigDecimal("0.0100")).toPlainString(), supplierEnding(item),
+                    "小单耗损耗预算尾料仍留在供应商处，不能自动核销成实际损耗");
             qty("1000", onHand(p, w.warehouseId()), "10000订货单位按0.1换算，成品基本量1000完整入库");
             assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(?)", Boolean.class,
                     last.receiptItemId()), "精确损耗单耗满足数据库累计核销守卫");
@@ -851,19 +859,27 @@ class SubcontractStepDrawEndToEndTest {
         qty("100", returnable(item), "委外商处物料可做成 100 套");
 
         // ⑫ 分批回厂第一批 30: 物料口径 30, 逐种按目标核销 A 30 / B 60; 来料质检 → 仓库确认入库。
-        Receipt r1 = registerReturn(w, item, p, "30", tag + "-r1");
+        ApiException shortAcknowledgment=assertThrows(ApiException.class,
+                ()->arrivals.register(arrival(w,item,p,"30",tag+"-r1")));
+        assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,shortAcknowledgment.getCode());
+        assertEquals(0,count("SELECT COUNT(*) FROM subcontract_receipt_items WHERE order_item_id=?",item),
+                "未确认分批回厂不保存收货，仍沿同一提交键确认");
+        qty("0",consumed(item,a),"未确认不核销A");qty("0",consumed(item,b),"未确认不核销B");
+        Receipt r1 = registerPartialReturnAndWaitMore(w, item, p, "30", tag + "-r1");
         qty("30", materialBasis(r1.receiptItemId()), "第一批物料口径回厂量");
         qty("30", consumed(item, a), "A 核销 f(30,1)");
         qty("60", consumed(item, b), "B 核销 f(30,2)");
         stockIn("SUBCONTRACT", r1.receiptId(), passIqc("SUBCONTRACT", r1.receiptId(), tag + "-r1-pass"),
                 tag + "-r1-stock", w1);
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
 
         // ⑬ 第二批 40 回厂、质检已判但未入库时红冲: 核销按记录的切片原样退回; 再回厂 40 不因尾差被拦。
-        Receipt r2 = registerReturn(w, item, p, "40", tag + "-r2");
+        Receipt r2 = registerPartialReturnAndWaitMore(w, item, p, "40", tag + "-r2");
         qty("70", consumed(item, a), "第二批后 A 累计核销");
         qty("140", consumed(item, b), "第二批后 B 累计核销");
         passIqc("SUBCONTRACT", r2.receiptId(), tag + "-r2-pass");
         subcontractReceipts.reverse(r2.receiptId());
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
         qty("30", consumed(item, a), "红冲后 A 核销退回");
         qty("60", consumed(item, b), "红冲后 B 核销退回");
         assertTrue(count("""
@@ -873,11 +889,14 @@ class SubcontractStepDrawEndToEndTest {
         Map<String, Object> basis = db.queryForMap("SELECT * FROM fn_subcontract_receipt_basis(?)", item);
         qty("30", (BigDecimal) basis.get("basis_qty"), "有效回厂物料口径 R");
         assertEquals(1, ((Number) basis.get("reversed_line_count")).intValue(), "一条红冲回厂行");
-        Receipt r3 = registerReturn(w, item, p, "40", tag + "-r3");
+        Receipt r3 = registerPartialReturnAndWaitMore(w, item, p, "40", tag + "-r3");
         qty("70", consumed(item, a), "再回厂后 A 累计核销 f(70,1)");
         qty("140", consumed(item, b), "再回厂后 B 累计核销 f(70,2)");
         stockIn("SUBCONTRACT", r3.receiptId(), passIqc("SUBCONTRACT", r3.receiptId(), tag + "-r3-pass"),
                 tag + "-r3-stock", w1);
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
+        qty("0",db.queryForObject("SELECT fn_subcontract_settled_loss_qty(?)",BigDecimal.class,item),
+                "三次明确等待剩余目标，不自动认成品损耗");
 
         // ⑭ 最后一批 30: 累计回厂 100 = 订货量, 合格入库后关单; 委外商处结存归零; 成本 FINAL。
         Receipt r4 = registerReturn(w, item, p, "30", tag + "-r4");
@@ -943,6 +962,7 @@ class SubcontractStepDrawEndToEndTest {
         Receipt receipt = registerReturn(w, item, p, "9", tag + "-r1");
         stockIn("SUBCONTRACT", receipt.receiptId(), passIqc("SUBCONTRACT", receipt.receiptId(), tag + "-pass"),
                 tag + "-stock", wh);
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
         assertEquals(0, count("SELECT COUNT(*) FROM subcontract_short_delivery_cases WHERE order_item_id=?", item),
                 "料没发完(9.5/10)不开短交案件");
 
@@ -1009,10 +1029,21 @@ class SubcontractStepDrawEndToEndTest {
         assertEquals(Boolean.FALSE, summary.get("any_open"));
         qty("0", (BigDecimal) summary.get("drawable_qty"), "结束领料后可领 0");
         Map<String, Object> pendingShortCase = db.queryForMap("""
-                SELECT id, status, version FROM subcontract_short_delivery_cases
+                SELECT id, status, version, severity, loss_qty, waste_id FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? ORDER BY detected_at DESC LIMIT 1
                 """, item);
         assertEquals("PENDING_OWNER", pendingShortCase.get("status"), "新计划已加损耗用料，短交须人工明确接受");
+        assertNotEquals("WITHIN_TOLERANCE",pendingShortCase.get("severity"),"成品9尚未达到目标10，材料预算不降低成品下限");
+        assertNull(pendingShortCase.get("loss_qty"),"结束领料仍未判定成品损耗，不能把未判定默认成确认");
+        assertNull(pendingShortCase.get("waste_id"),"负责人决定前不生成材料报损");
+        qty("0",db.queryForObject("SELECT fn_subcontract_settled_loss_qty(?)",BigDecimal.class,item),"负责人决定前履约损耗为零");
+        qty("9",consumed(item,a),"实际成品9只核销A原始用量9");
+        qty("18",consumed(item,b),"实际成品9只核销B原始用量18");
+        qty("1.45",db.queryForObject("SELECT SUM(supplier_ending) FROM subcontract_material_issue_items WHERE order_item_id=? AND goods_id=?",BigDecimal.class,item,a),
+                "A真实发出10.45减实际核销9，结存1.45未被预算自动抹掉");
+        qty("2.9",db.queryForObject("SELECT SUM(supplier_ending) FROM subcontract_material_issue_items WHERE order_item_id=? AND goods_id=?",BigDecimal.class,item,b),
+                "B真实发出20.9减实际核销18，结存2.9保留");
+        assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),"结束领料本身不能把9当成目标10完成");
         shortDelivery.decide((UUID) pendingShortCase.get("id"),
                 new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
                         "ACCEPT_LOSS", null, "供应商确认不再交付，经负责人确认接受本次成品短交",
@@ -1029,8 +1060,14 @@ class SubcontractStepDrawEndToEndTest {
         Map<UUID, BigDecimal> wasted = new HashMap<>();
         db.queryForList("SELECT goods_id, SUM(qty) AS qty FROM subcontract_waste_items WHERE waste_id=? GROUP BY goods_id",
                 wasteId).forEach(r -> wasted.put((UUID) r.get("goods_id"), (BigDecimal) r.get("qty")));
-        qty("0.55", wasted.get(a), "整单结损耗记委外商处 A 的全部剩余");
-        qty("1.1", wasted.get(b), "整单结损耗记委外商处 B 的全部剩余(不按短交量 × 单耗重算)");
+        qty("1.45", wasted.get(a), "负责人结损按A真实结存1.45逐笔报损，不能按旧预算核销尾数0.55记账");
+        qty("2.9", wasted.get(b), "B按真实结存2.9报损，不按成品短交量重算");
+        qty("1",db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=? AND goods_id=?",BigDecimal.class,wasteId,a),"A正常材料损耗仍只获原冻结预算1");
+        qty("2",db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=? AND goods_id=?",BigDecimal.class,wasteId,b),"B正常材料损耗仍只获原冻结预算2");
+        qty("0.45",db.queryForObject("SELECT SUM(qty-standard_qty) FROM subcontract_waste_items WHERE waste_id=? AND goods_id=?",BigDecimal.class,wasteId,a),"A超出预算0.45保留责任差额");
+        qty("0.9",db.queryForObject("SELECT SUM(qty-standard_qty) FROM subcontract_waste_items WHERE waste_id=? AND goods_id=?",BigDecimal.class,wasteId,b),"B超出预算0.9不能自动免责");
+        assertEquals(1,count("SELECT COUNT(*) FROM subcontract_short_delivery_case_events WHERE case_id=? AND event_type='ACCEPT_LOSS_DECIDED'",pendingShortCase.get("id")),"保留负责人的唯一明确接受事件");
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
         qty("0", supplierEnding(item), "委外商处结存清零");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId),
                 "合格回厂 9 + 损耗 1 = 订货 10, 关单");
@@ -1148,6 +1185,7 @@ class SubcontractStepDrawEndToEndTest {
                 "回厂 10 还没合格入库, 不关单");
         stockIn("SUBCONTRACT", over.receiptId(), passIqc("SUBCONTRACT", over.receiptId(), tag + "-over-pass"),
                 tag + "-over-stock", wh);
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,db,List.of(p,a,b));
         stockIn("SUBCONTRACT", last.receiptId(), passIqc("SUBCONTRACT", last.receiptId(), tag + "-last-pass"),
                 tag + "-last-stock", wh);
         qty("10", onHand(p, wh), "合格入库 9 + 1");
@@ -2250,6 +2288,19 @@ class SubcontractStepDrawEndToEndTest {
         WarehouseArrivalRegisterResult result = arrivals.register(arrival(w, orderItemId, goodsId, qty, key));
         assertEquals("SUBMITTED_FOR_INSPECTION", result.outcome(), "回厂 " + qty + " 在可回厂量内直接送检");
         return new Receipt(result.receiptId(), receiptItem(result.receiptId()));
+    }
+
+    /** This scenario explicitly acknowledges a partial delivery and its owner chooses WAIT_MORE. */
+    private Receipt registerPartialReturnAndWaitMore(FullChainEndToEndTest.World w,UUID orderItemId,UUID goodsId,String qty,String key) {
+        var request=arrival(w,orderItemId,goodsId,qty,key);
+        var result=arrivals.register(new WarehouseArrivalRegisterRequest(request.idempotencyKey(),request.orderType(),
+                request.billDate(),request.supplierId(),request.warehouseId(),request.purchaserId(),request.receiverEmployeeId(),
+                request.remark(),request.items(),null,true));
+        assertEquals("SUBMITTED_FOR_INSPECTION",result.outcome(),"明确确认分批数量后按实数送检");
+        var open=db.queryForMap("SELECT id,version FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status IN('PENDING_OWNER','WAITING_MORE') ORDER BY detected_at DESC LIMIT 1",orderItemId);
+        shortDelivery.decide((UUID)open.get("id"),new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                "WAIT_MORE",BusinessTime.today().plusDays(1),"确认本次实际分批回厂，继续等待原成品目标的剩余数量",((Number)open.get("version")).longValue()));
+        return new Receipt(result.receiptId(),receiptItem(result.receiptId()));
     }
 
     private UUID receiptItem(UUID receiptId) {

@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeDetailPage @93 (page-class)<br>_EmployeeDetailPageState @102 (state-class) |
-| 真实路由绑定 | /employee/:id；router @930；builder ['EmployeeDetailPage']；redirect None |
+| 真实路由绑定 | /employee/:id；router @931；builder ['EmployeeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:avatar_edit @83；定义 lib/shared/auth/permissions.dart:804<br>employee:edit @84；定义 lib/shared/auth/permissions.dart:14<br>employee:pii:edit @85；定义 lib/shared/auth/permissions.dart:134<br>employee:contract_renew @87；定义 lib/shared/auth/permissions.dart:803<br>employee:confirm @89；定义 lib/shared/auth/permissions.dart:801<br>employee:rehire @90；定义 lib/shared/auth/permissions.dart:802<br>employee:view @183；定义 lib/shared/auth/permissions.dart:12<br>authorization:manage @241；定义 lib/shared/auth/permissions.dart:22<br>attachment:view @376；定义 lib/shared/auth/permissions.dart:141<br>employee:pii:view @377；定义 lib/shared/auth/permissions.dart:133<br>attachment:upload @383；定义 lib/shared/auth/permissions.dart:807<br>employee:transfer @548；定义 lib/shared/auth/permissions.dart:798<br>employee:offboard @569；定义 lib/shared/auth/permissions.dart:800<br>account:support @655；定义 lib/shared/auth/permissions.dart:19<br>attachment:view @987；定义 lib/shared/auth/permissions.dart:141<br>employee:pii:view @988；定义 lib/shared/auth/permissions.dart:133<br>authorization:manage @1578；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeEditPage @79 (page-class)<br>_EmployeeEditPageState @87 (state-class) |
-| 真实路由绑定 | /employee/:id/edit；router @917；builder ['EmployeeEditPage']；redirect None |
+| 真实路由绑定 | /employee/:id/edit；router @918；builder ['EmployeeEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:pii:edit @70；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @73；定义 lib/shared/auth/permissions.dart:136<br>employee:pii:edit @309；定义 lib/shared/auth/permissions.dart:134<br>employee:pii:edit @397；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @402；定义 lib/shared/auth/permissions.dart:136<br>employee:pii:edit @492；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @494；定义 lib/shared/auth/permissions.dart:136<br>employee:edit @676；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeListPage @49 (page-class)<br>_EmployeeListPageState @56 (state-class) |
-| 真实路由绑定 | /employee；router @905；builder ['EmployeeListPage']；redirect None |
+| 真实路由绑定 | /employee；router @906；builder ['EmployeeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:create @251；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @252；定义 lib/shared/auth/permissions.dart:134 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOffboardingWorkflowPage @49 (page-class)<br>_EmployeeOffboardingWorkflowPageState @59 (state-class) |
-| 真实路由绑定 | /employee/:id/offboarding；router @923；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
+| 真实路由绑定 | /employee/:id/offboarding；router @924；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOnboardingPage @62 (page-class)<br>_EmployeeOnboardingPageState @73 (state-class)<br>_EducationEntry @1496 (supporting-class)<br>_EmergencyContactEntry @1528 (supporting-class) |
-| 真实路由绑定 | /employee/onboarding；router @910；builder ['EmployeeOnboardingPage']；redirect None |
+| 真实路由绑定 | /employee/onboarding；router @911；builder ['EmployeeOnboardingPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:create @78；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @79；定义 lib/shared/auth/permissions.dart:134<br>employee:compensation:edit @81；定义 lib/shared/auth/permissions.dart:136<br>account:support @83；定义 lib/shared/auth/permissions.dart:19 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -1,4 +1,6 @@
 // ADR-098 委外回厂短交判定页：待判定段渲染、两种判定弹窗与请求体、通知深链打开详情。
+import 'dart:convert';
+import 'dart:io';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -226,6 +228,60 @@ Future<_FakeRepo> _pump(
 }
 
 void main() {
+  testWidgets('共享样例900/1000成品不足不能因10%供料损耗自动结案', (tester) async {
+    final contract =
+        jsonDecode(
+              File(
+                'contracts/subcontract-actual-receipt/v1.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final partial = (contract['vectors'] as List)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((item) => item['id'] == 'partial');
+    final repo = await _pump(
+      tester,
+      rows: [
+        SubcontractShortDeliveryCase(
+          id: 'partial',
+          orderId: 'partial-order',
+          orderBillNo: 'EO-PARTIAL',
+          orderItemId: 'partial-item',
+          goodsName: '委外成品',
+          unitName: '件',
+          orderedQty: double.parse(partial['target'] as String),
+          allowedLossPct: double.parse(partial['lossPct'] as String),
+          floorQty: double.parse(partial['target'] as String),
+          deliveredQty: double.parse(partial['actualReceipt'] as String),
+          shortfallQty: double.parse(partial['unfulfilledTarget'] as String),
+          shortfallPct: 10,
+          severity: 'BELOW_FLOOR',
+          status: 'PENDING_OWNER',
+          effectiveStatus: 'PENDING_OWNER',
+          version: 3,
+          canDecide: true,
+        ),
+      ],
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('short-delivery-accept-partial')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('最少应到 1000 件'), findsOneWidget);
+    expect(find.textContaining('供料损耗上限不自动免除成品交付义务'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.decisions, isEmpty);
+    await tester.enterText(
+      find.byKey(const Key('short-delivery-accept-note')),
+      '负责人确认接受100件短交，客户需求继续补齐',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.decisions.single['decision'], 'ACCEPT_LOSS');
+    expect(repo.decisions.single['note'], '负责人确认接受100件短交，客户需求继续补齐');
+  });
   testWidgets(
     'ordinary headers submit complete server text numeric and enum queries',
     (tester) async {
@@ -327,8 +383,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('short-delivery-accept-a')));
     await tester.pumpAndSettle();
     expect(find.text('接受损耗，结案'), findsOneWidget);
-    expect(find.textContaining('自动做三件事'), findsOneWidget);
-    // 低于允许下限：说明必填，没填之前确认按钮禁用。
+    expect(find.textContaining('未满足客户需求的部分仍保留分析缺口'), findsOneWidget);
+    expect(find.textContaining('供料损耗上限不自动免除成品交付义务'), findsOneWidget);
+    expect(find.textContaining('不重新下单'), findsNothing);
+    // 未达到最少应到数量：说明必填，没填之前确认按钮禁用。
     await tester.tap(find.byKey(const Key('short-delivery-accept-confirm')));
     await tester.pumpAndSettle();
     expect(repo.decisions, isEmpty);

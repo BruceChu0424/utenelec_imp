@@ -1028,6 +1028,9 @@ class AggregateMaterialOrderEndToEndTest {
     Case createWithChild(String quantity,int sourceCount,String commonRoute) {
         return createWithChild(quantity,sourceCount,new GoodsSources(commonRoute,"MAKE","BUY"));
     }
+    Case createWithChildAndLoss(String quantity,String loss) {
+        return create(true,false,quantity,true,1,"2",null,new GoodsSources("SUBCONTRACT","MAKE","BUY"),new BigDecimal(loss));
+    }
     Case createWithChild(String quantity,int sourceCount,GoodsSources sources) {
         return create(true,false,quantity,true,sourceCount,"2",null,sources);
     }
@@ -1103,6 +1106,10 @@ class AggregateMaterialOrderEndToEndTest {
     }
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,
                         UUID sibling,GoodsSources sourcesByRole) {
+        return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,sibling,sourcesByRole,null);
+    }
+    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,
+                         UUID sibling,GoodsSources sourcesByRole,BigDecimal subcontractLossPct) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         // ADR-147 (V802): 直送只送已开通内料仓的车间; 本车间的内料仓开通在测试世界的主仓下。
@@ -1124,6 +1131,7 @@ class AggregateMaterialOrderEndToEndTest {
         masterSources.forEach((goods,route)->{
             if("SUBCONTRACT".equals(route))fixture.ensureSubcontractDirectMaterial(world,goods);
         });
+        if(subcontractLossPct!=null)db.update("UPDATE goods SET subcontract_allowed_loss_pct=? WHERE id=?",subcontractLossPct,common);
         List<PreviewItem> sources=new ArrayList<>();
         for(int index=0;index<sourceCount;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");
             UUID order=fixture.createApprovedOrder(world,root,quantity,"100");UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);

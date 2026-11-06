@@ -71,18 +71,7 @@ public final class SubcontractReturnCapacity {
                 ? "" : " AND draft.id <> :excludedReceiptId";
         String returnable=excludedIssueId==null
                 ? "COALESCE(fn_subcontract_returnable_qty(order_item.id),0)"
-                : """
-                  COALESCE((SELECT CASE WHEN COUNT(line.id)=0 THEN 0 ELSE LEAST(MAX(source_order.qty),
-                    MIN(fn_subcontract_draw_sets(COALESCE(supplier.usable_qty,0),line.bom_unit_qty))) END
-                    FROM subcontract_order_items source_order
-                    JOIN subcontract_material_plan_items line ON line.order_item_id=source_order.id AND NOT line.is_deleted
-                    LEFT JOIN LATERAL (SELECT SUM(item.at_supplier_qty+item.compensated_qty
-                       -COALESCE(item.returned_qty,0)-COALESCE(item.wasted_qty,0)) usable_qty
-                       FROM subcontract_material_issue_items item JOIN subcontract_material_issues issue ON issue.id=item.issue_id
-                         AND issue.status=1 AND NOT issue.is_deleted
-                       WHERE item.plan_item_id=line.id AND NOT item.is_deleted AND issue.id<>:excludedIssueId) supplier ON TRUE
-                    WHERE source_order.id=order_item.id),0)
-                  """;
+                : "COALESCE(fn_subcontract_returnable_qty_excluding_issue(order_item.id,:excludedIssueId),0)";
         var query = em.createNativeQuery("""
                 SELECT order_item.id,
                        COALESCE(order_item.unit_rate, 1) AS order_unit_rate,

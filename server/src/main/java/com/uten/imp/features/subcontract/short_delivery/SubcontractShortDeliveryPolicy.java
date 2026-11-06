@@ -4,13 +4,12 @@ import java.math.BigDecimal;
 import com.uten.imp.common.finance.BusinessPrecisionContext;
 
 /**
- * ADR-098 短交判定的纯口径(无 IO)：允许下限、短交率、程度。数量全部按订货单位。
+ * 成品履约短交的唯一纯计算口径。供料最大损耗预算不能降低成品目标。
  *
  * <ul>
- *   <li>允许下限 F = Q × (1 − p/100), 保留有限原值; p 为空则无下限。</li>
+ *   <li>履约下限 F = Q；1000 目标、10% 供料预算的正常成品范围是 1000..1100。</li>
  *   <li>短交率 = (Q − D) / Q × 100, 除不尽时由本次用户明确选择精度。</li>
- *   <li>程度: D ≥ Q 不短交(返回 null); p 为空 → UNSET_TOLERANCE; D ≥ F → WITHIN_TOLERANCE;
- *       短交率 ≥ max(2p, 20)% → SEVERE; 其余 BELOW_FLOOR。</li>
+ *   <li>D ≥ Q 不短交；任何 D &lt; Q 都须分批等待或负责人明确处理，短交率 ≥20%为严重。</li>
  * </ul>
  */
 public final class SubcontractShortDeliveryPolicy {
@@ -23,16 +22,13 @@ public final class SubcontractShortDeliveryPolicy {
     public static final String PERCENT_PURPOSE = "subcontract.shortfall.percent";
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final BigDecimal SEVERE_MIN_SHORTFALL_PCT = BigDecimal.valueOf(20);
-    private static final BigDecimal SEVERE_TOLERANCE_MULTIPLIER = BigDecimal.valueOf(2);
 
     private SubcontractShortDeliveryPolicy() {
     }
 
-    /** 允许下限; 允许损耗为空返回 null。 */
+    /** 成品履约下限；供料损耗百分比只影响材料预算。 */
     public static BigDecimal floorQty(BigDecimal orderedQty, BigDecimal allowedLossPct) {
-        if (orderedQty == null || allowedLossPct == null) return null;
-        BigDecimal keep = HUNDRED.subtract(allowedLossPct).max(BigDecimal.ZERO);
-        return orderedQty.multiply(keep).movePointLeft(2);
+        return orderedQty;
     }
 
     /** 短交量 = max(Q − D, 0)。 */
@@ -48,19 +44,15 @@ public final class SubcontractShortDeliveryPolicy {
                 orderedQty,PERCENT_PURPOSE,"本次委外短交比例",24);
     }
 
-    /** 严重短交阈值(%) = max(2 × 允许损耗, 20)。 */
+    /** 严重程度按成品短交比例，独立于供料预算。 */
     public static BigDecimal severeThresholdPct(BigDecimal allowedLossPct) {
-        if (allowedLossPct == null) return SEVERE_MIN_SHORTFALL_PCT;
-        return allowedLossPct.multiply(SEVERE_TOLERANCE_MULTIPLIER).max(SEVERE_MIN_SHORTFALL_PCT);
+        return SEVERE_MIN_SHORTFALL_PCT;
     }
 
     /** 程度; 不短交(D ≥ Q)返回 null。 */
     public static String severity(BigDecimal orderedQty, BigDecimal allowedLossPct, BigDecimal deliveredQty) {
         BigDecimal delivered = deliveredQty == null ? BigDecimal.ZERO : deliveredQty;
         if (orderedQty == null || delivered.compareTo(orderedQty) >= 0) return null;
-        if (allowedLossPct == null) return UNSET_TOLERANCE;
-        BigDecimal floor = floorQty(orderedQty, allowedLossPct);
-        if (delivered.compareTo(floor) >= 0) return WITHIN_TOLERANCE;
         // Business severity uses the original ratio, never a chosen display rounding.
         return shortfallQty(orderedQty,delivered).multiply(HUNDRED)
                 .compareTo(orderedQty.multiply(severeThresholdPct(allowedLossPct)))>=0 ? SEVERE : BELOW_FLOOR;
@@ -71,9 +63,8 @@ public final class SubcontractShortDeliveryPolicy {
         return SEVERE.equals(severity) || BELOW_FLOOR.equals(severity);
     }
 
-    /** 允许损耗对应的数量份额 = Q × p / 100(损耗单允许量的基数); p 为空按 0。 */
+    /** 成品短交没有由材料预算自动授予的正常损耗份额；负责人仍可明确受控认损。 */
     public static BigDecimal allowedLossQty(BigDecimal orderedQty, BigDecimal allowedLossPct) {
-        if (orderedQty == null || allowedLossPct == null) return BigDecimal.ZERO;
-        return orderedQty.multiply(allowedLossPct).movePointLeft(2);
+        return BigDecimal.ZERO;
     }
 }

@@ -917,27 +917,37 @@ public class SubcontractMaterialPlanService {
                 SELECT item.goods_id, item.color_id,
                        SUM(GREATEST(item.at_supplier_qty + COALESCE(item.compensated_qty, 0)
                                - item.consumed_qty - COALESCE(item.returned_qty, 0)
-                               - COALESCE(item.wasted_qty, 0), 0)
-                           / NULLIF(item.frozen_unit_qty, 0)),
+                               - COALESCE(item.wasted_qty, 0), 0)),
+                       plan.base_bom_unit_qty,
                        BOOL_OR(GREATEST(item.at_supplier_qty - COALESCE(item.returned_qty, 0), 0) > 0
-                           AND COALESCE(item.frozen_unit_qty, 0) <= 0)
+                           AND (plan.base_bom_unit_qty IS NULL OR plan.base_bom_unit_qty<=0))
                 FROM subcontract_material_issue_items item
                 JOIN subcontract_material_issues issue ON issue.id = item.issue_id
+                LEFT JOIN subcontract_material_plan_items plan ON plan.id=item.plan_item_id
                 WHERE item.order_item_id = ? AND issue.status = 1 AND NOT issue.is_deleted
                   AND NOT item.is_deleted
-                GROUP BY item.goods_id, item.color_id
+                GROUP BY item.goods_id, item.color_id, plan.base_bom_unit_qty
                 """, (rs, rowNum) -> new Object[]{rs.getObject(1), rs.getObject(2),
-                        rs.getBigDecimal(3), rs.getBoolean(4)}, orderItemId);
-        BigDecimal minimum = BigDecimal.ZERO;
+                        rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBoolean(5)}, orderItemId);
+        BigDecimal allowedLossPct=(BigDecimal) em.createNativeQuery(
+                "SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=:id")
+                .setParameter("id",orderItemId).getSingleResult();
+        var retained=ProcurementOrderQuantityBounds.receipts(em,"SUBCONTRACT",orderItemId);
+        BigDecimal retainedBase=retained.retainedBase().subtract(retained.postedExcessBase()).max(BigDecimal.ZERO);
+        BigDecimal minimum=retained.minimumSubcontractTargetQty(orderUnitRate,allowedLossPct);
         for (Object[] row : rows) {
-            if (Boolean.TRUE.equals(row[3])) {
+            if (Boolean.TRUE.equals(row[4])) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "这份委外发料没有记录单耗，算不出最少要保留的数量，请先核实原出仓来源");
+                        "这份委外发料没有记录原始单耗，算不出最少要保留的数量，请先核实原出仓来源");
             }
-            minimum = minimum.max(decimal(row[2]));
+            if(decimal(row[2]).signum()==0)continue;
+            // Keep the rational quantity intact until the final target ceiling. Different
+            // materials operate in parallel, so their bounds are compared, never summed.
+            BigDecimal covering=com.uten.imp.common.finance.SubcontractReceiptAllowance.minimumTargetForRetainedAndHeld(
+                    retainedBase,orderUnitRate,decimal(row[2]),decimal(row[3]),allowedLossPct);
+            minimum=minimum.max(covering);
         }
-        return minimum.add(ProcurementOrderQuantityBounds.receipts(em, "SUBCONTRACT", orderItemId)
-                .minimumOrderedQty(orderUnitRate)).setScale(SCALE, RoundingMode.CEILING);
+        return minimum;
     }
 
     /**

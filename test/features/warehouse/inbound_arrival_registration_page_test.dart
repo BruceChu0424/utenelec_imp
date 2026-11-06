@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show ImageByteFormat;
 
 // 登记实际到货页(ADR-151 §5 单批合一)：双击 = 1 个来源、多选 = N 个来源，进同一个页面。
 //  ① 来源身份走 ?expectationIds=，页面按 id 从服务端读预计到货(与任务中心同一投影)，
@@ -41,12 +42,15 @@ import 'package:uten_imp/shared/models/procurement_quantity.dart';
 
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'inbound_arrival_test_support.dart';
+import 'subcontract_actual_receipt_cases.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/widgets/business_employee_picker.dart';
 import '../../support/warehouse_receiver_permissions.dart';
 import '../../support/field_hint_support.dart';
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 
 const _ids = ['expectation-batch-1', 'expectation-batch-2'];
 final _liveArrivalPermissions = StateProvider<Set<String>>(
@@ -60,6 +64,28 @@ final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
   registerArrivalReceiverHttpCases();
+  registerSubcontractActualReceiptCases(
+    jsonDecode(
+          File(
+            'contracts/subcontract-actual-receipt/v1.json',
+          ).readAsStringSync(),
+        )
+        as Map<String, dynamic>,
+    prepareScreenshot: loadAuditScreenshotFonts,
+    screenshotTheme: auditScreenshotTheme(buildLightTheme()),
+    screenshot: (boundary, narrow) async {
+      await TestWidgetsFlutterBinding.ensureInitialized().runAsync(() async {
+        final screen = await boundary.toImage();
+        final data = await screen.toByteData(format: ImageByteFormat.png);
+        final output = Directory('build/subcontract-frontend');
+        await output.create(recursive: true);
+        await File(
+          '${output.path}/actual-receipt-${narrow ? 'narrow' : 'wide'}.png',
+        ).writeAsBytes(data!.buffer.asUint8List());
+        screen.dispose();
+      });
+    },
+  );
   for (final receiverPermissions in [
     actualWarehouseReceiverPermissions,
     const <String>{Perm.warehouseInboundView, Perm.warehouseInboundStockIn},
@@ -1162,13 +1188,14 @@ void main() {
     await tester.tap(headerSelectAll.first);
     await tester.pumpAndSettle();
     expect(submitButton().onPressed, isNull);
-    // 多选选定了路线：只显示这一条提交按钮；标题下标明本页路线。
+    // 多选选定路线：只显示这一条提交按钮，标题同排提示保留路线说明。
     expect(
       find.byKey(const Key('inbound-route-submit-stockInFirst')),
       findsNothing,
     );
     expect(find.widgetWithText(UtenButton, '先质检后入库'), findsOneWidget);
-    expect(find.text('路线：先质检后入库'), findsOneWidget);
+    expect(find.text('路线：先质检后入库'), findsNothing);
+    await readFieldHint(tester, '本次登记路线：先质检后入库');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pump();
@@ -1408,7 +1435,8 @@ void main() {
       hasLength(1),
     );
     expect(find.widgetWithText(UtenButton, '先入库后质检'), findsOneWidget);
-    expect(find.text('路线：先入库后质检'), findsOneWidget);
+    expect(find.text('路线：先入库后质检'), findsNothing);
+    await readFieldHint(tester, '本次登记路线：先入库后质检');
     expect(find.text('先质检后入库'), findsNothing);
     expect(
       find.byKey(const Key('inbound-route-submit-inspectFirst')),

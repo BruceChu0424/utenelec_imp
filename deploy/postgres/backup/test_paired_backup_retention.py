@@ -546,6 +546,34 @@ class OperationsRecoveryRetentionTest(RetentionFixture):
             return paired.prune_expired_sets(self.root, 14, current, NOW, operations_config=self.operations,
                                             recovery_proofs=self.proofs)
 
+    def test_integer_and_dotted_restore_heads_protect_the_same_exact_backup_without_rewriting_proof(self):
+        current = self.days_ago(0)
+        original = self.registry([current])
+        for head in ('864', 864, '999.11', '3000000000.1'):
+            value = json.loads(json.dumps(original))
+            value['proofs'][0]['flywayVersion'] = head
+            value['proofs'][0]['restoredFlywayVersion'] = head
+            self.proofs.write_text(json.dumps(value))
+            raw = self.proofs.read_bytes()
+            self.assertEqual({current}, paired.recovery_protected_sets(
+                self.root, NOW, operations_config=self.operations, recovery_proofs=self.proofs), head)
+            self.assertEqual(raw, self.proofs.read_bytes())
+
+    def test_dotted_restore_head_mismatch_alias_float_and_bool_keep_retention_blocked(self):
+        current = self.days_ago(0)
+        original = self.registry([current])
+        for source, restored in (('999.11', '999.2'), ('999_11', '999_11'),
+                                 ('999.11.0', '999.11.0'), ('0999.11', '0999.11'),
+                                 (999.11, 999.11), (True, True)):
+            value = json.loads(json.dumps(original))
+            value['proofs'][0]['flywayVersion'] = source
+            value['proofs'][0]['restoredFlywayVersion'] = restored
+            self.proofs.write_text(json.dumps(value))
+            raw = self.proofs.read_bytes()
+            self.assertIsNone(paired.recovery_protected_sets(
+                self.root, NOW, operations_config=self.operations, recovery_proofs=self.proofs), (source, restored))
+            self.assertEqual(raw, self.proofs.read_bytes())
+
     def test_installed_operations_without_actual_restore_registry_fail_closed(self):
         old = self.days_ago(40)
         for day in (0, 1, 2): current = self.days_ago(day)

@@ -352,39 +352,47 @@ def _flyway_identity(value: Any) -> dict[str, Any]:
         "success",
     }
     canonical_rows: list[dict[str, Any]] = []
-    versions: set[str] = set()
+    versions: set[tuple[int, ...]] = set()
     prior_rank = -1
+    prior_version = (0,)
     for row in value:
         if not isinstance(row, dict) or set(row) != expected:
             raise ContractError("Flyway history row schema differs from the canonical query")
+        if type(row["installedRank"]) is not int:
+            raise ContractError("Flyway installedRank must be a canonical integer")
         rank = _as_int(row["installedRank"], "Flyway installedRank")
         version = row["version"]
         checksum = row["checksum"]
         if rank <= prior_rank:
             raise ContractError("Flyway history installedRank is not strictly increasing")
-        if not isinstance(version, str) or not version.isdigit() or version in versions:
-            raise ContractError("Flyway history has a null/non-numeric/duplicate version")
+        version_key = _flyway_history_version_key(version,row["script"])
+        if version_key in versions or version_key <= prior_version:
+            raise ContractError("Flyway history versions are duplicated or not in semantic order")
         if row["type"] != "SQL" or row["success"] is not True:
             raise ContractError("Flyway history contains a non-SQL or unsuccessful row")
-        if isinstance(checksum, bool) or not isinstance(checksum, int):
-            raise ContractError("Flyway history checksum is not an integer")
+        if type(checksum) is not int or not -(2**31) <= checksum <= 2**31 - 1:
+            raise ContractError("Flyway history checksum is not a canonical int32")
         if not isinstance(row["script"], str) or not row["script"].endswith(".sql"):
             raise ContractError("Flyway history script is invalid")
         if not isinstance(row["description"], str):
             raise ContractError("Flyway history description is invalid")
+        script_key, _, script_description = _flyway_script_parts(row["script"])
+        if script_key != version_key or script_description != row["description"]:
+            raise ContractError("Flyway history version/script/description identity differs")
         canonical_rows.append(row)
-        versions.add(version)
+        versions.add(version_key)
         prior_rank = rank
+        prior_version = version_key
     payload = json.dumps(
         canonical_rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     signed_projection = "".join(
-        f"{row['version']}\t{row['script']}\t{row['checksum']}\n"
+        f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n"
         for row in canonical_rows
     ).encode("utf-8")
     return {
         "successfulMigrationCount": len(canonical_rows),
-        "headVersion": max(int(version) for version in versions),
+        "headVersion": _flyway_head_identity(".".join(str(part) for part in max(versions))),
         "canonicalHistorySha256": __import__("hashlib").sha256(payload).hexdigest(),
         "signedProjectionSha256": __import__("hashlib")
         .sha256(signed_projection)
@@ -630,6 +638,100 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
+
+# BEGIN GENERATED FLYWAY VERSION CONTRACT
+# Source: deploy/contracts/flyway_version_contract.py
+# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+_FLYWAY_CONTRACT_ERROR = ValueError
+
+# These immutable, already-applied basenames predate canonical wire versions.
+# This is not permission to add another leading-zero source or accept an alias
+# in a manifest/API field. Script name and CRC/source hashes remain exact.
+_FLYWAY_LEGACY_INTEGER_SCRIPTS = {
+    "V01__enable_pgcrypto.sql": "01",
+    "V02__departments_positions.sql": "02",
+    "V03__employees.sql": "03",
+    "V04__auth_rbac.sql": "04",
+    "V05__audit.sql": "05",
+    "V06__seed_rbac.sql": "06",
+    "V07__seed_org.sql": "07",
+    "V08__seed_admin.sql": "08",
+    "V09__audit_redact_password.sql": "09",
+}
+
+_FLYWAY_SEMANTIC_RE = __import__("re").compile(r"[0-9]+(?:[._][0-9]+)*")
+_FLYWAY_SCRIPT_RE = __import__("re").compile(
+    r"V(?P<version>[0-9]+(?:[._][0-9]+)*)__"
+    r"(?P<description>[^\x00-\x1f\x7f-\x9f/\\]{1,200})\.sql"
+)
+
+
+def _flyway_semantic_key(value: object) -> tuple[int, ...]:
+    if type(value) is not str or len(value) > 50 or not _FLYWAY_SEMANTIC_RE.fullmatch(value):
+        raise _FLYWAY_CONTRACT_ERROR("Flyway version must contain bounded ASCII integer components")
+    parts = tuple(int(part) for part in value.replace("_", ".").split("."))
+    while len(parts) > 1 and parts[-1] == 0:
+        parts = parts[:-1]
+    return parts
+
+
+def _flyway_version_key(value: object) -> tuple[int, ...]:
+    parts = _flyway_semantic_key(value)
+    if parts <= (0,) or value != ".".join(str(part) for part in parts):
+        raise _FLYWAY_CONTRACT_ERROR("Flyway version is not a canonical positive dotted identity")
+    return parts
+
+
+def _flyway_script_parts(filename: object) -> tuple[tuple[int, ...], str, str]:
+    if type(filename) is not str:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script must be a bounded exact basename")
+    try:
+        encoded = filename.encode("utf-8")
+    except UnicodeError:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script basename is not valid UTF-8") from None
+    if len(encoded) > 255:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script must be a bounded exact basename")
+    match = _FLYWAY_SCRIPT_RE.fullmatch(filename)
+    if match is None:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script basename is not canonical")
+    token = match.group("version")
+    if "." in token and "_" in token:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script version mixes component separators")
+    key = (_flyway_semantic_key(token) if filename in _FLYWAY_LEGACY_INTEGER_SCRIPTS
+           else _flyway_version_key(token.replace("_", ".")))
+    raw_description = match.group("description")
+    return key, raw_description, raw_description.replace("_", " ")
+
+
+def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...]:
+    script_key, _, _ = _flyway_script_parts(script)
+    if script in _FLYWAY_LEGACY_INTEGER_SCRIPTS and value == _FLYWAY_LEGACY_INTEGER_SCRIPTS[script]:
+        key = _flyway_semantic_key(value)
+    else:
+        key = _flyway_version_key(value)
+    if key != script_key:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
+    return key
+
+
+def _flyway_wire_version(value: object, script: object) -> str:
+    return ".".join(str(part) for part in _flyway_history_version_key(value, script))
+
+
+def _flyway_head_identity(version: object) -> int | str:
+    key = _flyway_version_key(version)
+    return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_head_key(value: object) -> tuple[int, ...]:
+    if type(value) is int and value > 0 and len(str(value)) <= 50:
+        return (value,)
+    if type(value) is str and "." in value:
+        return _flyway_version_key(value)
+    raise _FLYWAY_CONTRACT_ERROR("Flyway database head must be an integer or canonical dotted string")
+
+_FLYWAY_CONTRACT_ERROR = ContractError
+# END GENERATED FLYWAY VERSION CONTRACT
 
 if __name__ == "__main__":
     raise SystemExit(main())

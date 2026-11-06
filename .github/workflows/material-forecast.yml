@@ -41,7 +41,7 @@ jobs:
         run: |
           .venv-material-forecast/bin/python services/material_forecast/build_payload.py --platform linux-x86_64 --output "$RUNNER_TEMP/material-forecast-payload"
           .venv-material-forecast/bin/python "$RUNNER_TEMP/material-forecast-payload/prepare_runtime.py" --payload "$RUNNER_TEMP/material-forecast-payload" --cache "$RUNNER_TEMP/material-forecast-cache"
-      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v5
         with:
           distribution: temurin
           java-version: "21"

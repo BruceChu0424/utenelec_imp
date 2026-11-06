@@ -32,6 +32,14 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class AggregateRetainedResponsibilityEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     AggregateMaterialOrderEndToEndTest h;
@@ -211,7 +219,7 @@ class AggregateRetainedResponsibilityEndToEndTest {
         cancel(c,parent,"reverse-parent-cancel");start(c,child,"200");receive(c,child,"40","80");
         UUID inbound=h.db.queryForObject("SELECT exact.source_stock_document_id FROM preplan_analysis_stock_exact_pegs exact JOIN preplan_supply_action_allocations allocation ON allocation.id=exact.supply_action_allocation_id JOIN preplan_aggregate_batches batch ON batch.action_id=allocation.action_id WHERE batch.id=?",UUID.class,child.batchId());
         long origins=h.db.queryForObject("SELECT COUNT(*) FROM preplan_analysis_stock_exact_pegs WHERE source_stock_document_id=?",Long.class,inbound);
-        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),h.db,List.of(c.child(),c.material()));
+        drainValuation(c);
         beans.getBean(StockDocService.class).reverseFinishedInbound(inbound);
         amount("0",h.db.queryForObject("SELECT SUM(received_qty) FROM fn_preplan_aggregate_retained_private_sources(?)",BigDecimal.class,c.analysis()));
         amount("100",h.db.queryForObject("SELECT SUM(pending_qty) FROM fn_preplan_aggregate_retained_private_sources(?)",BigDecimal.class,c.analysis()));
@@ -256,10 +264,14 @@ class AggregateRetainedResponsibilityEndToEndTest {
     }
     private void receive(AggregateMaterialOrderEndToEndTest.Case c,BatchResult child,String output,String used) {
         UUID report=report(c,child,output,used);
-        for(UUID document:h.db.queryForList("SELECT id FROM stock_documents WHERE doc_type='FINISHED_IN' AND source_daily_report_id=? AND NOT is_deleted",UUID.class,report))h.fixture.confirmFinishedInboundFully(document);
+        for(UUID document:h.db.queryForList("SELECT id FROM stock_documents WHERE doc_type='FINISHED_IN' AND source_daily_report_id=? AND NOT is_deleted",UUID.class,report)){
+            drainValuation(c);
+            h.fixture.confirmFinishedInboundFully(document);
+        }
         h.fixture.loginAs(c.world().superAdminUserId());
     }
     private UUID report(AggregateMaterialOrderEndToEndTest.Case c,BatchResult child,String output,String used) {
+        drainValuation(c);
         UUID segment=segment(child),planItem=h.db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",UUID.class,child.planId());
         var usage=new DailyReportMaterialUsageLine();usage.setDemandId(h.db.queryForObject("SELECT id FROM production_material_demands WHERE execution_segment_id=? AND NOT is_deleted",UUID.class,segment));usage.setQtyBase(new BigDecimal(used));
         UUID report=h.fixture.reportAndApproveExecutionSegment(c.world(),planItem,null,c.child(),segment,null,output,false,"0",null,null,List.of(usage));
@@ -267,5 +279,12 @@ class AggregateRetainedResponsibilityEndToEndTest {
         return report;
     }
     private UUID segment(BatchResult child){return h.db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,child.planId());}
+    private void drainValuation(AggregateMaterialOrderEndToEndTest.Case c) {
+        // Aggregate components are newly created goods, outside World's five
+        // seed goods. Wait for these actual output/source pools with the same
+        // real worker and its unchanged45-second deadline.
+        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
+                h.db,List.of(c.common(),c.child(),c.material()));
+    }
     private long version(UUID segment){return h.db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}
 }

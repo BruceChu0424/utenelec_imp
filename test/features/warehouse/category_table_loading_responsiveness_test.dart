@@ -10,6 +10,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
@@ -51,17 +52,31 @@ void main() {
         );
         final key = Key(preparation ? 'wm-prep-grid' : 'wm-machines-grid');
         if (preparation) {
+          expect(find.byKey(key), findsNothing);
+          await tester.tap(
+            find.byKey(const ValueKey('wm-summary-open-product-1')),
+          );
+          await tester.pumpAndSettle();
           final original = tester
               .widget<UtenEditableGrid<WmPrepRow>>(find.byKey(key))
               .controller;
           original.rows.single.grams.text = '30';
-          await tester.tap(find.byKey(const Key('wm-prep-save')));
-          await tester.pumpAndSettle();
-          final visible = tester.widget<UtenEditableGrid<WmPrepRow>>(
-            find.byKey(key),
+          await tester.tap(
+            find.descendant(
+              of: find.byKey(const Key('wm-prep-summary')),
+              matching: find.byType(UtenRefreshButton),
+            ),
           );
-          expect(visible.controller.rows, isEmpty);
+          await tester.pumpAndSettle();
+          expect(find.byKey(key), findsNothing);
+          final summary = tester
+              .widget<MasterDataTableView<Map<String, dynamic>>>(
+                find.byType(MasterDataTableView<Map<String, dynamic>>),
+              );
+          expect(summary.items, isEmpty);
+          expect(summary.error, '读取权限已变化');
           expect(original.rows.single.grams.text, '30');
+          expect(api.writes, isEmpty);
           expect(
             tester
                 .widget<UtenButton>(find.byKey(const Key('wm-prep-save')))
@@ -87,7 +102,9 @@ void main() {
             isNull,
           );
         }
-        expect(find.text('读取权限已变化'), findsOneWidget);
+        if (!preparation) {
+          expect(find.text('读取权限已变化'), findsOneWidget);
+        }
         expect(tester.takeException(), isNull);
       },
     );
@@ -161,7 +178,7 @@ void main() {
     (
       'workshop preparation',
       const Scaffold(body: WmPrepTab(workshopId: 'w')),
-      'wm-prep-grid',
+      'wm-prep-summary',
     ),
     (
       'FQC',
@@ -437,14 +454,49 @@ class _AcceptedThenPendingInbound extends _DelayedApi {
 class _DeniedEditorApi extends _DelayedApi {
   _DeniedEditorApi() : super(countsOnly: true);
   int editorReads = 0;
+  final writes = <String>[];
+
+  Map<String, dynamic> _meta(Map<String, dynamic>? query, String revision) => {
+    'page': query?['page'] ?? 1,
+    'size': query?['size'] ?? 1000,
+    'total': 1,
+    'totalPages': 1,
+    'readScopeVersion': 'auth-A',
+    'readDataVersion': 'data-A',
+    'readSnapshotRevision': revision,
+    'windowAsOf': '2026-11-06T12:00:00Z',
+  };
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/preparation/products/product-1')) {
+      expect(query?['readSnapshotRevision'], 'summary-A');
+      return {
+        ..._meta(query, 'summary-A'),
+        'rows': [
+          {
+            'productGoodsId': 'product-1',
+            'productName': '产品1',
+            'materialGoodsId': 'material-1',
+            'unitWeightGrams': 20,
+            'bomItemId': 'bom-1',
+          },
+        ],
+      };
+    }
+    if (path.endsWith('/preparation/material-options')) {
+      return {
+        ..._meta(query, 'options-A'),
+        'items': [
+          {'goodsId': 'material-1', 'name': '粒料', 'gramsConvertible': true},
+        ],
+      };
+    }
     if (path != ApiEndpoints.workshopMaterialMachines &&
-        path != ApiEndpoints.goodsPeriodicBomPreparation) {
+        path != '${ApiEndpoints.goodsPeriodicBomPreparation}/summaries') {
       return super.get(path, query: query);
     }
     if (++editorReads > 1) {
@@ -462,19 +514,15 @@ class _DeniedEditorApi extends _DelayedApi {
             ],
           }
         : {
-            'rows': [
+            ..._meta(query, 'summary-A'),
+            'items': [
               {
                 'productGoodsId': 'product-1',
                 'productName': '产品1',
-                'materialGoodsId': 'material-1',
-                'unitWeightGrams': 20,
-                'bomItemId': 'bom-1',
+                'status': 'WEIGHED',
+                'bomRowCount': 1,
               },
             ],
-            'materials': [
-              {'goodsId': 'material-1', 'name': '粒料', 'gramsConvertible': true},
-            ],
-            'totalProducts': 1,
           };
   }
 
@@ -484,7 +532,10 @@ class _DeniedEditorApi extends _DelayedApi {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
-  }) async => {};
+  }) async {
+    writes.add(path);
+    return {};
+  }
 
   @override
   Future<Map<String, dynamic>> put(

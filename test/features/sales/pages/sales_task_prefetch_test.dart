@@ -19,6 +19,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+import '../../../support/uten_test_actions.dart';
 
 const _progressPath = '/sales/orders/progress';
 const _allPermissions = <String>{
@@ -265,23 +266,12 @@ Future<void> _close(WidgetTester tester, _PrefetchApi api) async {
 }
 
 void main() {
-  testWidgets('进页预热首个授权大类，选择阶段复用已完成的首屏', (tester) async {
+  testWidgets('未选择分类或阶段不预测读取，选择后只取得该阶段完整结果', (tester) async {
     final api = _PrefetchApi();
     await _mount(tester, api);
 
     expect(find.text('在上方选择分类后开始浏览'), findsOneWidget);
-    expect(api.rows.map((read) => read.stage).toSet(), {
-      'DRAFT',
-      'IN_PROGRESS',
-      'READY_TO_SHIP',
-    });
-    expect(api.rows.every((read) => read.path == _progressPath), isTrue);
-    expect(api.rows.every((read) => read.query['page'] == 1), isTrue);
-    expect(api.rows.every((read) => read.query['size'] == 50), isTrue);
-    expect(
-      api.rows.every((read) => read.query['originScope'] == 'CURRENT'),
-      isTrue,
-    );
+    expect(api.rows, isEmpty);
     expect(api.stageCountReads, 0);
 
     await tester.tap(find.text('订货进度'));
@@ -289,22 +279,28 @@ void main() {
     final draft = tester.widget<UtenSegmentBadgeLabel>(_segment('草稿'));
     expect(draft.count, 0);
     expect(api.stageCountReads, 0, reason: '子分类采用父分类已加载的同源计数');
+    expect(api.rows, isEmpty);
     expect(find.text('PROGRESS-IN_PROGRESS'), findsNothing);
 
     await tester.tap(find.text('进行中'));
     await _pumpReads(tester);
     expect(api.forStage('IN_PROGRESS'), hasLength(1));
+    expect(api.rows, hasLength(1));
+    expect(api.rows.single.path, _progressPath);
+    expect(api.rows.single.query['page'], 1);
+    expect(api.rows.single.query['size'], 50);
+    expect(api.rows.single.query['originScope'], 'CURRENT');
     expect(find.text('PROGRESS-IN_PROGRESS'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _close(tester, api);
   });
 
-  testWidgets('选择可采纳进行中的预热，慢徽章计数不阻塞表格', (tester) async {
+  testWidgets('明确选择后的读取不被慢徽章阻塞，也不重复请求', (tester) async {
     final api = _PrefetchApi()
       ..deferredStatusCounts = Completer<void>()
       ..deferredRows['/sales/shipments:ACTIVE'] = Completer<void>();
     await _mount(tester, api, initialGroup: 'shipments');
-    expect(api.forStage('ACTIVE'), hasLength(1));
+    expect(api.rows, isEmpty);
 
     await tester.tap(find.text('待办与进行中'));
     await _pumpReads(tester);
@@ -320,19 +316,35 @@ void main() {
     await _close(tester, api);
   });
 
-  testWidgets('非历史首屏预热最多两条并发，完成后继续剩余阶段', (tester) async {
+  testWidgets('只读取明确选择的阶段，重复点击复用在读请求', (tester) async {
     final api = _PrefetchApi();
     for (final stage in ['DRAFT', 'IN_PROGRESS', 'READY_TO_SHIP']) {
       api.deferredRows['$_progressPath:$stage'] = Completer<void>();
     }
     await _mount(tester, api, initialGroup: 'progress');
+    expect(api.rows, isEmpty);
+    await tester.tap(find.text('进行中'));
+    await _pumpReads(tester);
+    await tester.tap(find.text('进行中'));
+    await _pumpReads(tester);
+    expect(api.forStage('IN_PROGRESS'), hasLength(1));
+    expect(api.rows, hasLength(1));
+    expect(api.activeRows, 1);
+    await tester.tap(find.text('可发货'));
+    await _pumpReads(tester);
     expect(api.rows, hasLength(2));
     expect(api.activeRows, 2);
     expect(api.maximumActiveRows, 2);
 
-    api.deferredRows['$_progressPath:${api.rows.first.stage}']!.complete();
+    api.deferredRows['$_progressPath:IN_PROGRESS']!.complete();
     await _pumpReads(tester);
-    expect(api.rows, hasLength(3));
+    expect(find.text('PROGRESS-IN_PROGRESS'), findsNothing);
+    expect(find.text('PROGRESS-READY_TO_SHIP'), findsNothing);
+    expect(api.forStage('DRAFT'), isEmpty);
+    api.deferredRows['$_progressPath:READY_TO_SHIP']!.complete();
+    await _pumpReads(tester);
+    expect(find.text('PROGRESS-READY_TO_SHIP'), findsOneWidget);
+    expect(api.rows, hasLength(2));
     expect(api.maximumActiveRows, 2);
     await _close(tester, api);
   });
@@ -346,13 +358,17 @@ void main() {
     await _close(tester, api);
   });
 
-  testWidgets('只预热已选大类，保留单据原首屏大小且不读取历史', (tester) async {
+  testWidgets('单据只读取已选分类与阶段，内部批次有界且不读取历史', (tester) async {
     final api = _PrefetchApi();
     await _mount(tester, api, initialGroup: 'quotes');
-    expect(api.rows, isNotEmpty);
+    expect(api.rows, isEmpty);
+    expect(find.text('在上方选择状态或历史记录后开始浏览'), findsOneWidget);
+    await tester.tap(find.text('待办与进行中'));
+    await _pumpReads(tester);
+    expect(api.rows, hasLength(1));
     expect(api.rows.every((read) => read.path == '/sales/quotes'), isTrue);
     expect(api.rows.every((read) => read.query['page'] == 1), isTrue);
-    expect(api.rows.every((read) => read.query['size'] == 20), isTrue);
+    expect(api.rows.every((read) => read.query['size'] == 100), isTrue);
     expect(
       api.rows.every(
         (read) =>
@@ -363,14 +379,20 @@ void main() {
       ),
       isTrue,
     );
-    expect(find.text('在上方选择状态或历史记录后开始浏览'), findsOneWidget);
+    expect(find.text('DOC-quotes-ACTIVE'), findsOneWidget);
     await _close(tester, api);
   });
 
-  testWidgets('仅出货查看权限时不预热订货和其他业务列表', (tester) async {
+  testWidgets('仅出货查看权限只读取明确选择的出货阶段', (tester) async {
     final api = _PrefetchApi();
     await _mount(tester, api, permissions: const {Perm.salesShipmentView});
-    expect(api.rows, isNotEmpty);
+    expect(api.rows, isEmpty);
+    await tester.tap(find.text('出货单'));
+    await _pumpReads(tester);
+    expect(api.rows, isEmpty);
+    await tester.tap(find.text('待办与进行中'));
+    await _pumpReads(tester);
+    expect(api.rows, hasLength(1));
     expect(api.rows.every((read) => read.path == '/sales/shipments'), isTrue);
     expect(api.stageCountReads, 0);
     expect(
@@ -424,7 +446,7 @@ void main() {
     await _close(tester, api);
   });
 
-  testWidgets('十万条分页元数据及完整50行预热首屏保留，真实滚动可到末行', (tester) async {
+  testWidgets('十万条完整结果保留原50行内部批次，真实滚动至末行不再请求', (tester) async {
     final api = _PrefetchApi(progressRows: 50, progressTotal: 100000);
     await _mount(tester, api, initialGroup: 'progress');
     await tester.tap(find.text('进行中'));
@@ -434,14 +456,26 @@ void main() {
       find.byType(MasterDataTableView<SalesOrderProgressRow>),
     );
     final page = table.paginationRevision as PagedResult<SalesOrderProgressRow>;
-    expect(page.items, hasLength(50));
-    expect(page.size, 50);
+    expect(page.items, hasLength(100000));
+    expect(page.size, 100000);
     expect(page.total, 100000);
-    expect(page.totalPages, 2000);
-    expect(table.totalPages, 2000);
+    expect(page.totalPages, 1);
+    expect(table.totalPages, 1);
+    final reads = api.forStage('IN_PROGRESS');
+    expect(reads, hasLength(2000));
+    expect(reads.map((read) => read.query['page']), [
+      for (var i = 1; i <= 2000; i++) i,
+    ]);
+    expect(reads.every((read) => read.query['size'] == 50), isTrue);
+    final identities = table.rowsController!.items
+        .map((row) => row.orderId)
+        .toSet();
+    expect(identities, hasLength(100000));
     expect(
-      table.rowsController!.items.map((row) => row.orderId).toSet(),
-      containsAll({for (var i = 0; i < 50; i++) 'progress-IN_PROGRESS-$i'}),
+      identities.containsAll({
+        for (var i = 0; i < 100000; i++) 'progress-IN_PROGRESS-$i',
+      }),
+      isTrue,
     );
     expect(find.text('PROGRESS-IN_PROGRESS-0'), findsOneWidget);
     expect(
@@ -449,7 +483,13 @@ void main() {
       hasLength(1),
     );
 
-    final lastRow = find.text('PROGRESS-IN_PROGRESS-49');
+    final lastRow = find.text('PROGRESS-IN_PROGRESS-99999');
+    final controller = utenTestTableBodyController(
+      tester,
+      find.byType(MasterDataTableView<SalesOrderProgressRow>),
+    );
+    controller.jumpTo(controller.position.maxScrollExtent);
+    await _pumpReads(tester);
     bool lastRowVisible() {
       if (lastRow.evaluate().isEmpty) return false;
       final bounds = tester.getRect(lastRow);
@@ -474,6 +514,8 @@ void main() {
           .join(', '),
     );
     expect(lastRowVisible(), isTrue);
+    expect(api.forStage('IN_PROGRESS'), hasLength(2000));
+    expect(api.rows.every((read) => read.stage == 'IN_PROGRESS'), isTrue);
     expect(tester.takeException(), isNull);
     expect(api.businessWrites, isEmpty);
     await _close(tester, api);

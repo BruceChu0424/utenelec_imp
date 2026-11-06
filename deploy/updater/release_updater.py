@@ -33,7 +33,7 @@ _GUARD_PATH = Path(__file__).resolve().with_name("release_guard.py")
 _GUARD_MODULE_NAME = "uten_imp_release_guard"
 _PREVERIFIED_GUARD_GLOBAL = "_UTEN_PREVERIFIED_RELEASE_GUARD"
 _GUARD_MAXIMUM_BYTES = 4 * 1024 * 1024
-_GUARD_SHA256 = "13ba46848a4e27bed3d1597d3ee707214c68bbc60c93e5196106e13bcbbaacc6"
+_GUARD_SHA256 = "1288e528b839c2c6e9ba0f77f7103f93af243bb3d57d10ab4f78b4a524fb3359"
 OSS_IO_SHA256 = "a3d8a8d4044617e500293ae2dad036b9fd0f1f890d07b2bf87fc6a4e3535f77b"
 WHEELHOUSE_SUPPLY_CHAIN_SHA256 = (
     "b46bee01c173d4cd56d21a80bb40983dba535199d011f5ecc18625e2405c3bea"
@@ -360,7 +360,7 @@ DATABASE_RECOVERY_VERIFIER_SHA256 = (
 # Updated after the runtime boot verifier and its focused fault tests are
 # reviewed byte-for-byte. Phase 4 refuses to install any other source.
 RUNTIME_BOOT_VERIFIER_SHA256 = (
-    "93d2ae4b5bed5071c37f4aff642e73aa28e27fc1f53103d06c6a6071de570ba9"
+    "08be0ef34d5c1a73bdc5cb67fb9a1722b131644b159acb01ed60cc79e1accb73"
 )
 STORAGE_BOOT_VERIFIER_SHA256 = (
     "0880678bcff0ad03149c0e0d90fccb9f6b274788b3c4e9e6add0d487d64dd83f"
@@ -369,7 +369,7 @@ STORAGE_MOUNT_OBSERVER_SHA256 = (
     "b96476e50edad6178e3ab55516659b9b3b656653a6c0e376d173566d2cd88ddb"
 )
 MIGRATION_AUTHORIZATION_HELPER_SHA256 = (
-    "1419142c6c85ca483420cd68526001e7b7db3cf3edbed8cd8a71a76b9a7c8684"
+    "fa5c63ddda9e1527ad049513880ebe5f1046e79b6983d91573a8625271236aa5"
 )
 ENTRY_WATCHDOG_UNIT_SHA256 = (
     "e018a0f67a268e81066350f9d0ae2c923825a3cc907c49c4e4854ce1c807f16a"
@@ -2384,8 +2384,7 @@ def validate_migration_authorization(value: dict[str, Any]) -> str:
     head = release_guard.require_string(
         value.get("flywayHeadVersion"), "migration authorization Flyway head"
     )
-    if not head.isdigit() or int(head) < 1:
-        fail("migration authorization Flyway head is malformed")
+    _flyway_version_key(head)
     issued = require_recovery_integer(
         value.get("issuedAtUnix"), "migration authorization issue time", minimum=1
     )
@@ -5125,8 +5124,7 @@ def validate_activation_failure_marker(value: dict[str, Any]) -> str:
         failed_head = release_guard.require_string(
             value.get("failedFlywayHeadVersion"), "failed Flyway head"
         )
-        if not failed_head.isdigit():
-            fail("activation failure Flyway head is malformed")
+        _flyway_version_key(failed_head)
         release_guard.require_string(
             value.get("failedFlywayMigrationSetSha256"),
             "failed Flyway migration-set digest",
@@ -5141,8 +5139,7 @@ def validate_activation_failure_marker(value: dict[str, Any]) -> str:
             previous_head = release_guard.require_string(
                 previous_head, "previous Flyway head"
             )
-            if not previous_head.isdigit():
-                fail("previous Flyway head is malformed")
+            _flyway_version_key(previous_head)
             release_guard.require_string(
                 previous_digest,
                 "previous Flyway migration-set digest",
@@ -5342,8 +5339,7 @@ def validate_active_release_state(value: dict[str, Any]) -> str:
         value.get("commitSha"), "active commit", release_guard.COMMIT_RE
     )
     head = release_guard.require_string(value.get("flywayHeadVersion"), "active Flyway head")
-    if not head.isdigit():
-        fail("active Flyway head is malformed")
+    _flyway_version_key(head)
     for key in ("flywayMigrationSetSha256", "manifestSha256"):
         release_guard.require_string(value.get(key), f"active {key}", release_guard.SHA256_RE)
     if not isinstance(value.get("databaseChanged"), bool):
@@ -6110,7 +6106,7 @@ def require_append_only_flyway_transition(
 
     def verified_inventory(
         info: dict[str, Any], label: str
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], tuple[int, ...]]:
         if not isinstance(info, dict):
             fail(f"{label} signed release metadata is malformed")
         migrations = info.get("flywayMigrations")
@@ -6120,11 +6116,14 @@ def require_append_only_flyway_transition(
             or not migrations
             or any(not isinstance(migration, dict) for migration in migrations)
             or not isinstance(head, str)
-            or not head.isdigit()
             or migrations[-1].get("version") != head
         ):
             fail(f"{label} signed Flyway inventory is missing or malformed")
-        return migrations, int(head)
+        keys = [_flyway_version_key(migration.get("version")) for migration in migrations]
+        head_key = _flyway_version_key(head)
+        if keys != sorted(keys) or len(set(keys)) != len(keys) or keys[-1] != head_key:
+            fail(f"{label} signed Flyway inventory is not in strict semantic order")
+        return migrations, head_key
 
     current_migrations, current_head = verified_inventory(current_info, "current")
     target_migrations, target_head = verified_inventory(target_info, "target")
@@ -6165,7 +6164,7 @@ def require_initial_database_onboarding_acceptance(
     ).hexdigest()
     if (
         not isinstance(flyway, dict)
-        or flyway.get("headVersion") != int(target_info["flywayHeadVersion"])
+        or _flyway_head_key(flyway.get("headVersion")) != _flyway_version_key(target_info["flywayHeadVersion"])
         or flyway.get("successfulMigrationCount")
         != target_info["flywayMigrationCount"]
         or flyway.get("signedProjectionSha256") != expected_projection
@@ -7374,8 +7373,7 @@ def validate_internal_test_onboarding_receipt(
     head = release_guard.require_string(
         manifest.get("flywayHeadVersion"), "onboarding Flyway head"
     )
-    if not head.isdigit():
-        fail("internal-test onboarding Flyway head is malformed")
+    _flyway_version_key(head)
     for key in (
         "flywayMigrationSetSha256",
         "manifestSha256",
@@ -7410,7 +7408,7 @@ def validate_internal_test_onboarding_receipt(
         identity.get("systemIdentifier"), "onboarding database system identifier",
         POSTGRES_SYSTEM_IDENTIFIER_RE,
     )
-    require_recovery_integer(identity.get("headVersion"), "onboarding database head", minimum=1)
+    _flyway_head_key(identity.get("headVersion"))
     require_recovery_integer(
         identity.get("successfulMigrationCount"), "onboarding database migration count", minimum=1
     )
@@ -9299,8 +9297,7 @@ def validate_database_recovery_receipt(value: dict[str, Any]) -> None:
     head = release_guard.require_string(
         value.get("flywayHeadVersion"), "database receipt Flyway head"
     )
-    if not head.isdigit():
-        fail("database receipt Flyway head is malformed")
+    _flyway_version_key(head)
     release_guard.require_string(
         value.get("flywayMigrationSetSha256"),
         "database receipt Flyway digest",
@@ -9426,9 +9423,7 @@ def validate_database_recovery_detail(
         },
         "detailed database Flyway identity",
     )
-    if require_recovery_integer(
-        flyway.get("headVersion"), "detailed live Flyway head", minimum=1
-    ) != int(target_manifest["flywayHeadVersion"]):
+    if _flyway_head_key(flyway.get("headVersion")) != _flyway_version_key(target_manifest["flywayHeadVersion"]):
         fail("detailed live Flyway head differs from the signed target")
     if require_recovery_integer(
         flyway.get("successfulMigrationCount"),
@@ -9731,7 +9726,8 @@ def canonical_live_flyway_identity(
     # pgbackrest_health._flyway_identity.  The signed-manifest comparison below
     # deliberately adds stricter version/file/checksum constraints.
     prior_rank = -1
-    versions: set[str] = set()
+    prior_version = (0,)
+    versions: set[tuple[int, ...]] = set()
     for row in rows:
         if not isinstance(row, dict) or set(row) != expected_keys:
             fail("live Flyway row schema differs from the fixed query")
@@ -9749,12 +9745,9 @@ def canonical_live_flyway_identity(
         description = row.get("description")
         if rank <= prior_rank:
             fail("live Flyway installed ranks are not strictly increasing")
-        if (
-            not isinstance(version, str)
-            or not version.isdigit()
-            or version in versions
-        ):
-            fail("live Flyway version is null, non-numeric or duplicated")
+        version_key = _flyway_history_version_key(version, script)
+        if version_key in versions or version_key <= prior_version:
+            fail("live Flyway versions are duplicated or not in semantic order")
         if (
             row.get("type") != "SQL"
             or row.get("success") is not True
@@ -9763,6 +9756,9 @@ def canonical_live_flyway_identity(
             or not isinstance(description, str)
         ):
             fail("live Flyway history contains a failed, non-SQL or malformed row")
+        script_key, _, script_description = _flyway_script_parts(script)
+        if script_key != version_key or script_description != description:
+            fail("live Flyway version/script/description identity differs")
         canonical_rows.append(
             {
                 "checksum": checksum,
@@ -9775,16 +9771,20 @@ def canonical_live_flyway_identity(
             }
         )
         prior_rank = rank
-        versions.add(version)
+        prior_version = version_key
+        versions.add(version_key)
 
     migrations = target_manifest.get("flywayMigrations")
     if not isinstance(migrations, list) or len(canonical_rows) != len(migrations):
         fail("live Flyway count differs from the signed target")
     for row, migration in zip(canonical_rows, migrations, strict=True):
+        _, raw_description, live_description = _flyway_script_parts(migration.get("file"))
         if (
-            row["version"] != migration.get("version")
-            or row["description"] != migration.get("description")
+            _flyway_history_version_key(row["version"], row["script"]) != _flyway_version_key(migration.get("version"))
+            or migration.get("description") not in (raw_description, live_description)
+            or row["description"] != live_description
             or row["script"] != migration.get("file")
+            or type(migration.get("flywayChecksum")) is not int
             or row["checksum"] != migration.get("flywayChecksum")
         ):
             fail("live Flyway version/script/checksum history differs from the signed target")
@@ -9792,12 +9792,12 @@ def canonical_live_flyway_identity(
         canonical_rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     projection = "".join(
-        f"{row['version']}\t{row['script']}\t{row['checksum']}\n"
+        f"{_flyway_wire_version(row['version'],row['script'])}\t{row['script']}\t{row['checksum']}\n"
         for row in canonical_rows
     ).encode("utf-8")
     return {
         "canonicalHistorySha256": hashlib.sha256(canonical_payload).hexdigest(),
-        "headVersion": max(int(version) for version in versions),
+        "headVersion": _flyway_head_identity(".".join(str(part) for part in max(versions))),
         "signedProjectionSha256": hashlib.sha256(projection).hexdigest(),
         "successfulMigrationCount": len(canonical_rows),
     }
@@ -9961,7 +9961,7 @@ def validate_live_database_against_signed_release(
         value.get("timeline"), "live PostgreSQL timeline", minimum=1, maximum=0xFFFFFFFF
     )
     flyway = canonical_live_flyway_identity(value.get("flywayHistory"), target_manifest)
-    if flyway["headVersion"] != int(target_manifest["flywayHeadVersion"]):
+    if _flyway_head_key(flyway["headVersion"]) != _flyway_version_key(target_manifest["flywayHeadVersion"]):
         fail("live Flyway head differs from the signed target")
     migrations = target_manifest.get("flywayMigrations")
     if not isinstance(migrations, list) or not migrations:
@@ -10643,9 +10643,7 @@ def validate_start_authorization(value: dict[str, Any]) -> str:
     require_recovery_integer(
         identity.get("timeline"), "start authorization database timeline", minimum=1
     )
-    require_recovery_integer(
-        identity.get("headVersion"), "start authorization Flyway head", minimum=1
-    )
+    _flyway_head_key(identity.get("headVersion"))
     require_recovery_integer(
         identity.get("successfulMigrationCount"),
         "start authorization Flyway count",
@@ -12457,8 +12455,7 @@ def activate_release(args: argparse.Namespace) -> None:
             active_flyway_head = release_guard.require_string(
                 active_state.get("flywayHeadVersion"), "active.flywayHeadVersion"
             )
-            if not active_flyway_head.isdigit():
-                fail("root-owned active Flyway head is malformed")
+            _flyway_version_key(active_flyway_head)
             release_guard.require_string(
                 active_state.get("manifestSha256"),
                 "active.manifestSha256",
@@ -13008,6 +13005,100 @@ def main() -> int:
         log(f"ERROR: {exc}", "err")
         return 1
 
+
+# BEGIN GENERATED FLYWAY VERSION CONTRACT
+# Source: deploy/contracts/flyway_version_contract.py
+# SHA-256: 2d0596a62641b5b3d9e747ebc9a3e87f367d131f399352787438f9b0d29ad27c
+_FLYWAY_CONTRACT_ERROR = ValueError
+
+# These immutable, already-applied basenames predate canonical wire versions.
+# This is not permission to add another leading-zero source or accept an alias
+# in a manifest/API field. Script name and CRC/source hashes remain exact.
+_FLYWAY_LEGACY_INTEGER_SCRIPTS = {
+    "V01__enable_pgcrypto.sql": "01",
+    "V02__departments_positions.sql": "02",
+    "V03__employees.sql": "03",
+    "V04__auth_rbac.sql": "04",
+    "V05__audit.sql": "05",
+    "V06__seed_rbac.sql": "06",
+    "V07__seed_org.sql": "07",
+    "V08__seed_admin.sql": "08",
+    "V09__audit_redact_password.sql": "09",
+}
+
+_FLYWAY_SEMANTIC_RE = __import__("re").compile(r"[0-9]+(?:[._][0-9]+)*")
+_FLYWAY_SCRIPT_RE = __import__("re").compile(
+    r"V(?P<version>[0-9]+(?:[._][0-9]+)*)__"
+    r"(?P<description>[^\x00-\x1f\x7f-\x9f/\\]{1,200})\.sql"
+)
+
+
+def _flyway_semantic_key(value: object) -> tuple[int, ...]:
+    if type(value) is not str or len(value) > 50 or not _FLYWAY_SEMANTIC_RE.fullmatch(value):
+        raise _FLYWAY_CONTRACT_ERROR("Flyway version must contain bounded ASCII integer components")
+    parts = tuple(int(part) for part in value.replace("_", ".").split("."))
+    while len(parts) > 1 and parts[-1] == 0:
+        parts = parts[:-1]
+    return parts
+
+
+def _flyway_version_key(value: object) -> tuple[int, ...]:
+    parts = _flyway_semantic_key(value)
+    if parts <= (0,) or value != ".".join(str(part) for part in parts):
+        raise _FLYWAY_CONTRACT_ERROR("Flyway version is not a canonical positive dotted identity")
+    return parts
+
+
+def _flyway_script_parts(filename: object) -> tuple[tuple[int, ...], str, str]:
+    if type(filename) is not str:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script must be a bounded exact basename")
+    try:
+        encoded = filename.encode("utf-8")
+    except UnicodeError:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script basename is not valid UTF-8") from None
+    if len(encoded) > 255:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script must be a bounded exact basename")
+    match = _FLYWAY_SCRIPT_RE.fullmatch(filename)
+    if match is None:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script basename is not canonical")
+    token = match.group("version")
+    if "." in token and "_" in token:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway script version mixes component separators")
+    key = (_flyway_semantic_key(token) if filename in _FLYWAY_LEGACY_INTEGER_SCRIPTS
+           else _flyway_version_key(token.replace("_", ".")))
+    raw_description = match.group("description")
+    return key, raw_description, raw_description.replace("_", " ")
+
+
+def _flyway_history_version_key(value: object, script: object) -> tuple[int, ...]:
+    script_key, _, _ = _flyway_script_parts(script)
+    if script in _FLYWAY_LEGACY_INTEGER_SCRIPTS and value == _FLYWAY_LEGACY_INTEGER_SCRIPTS[script]:
+        key = _flyway_semantic_key(value)
+    else:
+        key = _flyway_version_key(value)
+    if key != script_key:
+        raise _FLYWAY_CONTRACT_ERROR("Flyway history version differs from its exact script")
+    return key
+
+
+def _flyway_wire_version(value: object, script: object) -> str:
+    return ".".join(str(part) for part in _flyway_history_version_key(value, script))
+
+
+def _flyway_head_identity(version: object) -> int | str:
+    key = _flyway_version_key(version)
+    return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_head_key(value: object) -> tuple[int, ...]:
+    if type(value) is int and value > 0 and len(str(value)) <= 50:
+        return (value,)
+    if type(value) is str and "." in value:
+        return _flyway_version_key(value)
+    raise _FLYWAY_CONTRACT_ERROR("Flyway database head must be an integer or canonical dotted string")
+
+_FLYWAY_CONTRACT_ERROR = UpdaterError
+# END GENERATED FLYWAY VERSION CONTRACT
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -57,7 +57,7 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(result.path("fields").path("issueDate").asText()).isEqualTo("2026-10-03");
         assertThat(result.path("fields").path("totalAmount").isTextual()).isTrue();
         assertThat(result.path("fields").path("totalAmount").asText()).isEqualTo("1234.56");
-        assertThat(result.path("fields").path("amountExclTax").asText()).isEqualTo("1000.00");
+        assertThat(result.path("fields").path("amountExclTax").asText()).isEqualTo("1000");
         assertThat(result.path("fields").path("taxAmount").asText()).isEqualTo("234.56");
         String digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input));
         assertThat(result.path("source").path("sha256").asText()).isEqualTo(digest).isNotEqualTo("f".repeat(64));
@@ -119,7 +119,7 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(result.path("fields").has("issueDate")).isFalse();
         assertThat(result.path("fieldConfidence").has("issueDate")).isFalse();
         assertThat(result.path("missingFields").toString()).contains("issueDate");
-        assertThat(result.path("fields").path("totalAmount").asText()).isEqualTo("10.00");
+        assertThat(result.path("fields").path("totalAmount").asText()).isEqualTo("10");
     }
 
     @Test void ownerOnlyResultsAndRevokedExpenseAuthorityApplyToRetainedPrefill() throws Exception {

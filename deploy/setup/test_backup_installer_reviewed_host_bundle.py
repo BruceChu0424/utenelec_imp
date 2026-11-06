@@ -54,7 +54,17 @@ class FrozenSourceContractTest(unittest.TestCase):
             preparer.BACKUP_INSTALLER_BUNDLE_RELATIVE_BY_SOURCE_KEY.values()
         )
 
-        self.assertEqual(18, len(expected_relative))
+        self.assertEqual(19, len(expected_relative))
+        self.assertEqual(
+            "deploy/updater/release_guard.py",
+            preparer.BACKUP_INSTALLER_BUNDLE_RELATIVE_BY_SOURCE_KEY[
+                "backupBundleReleaseGuardSha256"
+            ],
+        )
+        self.assertEqual(
+            preparer.SOURCES["releaseGuardSha256"].read_bytes(),
+            payloads["backupBundleReleaseGuardSha256"],
+        )
         self.assertEqual(expected_relative, launcher["sourceBundleRelativeFiles"])
         self.assertEqual(
             preparer.REVIEWED_BACKUP_INSTALLER_LAUNCHER_SHA256,

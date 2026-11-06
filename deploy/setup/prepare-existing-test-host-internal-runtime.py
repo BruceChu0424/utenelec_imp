@@ -25,13 +25,14 @@ from typing import Any, NoReturn
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_BUILDER = ROOT / "setup/build-internal-test-reviewed-host-manifest.py"
 REVIEWED_BACKUP_INSTALLER_LAUNCHER_SHA256 = (
-    "a9f7e32cb8011f0a15af27d4620a9afa8cae7eee50f09a214a3cb84034d040a8"
+    "4883b99c55f9e953cad314d608ee90d634baab2133de894ba93ca8ab63dca4ec"
 )
 BACKUP_INSTALLER_LAUNCHER_SOURCE_KEY = "backupInstallerLauncherSha256"
 BACKUP_INSTALLER_BUNDLE_INVENTORY_PREIMAGE_KEY = (
     "backupInstallerBundleInventorySha256"
 )
 BACKUP_INSTALLER_BUNDLE_RELATIVE_BY_SOURCE_KEY = {
+    "backupBundleReleaseGuardSha256": "deploy/updater/release_guard.py",
     "existingBackupInstallerSha256": "deploy/postgres/backup/existing_host_installer.py",
     "backupLockedJobSha256": "deploy/postgres/backup/locked_job.py",
     "backupRepo2HelperSha256": "deploy/postgres/backup/pgbackrest_repo2.py",
@@ -706,7 +707,7 @@ def validate_backup_installer_source_payloads(
         or contract["installedInstaller"] != expected_installer
         or contract["sourceBundleRoot"] != BACKUP_INSTALLER_BUNDLE_ROOT_POSIX
         or contract["sourceBundleRelativeFiles"] != expected_relative
-        or len(set(expected_relative)) != 18
+        or len(set(expected_relative)) != 19
         or contract["reviewedInstallerSha256"] != installer_sha
         or contract["installerMode"] != 0o400
         or contract["sourceDirectoryMode"] != 0o500

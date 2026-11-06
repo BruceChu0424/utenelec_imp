@@ -166,6 +166,12 @@ class ExpensePaymentReversalUpgradePostgresTest {
         assertThat(scalar(connection,"SELECT count(*) FROM pg_trigger WHERE tgrelid='expense_claim_events'::regclass AND tgfoid='fn_audit()'::regprocedure")).isEqualTo("0");
         assertThat(scalar(connection,"SELECT count(*) FROM pg_trigger WHERE tgrelid='expense_claim_events'::regclass AND tgname IN('trg_retain_business_record','trg_retain_business_truncate','trg_bind_business_record_parent','trg_guard_business_record_parent') AND tgenabled='A'")).isEqualTo("4");
         assertThat(scalar(connection,"SELECT count(*) FROM pg_trigger WHERE tgrelid='expense_claims'::regclass AND tgfoid='fn_audit()'::regprocedure AND tgenabled='A'")).isNotEqualTo("0");
+        assertThat(summaryTriggers(connection)).isEqualTo("""
+                CREATE TRIGGER trg_native_complete_marker_delete AFTER DELETE ON public.expense_claim_events REFERENCING OLD TABLE AS summary_old_rows FOR EACH STATEMENT WHEN ((NOT fn_summary_read_domains_marked('{native-facet-expense-claim-no}'::text[]))) EXECUTE FUNCTION fn_mark_summary_read_domain('native-facet-expense-claim-no'):O
+                CREATE TRIGGER trg_native_complete_marker_insert AFTER INSERT ON public.expense_claim_events REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT WHEN ((NOT fn_summary_read_domains_marked('{native-facet-expense-claim-no}'::text[]))) EXECUTE FUNCTION fn_mark_summary_read_domain('native-facet-expense-claim-no'):O
+                CREATE TRIGGER trg_native_complete_marker_truncate AFTER TRUNCATE ON public.expense_claim_events FOR EACH STATEMENT WHEN ((NOT fn_summary_read_domains_marked('{native-facet-expense-claim-no}'::text[]))) EXECUTE FUNCTION fn_mark_summary_read_domain('native-facet-expense-claim-no'):O
+                CREATE TRIGGER trg_native_complete_marker_update AFTER UPDATE ON public.expense_claim_events REFERENCING NEW TABLE AS summary_new_rows FOR EACH STATEMENT WHEN ((NOT fn_summary_read_domains_marked('{native-facet-expense-claim-no}'::text[]))) EXECUTE FUNCTION fn_mark_summary_read_domain('native-facet-expense-claim-no'):O
+                """.strip());
     }
     private static void assertOriginalChecksums(Connection connection)throws SQLException {
         for(String version:new String[]{"1000","1002"}) {
@@ -178,7 +184,13 @@ class ExpensePaymentReversalUpgradePostgresTest {
         return scalar(connection,"SELECT md5(COALESCE(string_agg(to_jsonb(h)::text,E'\\n' ORDER BY installed_rank),'')) FROM flyway_schema_history h WHERE success AND string_to_array(version,'.')::int[]<=string_to_array(?,'.')::int[]",through);
     }
     private static String triggers(Connection connection)throws SQLException {
-        return scalar(connection,"SELECT COALESCE(string_agg(pg_get_triggerdef(oid)||':'||tgenabled::text,E'\\n' ORDER BY tgrelid::regclass::text,tgname),'') FROM pg_trigger WHERE NOT tgisinternal AND (tgrelid='expense_claim_events'::regclass OR tgrelid='expense_claims'::regclass AND tgfoid='fn_audit()'::regprocedure)");
+        // Preserve every original protection byte-for-byte. The four later
+        // summary publications are separately asserted in the current catalog;
+        // no other trigger name/function is excluded from historical equality.
+        return scalar(connection,"SELECT COALESCE(string_agg(pg_get_triggerdef(oid)||':'||tgenabled::text,E'\\n' ORDER BY tgrelid::regclass::text,tgname),'') FROM pg_trigger WHERE NOT tgisinternal AND (tgrelid='expense_claim_events'::regclass OR tgrelid='expense_claims'::regclass AND tgfoid='fn_audit()'::regprocedure) AND NOT (tgrelid='expense_claim_events'::regclass AND tgname IN('trg_native_complete_marker_delete','trg_native_complete_marker_insert','trg_native_complete_marker_truncate','trg_native_complete_marker_update') AND tgfoid=COALESCE(to_regprocedure('public.fn_mark_summary_read_domain()')::oid,0::oid))");
+    }
+    private static String summaryTriggers(Connection connection)throws SQLException {
+        return scalar(connection,"SELECT COALESCE(string_agg(pg_get_triggerdef(oid)||':'||tgenabled::text,E'\\n' ORDER BY tgname),'') FROM pg_trigger WHERE NOT tgisinternal AND tgrelid='expense_claim_events'::regclass AND tgname IN('trg_native_complete_marker_delete','trg_native_complete_marker_insert','trg_native_complete_marker_truncate','trg_native_complete_marker_update')");
     }
     private static String constraint(Connection connection)throws SQLException{return scalar(connection,"SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='expense_claim_events'::regclass AND conname='expense_claim_events_type_chk'");}
     private static String head(Connection connection)throws SQLException{return scalar(connection,"SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1");}

@@ -1,0 +1,74 @@
+{
+  "combinedSourceCommit": "ead33518902b5e9ac01d995c8ac27a59ac4361c2",
+  "mainIntegrated": "6e13854a4",
+  "validationOverlay": null,
+  "nativeWholes": 14,
+  "pass": 224,
+  "fail": 0,
+  "skip": 0,
+  "files": {
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_application_settings_page_test.dart": {
+      "success": 15
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_auxiliary_dialog_test.dart": {
+      "success": 3
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_auxiliary_import_dialog_test.dart": {
+      "success": 3
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_chart_dialog_test.dart": {
+      "success": 7
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_chart_import_recovery_test.dart": {
+      "success": 10
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_expense_analysis_dialog_test.dart": {
+      "success": 4
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_chart_metadata_recovery_test.dart": {
+      "success": 10
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_template_source_upload_test.dart": {
+      "success": 4
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_durable_command_recovery_test.dart": {
+      "success": 39
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_material_statement_dialog_test.dart": {
+      "success": 10
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/components/uten_close_button_test.dart": {
+      "success": 17
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_accounting_import_dialog_test.dart": {
+      "success": 8
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/core/window_close_source_contract_test.dart": {
+      "success": 21
+    },
+    "D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/basic_data/widgets/goods_cost_tab_test.dart": {
+      "success": 73
+    }
+  },
+  "sourceSha256": {
+    "lib/features/basic_data/widgets/goods_cost_editor.dart": "b86d7ca686b2513cb84168ba5a4c8b600b209ec4a699a703b380cd11f5fec65b",
+    "lib/features/finance/pages/finance_application_settings_page.dart": "68f19015fe7272ae6aa38b2365052f80455e32fc1d08612fb4a4ab47456b11cf",
+    "lib/features/finance/widgets/finance_accounting_import_dialog.dart": "d56bd725dc1a97c91aabc3b07b5fb676df4b1444ee9b0c14e76a43e1333085d3",
+    "lib/features/finance/widgets/finance_auxiliary_dialog.dart": "e7fa7724f7817f782129c5909e04eb78bd874cb0195020de2a7868c7e0e4123e",
+    "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart": "0f30d4e140516a1a4db35e5a935cd9ea73d0b30dc37134374dd1c0c8ea7f8ff6",
+    "lib/features/finance/widgets/finance_batch_recovery_panel.dart": "eaee7e05d287fd415152531f22ee9f913146d16b11ca1c40325b63d6098a703b",
+    "lib/features/finance/widgets/finance_chart_dialog.dart": "9770e0ce522329cf14f33128813aa04c095a14bbacc44e6d3c5e3e0d34a61a27",
+    "lib/features/finance/widgets/finance_chart_import_workbench.dart": "3967a8e0f055da6c4f5b058c9b12f26b7ec79ca1618fca3403cb345fb8113626",
+    "lib/features/finance/widgets/finance_chart_metadata_dialog.dart": "c0dc5e9fe2fb69d418de0207f5e63b309694f84dd69fe450f5fea0b5d6b6167c",
+    "lib/features/finance/widgets/finance_document_review_command.dart": "467535c5c6012e4bb3f546df59d9efd2c5bd10feeeead89658150402e9093b27",
+    "lib/features/finance/widgets/finance_durable_command_dialog.dart": "638d4b1ccc5f675bc9748baab0e9385b4fc39219bed9adf362997999f18f5df9",
+    "lib/features/finance/widgets/finance_expense_analysis_dialog.dart": "f45ee56f2c635eae57be82a835ec9f1c3e6f1765d57a0e162da39a40b9d5e42a",
+    "lib/features/finance/widgets/finance_material_statement_dialog.dart": "31993cef7a2fa8542bf67be0b11bc0ec52d0f10ff33b8c6e498b87d065fca818",
+    "lib/features/finance/widgets/finance_template_input_dialog.dart": "4179e6d9bb940c7b2a27ab1e438b2f36dd92227c70ab29a696f71564d9c21c27"
+  },
+  "logs": {
+    "latest-main-14.log": "944a8348ba825099416c6e96e41dc7e5c0021fb47d4871a552d5c8dc34b0bd9c",
+    "latest-main-14.jsonl": "812495cc39db11a17b29fdc164f749e79a6e12aa9b487f404fdbe25c306a29f5"
+  },
+  "chromeLimit": "Original 27 pass/10 import initialization pump timeouts retained; not globally green"
+}

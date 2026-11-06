@@ -60,6 +60,15 @@ class GoodsBomLearningQueryPostgresTest {
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,"goods","units");
         MigratedProjectionSchema.copyConstrainedTablesFromMigratedCatalog(db,"goods_bom_items",
                 "goods_bom_learning_profiles","goods_bom_actual_usages");
+        // V1025 derives actual_qty through this real source/policy guard, rather
+        // than a generated column. LIKE copies cannot copy the owning trigger.
+        try(var statement=db.createStatement();var rows=statement.executeQuery("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid='public.goods_bom_actual_usages'::regclass AND tgname='trg_zz_inventory_source_derived_numeric'")) {
+            assertTrue(rows.next());
+            String source=rows.getString(1),target=" ON "+schema+".goods_bom_actual_usages ";
+            assertTrue(source.contains(" ON public.goods_bom_actual_usages "));
+            sql(source.replace(" ON public.goods_bom_actual_usages ",target));
+        }
+        sql("ALTER TABLE goods_bom_actual_usages ENABLE ALWAYS TRIGGER trg_zz_inventory_source_derived_numeric");
         sql("CREATE VIEW v_goods_bom_actual_usage AS "+actualUsageView);
         sql("CREATE VIEW v_goods_bom_item_usage AS "+usageView);
         unit=unit("个");

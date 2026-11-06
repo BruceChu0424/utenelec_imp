@@ -98,6 +98,12 @@ public class MaterialAnalysisCommandService {
     private MaterialAnalysisRootSupplyService rootSupply;
     @org.springframework.beans.factory.annotation.Autowired
     private PreplanMakePublicSupplyService makePublicSupply;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisPhysicalStockClaimService physicalStockClaims;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<AggregateMaterialOrderWriteService> aggregateOrders;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AggregateMaterialOrderPreviewService aggregatePreviews;
 
     /**
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
@@ -144,16 +150,39 @@ public class MaterialAnalysisCommandService {
         // 现货交接：根供给行上已有可分配现货时，这一次下达就是「把它交接过去」，
         // 不建任何 supply action——这是一条正当的零 action 成功路径，下面那道
         // 「一条都没建就回 409」的闸必须放它过去。
-        boolean rootStockHandled = rootSupply != null
-                && rootSupply.fulfillExisting(analysisId,
-                groups.stream().flatMap(group -> group.materials().stream())
-                        .filter(material -> "ROOT_SUPPLY".equals(material.nodeRole()))
-                        .map(MaterialView::materialLineId).toList(),
-                request.idempotencyKey());
+        Map<String,SupplyQuantityInput> beforeStockInputs=quantityInputs(view,request,groups);
+        Map<UUID,BigDecimal> rootStockLimits=new LinkedHashMap<>(),publicStockLimits=new LinkedHashMap<>();
+        Map<UUID,BigDecimal> sourceStockBefore=MaterialAnalysisSalesStock.availableByRoot(em,analysisId);
+        for(ActionGroup group:groups) {
+            SupplyQuantityInput input=beforeStockInputs.get(group.groupKey());
+            for(MaterialView row:group.materials())if(row.level()==0) {
+                BigDecimal limit=input==null?row.requiredQty():input.qty();
+                rootStockLimits.put(row.materialLineId(),limit);
+                if(!MaterialOrderQuantity.skipClaims(input==null?null:input.orderMethod(),request.skipClaims()))
+                    publicStockLimits.put(row.materialLineId(),limit.subtract(sourceStockBefore.getOrDefault(row.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO));
+            }
+        }
+        boolean rootStockHandled=rootSupply!=null&&rootSupply.adoptSalesStock(analysisId,rootStockLimits,request.idempotencyKey());
+        if(rootStockHandled)analysisService.refreshLocked(analysisId);
+        if(rootSupply!=null&&!publicStockLimits.isEmpty())rootStockHandled=rootSupply.fulfillExisting(analysisId,publicStockLimits.keySet(),
+                request.idempotencyKey(),publicStockLimits)||rootStockHandled;
         if (rootStockHandled) {
             analysisService.refreshLocked(analysisId);
             view = analysisService.detailInternal(analysisId, false);
             groups = selectedGroups(view, request);
+        }
+        Map<UUID,BigDecimal> physicalLimits=new LinkedHashMap<>();
+        Map<String,SupplyQuantityInput> physicalInputs=quantityInputs(view,request,groups);
+        for(ActionGroup group:groups) {
+            SupplyQuantityInput input=physicalInputs.get(group.groupKey());
+            if(input==null||input.orderMethod()==null||MaterialOrderQuantity.skipClaims(input.orderMethod(),request.skipClaims()))continue;
+            appendPhysicalClaimLimits(physicalLimits,group.materials().stream().filter(row->row.level()>0).toList(),input.qty(),input.quantityMode());
+        }
+        Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
+        Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"NOTIFY-PHYSICAL:"+request.idempotencyKey())) {
+            physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->physicalDelta.put(id,qty.subtract(physicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
+            rootStockHandled=true;analysisService.refreshLocked(analysisId);view=analysisService.detailInternal(analysisId,false);groups=selectedGroups(view,request);
         }
         requireNoActiveBorrowForSupplyMaterials(
                 analysisId,
@@ -182,6 +211,11 @@ public class MaterialAnalysisCommandService {
                     .min(group.materials().stream().map(row->row.planningUncoveredQty().max(row.priorityMakeSupplementQty())).reduce(BigDecimal.ZERO,BigDecimal::add))
                     .setScale(4, RoundingMode.CEILING);
             SupplyQuantityInput input = quantityInputs.get(group.groupKey());
+            boolean skipClaims=MaterialOrderQuantity.skipClaims(input==null?null:input.orderMethod(),request.skipClaims());
+            boolean availableOnly=MaterialOrderQuantity.availableOnly(input==null?null:input.orderMethod());
+            if(input!=null&&"ORDER_ALL".equals(input.orderMethod()))delta=group.materials().stream()
+                    .map(row->requiredBeforeShared(row).max(row.priorityMakeSupplementQty())).reduce(BigDecimal.ZERO,BigDecimal::add)
+                    .setScale(4,RoundingMode.CEILING);
             BigDecimal demandQty = delta;
             BigDecimal publicExtraQty = BigDecimal.ZERO.setScale(4);
             // 委外件(任何层级、有没有直属物料)一律走这条「下达委外」通道(ADR-143 §4.5)：
@@ -192,7 +226,10 @@ public class MaterialAnalysisCommandService {
             // 本批生产数量在子件任务的计划向导里填，通知时不能拆量、也不能带公共超量。
             boolean createsChildOwnership = "MAKE".equals(group.route());
             if (input != null && createsChildOwnership) {
-                BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
+                BigDecimal requested = MaterialOrderQuantity.incremental(input.qty(), input.quantityMode(),
+                        group.materials().stream().map(row->row.requiredQty().max(row.sourceRequiredQty()==null?BigDecimal.ZERO:row.sourceRequiredQty())).reduce(BigDecimal.ZERO,BigDecimal::add),
+                        group.materials().stream().map(MaterialView::planningUncoveredQty).reduce(BigDecimal.ZERO,BigDecimal::add),input.orderMethod()).setScale(4, RoundingMode.CEILING);
+                if(input.quantityMode()==null)requested=requested.subtract(group.materials().stream().map(row->physicalDelta.getOrDefault(row.materialLineId(),BigDecimal.ZERO)).reduce(BigDecimal.ZERO,BigDecimal::add)).max(BigDecimal.ZERO);
                 if (requested.compareTo(delta) != 0) {
                     throw validation("「" + groupLabel(group)
                             + "」子件任务当前必须按全部剩余需求 "
@@ -200,14 +237,17 @@ public class MaterialAnalysisCommandService {
                             + " 创建；本批生产数量请在子件任务创建后的计划向导中填写");
                 }
             } else if (input != null) {
-                BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
+                BigDecimal requested = MaterialOrderQuantity.incremental(input.qty(), input.quantityMode(),
+                        group.materials().stream().map(row->row.requiredQty().max(row.sourceRequiredQty()==null?BigDecimal.ZERO:row.sourceRequiredQty())).reduce(BigDecimal.ZERO,BigDecimal::add),
+                        group.materials().stream().map(MaterialView::planningUncoveredQty).reduce(BigDecimal.ZERO,BigDecimal::add),input.orderMethod()).setScale(4, RoundingMode.CEILING);
+                if(input.quantityMode()==null)requested=requested.subtract(group.materials().stream().map(row->physicalDelta.getOrDefault(row.materialLineId(),BigDecimal.ZERO)).reduce(BigDecimal.ZERO,BigDecimal::add)).max(BigDecimal.ZERO);
                 // ADR-099 数量单一口径：填多少下多少——不超过「还需安排」的部分归本
                 // 需求，超出的部分记公共备货（需超量下达权限）。客户端不再拆成
                 // 「需求量 + 公共量」两个数，服务端按权威余量自行分账。
                 demandQty = requested.min(delta);
                 publicExtraQty = requested.subtract(demandQty).max(BigDecimal.ZERO)
                         .setScale(4, RoundingMode.CEILING);
-                if (publicExtraQty.signum() > 0
+                if (publicExtraQty.signum() > 0 && !availableOnly
                         && !access.hasAuthority(
                                 "production_material_analysis:over_supply")) {
                     throw new ApiException(ErrorCode.FORBIDDEN,
@@ -222,7 +262,9 @@ public class MaterialAnalysisCommandService {
                     ? null
                     : input.safetyReplenishmentQty()
                             .setScale(4, RoundingMode.CEILING);
-            if ("BUY".equals(group.route())) {
+            if (availableOnly) {
+                safety=SafetySnapshot.ZERO;
+            } else if ("BUY".equals(group.route())) {
                 if (safety.gapQty().signum() > 0
                         && (confirmedSafety == null
                         || confirmedSafety.compareTo(safety.gapQty()) != 0)) {
@@ -253,7 +295,7 @@ public class MaterialAnalysisCommandService {
             // 不扣可用数量」，自制公共超产与公共在途两类认领一并不做，按提交量足额新下单。
             BigDecimal claimedQty = BigDecimal.ZERO.setScale(4);
             boolean retainedPriority=group.materials().stream().anyMatch(row->row.priorityMakeSupplementQty().signum()>0);
-            if(demandQty.signum()>0&&!retainedPriority&&!request.skipClaims()) {
+            if(demandQty.signum()>0&&!retainedPriority&&!skipClaims) {
                 BigDecimal targetDemand=demandQty;
                 List<AggregateQuantityAllocator.SourceCapacity> makeTargets=group.materials().stream()
                         .map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,row.planningUncoveredQty())).toList();
@@ -264,7 +306,7 @@ public class MaterialAnalysisCommandService {
                 claimedQty=adopted.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
                 demandQty=demandQty.subtract(claimedQty).max(BigDecimal.ZERO);
             }
-            if (demandQty.signum() > 0&&!retainedPriority&&!request.skipClaims()) {
+            if (demandQty.signum() > 0&&!retainedPriority&&!skipClaims) {
                 BigDecimal externalClaimed = claimSharedFutureForGroup(analysisId, view, group, demandQty,
                         null, true, request.idempotencyKey(), requestHash,
                         claimActionIds, acceptedLateSources);
@@ -272,6 +314,7 @@ public class MaterialAnalysisCommandService {
                 demandQty = demandQty.subtract(externalClaimed).max(BigDecimal.ZERO)
                         .setScale(4, RoundingMode.CEILING);
             }
+            if (availableOnly) { demandQty=BigDecimal.ZERO;publicExtraQty=BigDecimal.ZERO; }
             plans.add(new ActionPlan(group, demandQty, publicExtraQty, safety, claimedQty));
         }
         // ADR-143 §二.3：要新下(或在原申请上追加)委外申请的委外件必须先有可发外的直属物料。缺 BOM 时
@@ -1026,11 +1069,59 @@ public class MaterialAnalysisCommandService {
         //    锚点行仅承载计划链接与执行进度）。只有自制节点进车间；委外节点(任何
         //    层级)一律走下达委外，委外商只领它的直属物料(ADR-143 §4.5)。
         AnalysisView preArrange = analysisService.detailInternal(analysisId, false);
-        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(preArrange), request);
+        Set<UUID> independentMaterials=new HashSet<>();
+        List<GeneratedPlan> independentGenerated=new ArrayList<>();
+        for(var line:request.lines()) {
+            if(line.materialLineId()==null||!"ORDER_ALL".equals(line.orderMethod()))continue;
+            MaterialView material=preArrange.flatMaterials().stream().filter(row->row.materialLineId().equals(line.materialLineId())).findFirst().orElse(null);
+            if(material==null||!AggregateMaterialSourceEligibility.hasIndependentOrderingContext(material))continue;
+            independentMaterials.add(material.materialLineId());
+            AnalysisView current=analysisService.detailInternal(analysisId,false);
+            String stageKey="INDEPENDENT-"+PlanningPackageFingerprint.sha256(List.of(request.idempotencyKey(),material.materialLineId().toString()));
+            var group=new AggregateMaterialOrderContracts.GroupInput("independent-"+material.materialLineId(),List.of(material.materialLineId()),"MAKE",line.qty(),true,
+                    line.departmentId(),line.workerId(),line.teamDepartmentId(),line.billDate(),line.deliveryDate(),line.productNo(),line.allowedOverproductionRate(),BigDecimal.ZERO,
+                    Map.of(material.materialLineId(),line.qty()),true,line.quantityMode(),line.orderMethod());
+            var previewRequest=new AggregateMaterialOrderContracts.PreviewRequest(current.version(),current.fingerprint(),stageKey,request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),List.of(group));
+            var shown=aggregatePreviews.resolve(analysisId,previewRequest,current);
+            var result=aggregateOrders.getObject().submit(analysisId,new AggregateMaterialOrderContracts.SubmitRequest(current.version(),current.fingerprint(),stageKey,
+                    request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),List.of(group),shown.previewFingerprint(),true));
+            for(var batch:result.batches())if(batch.generatedPlan()!=null)independentGenerated.add(batch.generatedPlan());
+        }
+        if(!independentMaterials.isEmpty())preArrange=analysisService.detailInternal(analysisId,false);
+        Map<UUID,BigDecimal> privateStockLimits=new LinkedHashMap<>();
+        for(var line:request.lines()) {
+            MaterialView row=line.materialLineId()!=null?preArrange.flatMaterials().stream().filter(value->value.materialLineId().equals(line.materialLineId())).findFirst().orElse(null)
+                    :preArrange.flatMaterials().stream().filter(value->value.level()==0&&value.analysisLineId().equals(line.analysisLineId())).findFirst().orElse(null);
+            if(row==null||row.level()!=0)continue;
+            BigDecimal rate=preArrange.products().stream().filter(value->value.analysisLineId().equals(row.analysisLineId())).map(ProductView::unitRate).findFirst().orElse(BigDecimal.ONE);
+            privateStockLimits.put(row.materialLineId(),line.qty().multiply(rate));
+        }
+        if(rootSupply!=null&&rootSupply.adoptSalesStock(analysisId,privateStockLimits,request.idempotencyKey())) {
+            analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
+        }
+        Map<UUID,BigDecimal> componentPhysicalLimits=new LinkedHashMap<>();
+        for(var line:request.lines()) {
+            if(line.materialLineId()==null||line.orderMethod()==null||MaterialOrderQuantity.skipClaims(line.orderMethod(),request.skipClaims()))continue;
+            MaterialView row=preArrange.flatMaterials().stream().filter(value->value.materialLineId().equals(line.materialLineId())&&value.level()>0).findFirst().orElse(null);
+            if(row!=null)appendPhysicalClaimLimits(componentPhysicalLimits,List.of(row),line.qty(),line.quantityMode());
+        }
+        Map<UUID,BigDecimal> componentPhysicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
+        Map<UUID,BigDecimal> componentPhysicalDelta=new HashMap<>();
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,componentPhysicalLimits,"WORKSHOP-PHYSICAL:"+request.idempotencyKey())) {
+            physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->componentPhysicalDelta.put(id,qty.subtract(componentPhysicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
+            analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false);
+        }
+        List<IssueWorkshopPlansRequest.IssuePlanLine> writableLines=request.lines().stream()
+                .filter(line->!MaterialOrderQuantity.availableOnly(line.orderMethod())&&!independentMaterials.contains(line.materialLineId())).toList();
+        boolean adoptedOnly=adoptWorkshopAvailableOnly(analysisId,request,preArrange,requestHash);
+        if(adoptedOnly) { analysisService.refreshLocked(analysisId);preArrange=analysisService.detailInternal(analysisId,false); }
+        IssueWorkshopPlansRequest writableRequest=new IssueWorkshopPlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),
+                request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),writableLines,request.skipAutoClaim());
+        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(preArrange), writableRequest);
         // 入场已按实时库存刷新。先建立 MAKE 锚点，仅在锚点实际改变时另作锚点后刷新。
         // 计划生成结束后再投影正式计划覆盖，始终满足 ADR-071 的「以当前权威快照逐行生成」。
         boolean anchorsChanged = !makeLines.isEmpty()
-                && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
+                && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines,writableLines.stream().filter(line->"ORDER_ALL".equals(line.orderMethod())).map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId).filter(Objects::nonNull).collect(Collectors.toSet()));
         AnalysisView view = preArrange;
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
         if (anchorsChanged) {
@@ -1049,11 +1140,11 @@ public class MaterialAnalysisCommandService {
         // 2026-09-09 性能（保守优化）：子件行解析由逐行查询（N+1）改为一次
         // 批量预取——几十行候选时省下几十条同构 SQL，事务持锁时间同步缩短。
         Map<UUID, UUID> childLineByMaterialLine = batchChildLineIds(analysisId,
-                request.lines().stream()
+                writableLines.stream()
                         .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
                         .filter(java.util.Objects::nonNull)
                         .collect(java.util.stream.Collectors.toSet()));
-        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+        for (IssueWorkshopPlansRequest.IssuePlanLine line : writableLines) {
             UUID lineId = line.analysisLineId() != null
                     ? line.analysisLineId()
                     : childLineByMaterialLine.get(line.materialLineId());
@@ -1070,7 +1161,7 @@ public class MaterialAnalysisCommandService {
         }
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(
                 request.billDate(), request.deliveryDate());
-        List<GeneratedPlan> generated = new ArrayList<>();
+        List<GeneratedPlan> generated = new ArrayList<>(independentGenerated);
         // Plan linking and approval change sources, plans and reservations, but
         // do not rewrite this analysis's material/BOM projection. Verify those
         // two static slices at both batch boundaries. ADR-107: the outermost
@@ -1089,7 +1180,10 @@ public class MaterialAnalysisCommandService {
                 // 「纯公共备货产出」再下一批(canIssueSurplus，V577 合法形态)——用户口径
                 // 「父层级那里还是可以追加下单，多下的属于公共的」；不声明照旧 409，
                 // 重复点击 / 过期候选不能悄悄多建一张计划。
-                boolean surplusOnly = Boolean.TRUE.equals(line.publicSurplusOnly());
+                BigDecimal reviewedQty = coveragePlanQuantity(line, product, preArrange);
+                if (reviewedQty.signum()==0 && line.quantityMode()!=null) continue;
+                boolean surplusOnly = Boolean.TRUE.equals(line.publicSurplusOnly())
+                        || "ORDER_ALL".equals(line.orderMethod())&&"COVERAGE_TOTAL".equals(line.quantityMode());
                 if (!product.canSchedule()
                         && !(surplusOnly && product.canIssueSurplus() && line.qty().signum() > 0)) {
                     throw conflict(product.scheduleBlockedReason() == null
@@ -1102,10 +1196,11 @@ public class MaterialAnalysisCommandService {
                 // 锚点配额增长算法 growMakeAnchorQuotas 也不被污染），后者单独
                 // 记在计划关联行的 public_surplus_qty 上，不绑定任何需求：产出
                 // 入库后就是公共库存，其他计划可以直接用。
-                BigDecimal effectiveQty=line.qty().subtract(newlyAdopted.getOrDefault(line.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO);
+                BigDecimal effectiveQty=reviewedQty.subtract(newlyAdopted.getOrDefault(line.materialLineId(),BigDecimal.ZERO))
+                        .subtract(line.quantityMode()==null?componentPhysicalDelta.getOrDefault(line.materialLineId(),BigDecimal.ZERO):BigDecimal.ZERO).max(BigDecimal.ZERO);
                 BigDecimal demandQty = effectiveQty.min(product.remainingQty());
                 BigDecimal surplusQty = effectiveQty.subtract(demandQty);
-                if(product.rootMaterialLineId()!=null&&demandQty.signum()>0&&!request.skipClaims()) {
+                if(product.rootMaterialLineId()!=null&&demandQty.signum()>0&&!MaterialOrderQuantity.skipClaims(line.orderMethod(),request.skipClaims())) {
                     MaterialView root=view.flatMaterials().stream().filter(row->row.materialLineId().equals(product.rootMaterialLineId())).findFirst().orElse(null);
                     if(root!=null) {
                         demandQty=demandQty.min(root.planningUncoveredQty().divide(product.unitRate(),4,RoundingMode.DOWN));
@@ -1401,9 +1496,7 @@ public class MaterialAnalysisCommandService {
             throw new ApiException(ErrorCode.FORBIDDEN, "预览下达车间需要生成生产计划权限");
         }
         Map<UUID, BigDecimal> typedOutputs = new LinkedHashMap<>();
-        for (PreviewIssuePlansRequest.TypedOutput typed : request.typedOutputs()) {
-            typedOutputs.merge(typed.materialLineId(), typed.qty(), BigDecimal::add);
-        }
+
         MaterialAnalysisService.AnalysisHeader header = analysisService.readOnlyHeader(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
         requireWritable(header, "只能从本人负责的物料分析下达车间");
@@ -1415,6 +1508,58 @@ public class MaterialAnalysisCommandService {
         // 真实下达入口先按实况刷新一次(库存可能在上次刷新后被仓库命令改过)；预览同口径先投影
         // 「不含本批」的实况，锚点跟涨/跟落的基线、新锚点配额与可排产都以它为准。
         analysisService.projectIssuePreviewBase(analysisId, overlay);
+        AnalysisView typedBase=analysisService.issuePreviewDetail(analysisId,overlay);
+        Map<UUID,MaterialView> typedRows=typedBase.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        Map<UUID,BigDecimal> typedMakeBudget=new HashMap<>();Map<String,BigDecimal> typedExternalBudget=new HashMap<>();
+        Map<String,BigDecimal> typedPhysicalBudget=new HashMap<>();
+        for(var row:typedBase.flatMaterials()) {
+            if(row.preparationPoolKey()!=null)typedPhysicalBudget.merge(row.preparationPoolKey(),row.mainWarehousePublicAvailableQty(),BigDecimal::max);
+            if(row.makePublicSupplyRefs()!=null)for(var candidate:row.makePublicSupplyRefs())if(candidate.adoptable())typedMakeBudget.put(candidate.sourcePlanItemId(),candidate.availableQty());
+            if(row.sharedFutureSupplyRefs()!=null)for(var candidate:row.sharedFutureSupplyRefs())if(candidate.budgetKey()!=null)typedExternalBudget.put(candidate.budgetKey(),candidate.availableToClaimQty());
+        }
+        for(var typed:request.typedOutputs()) {
+            MaterialView row=typedRows.get(typed.materialLineId());
+            if(row==null)throw conflict("本批数量的来源已变化，请刷新后重新核对");
+            BigDecimal qty=typed.qty();
+            if(typed.orderMethod()!=null||typed.quantityMode()!=null) {
+                qty=MaterialOrderQuantity.incremental(qty,typed.quantityMode(),row.requiredQty().max(row.sourceRequiredQty()==null?BigDecimal.ZERO:row.sourceRequiredQty()),row.planningUncoveredQty(),typed.orderMethod());
+                if(!MaterialOrderQuantity.skipClaims(typed.orderMethod(),false)) {
+                    BigDecimal privateCap=requiredBeforeShared(row);
+                    if(row.level()>0) {
+                        qty=MaterialOrderQuantity.physicalClaimCeiling(typed.qty(),typed.quantityMode(),row.requiredQty().max(row.sourceRequiredQty()==null?BigDecimal.ZERO:row.sourceRequiredQty()),privateCap);
+                        BigDecimal take=qty.min(privateCap).min(typedPhysicalBudget.getOrDefault(row.preparationPoolKey(),BigDecimal.ZERO));
+                        if(row.preparationPoolKey()!=null)typedPhysicalBudget.computeIfPresent(row.preparationPoolKey(),(id,value)->value.subtract(take));
+                        qty=qty.subtract(take);privateCap=privateCap.subtract(take);
+                    }
+                    BigDecimal adoptable=qty.min(privateCap);
+                    BigDecimal plannedBeforeAdoption=qty;
+                    BigDecimal adoptionBudget=adoptable;
+                    for(var candidate:row.makePublicSupplyRefs()==null?List.<PreplanMakePublicSupplyService.Candidate>of():row.makePublicSupplyRefs()) {
+                        if(!candidate.adoptable())continue;
+                        BigDecimal take=adoptable.min(typedMakeBudget.getOrDefault(candidate.sourcePlanItemId(),BigDecimal.ZERO));
+                        typedMakeBudget.computeIfPresent(candidate.sourcePlanItemId(),(id,value)->value.subtract(take));adoptable=adoptable.subtract(take);
+                    }
+                    for(var candidate:row.sharedFutureSupplyRefs()==null?List.<SharedFutureSupplyRef>of():row.sharedFutureSupplyRefs()) {
+                        if(candidate.budgetKey()==null)continue;
+                        BigDecimal take=adoptable.min(typedExternalBudget.getOrDefault(candidate.budgetKey(),BigDecimal.ZERO));
+                        typedExternalBudget.computeIfPresent(candidate.budgetKey(),(id,value)->value.subtract(take));adoptable=adoptable.subtract(take);
+                    }
+                    qty=plannedBeforeAdoption.subtract(adoptionBudget.subtract(adoptable));
+                }
+                if(MaterialOrderQuantity.availableOnly(typed.orderMethod()))qty=BigDecimal.ZERO;
+                BigDecimal rate=typedBase.products().stream().filter(product->product.analysisLineId().equals(row.analysisLineId())).map(ProductView::unitRate).findFirst().orElse(BigDecimal.ONE);
+                overlay.selectNewOutput(row.analysisLineId()+"|"+row.nodeKey(),row.analysisLineId(),qty,row.level()==0?qty.divide(rate,4,RoundingMode.UNNECESSARY):null);
+            }
+            typedOutputs.merge(typed.materialLineId(),qty,BigDecimal::add);
+        }
+        for(var line:request.lines()) {
+            MaterialView material=line.materialLineId()==null?null:typedRows.get(line.materialLineId());
+            if(material!=null&&"ORDER_ALL".equals(line.orderMethod())&&AggregateMaterialSourceEligibility.hasIndependentOrderingContext(material)) {
+                if(!access.hasAuthority("production_material_analysis:over_supply"))throw new ApiException(ErrorCode.FORBIDDEN,"独立公共备货需要超量下达权限");
+                typedOutputs.putIfAbsent(material.materialLineId(),line.qty());
+                overlay.selectNewOutput(material.analysisLineId()+"|"+material.nodeKey(),material.analysisLineId(),line.qty(),null);
+            }
+        }
         if (!request.lines().isEmpty()) {
             var seeds=issuePreviewSeeds(analysisId,request.toIssueRequest(),overlay);
             if(!seeds.isEmpty()&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))
@@ -1432,13 +1577,32 @@ public class MaterialAnalysisCommandService {
     private List<MaterialAnalysisService.IssuePreviewSeed> issuePreviewSeeds(
             UUID analysisId, IssueWorkshopPlansRequest request, MaterialAnalysisIssuePreviewOverlay overlay) {
         AnalysisView current = analysisService.issuePreviewDetail(analysisId, overlay);
-        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(current), request);
+        Map<UUID,BigDecimal> privateAvailable=MaterialAnalysisSalesStock.availableByRoot(em,analysisId);
+        boolean privateProjected=false;
+        for(var line:request.lines()) {
+            if(line.orderMethod()==null&&line.quantityMode()==null)continue;
+            MaterialView root=line.materialLineId()!=null?current.flatMaterials().stream().filter(row->row.level()==0&&row.materialLineId().equals(line.materialLineId())).findFirst().orElse(null)
+                    :current.flatMaterials().stream().filter(row->row.level()==0&&row.analysisLineId().equals(line.analysisLineId())).findFirst().orElse(null);
+            if(root==null)continue;
+            ProductView product=current.products().stream().filter(value->value.analysisLineId().equals(root.analysisLineId())).findFirst().orElseThrow();
+            BigDecimal take=privateAvailable.getOrDefault(root.materialLineId(),BigDecimal.ZERO).min(line.qty().multiply(product.unitRate()));
+            if(take.signum()>0) { overlay.addRootPrivateAdoption(root.analysisLineId(),take.divide(product.unitRate(),4,RoundingMode.UNNECESSARY));privateProjected=true; }
+            if(MaterialOrderQuantity.availableOnly(line.orderMethod()))overlay.selectNewOutput(root.analysisLineId()+"|"+root.nodeKey(),root.analysisLineId(),BigDecimal.ZERO,BigDecimal.ZERO);
+        }
+        if(privateProjected)current=analysisService.reprojectIssuePreview(analysisId,overlay);
+        Map<UUID,MaterialView> previewMaterials=current.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        List<IssueWorkshopPlansRequest.IssuePlanLine> writableLines=request.lines().stream().filter(line->!MaterialOrderQuantity.availableOnly(line.orderMethod()))
+                .filter(line->line.materialLineId()==null||!"ORDER_ALL".equals(line.orderMethod())
+                    ||!AggregateMaterialSourceEligibility.hasIndependentOrderingContext(previewMaterials.get(line.materialLineId()))).toList();
+        IssueWorkshopPlansRequest writable=new IssueWorkshopPlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),
+                request.billDate(),request.deliveryDate(),request.approveNow(),writableLines,request.skipAutoClaim());
+        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(current), writable);
         // 与 ensureWorkshopChildAnchors 同口径的锚点安排：真实下达在建计划之前先新建锚点(初始配额
         // 计入父节点内部承诺)、给既有锚点补让料配额, 随后刷新一次。预览把同样的事实叠进投影再投一次。
         Map<UUID, BigDecimal> newAnchorQuota = new HashMap<>();
         boolean anchorsChanged = false;
         if (!makeLines.isEmpty()) {
-            for (WorkshopAnchorDemand demand : workshopAnchorDemands(analysisId, current, makeLines)) {
+            for (WorkshopAnchorDemand demand : workshopAnchorDemands(analysisId, current, makeLines,writableLines.stream().filter(line->"ORDER_ALL".equals(line.orderMethod())).map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId).filter(Objects::nonNull).collect(Collectors.toSet()))) {
                 MaterialView representative = demand.group().materials().getFirst();
                 String parentNodeRef = representative.analysisLineId() + "|" + representative.nodeKey();
                 if (demand.existingAnchorId() == null) {
@@ -1456,7 +1620,7 @@ public class MaterialAnalysisCommandService {
         }
         if (anchorsChanged) current = analysisService.reprojectIssuePreview(analysisId, overlay);
         Map<UUID, UUID> childLineByMaterialLine = batchChildLineIds(analysisId,
-                request.lines().stream().map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
+                writableLines.stream().map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
                         .filter(Objects::nonNull).collect(Collectors.toSet()));
         Map<UUID, ProductView> products = current.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
@@ -1471,7 +1635,7 @@ public class MaterialAnalysisCommandService {
         List<MaterialAnalysisService.IssuePreviewSeed> seeds = new ArrayList<>();
         List<PreviewPlanLookup> pendingPlans = new ArrayList<>();
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(request.billDate(), request.deliveryDate());
-        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+        for (IssueWorkshopPlansRequest.IssuePlanLine line : writableLines) {
             UUID lineId = line.analysisLineId() != null
                     ? line.analysisLineId() : childLineByMaterialLine.get(line.materialLineId());
             validatePlanSchedule(new PlanQuantity(lineId, line.qty(), line.billDate(), line.deliveryDate(),
@@ -1493,15 +1657,16 @@ public class MaterialAnalysisCommandService {
             if (product == null) {
                 throw validation("待生成计划产品不属于当前分析");
             }
-            boolean surplusOnly = Boolean.TRUE.equals(line.publicSurplusOnly());
+            boolean surplusOnly = Boolean.TRUE.equals(line.publicSurplusOnly())
+                    || "ORDER_ALL".equals(line.orderMethod())&&"COVERAGE_TOTAL".equals(line.quantityMode());
             if (!product.canSchedule()
                     && !(surplusOnly && product.canIssueSurplus() && line.qty().signum() > 0)) {
                 throw conflict(product.scheduleBlockedReason() == null
                         ? "当前产品不可排产" : product.scheduleBlockedReason());
             }
-            BigDecimal effectiveQty=line.qty();
+            BigDecimal effectiveQty=coveragePlanQuantity(line, product, current);
             BigDecimal demandQty = effectiveQty.min(product.remainingQty());
-            if(product.rootMaterialLineId()!=null) {
+            if(product.rootMaterialLineId()!=null&&!MaterialOrderQuantity.skipClaims(line.orderMethod(),request.skipClaims())) {
                 MaterialView root=materialById.get(product.rootMaterialLineId());
                 if(root!=null) {
                     demandQty=demandQty.min(root.planningUncoveredQty().divide(product.unitRate(),4,RoundingMode.DOWN));
@@ -1635,11 +1800,11 @@ public class MaterialAnalysisCommandService {
      * 不重复累计旧计划/已产出覆盖。V568让料补供继续保留原独立额度证据。
      */
     private boolean ensureWorkshopChildAnchors(
-            UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
+            UUID analysisId, AnalysisView view, List<UUID> makeLineIds,Set<UUID> fullOrderLines) {
         // 返回是否真的新建/增量了锚点行：调用方据此决定要不要补一次 refreshLocked
         // （既有锚点全部复用时快照未变，不必重算）。
         boolean changed = false;
-        for (WorkshopAnchorDemand demand : workshopAnchorDemands(analysisId, view, makeLineIds)) {
+        for (WorkshopAnchorDemand demand : workshopAnchorDemands(analysisId, view, makeLineIds,fullOrderLines)) {
             if (demand.existingAnchorId() != null) {
                 MaterialView material=demand.group().materials().getFirst();
                 if(material.priorityMakeSupplementQty().signum()>0) {
@@ -1668,7 +1833,7 @@ public class MaterialAnalysisCommandService {
      * 模拟新锚点的初始配额——两条路径同一套口径。缺口已被在途覆盖的组不建锚点, 不在结果里。
      */
     private List<WorkshopAnchorDemand> workshopAnchorDemands(
-            UUID analysisId, AnalysisView view, List<UUID> makeLineIds) {
+            UUID analysisId, AnalysisView view, List<UUID> makeLineIds,Set<UUID> fullOrderLines) {
         List<ActionGroup> groups = selectedGroups(view, new NotifyRequest(
                 null, null, "issue-anchor-" + analysisId, "MAKE",
                 makeLineIds, null, null));
@@ -1679,13 +1844,14 @@ public class MaterialAnalysisCommandService {
                 .toList());
         List<WorkshopAnchorDemand> result = new ArrayList<>();
         for (ActionGroup group : groups) {
+            boolean fullOrder=group.materials().stream().anyMatch(row->fullOrderLines.contains(row.materialLineId()));
             UUID anchorId = group.materials().getFirst().planAnchorAnalysisLineId();
             if (anchorId != null) {
                 ProductView anchor = products.get(anchorId);
                 if (anchor == null || !"MAKE_COMPONENT".equals(anchor.sourceType())) {
                     throw conflict("物料节点的计划锚点来源不一致，请刷新后核对路线");
                 }
-                BigDecimal privateNeed=group.materials().stream().map(MaterialView::planningUncoveredQty)
+                BigDecimal privateNeed=group.materials().stream().map(row->fullOrder?requiredBeforeShared(row):row.planningUncoveredQty())
                         .reduce(BigDecimal.ZERO,BigDecimal::add);
                 result.add(new WorkshopAnchorDemand(group, anchorId,
                         additionalPrivateMakeQuota(privateNeed,anchor.remainingQty())));
@@ -1696,6 +1862,7 @@ public class MaterialAnalysisCommandService {
                     .subtract(cancelledIqcReplacementInFlight(coverage, group))
                     .max(BigDecimal.ZERO)
                     .setScale(4, RoundingMode.CEILING);
+            if(fullOrder)delta=group.materials().stream().map(MaterialAnalysisCommandService::requiredBeforeShared).reduce(BigDecimal.ZERO,BigDecimal::add);
             if (delta.signum() <= 0) continue;
             result.add(new WorkshopAnchorDemand(group, null, delta));
         }
@@ -1712,9 +1879,8 @@ public class MaterialAnalysisCommandService {
      * 产品行本身就是排产对象，顶层委外件走下达委外(ADR-143 §4.5)。
      */
     private Map<UUID, String> candidateRoutesByMaterialLine(AnalysisView view) {
-        return view.flatMaterials().stream()
-                .filter(material -> material.actionable()
-                        && !"ROOT_SUPPLY".equals(material.nodeRole()))
+        return preparationOrderingMaterials(view).stream()
+                .filter(material -> !"ROOT_SUPPLY".equals(material.nodeRole()))
                 .filter(material -> material.sourceConfirmed() != null)
                 .collect(Collectors.toMap(MaterialView::materialLineId,
                         MaterialView::sourceConfirmed, (left, right) -> left));
@@ -1779,6 +1945,44 @@ public class MaterialAnalysisCommandService {
     private record PlanScheduleDefaults(LocalDate billDate, LocalDate deliveryDate) {
     }
 
+    private boolean adoptWorkshopAvailableOnly(UUID analysisId, IssueWorkshopPlansRequest request, AnalysisView view,String hash) {
+        boolean changed=false;
+        Map<UUID,ProductView> products=view.products().stream().collect(Collectors.toMap(ProductView::analysisLineId,value->value));
+        Map<UUID,MaterialView> materials=view.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,value->value));
+        for(var line:request.lines()) {
+            if(!MaterialOrderQuantity.availableOnly(line.orderMethod()))continue;
+            ProductView product=line.analysisLineId()==null?null:products.get(line.analysisLineId());
+            UUID id=line.materialLineId()!=null?line.materialLineId():product==null?null:product.rootMaterialLineId();
+            MaterialView material=materials.get(id);
+            if(material==null)throw conflict("缺少本行可用数量的权威来源，请刷新后重新核对");
+            BigDecimal rate=product==null?BigDecimal.ONE:product.unitRate();
+            BigDecimal demand=MaterialOrderQuantity.incremental(line.qty().multiply(rate),line.quantityMode(),material.requiredQty().max(material.sourceRequiredQty()==null?BigDecimal.ZERO:material.sourceRequiredQty()),material.planningUncoveredQty(),line.orderMethod())
+                    .min(material.planningUncoveredQty());
+            if(demand.signum()<=0)continue;
+            BigDecimal adopted=makePublicSupply.adoptLocked(analysisId,Map.of(id,demand),Map.of(id,PreplanMakePublicSupplyService.baseQuantum(rate)),
+                    request.idempotencyKey()+":AVAILABLE-ONLY-MAKE:"+id).getOrDefault(id,BigDecimal.ZERO);
+            BigDecimal remaining=demand.subtract(adopted);
+            if(remaining.signum()>0) {
+                ActionGroup group=selectedGroups(view,new NotifyRequest(view.version(),view.fingerprint(),request.idempotencyKey(),"MAKE",List.of(id),null,null)).getFirst();
+                adopted=adopted.add(claimSharedFutureForGroup(analysisId,view,group,remaining,null,true,
+                        request.idempotencyKey()+":AVAILABLE-ONLY-FUTURE:"+id,hash,new ArrayList<>(),new ArrayList<>(),
+                        PreplanMakePublicSupplyService.baseQuantum(rate)));
+            }
+            changed=changed||adopted.signum()>0;
+        }
+        return changed;
+    }
+
+    private static BigDecimal coveragePlanQuantity(IssueWorkshopPlansRequest.IssuePlanLine line, ProductView product, AnalysisView view) {
+        if (line.quantityMode()==null) return line.qty();
+        UUID materialId=line.materialLineId()!=null?line.materialLineId():product.rootMaterialLineId();
+        MaterialView material=view.flatMaterials().stream().filter(row->row.materialLineId().equals(materialId)).findFirst()
+                .orElseThrow(()->conflict("缺少本行权威需求覆盖来源，请刷新后重新核对"));
+        BigDecimal rate=product.unitRate();
+        return MaterialOrderQuantity.incremental(line.qty().multiply(rate),line.quantityMode(),material.requiredQty().max(material.sourceRequiredQty()==null?BigDecimal.ZERO:material.sourceRequiredQty()),material.planningUncoveredQty(),line.orderMethod())
+                .divide(rate,4,RoundingMode.UNNECESSARY);
+    }
+
     private static String issueHash(UUID analysisId, IssueWorkshopPlansRequest request) {
         List<String> parts = new ArrayList<>(List.of(
                 "ISSUE-WORKSHOP-PLANS-V1", analysisId.toString(),
@@ -1814,6 +2018,8 @@ public class MaterialAnalysisCommandService {
                     itemHash += "|ALLOWED_OVERPRODUCTION_RATE|" + MaterialAnalysisService.decimalText(allowedRate);
                 }
             }
+            if (line.quantityMode()!=null) itemHash += "|QUANTITY_MODE|" + line.quantityMode();
+            if (line.orderMethod()!=null) itemHash += "|ORDER_METHOD|" + line.orderMethod();
             parts.add(itemHash);
         });
         // 与 notifyHash 同一原则：只在明确跳过认领时附加，历史哈希不变。
@@ -2005,16 +2211,43 @@ public class MaterialAnalysisCommandService {
         }
     }
 
+    private static List<MaterialView> preparationOrderingMaterials(AnalysisView view) {
+        Map<UUID,ProductView> products=view.products().stream().collect(Collectors.toMap(ProductView::analysisLineId,row->row));
+        Map<UUID,SupplyActionView> actions=view.supplyActions().stream().collect(Collectors.toMap(SupplyActionView::actionId,row->row));
+        return view.flatMaterials().stream().filter(row->"ROOT_SUPPLY".equals(row.nodeRole())
+                ||AggregateMaterialSourceEligibility.hasOrderingContext(row,products,actions)).toList();
+    }
+    private static void appendPhysicalClaimLimits(Map<UUID,BigDecimal> result,List<MaterialView> rows,BigDecimal quantity,String mode) {
+        if(rows.isEmpty())return;
+        BigDecimal required=rows.stream().map(row->row.requiredQty().max(row.sourceRequiredQty()==null?BigDecimal.ZERO:row.sourceRequiredQty())).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal beforeShared=rows.stream().map(MaterialAnalysisCommandService::requiredBeforeShared).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal ceiling=MaterialOrderQuantity.physicalClaimCeiling(quantity,mode,required,beforeShared);
+        List<AggregateQuantityAllocator.SourceCapacity> caps=rows.stream().map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,requiredBeforeShared(row))).toList();
+        for(var allocation:AggregateQuantityAllocator.allocate(ceiling,caps,true).allocations())if(allocation.qty().signum()>0)
+            result.merge(allocation.sourceId(),allocation.qty(),BigDecimal::add);
+    }
+
+    private static List<MaterialView> preparationOrderingMaterials(AnalysisView view,NotifyRequest request) {
+        Set<UUID> normal=preparationOrderingMaterials(view).stream().map(MaterialView::materialLineId).collect(Collectors.toSet());
+        return view.flatMaterials().stream().filter(row->normal.contains(row.materialLineId())
+                ||AggregateMaterialSourceEligibility.hasIndependentOrderingContext(row)&&request.quantities()!=null&&request.quantities().stream().anyMatch(input->
+                    "ORDER_ALL".equals(input.orderMethod())&&input.qty()!=null&&input.qty().signum()>0
+                    &&(row.materialLineId().equals(input.materialLineId())||row.actionGroupKey().equals(input.actionGroupKey())))).toList();
+    }
+
+    private static BigDecimal requiredBeforeShared(MaterialView row) {
+        if(row.preparationUncoveredBeforeSharedQty()==null)throw conflict("缺少本行已落实覆盖的权威数量，请刷新后重新核对");
+        return row.preparationUncoveredBeforeSharedQty();
+    }
+
     private List<ActionGroup> selectedGroups(AnalysisView view, NotifyRequest request) {
-        Map<String, List<MaterialView>> allGroups = view.flatMaterials().stream()
-                .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole()))
+        Map<String, List<MaterialView>> allGroups = preparationOrderingMaterials(view,request).stream()
                 .collect(Collectors.groupingBy(MaterialView::actionGroupKey,
                         LinkedHashMap::new, Collectors.toList()));
         Set<String> selected = new LinkedHashSet<>();
         if (request.actionGroupKeys() != null) selected.addAll(request.actionGroupKeys());
         if (request.materialLineIds() != null) {
-            Map<UUID, String> lineGroups = view.flatMaterials().stream()
-                    .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole())).collect(
+            Map<UUID, String> lineGroups = preparationOrderingMaterials(view,request).stream().collect(
                     Collectors.toMap(MaterialView::materialLineId,
                             MaterialView::actionGroupKey));
             for (UUID lineId : request.materialLineIds()) {
@@ -2094,8 +2327,7 @@ public class MaterialAnalysisCommandService {
         if (request.quantities() == null || request.quantities().isEmpty()) {
             return Map.of();
         }
-        Map<UUID, String> lineGroups = view.flatMaterials().stream()
-                .filter(material -> material.actionable() || "ROOT_SUPPLY".equals(material.nodeRole()))
+        Map<UUID, String> lineGroups = preparationOrderingMaterials(view,request).stream()
                 .collect(Collectors.toMap(MaterialView::materialLineId,
                         MaterialView::actionGroupKey));
         Set<String> selectedKeys = selected.stream()
@@ -3117,7 +3349,9 @@ public class MaterialAnalysisCommandService {
                         + "|" + Objects.toString(value.materialLineId(), "")
                         + "|" + MaterialAnalysisService.decimalText(value.qty())
                         + "|SAFETY|" + canonicalOptionalQuantity(
-                                value.safetyReplenishmentQty()))
+                                value.safetyReplenishmentQty())
+                        + (value.quantityMode()==null ? "" : "|QUANTITY_MODE|"+value.quantityMode())
+                        + (value.orderMethod()==null ? "" : "|ORDER_METHOD|"+value.orderMethod()))
                 .sorted().forEach(parts::add);
         // ADR-099 修订(2026-09-29)：只在明确跳过认领时附加——「用可用抵扣」的哈希
         // 与历史完全一致，同一幂等键的不同意图不会被误判为回放。

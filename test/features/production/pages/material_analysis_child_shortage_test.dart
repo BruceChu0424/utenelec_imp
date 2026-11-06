@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/material_order_method.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -102,15 +103,15 @@ Future<void> _dismissClaimUsageAskIfPresent(WidgetTester tester) async {
   }
 }
 
-/// 在「是否使用可用数量抵扣」弹窗里选「保留余量，额外下单」并继续。
-Future<void> _chooseFullOrderNoClaim(WidgetTester tester) async {
-  await tester.tap(find.text('保留余量，额外下单'));
-  await tester.pump();
-  await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
-  );
-  await tester.pumpAndSettle();
-}
+/// Choose the source row's full new order before opening final confirmation.
+Future<void> _chooseFullOrderNoClaim(WidgetTester tester) =>
+    selectMaterialOrderMethod(
+      tester,
+      find.byKey(
+        ValueKey('material-analysis-order-method-${_groupKey('m-c1')}'),
+      ),
+      'ORDER_ALL',
+    );
 
 /// 主表「下单(N)」→ (可用数量抵扣询问) → 确认框「确认下单」。
 Future<void> _submitMainTable(WidgetTester tester) async {
@@ -243,9 +244,9 @@ void main() {
     await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
     await tester.pumpAndSettle();
     requests.clear();
+    await _chooseFullOrderNoClaim(tester);
     await tester.tap(find.byKey(const Key('child-shortage-submit')));
     await tester.pumpAndSettle();
-    await _chooseFullOrderNoClaim(tester);
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -254,7 +255,12 @@ void main() {
     );
     await _drain(tester);
     expect(_writes(), isNotEmpty);
-    expect(_writes().last.body?['skipAutoClaim'], isTrue);
+    expect(
+      _records(_writes().last.body?['groups']).singleWhere(
+        (group) => (group['materialLineIds'] as List).contains('m-c1'),
+      )['orderMethod'],
+      'ORDER_ALL',
+    );
   });
 
   testWidgets('权威待办理量为零时不把已落实内部供给列成需要再次下单', (tester) async {
@@ -290,27 +296,30 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
     await tester.pumpAndSettle();
+    await _chooseFullOrderNoClaim(tester);
     await tester.tap(find.byKey(const Key('child-shortage-submit')));
     await tester.pumpAndSettle();
-    await _chooseFullOrderNoClaim(tester);
     await tester.tap(
       find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
     );
     await tester.pumpAndSettle();
     expect(_writes(), isEmpty);
-    await tester.tap(
-      find.byKey(const Key('material-preparation-supply-usage')),
+    await selectMaterialOrderMethod(
+      tester,
+      find.byKey(
+        ValueKey('material-analysis-order-method-${_groupKey('m-c1')}'),
+      ),
+      'AVAILABLE_THEN_ORDER',
     );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('优先使用可用余量'));
-    await tester.tap(find.text('继续'));
-    await tester.pumpAndSettle();
     await _submitShortagePage(tester);
     expect(_writes(), isNotEmpty);
-    expect(
-      _writes().every((write) => write.body?['skipAutoClaim'] != true),
-      isTrue,
-    );
+    final copper = [
+      for (final write in _writes())
+        ..._records(
+          write.body?['groups'],
+        ).where((group) => (group['materialLineIds'] as List).contains('m-c1')),
+    ].single;
+    expect(copper['orderMethod'], 'AVAILABLE_THEN_ORDER');
   });
 
   testWidgets('下单父件后只点名它自己下层缺的料；稍后再说后提示条常驻', (tester) async {
@@ -431,7 +440,11 @@ void main() {
     expect(issued['allowedOverproductionRate'], 0.175);
     expect(_submittedSourceQty('m-c3'), 1000);
     expect(_submittedSourceQty('m-c1'), 1000);
-    expect(_submittedSourceQty('m-c2'), 500);
+    expect(
+      _submittedSourceQty('m-c2'),
+      1000,
+      reason: '未下达行默认等于需要数量1000，不预减已有库存500',
+    );
     expect(_submittedSourceQty('m-g1'), 1000);
     expect(
       _notifyQty(writes.first.body, 'm-g1'),
@@ -889,7 +902,11 @@ void main() {
     expect(find.text('已下单 1000个'), findsOneWidget, reason: '提示条入口按累计已下单说');
 
     await _submitShortagePage(tester);
-    expect(_notifyQty(_writes().single.body, 'm-pc'), 600);
+    expect(
+      _notifyQty(_writes().single.body, 'm-pc'),
+      1000,
+      reason: '未下达默认需要量1000，已有供给独立处理',
+    );
     expect(
       requests.where((r) => r.path.endsWith('/workshop-urges/reconcile')),
       isNotEmpty,

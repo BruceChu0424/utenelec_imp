@@ -38,11 +38,15 @@ class _BucketCandidatePlanInput {
     required this.workerId,
     this.publicSurplusOnly = false,
     this.allowedOverproductionRate,
+    this.quantityMode,
+    this.orderMethod,
   });
 
   final String materialLineId;
   final double qty;
   final String? qtyExact;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
   final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
@@ -63,11 +67,15 @@ class _BucketPlanDraft {
     required this.workerId,
     this.publicSurplusOnly = false,
     this.allowedOverproductionRate,
+    this.quantityMode,
+    this.orderMethod,
   });
 
   final String analysisLineId;
   final double qty;
   final String? qtyExact;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
   final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;

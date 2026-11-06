@@ -161,7 +161,8 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
     if (precisionOwnerScope != scope) {
       if (drafts.isNotEmpty ||
           _submittedRequest != null ||
-          owner._tableUserTypedQty.isNotEmpty) {
+          owner._tableUserTypedQty.isNotEmpty ||
+          owner._preparationOrderMethodByGroup.isNotEmpty) {
         return const Material(
           child: Center(child: Text('登录身份或权限已变化，请重新打开分析。原输入和原请求保留在原账号下。')),
         );
@@ -294,7 +295,10 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
     'warehouseId': owner._warehouseId,
     'billDate': owner._dateText(owner._billDate),
     'deliveryDate': owner._dateText(owner._deliveryDate),
-    'useAvailableQty': owner._preparationUseAvailableQty,
+    'orderMethodByGroup': {
+      for (final entry in owner._preparationOrderMethodByGroup.entries)
+        entry.key: entry.value.wireName,
+    },
     'approveNow': owner._preparationApproveNow,
     'groups': [
       for (final draft in drafts.values)
@@ -458,6 +462,30 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
         }
       }
     }
+    final restoredChoices = <String, MaterialPreparationOrderMethod>{};
+    final rowChoices = data['orderMethodByGroup'];
+    if (rowChoices != null && rowChoices is! Map) {
+      throw const FormatException('原备料草稿的下单方式无法核对，请保留草稿并重新读取');
+    }
+    if (rowChoices is Map) {
+      for (final entry in rowChoices.entries) {
+        final method = MaterialPreparationOrderMethod.fromWire(entry.value);
+        if (method == null) {
+          throw const FormatException('原备料草稿的下单方式无法核对，请保留草稿并重新读取');
+        }
+        final key = entry.key.toString();
+        if (liveIndexes.groupsByKey.containsKey(key)) {
+          restoredChoices[key] = method;
+        }
+      }
+    } else if (data['useAvailableQty'] case final bool legacyChoice) {
+      // Older drafts used one choice for the whole batch.
+      for (final key in liveIndexes.groupsByKey.keys) {
+        restoredChoices[key] = legacyChoice
+            ? MaterialPreparationOrderMethod.availableThenOrder
+            : MaterialPreparationOrderMethod.orderAll;
+      }
+    }
     owner._mutateAggregateTable(() {
       drafts
         ..clear()
@@ -474,7 +502,9 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
       owner._deliveryDate = data['deliveryDate'] == null
           ? null
           : DateTime.parse(data['deliveryDate'] as String);
-      owner._preparationUseAvailableQty = data['useAvailableQty'] as bool?;
+      owner._preparationOrderMethodByGroup
+        ..clear()
+        ..addAll(restoredChoices);
       owner._preparationApproveChoice = data['approveNow'] == true;
       final indexes = owner._analysisIndexes(owner._analysis!);
       for (final draft in drafts.values) {

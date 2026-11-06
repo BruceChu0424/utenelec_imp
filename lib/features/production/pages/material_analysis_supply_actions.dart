@@ -256,12 +256,24 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 就是追加量，服务端按超量分账为公共备货）。
   /// 走委外而缺 BOM 的组(ADR-143 §二.3，服务端标 bomMissing)不可执行：研发
   /// 完善 BOM 前任何下达入口都不能带上它(服务端同样 409)。
+  bool _independentMaterialPreparation(_MaterialGroup group) => group.paths.any(
+    (path) =>
+        path.sourceRequiredQty != null &&
+        path.sourceRequiredQty! > 0 &&
+        path.requiredQty <= 0 &&
+        const {
+          MaterialRequirementState.inactiveParentCovered,
+          MaterialRequirementState.inactiveParentRoute,
+        }.contains(path.effectiveRequirementState),
+  );
+
   bool _isExecutableSupplyGroup(
     _MaterialGroup group,
     MaterialSupplyRoute route, {
     bool allowExtra = false,
   }) =>
       (group.actionable ||
+          _independentMaterialPreparation(group) ||
           group.paths.any((path) => path.hasPriorityMakeSupplement) ||
           _hasRootStockToAllocate(group, route)) &&
       _planningBlockForGroup(group) == null &&
@@ -460,13 +472,9 @@ abstract class _MaterialAnalysisSupplyActionsState
     return targets;
   }
 
-  /// true = 优先使用可用余量；false = 保留余量、额外下单；null = 取消。
-  /// 与行内编辑共用本轮选择，单独入口按实际提交量核对。
-  Future<bool?> _askClaimableSupplyUsage(
-    Iterable<_MaterialGroup> groups,
-    Map<_MaterialGroup, double>? pending,
-  );
-  void _completePreparationSupplyUsage();
+  MaterialPreparationOrderMethod _preparationOrderMethod(_MaterialGroup group);
+  bool _preparationCoverageTotal(_MaterialGroup group);
+  String _preparationDefaultOrderQtyText(_MaterialGroup group);
 
   /// [silent] = 调用方已经做过一次总结确认、并会自己汇报结果（下层办齐编排，
   /// ADR-081）：跳过本函数的数量确认弹窗与成功提示，避免一次一键下单连弹三层
@@ -529,26 +537,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       );
     }
     if (quantities == null || !mounted || !currentScope()) return null;
-    // 单独入口（行菜单 / 分桶页直接提交）在这里问一次「是否扣可用数量」；编排
-    // 入口一律 silent=true，由 _submitMaterialTableRowsInScope 统一问过再把标志
-    // 传进来，不会连问两层。
-    if (!silent) {
-      final claimUsage = await _askClaimableSupplyUsage(groups, {
-        for (final group in groups)
-          group: quantities
-              .where(
-                (input) => group.paths.any(
-                  (path) =>
-                      input.materialLineId == path.materialLineId ||
-                      (input.actionGroupKey != null &&
-                          input.actionGroupKey == path.actionGroupKey),
-                ),
-              )
-              .fold<double>(0, (sum, input) => sum + input.qty),
-      });
-      if (claimUsage == null) return null;
-      skipAutoClaim = !claimUsage;
-    }
     if (!mounted || !currentScope()) return null;
     final quantityByIdentity = {
       for (final input in quantities)
@@ -677,7 +665,6 @@ abstract class _MaterialAnalysisSupplyActionsState
               MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
             };
       if (!silent) {
-        _completePreparationSupplyUsage();
         context.appSuccess(message);
       }
       // 下达产生了下游单据/任务（采购需求单/委外申请/自制任务）：徽章即时重拉
@@ -774,6 +761,13 @@ abstract class _MaterialAnalysisSupplyActionsState
   ) {
     final lines = _supplyEntryLines(entry.actionGroupKey, entry.materialLineId);
     if (lines.isEmpty) throw const FormatException('缺少下单来源');
+    final analysis = _analysis;
+    final sourceGroup = analysis == null
+        ? null
+        : _analysisIndexes(analysis).groupsByLine[lines.first.materialLineId];
+    if (sourceGroup != null && _preparationCoverageTotal(sourceGroup)) {
+      return _preparationDefaultOrderQtyText(sourceGroup);
+    }
     final group = _MaterialGroup(
       key: entry.actionGroupKey ?? entry.materialLineId!,
       paths: lines,
@@ -1006,6 +1000,13 @@ abstract class _MaterialAnalysisSupplyActionsState
       target.materialLineId,
     );
     final representative = lines.isEmpty ? null : lines.first;
+    final analysis = _analysis;
+    final group = analysis == null || representative == null
+        ? null
+        : _analysisIndexes(
+            analysis,
+          ).groupsByLine[representative.materialLineId];
+    final coverageTotal = group != null && _preparationCoverageTotal(group);
     var open = 0.0;
     var safetyStock = 0.0;
     var publicAvailable = 0.0;
@@ -1044,7 +1045,12 @@ abstract class _MaterialAnalysisSupplyActionsState
           ? target.identity
           : _materialDimensionKey(representative),
       openQty: open,
-      maxQty: lines.isEmpty
+      quantityMode: coverageTotal ? 'COVERAGE_TOTAL' : null,
+      orderMethod: group == null ? null : _preparationOrderMethod(group),
+      maxQty: coverageTotal
+          ? double.tryParse(_preparationDefaultOrderQtyText(group)) ??
+                double.nan
+          : lines.isEmpty
           ? 0
           : _residualSubmitQty(
               _MaterialGroup(key: target.identity, paths: lines),

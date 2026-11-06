@@ -26,6 +26,158 @@ String? materialPresentationSum(Iterable<String?> values) {
   return financeExactTrimmed(_presentationText(total));
 }
 
+/// The complete adoptable supply shown in the preparation table. This uses
+/// authoritative supply identities only; selection and draft reservations do
+/// not reduce it. Private supply belongs to one line, public supply to one pool.
+String? materialPreparationAvailableTotalText(
+  Iterable<ProductionMaterialAnalysisMaterial> candidates,
+) {
+  final rows = candidates.toList(growable: false);
+  if (rows.isEmpty) return null;
+  final ownedByLine = <String, (String, BigInt)>{};
+  final pools = <String, _PreparationAvailablePool>{};
+  final formatsByDimension = <String, bool>{};
+  for (final row in rows) {
+    final dimension =
+        '${row.goodsId ?? row.goodsCode ?? row.materialKey ?? row.materialLineId}|'
+        '${row.colorId ?? row.colorName ?? ''}|${row.unitId ?? row.unitName ?? ''}';
+    final modern =
+        row.preparationPoolKey != null ||
+        row.preparationOwnedAvailableQty != null ||
+        row.preparationSharedAvailableQty != null;
+    final previousFormat = formatsByDimension[dimension];
+    // A legacy combined total cannot prove how much overlaps a modern private
+    // and public breakdown of the same material.
+    if (previousFormat != null && previousFormat != modern) return null;
+    formatsByDimension[dimension] = modern;
+    final poolKey = row.preparationPoolKey ?? 'legacy:$dimension';
+    final pool = pools.putIfAbsent(poolKey, _PreparationAvailablePool.new);
+    if (!modern) {
+      final total = row.preparationAvailableQty != null
+          ? materialPresentationFact(
+              row.quantityFactsExact,
+              'preparationAvailableQty',
+              row.preparationAvailableQty,
+            )
+          : materialPresentationSum([
+              materialPresentationFact(
+                row.quantityFactsExact,
+                'mainWarehousePublicAvailableQty',
+                row.mainWarehousePublicAvailableQty,
+              ),
+              materialPresentationFact(
+                row.quantityFactsExact,
+                'sharedFutureClaimableQty',
+                row.sharedFutureClaimableQty,
+              ),
+            ]);
+      final quantity = _presentationUnits(total);
+      if (quantity == null || quantity.isNegative) return null;
+      pool.legacyTotal =
+          pool.legacyTotal == null || quantity < pool.legacyTotal!
+          ? quantity
+          : pool.legacyTotal;
+      continue;
+    }
+    if (row.preparationPoolKey == null ||
+        row.preparationPoolKey!.isEmpty ||
+        row.preparationOwnedAvailableQty == null ||
+        row.preparationSharedAvailableQty == null) {
+      return null;
+    }
+    final owned = _presentationUnits(
+      materialPresentationFact(
+        row.quantityFactsExact,
+        'preparationOwnedAvailableQty',
+        row.preparationOwnedAvailableQty,
+      ),
+    );
+    final shared = _presentationUnits(
+      materialPresentationFact(
+        row.quantityFactsExact,
+        'preparationSharedAvailableQty',
+        row.preparationSharedAvailableQty,
+      ),
+    );
+    if (owned == null ||
+        shared == null ||
+        owned.isNegative ||
+        shared.isNegative) {
+      return null;
+    }
+    final oldOwned = ownedByLine[row.materialLineId];
+    if (oldOwned != null && oldOwned != (poolKey, owned)) return null;
+    ownedByLine[row.materialLineId] = (poolKey, owned);
+    pool.shared = pool.shared == null || shared < pool.shared!
+        ? shared
+        : pool.shared;
+    final cap = row.preparationAdoptableSharedQty == null
+        ? null
+        : _presentationUnits(
+            materialPresentationFact(
+              row.quantityFactsExact,
+              'preparationAdoptableSharedQty',
+              row.preparationAdoptableSharedQty,
+            ),
+          );
+    if (row.preparationAdoptableSharedQty != null &&
+        (cap == null || cap.isNegative)) {
+      return null;
+    }
+    final slices = row.preparationSharedSupplySlices;
+    if (slices == null) {
+      // Without identities, caps may overlap completely. The largest proven
+      // cap is safe for their union; adding per-row caps would invent supply.
+      final compatible = cap ?? shared;
+      if (compatible > pool.unidentifiedCap) pool.unidentifiedCap = compatible;
+      continue;
+    }
+    var rowEligible = BigInt.zero;
+    final rowKeys = <String>{};
+    for (final slice in slices) {
+      final quantity = _presentationUnits(slice.availableQtyText);
+      if (slice.key.isEmpty || quantity == null || quantity.isNegative) {
+        return null;
+      }
+      final old = pool.sliceQuantities[slice.key];
+      pool.sliceQuantities[slice.key] = old == null || quantity < old
+          ? quantity
+          : old;
+      if (slice.adoptable) {
+        pool.eligibleKeys.add(slice.key);
+        if (rowKeys.add(slice.key)) rowEligible += quantity;
+      }
+    }
+    if (cap != null && rowEligible > cap) return null;
+  }
+  var total = ownedByLine.values.fold<BigInt>(
+    BigInt.zero,
+    (sum, value) => sum + value.$2,
+  );
+  for (final pool in pools.values) {
+    if (pool.legacyTotal != null) {
+      total += pool.legacyTotal!;
+      continue;
+    }
+    final identified = pool.eligibleKeys.fold<BigInt>(
+      BigInt.zero,
+      (sum, key) => sum + pool.sliceQuantities[key]!,
+    );
+    final available = identified > pool.unidentifiedCap
+        ? identified
+        : pool.unidentifiedCap;
+    total += available < pool.shared! ? available : pool.shared!;
+  }
+  return financeExactTrimmed(_presentationText(total));
+}
+
+final class _PreparationAvailablePool {
+  BigInt? shared, legacyTotal;
+  BigInt unidentifiedCap = BigInt.zero;
+  final sliceQuantities = <String, BigInt>{};
+  final eligibleKeys = <String>{};
+}
+
 /// Physical order facts, counted once per action, separate from source demand
 /// and from stock that has actually arrived. Transfers/claims do not place orders.
 class MaterialIssuedQuantitySummary {

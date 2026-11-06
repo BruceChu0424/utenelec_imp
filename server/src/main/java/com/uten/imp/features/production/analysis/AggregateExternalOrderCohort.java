@@ -49,7 +49,7 @@ final class AggregateExternalOrderCohort {
             if(!external(group)||group.safetyQty().signum()>0||group.blockedReason()!=null
                     ||!dimensions.add(group.goodsId()+"|"+group.colorId()))break;
             GroupInput input=inputs.get(group.clientGroupKey());
-            if(input==null||!provenSources(group,input,rows))break;
+            if(input==null||MaterialOrderQuantity.availableOnly(input.orderMethod())||!provenSources(group,input,rows))break;
             Set<UUID> ids=new HashSet<>(input.materialLineIds());
             group.sources().forEach(source->ids.add(source.materialLineId()));
             Set<UUID> related=reachable(ids,aliases);

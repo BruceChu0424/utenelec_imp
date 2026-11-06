@@ -166,6 +166,7 @@ class MaterialAnalysisMakeChildDetails extends StatelessWidget {
 
 abstract class _MaterialAnalysisProductTasksState
     extends _MaterialAnalysisPlanActionsState {
+  String _nextStepText(ProductionMaterialAnalysisView analysis);
   // 主表、三个准备桶和核对页共用同一份数量及办理规则。
   double _preparationOrderedQty(_MaterialGroup group);
   double _preparationUncoveredQty(_MaterialGroup group);
@@ -722,7 +723,9 @@ abstract class _MaterialAnalysisProductTasksState
                     ),
                   ),
                   UtenFieldHintIcon(
-                    info: _l10n.materialTaskSectionHint,
+                    key: const Key('material-analysis-next-step'),
+                    info:
+                        '${_l10n.materialTaskSectionHint}\n${_nextStepText(analysis)}',
                     dense: true,
                   ),
                 ],
@@ -1259,6 +1262,8 @@ abstract class _MaterialAnalysisProductTasksState
           materialLineId: input.materialLineId,
           qty: input.qty,
           qtyExact: input.qtyExact,
+          quantityMode: input.quantityMode,
+          orderMethod: input.orderMethod,
           allowedOverproductionRate: input.allowedOverproductionRate,
           departmentId: input.departmentId,
           workshopName: input.workshopName,
@@ -1270,6 +1275,8 @@ abstract class _MaterialAnalysisProductTasksState
           analysisLineId: draft.analysisLineId,
           qty: draft.qty,
           qtyExact: draft.qtyExact,
+          quantityMode: draft.quantityMode,
+          orderMethod: draft.orderMethod,
           allowedOverproductionRate: draft.allowedOverproductionRate,
           departmentId: draft.departmentId,
           workshopName: draft.workshopName,
@@ -1335,6 +1342,15 @@ abstract class _MaterialAnalysisProductTasksState
         _preparationPlanResults[plan.planId] = plan;
       }
       if (silent) return true;
+      if (plans.isEmpty &&
+          lines.every(
+            (line) =>
+                line.orderMethod ==
+                MaterialPreparationOrderMethod.availableOnly,
+          )) {
+        context.appSuccess('可用数量已按原来源确认，本次未新增车间生产计划');
+        return true;
+      }
       // ADR-104：追加并入了还没开工的原计划(同一单号)时不说「已生成」——那会让人去找
       // 一张不存在的新单。全部并入 / 部分并入 / 全部新建三种口径分开说。
       final mergedCount = plans.where((plan) => plan.mergedIntoExisting).length;
@@ -1760,6 +1776,9 @@ abstract class _MaterialAnalysisProductTasksState
       return _StatusView(planningBlock, facetKey: 'blocked');
     }
     final material = group.representative;
+    if (_independentMaterialPreparation(group)) {
+      return _StatusView('可独立下单', facetKey: 'pendingIssue');
+    }
     if (material.hasPriorityMakeSupplement) {
       return _StatusView(
         '让料后待补自制 ${_qty(material.priorityMakeSupplementQty)}',

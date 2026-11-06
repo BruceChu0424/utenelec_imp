@@ -116,11 +116,49 @@ abstract class _MaterialAnalysisMaterialTableState
   late final _aggregateTable = _MaterialAggregateTableController(this);
   late final _draftBudget = _MaterialPreparationDraftBudgetController(this);
   final Set<String> _tableLastReseedRoots = {};
-  bool? _preparationUseAvailableQty;
-  Future<bool?>? _preparationUsageQuestion;
+  final Map<String, MaterialPreparationOrderMethod>
+  _preparationOrderMethodByGroup = {};
+  Object? _preparationOrderMethodPreviewOwner;
 
-  String get _preparationUsageLabel =>
-      _preparationUseAvailableQty == false ? '保留余量，额外下单' : '优先使用可用余量';
+  @override
+  bool _preparationCoverageTotal(_MaterialGroup group) =>
+      !_tableGroupIssued(group);
+
+  @override
+  String _preparationDefaultOrderQtyText(_MaterialGroup group) =>
+      _tableDefaultSubmitQtyText(group, authoritative: true);
+
+  @override
+  MaterialPreparationOrderMethod _preparationOrderMethod(_MaterialGroup group) {
+    final chosen = _preparationOrderMethodByGroup[group.key];
+    if (chosen != null) return chosen;
+    final shown = group.paths.map(_tablePreviewed).toList(growable: false);
+    final available = materialPreparationAvailableTotalText(shown);
+    try {
+      var availableUnits = available == null
+          ? BigInt.zero
+          : materialQuantityUnits(available);
+      if (_tableGroupIssued(group)) {
+        final owned = materialPresentationSum(
+          shown.map(
+            (path) => materialPresentationFact(
+              path.quantityFactsExact,
+              'preparationOwnedAvailableQty',
+              path.preparationOwnedAvailableQty ?? 0,
+            ),
+          ),
+        );
+        if (owned != null) availableUnits -= materialQuantityUnits(owned);
+      }
+      final requested = materialQuantityUnits(_tableSubmitQtyTextOf(group));
+      return requested <= availableUnits
+          ? MaterialPreparationOrderMethod.availableOnly
+          : MaterialPreparationOrderMethod.orderAll;
+    } on FormatException {
+      return MaterialPreparationOrderMethod
+          .orderAll; // Invalid input remains visible and blocks submission.
+    }
+  }
 
   @override
   void _applyAnalysisKeepingPreparationEditing(
@@ -226,40 +264,14 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool get _busy =>
       super._busy ||
+      _preparationOrderMethodPreviewOwner != null ||
       _retainingMaterialPresentation ||
       _aggregateTable.saving ||
       _aggregateTable.submission.running;
   @override
   bool get _materialAggregateWorking => _aggregateTable.saving;
   @override
-  Widget? _materialAggregateToolbarAction() {
-    final aggregateAction = _aggregateTable.toolbarAction();
-    final usageAction = _preparationSupplyUsageAction();
-    if (usageAction == null) return aggregateAction;
-    return Wrap(
-      spacing: UtenSpacing.s8,
-      children: [usageAction, ?aggregateAction],
-    );
-  }
-
-  Widget? _preparationSupplyUsageAction() => _preparationUseAvailableQty == null
-      ? null
-      : UtenButton(
-          key: const Key('material-preparation-supply-usage'),
-          type: UtenButtonType.ghost,
-          height: UtenTableToolbar.controlHeight,
-          onPressed:
-              _busy || _preparationSubmissionActive || _aggregateTable.uncertain
-              ? null
-              : () => unawaited(
-                  _askClaimableSupplyUsage(
-                    _selectedIssuableGroups().visible,
-                    null,
-                    forceChoice: true,
-                  ),
-                ),
-          child: Text('下单方式：$_preparationUsageLabel'),
-        );
+  Widget? _materialAggregateToolbarAction() => _aggregateTable.toolbarAction();
 
   @override
   void _materialAggregateAnalysisChanged() => _aggregateTable.analysisChanged();
@@ -361,7 +373,6 @@ abstract class _MaterialAnalysisMaterialTableState
       _materialTableLocalFacetRevision(),
       routes.join(','),
       dirty.join(','),
-      _preparationUseAvailableQty,
       _preparationApproveChoice,
     );
   }
@@ -1345,7 +1356,16 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null) return const {};
     final byLine = _analysisIndexes(analysis).groupsByLine;
     final values = <String, double>{};
-    for (final lineId in _tableUserTypedQty.keys) {
+    final candidateIds = <String>{..._tableUserTypedQty.keys};
+    for (final key in _selectedMaterialGroupKeys) {
+      final group = _analysisIndexes(analysis).groupsByKey[key];
+      if (group != null &&
+          _tableGroupHasChildren(group) &&
+          _preparationOrderMethodByGroup.containsKey(key)) {
+        candidateIds.add(group.representative.materialLineId);
+      }
+    }
+    for (final lineId in candidateIds) {
       final group = byLine[lineId];
       if (group == null || !_selectedMaterialGroupKeys.contains(group.key)) {
         continue;
@@ -2343,8 +2363,8 @@ abstract class _MaterialAnalysisMaterialTableState
               );
       },
     ),
-    // 可用只含公共余量；优先使用余量时，有效选中输入临时预占公共部分。
-    // 正式下达后的库存、已下单和在途事实仍由服务端返回。
+    // Show the server-proven supply available to this source. Selection budgets
+    // remain separate and never turn an unchanged stock fact into a smaller display.
     MasterColumnDef(
       key: 'publicAvailableQty',
       label: _l10n.materialPublicAvailable,
@@ -2377,11 +2397,11 @@ abstract class _MaterialAnalysisMaterialTableState
           final material = row.material ?? row.aggregate?.representative;
           final budget = _tableBudgetOf(row);
           final tooltip = budget != null
-              ? '${_preparationUseAvailableQty == false ? '本次保留余量、额外下单，不预扣公共可用量。' : '本次选中量预占后，'}公共可用余额 $text。'
-                    '本行本次预占 ${budget.reservedSharedQtyText ?? '待核'}；取消勾选即恢复。已归属各订单的私有份额不再加入公共可用。'
+              ? '当前可采用数量 $text（包含本来源已有供给及可采用的公共供给），勾选不会改写此数。'
+                    '本次临时预留 ${budget.reservedSharedQtyText ?? '待核'}；取消勾选即恢复。其他订单的私有供给不计入本行可用。'
                     '这是本次编辑预算，正式下达后按实际结果更新。'
               : material?.preparationAvailableQty != null
-              ? '当前可采用 $text，包含仓库现货、已下单待办理和在途供给。'
+              ? '当前可采用 $text，包含本来源已有供给及符合资格的公共现货或在途供给。'
                     '已被其它订单占用的部分不重复计入；入库前不能作为可领料现货。'
               : parts.stock <= 0 && parts.future <= 0
               ? '这一行没有可用的公共现货或公共在途。'
@@ -2436,6 +2456,18 @@ abstract class _MaterialAnalysisMaterialTableState
       exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableOrderQtyCell(theme, row),
+    ),
+    MasterColumnDef(
+      key: 'orderMethod',
+      label: '下单方式',
+      width: 264,
+      minimumWidthOf: (_) => 264,
+      exportable: false,
+      info:
+          '下单数量默认等于需要数量。可用数量充足时默认仅使用可用数量，有缺口时默认全部下单。也可选择先使用可用数量，再为不足部分采购、委外或下达车间。',
+      value: _materialTableOrderMethodLabel,
+      cellBuilderHandlesSemantics: true,
+      cellBuilder: (_, row) => _materialTableOrderMethodCell(row),
     ),
     MasterColumnDef(
       key: 'allowedOverproductionRate',
@@ -3050,6 +3082,41 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  String? _materialSourceRequiredText(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final baseline = materialPresentationFact(
+      material.quantityFactsExact,
+      'sourceRequiredQty',
+      material.sourceRequiredQty,
+    );
+    if (baseline != null || !material.isRootSupply) return baseline;
+    final analysis = _analysis;
+    final product = analysis == null
+        ? null
+        : _analysisIndexes(analysis).productsById[material.analysisLineId];
+    if (product == null ||
+        product.rootMaterialLineId != material.materialLineId)
+      return null;
+    final requested = materialPresentationFact(
+      product.quantityFactsExact,
+      'requestedQty',
+      product.requestedQty,
+    );
+    if (requested == null) return null;
+    try {
+      return materialQuantityProduct(
+        requested,
+        materialUnitRateFact(
+          product.quantityFactsExact['unitRate'],
+          product.unitRate,
+        ),
+      );
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// 原始需求只读正式快照中的来源基线，不参与输入估算或模拟备料快照。
   /// 旧服务端缺失基线时显示横杠，不能拿动态备料量冒充原始需求。
   String? _materialTableRequiredText(_MaterialTableRow row) {
@@ -3085,11 +3152,7 @@ abstract class _MaterialAnalysisMaterialTableState
             );
     }
     if (row.material case final material?) {
-      return materialPresentationFact(
-        material.quantityFactsExact,
-        'sourceRequiredQty',
-        material.sourceRequiredQty,
-      );
+      return _materialSourceRequiredText(material);
     }
     if (product == null) return null;
     return materialPresentationFact(
@@ -3125,48 +3188,9 @@ abstract class _MaterialAnalysisMaterialTableState
 
   String? _materialTablePublicAvailableText(_MaterialTableRow row) {
     if (row.contextOnly || row.isAggregateSource) return null;
-    if (_draftBudget.value.pendingReason != null) return null;
-    // 预算优先（HEAD 同口径）：共享池余量的实时投影——选中预占、取消/清空
-    // 恢复、供给片可用性都在这里体现；来源行已在上面按「共享池只在汇总行
-    // 显示一次」返回 '—'，不与预算分支冲突。
-    final budget = _tableBudgetOf(row);
-    if (budget != null) {
-      return budget.availableQtyText;
-    }
     final paths =
         row.aggregate?.paths ?? [if (row.material != null) row.material!];
-    final pools = <String, String?>{};
-    for (final original in paths) {
-      final material = _tablePreviewed(original);
-      final key = material.preparationPoolKey ?? _aggregateKeyOf(material);
-      final quantity = material.preparationAvailableQty != null
-          ? materialPresentationFact(
-              material.quantityFactsExact,
-              'preparationAvailableQty',
-              material.preparationAvailableQty,
-            )
-          : material.preparationPoolKey != null
-          ? materialPresentationFact(
-              material.quantityFactsExact,
-              'preparationSharedAvailableQty',
-              material.preparationSharedAvailableQty,
-            )
-          : materialPresentationSum([
-              materialPresentationFact(
-                material.quantityFactsExact,
-                'mainWarehousePublicAvailableQty',
-                material.mainWarehousePublicAvailableQty,
-              ),
-              materialPresentationFact(
-                material.quantityFactsExact,
-                'sharedFutureClaimableQty',
-                material.sharedFutureClaimableQty,
-              ),
-            ]);
-      if (pools.containsKey(key) && pools[key] != quantity) return null;
-      pools[key] = quantity;
-    }
-    return paths.isEmpty ? null : materialPresentationSum(pools.values);
+    return materialPreparationAvailableTotalText(paths);
   }
 
   /// 「可用数量」的两段分解(悬浮说明用)：公共现货 / 公共在途可认领。
@@ -3432,6 +3456,10 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 按这些数展开的，不是按此刻框里的数——服务端那趟在路上时用户又改了数，
   /// 回来以后也要拿它把这期间多改的那部分就地补算，屏幕才不会先跳回旧数字。
   Map<String, double> _tableCascadePreviewTyped = const {};
+  Map<String, String> _tableCascadePreviewTexts = const {};
+  String? _tableCascadePreviewFailure;
+  Map<String, MaterialPreparationOrderMethod> _tableCascadePreviewMethods =
+      const {};
 
   /// 服务端只读预览返回前的即时估算，按物料行保存。预览覆盖估算，
   /// 真实提交仍由服务端核对数量和来源；估算不是库存或下单事实。
@@ -3491,7 +3519,11 @@ abstract class _MaterialAnalysisMaterialTableState
     _disposeMaterialTableInputs();
     _preparationPlanResults.clear();
     _preparationApproveChoice = null;
-    _preparationUseAvailableQty = null;
+    _preparationOrderMethodByGroup.clear();
+    _preparationOrderMethodPreviewOwner = null;
+    _tableCascadePreviewFailure = null;
+    _tableCascadePreviewTexts = const {};
+    _tableCascadePreviewMethods = const {};
     _tableSeededQtyTexts.clear();
     _tableUserTypedQty.clear();
     _tableAutoSelectedKeys.clear();
@@ -3934,11 +3966,10 @@ abstract class _MaterialAnalysisMaterialTableState
     _MaterialGroup group, {
     bool authoritative = false,
   }) {
-    final quantity = _tableGroupResidual(group, authoritative: authoritative);
-    final route = _draftRoute(group);
-    return route == null
-        ? quantity
-        : _submitQtyWithOrderPolicy(group, route, quantity);
+    return double.tryParse(
+          _tableDefaultSubmitQtyText(group, authoritative: authoritative),
+        ) ??
+        double.nan;
   }
 
   String _quantityFact(String? exact, double legacy) {
@@ -4019,10 +4050,76 @@ abstract class _MaterialAnalysisMaterialTableState
     return _aggregateTable.sumQuantityTexts(parts);
   }
 
+  /// Initial suggestions keep the original demand. A reviewed new parent
+  /// output can legitimately create a different child requirement; only the
+  /// server's exact requirement can reseed that child, never local doubles.
+  String _tableGroupRequiredQtyText(
+    _MaterialGroup group, {
+    bool authoritative = false,
+    bool allowLocalEstimate = true,
+  }) {
+    final analysis = _analysis;
+    final indexes = analysis == null ? null : _analysisIndexes(analysis);
+    final parents = analysis == null
+        ? const <String, String?>{}
+        : _bomPresentation(analysis).parentIdsByMaterial;
+    final parts = <String?>[];
+    for (final path in group.paths) {
+      var driven = false;
+      var parent = parents[path.materialLineId];
+      final visited = <String>{};
+      while (!path.isRootSupply && parent != null && visited.add(parent)) {
+        final ancestor = indexes?.groupsByLine[parent];
+        if (ancestor != null &&
+            ((!authoritative &&
+                    _tableCascadePreview != null &&
+                    _selectedMaterialGroupKeys.contains(ancestor.key) &&
+                    _tableCascadePreviewTyped.containsKey(parent)) ||
+                _tableGroupDisplayedIssuedQty(ancestor) > 0)) {
+          driven = true;
+          break;
+        }
+        parent = parents[parent];
+      }
+      final shown = _tablePreviewed(path, authoritative: authoritative);
+      final preparation = shown.aggregatePreparation;
+      final independent = _independentMaterialPreparation(
+        _MaterialGroup(key: group.key, paths: [shown]),
+      );
+      final estimate = !authoritative && allowLocalEstimate
+          ? _tableEstimatedQty[path.materialLineId]
+          : null;
+      if (estimate != null &&
+          !independent &&
+          !path.isRootSupply &&
+          estimate.required.isFinite) {
+        parts.add(_qty(estimate.required));
+        continue;
+      }
+      parts.add(
+        driven && !independent
+            ? materialPresentationFact(
+                preparation?.quantityFactsExact ?? shown.quantityFactsExact,
+                'requiredQty',
+                preparation?.requiredQty ?? shown.requiredQty,
+              )
+            : _materialSourceRequiredText(path),
+      );
+    }
+    return materialPresentationSum(parts) ?? 'NaN';
+  }
+
   String _tableDefaultSubmitQtyText(
     _MaterialGroup group, {
     bool authoritative = false,
+    bool allowLocalEstimate = true,
   }) {
+    if (!_tableGroupIssued(group))
+      return _tableGroupRequiredQtyText(
+        group,
+        authoritative: authoritative,
+        allowLocalEstimate: allowLocalEstimate,
+      );
     try {
       final quantity = _tableGroupResidualText(
         group,
@@ -4348,12 +4445,22 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 原始桶：顶层产品行的第 1 层子件 `parentNodeKey` 是空的，按原始桶查顶层
   /// 永远「没有下层」——在顶层产品行改数既不当场换算、也不问服务端，正是用户
   /// 2026-09-22 实机看到的「主表改数值没反应」。
+  _BomPresentation? _tableChildrenPresentation;
+  Set<String> _tableParentsWithChildren = const {};
+
   bool _tableGroupHasChildren(_MaterialGroup group) {
     final analysis = _analysis;
     if (analysis == null) return false;
-    final parents = _bomPresentation(analysis).parentIdsByMaterial;
-    final ids = {for (final path in group.paths) path.materialLineId};
-    return parents.values.any(ids.contains);
+    final presentation = _bomPresentation(analysis);
+    if (!identical(presentation, _tableChildrenPresentation)) {
+      _tableChildrenPresentation = presentation;
+      _tableParentsWithChildren = presentation.parentIdsByMaterial.values
+          .whereType<String>()
+          .toSet();
+    }
+    return group.paths.any(
+      (path) => _tableParentsWithChildren.contains(path.materialLineId),
+    );
   }
 
   /// 页面级去抖、单飞并尾随最新人工输入，避免每行独立排预览请求。
@@ -4429,10 +4536,10 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 即时父子换算只用于输入反馈；服务端按实际来源覆盖与计划产出重新展开，
   /// 回包成为下一次估算的基线。输入未选中时不参与本次预览。
-  Future<void> _refreshTableCascadePreview() async {
-    if (_preparationSubmissionActive) return;
+  Future<void> _refreshTableCascadePreview({bool forSubmission = false}) async {
+    if (_preparationSubmissionActive && !forSubmission) return;
     if (_aggregateTable.hasDrafts) {
-      await _aggregateTable.refreshPreview();
+      await _aggregateTable.refreshPreview(forSubmission: forSubmission);
       return;
     }
     final analysis = _analysis;
@@ -4440,6 +4547,17 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null || warehouseId == null || !mounted) return;
     final sessionScope = _sessionScopeKey();
     final activeTyped = _selectedTableTypedOutputs();
+    final indexes = _analysisIndexes(analysis);
+    final activeTexts = <String, String>{
+      for (final id in activeTyped.keys)
+        if (indexes.groupsByLine[id] case final group?)
+          id: _tableSubmitQtyTextOf(group),
+    };
+    final activeMethods = <String, MaterialPreparationOrderMethod>{
+      for (final id in activeTyped.keys)
+        if (indexes.groupsByLine[id] case final group?)
+          id: _preparationOrderMethod(group),
+    };
     if (activeTyped.isNotEmpty && _tableCascadeInFlight) {
       // 单飞：上一份还在路上，只记「回来后按最新填数再要一次」。在途那份照常装上
       // (它的分母是请求时的填数，回来后按此刻的数就地补算)，不作废。
@@ -4465,12 +4583,17 @@ abstract class _MaterialAnalysisMaterialTableState
       return;
     }
     if (_tableCascadePreview != null &&
-        mapEquals(activeTyped, _tableCascadePreviewTyped)) {
+        mapEquals(activeTyped, _tableCascadePreviewTyped) &&
+        mapEquals(activeMethods, _tableCascadePreviewMethods) &&
+        mapEquals(activeTexts, _tableCascadePreviewTexts)) {
       return;
     }
     // 记下这一趟是按哪份填数要的：回来时它就是新的换算分母。
     final typedSent = Map<String, double>.unmodifiable(activeTyped);
-    setState(() => _tableCascadePreviewing = true);
+    setState(() {
+      _tableCascadePreviewing = true;
+      _tableCascadePreviewFailure = null;
+    });
     _tableCascadeInFlight = true;
     final cancelToken = CancelToken();
     _tableCascadeCancelToken = cancelToken;
@@ -4499,6 +4622,13 @@ abstract class _MaterialAnalysisMaterialTableState
             // 因此只要查看权限即可，不需要生成生产计划权限。
             lines: const [],
             typedOutputs: Map<String, double>.from(typedSent),
+            orderMethods: activeMethods,
+            typedOutputTexts: activeTexts,
+            coverageTotalLineIds: {
+              for (final id in typedSent.keys)
+                if (indexes.groupsByLine[id] case final group?)
+                  if (_preparationCoverageTotal(group)) id,
+            },
           );
       // 代际丢弃：用户还在敲，迟到的那一份直接作废。
       if (!mounted ||
@@ -4509,6 +4639,9 @@ abstract class _MaterialAnalysisMaterialTableState
       setState(() {
         _tableCascadePreview = view;
         _tableCascadePreviewTyped = typedSent;
+        _tableCascadePreviewTexts = Map.unmodifiable(activeTexts);
+        _tableCascadePreviewFailure = null;
+        _tableCascadePreviewMethods = Map.unmodifiable(activeMethods);
         // 服务端那份在路上时用户又改了数：分母摆到「请求时那份填数」上，把这期间
         // 多改的那部分就地补算一次。不补的话屏幕会先跳回旧数字，等下一份重算回来
         // 才跳到新数字。
@@ -4517,7 +4650,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 子层的数字变了，没被人动过的「下单数量 / 追加下单」格要跟着回填——否则
       // 父行改成 1500、子行「还缺数量」如期变成 750，可提交的却还是改量前的 500。
       _reseedTableQtyInputs(autoSelect: true);
-    } catch (_) {
+    } catch (error) {
       // 重算失败不打断填数：退回按权威快照换算的估算值，并停掉预览态。
       if (!mounted ||
           !_sameAnalysisSnapshot(analysis, sessionScope) ||
@@ -4527,6 +4660,10 @@ abstract class _MaterialAnalysisMaterialTableState
       setState(() {
         _tableCascadePreview = null;
         _tableCascadePreviewTyped = const {};
+        _tableCascadePreviewFailure = productionErrorMessage(
+          error,
+          fallback: '下单方式和下层需求核对失败',
+        );
         _recomputeTableEstimates();
       });
       _reseedTableQtyInputs(autoSelect: true);
@@ -4995,6 +5132,8 @@ abstract class _MaterialAnalysisMaterialTableState
   ) async {
     bool missing() => groups.any(
       (group) =>
+          _preparationOrderMethod(group) !=
+              MaterialPreparationOrderMethod.availableOnly &&
           _tableIssuedAssignmentOf(group) == null &&
           _tableIssueTarget(group).viaWorkshop &&
           (_tableWorkshopFor(group).id?.isNotEmpty != true ||
@@ -5440,7 +5579,19 @@ abstract class _MaterialAnalysisMaterialTableState
     _MaterialGroup group, {
     bool forAggregate = false,
   }) {
+    group = _MaterialGroup(
+      key: group.key,
+      paths: group.paths.map(_tablePreviewed).toList(growable: false),
+    );
+    if (_independentMaterialPreparation(group) && !_canOverSupply) {
+      return '本层可独立下单备货，需要超量下单权限';
+    }
     if (_aggregateTable.inactiveSourceContext(group)) {
+      final material = group.representative;
+      if (material.effectiveRequirementState ==
+          MaterialRequirementState.inactiveParentCovered) {
+        return '上级件使用可用库存，本层无需下单；如需重新生产上级件，请将上级的下单方式改为全部下单';
+      }
       return _tableTransferredSourceReason;
     }
     final analysis = _analysis;
@@ -5508,7 +5659,9 @@ abstract class _MaterialAnalysisMaterialTableState
     if (!target.viaWorkshop && !_canNotify) {
       return '你没有「下达采购 / 委外」的权限，请找管理员开通';
     }
-    if (target.viaWorkshop) {
+    if (target.viaWorkshop &&
+        _preparationOrderMethod(group) !=
+            MaterialPreparationOrderMethod.availableOnly) {
       final actual = _tableIssuedAssignmentOf(group);
       if (actual != null &&
           (actual.planExecutionWorkshopId == null ||
@@ -5965,8 +6118,15 @@ abstract class _MaterialAnalysisMaterialTableState
     final typedOrder = double.tryParse(
       _tableOrderQtyControllers[group.key]?.text.trim() ?? '',
     );
+    if (_aggregateTable.inactiveSourceContext(group)) {
+      return Tooltip(
+        message:
+            _tableIssueBlockedReason(group) ?? _tableTransferredSourceReason,
+        child: const Text('—'),
+      );
+    }
     if ((typedOrder == null || typedOrder <= 0) &&
-        _tableGroupResidual(group) < 0.00005 &&
+        _tableDefaultSubmitQty(group) < 0.00005 &&
         !_tableCanOrderCoveredPublicSupply(group)) {
       final route = _draftRoute(group);
       if (route != null && _hasRootStockToAllocate(group, route)) {
@@ -6019,10 +6179,11 @@ abstract class _MaterialAnalysisMaterialTableState
       suffixText: group.representative.unitName?.trim(),
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
       onTyped: (text) => _onTableQtyTyped(group, text),
-      onFinished: _finishPreparationQuantityEditing,
       invalid: () => _tableOrderQtyInvalid(group),
     );
     final hint = [
+      if (_independentMaterialPreparation(group))
+        '本层可以直接下单，上级数量不变；超出本批实际需求的部分作为公共备货。',
       '本行还需安排 ${_qty(_tableGroupResidual(group))}。',
       if (shortBy != null)
         '本次只下 ${shortBy.typed}，'
@@ -6106,7 +6267,6 @@ abstract class _MaterialAnalysisMaterialTableState
       // 读不到而被静默剔掉。两格共用同一个提交单元键，所以这里必须走
       // _onTableAppendQtyTyped，让它按「下单格 + 追加格」的合计写那一个键。
       onTyped: (text) => _onTableAppendQtyTyped(group, text),
-      onFinished: _finishPreparationQuantityEditing,
       invalid: () => _tableAppendQtyInvalid(group),
     );
   }
@@ -6547,7 +6707,11 @@ abstract class _MaterialAnalysisMaterialTableState
     if (controller == null ||
         controller.text ==
             _tableSeededQtyTexts['${append ? 'APPEND' : 'ORDER'}|${group.key}']) {
-      return _tableDefaultSubmitQtyText(group, authoritative: true);
+      return _tableDefaultSubmitQtyText(
+        group,
+        authoritative: append,
+        allowLocalEstimate: false,
+      );
     }
     return controller.text.trim();
   }
@@ -6586,143 +6750,149 @@ abstract class _MaterialAnalysisMaterialTableState
         : route != null && _canNotify && _canOverSupply;
   }
 
-  bool _tableClaimChoiceMatters(_MaterialGroup group, double? typedQty) {
-    final draft =
-        _aggregateTable.drafts[_aggregateTable._draftByLine[group
-            .representative
-            .materialLineId]];
-    final quantity =
-        typedQty ??
-        (draft == null
-            ? _tableSubmitQtyOf(group)
-            : double.tryParse(draft.totalText) ?? 0);
-    return quantity.isFinite &&
-        quantity > 0 &&
-        _tableSharedAvailableBeforeEditing(group) > 0;
+  Iterable<_MaterialGroup> _materialTableOrderMethodGroups(
+    _MaterialTableRow row,
+  ) {
+    if (row.contextOnly) return const [];
+    if (row.aggregate case final aggregate?)
+      return _aggregateTable.groupsOf(aggregate);
+    return <_MaterialGroup>[?_tableEditableGroup(row)];
   }
 
-  /// 完成追加输入后询问；失焦和提交按钮可能同帧发生，提交器接管时不另开弹窗。
-  void _finishPreparationQuantityEditing(BuildContext fieldContext) {
-    final analysisId = _analysis?.analysisId;
-    final route = ModalRoute.of(fieldContext);
-    unawaited(
-      Future<void>(() async {
-        if (!mounted ||
-            !fieldContext.mounted ||
-            route?.isCurrent == false ||
-            _analysis?.analysisId != analysisId ||
-            _busy ||
-            _preparationSubmissionActive ||
-            _preparationUseAvailableQty != null) {
-          return;
-        }
-        await _askClaimableSupplyUsage(_selectedIssuableGroups().visible, null);
-      }),
+  String _orderMethodLabel(
+    MaterialPreparationOrderMethod method,
+    MaterialSupplyRoute? route,
+  ) {
+    final target = switch (route) {
+      MaterialSupplyRoute.buy => '采购',
+      MaterialSupplyRoute.subcontract => '委外',
+      MaterialSupplyRoute.make => '车间',
+      null => '下单',
+    };
+    return switch (method) {
+      MaterialPreparationOrderMethod.orderAll =>
+        route == null ? '全部下单' : '全部下单$target',
+      MaterialPreparationOrderMethod.availableOnly => '仅使用可用数量',
+      MaterialPreparationOrderMethod.availableThenOrder => '使用可用数量，不足再$target',
+    };
+  }
+
+  String _materialTableOrderMethodLabel(_MaterialTableRow row) {
+    final groups = _materialTableOrderMethodGroups(row).toList(growable: false);
+    final choices = groups.map(_preparationOrderMethod).toSet();
+    if (choices.isEmpty) return '—';
+    if (choices.length > 1) return '按来源分别选择';
+    return _orderMethodLabel(choices.single, _materialTableRoute(row));
+  }
+
+  Widget _materialTableOrderMethodCell(_MaterialTableRow row) {
+    final groups = _materialTableOrderMethodGroups(row).toList(growable: false);
+    if (groups.isEmpty) return const Text('—');
+    final choices = groups.map(_preparationOrderMethod).toSet();
+    final route = _materialTableRoute(row);
+    return SizedBox(
+      width: 240,
+      height: 28,
+      child: UtenDropdownField(
+        key: ValueKey(
+          row.aggregate != null
+              ? 'material-aggregate-order-method-${row.aggregate!.key}'
+              : 'material-analysis-order-method-${groups.single.key}',
+        ),
+        value: choices.length == 1 ? choices.single.wireName : null,
+        hintText: '按来源分别选择',
+        allowClear: false,
+        flat: true,
+        dense: true,
+        searchable: false,
+        menuMatchContentWidth: true,
+        menuPreferenceKey: 'material-analysis-order-method',
+        enabled:
+            !_busy &&
+            !_preparationSubmissionActive &&
+            !_aggregateTable.uncertain &&
+            (_canNotify || _canGenerate),
+        items: [
+          for (final method in MaterialPreparationOrderMethod.values)
+            UtenDropdownItem(
+              value: method.wireName,
+              label: _orderMethodLabel(method, route),
+            ),
+        ],
+        onChanged: (value) {
+          for (final method in MaterialPreparationOrderMethod.values) {
+            if (method.wireName == value) {
+              _setPreparationOrderMethodForGroups(groups, method);
+              break;
+            }
+          }
+        },
+      ),
     );
   }
 
-  void _setPreparationSupplyUsage(bool? useAvailable) {
-    if (!mounted) return;
+  void _setPreparationOrderMethodForGroups(
+    Iterable<_MaterialGroup> groups,
+    MaterialPreparationOrderMethod method,
+  ) {
+    if (!mounted ||
+        _busy ||
+        _preparationSubmissionActive ||
+        _aggregateTable.uncertain)
+      return;
     setState(() {
-      _preparationUseAvailableQty = useAvailable;
+      for (final group in groups) {
+        _preparationOrderMethodByGroup[group.key] = method;
+      }
       _draftBudget.invalidate();
       _tableEstimateTick.value++;
       _aggregateTable._revision++;
+      _aggregateTable._preview = null;
+      _aggregateTable._previewSignature = null;
     });
-    if (!_preparationSubmissionActive) _aggregateTable.schedulePreview();
+    _aggregateTable.draftPulse.value++;
+    final hasChildren = groups.any(_tableGroupHasChildren);
+    if (hasChildren || _aggregateTable.hasDrafts) {
+      _cancelPreparationEditorPreview();
+    }
+    if (hasChildren) _tableSelectionChanged();
+    if (_aggregateTable.hasDrafts ||
+        groups.any(
+          (group) =>
+              _selectedMaterialGroupKeys.contains(group.key) &&
+              _tableGroupHasChildren(group),
+        )) {
+      _tableCascadeDebounce?.cancel();
+      unawaited(_previewPreparationOrderMethod());
+    }
   }
 
-  @override
-  void _completePreparationSupplyUsage() => _setPreparationSupplyUsage(null);
-
-  /// 一次编辑/提交共用一个选择；取消不发单，失败保留选择，成功后下一轮重新问。
-  @override
-  Future<bool?> _askClaimableSupplyUsage(
-    Iterable<_MaterialGroup> groups,
-    Map<_MaterialGroup, double>? pending, {
-    bool forceChoice = false,
-  }) {
-    final active = _preparationUsageQuestion;
-    if (active != null) return active;
-    if (_aggregateTable.uncertain) {
-      return Future.value(
-        !(_aggregateTable._submittedRequest?.skipAutoClaim ?? false),
-      );
-    }
-    if (!forceChoice && _preparationUseAvailableQty != null) {
-      return Future.value(_preparationUseAvailableQty);
-    }
-    final relevant = [
-      for (final group in groups)
-        if (_tableClaimChoiceMatters(group, pending?[group])) group,
-    ];
-    if (relevant.isEmpty && !forceChoice) return Future.value(true);
-    late final Future<bool?> question;
-    question = _showPreparationSupplyUsageChoice().whenComplete(() {
-      if (identical(_preparationUsageQuestion, question)) {
-        _preparationUsageQuestion = null;
+  Future<void> _previewPreparationOrderMethod() async {
+    if (!mounted || _preparationOrderMethodPreviewOwner != null) return;
+    final owner = Object();
+    final scope = _sessionScopeKey();
+    const message = '正在核对下单方式和下层需求';
+    setState(() => _preparationOrderMethodPreviewOwner = owner);
+    bucketActionBusyMessage.value = message;
+    try {
+      await _refreshTableCascadePreview();
+      if (mounted &&
+          identical(_preparationOrderMethodPreviewOwner, owner) &&
+          _sessionScopeKey() == scope) {
+        final failure = _aggregateTable.hasDrafts
+            ? _aggregateTable.error
+            : _tableCascadePreviewFailure;
+        if (failure != null) context.appWarning('$failure；下单方式和输入已保留，请重新核对后下单');
       }
-    });
-    _preparationUsageQuestion = question;
-    return question;
-  }
-
-  Future<bool?> _showPreparationSupplyUsageChoice() async {
-    final analysisId = _analysis?.analysisId;
-    var useAvailable = _preparationUseAvailableQty ?? true;
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '本次下单是否使用可用数量抵扣？',
-      content: StatefulBuilder(
-        builder: (dialogContext, setDialogState) => RadioGroup<bool>(
-          groupValue: useAvailable,
-          onChanged: (value) =>
-              setDialogState(() => useAvailable = value ?? true),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<bool>(
-                      value: true,
-                      title: Text('优先使用可用余量'),
-                    ),
-                  ),
-                  UtenFieldHintIcon(
-                    dense: true,
-                    info:
-                        '本批已分配现货继续覆盖原需求；尚未覆盖的需求优先采用公共余量，不足部分再下单。已齐套时填写的数量仍是额外公共备货，不重复占用需求。',
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(
-                    child: RadioListTile<bool>(
-                      value: false,
-                      title: Text('保留余量，额外下单'),
-                    ),
-                  ),
-                  UtenFieldHintIcon(
-                    dense: true,
-                    info:
-                        '保留尚未认领的公共余量，按填写数量新增下单；本批已绑定现货不释放、不重复抵扣。超出未覆盖需求的部分成为公共备货，未入库前不能直接领用。',
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-      confirmLabel: '继续',
-    );
-    if (confirmed != true || !mounted || _analysis?.analysisId != analysisId) {
-      return null;
+    } finally {
+      if (mounted && identical(_preparationOrderMethodPreviewOwner, owner)) {
+        if (_sessionScopeKey() == scope &&
+            bucketActionBusyMessage.value == message) {
+          bucketActionBusyMessage.value = null;
+        }
+        setState(() => _preparationOrderMethodPreviewOwner = null);
+      }
     }
-    _setPreparationSupplyUsage(useAvailable);
-    return useAvailable;
   }
 
   /// 收集当前产品/来源选择下可办理的原始物料身份。产品选择覆盖完整 BOM，
@@ -6795,6 +6965,38 @@ abstract class _MaterialAnalysisMaterialTableState
     final analysis = _analysis;
     if (analysis == null || _busy || groups.isEmpty) return false;
     final sessionScope = _sessionScopeKey();
+    final selectedOutputs = _selectedTableTypedOutputs();
+    final indexes = _analysisIndexes(analysis);
+    if (selectedOutputs.keys.any(
+      (id) => _tableGroupHasChildren(indexes.groupsByLine[id]!),
+    )) {
+      const message = '正在核对本次下单数量和下层需求';
+      bucketActionBusyMessage.value = message;
+      try {
+        await _refreshTableCascadePreview(forSubmission: true);
+      } finally {
+        if (mounted &&
+            _sessionScopeKey() == sessionScope &&
+            bucketActionBusyMessage.value == message) {
+          bucketActionBusyMessage.value = null;
+        }
+      }
+      if (!mounted ||
+          !_sameAnalysisSnapshot(analysis, sessionScope) ||
+          !_preparationSubmissionStillCurrent)
+        return false;
+    }
+    if (_tableCascadePreviewFailure != null &&
+        _selectedTableTypedOutputs().isNotEmpty) {
+      context.appWarning('下层需求尚未核对成功，原输入和下单方式已保留，请刷新核对后再下单');
+      return false;
+    }
+    for (final group in groups) {
+      _preparationOrderMethodByGroup.putIfAbsent(
+        group.key,
+        () => _preparationOrderMethod(group),
+      );
+    }
     await _ensureTableMandatoryAssignments(groups);
     if (!mounted ||
         !_sameAnalysisSnapshot(analysis, sessionScope) ||
@@ -6845,6 +7047,8 @@ abstract class _MaterialAnalysisMaterialTableState
         return true;
       }
       if (_tableIssueTarget(group).viaWorkshop &&
+          _preparationOrderMethod(group) !=
+              MaterialPreparationOrderMethod.availableOnly &&
           parseProductionOverproductionPercent(
                 _overproductionPercentController(
                   materialLineId: group.representative.materialLineId,
@@ -6894,10 +7098,6 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return false;
     }
-    // 编辑时未选择的在此补问；额外下单贯穿车间、委外、采购和汇总各段。
-    final claimUsage = await _askClaimableSupplyUsage(pending.keys, pending);
-    if (claimUsage == null) return false;
-    final skipAutoClaim = !claimUsage;
     if (!mounted || !_preparationSubmissionStillCurrent) return false;
     // 根产品保持来源计划；全部组件按同一依赖图先父后子，同料自动合单。
     final split = _splitMergeableSupplyGroups(
@@ -6967,11 +7167,7 @@ abstract class _MaterialAnalysisMaterialTableState
             .toList(growable: false);
         if (workshop.isNotEmpty) {
           _lastIssuedPlans = const [];
-          final ok = await _issueMaterialTableWorkshopBatch(
-            workshop,
-            pending,
-            skipAutoClaim: skipAutoClaim,
-          );
+          final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
           if (!mounted || !_preparationSubmissionStillCurrent) return false;
           // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
           // 生产计划列表找一张不存在的新单。
@@ -7003,7 +7199,6 @@ abstract class _MaterialAnalysisMaterialTableState
             MaterialSupplyRoute.subcontract,
             subcontract,
             pending,
-            skipAutoClaim: skipAutoClaim,
           );
           if (!mounted || !_preparationSubmissionStillCurrent) return false;
           steps.add((
@@ -7031,7 +7226,6 @@ abstract class _MaterialAnalysisMaterialTableState
             MaterialSupplyRoute.buy,
             buy,
             pending,
-            skipAutoClaim: skipAutoClaim,
           );
           if (!mounted || !_preparationSubmissionStillCurrent) return false;
           steps.add((
@@ -7057,7 +7251,6 @@ abstract class _MaterialAnalysisMaterialTableState
       final aggregateOk = await _aggregateTable.submit(
         split.merged,
         confirmed: true,
-        skipAutoClaim: skipAutoClaim,
       );
       steps.add((
         label:
@@ -7096,7 +7289,6 @@ abstract class _MaterialAnalysisMaterialTableState
     });
     _reportMaterialTableSubmit(steps, blocked);
     final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
-    if (allOk) _setPreparationSupplyUsage(null);
     // 下达成功事实与整轮结果分开：根计划或聚合内部前层已经落地时，后层失败
     // 仍须核对剩余子料和催办。完全失败则不触发；失败通知、输入和返回值保留。
     if (_orderedSince(issuedBefore)) {
@@ -7138,6 +7330,10 @@ abstract class _MaterialAnalysisMaterialTableState
         drafts.add(
           _BucketPlanDraft(
             analysisLineId: rootMakeLineId,
+            quantityMode: _preparationCoverageTotal(group)
+                ? 'COVERAGE_TOTAL'
+                : null,
+            orderMethod: _preparationOrderMethod(group),
             qty: _tableRootPlanQty(group, pending[group]!)!,
             qtyExact: double.parse(exact).abs() >= 10000000000 ? exact : null,
             allowedOverproductionRate: _submittedOverproductionRate(
@@ -7155,6 +7351,10 @@ abstract class _MaterialAnalysisMaterialTableState
         _BucketCandidatePlanInput(
           materialLineId: group.representative.materialLineId,
           qty: pending[group]!,
+          quantityMode: _preparationCoverageTotal(group)
+              ? 'COVERAGE_TOTAL'
+              : null,
+          orderMethod: _preparationOrderMethod(group),
           qtyExact: pending[group]!.abs() >= 10000000000
               ? _tableSubmitQtyTextOf(group)
               : null,

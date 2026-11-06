@@ -27,6 +27,8 @@ final class MaterialSupplyQuantityEntry {
     this.allowPublicExtra = false,
     this.spec,
     this.unitName,
+    this.quantityMode,
+    this.orderMethod,
   });
 
   final String? actionGroupKey;
@@ -35,6 +37,8 @@ final class MaterialSupplyQuantityEntry {
   final String dimensionKey;
   final String? spec;
   final String? unitName;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
   final double openQty;
 
   /// 本批可提交上限（本批缺口 − 已在途需求）；行内编辑的默认值。
@@ -60,6 +64,8 @@ final class MaterialSupplyQuantityEntry {
     dimensionKey: dimensionKey,
     spec: spec,
     unitName: unitName,
+    quantityMode: quantityMode,
+    orderMethod: orderMethod,
     openQty: openQty,
     maxQty: maxQty,
     rootAllocatedStockQty: rootAllocatedStockQty,
@@ -85,6 +91,8 @@ final class MaterialSupplyQuantityEntry {
     qtyExact: qtyExact,
     safetyReplenishmentQty: safetyReplenishmentQty,
     safetyQtyExact: safetyQtyExact,
+    quantityMode: quantityMode,
+    orderMethod: orderMethod,
   );
 }
 

@@ -179,7 +179,6 @@ final class _MaterialAggregateTableController {
       // 2026-10-10 T9：单位列退役，汇总下单格的单位放输入框尾注。
       suffixText: unit,
       onTyped: (value) => changed(aggregate, value),
-      onFinished: append ? owner._finishPreparationQuantityEditing : null,
       invalid: () {
         final text = controller.text;
         if (!validText(text)) return true;
@@ -564,13 +563,22 @@ final class _MaterialAggregateTableController {
     final byKey = <String, _MaterialAggregatePart>{};
     final recipeKeys = owner._analysis?.aggregateRecipeKeysByMaterialLineId;
     for (final source in sources) {
-      final params = workshop ? makeParams(source.group) : null;
+      final method = owner._preparationOrderMethod(source.group);
+      final params =
+          workshop && method != MaterialPreparationOrderMethod.availableOnly
+          ? makeParams(source.group)
+          : null;
       final recipeKey =
           recipeKeys?[source.line] ??
           (owner._analysis?.hasAggregateRecipeKeys == true
               ? 'unresolved:${source.line}'
               : null);
-      final candidate = _MaterialAggregatePart(params, recipeKey: recipeKey);
+      final candidate = _MaterialAggregatePart(
+        params,
+        recipeKey: recipeKey,
+        orderMethod: method,
+        coverageTotal: !owner._tableGroupIssued(source.group),
+      );
       final part = byKey.putIfAbsent(candidate.key, () => candidate);
       // 同一张工单里只要有一条来源的比例是人定的，整张按人定的提交
       // (拆单键相同，车间 / 负责人 / 比例数值一致，只是显式标记不同)。
@@ -707,7 +715,7 @@ final class _MaterialAggregateTableController {
   void _validatePartCount(_MaterialAggregateDraft draft, int count) {
     if (count > materialAggregateMaxGroups) {
       throw FormatException(
-        '「${draft.label}」按生产规则和生产安排需分成 $count 组，'
+        '「${draft.label}」按生产规则、生产安排和下单方式需分成 $count 组，'
         '单次最多 $materialAggregateMaxGroups 组；请减少本次选择的来源范围。输入和选择已保留',
       );
     }
@@ -753,6 +761,8 @@ final class _MaterialAggregateTableController {
         parts.map((part) => part.recipeKey).toSet().length > 1;
     final dimensions = [
       if (differentRecipes) '生产规则',
+      if (parts.map((part) => part.orderMethod).toSet().length > 1) '下单方式',
+      if (parts.map((part) => part.coverageTotal).toSet().length > 1) '首次下单/追加',
       if (parts.map((part) => part.params?.workshop.id).toSet().length > 1)
         '车间',
       if (parts.map((part) => part.params?.worker.id).toSet().length > 1) '负责人',
@@ -767,8 +777,10 @@ final class _MaterialAggregateTableController {
         for (var i = 0; i < parts.length; i++)
           '第 ${i + 1} 张  ${parts[i].label}：${quantities[i] ?? '—'} $unit'
               .trimRight(),
-        if (differentRecipes)
-          '系统保留各来源的生产规则和数量，分组后一起下单。'
+        if (differentRecipes ||
+            parts.map((part) => part.orderMethod).toSet().length > 1 ||
+            parts.map((part) => part.coverageTotal).toSet().length > 1)
+          '系统保留各来源的规则、下单方式和数量，分组后一起办理。'
         else
           '要合成一张，就在这一行把车间、负责人和比例改成一样的。',
       ].join('\n'),
@@ -777,11 +789,17 @@ final class _MaterialAggregateTableController {
 
   MaterialAggregateOrderRequest requestFor(
     List<_MaterialAggregateDraft> selected, {
-    bool skipAutoClaim = false,
+    bool? skipAutoClaim,
   }) {
     final analysis = owner._analysis!;
     final inputs = <MaterialAggregateOrderGroupInput>[];
     final safetyDimensions = <String>{};
+    MaterialPreparationOrderMethod orderMethodOf(_MaterialAggregatePart part) =>
+        skipAutoClaim == null
+        ? part.orderMethod
+        : skipAutoClaim
+        ? MaterialPreparationOrderMethod.orderAll
+        : MaterialPreparationOrderMethod.availableThenOrder;
     for (final draft in selected) {
       if (!validText(draft.totalText)) {
         throw FormatException('「${draft.label}」请输入非负数量，最多四位小数');
@@ -839,7 +857,12 @@ final class _MaterialAggregateTableController {
       final parts = partsOf(draft.key, sources, workshop: workshop);
       _validatePartCount(draft, parts.length);
       if (workshop &&
-          parts.any((part) => part.params!.rate == null && part.rateExplicit)) {
+          parts.any(
+            (part) =>
+                part.params != null &&
+                part.params!.rate == null &&
+                part.rateExplicit,
+          )) {
         throw FormatException('「${draft.label}」允许超产比例填写有误，请填不小于 0 的百分比');
       }
       final quantities = partQuantities(draft, parts);
@@ -848,6 +871,10 @@ final class _MaterialAggregateTableController {
         // A material may appear at different BOM depths. The server admits
         // safety replenishment only in its earliest participating purchase group.
         for (final part in parts) {
+          if (orderMethodOf(part) ==
+              MaterialPreparationOrderMethod.availableOnly) {
+            continue;
+          }
           if (safetyPart == null || part.sourceDepth < safetyPart.sourceDepth) {
             safetyPart = part;
           }
@@ -855,6 +882,7 @@ final class _MaterialAggregateTableController {
       }
       for (var i = 0; i < parts.length; i++) {
         final part = parts[i];
+        final orderMethod = orderMethodOf(part);
         inputs.add(
           MaterialAggregateOrderGroupInput(
             clientGroupKey: part.clientGroupKey,
@@ -862,6 +890,9 @@ final class _MaterialAggregateTableController {
             route: route,
             qty: quantities[i].qty,
             sourceRequestedQtyByMaterialLineId: quantities[i].sourceRequested,
+            skipAutoClaim: skipAutoClaim ?? !part.orderMethod.usesAvailableQty,
+            quantityMode: part.coverageTotal ? 'COVERAGE_TOTAL' : null,
+            orderMethod: orderMethod,
             allowPublicExtra: workshop || owner._canOverSupply,
             departmentId: part.params?.workshop.id,
             workerId: part.params?.worker.id,
@@ -879,6 +910,8 @@ final class _MaterialAggregateTableController {
     }
     final warehouse = owner._warehouseId;
     if (warehouse == null) throw const FormatException('请先选择分析仓库');
+    final skipAllClaims =
+        skipAutoClaim ?? inputs.every((input) => input.skipAutoClaim == true);
     final key = businessIdempotencyKey(
       'material-aggregate-orders',
       jsonEncode([
@@ -889,7 +922,7 @@ final class _MaterialAggregateTableController {
         owner._dateText(owner._billDate),
         owner._dateText(owner._deliveryDate),
         owner._preparationApproveNow,
-        if (skipAutoClaim) 'skipAutoClaim',
+        if (skipAllClaims) 'skipAutoClaim',
         for (final input in inputs) input.toJson(),
       ]),
     );
@@ -903,7 +936,7 @@ final class _MaterialAggregateTableController {
       deliveryDate: owner._dateText(owner._deliveryDate),
       approveNow: owner._preparationApproveNow,
       groups: inputs,
-      skipAutoClaim: skipAutoClaim,
+      skipAutoClaim: skipAllClaims,
     );
   }
 
@@ -912,9 +945,9 @@ final class _MaterialAggregateTableController {
     bool forSubmission = false,
     bool? skipAutoClaim,
   }) async {
-    // 编辑预览重试应重读工具栏当前选择；提交显式指定的选择则必须贯穿整轮。
+    // Null means each row retains its own choice. Explicit legacy callers can
+    // still override the whole request; retries keep that same override.
     final skipAutoClaimOverride = skipAutoClaim;
-    skipAutoClaim ??= owner._preparationUseAvailableQty == false;
     _debounce?.cancel();
     if (saving || uncertain || drafts.isEmpty) return;
     if (!forSubmission && owner._preparationSubmissionActive) return;
@@ -936,7 +969,7 @@ final class _MaterialAggregateTableController {
         '$sessionScope|${owner._analysis?.analysisId}|$requestRevision|${scope.join('|')}|${owner._analysis?.version}|${owner._analysis?.fingerprint}|'
         '${owner._warehouseId}|${owner._dateText(owner._billDate)}|${owner._dateText(owner._deliveryDate)}|'
         '${owner._preparationApproveNow}'
-        '${skipAutoClaim ? '|skipAutoClaim' : ''}';
+        '|claimOverride:$skipAutoClaim';
     final flight = _flight;
     if (flight != null) {
       if (forSubmission && _flightSignature != signature) {
@@ -1005,7 +1038,7 @@ final class _MaterialAggregateTableController {
     String signature,
     int generation,
     String sessionScope, {
-    bool skipAutoClaim = false,
+    bool? skipAutoClaim,
   }) async {
     try {
       final selected = drafts.values
@@ -1273,7 +1306,7 @@ final class _MaterialAggregateTableController {
 
   Future<bool> submitStage(
     List<_MaterialGroup> selectedGroups, {
-    bool skipAutoClaim = false,
+    bool? skipAutoClaim,
   }) async {
     if (saving ||
         selectedGroups.isEmpty ||
@@ -1961,7 +1994,15 @@ final class _MaterialAggregateTableController {
   }
 
   bool inactiveSourceContext(_MaterialGroup group) {
-    final material = group.representative;
+    // Only the server's effective preview can reactivate a child whose parent
+    // is now ordering new output. The original BOM/source requirement alone
+    // cannot prove that this source has resumed production responsibility.
+    final material = owner._tablePreviewed(group.representative);
+    if (owner._independentMaterialPreparation(
+      _MaterialGroup(key: group.key, paths: [material]),
+    )) {
+      return false;
+    }
     if (material.hasPriorityMakeSupplement) return false;
     // 未确认来源也会令 preparation.actionable=false；正需求仍属于本来源，
     // 不能把库存覆盖/待确认误报成已转交生产责任。
@@ -2371,13 +2412,25 @@ final class _MaterialAggregateMakeParams {
 /// One compatible recipe and assignment within an aggregate draft.
 /// BUY/SUBCONTRACT retain recipe separation with null workshop [params].
 final class _MaterialAggregatePart {
-  _MaterialAggregatePart(this.params, {this.recipeKey});
+  _MaterialAggregatePart(
+    this.params, {
+    this.recipeKey,
+    required this.orderMethod,
+    required this.coverageTotal,
+  });
   _MaterialAggregateMakeParams? params;
   final String? recipeKey;
+  final MaterialPreparationOrderMethod orderMethod;
+  final bool coverageTotal;
   String? recipeLabel;
-  String get key => recipeKey == null
-      ? params?.key ?? ''
-      : jsonEncode([params?.key, recipeKey]);
+  String get key {
+    final recipeAssignment = recipeKey == null
+        ? params?.key ?? ''
+        : jsonEncode([params?.key, recipeKey]);
+    final choiceKey = jsonEncode([recipeAssignment, orderMethod.wireName]);
+    return coverageTotal ? choiceKey : jsonEncode([choiceKey, 'increment']);
+  }
+
   final lineIds = <String>[];
   final groups = <_MaterialGroup>[];
   int get sourceDepth => groups.fold<int>(
@@ -2391,6 +2444,9 @@ final class _MaterialAggregatePart {
 
   /// 本张工单的提交键，由 [_MaterialAggregateTableController.partsOf] 填。
   String clientGroupKey = '';
-  String get label =>
-      [?recipeLabel, if (params != null) params!.label].join(' / ');
+  String get label => [
+    ?recipeLabel,
+    if (params != null) params!.label,
+    orderMethod.label,
+  ].join(' / ');
 }

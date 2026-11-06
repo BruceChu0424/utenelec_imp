@@ -11,7 +11,10 @@ import '../../../shared/delivery/order_delivery_plan.dart';
 import '../../../shared/models/paged_result.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
+import 'material_preparation_order_method.dart';
 import 'production_sales_requirement.dart';
+
+export 'material_preparation_order_method.dart';
 
 enum MaterialSupplyRoute {
   make('MAKE', '自制'),
@@ -2572,6 +2575,8 @@ class MaterialSupplyQuantityInput {
     this.qtyExact,
     required this.safetyReplenishmentQty,
     this.safetyQtyExact,
+    this.quantityMode,
+    this.orderMethod,
   }) : assert(actionGroupKey != null || materialLineId != null);
 
   final String? actionGroupKey;
@@ -2580,12 +2585,16 @@ class MaterialSupplyQuantityInput {
   final String? qtyExact;
   final double safetyReplenishmentQty;
   final String? safetyQtyExact;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
 
   Map<String, dynamic> toJson() => {
     if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
     if (materialLineId != null) 'materialLineId': materialLineId,
     'qty': qtyExact ?? qty,
     'safetyReplenishmentQty': safetyQtyExact ?? safetyReplenishmentQty,
+    'quantityMode': ?quantityMode,
+    'orderMethod': ?orderMethod?.wireName,
   };
 }
 
@@ -2618,6 +2627,8 @@ class MaterialAnalysisIssueLine {
     this.workerId,
     this.publicSurplusOnly = false,
     this.allowedOverproductionRate,
+    this.quantityMode,
+    this.orderMethod,
   });
 
   final String? materialLineId;
@@ -2628,6 +2639,8 @@ class MaterialAnalysisIssueLine {
   final String? departmentId;
   final String? workshopName;
   final String? workerId;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
 
   /// ADR-099：明确声明本行是对「剩余需求已为 0」的锚点再追加一批纯公共备货
   /// 产出（不声明时服务端照旧拒绝，重复点击不会悄悄多建计划）。
@@ -2644,6 +2657,8 @@ class MaterialAnalysisIssueLine {
       'workshopName': workshopName!.trim(),
     if (workerId != null) 'workerId': workerId,
     if (publicSurplusOnly) 'publicSurplusOnly': true,
+    'quantityMode': ?quantityMode,
+    'orderMethod': ?orderMethod?.wireName,
   };
 }
 

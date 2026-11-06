@@ -96,6 +96,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return analysis.detailInternal(analysisId,false);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialAnalysisPhysicalStockClaimService physicalStockClaims;
+
     @Override @Transactional public SubmitResult submit(UUID analysisId,SubmitRequest request) {
         validateRequest(request);tx.bind();
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
@@ -123,13 +126,33 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         // ADR-143 §二.3：缺 BOM 的委外件先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次汇总下达。
         Map<UUID,MaterialView> reviewedRows=reviewed.analysis().flatMaterials().stream()
                 .collect(Collectors.toMap(MaterialView::materialLineId,row->row,(left,right)->left));
-        analysis.rejectSubcontractBomGaps(header,reviewed.groups().stream().filter(group->"SUBCONTRACT".equals(group.route()))
+        analysis.rejectSubcontractBomGaps(header,reviewed.groups().stream().filter(group->"SUBCONTRACT".equals(group.route())&&!MaterialOrderQuantity.availableOnly(request.groups().stream().filter(input->input.clientGroupKey().equals(group.clientGroupKey())).findFirst().orElseThrow().orderMethod()))
                 .flatMap(group->group.sources().stream()).map(source->reviewedRows.get(source.materialLineId()))
                 .filter(Objects::nonNull).toList());
         if(reviewed.groups().stream().anyMatch(group->group.blockedReason()!=null))throw conflict(reviewed.groups().stream().map(GroupPreview::blockedReason).filter(Objects::nonNull).findFirst().orElseThrow());
+        Map<UUID,BigDecimal> physicalLimits=new LinkedHashMap<>();
+        for(GroupInput input:request.groups()) {
+            if(input.orderMethod()==null||input.skipClaims(request.skipClaims()))continue;
+            if(input.sourceRequestedQtyByMaterialLineId().isEmpty()) {
+                BigDecimal required=input.materialLineIds().stream().map(reviewedRows::get).map(row->row.requiredQty().max(decimal(row.sourceRequiredQty()))).reduce(BigDecimal.ZERO,BigDecimal::add);
+                BigDecimal before=input.materialLineIds().stream().map(reviewedRows::get).map(row->decimal(row.preparationUncoveredBeforeSharedQty())).reduce(BigDecimal.ZERO,BigDecimal::add);
+                BigDecimal ceiling=MaterialOrderQuantity.physicalClaimCeiling(input.qty(),input.quantityMode(),required,before);
+                var caps=input.materialLineIds().stream().map(reviewedRows::get).map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,decimal(row.preparationUncoveredBeforeSharedQty()))).toList();
+                AggregateQuantityAllocator.allocate(ceiling,caps,true).allocations().forEach(share->physicalLimits.put(share.sourceId(),share.qty()));
+            } else input.sourceRequestedQtyByMaterialLineId().forEach((id,quantity)-> {
+                MaterialView row=reviewedRows.get(id);
+                physicalLimits.put(id,MaterialOrderQuantity.physicalClaimCeiling(quantity,input.quantityMode(),row.requiredQty().max(decimal(row.sourceRequiredQty())),row.preparationUncoveredBeforeSharedQty()));
+            });
+        }
+        Map<UUID,BigDecimal> physicalBefore=physicalStockClaims==null?Map.of():physicalStockClaims.ownedByMaterial(analysisId);
+        Map<UUID,BigDecimal> physicalDelta=new HashMap<>();
+        if(physicalStockClaims!=null&&physicalStockClaims.claim(analysisId,physicalLimits,"AGGREGATE-PHYSICAL:"+request.idempotencyKey())) {
+            physicalStockClaims.ownedByMaterial(analysisId).forEach((id,qty)->physicalDelta.put(id,qty.subtract(physicalBefore.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
+            analysis.refreshLocked(analysisId);
+        }
         // Parent groups commit first inside this transaction. Each following group
         // resolves its unchanged original ids against the refreshed exact alias graph.
-        Map<String,GroupInput> inputs=request.groups().stream().collect(Collectors.toMap(GroupInput::clientGroupKey,value->value));
+        Map<String,GroupInput> inputs=request.groups().stream().collect(Collectors.toMap(GroupInput::clientGroupKey,value->subtractPhysicalClaim(AggregateMaterialOrderPreviewService.incrementalInput(value,reviewedRows),value.quantityMode()==null?physicalDelta:Map.of())));
         Map<UUID,Integer> levels=reviewed.analysis().flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,MaterialView::level));
         List<GroupPreview> ordered=reviewed.groups().stream().filter(group->group.requestedQty().signum()>0||group.safetyQty().signum()>0)
                 .sorted(Comparator.comparingInt((GroupPreview group)->inputs.get(group.clientGroupKey()).materialLineIds().stream().mapToInt(source->levels.getOrDefault(source,Integer.MAX_VALUE)).min().orElse(Integer.MAX_VALUE))
@@ -138,7 +161,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                         // before sibling BUY batches recheck the now-covered gap.
                         .thenComparingInt(group->"BUY".equals(group.route())&&group.safetyQty().signum()>0?0:1)
                         .thenComparing(GroupPreview::clientGroupKey)).toList();
-        if(ordered.isEmpty())throw invalid("本次没有正数下达量");
+
         analysis.refreshLocked(analysisId);
         AnalysisView nextSnapshot=analysis.detailInternal(analysisId,false);
         List<BatchResult> results=new ArrayList<>();List<SourceAdoptionIntent> sourceAdoptions=new ArrayList<>();
@@ -168,7 +191,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             GroupInput remapped=input; // resolve() reads the current exact alias projection for every depth.
             PreviewRequest step=new PreviewRequest(current.version(),current.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),List.of(remapped));
             GroupPreview group=previews.resolve(analysisId,step,current).groups().getFirst();
-            boolean manufacturing=requireExecutableGroup(group,request);
+            boolean onlyAvailable=MaterialOrderQuantity.availableOnly(input.orderMethod());
+            boolean skipClaims=input.skipClaims(request.skipClaims());
+            boolean manufacturing=requireExecutableGroup(group,request,onlyAvailable);
             if(group.safetyQty().signum()>0&&!safetyDimensions.add(group.goodsId()+":"+Objects.toString(group.colorId(),"")))throw invalid("同一物料公共安全库存补库只能提交一次");
             Set<UUID> selectedIds=group.sources().stream().map(SourcePreview::materialLineId).collect(Collectors.toSet());
             Map<UUID,MaterialAnalysisContracts.ProductView> currentProducts=current.products().stream().collect(Collectors.toMap(MaterialAnalysisContracts.ProductView::analysisLineId,value->value));
@@ -183,7 +208,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             List<SourceAdoptionIntent> adoptionIntents;
             // ADR-099 修订(2026-09-29)：skipAutoClaim = 用户明确选择「足额下单，不扣可用
             // 数量」，两类自动认领(自制公共超产/同主仓公共在途)一并不做，按核对数量足额下达。
-            if(originalFlow!=null&&!retainedMakeResponsibility&&!request.skipClaims()) {
+            if(originalFlow!=null&&!retainedMakeResponsibility&&!skipClaims) {
                 Map<UUID,BigDecimal> desired=originalFlowTotals(input,originalFlow);
                 Set<UUID> repairOrigins=current.flatMaterials().stream()
                         .filter(row->desired.getOrDefault(row.materialLineId(),BigDecimal.ZERO).signum()>0
@@ -211,7 +236,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     originalFlow=originalPrivateFlow(remainingIntent,group,current);
                 }
             } else {
-            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility||request.skipClaims()?Map.of():commands.claimAggregateMakeFuture(analysisId, group, stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"), commandPlans, adoptedClaims::add);
+            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility||skipClaims?Map.of():commands.claimAggregateMakeFuture(analysisId, group, stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"), commandPlans, adoptedClaims::add);
             if(!makeClaims.isEmpty()) {
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,
                         source.allocatedQty().subtract(makeClaims.getOrDefault(source.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO))).toList();
@@ -219,7 +244,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 analysis.refreshLocked(analysisId);
                 current=analysis.detailInternal(analysisId,false);
             }
-            if(!retainedMakeResponsibility&&!request.skipClaims()) {
+            if(!retainedMakeResponsibility&&!skipClaims) {
                 Map<UUID,BigDecimal> claimed=commands.claimAggregateFuture(analysisId,current,group,stepKey(request.idempotencyKey(),group.clientGroupKey(),"CLAIM"),hash,adoptedClaims::add);
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,source.allocatedQty().subtract(claimed.getOrDefault(source.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO))).toList();
                 group=quantities(group,sources,sum(sources).add(group.publicExtraQty()));
@@ -232,8 +257,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             }
             Map<UUID,BigDecimal> privateProof=originalFlow==null||!hasOriginalBeneficiaryProof(input,current)?null:originalFlowTotals(input,originalFlow);
             sourceAdoptions.addAll(adoptionIntents);
+            if(onlyAvailable)continue;
             if(group.requestedQty().signum()==0&&group.safetyQty().signum()==0)continue;
-            BatchResult legacy=issueExistingSingleSource(analysisId,current,group,request,manufacturing,input.allowedOverproductionRate());
+            BatchResult legacy=issueExistingSingleSource(analysisId,current,group,request,manufacturing,input.allowedOverproductionRate(),skipClaims);
             if(legacy!=null){results.add(legacy);continue;}
             GroupInput issueIntent=issuedIntent(input,group.requestedQty(),adoptionIntents);
             if(!manufacturing) {
@@ -337,13 +363,14 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return external;
     }
 
-    private boolean requireExecutableGroup(GroupPreview group,SubmitRequest request) {
+    private boolean requireExecutableGroup(GroupPreview group,SubmitRequest request) { return requireExecutableGroup(group,request,false); }
+    private boolean requireExecutableGroup(GroupPreview group,SubmitRequest request,boolean onlyAvailable) {
         if(group.blockedReason()!=null)throw conflict(group.blockedReason());
         boolean manufacturing=manufacturing(group);
-        if(manufacturing&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))throw forbidden("立即审核需要生产计划审核权限");
+        if(manufacturing&&!onlyAvailable&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))throw forbidden("立即审核需要生产计划审核权限");
         String permission=manufacturing?"production_material_analysis:generate":"production_material_analysis:notify";
         if(!access.hasAuthority(permission))throw forbidden("缺少本次汇总下达路线权限");
-        if(!manufacturing&&group.publicExtraQty().signum()>0&&!access.hasAuthority("production_material_analysis:over_supply"))throw forbidden("外部公共备货需要独立超量下达权限");
+        if(!onlyAvailable&&!manufacturing&&group.publicExtraQty().signum()>0&&!access.hasAuthority("production_material_analysis:over_supply"))throw forbidden("外部公共备货需要独立超量下达权限");
         return manufacturing;
     }
 
@@ -413,7 +440,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     }
 
     static boolean independentManufacturing(List<GroupPreview> groups,Map<String,GroupInput> inputs,AnalysisView view) {
-        if(groups.isEmpty()||groups.stream().anyMatch(group->!"MAKE".equals(group.route())||group.safetyQty().signum()>0))return false;
+        if(groups.isEmpty()||groups.stream().anyMatch(group->!"MAKE".equals(group.route())||group.safetyQty().signum()>0||MaterialOrderQuantity.availableOnly(inputs.get(group.clientGroupKey()).orderMethod())))return false;
         Map<UUID,MaterialView> rows=view.flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,value->value));
         Map<UUID,MaterialAnalysisContracts.ProductView> products=view.products().stream()
                 .collect(Collectors.toMap(MaterialAnalysisContracts.ProductView::analysisLineId,value->value));
@@ -451,6 +478,15 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return true;
     }
 
+    private static GroupInput subtractPhysicalClaim(GroupInput input,Map<UUID,BigDecimal> claims) {
+        BigDecimal taken=input.materialLineIds().stream().map(id->claims.getOrDefault(id,BigDecimal.ZERO)).reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(taken.signum()==0)return input;
+        Map<UUID,BigDecimal> sources=new LinkedHashMap<>();
+        input.sourceRequestedQtyByMaterialLineId().forEach((id,qty)->sources.put(id,qty.subtract(claims.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
+        return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),input.qty().subtract(taken).max(BigDecimal.ZERO),input.allowPublicExtra(),input.departmentId(),input.workerId(),
+                input.teamDepartmentId(),input.billDate(),input.deliveryDate(),input.productNo(),input.allowedOverproductionRate(),input.safetyQty(),sources,input.skipAutoClaim(),input.quantityMode(),input.orderMethod());
+    }
+
     private static boolean hasOriginalBeneficiaryProof(GroupInput input,AnalysisView view) {
         Set<UUID> internal=view.products().stream().filter(product->"AGGREGATE_MAKE".equals(product.sourceType()))
                 .map(MaterialAnalysisContracts.ProductView::analysisLineId).collect(Collectors.toSet());
@@ -465,7 +501,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         Map<UUID,BigDecimal> originals=new LinkedHashMap<>();
         input.sourceRequestedQtyByMaterialLineId().forEach((id,qty)-> {
             MaterialView row=rows.get(id);
-            BigDecimal pending=(row.aggregatePreparation()==null?row.planningUncoveredQty():row.aggregatePreparation().planningUncoveredQty()).max(decimal(row.priorityMakeSupplementQty()));
+            BigDecimal pending=("ORDER_ALL".equals(input.orderMethod())?row.preparationUncoveredBeforeSharedQty():row.aggregatePreparation()==null?row.planningUncoveredQty():row.aggregatePreparation().planningUncoveredQty()).max(decimal(row.priorityMakeSupplementQty()));
             var anchor=products.get(row.planAnchorAnalysisLineId());
             if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))pending=pending.max(anchor.remainingQty());
             originals.put(id,qty.min(pending));
@@ -519,7 +555,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             throw conflict("采用份额与原行下单意图已变化，请重新核对");
         return new GroupInput(original.clientGroupKey(),original.materialLineIds(),original.route(),issuedQty,original.allowPublicExtra(),
                 original.departmentId(),original.workerId(),original.teamDepartmentId(),original.billDate(),original.deliveryDate(),original.productNo(),
-                original.allowedOverproductionRate(),original.safetyQty(),actual);
+                original.allowedOverproductionRate(),original.safetyQty(),actual,original.skipAutoClaim(),null,original.orderMethod());
     }
 
     /**
@@ -527,7 +563,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
      * [requestedRate] 是人在下单请求里填的比例；空表示按货品默认，不能拿预览已填好的默认值冒充人确认(ADR-129 §2.10)。
      */
     private BatchResult issueExistingSingleSource(UUID analysisId,AnalysisView current,GroupPreview group,
-            SubmitRequest request,boolean manufacturing,BigDecimal requestedRate) {
+            SubmitRequest request,boolean manufacturing,BigDecimal requestedRate,boolean skipClaims) {
         if(group.sources().size()!=1||group.safetyQty().signum()>0)return null;
         UUID id=group.sources().getFirst().materialLineId();
         MaterialView row=current.flatMaterials().stream().filter(value->value.materialLineId().equals(id)).findFirst().orElseThrow();
@@ -545,7 +581,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     anchor.remainingQty().signum()==0&&group.publicExtraQty().signum()>0,requestedRate);
             var result=commands.issueWorkshopPlans(analysisId,new MaterialAnalysisContracts.IssueWorkshopPlansRequest(
                     current.version(),current.fingerprint(),key,request.warehouseId(),group.billDate(),group.deliveryDate(),request.approveNow(),List.of(line),
-                    request.skipClaims()?Boolean.TRUE:null));
+                    skipClaims?Boolean.TRUE:null));
             var plan=result.plans().getFirst();
             return new BatchResult(null,group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),
                     anchor.analysisLineId(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan);
@@ -556,7 +592,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(!legacy)return null;
         var result=commands.notifySupply(analysisId,new MaterialAnalysisContracts.NotifyRequest(current.version(),current.fingerprint(),key,
                 group.route(),List.of(id),null,List.of(new MaterialAnalysisContracts.SupplyQuantityInput(null,id,group.requestedQty(),BigDecimal.ZERO)),
-                request.skipClaims()?Boolean.TRUE:null));
+                skipClaims?Boolean.TRUE:null));
         MaterialView updated=result.flatMaterials().stream().filter(value->value.materialLineId().equals(id)).findFirst().orElseThrow();
         var ref=updated.downstreamReferences().stream().filter(value->Objects.equals(group.route(),value.route())&&!"CANCELLED".equals(value.status()))
                 .max(Comparator.comparingInt(value->result.supplyActions().stream().filter(action->action.actionId().equals(value.actionId()))

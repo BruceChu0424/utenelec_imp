@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/material_order_method.dart';
 import '../../../support/table_cell_geometry.dart';
 import '../../../support/field_hint_support.dart';
 import 'package:uten_imp/shared/search/numeric_column_query.dart';
@@ -4687,15 +4688,11 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
-    expect(find.text('保留余量，额外下单'), findsOneWidget);
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is UtenFieldHintIcon &&
-            (widget.info?.contains('本批已绑定现货不释放') ?? false),
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    final methodField = find.byKey(
+      const ValueKey(
+        'material-analysis-order-method-NODE|buy-child-action|buy-child',
       ),
-      findsOneWidget,
     );
     await tester.tap(
       find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
@@ -4708,11 +4705,10 @@ void main() {
       ),
       isEmpty,
     );
+    await selectMaterialOrderMethod(tester, methodField, 'ORDER_ALL');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保留余量，额外下单'));
-    await _continueClaimChoiceDialog(tester);
     final confirmation = find.descendant(
       of: find.byType(AlertDialog),
       matching: find.text('确认下单'),
@@ -4726,7 +4722,14 @@ void main() {
     );
     expect(sent, hasLength(1));
     final body = sent.single.data as Map;
-    expect(body['skipAutoClaim'], isTrue);
+    expect(
+      ((body['groups'] as List).single as Map)['orderMethod'],
+      'ORDER_ALL',
+    );
+    expect(
+      ((body['groups'] as List).single as Map)['quantityMode'],
+      'COVERAGE_TOTAL',
+    );
     expect(((body['groups'] as List).single as Map)['qty'], '5');
     expect(tester.takeException(), isNull);
   });

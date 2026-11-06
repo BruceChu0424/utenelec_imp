@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/material_order_method.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -58,13 +59,13 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-b'),
         ),
-        matching: find.text('875 件'),
+        matching: find.text('1000 件'),
       ),
       findsOneWidget,
-      reason: '数量列 2026-10-10 起内联单位',
+      reason: '最新公共900加本来源100，可用数量不减本次草稿预占25',
     );
   });
-  testWidgets('统一核对页与主表共用选择预算，取消后余额恢复且输入保留', (tester) async {
+  testWidgets('统一核对页与主表保持真实可用数量，勾选或取消不改库存且输入保留', (tester) async {
     await _pump(
       tester,
       mutate: (data) {
@@ -95,16 +96,16 @@ void main() {
         )
         .data!;
     // 2026-10-10 T9：数量列内联单位。
-    expect(available('m-b'), '950 件');
+    expect(available('m-b'), '1000 件');
     await _type(tester, 'm-b', '100');
-    expect(available('m-d'), '870 件');
+    expect(available('m-d'), '1000 件');
     final table = _table(tester);
     table.onSelectedIdsChanged!(
       {...table.selectedIds}..remove('PREPARATION|m-b'),
     );
     await tester.pumpAndSettle();
     expect(_qty(tester, 'm-b'), '100');
-    expect(available('m-d'), '970 件');
+    expect(available('m-d'), '1000 件');
   });
   testWidgets('车间桶打开统一核对页，原树与数量完整且零写入', (tester) async {
     final harness = await _pump(tester);
@@ -134,7 +135,12 @@ void main() {
       (r) => r.path.endsWith('/issue-plans/preview'),
     );
     expect((request.data as Map)['typedOutputs'], [
-      {'materialLineId': 'root-1', 'qty': 20.0},
+      {
+        'materialLineId': 'root-1',
+        'qty': '20',
+        'orderMethod': 'ORDER_ALL',
+        'quantityMode': 'COVERAGE_TOTAL',
+      },
     ]);
     expect(_qty(tester, 'm-d'), '60');
     expect(_writes(harness), isEmpty);
@@ -332,28 +338,27 @@ void main() {
     _table(tester).onSelectedIdsChanged!({'PREPARATION|m-b'});
     await tester.pumpAndSettle();
     expect(_table(tester).selectedIds, {'PREPARATION|m-b'});
+    await selectMaterialOrderMethod(
+      tester,
+      find.byKey(
+        const ValueKey('material-analysis-order-method-NODE|ag-b|m-b'),
+      ),
+      'ORDER_ALL',
+    );
     await tester.tap(
       find.byKey(const Key('material-preparation-order-submit')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
-    expect(_writes(harness), isEmpty);
-    await tester.tap(find.text('保留余量，额外下单'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<RadioGroup<bool>>(find.byType(RadioGroup<bool>)).groupValue,
-      isFalse,
-    );
-    await tester.tap(find.text('继续'));
-    await tester.pumpAndSettle();
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
     expect(_writes(harness), isEmpty);
     await _confirmOrder(tester);
     final write = _writes(harness).single;
     expect(write.path, endsWith('/aggregate-orders/submit'));
-    expect((write.data as Map)['skipAutoClaim'], isTrue);
     final input = ((write.data as Map)['groups'] as List).single as Map;
     expect(input['materialLineIds'], ['m-b']);
     expect(input['qty'], '5');
+    expect(input['orderMethod'], 'ORDER_ALL');
+    expect(input.containsKey('quantityMode'), isFalse, reason: '追加保持本次增量');
   });
 
   testWidgets('委外桶也进入同一核对页，保留我方供料子件', (tester) async {
@@ -565,7 +570,9 @@ Map<String, dynamic> _scaledAnalysis(
   // 外购件D 单件用 3(相对 C)，C 填了多少，D 就是多少 × 3。
   final typed = <String, double>{
     for (final raw in (body['typedOutputs'] as List? ?? const []))
-      (raw as Map)['materialLineId'] as String: (raw['qty'] as num).toDouble(),
+      (raw as Map)['materialLineId'] as String: double.parse(
+        raw['qty'].toString(),
+      ),
   };
   final batch = (top['qty'] as num?)?.toDouble() ?? typed['root-1'];
   if (batch == null && typed.isEmpty) return analysis;
@@ -1039,6 +1046,7 @@ Map<String, dynamic> _material({
   'materialKey': goodsId,
   'perProductQty': perProductQty,
   'requiredQty': requiredQty,
+  if (nodeRole != 'ROOT_SUPPLY') 'sourceRequiredQty': requiredQty,
   'availableQty': covered ? requiredQty : 0,
   'allocatedAvailableQty': covered ? requiredQty : 0,
   'shortageQty': covered ? 0 : requiredQty,

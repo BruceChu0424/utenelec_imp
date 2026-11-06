@@ -163,6 +163,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource,
             MaterialAnalysisIssuePreviewOverlay overlay) {
         Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
+        Map<UUID,BigDecimal> sourceStock=MaterialAnalysisSalesStock.availableByRoot(em,analysisId);
         Map<InventoryKey,BigDecimal> projectedReservations=publicReservationChanges(analysisId,overlay);
         List<RootQuantityRow> quantities = new ArrayList<>();
         StringBuilder overrides = new StringBuilder("[");
@@ -202,7 +203,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                         AND NOT EXISTS (SELECT 1 FROM preplan_stock_entitlement_events event
                                         WHERE event.stock_reservation_id=r.id)),0),0),
                   COALESCE((SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
-                    FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),
+                    FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0)+fn_preplan_adopted_sales_stock_base(item.id),
                   item.sales_order_item_id,
                   COALESCE((SELECT SUM(LEAST(pi.qty,GREATEST(COALESCE(pi.iqty,0),0))
                       * COALESCE(pi.unit_rate,1))
@@ -248,21 +249,24 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             BigDecimal required = decimal(row[6]).multiply(decimal(row[4]))
                     .setScale(4, RoundingMode.CEILING).max(BigDecimal.ZERO);
             BigDecimal reserved = decimal(row[10]).add(projectedReservations.getOrDefault(dimension,BigDecimal.ZERO));
-            BigDecimal stock = decimal(row[9]).subtract(reserved).max(BigDecimal.ZERO);
+            BigDecimal publicStock = decimal(row[9]).subtract(reserved).max(BigDecimal.ZERO);
             BigDecimal publicAvailable = publicPools.computeIfAbsent(dimension,
-                    ignored -> stock.subtract(decimal(row[11])).subtract(decimal(row[8]))
+                    ignored -> publicStock.subtract(decimal(row[11])).subtract(decimal(row[8]))
                             .max(BigDecimal.ZERO));
             boolean external = !"MAKE".equals(row[5]);
-            BigDecimal fulfilled = decimal(row[12]).min(required);
+            BigDecimal projectedPrivate=overlay.rootPrivateAdoption((UUID)row[0]).multiply(decimal(row[4]));
+            BigDecimal fulfilled = decimal(row[12]).add(projectedPrivate).min(required);
             BigDecimal unassigned = required.subtract(fulfilled)
                     .subtract(futureCoverage.getOrDefault(materialId,BigDecimal.ZERO))
                     .max(BigDecimal.ZERO);
             BigDecimal ownQualified = decimal(row[16]).min(required.subtract(fulfilled).max(BigDecimal.ZERO));
+            BigDecimal salesOwned=sourceStock.getOrDefault(materialId,BigDecimal.ZERO).subtract(projectedPrivate).max(BigDecimal.ZERO).min(unassigned);
+            BigDecimal stock=publicStock.add(salesOwned);
             BigDecimal publicAllocated = row[13] == null ? BigDecimal.ZERO
-                    : unassigned.subtract(ownQualified).max(BigDecimal.ZERO).min(publicAvailable);
+                    : unassigned.subtract(ownQualified).subtract(salesOwned).max(BigDecimal.ZERO).min(publicAvailable);
             BigDecimal allocated = external
-                    ? fulfilled.add(ownQualified).add(publicAllocated)
-                    : decimal(row[14]).min(required);
+                    ? fulfilled.add(ownQualified).add(salesOwned).add(publicAllocated)
+                    : decimal(row[14]).add(fulfilled).add(salesOwned).min(required);
             if (external) publicPools.put(dimension, publicAvailable.subtract(publicAllocated));
             BigDecimal openPlan = decimal(row[15]).add(openPlanBySource.getOrDefault((UUID) row[0], BigDecimal.ZERO));
             quantities.add(new RootQuantityRow(materialId,required,stock,reserved,decimal(row[8]),allocated,
@@ -315,10 +319,26 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
 
     private record PublicStock(UUID warehouseId,BigDecimal qty) { }
 
+    boolean adoptSalesStock(UUID analysisId,Map<UUID,BigDecimal> limits,String key) {
+        boolean changed=false;
+        for(UUID id:limits.keySet().stream().sorted().toList()) {
+            Root root=lockRoot(id);
+            if(root==null||root.salesOrderItemId()==null||!root.analysisId().equals(analysisId))continue;
+            if(!root.salesSourceEligible())throw conflict("销售订单暂不能新增安排，请先核对订单状态");
+            changed|=MaterialAnalysisSalesStock.adopt(em,analysisId,id,limits.get(id).min(root.remainingBase()),
+                    "SAME-SALES-STOCK:"+key+":"+id,currentUser.requireId());
+        }
+        return changed;
+    }
+
     /** Explicit notify may allocate existing stock before creating only the external shortage. */
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean fulfillExisting(UUID analysisId, Collection<UUID> materialIds, String key) {
+        return fulfillExisting(analysisId,materialIds,key,Map.of());
+    }
+    boolean fulfillExisting(UUID analysisId, Collection<UUID> materialIds, String key,Map<UUID,BigDecimal> limits) {
         boolean changed = false;
+        Map<UUID,BigDecimal> privateSource=MaterialAnalysisSalesStock.availableByRoot(em,analysisId);
         for (UUID materialId : materialIds.stream().distinct().sorted().toList()) {
             Root root = lockRoot(materialId);
             if (root == null || root.salesOrderItemId() == null
@@ -335,7 +355,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             }
             String command = "ROOT-STOCK:" + key + ":" + materialId;
             if (exists(command)) continue;
-            BigDecimal qty = root.allocated().min(root.remainingBase());
+            BigDecimal qty = root.allocated().subtract(privateSource.getOrDefault(materialId,BigDecimal.ZERO)).max(BigDecimal.ZERO)
+                    .min(root.remainingBase()).min(limits.getOrDefault(materialId,root.remainingBase()));
             if (qty.signum() <= 0) continue;
             List<PublicStock> balances=publicBalances(root);
             BigDecimal available=balances.stream().map(PublicStock::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
@@ -673,11 +694,9 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
     private Root lockRoot(UUID materialId) {
         List<Object[]> matches = rows("""
                 SELECT item.analysis_id,item.id,root.id,item.goods_id,item.color_id,analysis.warehouse_id,
-                  item.sales_order_item_id,COALESCE(root.confirmed_route,'MAKE'),root.allocated_available_qty,
-                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty)
-                    *root.per_product_qty*10000)/10000-COALESCE((
-                      SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
-                      FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),0)
+                  item.sales_order_item_id,COALESCE(root.confirmed_route,'MAKE'),GREATEST(root.allocated_available_qty-item.root_fulfilled_qty*root.per_product_qty,0),
+                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty-item.root_fulfilled_qty)
+                    *root.per_product_qty*10000)/10000,0)
                 FROM production_material_analysis_items item
                 JOIN production_material_analysis_materials root ON root.id=item.root_material_id
                 JOIN production_material_analyses analysis ON analysis.id=item.analysis_id
@@ -704,11 +723,9 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             salesEligible = Boolean.TRUE.equals(locked.getFirst()[1]);
         }
         Object[] current=rows("""
-                SELECT root.allocated_available_qty,
-                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty)
-                    *root.per_product_qty*10000)/10000-COALESCE((
-                      SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
-                      FROM preplan_root_output_events e WHERE e.analysis_item_id=item.id),0),0)
+                SELECT GREATEST(root.allocated_available_qty-item.root_fulfilled_qty*root.per_product_qty,0),
+                  GREATEST(CEIL((item.requested_qty-item.submitted_qty-item.approved_qty-item.root_fulfilled_qty)
+                    *root.per_product_qty*10000)/10000,0)
                 FROM production_material_analysis_items item
                 JOIN production_material_analysis_materials root ON root.id=item.root_material_id
                 WHERE item.id=:id

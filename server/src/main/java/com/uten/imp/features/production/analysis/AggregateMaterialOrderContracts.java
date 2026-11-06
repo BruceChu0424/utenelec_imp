@@ -40,12 +40,27 @@ public final class AggregateMaterialOrderContracts {
             @Size(max=100) String productNo,
             @DecimalMin("0") @Digits(integer=3,fraction=6) BigDecimal allowedOverproductionRate,
             @DecimalMin("0") @DocumentQuantity BigDecimal safetyQty,
-            Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId) {
+            Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Boolean skipAutoClaim,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            @Pattern(regexp="COVERAGE_TOTAL") String quantityMode,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            @Pattern(regexp="ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod) {
         public GroupInput {
             materialLineIds=materialLineIds==null?List.of():List.copyOf(materialLineIds);
             safetyQty=safetyQty==null?BigDecimal.ZERO:safetyQty;
             sourceRequestedQtyByMaterialLineId=sourceRequestedQtyByMaterialLineId==null?Map.of():java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(sourceRequestedQtyByMaterialLineId));
         }
+
+        public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
+                boolean allowPublicExtra,UUID departmentId,UUID workerId,UUID teamDepartmentId,
+                LocalDate billDate,LocalDate deliveryDate,String productNo,BigDecimal allowedOverproductionRate,BigDecimal safetyQty,
+                Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId) {
+            this(clientGroupKey,materialLineIds,route,qty,allowPublicExtra,departmentId,workerId,teamDepartmentId,
+                    billDate,deliveryDate,productNo,allowedOverproductionRate,safetyQty,sourceRequestedQtyByMaterialLineId,null,null,null);
+        }
+
+        public boolean skipClaims(boolean fallback) { return MaterialOrderQuantity.skipClaims(orderMethod,skipAutoClaim==null?fallback:Boolean.TRUE.equals(skipAutoClaim)); }
 
         public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
                 boolean allowPublicExtra,UUID departmentId,UUID workerId,UUID teamDepartmentId,

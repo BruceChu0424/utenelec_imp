@@ -315,6 +315,24 @@ RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
   WHERE item.id=p_receipt_item
 $$;
 
+-- The shared cost service and its deferred database guard must recognize the
+-- same narrow, proven empty-input receipt scope. Retain every other existing
+-- state, task, target, output and pending-input guard byte-for-byte.
+DO $zero_increment_cost_scope$
+DECLARE definition TEXT;
+  anchor TEXT:='(jsonb_array_length(r.input_snapshot)>0 OR current_object.source_kind=''SUBCONTRACT_ORDER_NORMAL_LOSS'')';
+BEGIN
+  definition:=pg_get_functiondef('fn_check_stock_value_cost_object()'::regprocedure);
+  IF (length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN
+    RAISE EXCEPTION 'actual receipt zero-increment cost completion anchor differs';
+  END IF;
+  EXECUTE replace(definition,anchor,
+    '(jsonb_array_length(r.input_snapshot)>0 OR current_object.source_kind=''SUBCONTRACT_ORDER_NORMAL_LOSS'''
+    ||' OR (current_object.source_kind=''SUBCONTRACT_RECEIPT_ITEM'''
+    ||' AND fn_subcontract_receipt_zero_increment_cost_complete(current_object.execution_segment_id)))');
+END;
+$zero_increment_cost_scope$;
+
 CREATE OR REPLACE FUNCTION fn_assert_subcontract_target_outbound_receipt(p_order_item_id UUID)
 RETURNS void LANGUAGE plpgsql AS $$
 DECLARE

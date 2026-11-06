@@ -3777,8 +3777,9 @@ abstract class _MaterialAnalysisMaterialTableState
           material.quantityFactsExact['planningUncoveredQty'];
       try {
         if (materialQuantityUnits(_quantityFact(exact, uncovered)) >
-            BigInt.zero)
+            BigInt.zero) {
           return true;
+        }
       } on FormatException {
         return false;
       }

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Populated pre-actual-consumption upgrade: preserve historical estimates and separate new actual consumption. */
@@ -145,8 +146,10 @@ class SubcontractActualConsumptionUpgradePostgresTest {
                     SELECT qty,at_supplier_qty,consumed_qty,frozen_unit_qty,supplier_ending
                     FROM subcontract_material_issue_items WHERE id=?
                     """,issueLine);
-            Map<String,Object> beforeConsumption = db.queryForMap(
-                    "SELECT * FROM subcontract_receipt_material_consumptions WHERE id=?",consumption);
+            // Keep every original field for every historical source/reversal;
+            // the new nullable proof column is asserted separately after upgrade.
+            List<Map<String,Object>> beforeConsumptions = db.queryForList(
+                    "SELECT * FROM subcontract_receipt_material_consumptions ORDER BY id");
             String viewBefore = viewMetadata(db);
             String completedBefore=caseSnapshot(db,completedCase),acceptedBefore=caseSnapshot(db,acceptedCase);
             Map<String,String> triggersBefore = new LinkedHashMap<>();
@@ -192,9 +195,18 @@ class SubcontractActualConsumptionUpgradePostgresTest {
                     "SELECT " + key + " FROM subcontract_material_plan_items WHERE id=?",BigDecimal.class,line),key));
             beforeIssue.forEach((key,value) -> assertDecimal((BigDecimal)value, db.queryForObject(
                     "SELECT " + key + " FROM subcontract_material_issue_items WHERE id=?",BigDecimal.class,issueLine),key));
-            assertEquals(beforeConsumption,db.queryForMap(
-                    "SELECT * FROM subcontract_receipt_material_consumptions WHERE id=?",consumption),
-                    "historical consumption source slice must keep identity, basis, quantity, actor and time");
+            assertEquals(beforeConsumptions.size(),db.queryForObject(
+                    "SELECT count(*) FROM subcontract_receipt_material_consumptions",Integer.class),
+                    "upgrade must neither remove nor fabricate historical source or reversal slices");
+            for(Map<String,Object> original:beforeConsumptions) {
+                Map<String,Object> after=db.queryForMap(
+                        "SELECT * FROM subcontract_receipt_material_consumptions WHERE id=?",original.get("id"));
+                assertTrue(after.containsKey("round_credit_source_id"),"the new proof column must exist");
+                assertNull(after.remove("round_credit_source_id"),
+                        "historical source/reversal must not gain invented v2 round credit: "+original.get("id"));
+                assertEquals(original,after,
+                        "every historical slice must keep all original identity, basis, quantity, actor, time and reversal facts");
+            }
             assertDecimal(BigDecimal.ONE,db.queryForObject(
                     "SELECT base_bom_unit_qty FROM subcontract_material_plan_items WHERE id=?",BigDecimal.class,line),"base snapshot");
             assertDecimal(BigDecimal.TEN,db.queryForObject(

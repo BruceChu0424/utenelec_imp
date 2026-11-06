@@ -130,7 +130,7 @@
 
 ## W7-BIZ-160 · lib/features/subcontract/pages/subcontract_report_table_page.dart
 
-模块 `subcontract`；607 行；SHA256 `746fe36d927facd5e8f833ae0d0fae0227df211e3e9ff46e72ee914ef61fc015`。
+模块 `subcontract`；607 行；SHA256 `ac967c9273bbe1cb285240a39bd1972d22aa7b3ce96a26dc87bec0a7ddf52747`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

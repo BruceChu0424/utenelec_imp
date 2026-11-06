@@ -418,7 +418,7 @@
 
 ## W7-BIZ-114 · lib/features/production/pages/production_report_page.dart
 
-模块 `production`；618 行；SHA256 `25cb3f5027371c708b5823f3392b033e25091bbc1e3c22ee7a32588d017b9c48`。
+模块 `production`；618 行；SHA256 `ad12b3afadbaeda22f3c1aa94f1897c718626b4f28e867a1fc33742ed76a18b6`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

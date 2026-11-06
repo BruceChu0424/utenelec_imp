@@ -562,7 +562,7 @@
 
 ## W7-BIZ-202 · lib/features/warehouse/pages/warehouse_report_table_page.dart
 
-模块 `warehouse`；627 行；SHA256 `d29ae363c15c0d59d39682e776d097f3d1cc56a12715426809378d363d7682f8`。
+模块 `warehouse`；627 行；SHA256 `cc1936f9d69dfa5ee3caa3dd32b3eca20c072f111192dcfa56c669fbde3651cd`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

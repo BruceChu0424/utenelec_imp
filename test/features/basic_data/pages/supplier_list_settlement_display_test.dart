@@ -1,3 +1,4 @@
+import '../../../support/versioned_summary_test_response.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,9 +45,14 @@ void main() {
                 'childCount': 0,
                 'effectivePrefix': 'GY',
               };
-            } else if (request.path.endsWith('/suppliers') ||
+            } else if (request.path.endsWith('/suppliers/summaries') ||
+                request.path.endsWith('/suppliers') ||
                 request.path.endsWith('/suppliers/search')) {
-              reads.add({...request.queryParameters});
+              reads.add(
+                request.path.endsWith('/summaries')
+                    ? masterSummaryTestParameters(request)
+                    : {...request.queryParameters},
+              );
               data = {
                 'items': [
                   {
@@ -71,6 +77,12 @@ void main() {
                 'total': 2,
                 'totalPages': 1,
               };
+            }
+            if (request.path.endsWith('/summaries')) {
+              data = masterSummaryTestResponse(
+                List<Map<String, dynamic>>.from((data as Map)['items'] as List),
+                request,
+              );
             }
             handler.resolve(
               Response(requestOptions: request, statusCode: 200, data: data),

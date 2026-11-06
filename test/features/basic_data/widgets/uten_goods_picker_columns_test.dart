@@ -1,3 +1,4 @@
+import '../../../support/versioned_summary_test_response.dart';
 import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -419,6 +420,28 @@ class _ColumnApi extends ApiClient {
   }
 
   @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    if (path != '/business-references/goods/summaries' &&
+        path != '/master/goods/summaries') {
+      throw StateError('Unexpected business command in goods-column fixture');
+    }
+    final request = RequestOptions(
+      path: path,
+      method: 'POST',
+      data: body,
+      queryParameters: query,
+    );
+    final parameters = masterSummaryTestParameters(request);
+    reads.add(parameters);
+    return masterSummaryTestResponse(_rows(parameters), request);
+  }
+
+  @override
   Future<List<String>> getStringList(
     String path, {
     Map<String, dynamic>? query,
@@ -455,6 +478,18 @@ class _ColumnApi extends ApiClient {
 class _HeldColumnApi extends _ColumnApi {
   final pending = Completer<void>();
   bool started = false;
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    started = true;
+    await pending.future;
+    return super.post(path, body: body, query: query, headers: headers);
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {

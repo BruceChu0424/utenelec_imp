@@ -1,3 +1,4 @@
+import '../../../support/versioned_summary_test_response.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
@@ -958,15 +959,28 @@ class _CategoryApi {
       data = <String>[];
     } else if (path.contains('/facets')) {
       data = <String, dynamic>{};
-    } else if (path == content || path == '$content/search') {
-      final query = request.data is Map
+    } else if (path == '$content/search-context') {
+      final keyword = (request.data as Map)['keyword'];
+      if (holdSearch && keyword != null && keyword.toString().isNotEmpty) {
+        heldSearch.add((request, handler));
+        return;
+      }
+      data = _emptySearchContext(request);
+    } else if (path == '$content/summaries' ||
+        path == content ||
+        path == '$content/search') {
+      final query = path.endsWith('/summaries')
+          ? masterSummaryTestParameters(request)['keyword']
+          : request.data is Map
           ? (request.data as Map)['keyword']
           : request.queryParameters['keyword'];
       if (holdSearch && query != null && query.toString().isNotEmpty) {
         heldSearch.add((request, handler));
         return;
       }
-      data = _emptyPage;
+      data = path.endsWith('/summaries')
+          ? masterSummaryTestResponse([], request)
+          : _emptyPage;
     }
     handler.resolve(
       Response(requestOptions: request, statusCode: 200, data: data),
@@ -1031,7 +1045,15 @@ class _CategoryApi {
   void releaseSearch() {
     for (final (request, handler) in heldSearch) {
       handler.resolve(
-        Response(requestOptions: request, statusCode: 200, data: _emptyPage),
+        Response(
+          requestOptions: request,
+          statusCode: 200,
+          data: request.path.endsWith('/search-context')
+              ? _emptySearchContext(request)
+              : request.path.endsWith('/summaries')
+              ? masterSummaryTestResponse([], request)
+              : _emptyPage,
+        ),
       );
     }
     heldSearch.clear();
@@ -1044,4 +1066,13 @@ const _emptyPage = {
   'page': 1,
   'size': 20,
   'totalPages': 0,
+};
+
+Map<String, dynamic> _emptySearchContext(RequestOptions request) => {
+  'categories': <Object>[],
+  'totalMatches': 0,
+  'totalCategories': 0,
+  'totalPages': 0,
+  'page': request.queryParameters['page'] ?? 1,
+  'readScopeVersion': 'fixture-authority',
 };

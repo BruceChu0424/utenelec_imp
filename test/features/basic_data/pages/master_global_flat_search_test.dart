@@ -1,3 +1,4 @@
+import '../../../support/versioned_summary_test_response.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -65,24 +66,37 @@ void main() {
                 'path': '/$id/',
                 'childCount': 0,
               };
-            } else if (path == '/master/${kind}s' ||
+            } else if (path == '/master/${kind}s/search-context') {
+              data = {
+                'categories': [
+                  {'categoryId': 'cat-a'},
+                  {'categoryId': 'cat-b'},
+                ],
+                'page': request.queryParameters['page'],
+                'totalPages': 1,
+                'totalCategories': 2,
+                'totalMatches': 201,
+                'readScopeVersion': 'fixture-authority',
+              };
+            } else if (path == '/master/${kind}s/summaries' ||
+                path == '/master/${kind}s' ||
                 path == '/master/${kind}s/search') {
-              final body = request.data;
+              final parameters = _parameters(request);
+              final body = request.path.endsWith('/summaries')
+                  ? (request.data as Map)['filter']
+                  : request.data;
               final keyword = body is Map
                   ? body['keyword']
-                  : request.queryParameters['keyword'];
-              final page =
-                  (request.queryParameters['page'] as num?)?.toInt() ?? 1;
+                  : _parameters(request)['keyword'];
+              final page = (parameters['page'] as num?)?.toInt() ?? 1;
               final global =
-                  request.queryParameters['categoryId'] == null &&
-                  keyword != null;
-              final size =
-                  (request.queryParameters['size'] as num?)?.toInt() ?? 20;
+                  parameters['categoryId'] == null && keyword != null;
+              final size = (parameters['size'] as num?)?.toInt() ?? 20;
               final complete = global
                   ? [
                       _row('exact-b', '共同名称', 'cat-b'),
                       _row('near-a', '共同名称扩展', 'cat-a'),
-                      for (var i = 0; i < 18; i++)
+                      for (var i = 0; i < 198; i++)
                         _row(
                           'middle-$i',
                           '共同名称其他$i',
@@ -92,21 +106,25 @@ void main() {
                     ]
                   : [
                       _row(
-                        request.queryParameters['categoryId'] == 'cat-b'
+                        parameters['categoryId'] == 'cat-b'
                             ? 'category-b'
                             : 'category-a',
                         '分类内资料',
-                        request.queryParameters['categoryId'] as String? ??
-                            'cat-a',
+                        parameters['categoryId'] as String? ?? 'cat-a',
                       ),
                     ];
-              data = {
-                'items': complete.skip((page - 1) * size).take(size).toList(),
-                'page': page,
-                'size': size,
-                'total': complete.length,
-                'totalPages': (complete.length + size - 1) ~/ size,
-              };
+              data = request.path.endsWith('/summaries')
+                  ? masterSummaryTestResponse(complete, request)
+                  : {
+                      'items': complete
+                          .skip((page - 1) * size)
+                          .take(size)
+                          .toList(),
+                      'page': page,
+                      'size': size,
+                      'total': complete.length,
+                      'totalPages': (complete.length + size - 1) ~/ size,
+                    };
             }
             handler.resolve(
               Response<dynamic>(
@@ -173,12 +191,13 @@ void main() {
       );
       final searchElement = tester.element(search);
       await tester.enterText(search, '共同名称');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pumpAndSettle();
       final completeIds = [
         'exact-b',
         'near-a',
-        for (var i = 0; i < 18; i++) 'middle-$i',
+        for (var i = 0; i < 198; i++) 'middle-$i',
         'last-b',
       ];
       expect(_rowIds(tester), completeIds);
@@ -204,26 +223,45 @@ void main() {
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
-      await tester.drag(_table, const Offset(0, -500));
+      final bodyScroll = tester
+          .widgetList<ListView>(
+            find.descendant(of: _table, matching: find.byType(ListView)),
+          )
+          .singleWhere((list) => list.scrollDirection == Axis.vertical)
+          .controller!;
+      bodyScroll.jumpTo(bodyScroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('其他共同名称'),
+        700,
+        maxScrolls: 20,
+        scrollable: find.descendant(
+          of: _table,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is Scrollable && widget.controller == bodyScroll,
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(_rowIds(tester), completeIds);
       expect(find.text('其他共同名称').hitTestable(), findsOneWidget);
-      await tester.drag(_table, const Offset(0, 500));
+      bodyScroll.jumpTo(bodyScroll.position.minScrollExtent);
       await tester.pumpAndSettle();
       expect(requests.length, readsBeforeScroll);
       final query = requests.lastWhere(
         (r) =>
-            (r.path == '/master/${kind}s' ||
+            (r.path == '/master/${kind}s/summaries' ||
+                r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            r.queryParameters['size'] == 100 &&
-            r.queryParameters['page'] == 1,
+            _parameters(r)['size'] == 100 &&
+            _parameters(r)['page'] == 1,
       );
-      expect(query.queryParameters.containsKey('categoryId'), isFalse);
-      expect(query.queryParameters['name'], '跨分类选项');
+      expect(_parameters(query).containsKey('categoryId'), isFalse);
+      expect(_parameters(query)['name'], '跨分类选项');
       expect(
         query.data is Map
-            ? (query.data as Map)['keyword']
-            : query.queryParameters['keyword'],
+            ? _parameters(query)['keyword']
+            : _parameters(query)['keyword'],
         '共同名称',
       );
       await tester.tap(find.text('分类B'));
@@ -231,16 +269,17 @@ void main() {
       expect(_rowIds(tester), ['category-b']);
       final scoped = requests.lastWhere(
         (r) =>
-            (r.path == '/master/${kind}s' ||
+            (r.path == '/master/${kind}s/summaries' ||
+                r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            r.queryParameters['size'] == 100,
+            _parameters(r)['size'] == 100,
       );
-      expect(scoped.queryParameters['categoryId'], 'cat-b');
-      expect(scoped.queryParameters['page'], 1);
+      expect(_parameters(scoped)['categoryId'], 'cat-b');
+      expect(_parameters(scoped)['page'], 1);
       expect(
         scoped.data is Map
-            ? (scoped.data as Map)['keyword']
-            : scoped.queryParameters['keyword'],
+            ? _parameters(scoped)['keyword']
+            : _parameters(scoped)['keyword'],
         '共同名称',
       );
       await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
@@ -293,3 +332,8 @@ List<String> _rowIds(WidgetTester tester) {
   }
   throw StateError('Missing master table');
 }
+
+Map<String, dynamic> _parameters(RequestOptions request) =>
+    request.path.endsWith('/summaries')
+    ? masterSummaryTestParameters(request)
+    : request.queryParameters;

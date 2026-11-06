@@ -143,7 +143,7 @@ void main() {
           } else {
             expect(
               grid.controller.rows.single.qty.text,
-              shipment ? '2.0' : '${10 - quantity}',
+              shipment ? '2' : '${10 - quantity}',
             );
             expect(find.textContaining('来源数量不完整'), findsNothing);
           }

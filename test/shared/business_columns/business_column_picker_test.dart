@@ -222,6 +222,7 @@ void main() {
         'goodsCode',
         'color',
         'qty',
+        'deliveryPlan',
         'price',
         'discount',
         'amount',

@@ -134,7 +134,8 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
       routePrefixes: {
         '/warehouse/',
         RouteName.stockCountSession,
-        RouteName.workshopMaterialIssue,
+        '/workshop-material/',
+        '/measurement/',
       },
       excludeTaskDrafts: true,
     ),

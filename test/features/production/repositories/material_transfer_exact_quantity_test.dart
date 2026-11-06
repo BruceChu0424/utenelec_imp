@@ -10,8 +10,10 @@ void main() {
   for (final text in [
     '0.0001',
     '1.2345',
+    '1.00001',
     '99999999999999.9999',
     '90071992547409.0001',
+    '9999999999999999999999999999999999999999.999999999999999999999999',
   ]) {
     test(
       'all transfer commands preserve $text and both CAS identities',
@@ -137,8 +139,8 @@ void main() {
       'Infinity',
       '0',
       '-1',
-      '1.00001',
-      '100000000000000',
+      '0.0000000000000000000000001',
+      '10000000000000000000000000000000000000000',
       double.nan,
       double.infinity,
       99999999999999.9999,
@@ -151,7 +153,7 @@ void main() {
     }
     expect(
       materialTransferUnits('99999999999999.9999'),
-      BigInt.parse('999999999999999999'),
+      BigInt.parse('99999999999999999900000000000000000000'),
     );
   });
   test(
@@ -176,7 +178,10 @@ void main() {
           'cancelRestoreToSourceQty': '99999999999999.9999',
         },
       });
-      expect(record.maxCancelableUnits, BigInt.parse('999999999999999999'));
+      expect(
+        record.maxCancelableUnits,
+        BigInt.parse('99999999999999999900000000000000000000'),
+      );
       expect(record.maxRestoreUnits, record.maxCancelableUnits);
     },
   );

@@ -221,7 +221,14 @@ void main() {
         expect(api.lookupIds, ['historical-party']);
         expect(api.reportQueries.last['partyId'], 'historical-party');
         expect(api.reportQueries.last['side'], side);
-        await tester.tap(find.byTooltip('清除选择'));
+        await tester.tap(
+          find.descendant(
+            of: side == 'AR'
+                ? find.byType(ClientPickerField)
+                : find.byType(SupplierPickerField),
+            matching: find.byTooltip('清除选择'),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(api.reportQueries.last.containsKey('partyId'), isFalse);
         expect(tester.takeException(), isNull);

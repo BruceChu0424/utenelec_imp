@@ -49,7 +49,7 @@ void main() {
     expect(draft.toPayload(), containsPair('orderItemId', 'order-item'));
     expect(draft.toPayload(), containsPair('qty', '10000'));
     // 原单已记的实称重量随草稿带回可编辑格, 不改就原样保存 (ADR-135 §3.8)。
-    expect(draft.toPayload(), containsPair('weight', 2.75));
+    expect(draft.toPayload(), containsPair('weight', '2.75'));
     expect(draft.toPayload(), containsPair('qtyFromWeight', false));
     draft.qty.text = 'NaN';
     expect(draft.validate(), isNotNull);
@@ -62,7 +62,7 @@ void main() {
     addTearDown(draft.dispose);
     expect(draft.toPayload(), isNot(contains('weight')), reason: '没称不带重量');
     draft.weight.weight.text.text = '850g';
-    expect(draft.toPayload(), containsPair('weight', 0.85));
+    expect(draft.toPayload(), containsPair('weight', '0.85'));
     draft.weight.weight.text.text = '一袋';
     expect(draft.validate(), subcontractOutboundWeightInvalid);
     draft.weight.weight.text.text = '';
@@ -86,7 +86,7 @@ void main() {
     addTearDown(draft.dispose);
     expect(draft.qty.autofilled, isTrue);
     expect(draft.weight.weight.qtyEstimateNote, '保存时按称重折算的数量');
-    expect(draft.toPayload(), containsPair('weight', 10.75));
+    expect(draft.toPayload(), containsPair('weight', '10.75'));
     expect(draft.toPayload(), containsPair('qtyFromWeight', true));
   });
 

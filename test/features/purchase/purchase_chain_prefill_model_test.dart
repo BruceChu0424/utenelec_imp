@@ -67,11 +67,14 @@ void main() {
         expect(value.unitRateText, exact);
         expect(value.unitRateInputValid, isTrue);
         expect(
-          financeExactDecimalFromUnits(
-            financeExactProductUnits(
-              value.qty.text,
-              value.recordedUnitRateText,
-            )!,
+          financeExactTrimmed(
+            financeExactDecimalFromUnits(
+              financeExactProductUnits(
+                value.qty.text,
+                value.recordedUnitRateText,
+              )!,
+              scale: 48,
+            ),
           ),
           '99999999999900.0001',
         );

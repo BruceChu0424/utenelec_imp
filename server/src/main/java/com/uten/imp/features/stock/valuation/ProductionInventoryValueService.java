@@ -51,22 +51,46 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                 """,Map.of("report",reportId,"actor",actor));
     }
     public void bound(UUID event,Map<UUID,UUID> movements){
-        for(var movement:movements.entrySet()){
+        var selected=new ArrayList<>(movements.entrySet());
+        for(int start=0;start<selected.size();start+=100){
+            var batch=selected.subList(start,Math.min(start+100,selected.size()));
             var postings=db.queryForList("""
-                    SELECT p.*,e.event_type,e.stock_document_id FROM production_material_stock_postings p
+                    WITH selected AS MATERIALIZED (
+                        SELECT * FROM unnest(CAST(:items AS uuid[]),CAST(:movements AS uuid[]))
+                            WITH ORDINALITY selected(item_id,movement_id,item_order)
+                    )
+                    SELECT p.*,e.event_type,e.stock_document_id,
+                        EXISTS(SELECT 1 FROM stock_value_events existing
+                            WHERE existing.source_doc_type='PRODUCTION_ISSUE_VALUE' AND existing.source_event_id=p.id) AS value_bound,
+                        issue.issue_count,issue.roots[1] AS issue_root,
+                        pool.warehouse_id AS position_warehouse_id,pool.goods_id AS position_goods_id,
+                        pool.color_id AS position_color_id
+                    FROM selected JOIN production_material_stock_postings p ON p.stock_document_item_id=selected.item_id
                     JOIN production_material_stock_events e ON e.id=p.event_id
-                    WHERE p.event_id=:event AND p.stock_document_item_id=:item ORDER BY p.id
-                    """,Map.of("event",event,"item",movement.getKey()));
+                    LEFT JOIN LATERAL (
+                        SELECT count(*) AS issue_count,array_agg(value.result_node_id ORDER BY value.id) AS roots
+                        FROM stock_value_events value WHERE value.movement_id=selected.movement_id AND value.operation='ISSUE'
+                    ) issue ON true
+                    LEFT JOIN stock_value_nodes root ON root.id=issue.roots[1]
+                        AND root.kind='ISSUE_POSITION' AND root.root_issue_id=root.id
+                    LEFT JOIN stock_value_nodes remaining ON remaining.id=root.return_head_id
+                    LEFT JOIN stock_value_pools pool ON pool.id=remaining.pool_id
+                    WHERE p.event_id=:event ORDER BY selected.item_order,p.id
+                    """,Map.of("event",event,
+                        "items",new org.springframework.jdbc.support.SqlArrayValue("uuid",batch.stream().map(Map.Entry::getKey).toArray()),
+                        "movements",new org.springframework.jdbc.support.SqlArrayValue("uuid",batch.stream().map(Map.Entry::getValue).toArray())));
+            List<PendingBinding> pending=new ArrayList<>();
             for(var p:postings){
                 String kind=(String)p.get("posting_type");
                 if(!Set.of("ISSUE","GOOD_RETURN_REVERSE").contains(kind))continue;
                 UUID posting=(UUID)p.get("id");
-                if(has("PRODUCTION_ISSUE_VALUE",posting))continue;
+                if(Boolean.TRUE.equals(p.get("value_bound")))continue;
+                UUID movement=movements.get((UUID)p.get("stock_document_item_id"));
                 if("GOOD_RETURN_REVERSE".equals(kind)){
                     var restored=db.queryForList("""
                             SELECT value.id FROM stock_value_events value
                             WHERE value.movement_id=:movement AND value.operation='POSITION_STORE_REVERSE'
-                            """,Map.of("movement",movement.getValue()),UUID.class);
+                            """,Map.of("movement",movement),UUID.class);
                     if(!restored.isEmpty()){
                         UUID originalIssue=db.queryForObject("SELECT source_posting_id FROM production_material_stock_postings WHERE id=:id",
                                 Map.of("id",p.get("source_posting_id")),UUID.class);
@@ -79,16 +103,27 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
                         continue;
                     }
                 }
-                var nodes=db.queryForList("SELECT result_node_id FROM stock_value_events WHERE movement_id=:id AND operation='ISSUE'",Map.of("id",movement.getValue()),UUID.class);
-                if(nodes.size()!=1)throw conflict("实际领料流水尚无唯一成本来源");
-                var source=positions.position(nodes.getFirst());
+                if(((Number)p.get("issue_count")).longValue()!=1)throw conflict("实际领料流水尚无唯一成本来源");
+                if(p.get("position_warehouse_id")==null)throw conflict("必须引用准确的原价值位置UUID");
+                PoolKey pool=new PoolKey((UUID)p.get("position_warehouse_id"),(UUID)p.get("position_goods_id"),(UUID)p.get("position_color_id"));
                 UUID owner=posting;
                 if("GOOD_RETURN_REVERSE".equals(kind))owner=db.queryForObject("SELECT source_posting_id FROM production_material_stock_postings WHERE id=:id",Map.of("id",p.get("source_posting_id")),UUID.class);
-                positions.move(new Move(support.context("PRODUCTION_ISSUE_VALUE",posting,event,posting,(UUID)p.get("created_by"),time(p.get("created_at"))),
-                        source.pool(),Owner.WIP,owner,List.of(new Slice(source.rootId(),(BigDecimal)p.get("qty_base"),posting))));
+                pending.add(new PendingBinding(posting,owner,pool,(UUID)p.get("issue_root"),(BigDecimal)p.get("qty_base"),
+                        new ContextInput("PRODUCTION_ISSUE_VALUE",posting,event,posting,(UUID)p.get("created_by"),time(p.get("created_at")))));
             }
+            var contexts=support.contexts(pending.stream().map(PendingBinding::context).toList());
+            List<Move> moves=new ArrayList<>(pending.size());
+            for(int index=0;index<pending.size();index++){
+                var binding=pending.get(index);
+                moves.add(new Move(contexts.get(index),binding.pool(),Owner.WIP,binding.owner(),
+                        List.of(new Slice(binding.root(),binding.quantity(),binding.posting()))));
+            }
+            // The shared writer still validates every original root and amount,
+            // but reads and checks the complete locked invocation together.
+            positions.moveBatch(moves);
         }
     }
+    private record PendingBinding(UUID posting,UUID owner,PoolKey pool,UUID root,BigDecimal quantity,ContextInput context) { }
     public MovementValue returned(MovementRequest request,UUID movement,PoolKey pool,BigDecimal before,EventContext context){
         UUID originalItem=request.movementType()==5?request.sourceItemId():db.queryForObject(
                 "SELECT upstream_item_id FROM stock_document_items WHERE id=:id",Map.of("id",request.sourceItemId()),UUID.class);

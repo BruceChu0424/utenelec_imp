@@ -286,10 +286,6 @@ abstract class InventoryValueLedger {
     }
     private void insertEdge(PreparedContribution part,Node child,UUID event,InventoryValueWriteSet writes){
         Contribution input=part.input();Node parent=input.parent();ValueBounds contribution=part.bound();
-        if(exactRevaluationProofInstalled&&Boolean.TRUE.equals(db.queryForObject("""
-                SELECT fn_inventory_value_precision_marked(ARRAY[fn_inventory_value_precision_key(:goods,CAST(:color AS uuid))])
-                """,args("goods",parent.key().goodsId(),"color",parent.key().colorId()),Boolean.class)))
-            throw conflict("该库存成本后继正在核对，请保留原单稍后重试；本次未确认");
         InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_edges(id,parent_node_id,child_node_id,interval_from,interval_to,denominator,
                     creation_event_id,initial_parent_revision,initial_allocated_amount,last_parent_revision,
@@ -301,7 +297,8 @@ abstract class InventoryValueLedger {
                 args("id",UUID.randomUUID(),"parent",parent.id(),"child",child.id(),"start",input.from(),"end",input.to(),"denom",input.denominator(),
                 "event",event,"revision",parent.revision(),"amount",part.projected(),
                 "pending",parent.pending()>0&&input.to().compareTo(input.from())>0,"restoresTransfer",input.restoresTransfer(),"lower",ValueAuthorityStore.lower(contribution),
-                "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)),"价值来源边写入失败");
+                "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)),"价值来源边写入失败",
+                exactRevaluationProofInstalled?new InventoryKey(parent.key().goodsId(),parent.key().colorId()):null);
     }
     protected Edge edge(UUID id,boolean lock){
         List<Edge> rows=db.query("SELECT * FROM stock_value_edges WHERE id=:id"+(lock?" FOR UPDATE":""),args("id",id),(r,i)->edgeRow(r));

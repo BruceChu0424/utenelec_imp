@@ -25,11 +25,12 @@ class ProcurementOrderApprovalPredicatesPostgresTest {
     static final List<String> SQL=new ArrayList<>();
     @BeforeAll static void start() {
         PG.start();var ds=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(ds);
-        jdbc.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,request_type text,status text,attempt integer)");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,"procurement_order_approval_cases");
+        jdbc.execute("CREATE TABLE approval_predicate_orders(id uuid PRIMARY KEY)");
         jdbc.execute("CREATE INDEX idx_procurement_order_approval_order ON procurement_order_approval_cases(order_type,order_id,attempt DESC)");
         jdbc.execute("CREATE UNIQUE INDEX uk_procurement_order_approval_pending ON procurement_order_approval_cases(order_type,order_id) WHERE status='PENDING'");
         var c=new Configuration().addAnnotatedClass(Order.class).addAnnotatedClass(ProcurementOrderApprovalRead.class)
-                .setProperty("hibernate.hbm2ddl.auto","create-drop").setProperty("hibernate.generate_statistics","true");
+                .setProperty("hibernate.hbm2ddl.auto","none").setProperty("hibernate.generate_statistics","true");
         c.getProperties().put("hibernate.connection.datasource",ds);
         c.setStatementInspector(sql->{SQL.add(sql);return sql;});factory=c.buildSessionFactory();
     }
@@ -55,7 +56,7 @@ class ProcurementOrderApprovalPredicatesPostgresTest {
         UUID target=order();approval(target,"PURCHASE","ORDER","PENDING",1);
         assertThat(find("PURCHASE",false)).containsExactly(target);
         int smallBindings=bindings(SQL.getLast());
-        jdbc.execute("INSERT INTO procurement_order_approval_cases SELECT md5('case'||n)::uuid,'PURCHASE',md5('order'||n)::uuid,'ORDER','REJECTED',1 FROM generate_series(1,6000)n");
+        jdbc.execute("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,request_type,status,attempt) SELECT md5('case'||n)::uuid,'PURCHASE',md5('order'||n)::uuid,'ORDER','REJECTED',1 FROM generate_series(1,6000)n");
         jdbc.execute("ANALYZE procurement_order_approval_cases");SQL.clear();factory.getStatistics().clear();
         assertThat(find("PURCHASE",false)).containsExactly(target);
         assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(1);
@@ -76,7 +77,7 @@ class ProcurementOrderApprovalPredicatesPostgresTest {
         }
     }
     private static UUID order(){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO approval_predicate_orders VALUES(?)",id);return id;}
-    private static void approval(UUID order,String type,String request,String status,int attempt){jdbc.update("INSERT INTO procurement_order_approval_cases VALUES(?,?,?,?,?,?)",UUID.randomUUID(),type,order,request,status,attempt);}
+    private static void approval(UUID order,String type,String request,String status,int attempt){jdbc.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,request_type,status,attempt) VALUES(?,?,?,?,?,?)",UUID.randomUUID(),type,order,request,status,attempt);}
     private static int bindings(String sql){return (int)sql.chars().filter(ch->ch=='?').count();}
     @Entity(name="ApprovalPredicateOrderFixture") @Table(name="approval_predicate_orders")
     static class Order {@Id UUID id;protected Order(){}}

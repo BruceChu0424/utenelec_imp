@@ -61,6 +61,12 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 "production_material_demands", "production_material_discovery_requests",
                 "production_overproduction_rate_requests", "production_over_limit_dispositions", "v_production_fqc_recovery_balance",
                 "v_production_analysis_workbench_item_progress");
+        // Current business column shapes; keep this query oracle's duplicate
+        // analysis identities and its explicitly controlled scalar defaults.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "production_plans", "production_material_analysis_items", "sales_order_items");
+        jdbc.execute("ALTER TABLE production_plans ADD PRIMARY KEY (id)");
+        jdbc.execute("ALTER TABLE production_material_analysis_items ALTER COLUMN source_type SET DEFAULT 'SALES_ORDER_ITEM'");
         jdbc.execute("ALTER TABLE production_execution_segments ALTER COLUMN start_route SET DEFAULT 'FULL_KIT', ALTER COLUMN continuous_supply SET DEFAULT FALSE");
         jdbc.execute("ALTER TABLE v_production_fqc_recovery_balance ALTER COLUMN cancelled SET DEFAULT FALSE");
         jdbc.execute("CREATE TABLE workbench_execution_policy_facts(segment_id uuid PRIMARY KEY, overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE)");
@@ -87,12 +93,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE departments(id uuid PRIMARY KEY, parent_id uuid, manager_id uuid, is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employees(id uuid PRIMARY KEY, department_id uuid, status text DEFAULT 'active', is_deleted boolean DEFAULT FALSE);
                 CREATE TABLE employee_secondary_departments(employee_id uuid, department_id uuid);
-                CREATE TABLE production_plans(id uuid PRIMARY KEY, actual_output_supplement_request_id uuid, bill_no text, status integer, maker_id uuid,
-                    material_analysis_id uuid, material_analysis_item_id uuid, is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,is_stopped boolean DEFAULT FALSE);
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text DEFAULT 'CONFIRMED',is_deleted boolean DEFAULT FALSE, cancel_idempotency_key text, created_at timestamp with time zone DEFAULT now(), created_by uuid, deleted_at timestamp with time zone, execution_model_version smallint DEFAULT 0, idempotency_key text, lifecycle_reason text, lock_version bigint DEFAULT 0, plan_id uuid, preview_fingerprint text, purchase_request_id uuid, request_hash text, reverse_idempotency_key text, updated_at timestamp with time zone DEFAULT now(), updated_by uuid, warehouse_id uuid);
-                CREATE TABLE production_material_analysis_items(id uuid, analysis_id uuid, goods_id uuid,
-                    parent_analysis_material_id uuid, source_type text DEFAULT 'SALES_ORDER_ITEM',
-                    sales_order_item_id uuid, is_deleted boolean, source_ref text);
                 -- V719: 工作台根工单列引用 root 分析的编号子查询(漂移守卫要求全列对齐真表)。
                 CREATE TABLE production_material_analyses(id uuid PRIMARY KEY, warehouse_id uuid, status text,
                     version bigint DEFAULT 0, fingerprint text NOT NULL, preview_fingerprint text,
@@ -101,7 +102,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
                     is_deleted boolean DEFAULT FALSE, deleted_at timestamptz,
                     participating_warehouse_ids uuid[], analysis_no text);
-                CREATE TABLE sales_order_items(id uuid, order_id uuid, is_deleted boolean, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid);
                 CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
                 CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255), is_hidden BOOLEAN NOT NULL DEFAULT FALSE, hidden_at TIMESTAMPTZ);
                 CREATE TABLE v_production_execution_workbench_segments(
@@ -279,7 +279,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 "fn_preplan_aggregate_recorded_private_sources_scoped",
                 "fn_preplan_aggregate_recorded_private_sources");
         jdbc.execute("""
-                ALTER TABLE sales_order_items ADD COLUMN goods_id uuid, ADD COLUMN remark text;
                 ALTER TABLE sales_orders ADD COLUMN remark text;
                 """);
         com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,

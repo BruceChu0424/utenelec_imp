@@ -30,7 +30,7 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
             "stock_document_items","stock_documents","production_plan_items","production_plans","sales_shipment_delivery_components",
             "sales_shipment_items","sales_shipments","stock_movements","stock_reservations","sales_delivery_fulfillment_allocations",
             "sales_delivery_fulfillment_groups","sales_delivery_fulfillment_events","sales_delivery_entitlement_restores","preplan_reallocation_make_supplements",
-            "preplan_aggregate_material_aliases");
+            "preplan_aggregate_material_aliases", "direct_make_alias_identity_fixture");
 
     @BeforeAll static void database() throws Exception {
         DB.start();
@@ -40,7 +40,7 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
         jdbc=new JdbcTemplate(new DriverManagerDataSource(url,DB.getUsername(),DB.getPassword()));
         // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
         MigratedProjectionSchema.createCurrentColumns(jdbc,
-                "production_material_analysis_items", "production_material_analysis_materials", "sales_delivery_entitlement_handoffs", "preplan_stock_entitlement_events", "preplan_analysis_stock_exact_pegs", "stock_document_items", "stock_documents", "production_plan_items", "production_plans", "sales_shipment_delivery_components", "sales_shipment_items", "sales_shipments", "stock_movements", "stock_reservations", "sales_delivery_fulfillment_allocations", "sales_delivery_fulfillment_groups", "sales_delivery_fulfillment_events", "sales_delivery_entitlement_restores", "preplan_reallocation_make_supplements");
+                "production_material_analysis_items", "production_material_analysis_materials", "sales_delivery_entitlement_handoffs", "preplan_stock_entitlement_events", "preplan_analysis_stock_exact_pegs", "stock_document_items", "stock_documents", "production_plan_items", "production_plans", "sales_shipment_delivery_components", "sales_shipment_items", "sales_shipments", "stock_movements", "stock_reservations", "sales_delivery_fulfillment_allocations", "sales_delivery_fulfillment_groups", "sales_delivery_fulfillment_events", "sales_delivery_entitlement_restores", "preplan_reallocation_make_supplements", "preplan_aggregate_material_aliases");
         jdbc.execute("""
                 ALTER TABLE production_material_analysis_items ADD PRIMARY KEY (id);
                 ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY (id);
@@ -60,15 +60,16 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
                 ALTER TABLE sales_delivery_fulfillment_groups ADD PRIMARY KEY (shipment_item_id);
                 ALTER TABLE sales_delivery_fulfillment_events ADD PRIMARY KEY (id);
                 ALTER TABLE sales_delivery_entitlement_restores ADD PRIMARY KEY (id);
-                CREATE TABLE preplan_aggregate_material_aliases(id uuid PRIMARY KEY,source_material_id uuid,qty numeric,frozen_capacity numeric,valid boolean);
+                ALTER TABLE preplan_aggregate_material_aliases ADD PRIMARY KEY (id);
+                CREATE TABLE direct_make_alias_identity_fixture(alias_id uuid PRIMARY KEY, valid boolean NOT NULL);
                 CREATE FUNCTION fn_preplan_aggregate_alias_qty(p_alias uuid) RETURNS numeric LANGUAGE sql STABLE AS $$SELECT qty FROM preplan_aggregate_material_aliases WHERE id=p_alias$$;
-                CREATE FUNCTION fn_preplan_aggregate_alias_identity_valid(p_alias uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT valid FROM preplan_aggregate_material_aliases WHERE id=p_alias$$;
+                CREATE FUNCTION fn_preplan_aggregate_alias_identity_valid(p_alias uuid) RETURNS boolean LANGUAGE sql STABLE AS $$SELECT valid FROM direct_make_alias_identity_fixture WHERE alias_id=p_alias$$;
                 -- Preserve this fixture's explicit unknown-current oracle while
                 -- representing both real aggregate source-capacity branches.
                 CREATE FUNCTION fn_preplan_aggregate_source_capacity(p_material uuid) RETURNS numeric LANGUAGE sql STABLE AS $$
                   SELECT CASE WHEN material.required_qty IS NULL THEN NULL ELSE GREATEST(
-                    material.required_qty+COALESCE((SELECT sum(alias.qty) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND alias.valid),0),
-                    COALESCE((SELECT max(alias.frozen_capacity) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND alias.valid),0)) END
+                    material.required_qty+COALESCE((SELECT sum(alias.qty) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND fn_preplan_aggregate_alias_identity_valid(alias.id)),0),
+                    COALESCE((SELECT max(alias.source_capacity_qty) FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=p_material AND fn_preplan_aggregate_alias_identity_valid(alias.id)),0)) END
                   FROM production_material_analysis_materials material WHERE material.id=p_material
                 $$;
                 """);
@@ -124,11 +125,11 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
 
     @Test void frozenAliasMaximumDoesNotReceiveTheSameHistoricalCreditTwice(){
         jdbc.update("UPDATE production_material_analysis_items SET requested_qty=20 WHERE id=?",child);
-        UUID alias=UUID.randomUUID();row("preplan_aggregate_material_aliases","id",alias,"source_material_id",material,"qty",BigDecimal.ZERO,"frozen_capacity",new BigDecimal("10"),"valid",true);
+        UUID alias=UUID.randomUUID();row("preplan_aggregate_material_aliases","id",alias,"source_material_id",material,"qty",BigDecimal.ZERO,"source_capacity_qty",new BigDecimal("10"));row("direct_make_alias_identity_fixture","alias_id",alias,"valid",true);
         assertThat(closed()).isEqualByComparingTo("4");assertThat(total()).isEqualByComparingTo("10");assertThat(admitted()).isEqualByComparingTo("10");
         jdbc.update("UPDATE preplan_aggregate_material_aliases SET qty=2 WHERE id=?",alias);
         assertThat(total()).isEqualByComparingTo("12");
-        jdbc.update("UPDATE preplan_aggregate_material_aliases SET frozen_capacity=15 WHERE id=?",alias);
+        jdbc.update("UPDATE preplan_aggregate_material_aliases SET source_capacity_qty=15 WHERE id=?",alias);
         assertThat(total()).isEqualByComparingTo("15");
     }
 

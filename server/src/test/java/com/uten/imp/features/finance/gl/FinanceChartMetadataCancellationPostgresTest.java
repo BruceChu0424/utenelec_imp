@@ -46,9 +46,9 @@ class FinanceChartMetadataCancellationPostgresTest {
         db=new JdbcTemplate(source);transactions=new TransactionTemplate(new DataSourceTransactionManager(source));
         MigratedProjectionSchema.createCurrentTables(db,"users","payment_styles","currencies","finance_applications");
         db.update("INSERT INTO users(id)VALUES(?),(?)",A,B);
-        String chart=resource("V999_1__finance_chart_code_imports.sql"),applications=resource("V999_11__financial_application_original_six_workflows.sql");
-        for(String table:List.of("finance_chart_imports","finance_chart_codes","finance_chart_manual_operations"))db.execute(tableDdl(chart,table));
-        db.execute(tableDdl(applications,"finance_application_operations"));
+        String applications=resource("V999_11__financial_application_original_six_workflows.sql");
+        MigratedProjectionSchema.createOriginalTables(db,"V999_1__finance_chart_code_imports.sql","finance_chart_imports","finance_chart_codes","finance_chart_manual_operations");
+        MigratedProjectionSchema.createOriginalTables(db,"V999_11__financial_application_original_six_workflows.sql","finance_application_operations");
         int first=applications.indexOf("CREATE FUNCTION fn_finance_application_events_immutable()"),last=applications.indexOf("$$;",first);
         db.execute(applications.substring(first,last+3));
         db.execute(statement(applications,"CREATE TRIGGER finance_application_operations_immutable"));
@@ -146,6 +146,5 @@ class FinanceChartMetadataCancellationPostgresTest {
     private static String oldBytes(){return receiptBytes(OLD);}
     private static void seedOld(){db.update("INSERT INTO finance_chart_manual_operations(request_id,actor_id,fingerprint,result,created_at)VALUES(?,?,repeat('0',64),?::jsonb,TIMESTAMPTZ '2026-01-01 00:00:00Z')",OLD,A,"{\"requestId\":\""+OLD+"\",\"code\":\"1009\",\"status\":\"CREATED\"}");}
     private static String resource(String name)throws Exception{try(var input=FinanceChartMetadataCancellationPostgresTest.class.getResourceAsStream("/db/migration/"+name)){return new String(Objects.requireNonNull(input,name).readAllBytes(),StandardCharsets.UTF_8);}}
-    private static String tableDdl(String sql,String table){int start=sql.indexOf("CREATE TABLE "+table+" ("),end=sql.indexOf("\n);",start);if(start<0||end<0)throw new AssertionError("Original table missing: "+table);return sql.substring(start,end+3);}
     private static String statement(String sql,String prefix){int start=sql.indexOf(prefix),end=sql.indexOf(';',start);if(start<0||end<0)throw new AssertionError("Original statement missing: "+prefix);return sql.substring(start,end+1);}
 }

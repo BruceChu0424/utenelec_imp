@@ -126,6 +126,7 @@ final class FixtureSchemaDdl {
                     }
                     out.append(source, i + 3, close);
                     i = close + 3;
+                    appendLiteralBoundary(out, source, i);
                 } else {
                     i++;
                     while (i < length && source.charAt(i) != '"') {
@@ -138,7 +139,7 @@ final class FixtureSchemaDdl {
                         }
                     }
                     i++;
-                    out.append(' ');
+                    appendLiteralBoundary(out, source, i);
                 }
             } else if (ch == '\'') {
                 i++;
@@ -151,6 +152,27 @@ final class FixtureSchemaDdl {
             }
         }
         return out.toString();
+    }
+
+    /** Do not turn unrelated Java strings into one invented SQL statement. */
+    private static void appendLiteralBoundary(StringBuilder out, String source, int cursor) {
+        while (cursor < source.length()) {
+            if (Character.isWhitespace(source.charAt(cursor))) {
+                cursor++;
+            } else if (source.startsWith("//", cursor)) {
+                int end = source.indexOf('\n', cursor + 2);
+                cursor = end < 0 ? source.length() : end + 1;
+            } else if (source.startsWith("/*", cursor)) {
+                int end = source.indexOf("*/", cursor + 2);
+                cursor = end < 0 ? source.length() : end + 2;
+            } else {
+                break;
+            }
+        }
+        // A real concatenation stays contiguous, including unresolved variable
+        // table names which must still be reported as dynamic DDL. Other
+        // expressions get a non-whitespace boundary that SQL tokens cannot cross.
+        out.append(cursor < source.length() && source.charAt(cursor) == '+' ? ' ' : '\0');
     }
 
     private static char unescape(char escaped) {

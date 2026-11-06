@@ -79,6 +79,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             // Reads V954 SQL text and asserts its CREATE TABLE declaration;
             // never executes fixture DDL or opens a database.
             "DataLifecycleRegistryContractTest.java",
+            // Its fake_comment/fake_body/compact_probe CREATE strings are
+            // tokenizer input only; this class reads SQL files and never opens
+            // JDBC or executes fixture DDL.
+            "PaymentStyleReferenceGuardMigrationContractTest.java",
             "MigratedSchemaBaselinePostgresTest.java",
             // Creates complete projections from trusted live Flyway catalog
             // metadata rather than hand-written fixture DDL.
@@ -182,6 +186,32 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // Private transaction/HTTP rollback sinks, not ERP relations.
+            "com/uten/imp/common/finance/BusinessPrecisionHttpPostgresTest.java#precision_http_probe",
+            "com/uten/imp/common/finance/BusinessPrecisionSqlPostgresTest.java#precision_transaction_probe",
+            // Summary protocol data/auth witnesses, plus its deliberately denied
+            // runtime CREATE attempt. None models a production table.
+            "com/uten/imp/common/readsnapshot/VersionedSummaryPagesPostgresTest.java#summary_protocol_fixture",
+            "com/uten/imp/common/readsnapshot/VersionedSummaryPagesPostgresTest.java#summary_protocol_auth",
+            "com/uten/imp/common/readsnapshot/VersionedSummaryPagesPostgresTest.java#summary_protocol_second",
+            "com/uten/imp/common/readsnapshot/VersionedSummaryPagesPostgresTest.java#forbidden_summary_runtime",
+            // Minimal write sink proves the public read transaction is read-only.
+            "com/uten/imp/common/util/InteractiveTaskReadScopePostgresTest.java#fixture_write",
+            // Mocked expense commands write only these private atomicity/replay
+            // witnesses; they do not replace finance document schemas.
+            "com/uten/imp/features/finance/FinanceBatchRecoveryPostgresTest.java#batch_recovery_documents",
+            "com/uten/imp/features/finance/FinanceBatchRecoveryPostgresTest.java#batch_recovery_gate",
+            // Controlled audit projection and independent-connection MVCC facts.
+            "com/uten/imp/features/finance/gl/FinanceGlSettlementCapacityPostgresTest.java#finance_audit_projection_fixture",
+            "com/uten/imp/features/sales/shipment/SalesFinanceSnapshotIsolationPostgresTest.java#finance_snapshot_isolation_probe",
+            // RLS fixture links to the already declared private ancestry DAG.
+            "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_rls",
+            // A function-oracle identity flag is separate from the complete real
+            // aggregate alias column shape, never a fabricated business column.
+            "com/uten/imp/businesschain/DirectMakeDeliveryClosedCreditPostgresTest.java#direct_make_alias_identity_fixture",
+            // Criteria order-ID witnesses are private; the approval-case table
+            // itself is always copied from the current migrated business catalog.
+            "com/uten/searchtest/ProcurementOrderApprovalPredicatesPostgresTest.java#approval_predicate_orders",
             // Batch atomicity/replay oracle's private downstream write sink; it models
             // no production document and only this exact fixture may create it.
             "com/uten/imp/features/finance/FinanceBatchEntryPostgresTest.java#synthetic_documents",
@@ -333,7 +363,7 @@ class FixtureSchemaDriftGuardPostgresTest {
     // 对账
     // ------------------------------------------------------------------
 
-    private static void reconcileTable(
+    static void reconcileTable(
             FixtureSchemaDdl.FixtureTable fixtureTable,
             List<String> violations,
             Set<String> debt,

@@ -70,7 +70,7 @@ class FinanceApplicationSettingsReceiptPostgresTest {
         applicationBeforeMigration=db.queryForObject("SELECT to_jsonb(application)::text FROM finance_applications application WHERE id=?",String.class,APPLICATION);
         String original=resource("/db/migration/V999_11__financial_application_original_six_workflows.sql");
         for(String table:List.of("finance_application_settings","finance_application_enable_periods","finance_application_role_bindings","finance_application_operations"))
-            db.execute(tableDdl(original,table));
+            MigratedProjectionSchema.createOriginalTables(db,"V999_11__financial_application_original_six_workflows.sql",table);
         db.execute(statement(original,"CREATE UNIQUE INDEX finance_application_one_enable_period"));
         db.execute(statement(original,"CREATE UNIQUE INDEX finance_application_role_person_unique"));
         int functionStart=original.indexOf("CREATE FUNCTION fn_finance_application_events_immutable()");
@@ -340,6 +340,5 @@ class FinanceApplicationSettingsReceiptPostgresTest {
     private static void assertSameJson(Object actual,Object expected){try{assertThat(JSON.readTree(encode(actual))).isEqualTo(JSON.readTree(encode(expected)));}catch(java.io.IOException error){throw new AssertionError(error);}}
     private static String encode(Object value){try{return JSON.writeValueAsString(value);}catch(Exception error){throw new AssertionError(error);}}
     private static String resource(String name)throws Exception {try(var input=FinanceApplicationSettingsReceiptPostgresTest.class.getResourceAsStream(name)){return new String(Objects.requireNonNull(input,name).readAllBytes(),StandardCharsets.UTF_8);}}
-    private static String tableDdl(String sql,String table){int start=sql.indexOf("CREATE TABLE "+table+" (");int end=sql.indexOf("\n);",start);if(start<0||end<0)throw new AssertionError("Original table missing: "+table);return sql.substring(start,end+3);}
     private static String statement(String sql,String prefix){int start=sql.indexOf(prefix);int end=sql.indexOf(';',start);if(start<0||end<0)throw new AssertionError("Original statement missing: "+prefix);return sql.substring(start,end+1);}
 }

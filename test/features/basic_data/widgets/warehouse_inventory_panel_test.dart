@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/data_display/uten_table_output_scope.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -87,9 +86,38 @@ Map<String, dynamic> _result(
   ],
   'page': query['page'] ?? 1,
   'size': query['size'] ?? 30,
-  'total': 65,
-  'totalPages': 3,
+  'total': 1,
+  'totalPages': 1,
+  'readScopeVersion': 'warehouse-inventory-test-access-v1',
 };
+
+Map<String, dynamic> _pagedResult(
+  Map<String, dynamic> query, {
+  int total = 65,
+  String? name,
+  num Function(int index)? quantityAt,
+}) {
+  final result = _result(query, name: name);
+  final row = (result['items'] as List).single as Map<String, dynamic>;
+  final page = query['page'] as int? ?? 1;
+  final size = query['size'] as int? ?? 30;
+  final offset = (page - 1) * size;
+  return {
+    ...result,
+    'items': [
+      for (var index = offset; index < total && index < offset + size; index++)
+        {
+          ...row,
+          'goodsId': 'goods-${index + 1}',
+          'goodsCode': 'M3-${(index + 1).toString().padLeft(3, '0')}',
+          if (quantityAt != null) 'qty': quantityAt(index),
+          if (index > 0) 'name': '${row['name']} ${index + 1}',
+        },
+    ],
+    'total': total,
+    'totalPages': (total / size).ceil(),
+  };
+}
 
 const _warehouse = WarehouseDetail(
   id: 'hardware',
@@ -187,6 +215,37 @@ MasterDataTableView<InstantInventoryRow> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets(
+    'duplicate identities across complete inventory batches require retry',
+    (tester) async {
+      final api = _InventoryApi()
+        ..respond = (query) async {
+          final response = _pagedResult(query);
+          if (query['page'] == 2) {
+            ((response['items'] as List).first
+                    as Map<String, dynamic>)['goodsId'] =
+                'goods-1';
+          }
+          return response;
+        };
+      await _pump(tester, api: api);
+      expect(_table(tester).items, isEmpty);
+      expect(_table(tester).error, '库存加载失败，请重试');
+      expect(_table(tester).isLoading, isFalse);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      api.respond = (query) async => _pagedResult(query);
+      _table(tester).onRetry!();
+      await tester.pumpAndSettle();
+      expect(_table(tester).items, hasLength(65));
+      expect(
+        _table(tester).items.map((row) => row.rowKey).toSet(),
+        hasLength(65),
+      );
+      expect(_table(tester).error, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('new warehouse inventory uses the recent business month', (
     tester,
   ) async {
@@ -209,7 +268,9 @@ void main() {
   testWidgets(
     'period clear waits with one overlay and releases it on failure',
     (tester) async {
-      final harness = await _pump(tester);
+      final api = _InventoryApi()
+        ..respond = (query) async => _pagedResult(query);
+      final harness = await _pump(tester, api: api);
       final pending = Completer<Map<String, dynamic>>();
       harness.api.respond = (_) => pending.future;
       final before = harness.api.queries.length;
@@ -374,7 +435,9 @@ void main() {
     testWidgets('$navigation return releases warehouse ledger navigation', (
       tester,
     ) async {
-      final harness = await _pump(tester);
+      final api = _InventoryApi()
+        ..respond = (query) async => _pagedResult(query);
+      final harness = await _pump(tester, api: api);
       for (var visit = 0; visit < 2; visit++) {
         await tester.tap(find.text('hardware库存货品'));
         await tester.pump(const Duration(milliseconds: 60));
@@ -414,7 +477,8 @@ void main() {
   testWidgets('reads actual selected stock with precise quantities', (
     tester,
   ) async {
-    final harness = await _pump(tester);
+    final api = _InventoryApi()..respond = (query) async => _pagedResult(query);
+    final harness = await _pump(tester, api: api);
     final defaults = recentMonthDateRange();
     expect(harness.api.queries, [
       for (final page in [1, 2, 3])
@@ -429,13 +493,19 @@ void main() {
           'dateTo': inventoryPeriodDate(defaults.end),
         },
     ]);
-    expect(_table(tester).items.single.goodsCode, 'M3-001');
+    expect(_table(tester).items, hasLength(65));
+    expect(_table(tester).items.first.goodsCode, 'M3-001');
+    expect(_table(tester).items.last.goodsId, 'goods-65');
+    expect(
+      _table(tester).items.map((row) => row.readIdentity).toSet(),
+      hasLength(65),
+    );
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).embedded, isFalse);
     expect(
       _table(tester).columns
           .singleWhere((column) => column.key == 'qty')
-          .value(_table(tester).items.single),
+          .value(_table(tester).items.first),
       '0.0001 个',
     );
     // The selected month can show the same exact quantity in multiple columns.
@@ -481,7 +551,7 @@ void main() {
       tester,
     ) async {
       final harness = await _pump(tester, warehouse: warehouse);
-      expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
+      expect(harness.api.queries.map((query) => query['page']), [1]);
       expect(_table(tester).currentPage, 1);
       for (final query in harness.api.queries) {
         expect(query['warehouseId'], warehouse.id);
@@ -537,12 +607,15 @@ void main() {
   ) async {
     final pending = Completer<Map<String, dynamic>>();
     final api = _InventoryApi()
-      ..respond = (query) =>
-          query['page'] == 3 ? pending.future : Future.value(_result(query));
-    final harness = await _pump(tester, api: api);
+      ..respond = (query) => query['page'] == 3
+          ? pending.future
+          : Future.value(_pagedResult(query));
+    final harness = await _pump(tester, api: api, settle: false);
+    for (var attempt = 0; attempt < 30 && api.queries.length < 3; attempt++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
     expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
-    _table(tester).onPageChange!(3);
-    await tester.pump();
+    expect(_table(tester).items, isEmpty);
     harness.container.read(_permissions.notifier).replace(const {});
     await tester.pumpAndSettle();
     expect(
@@ -551,12 +624,16 @@ void main() {
     );
     expect(find.text('hardware库存货品'), findsNothing);
     pending.complete(
-      _result({'warehouseId': 'hardware', 'page': 3}, name: '撤权后的旧响应'),
+      _pagedResult({
+        'warehouseId': 'hardware',
+        'page': 3,
+        'size': 30,
+      }, name: '撤权后的旧响应'),
     );
     await tester.pumpAndSettle();
     expect(find.text('撤权后的旧响应'), findsNothing);
     expect(harness.api.queries, hasLength(3));
-    harness.api.respond = null;
+    harness.api.respond = (query) async => _pagedResult(query);
     harness.container.read(_permissions.notifier).replace(const {
       Perm.stockView,
     });
@@ -570,7 +647,8 @@ void main() {
       3,
     ]);
     expect(_table(tester).currentPage, 1);
-    expect(_table(tester).items.single.name, 'hardware库存货品');
+    expect(_table(tester).items, hasLength(65));
+    expect(_table(tester).items.first.name, 'hardware库存货品');
   });
 
   testWidgets('search invalidates the previous response before debounce ends', (
@@ -592,23 +670,35 @@ void main() {
     final searchQueries = harness.api.queries.where(
       (query) => query['keyword'] == '螺丝',
     );
-    expect(searchQueries.map((query) => query['page']), [1, 2, 3]);
+    expect(searchQueries.map((query) => query['page']), [1]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items.single.name, '搜索后的螺丝');
   });
 
-  testWidgets('pagination keeps warehouse filtering on every request', (
+  testWidgets('complete inventory scrolls without another warehouse request', (
     tester,
   ) async {
-    final harness = await _pump(tester);
-    _table(tester).onPageChange!(2);
+    final api = _InventoryApi()..respond = (query) async => _pagedResult(query);
+    final harness = await _pump(tester, api: api);
+    final before = harness.api.queries.length;
+    await tester.drag(
+      find.byKey(const Key('warehouse-inventory-table')),
+      const Offset(0, -4000),
+    );
     await tester.pumpAndSettle();
     expect(harness.api.queries.last['page'], 3);
     expect(harness.api.queries.last['warehouseId'], 'hardware');
     expect(harness.api.queries.last['warehouseRelatedOnly'], isTrue);
     expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
-    expect(_table(tester).currentPage, 2);
-    expect(_table(tester).totalPages, 3);
+    expect(harness.api.queries, hasLength(before));
+    expect(_table(tester).items, hasLength(65));
+    expect(_table(tester).currentPage, 1);
+    expect(_table(tester).totalPages, 1);
+    expect(
+      find.byKey(const Key('warehouse-inventory-page-size')),
+      findsNothing,
+    );
+    expect(find.text('hardware库存货品 65'), findsOneWidget);
   });
 
   for (final colorId in ['red', null]) {
@@ -759,11 +849,14 @@ void main() {
   );
 
   testWidgets(
-    'facets sorting page size and export all preserve the selected stock scope',
+    'facets sorting complete reads and export preserve the selected stock scope',
     (tester) async {
       final api = _InventoryApi()
         ..respond = (query) async => {
-          ..._result(query),
+          ..._pagedResult(
+            query,
+            total: query['owningWarehouseNull'] == true ? 2 : 65,
+          ),
           'facets': {
             'color': [
               {'value': 'red', 'label': '红色', 'count': 65},
@@ -790,17 +883,13 @@ void main() {
       await tester.pumpAndSettle();
       _table(tester).onSortChange!('weight', true);
       await tester.pumpAndSettle();
-      _table(tester).onPageChange!(2);
-      await tester.pumpAndSettle();
-      tester
-          .widget<UtenDropdownField>(
-            find.byKey(const Key('warehouse-inventory-page-size')),
-          )
-          .onChanged('100');
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-inventory-page-size')),
+        findsNothing,
+      );
       expect(harness.api.queries.where((query) => query['page'] == 1).last, {
         'page': 1,
-        'size': 100,
+        'size': 30,
         'warehouseId': 'hardware',
         'includeDefective': true,
         'includeLineSide': true,
@@ -813,7 +902,7 @@ void main() {
         'sort': 'weight',
         'order': 'asc',
       });
-      expect(find.text('共 65 项'), findsOneWidget);
+      expect(find.text('共 2 项'), findsOneWidget);
       final export = tester.widget<UtenExportButton>(
         find.byKey(const Key('warehouse-inventory-export')),
       );
@@ -853,7 +942,7 @@ void main() {
       final pending = Completer<Map<String, dynamic>>();
       final api = _InventoryApi()
         ..respond = (query) async => {
-          ..._result(query, qty: 1),
+          ..._pagedResult(query, quantityAt: (index) => index == 64 ? 9935 : 1),
           'totals': [
             {
               'key': 'qty',
@@ -884,6 +973,15 @@ void main() {
           ],
         };
       final harness = await _pump(tester, api: api);
+      expect(_table(tester).items, hasLength(65));
+      expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
+      final completedRequests = harness.api.queries.length;
+      await tester.drag(
+        find.byKey(const Key('warehouse-inventory-table')),
+        const Offset(0, -4000),
+      );
+      await tester.pumpAndSettle();
+      expect(harness.api.queries, hasLength(completedRequests));
       expect(find.text('9999 个'), findsOneWidget);
       expect(find.text('31 个'), findsOneWidget);
       expect(find.text('内部成本: '), findsNothing);

@@ -258,6 +258,7 @@ class _InstantInventoryOverviewPageState
         current,
         () => loadCompletePagedResult<InstantInventoryRow>(
           isCurrent: current,
+          idOf: (row) => row.readIdentity,
           loadPage: (page, size) =>
               _fetch(page: page, size: size, attention: risk),
         ),
@@ -321,7 +322,7 @@ class _InstantInventoryOverviewPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '库存总览与分析',
-        subtitle: _updatedAt == null
+        info: _updatedAt == null
             ? null
             : '最近更新 ${ChinaDateTime.formatTime(ChinaDateTime.fromInstant(_updatedAt!), seconds: true)} · 当前筛选范围',
         leading: UtenBackButton(

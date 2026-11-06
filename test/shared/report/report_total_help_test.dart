@@ -22,7 +22,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final timestamp = find.textContaining('统计生成于');
-      const message = '翻页保留当前统计快照，刷新时重新统计。';
+      const message = '滚动保留当前统计快照，刷新时重新统计。';
       expect(timestamp, findsOneWidget);
       expect(find.text(message), findsNothing);
       final textRect = tester.getRect(timestamp);

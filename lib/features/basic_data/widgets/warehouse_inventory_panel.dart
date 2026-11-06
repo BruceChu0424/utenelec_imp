@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -86,7 +85,7 @@ class _WarehouseInventoryPanelState
   bool _openingLedger = false;
   final _navigation = PageNavigationSession();
   int _page = 1;
-  int _size = 30;
+  static const _size = 30;
   Map<String, String?> _filters = {};
   DateTimeRange? _period = recentMonthDateRange();
   String? get _dateFrom =>
@@ -321,7 +320,7 @@ class _WarehouseInventoryPanelState
         owningNull = _filters['owningWarehouse'] == kMasterFilterNullValue;
     final color = _filter('color'), series = _filter('series'), sort = _sortKey;
     final dateFrom = _dateFrom, dateTo = _dateTo;
-    final size = _size;
+    const size = _size;
     final order = sort == null ? null : (_sortAscending ? 'asc' : 'desc');
     Object pagingQuery() => [
       ref.read(instantInventoryRepositoryProvider),
@@ -338,6 +337,7 @@ class _WarehouseInventoryPanelState
     try {
       final result = await readScopedPage<InstantInventoryRow>(
         page,
+        idOf: (row) => row.readIdentity,
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
@@ -461,6 +461,11 @@ class _WarehouseInventoryPanelState
                         info: l10n.warehouseMasterInventorySummaryHint,
                         dense: true,
                       ),
+                    if (widget.navigationEnabled)
+                      UtenFieldHintIcon(
+                        info: l10n.warehouseInventoryOpenLedger,
+                        dense: true,
+                      ),
                   ],
                 ),
                 SizedBox(
@@ -485,7 +490,7 @@ class _WarehouseInventoryPanelState
             expensiveRowMounts: false,
             key: const Key('warehouse-inventory-table'),
             tableKey: 'master.warehouse.inventory',
-            idOf: (row) => row.goodsId == null ? null : row.rowKey,
+            idOf: (row) => row.readIdentity,
             outputSelectorOf: (row) => row.identityFields,
             primary: widget.primary,
             bottomContentPadding: widget.bottomContentPadding,
@@ -548,28 +553,6 @@ class _WarehouseInventoryPanelState
                 _resultsReady ? '共 ${_result!.total} 项' : '',
                 key: const Key('warehouse-inventory-total'),
               ),
-              SizedBox(
-                width: 130,
-                child: UtenDropdownField(
-                  key: const Key('warehouse-inventory-page-size'),
-                  value: _size.toString(),
-                  allowClear: false,
-                  items: [
-                    for (final size in const [30, 50, 100])
-                      UtenDropdownItem(value: '$size', label: '$size 项/页'),
-                  ],
-                  onChanged: (value) {
-                    final size = int.tryParse(value ?? '');
-                    if (size == null ||
-                        size == _size ||
-                        !const [30, 50, 100].contains(size)) {
-                      return;
-                    }
-                    setState(() => _size = size);
-                    _load(1);
-                  },
-                ),
-              ),
             ],
             items: _result?.items ?? const [],
             rowKeyOf: (row) => '${row.goodsId}|${row.colorId}',
@@ -610,12 +593,8 @@ class _WarehouseInventoryPanelState
                 !_openingLedger &&
                 row.goodsId?.isNotEmpty == true,
             onRowTap: _openLedger,
-            summaryBar: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_resultsReady)
-                  ?reportTotalsBar(
+            summaryBar: _resultsReady
+                ? reportTotalsBar(
                     _result!.totals
                         .where(
                           (total) => const {
@@ -631,14 +610,8 @@ class _WarehouseInventoryPanelState
                         )
                         .toList(),
                     weightDisplay: weightDisplay,
-                  ),
-                if (widget.navigationEnabled)
-                  Text(
-                    l10n.warehouseInventoryOpenLedger,
-                    style: theme.textTheme.bodySmall,
-                  ),
-              ],
-            ),
+                  )
+                : null,
           ),
         ),
       ],

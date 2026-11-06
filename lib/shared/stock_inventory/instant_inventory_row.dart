@@ -53,6 +53,9 @@ class InstantInventoryRow {
   /// Identity within the current warehouse/query scope; ownership is a filter,
   /// not a substitute for the physical stock scope.
   String get rowKey => '$goodsId|$colorId';
+
+  /// Complete reads require the real goods identity; null color is a valid tranche.
+  String? get readIdentity => goodsId?.isNotEmpty == true ? rowKey : null;
   Map<String, String?> get identityFields => {
     'goodsId': goodsId,
     'colorId': colorId,

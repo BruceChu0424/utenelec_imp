@@ -264,7 +264,8 @@ void main() {
     expect(find.text('当前可查看汇总，分析指标暂未提供'), findsNothing);
     expect(find.text('库存结构'), findsNothing);
     expect(find.byKey(const Key('inventory-risk-details')), findsNothing);
-    expect(find.textContaining('最近更新'), findsOneWidget);
+    expect(find.textContaining('最近更新'), findsNothing);
+    await readFieldHint(tester, '最近更新');
     expect(tester.takeException(), isNull);
   });
 

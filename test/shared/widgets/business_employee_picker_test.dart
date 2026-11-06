@@ -62,7 +62,14 @@ void main() {
       expect(api.queries, isEmpty);
       await tester.tap(find.byType(InputDecorator).first);
       await tester.pumpAndSettle();
-      expect(api.queries, hasLength(1));
+      expect(api.queries.map((query) => query['page']), [1, 2]);
+      final complete = tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+          );
+      expect(complete.items.map((item) => item.id), [
+        for (var index = 1; index <= 101; index++) 'e$index',
+      ]);
       final search = find.descendant(
         of: find.byKey(const Key('uten-employee-picker-search')),
         matching: find.byType(TextField),
@@ -70,7 +77,7 @@ void main() {
       await tester.enterText(search, '后页职位');
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
-      expect(api.queries, hasLength(2));
+      expect(api.queries.map((query) => query['page']), [1, 2, 1]);
       expect(api.queries.last['search'], '后页职位');
       expect(
         find.byKey(const ValueKey('employee-picker-item-e101')),
@@ -283,14 +290,24 @@ void main() {
       var table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
         find.byKey(const Key('uten-employee-picker-candidates')),
       );
-      expect(table.items, hasLength(100));
-      expect(api.queries.map((query) => query['page']), [1]);
-      table.onLoadMore!();
+      expect(table.items, hasLength(101));
+      expect(api.queries.map((query) => query['page']), [1, 2]);
+      expect(table.onLoadMore, isNull);
+      final completeReadRequests = api.queries.length;
+      await tester.drag(
+        find.byKey(const Key('uten-employee-picker-candidates')),
+        const Offset(0, -5000),
+      );
       await tester.pumpAndSettle();
+      expect(api.queries, hasLength(completeReadRequests));
       table = tester.widget<MasterDataTableView<UtenEmployeePickerItem>>(
         find.byKey(const Key('uten-employee-picker-candidates')),
       );
       expect(table.items, hasLength(101));
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-e101')),
+        findsOneWidget,
+      );
       expect(table.columns.map((column) => column.label), ['工号', '姓名', '部门']);
       expect(find.text('职位'), findsNothing);
       expect(find.text('账号状态'), findsNothing);
@@ -416,17 +433,24 @@ void main() {
         ),
       );
       await tester.tap(find.byType(InputDecorator).first);
-      await tester.pumpAndSettle();
-      tester
-          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
-            find.byKey(const Key('uten-employee-picker-candidates')),
-          )
-          .onLoadMore!();
       await tester.pump();
       for (var attempt = 0; attempt < 30 && api.queries.length < 2; attempt++) {
         await tester.pump(const Duration(milliseconds: 10));
       }
       expect(api.queries.map((q) => q['page']), [1, 2]);
+      expect(find.byType(UtenEmployeeSelectionPanel), findsOneWidget);
+      expect(
+        find.byKey(const Key('uten-employee-picker-candidates')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-e1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-e101')),
+        findsNothing,
+      );
       _changeBoundary(container, 'identity', true);
       await tester.pump();
       api.pendingSecondPage!.complete(_page([_row(101)], 2));

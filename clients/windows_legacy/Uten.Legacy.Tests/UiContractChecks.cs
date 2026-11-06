@@ -200,7 +200,8 @@ namespace Uten.Legacy.Tests
             var configuration = new ClientConfiguration(new[] { new ServerEndpoint("first", "Fixture", "https://first.company.test/api") }, "first");
             foreach (bool goods in new[] { true, false })
             {
-                var handler = new SearchReadUiHandler { TotalItems = 501 };
+                int totalRows = goods ? 10001 : 501, completeReads = (totalRows + 99) / 100;
+                var handler = new SearchReadUiHandler { TotalItems = totalRows };
                 using (var session = new SessionCoordinator(configuration, handler, new MemoryStore()))
                 {
                     session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
@@ -211,18 +212,18 @@ namespace Uten.Legacy.Tests
                     {
                         window.Show();
                         var table = FindVisual<DataGrid>(view, item => true);
-                        PumpUntil(() => table.Items.Count == 501 && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.");
-                        check(handler.ListReads == 6 && handler.RequestedSizes.All(size => size == 100), "Internal native reads use six bounded 100-row batches.");
+                        PumpUntil(() => table.Items.Count == totalRows && !ReadBusy(view, goods), "All native rows must arrive before the single result is accepted.");
+                        check(handler.ListReads == completeReads && handler.RequestedSizes.All(size => size == 100), "All native rows use equal bounded 100-row batches.");
                         check(FindVisual<Button>(view, button => Equals(button.Content, "上一页") || Equals(button.Content, "下一页")) == null,
                             "Continuous native tables expose no page navigation buttons.");
                         check(table.EnableRowVirtualization && table.EnableColumnVirtualization, "Complete summaries retain native row and column virtualization.");
                         object source = table.ItemsSource;
                         for (int index = 0; index < 12; index++)
                         {
-                            table.ScrollIntoView(table.Items[index % 2 == 0 ? 500 : 0]); window.UpdateLayout(); Pump(window);
+                            table.ScrollIntoView(table.Items[index % 2 == 0 ? totalRows - 1 : 0]); window.UpdateLayout(); Pump(window);
                         }
-                        check(handler.ListReads == 6 && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
-                        check((goods ? ((GoodsRecord)table.Items[500]).Id : ((UnitRecord)table.Items[500]).Id).EndsWith("000000000501"), "The final row remains reachable with its server identity.");
+                        check(handler.ListReads == completeReads && ReferenceEquals(source, table.ItemsSource), "Scrolling a complete native result causes no network or ItemsSource replacement.");
+                        check((goods ? ((GoodsRecord)table.Items[totalRows - 1]).Id : ((UnitRecord)table.Items[totalRows - 1]).Id).EndsWith(totalRows.ToString("D12")), "The final row remains reachable with its server identity.");
                         if (!goods)
                         {
                             table.SelectAll(); PumpFor(20);
@@ -237,14 +238,36 @@ namespace Uten.Legacy.Tests
                         var search = FindVisual<TextBox>(view, item => true);
                         handler.BeforeList = (uri, token) => SearchReadUiHandler.Parameter(uri, "keyword") == "held" && SearchReadUiHandler.Parameter(uri, "page") == "2" ? held.Task : Task.CompletedTask;
                         search.Text = "held"; RaiseEnter(search);
-                        PumpUntil(() => handler.ListReads == 8, "A replacement must wait for its actual second batch.");
+                        PumpUntil(() => handler.ListReads == completeReads + (goods ? 5 : 2), "A replacement must wait for its actual bounded tail window.");
                         check(ReferenceEquals(source, table.ItemsSource), "An incomplete replacement cannot publish its first batch over complete accepted rows.");
                         search.Text = "replacement"; RaiseEnter(search);
-                        PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == 501 && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.");
+                        PumpUntil(() => !ReadBusy(view, goods) && table.Items.Count == totalRows && ShownSearchName(table, goods).Contains("replacement"), "A superseding query must read and publish all its own rows.");
                         int reads = handler.ListReads;
                         held.SetResult(true); PumpFor(60);
                         check(ShownSearchName(table, goods).Contains("replacement") && handler.ListReads == reads, "A retired later batch neither publishes nor dispatches the old query's remaining pages.");
-                        check(reads == 14, "Supersession sends only two started old batches and six current batches.");
+                        check(reads == completeReads * 2 + (goods ? 5 : 2), "Supersession sends only the owned started window and the complete current query.");
+                        if (goods)
+                        {
+                            object accepted = table.ItemsSource;
+                            int beforeRetry = handler.ListReads;
+                            handler.BeforeList = (uri, token) => Task.Delay(Timeout.Infinite, token);
+                            FindVisual<Button>(view, button => Equals(button.Content, "重新读取")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            PumpUntil(() => handler.ListReads == beforeRetry + 1 && !window.IsEnabled,
+                                "The actual goods retry button must own the waiting dialog while its read is blocked.");
+                            var busy = Application.Current.Windows.OfType<UtenDialogWindow>()
+                                .Single(dialog => dialog.Owner == window && dialog.Title == "正在读取货品");
+                            check(Application.Current.Windows.OfType<UtenDialogWindow>().Count(dialog => dialog.Owner == window && dialog.Title == "正在读取货品") == 1,
+                                "One actual retry action owns exactly one existing Uten busy dialog.");
+                            FindVisual<Button>(busy, button => Equals(button.Content, "取消")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            PumpUntil(() => window.IsEnabled && !ReadBusy(view, true) && !busy.IsVisible,
+                                "Cancellation must drain the owned read and remove the waiting dialog.");
+                            check(handler.ListReads == beforeRetry + 1 && ReferenceEquals(accepted, table.ItemsSource) && handler.BusinessWrites == 0,
+                                "Cancelling retry preserves the complete accepted result and never replays a write or starts tail pages.");
+                            var cancelledStatus = (TextBlock)view.GetType().GetField("status", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(view);
+                            check(cancelledStatus.Text.Contains("已取消读取") && !cancelledStatus.Text.Contains("正在读取"),
+                                "Cancelled native reads must finish their visible loading state while preserving accepted rows.");
+                            handler.BeforeList = null;
+                        }
                         Snapshot(view, goods ? "goods-continuous-list.png" : "units-continuous-list.png");
                     }
                     finally { handler.BeforeList = null; held.TrySetResult(true); window.Close(); }
@@ -305,7 +328,8 @@ namespace Uten.Legacy.Tests
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
             {
                 string path = request.RequestUri.AbsolutePath, body;
-                if (request.Method != HttpMethod.Get && !path.EndsWith("/auth/login") && !path.EndsWith("/auth/refresh")) Interlocked.Increment(ref BusinessWrites);
+                if (request.Method != HttpMethod.Get && !(request.Method == HttpMethod.Post && path == "/api/master/goods/summaries")
+                    && !path.EndsWith("/auth/login") && !path.EndsWith("/auth/refresh")) Interlocked.Increment(ref BusinessWrites);
                 var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
                 if (path.EndsWith("/auth/login") || path.EndsWith("/auth/refresh"))
                     body = "{\"accessToken\":\"access.fixture\",\"refreshToken\":\"refresh.fixture\",\"expiresIn\":900,\"user\":{\"id\":\"" + UserId
@@ -315,22 +339,37 @@ namespace Uten.Legacy.Tests
                     body = "[{\"id\":\"00000000-0000-4000-8000-000000000001\",\"name\":\"分类甲\",\"code\":\"A\",\"children\":[]},{\"id\":\"00000000-0000-4000-8000-000000000002\",\"name\":\"分类乙\",\"code\":\"B\",\"children\":[]}]";
                 else if (path == "/api/master/units/facets")
                     body = "{\"status\":[{\"value\":\"使用\",\"count\":1},{\"value\":\"禁用\",\"count\":1}]}";
-                else if (path == "/api/master/goods" || path == "/api/master/units")
+                else if (path == "/api/master/goods/summaries" || path == "/api/master/units")
                 {
+                    bool goodsSummary = path == "/api/master/goods/summaries";
+                    var queryUri = request.RequestUri;
+                    if (goodsSummary)
+                    {
+                        if (request.Method != HttpMethod.Post) throw new InvalidOperationException("Goods summaries require the exact read-only POST.");
+                        var query = serializer.Deserialize<Dictionary<string, object>>(await request.Content.ReadAsStringAsync());
+                        var filter = (Dictionary<string, object>)query["filter"];
+                        queryUri = new Uri(request.RequestUri.GetLeftPart(UriPartial.Path) + "?page=" + query["page"] + "&size=" + query["size"]
+                            + "&keyword=" + Uri.EscapeDataString(filter.ContainsKey("keyword") ? (string)filter["keyword"] : "")
+                            + "&categoryId=" + Uri.EscapeDataString(filter.ContainsKey("categoryId") ? (string)filter["categoryId"] : ""));
+                        if ((int)query["page"] > 1 && request.RequestUri.Query != "?readSnapshotRevision=" + new string('a', 64))
+                            throw new InvalidOperationException("Goods tail must retain the real first snapshot proof.");
+                    }
                     int snapshotVersion = CommittedVersion;
-                    LastQuery = request.RequestUri.Query; Interlocked.Increment(ref ListReads);
+                    LastQuery = queryUri.Query; Interlocked.Increment(ref ListReads);
                     var hold = BeforeList;
-                    if (hold != null) await hold(request.RequestUri, token);
+                    if (hold != null) await hold(queryUri, token);
                     token.ThrowIfCancellationRequested();
-                    string marker = Parameter(request.RequestUri, "keyword") + "|" + Parameter(request.RequestUri, "categoryId") + "|" + UserId + "|v" + snapshotVersion;
-                    int page = TotalItems < 0 ? 1 : Int32.Parse(Parameter(request.RequestUri, "page"));
-                    int size = TotalItems < 0 ? 20 : Int32.Parse(Parameter(request.RequestUri, "size"));
-                    RequestedSizes.Add(size);
-                    int total = TotalItems < 0 ? path.EndsWith("/goods") ? 20 : 1 : TotalItems;
+                    string marker = Parameter(queryUri, "keyword") + "|" + Parameter(queryUri, "categoryId") + "|" + UserId + "|v" + snapshotVersion;
+                    int page = TotalItems < 0 && !goodsSummary ? 1 : Int32.Parse(Parameter(queryUri, "page"));
+                    int size = TotalItems < 0 && !goodsSummary ? 20 : Int32.Parse(Parameter(queryUri, "size"));
+                    lock (RequestedSizes) RequestedSizes.Add(size);
+                    int total = TotalItems < 0 ? goodsSummary ? 20 : 1 : TotalItems;
                     int start = (page - 1) * size;
                     var rows = Enumerable.Range(start + 1, Math.Max(0, Math.Min(size, total - start))).Select(index => new Dictionary<string, object> {
                         ["id"] = "00000000-0000-4000-8000-" + index.ToString("D12"), ["code"] = "T" + index, ["name"] = marker, ["status"] = "使用" }).ToArray();
-                    body = serializer.Serialize(new { items = rows, page, size, total, totalPages = (total + size - 1) / size });
+                    body = serializer.Serialize(new { items = rows, page, size, total, totalPages = (total + size - 1) / size,
+                        readScopeVersion = goodsSummary ? "goods-scope" : null, readDataVersion = goodsSummary ? new string('d', 64) : null,
+                        readSnapshotRevision = goodsSummary ? new string('a', 64) : null });
                 }
                 else return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"code\":\"NOT_FOUND\",\"message\":\"fixture optional metadata unavailable\"}", Encoding.UTF8, "application/json") };
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
@@ -758,8 +797,9 @@ namespace Uten.Legacy.Tests
                         + "\"loginAccount\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":[\"goods:view\""
                         + (pricePermission.Length == 0 ? "" : ",\"" + pricePermission + "\"") + "],\"businessResetGeneration\":0,"
                         + "\"businessDatasetId\":\"00000000-0000-0000-0000-000000000001\"}}";
-                else if (path == "/api/master/goods") body = "{\"items\":[" + string.Join(",", Enumerable.Range(0, 20).Select(Record))
-                    + "],\"page\":1,\"size\":20,\"total\":9704,\"totalPages\":486}";
+                else if (path == "/api/master/goods/summaries" && request.Method == HttpMethod.Post) body = "{\"items\":[" + string.Join(",", Enumerable.Range(0, 20).Select(Record))
+                    + "],\"page\":1,\"size\":100,\"total\":20,\"totalPages\":1,\"readScopeVersion\":\"goods-currency\",\"readDataVersion\":\"" + new string('d', 64)
+                    + "\",\"readSnapshotRevision\":\"" + new string('a', 64) + "\"}";
                 else if (path.StartsWith("/api/master/goods/", StringComparison.Ordinal))
                     body = Record(int.Parse(path.Substring(path.Length - 12), System.Globalization.CultureInfo.InvariantCulture) - 1);
                 else throw new InvalidOperationException("Unexpected private goods currency UI fixture request.");

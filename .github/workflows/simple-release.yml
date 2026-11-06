@@ -24,6 +24,19 @@ on:
         required: false
         type: boolean
         default: false
+      company_test_release:
+        description: "明确授权公司测试发布，记录实际CI，不认证全绿"
+        required: false
+        type: boolean
+        default: false
+      expected_source_sha:
+        description: "公司测试发布绑定完整40位源码SHA"
+        required: false
+        type: string
+      company_test_confirmation:
+        description: "输入 PUBLISH_COMPANY_TEST_WITH_UNRESOLVED_CI"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -35,6 +48,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  COMPANY_TEST_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.company_test_release }}
+  EXPECTED_TEST_SHA: ${{ inputs.expected_source_sha }}
+  COMPANY_TEST_CONFIRMATION: ${{ inputs.company_test_confirmation }}
   # vars（非敏感）：OSS_BUCKET、OSS_ENDPOINT（如 oss-cn-shenzhen.aliyuncs.com）、
   # OSS_UPLOAD_ENDPOINT（可选，上传专用；填 oss-accelerate.aliyuncs.com 走传输加速，
   # 桶上没开加速时自动回落 OSS_ENDPOINT。下载与清理仍用 OSS_ENDPOINT）
@@ -84,7 +100,13 @@ jobs:
           test "$CHECKOUT_SHA" = "$GITHUB_SHA"
           GATE_ARGS=()
           if [ "$ALLOW_RUNNING_CHECKS" = "true" ]; then GATE_ARGS+=(--allow-running); fi
-          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
+          if [ "$COMPANY_TEST_RELEASE" = "true" ]; then
+            python3 .github/scripts/company_test_release.py --sha "$CHECKOUT_SHA" \
+              --expected-source-sha "$EXPECTED_TEST_SHA" --confirmation "$COMPANY_TEST_CONFIRMATION" \
+              --output "$RUNNER_TEMP/company-test-ci-status.json"
+          else
+            python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
+          fi
 
       # Build before Maven/Flutter generate checkout files. The worker payload
       # must come from the clean, gated commit and the reviewed CPython 3.12 lock.
@@ -164,7 +186,14 @@ jobs:
           test "$CHECKOUT_SHA" = "$GITHUB_SHA"
           GATE_ARGS=()
           if [ "$ALLOW_RUNNING_CHECKS" = "true" ]; then GATE_ARGS+=(--allow-running); fi
-          python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
+          if [ "$COMPANY_TEST_RELEASE" = "true" ]; then
+            python3 .github/scripts/company_test_release.py --sha "$CHECKOUT_SHA" \
+              --expected-source-sha "$EXPECTED_TEST_SHA" --confirmation "$COMPANY_TEST_CONFIRMATION" \
+              --output dist/server/CI_STATUS.json
+            (cd dist && find . -type f ! -name SHA256SUMS ! -name SHA256SUMS.sig -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          else
+            python3 .github/scripts/release_gate.py --sha "$CHECKOUT_SHA" "${GATE_ARGS[@]}"
+          fi
 
       - name: Sign SHA256SUMS (Ed25519)
         shell: bash
@@ -293,6 +322,7 @@ jobs:
           rm -rf dist
 
       - name: Purge old releases from OSS (keep only this version)
+        if: ${{ inputs.company_test_release != true }}
         shell: bash
         # 已上传的本版制品保持有效；清理失败必须显示红灯，不能掩盖 SDK/权限错误。
         env:
@@ -315,6 +345,7 @@ jobs:
           {
             echo "## 发布完成：$VERSION"
             echo "- 本次明确允许CI仍在运行时手动发布：$ALLOW_RUNNING_CHECKS；不表示CI已通过"
+            echo "- 明确授权公司测试发布：$COMPANY_TEST_RELEASE；实际CI记录随签名server/CI_STATUS.json交付，此模式保留旧OSS版本供恢复。"
             echo "- OSS：$OSS_BUCKET@$OSS_ENDPOINT（发布后自动清理旧版本，只保留本版）"
             echo "- 服务器仅由授权人员在系统设置检查版本，选择立即或预约更新；自动拉取定时器已退役。主机组件升级与应用激活分别验收。"
           } >> "$GITHUB_STEP_SUMMARY"

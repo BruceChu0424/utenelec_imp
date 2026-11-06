@@ -1,0 +1,267 @@
+{
+  "id": "E-WPF-GOODS-SUMMARY-20261106",
+  "atUtc": "2026-11-06T20:24:48.258207+00:00",
+  "classification": "existing native Goods reading/shared complete collector only",
+  "sourceLeaves": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/GoodsSummaryRead.cs",
+      "beforeSha256": null,
+      "proposedSha256": "5bc4bdad43213c5cd75f142571916a1a3c398e008b51e90248ffc8bb5d5d3a24",
+      "actualMainSha256": "5bc4bdad43213c5cd75f142571916a1a3c398e008b51e90248ffc8bb5d5d3a24"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "beforeSha256": "0e8786f3e4b02de2425f083bdddd1dce4cd0cefc6eb03a69c816ea9a86ca35b4",
+      "proposedSha256": "cca6764b9b377e796678a00b167b88a19ee1b2d35fc5e0c5c836599d7198eab9",
+      "actualMainSha256": "cca6764b9b377e796678a00b167b88a19ee1b2d35fc5e0c5c836599d7198eab9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+      "beforeSha256": "4d30ddaaf8939dd30d9a1b9716978e3514132b02a44c63ee837110eaabb35b88",
+      "proposedSha256": "2b032572d7ad18f3f6ec94ade582dbfad9c96d4a38ea966ae5afe467ddbe2910",
+      "actualMainSha256": "2b032572d7ad18f3f6ec94ade582dbfad9c96d4a38ea966ae5afe467ddbe2910"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "beforeSha256": "3f51227e80ca22fb9c057ed348505a0d271f2945c46b23714882e3436be5fc04",
+      "proposedSha256": "b3087197e63cf14823aaf87fd2730e228caa6193fffe04389a7965cdd394a3d6",
+      "actualMainSha256": "b3087197e63cf14823aaf87fd2730e228caa6193fffe04389a7965cdd394a3d6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "beforeSha256": "08deddd166e4a39ec0ad56ac428693821419f3db06c435b2b72d15c1d9a54d6e",
+      "proposedSha256": "a316c430c1065354070bd93ea9de9f92a42591d5e380356fc5dd50a944900261",
+      "actualMainSha256": "a316c430c1065354070bd93ea9de9f92a42591d5e380356fc5dd50a944900261"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+      "beforeSha256": "dd47a62c3fc70218732f7b4621ffeaf7dc7975f2b2678593bb8e742e1f20ae49",
+      "proposedSha256": "39ad8386dbcfcbc522a9e19a583b83d196b5fb61f903135daf2ef30114389c9b",
+      "actualMainSha256": "39ad8386dbcfcbc522a9e19a583b83d196b5fb61f903135daf2ef30114389c9b"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshotChecks.cs",
+      "beforeSha256": null,
+      "proposedSha256": "307ed64c61979581484c8918aeff3424e9f2486c31f33cf39982390fa0b0baad",
+      "actualMainSha256": "307ed64c61979581484c8918aeff3424e9f2486c31f33cf39982390fa0b0baad"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "beforeSha256": "3dd887d5afa5efcb65a1d59223a869312df62d7d9026a6be10350370cc355cb2",
+      "proposedSha256": "fda6079c8bdd6f90a73920241c91fccbd2eb9f2d3e2864a23024dfe75ab6415c",
+      "actualMainSha256": "fda6079c8bdd6f90a73920241c91fccbd2eb9f2d3e2864a23024dfe75ab6415c"
+    }
+  ],
+  "freshMainHead": "cc831bedd77a6b3edd6d23eeb4eb0809a7c2fb13",
+  "mainIndexSha256Before": "0fb00b4177af42190c2704347bb4e49df25ef64f70778b61855f473180235c3a",
+  "mainIndexSha256After": "0fb00b4177af42190c2704347bb4e49df25ef64f70778b61855f473180235c3a",
+  "all204InputsExactAtAdoption": true,
+  "actualFinalValidation": {
+    "receiptSha256": "fabec927e6c225c81349f2def294a6b268c87c5c362081216c28ab6c5d17aea8",
+    "sourceInputs": 204,
+    "runs": [
+      {
+        "name": "v4-build-x86",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\tree-v4\\clients\\windows_legacy\\Uten.Legacy.Tests\\Uten.Legacy.Tests.csproj",
+          "/nologo",
+          "/m:1",
+          "/verbosity:minimal",
+          "/t:Rebuild",
+          "/warnaserror",
+          "/p:Configuration=Debug",
+          "/p:Platform=x86",
+          "/p:PlatformTarget=x86",
+          "/p:UtenBuildScope=goods-summary-final-v3",
+          "/p:OutDir=D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\"
+        ],
+        "startedAtUtc": "2026-11-06T20:20:17.096175+00:00",
+        "completedAtUtc": "2026-11-06T20:20:26.225592+00:00",
+        "actualExitCode": 0,
+        "logSha256": "b66c6421cb1ce01cd8ae4d17c072145bdaa0cd2b56f49849d7932dc4beb6c1e6"
+      },
+      {
+        "name": "v4-runner-compile-x86",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+          "/nologo",
+          "/warnaserror",
+          "/target:exe",
+          "/platform:x86",
+          "/out:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\GoodsFinalRunner.exe",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\Uten.Legacy.Core.dll",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\Uten.Legacy.Desktop.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\v4-GoodsFinalRunner.cs"
+        ],
+        "startedAtUtc": "2026-11-06T20:20:26.518880+00:00",
+        "completedAtUtc": "2026-11-06T20:20:27.104669+00:00",
+        "actualExitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "v4-core-goods-x86",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\GoodsFinalRunner.exe",
+          "models"
+        ],
+        "startedAtUtc": "2026-11-06T20:20:27.375592+00:00",
+        "completedAtUtc": "2026-11-06T20:20:50.788891+00:00",
+        "actualExitCode": 0,
+        "logSha256": "b4766cf6f59c27a9c222c3565ef424dd082f8e4fb4071c43ea015756feb6e79f"
+      },
+      {
+        "name": "v4-native-ui-x86",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x86\\GoodsFinalRunner.exe",
+          "ui"
+        ],
+        "startedAtUtc": "2026-11-06T20:20:50.969624+00:00",
+        "completedAtUtc": "2026-11-06T20:21:06.790235+00:00",
+        "actualExitCode": 0,
+        "logSha256": "6c14284d069dd34a1dc7762e84b43a21ae8a66628d28ed6a9f28d4210eb105b9"
+      },
+      {
+        "name": "v4-build-x64",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\MSBuild.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\tree-v4\\clients\\windows_legacy\\Uten.Legacy.Tests\\Uten.Legacy.Tests.csproj",
+          "/nologo",
+          "/m:1",
+          "/verbosity:minimal",
+          "/t:Rebuild",
+          "/warnaserror",
+          "/p:Configuration=Debug",
+          "/p:Platform=x64",
+          "/p:PlatformTarget=x64",
+          "/p:UtenBuildScope=goods-summary-final-v3",
+          "/p:OutDir=D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\"
+        ],
+        "startedAtUtc": "2026-11-06T20:21:07.078838+00:00",
+        "completedAtUtc": "2026-11-06T20:21:17.556011+00:00",
+        "actualExitCode": 0,
+        "logSha256": "40f5e807a109f32dd922ee7fb878ed30b7de8dcfbe8d79d6bee5485cdf87137d"
+      },
+      {
+        "name": "v4-runner-compile-x64",
+        "command": [
+          "D:\\Software\\Visual Studio Installe\\MSBuild\\Current\\Bin\\Roslyn\\csc.exe",
+          "/nologo",
+          "/warnaserror",
+          "/target:exe",
+          "/platform:x64",
+          "/out:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\GoodsFinalRunner.exe",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\Uten.Legacy.Core.dll",
+          "/reference:D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\Uten.Legacy.Desktop.exe",
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\v4-GoodsFinalRunner.cs"
+        ],
+        "startedAtUtc": "2026-11-06T20:21:17.875001+00:00",
+        "completedAtUtc": "2026-11-06T20:21:18.475414+00:00",
+        "actualExitCode": 0,
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "v4-core-goods-x64",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\GoodsFinalRunner.exe",
+          "models"
+        ],
+        "startedAtUtc": "2026-11-06T20:21:18.754417+00:00",
+        "completedAtUtc": "2026-11-06T20:21:45.601677+00:00",
+        "actualExitCode": 0,
+        "logSha256": "6886378655e060e73f2fe781a8f0c40519ad953b854246dd4ed80ff830101bae"
+      },
+      {
+        "name": "v4-native-ui-x64",
+        "command": [
+          "D:\\Projects\\uten_imp\\build\\loading-validation\\wpf-goods-summary-20261106\\bin\\v4\\x64\\GoodsFinalRunner.exe",
+          "ui"
+        ],
+        "startedAtUtc": "2026-11-06T20:21:45.800813+00:00",
+        "completedAtUtc": "2026-11-06T20:21:57.478118+00:00",
+        "actualExitCode": 0,
+        "logSha256": "9c26f8a29a98d7aafb6f8b56f005ba6f17d69d2575e644a4b0864ef9898b54d5"
+      }
+    ],
+    "originalCoreGoodsOnBothArchitectures": true,
+    "goodsAssertions": 174,
+    "nativeContinuousAssertions": 24,
+    "nativeSearchAssertions": 16,
+    "actualExitCode": 0
+  },
+  "covered": {
+    "nativeWorkspaceRows": 10001,
+    "workspaceBoundedBatches": 101,
+    "nativeScrollHttpRequests": 0,
+    "typedCoreGoodsTransportRows": 2414,
+    "transportBatches": 25,
+    "activePlusBufferedTailWindow": 4,
+    "originalDefaultCollectorStillSerial": true,
+    "bodyNumericStringsRelationshipsPreserved": true,
+    "namedReadOnlyPost": "/api/master/goods/summaries",
+    "tailSnapshotQueryPinned": true,
+    "strongScopeDataSnapshotProofs": true,
+    "lateFaultAndDuplicateWakeEarlierWaiter": true,
+    "ownerRetirementCancellationAndNoPartialPublication": true,
+    "noBusinessWritesOrMutationJournal": true,
+    "actualRetryBusyWindowAndCancelCleanup": true
+  },
+  "qualifications": {
+    "v1ActualRed": "fixture omitted original auth/logout on second explicit login; preserved validation.json",
+    "v2ActualGreen": "old exact v2 source, original full runner and extra groups both architectures; not final v4 bytes",
+    "v3ActualRed": "focused UI harness omitted original Program.RunUi dispatcher context; preserved v3-validation.json; final harness invokes original RunUi",
+    "wpfDisabledGroupUiPresent": false,
+    "newDisabledGroupUiAdded": false,
+    "win7TargetPcOrFullErpAccepted": false,
+    "productionServerOrCompanyDataTested": false,
+    "formalPackageOrDeployment": false
+  },
+  "remainingConfirmedIssue": {
+    "resolved": true,
+    "scope": "Current generation/owner/read-revision cancellation ends visible loading status; later replacement readers stay protected.",
+    "followUp": "build/loading-validation/wpf-goods-summary-20261106/main-cancel-status-adoption-v5/receipt.json",
+    "followUpSha256": "f6ebba8303cf8212004176649c617c230ee60c2f45958133c8b735d59c36d6ec",
+    "validation": "build/loading-validation/wpf-goods-summary-20261106/v5-validation.json",
+    "validationSha256": "8b8d08bf5af237bb577ae9b9c8ba000fba5c7c0749b57e5e3b306d22244bca2d",
+    "actualEightRunsAll0": true
+  },
+  "workRegistryNotesUpdatedThisPhase": true,
+  "notesToAppendWithoutStatusNativeTargetChange": [
+    "W7-CORE-003",
+    "W7-BIZ-025",
+    "W7-BIZ-034"
+  ],
+  "canonical7ExecutedThisPhase": false,
+  "durableArtifacts": {
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-validation.json": "fabec927e6c225c81349f2def294a6b268c87c5c362081216c28ab6c5d17aea8",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-review.json": "83e23a8d0b1f8d832e8972ce7f24b17e91e848fbc951c8ce109e7acecff48fdd",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/main-adoption-receipt.json": "9d3a4bf472052af5fdab1734d86a7229be32cd2957e5878b260e1d1dbbc6b4fa",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-GoodsFinalRunner.cs": "4eebfef8dc67cd4ae77889ea382cd66a8761c2c1717fa29a5b73cbfbd79677ba",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/run_wpf_goods_summary_final.py": "9ae7cfe3f1d44aed4b16f41681f225a914af72d70ecbec678d392eda175174b1",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/adopt_wpf_goods_summary.py": "804c53c7e99619ceb87c538e6bc75c18709ae78728a5f73ee0b1b92fc4d2b3e2",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/validation.json": "409d9190c57717eb86639925b11ff9c8aa7e5ebcf70c130be9ad85f507606eb3",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v2-validation.json": "2ec02ae43f604c14a0549e8423e8f055d0cae65f8198b07794568eae5ef5ae71",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v3-validation.json": "0f31f03af29a6c4e443e4f20d754629ad2b4073037fb515859f29fdf275ad821",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-build-x86.log": "b66c6421cb1ce01cd8ae4d17c072145bdaa0cd2b56f49849d7932dc4beb6c1e6",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-runner-compile-x86.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-core-goods-x86.log": "b4766cf6f59c27a9c222c3565ef424dd082f8e4fb4071c43ea015756feb6e79f",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-native-ui-x86.log": "6c14284d069dd34a1dc7762e84b43a21ae8a66628d28ed6a9f28d4210eb105b9",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-build-x64.log": "40f5e807a109f32dd922ee7fb878ed30b7de8dcfbe8d79d6bee5485cdf87137d",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-runner-compile-x64.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-core-goods-x64.log": "6886378655e060e73f2fe781a8f0c40519ad953b854246dd4ed80ff830101bae",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/v4-native-ui-x64.log": "9c26f8a29a98d7aafb6f8b56f005ba6f17d69d2575e644a4b0864ef9898b54d5",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x86-goods-continuous-list.png": "2c0c71ed5e931e59d84b04f4df987065c95976d9629caf936a9bcd756ac1518f",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x86-goods-currency-workspace-fixture.png": "9c6d78021cfbb95ee0aac6b4a1f3cd2b4fd0602234cdc8b225ea7c0f054f2522",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x86-units-continuous-list.png": "c3ab265173bcb96de0a7c3d945e02654ed56cd9d64a2e34f46fb620550de9640",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x64-goods-continuous-list.png": "2c0c71ed5e931e59d84b04f4df987065c95976d9629caf936a9bcd756ac1518f",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x64-goods-currency-workspace-fixture.png": "9c6d78021cfbb95ee0aac6b4a1f3cd2b4fd0602234cdc8b225ea7c0f054f2522",
+    "clients/windows_legacy/progress/evidence/wpf-goods-summary-20261106-files/x64-units-continuous-list.png": "c3ab265173bcb96de0a7c3d945e02654ed56cd9d64a2e34f46fb620550de9640"
+  },
+  "sourceCommittedPushedPackagedOrDeployedByThisAgent": false,
+  "remainingConfirmedIssuePriorV4": {
+    "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+    "issue": "After actual retry cancellation the owned dialog closes and complete rows remain, but the existing empty cancellation catch leaves the visible loading status sentence. Detail cancellation has the same old empty catch. Root notified after approved v4 CAS; no unreviewed follow-up product edit made.",
+    "fix": "Only for current generation/auth owner/read revision and still-loaded view, replace list cancellation status with an explicit cancelled/preserved message; detail cancellation should restore retry and a cancelled message. Add assertion to actual cancel UI test that loading text does not remain. Preserve later replacement readers.",
+    "acceptance": "pending Root follow-up; current v4 checks did not assert this text cleanup"
+  }
+}

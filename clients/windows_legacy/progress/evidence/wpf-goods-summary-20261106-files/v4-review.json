@@ -1,0 +1,76 @@
+{
+  "mainBaseline": {
+    "mainHead": "dd7b81278aeed49df83d5c52fdf8b3135899c653",
+    "fileCount": 202,
+    "bytesCopied": 30022464,
+    "MainWritten": false
+  },
+  "leaves": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/GoodsSummaryRead.cs",
+      "beforeSha256": null,
+      "proposedSha256": "5bc4bdad43213c5cd75f142571916a1a3c398e008b51e90248ffc8bb5d5d3a24"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "beforeSha256": "0e8786f3e4b02de2425f083bdddd1dce4cd0cefc6eb03a69c816ea9a86ca35b4",
+      "proposedSha256": "cca6764b9b377e796678a00b167b88a19ee1b2d35fc5e0c5c836599d7198eab9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+      "beforeSha256": "4d30ddaaf8939dd30d9a1b9716978e3514132b02a44c63ee837110eaabb35b88",
+      "proposedSha256": "2b032572d7ad18f3f6ec94ade582dbfad9c96d4a38ea966ae5afe467ddbe2910"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+      "beforeSha256": "3f51227e80ca22fb9c057ed348505a0d271f2945c46b23714882e3436be5fc04",
+      "proposedSha256": "b3087197e63cf14823aaf87fd2730e228caa6193fffe04389a7965cdd394a3d6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
+      "beforeSha256": "08deddd166e4a39ec0ad56ac428693821419f3db06c435b2b72d15c1d9a54d6e",
+      "proposedSha256": "a316c430c1065354070bd93ea9de9f92a42591d5e380356fc5dd50a944900261"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+      "beforeSha256": "dd47a62c3fc70218732f7b4621ffeaf7dc7975f2b2678593bb8e742e1f20ae49",
+      "proposedSha256": "39ad8386dbcfcbc522a9e19a583b83d196b5fb61f903135daf2ef30114389c9b"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshotChecks.cs",
+      "beforeSha256": null,
+      "proposedSha256": "307ed64c61979581484c8918aeff3424e9f2486c31f33cf39982390fa0b0baad"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "beforeSha256": "3dd887d5afa5efcb65a1d59223a869312df62d7d9026a6be10350370cc355cb2",
+      "proposedSha256": "fda6079c8bdd6f90a73920241c91fccbd2eb9f2d3e2864a23024dfe75ab6415c"
+    }
+  ],
+  "contract": {
+    "route": "POST /api/master/goods/summaries",
+    "body": "GoodsSearchRequest filter/categoryId/keyword +page+size; omitted original filters and sort/order retain server defaults",
+    "batchSize": 100,
+    "maximumActiveOrBufferedTailBatches": 4,
+    "requiredProofs": [
+      "readScopeVersion nonempty opaque <=256",
+      "readDataVersion lower64hex",
+      "readSnapshotRevision lower64hex pinned as query on every tail"
+    ]
+  },
+  "legacyDefaultSerialUnchanged": true,
+  "newBusinessUiOrWrite": false,
+  "MainWritten": false,
+  "validationPending": true,
+  "priorActualRed": {
+    "receipt": "validation.json",
+    "reason": "new fixture omitted issuer auth/logout when explicit second login drains old revocation; product original Core passed",
+    "scope": "v1; retained unchanged"
+  },
+  "tree": "tree-v4",
+  "priorV2EvidenceScope": "Frozen tree; full original runner x86 green, x64 may still run independently; no v3 inference",
+  "newUiButtons": "Only existing Goods retry/detail retry/unit-read buttons use existing UtenBusyDialog during the actual owned asynchronous stage; local cancel never retires replacement reads; lease removed before interactive unit dialog",
+  "nativeWorkspaceRows": 10001,
+  "earlyDuplicateProofFailure": true,
+  "qualifiedUiHarness": "Original Program.RunUi(Action) supplies the owning DispatcherSynchronizationContext; v3 missing harness context actualRED preserved"
+}

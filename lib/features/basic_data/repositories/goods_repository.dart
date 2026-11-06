@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
 import '../models/goods_node.dart';
 import '../models/master_facet.dart';
 
@@ -159,6 +161,24 @@ abstract interface class GoodsRepository {
   Future<void> delete(String id);
 }
 
+/// Optional complete-summary capability. Existing references and test
+/// repositories keep their original list API; no failed new API falls back.
+abstract interface class GoodsSummaryReadGateway {
+  bool get supportsCompleteGoodsSummaries;
+  Future<PagedResult<GoodsListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    bool disabledOnly = false,
+    bool stubOnly = false,
+    bool includeRelated = false,
+  });
+}
+
 /// Optional column-aware query contract; dedicated business pickers retain their own APIs.
 abstract interface class GoodsColumnSearchGateway {
   Future<PagedResult<GoodsListItem>> searchColumns(
@@ -185,12 +205,69 @@ abstract interface class GoodsColumnSearchGateway {
   });
 }
 
-class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
+class DioGoodsRepository
+    implements
+        GoodsRepository,
+        GoodsColumnSearchGateway,
+        GoodsSummaryReadGateway {
   DioGoodsRepository(this.api, {this.queryBasePath = ApiEndpoints.goods});
   final ApiClient api;
 
   /// Query configuration only. Detail and all CRUD keep their master endpoints.
   final String queryBasePath;
+
+  @override
+  bool get supportsCompleteGoodsSummaries =>
+      queryBasePath == ApiEndpoints.goods;
+
+  @override
+  Future<PagedResult<GoodsListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+    bool disabledOnly = false,
+    bool stubOnly = false,
+    bool includeRelated = false,
+  }) async {
+    if (!supportsCompleteGoodsSummaries) {
+      throw StateError('This goods reference does not expose master summaries');
+    }
+    final parent = PagedReadIntent.currentRead;
+    final owner = await api.captureRequestScope(
+      isCurrent: () => parent?.call() ?? true,
+    );
+    final query = <String, dynamic>{
+      'categoryId': ?categoryId,
+      if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+      if (sort?.isNotEmpty == true) 'sort': sort,
+      if (order?.isNotEmpty == true) 'order': order,
+      if (excludeDisabled) 'excludeDisabled': true,
+      if (excludeStub) 'excludeStub': true,
+      if (disabledOnly) 'disabledOnly': true,
+      if (stubOnly) 'stubOnly': true,
+      if (includeRelated && keyword?.trim().isNotEmpty == true)
+        'includeRelated': true,
+      ...goodsFilterQueryParams(filters),
+    };
+    return owner.run(() async {
+      final snapshot = await readVersionedSummarySnapshot<GoodsListItem>(
+        isCurrent: () => owner.isCurrent,
+        maxConcurrentPages: 4,
+        idOf: (row) => row.id,
+        decode: GoodsListItem.fromJson,
+        loadPage: (page, size, revision) => api.post(
+          '${ApiEndpoints.goods}/summaries',
+          body: goodsSearchReadBody({...query, 'page': page, 'size': size}),
+          query: {'readSnapshotRevision': ?revision},
+        ),
+      );
+      return snapshot.page;
+    });
+  }
 
   @override
   Future<PagedResult<GoodsListItem>> list(

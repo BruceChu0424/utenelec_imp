@@ -3,9 +3,12 @@ import '../models/paged_result.dart';
 import 'complete_paged_snapshot.dart';
 
 class _VersionedSummaryPage<T> extends PagedResult<T>
-    implements PagedResultRevision {
-  _VersionedSummaryPage(PagedResult<T> page, this.snapshotRevision)
-    : super(
+    implements VersionedPagedResultProof {
+  _VersionedSummaryPage(
+    PagedResult<T> page,
+    this.readSnapshotRevision,
+    this.readDataVersion,
+  ) : super(
         items: page.items,
         page: page.page,
         size: page.size,
@@ -18,7 +21,11 @@ class _VersionedSummaryPage<T> extends PagedResult<T>
       );
 
   @override
-  final Object snapshotRevision;
+  Object get snapshotRevision => (readSnapshotRevision, readDataVersion);
+  @override
+  final String readSnapshotRevision;
+  @override
+  final String? readDataVersion;
 }
 
 /// Accepted summary facts plus the server revision needed by an explicitly
@@ -55,12 +62,14 @@ Future<List<T>> readCompleteVersionedSummaries<T>({
   loadPage,
   required bool Function() isCurrent,
   int batchSize = 100,
+  int maxConcurrentPages = 1,
   required T Function(Map<String, dynamic> row) decode,
   required Object? Function(T row) idOf,
 }) async => (await readVersionedSummarySnapshot<T>(
   loadPage: loadPage,
   isCurrent: isCurrent,
   batchSize: batchSize,
+  maxConcurrentPages: maxConcurrentPages,
   decode: decode,
   idOf: idOf,
 )).items;
@@ -74,6 +83,7 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
   loadPage,
   required bool Function() isCurrent,
   int batchSize = 100,
+  int maxConcurrentPages = 1,
   required T Function(Map<String, dynamic> row) decode,
   required Object? Function(T row) idOf,
 }) async {
@@ -84,11 +94,13 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
   final result = await loadCompletePagedResult<T>(
     isCurrent: isCurrent,
     batchSize: batchSize,
+    maxConcurrentPages: maxConcurrentPages,
     idOf: idOf,
     loadPage: (page, size) async {
       final raw = await loadPage(page, size, snapshot);
       final revision = raw['readSnapshotRevision'];
       final authority = raw['readScopeVersion'];
+      final dataVersion = raw['readDataVersion'];
       if (raw['items'] is! List ||
           raw['page'] is! int ||
           raw['size'] is! int ||
@@ -105,6 +117,15 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
           '服务端尚未提供完整列表读取凭据，请更新服务端后重试',
         );
       }
+      if (maxConcurrentPages > 1 &&
+          (raw['page'] != page ||
+              raw['size'] != size ||
+              !RegExp(r'^[0-9a-f]{64}$').hasMatch(revision) ||
+              dataVersion is! String ||
+              !RegExp(r'^[0-9a-f]{64}$').hasMatch(dataVersion) ||
+              authority.length > 256)) {
+        throw ApiException('INCOMPLETE_READ_PROTOCOL', '完整列表并发读取凭据无效');
+      }
       if (snapshot == null) {
         snapshot = revision;
         firstAuthority = authority;
@@ -116,7 +137,7 @@ Future<VersionedSummarySnapshot<T>> readVersionedSummarySnapshot<T>({
         throw ApiException('SNAPSHOT_CHANGED', '列表已变化，请重新读取');
       }
       final parsed = await PagedResult.fromJsonResponsive<T>(raw, decode);
-      return _VersionedSummaryPage<T>(parsed, revision);
+      return _VersionedSummaryPage<T>(parsed, revision, dataVersion as String?);
     },
   );
   return VersionedSummarySnapshot<T>(

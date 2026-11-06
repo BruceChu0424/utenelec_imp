@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui' show PointerDeviceKind, SemanticsAction;
 import '../../support/finance_command_test_support.dart'
     show tapFinanceOriginalAction;
@@ -23,6 +24,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
+import 'package:uten_imp/core/performance/data_work_queue.dart';
 import 'package:uten_imp/core/performance/json_value_snapshot.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
@@ -60,7 +62,11 @@ final _batchPermissions = StateProvider<Set<String>>(
 
 const _captureReceiptFlows = bool.fromEnvironment('UTEN_CAPTURE_RECEIPT_FLOW');
 
-void main() {
+void main() => registerFinanceBatchEntryTests();
+
+// The browser DOM engine owns a separate suite because widget-test semantics
+// IDs reset between cases while the actual engine DOM retains its tree.
+void registerFinanceBatchEntryTests({bool browserDomOnly = false}) {
   for (final selectionMode in [
     'touch',
     'mouse-hover',
@@ -68,6 +74,7 @@ void main() {
     'width-during-menu',
     'browser-dom',
   ]) {
+    if ((selectionMode == 'browser-dom') != browserDomOnly) continue;
     testWidgets(
       'actual expense batch account then exact amount then currency and method retain selected source values ($selectionMode)',
       (tester) async {
@@ -178,6 +185,8 @@ void main() {
           !dropdown_dom.financeDropdownDomAvailable,
     );
   }
+
+  if (browserDomOnly) return;
 
   testWidgets(
     'rejected dispatched batch stays sealed through GET false and lost cancel, then explicit new review preserves every row and exact amount',
@@ -885,30 +894,33 @@ void main() {
       await env.close(tester);
     },
   );
-  test('client grouping preview uses the shared server contract', () {
-    final contract =
-        jsonDecode(
-              File(
-                'contracts/finance-entry-grouping-v1.json',
-              ).readAsStringSync(),
+  // This original contract case requires the canonical local file on VM.
+  if (!kIsWeb) {
+    test('client grouping preview uses the shared server contract', () {
+      final contract =
+          jsonDecode(
+                File(
+                  'contracts/finance-entry-grouping-v1.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      expect(contract['maxDocuments'], financeBatchMaxDocuments);
+      for (final scenario
+          in (contract['cases'] as List).cast<Map<String, dynamic>>()) {
+        final keys = (scenario['entries'] as List)
+            .cast<Map<String, dynamic>>()
+            .map(
+              (entry) => financeEntryGroupKey(Map<String, dynamic>.from(entry)),
             )
-            as Map<String, dynamic>;
-    expect(contract['maxDocuments'], financeBatchMaxDocuments);
-    for (final scenario
-        in (contract['cases'] as List).cast<Map<String, dynamic>>()) {
-      final keys = (scenario['entries'] as List)
-          .cast<Map<String, dynamic>>()
-          .map(
-            (entry) => financeEntryGroupKey(Map<String, dynamic>.from(entry)),
-          )
-          .toSet();
-      expect(
-        keys.length,
-        scenario['groups'],
-        reason: scenario['name'] as String,
-      );
-    }
-  });
+            .toSet();
+        expect(
+          keys.length,
+          scenario['groups'],
+          reason: scenario['name'] as String,
+        );
+      }
+    });
+  }
 
   test(
     'two-of-three pricing works in all orders and keeps explicit amount',
@@ -1311,7 +1323,8 @@ void main() {
   testWidgets('desktop and narrow layouts retain the row grid and save action', (
     tester,
   ) async {
-    if (Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true') {
+    if (!kIsWeb &&
+        Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true') {
       await loadAuditScreenshotFonts(tester);
     }
     for (final scenario in [
@@ -1360,7 +1373,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('保存').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
-      if (Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true') {
+      if (!kIsWeb &&
+          Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true') {
         await saveAuditScreenshot(
           tester,
           capture,
@@ -1463,6 +1477,25 @@ class _Environment {
     await tester.pumpWidget(const SizedBox());
     router.dispose();
     container.dispose();
+    if (kIsWeb) {
+      // Let the real browser worker retire after its test owner is disposed.
+      // pumpAndSettle only drains scheduled frames, not worker message events.
+      for (
+        var frame = 0;
+        frame < 2000 &&
+            (dataWorkQueue.active != 0 || dataWorkQueue.pending != 0);
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 1)),
+        );
+      }
+      // The codec retires its idle worker on the existing 20-second deadline.
+      await tester.pump(const Duration(seconds: 20));
+      expect(dataWorkQueue.active, 0);
+      expect(dataWorkQueue.pending, 0);
+    }
   }
 }
 

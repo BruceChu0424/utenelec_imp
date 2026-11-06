@@ -5,7 +5,8 @@ public final class GoodsSearchReadRoutes {
     private GoodsSearchReadRoutes() { }
 
     public static boolean matches(String method, String path) {
-        return "POST".equals(method) && path != null && path.matches(
-                "^/api/(?:master|business-references)/goods/(?:search|search-category-ids|facets|facet-values)$");
+        return "POST".equals(method) && path != null && (
+                "/api/master/goods/summaries".equals(path)
+                || path.matches("^/api/(?:master|business-references)/goods/(?:search|search-category-ids|facets|facet-values)$"));
     }
 }

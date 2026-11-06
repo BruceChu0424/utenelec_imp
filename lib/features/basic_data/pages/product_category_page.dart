@@ -13,6 +13,8 @@ import '../../../shared/widgets/read_owned_dialog.dart';
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/03-页面/ 总览（基础资料）。
 import 'dart:async';
+import '../../../shared/paging/complete_paged_snapshot.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -595,6 +597,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.watch(goodsRepositoryProvider);
+    final gateway = goods is GoodsSummaryReadGateway
+        ? goods as GoodsSummaryReadGateway
+        : null;
+    final summaries = gateway?.supportsCompleteGoodsSummaries == true
+        ? gateway
+        : null;
     final facetRepository = ref.watch(goodsFacetRepositoryProvider);
     final canInlineEdit = GoodsFieldEditPolicy.canEditAny(_perms);
     final includeRelated = _includeRelated;
@@ -732,6 +740,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         excludeDisabled: categoryBrowsing && !q.hasKeyword,
         excludeStub: true, // 迁移兜底占位归「未分类」节点的集合行
       ),
+      loadComplete: summaries == null
+          ? null
+          : (q) => summaries.completeList(
+              q.categoryId,
+              keyword: q.keyword,
+              includeRelated: includeRelated && q.hasKeyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+              excludeDisabled: categoryBrowsing && !q.hasKeyword,
+              excludeStub: true,
+            ),
       loadFacets: (id) async {
         final f = await goods.facets(id);
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
@@ -849,24 +869,47 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (query.hasKeyword) return const [];
     final repo = ref.read(goodsRepositoryProvider);
     final isOrphan = category.systemManaged;
+    final parent = PagedReadIntent.currentRead;
+    Future<PagedResult<GoodsListItem>> completeGroup({
+      required String? categoryId,
+      bool disabledOnly = false,
+      bool stubOnly = false,
+    }) {
+      final gateway = repo is GoodsSummaryReadGateway
+          ? repo as GoodsSummaryReadGateway
+          : null;
+      if (gateway?.supportsCompleteGoodsSummaries == true) {
+        return gateway!.completeList(
+          categoryId,
+          disabledOnly: disabledOnly,
+          stubOnly: stubOnly,
+          filters: query.filters,
+          sort: query.sort,
+          order: query.order,
+        );
+      }
+      // Other implementations retain the legacy bounded API, but never a
+      // prefix-only group. No failed production summary falls back here.
+      return loadCompletePagedResult<GoodsListItem>(
+        isCurrent: () => parent?.call() ?? true,
+        idOf: (row) => row.id,
+        loadPage: (page, size) => repo.list(
+          categoryId,
+          page: page,
+          size: size,
+          disabledOnly: disabledOnly,
+          stubOnly: stubOnly,
+          filters: query.filters,
+          sort: query.sort,
+          order: query.order,
+        ),
+      );
+    }
+
     final results = await Future.wait<PagedResult<GoodsListItem>?>([
-      repo.list(
-        query.categoryId,
-        disabledOnly: true,
-        size: 500,
-        filters: query.filters,
-        sort: query.sort,
-        order: query.order,
-      ),
+      completeGroup(categoryId: query.categoryId, disabledOnly: true),
       isOrphan
-          ? repo.list(
-              null,
-              stubOnly: true,
-              size: 500,
-              filters: query.filters,
-              sort: query.sort,
-              order: query.order,
-            )
+          ? completeGroup(categoryId: null, stubOnly: true)
           : Future<PagedResult<GoodsListItem>?>.value(),
     ]);
     final disabled = results[0];

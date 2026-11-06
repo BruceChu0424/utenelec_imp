@@ -62,9 +62,9 @@ namespace Uten.Legacy.Desktop.Features.Goods
             Unloaded += OnUnloaded;
             categories.SelectedItemChanged += OnCategoryChanged;
             rows.SelectionChanged += OnRowSelected;
-            detailRetry.Click += (sender, args) => OnRowSelected(rows, null);
+            detailRetry.Click += async (sender, args) => await RunReadBusyAsync("正在读取详情", LoadSelectedDetailAsync, () => { var read = detailRead; return () => Cancel(read); });
             openUnit.Click += async (sender, args) => await OpenUnitByUuidAsync();
-            retry.Click += async (sender, args) => await LoadAsync();
+            retry.Click += async (sender, args) => await RunReadBusyAsync("正在读取货品", LoadAsync, () => { var list = listRead; var tree = treeRead; return () => { Cancel(list); Cancel(tree); }; });
             searchDelay = new DebouncedSearchInput(search, () =>
             {
                 Cancel(listRead); listGeneration++; Cancel(detailRead); detailGeneration++;
@@ -314,22 +314,28 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 GoodsPage first = null;
                 var result = await CompletePagedSnapshot.ReadAsync<GoodsRecord>(async (batch, size, ct) =>
                 {
-                    var response = await service.ListAsync(categoryId, keyword, batch, size, ct).ConfigureAwait(false);
+                    var response = await service.SummariesAsync(categoryId, keyword, batch, size,
+                        first == null ? null : first.ReadSnapshotRevision, ct).ConfigureAwait(false);
                     if (first == null) first = response;
                     return new SnapshotPage<GoodsRecord> { Items = response.Items, Page = response.Page,
                         Size = response.Size, Total = response.Total, TotalPages = response.TotalPages,
-                        ReadScopeVersion = response.ReadScopeVersion };
-                }, item => item.Id,
+                        ReadScopeVersion = response.ReadScopeVersion, ReadDataVersion = response.ReadDataVersion,
+                        ReadSnapshotRevision = response.ReadSnapshotRevision };
+                }, item => Guid.Parse(item.Id).ToString("D"),
                     () => !token.IsCancellationRequested && generation == listGeneration
                         && ownerGeneration == session.Generation && ownerReadRevision == session.ReadScopeRevision,
-                    token, maximumRows: Int32.MaxValue);
+                    token, maximumRows: Int32.MaxValue, maximumConcurrentBatches: 4);
                 if (token.IsCancellationRequested || generation != listGeneration || ownerGeneration != session.Generation || ownerReadRevision != session.ReadScopeRevision || !IsLoaded) return;
                 rows.ItemsSource = result;
                 pageText.Text = "共 " + first.Total + " 项";
                 shownScope.Text = categoryCaption + (string.IsNullOrWhiteSpace(keyword) ? "" : " · 搜索：“" + keyword.Trim() + "”");
                 status.Text = result.Count == 0 ? "当前范围没有货品。" : "";
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                if (generation == listGeneration && ownerGeneration == session.Generation && ownerReadRevision == session.ReadScopeRevision && IsLoaded)
+                    status.Text = "已取消读取，保留上次完整列表。";
+            }
             catch (ApiException error) when (error.Code == "READ_SCOPE_CHANGED" || error.StatusCode == 403)
             {
                 if (generation == listGeneration && ownerGeneration == session.Generation && IsLoaded)
@@ -345,11 +351,20 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 if (generation == listGeneration && IsLoaded) { listBusy = false; UpdateListState(); }
             }
         }
+        private async Task RunReadBusyAsync(string title, Func<Task> action, Func<Action> cancel)
+        {
+            var operation = action();
+            var owner = Window.GetWindow(this);
+            if (operation.IsCompleted || owner == null) { await operation; return; }
+            using (UtenBusyDialog.Show(owner, title, cancel())) await operation;
+        }
         private void UpdateListState()
         {
             rows.IsEnabled = !listBusy;
         }
         private async void OnRowSelected(object sender, SelectionChangedEventArgs args)
+        { await LoadSelectedDetailAsync(); }
+        private async Task LoadSelectedDetailAsync()
         {
             var selected = rows.SelectedItem as GoodsRecord;
             Cancel(detailRead); long generation = ++detailGeneration;
@@ -385,7 +400,11 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 openUnit.Margin = Spacing(top: "S8");
                 openUnit.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                if (generation == detailGeneration && ownerGeneration == session.Generation && ownerReadRevision == session.ReadScopeRevision && IsLoaded)
+                    { detailStatus.Text = "已取消读取详情，请重试。"; detailRetry.Visibility = Visibility.Visible; }
+            }
             catch (ApiException error) when (error.Code == "READ_SCOPE_CHANGED" || error.StatusCode == 403)
             {
                 if (generation == detailGeneration && ownerGeneration == session.Generation && IsLoaded)
@@ -419,7 +438,16 @@ namespace Uten.Legacy.Desktop.Features.Goods
             if (string.IsNullOrEmpty(target) || !Allowed("unit:view") || lifetime == null || lifetime.IsCancellationRequested) return;
             try
             {
-                var snapshot = await new UnitService(session).DetailAsync(target, lifetime.Token);
+                UnitReadSnapshot<UnitRecord> snapshot;
+                using (var read = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
+                {
+                    var operation = new UnitService(session).DetailAsync(target, read.Token);
+                    var owner = Window.GetWindow(this);
+                    if (operation.IsCompleted || owner == null) snapshot = await operation;
+                    else using (UtenBusyDialog.Show(owner, "正在读取单位资料", read.Cancel)) snapshot = await operation;
+                    if (read.IsCancellationRequested || !IsLoaded || !snapshot.IsCurrent(session)) return;
+                }
+                // The waiting lease is gone before the interactive detail window opens.
                 if (lifetime.Token.IsCancellationRequested || !IsLoaded || !snapshot.IsCurrent(session)) return;
                 var window = new UnitDetailWindow(Window.GetWindow(this), session, snapshot);
                 TableSelection.Clear(rows);

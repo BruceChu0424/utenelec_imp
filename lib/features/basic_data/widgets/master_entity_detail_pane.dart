@@ -1,4 +1,5 @@
 import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 // 分类主档页的右侧明细区(客户/供应商/模具/货品四页共用，ADR-111)。
 //
@@ -180,6 +181,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.labelOf,
     required this.loadCategory,
     required this.loadPage,
+    this.loadComplete,
     required this.loadFacets,
     this.loadGlobalFacets,
     this.loadQueryFacets,
@@ -253,6 +255,11 @@ class MasterEntityPaneConfig<TItem, TDetail> {
 
   final Future<ProductCategoryDetail> Function(String categoryId) loadCategory;
   final Future<PagedResult<TItem>> Function(MasterPaneQuery query) loadPage;
+
+  /// Strong summary readers own their complete bounded protocol; the shared
+  /// pane still owns activity, cancellation, publication and row interaction.
+  final Future<PagedResult<TItem>> Function(MasterPaneQuery query)?
+  loadComplete;
   final Future<MasterPaneFacets> Function(String categoryId) loadFacets;
   final Future<MasterPaneFacets> Function()? loadGlobalFacets;
   final Future<MasterPaneFacets> Function(MasterPaneQuery query)?
@@ -412,6 +419,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _displayedQueryStale = false;
   String? _listError;
   List<MasterDataGroup<TItem>> _groups = const [];
+  String? _groupError;
+  bool _groupLoading = false;
 
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -503,6 +512,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _category = null;
       _page = null;
       _groups = const [];
+      _groupError = null;
+      _groupLoading = false;
       _facets = null;
       _selectedIds = {};
       _error = null;
@@ -663,6 +674,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         _loading = false;
         _displayedQueryStale = _page != null;
         _groups = const [];
+        _groupError = null;
+        _groupLoading = false;
         _facets = null;
         _filters = {};
         _sortKey = _c.defaultSortKey;
@@ -1166,6 +1179,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _pageNum = 1;
       _listError = null;
       _groups = const [];
+      _groupError = null;
+      _groupLoading = false;
       if (!preserveQuery) {
         _filters = {};
         _keyword = widget.externalKeyword ?? '';
@@ -1305,6 +1320,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           scope: scope,
           fetchPage: fetchPage,
           fetchPageSized: (target, size) => fetchPage(target, size),
+          fetchComplete: _c.loadComplete == null
+              ? null
+              : () => _c.loadComplete!(query),
           isCurrent: requestCurrent,
           isOwnerCurrent: readerCurrent,
           useCache: useCache,
@@ -1393,14 +1411,73 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final loader = _c.loadLeadingGroups;
     final category = _category;
     if (loader == null || category == null) return;
+    final query = _query();
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final readRevision = ref.read(readScopeRevisionProvider);
+    final queryVersion = _queryVersion;
     final generation = _groupRequests.begin();
+    bool current() =>
+        mounted &&
+        _groupRequests.isCurrent(generation) &&
+        queryVersion == _queryVersion &&
+        widget.categoryId == query.categoryId &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        readRevision == ref.read(readScopeRevisionProvider);
+    setState(() => _groupLoading = true);
     try {
-      final groups = await loader(_query(), category);
-      if (!mounted || !_groupRequests.isCurrent(generation)) return;
-      setState(() => _groups = groups);
-    } catch (_) {
-      // 辅助视图失败静默。
+      final groups = await readViewActivity.runRead(
+        current,
+        () =>
+            PagedReadIntent.scopedRead(current, () => loader(query, category)),
+        slot: 'master-leading-groups',
+      );
+      if (!current()) return;
+      setState(() {
+        _groups = groups;
+        _groupError = null;
+      });
+    } catch (error) {
+      if (isRetiredViewRead(error) || !current()) return;
+      setState(() {
+        if (pagedReadAccessDenied(error)) _groups = const [];
+        _groupError = error is ApiException ? error.message : '附加分组未完整读取，请重试';
+      });
+    } finally {
+      if (current()) setState(() => _groupLoading = false);
     }
+  }
+
+  List<MasterDataGroup<TItem>> get _displayedGroups {
+    if (_groupError == null) return _groups;
+    final query = _queryVersion;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final readRevision = ref.read(readScopeRevisionProvider);
+    bool current() =>
+        mounted &&
+        query == _queryVersion &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        readRevision == ref.read(readScopeRevisionProvider);
+    return [
+      ..._groups,
+      MasterDataGroup<TItem>(
+        id: 'complete-group-read-error',
+        title: '${_c.noun}附加分组',
+        items: const [],
+        error: _groupError,
+        loading: _groupLoading,
+        initiallyExpanded: true,
+        onRetry: () {
+          if (_groupLoading || !current()) return;
+          unawaited(
+            UtenBusyOverlay.run(
+              context,
+              title: '正在读取完整${_c.noun}分组',
+              action: _loadGroups,
+            ),
+          );
+        },
+      ),
+    ];
   }
 
   void _onFilterChanged(String column, String? value) async {
@@ -1871,7 +1948,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   ];
                   return leading.isEmpty ? null : leading;
                 }(),
-                leadingGroups: _groups,
+                leadingGroups: _displayedGroups,
                 facets: _columnFacets,
                 facetSearchScope: (
                   ref.watch(authenticatedScopeProvider),

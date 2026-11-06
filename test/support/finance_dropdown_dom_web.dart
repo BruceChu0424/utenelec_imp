@@ -1,3 +1,5 @@
+import 'dart:ui_web' as ui_web;
+import 'package:flutter_test/flutter_test.dart';
 import 'package:web/web.dart' as web;
 
 const financeDropdownDomAvailable = true;
@@ -32,4 +34,26 @@ void clickFinanceDropdownDomOption(String label) {
     throw StateError('The menu option has no visible DOM bounds.');
   }
   option.click();
+}
+
+// Keep the widget fixture's platform semantics state stable while enabling the
+// real engine DOM. Otherwise engine activation adds a new platform-owned handle
+// mid-test and violates the binding's unchanged-handle verification.
+void initializeFinanceDropdownDom() {
+  final binding = TestWidgetsFlutterBinding.ensureInitialized();
+  final previous = ui_web.TestEnvironment.instance;
+  binding.platformDispatcher.semanticsEnabledTestValue = false;
+  // The constructor default keeps keepSemanticsDisabledOnUpdate false.
+  ui_web.TestEnvironment.setUp(
+    ui_web.TestEnvironment(
+      ignorePlatformMessages: previous.ignorePlatformMessages,
+      forceTestFonts: previous.forceTestFonts,
+      disableFontFallbacks: previous.disableFontFallbacks,
+      defaultToTestUrlStrategy: previous.defaultToTestUrlStrategy,
+    ),
+  );
+  tearDownAll(() {
+    ui_web.TestEnvironment.setUp(previous);
+    binding.platformDispatcher.clearSemanticsEnabledTestValue();
+  });
 }

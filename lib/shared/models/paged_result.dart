@@ -15,6 +15,14 @@ abstract interface class PagedResultRevision {
   Object? get snapshotRevision;
 }
 
+/// An offset page explicitly bound to one server data and authorization proof.
+/// Only these pages may opt into bounded concurrent complete reads.
+abstract interface class VersionedPagedResultProof
+    implements PagedResultRevision {
+  String get readSnapshotRevision;
+  String? get readDataVersion;
+}
+
 List<T> freezePagedRows<T>(Iterable<T> rows) => _IndependentPagedRows<T>(rows);
 bool isIndependentPagedRows(Object? rows) =>
     rows is _IndependentPagedRows<Object?>;

@@ -47,6 +47,7 @@ bool isSearchReadPost(String path) =>
 /// Large authorized category scopes travel in a JSON body rather than an URL.
 /// Match only these pure reads; neighboring goods commands remain mutations.
 bool isGoodsSearchRead(String path) => const {
+  '/master/goods/summaries',
   '/master/goods/search',
   '/master/goods/search-category-ids',
   '/master/goods/facets',

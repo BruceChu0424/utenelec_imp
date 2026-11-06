@@ -57,6 +57,16 @@ namespace Uten.Legacy.Desktop.Features.Goods
             cancellationToken.ThrowIfCancellationRequested();
             return await Task.Run(() => GoodsReadContract.ParseDetail(json), cancellationToken).ConfigureAwait(false);
         }
+
+        public async Task<GoodsPage> SummariesAsync(string categoryId, string keyword, int page, int size,
+            string readSnapshotRevision, CancellationToken cancellationToken)
+        {
+            Demand(GoodsViewPermission);
+            string json = await session.ReadGoodsSummariesAsync(categoryId, keyword, page, size,
+                readSnapshotRevision, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return await Task.Run(() => GoodsReadContract.ParsePage(json), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public sealed class GoodsCategory
@@ -132,6 +142,8 @@ namespace Uten.Legacy.Desktop.Features.Goods
         public long Total { get; internal set; }
         public int TotalPages { get; internal set; }
         public string ReadScopeVersion { get; internal set; }
+        public string ReadDataVersion { get; internal set; }
+        public string ReadSnapshotRevision { get; internal set; }
     }
 
     public static class GoodsReadContract
@@ -176,7 +188,8 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 CultureInfo.InvariantCulture, out total) || total < 0)
                 throw new FormatException("货品分页总数无效。");
             return new GoodsPage { Items = new ReadOnlyCollection<GoodsRecord>(items), Page = page,
-                Size = size, Total = total, TotalPages = pages, ReadScopeVersion = OptionalText(root, "readScopeVersion") };
+                Size = size, Total = total, TotalPages = pages, ReadScopeVersion = OptionalText(root, "readScopeVersion"),
+                ReadDataVersion = OptionalText(root, "readDataVersion"), ReadSnapshotRevision = OptionalText(root, "readSnapshotRevision") };
         }
 
         public static GoodsRecord ParseDetail(string json) { return new GoodsRecord(Object(Parse(json))); }

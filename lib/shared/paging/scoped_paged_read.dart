@@ -128,6 +128,7 @@ class ScopedPagedRead<T> {
     required Object scope,
     required Future<PagedResult<T>> Function(int) fetchPage,
     Future<PagedResult<T>> Function(int page, int size)? fetchPageSized,
+    Future<PagedResult<T>> Function()? fetchComplete,
     Object? Function(T row)? idOf,
     required bool Function() isCurrent,
     bool Function()? isOwnerCurrent,
@@ -165,12 +166,18 @@ class ScopedPagedRead<T> {
     late final _CompleteFlight<T> flight;
     Future<PagedResult<T>> load() async {
       try {
-        var result = await loadCompletePagedResult<T>(
-          loadPage: (batch, size) =>
-              fetchPageSized?.call(batch, size) ?? fetchPage(batch),
-          isCurrent: baseCurrent,
-          idOf: idOf ?? this.idOf,
-        );
+        var result = fetchComplete != null
+            ? await PagedReadIntent.scopedRead(
+                baseCurrent,
+                fetchComplete,
+                bootstrap: PagedReadIntent.allowsInactiveBootstrap,
+              )
+            : await loadCompletePagedResult<T>(
+                loadPage: (batch, size) =>
+                    fetchPageSized?.call(batch, size) ?? fetchPage(batch),
+                isCurrent: baseCurrent,
+                idOf: idOf ?? this.idOf,
+              );
         if (!current()) throw StateError('Paged read owner changed');
         if (_accepted != null &&
             _accepted!.readScopeVersion != result.readScopeVersion) {

@@ -1,7 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
+using Uten.Legacy.Core;
+using Uten.Legacy.Core.Tests;
 using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Desktop.Features.Goods
@@ -98,7 +106,99 @@ namespace Uten.Legacy.Desktop.Features.Goods
                     check(CurrencyDisplay.ColorRole(name, code) == sample["role"] as string, "shared currency display fixture role parity");
                 }
             }
+            assertions += CompletePagedSnapshotChecks.Run();
+            assertions += SummaryTransport().GetAwaiter().GetResult();
             return assertions;
+        }
+
+        private static async Task<int> SummaryTransport()
+        {
+            int assertions = 0;
+            Action<bool, string> check = (value, text) => { if (!value) throw new InvalidOperationException("Goods summary HTTP: " + text); Interlocked.Increment(ref assertions); };
+            const string category = "c73a7dd0-b342-4c15-a856-14d4d9d3cc01";
+            string revision = new string('a', 64), data = new string('d', 64), scope = new string('b', 64);
+            int reads = 0, writes = 0; bool allowed = true, missing = false;
+            using (var state = new BusinessStateTestFixture())
+            using (var session = new SessionCoordinator(new ClientConfiguration(new[] {
+                new ServerEndpoint("goods", "private fixture", "https://goods.example.test/api") }, "goods"),
+                new SummaryHandler(async (request, token) =>
+                {
+                    string path = request.RequestUri.AbsolutePath;
+                    if (path == "/api/auth/login") return SummaryJson("{\"accessToken\":\"fixture-access\",\"refreshToken\":\"fixture-refresh\",\"expiresIn\":900,\"user\":{\"id\":\"goods-summary-owner\",\"loginAccount\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":"
+                        + (allowed ? "[\"goods:view\"]" : "[]") + ",\"businessDatasetId\":\"11111111-1111-1111-1111-111111111111\",\"businessResetGeneration\":0}}");
+                    if (path == "/api/auth/logout" && request.Method == HttpMethod.Post) return SummaryJson("", HttpStatusCode.NoContent);
+                    if (request.Method != HttpMethod.Post || path != "/api/master/goods/summaries")
+                    { Interlocked.Increment(ref writes); throw new InvalidOperationException("Unexpected business route."); }
+                    Interlocked.Increment(ref reads);
+                    if (missing) return SummaryJson("{\"code\":\"NOT_FOUND\",\"message\":\"fixture unavailable\"}", HttpStatusCode.NotFound);
+                    var json = new JavaScriptSerializer();
+                    var body = json.Deserialize<Dictionary<string, object>>(await request.Content.ReadAsStringAsync().ConfigureAwait(false));
+                    var filter = (Dictionary<string, object>)body["filter"];
+                    int page = Convert.ToInt32(body["page"]), size = Convert.ToInt32(body["size"]);
+                    check(size == 100 && body.Count == 3 && filter.Count == 2 && (string)filter["categoryId"] == category
+                        && (string)filter["keyword"] == "原始 & 货品", "original category/search survive without hidden status/scope/sort filters");
+                    check(request.RequestUri.Query == (page == 1 ? "" : "?readSnapshotRevision=" + revision), "each tail pins the real first snapshot revision");
+                    var rows = Enumerable.Range((page - 1) * 100 + 1, Math.Min(100, 2414 - (page - 1) * 100))
+                        .Select(index => new { id = new Guid(index, 0, 0, new byte[8]).ToString("D"), code = "G" + index, name = "原始货品", price = "9007199254740993.2300", unitId = category, unitName = "个" });
+                    var response = SummaryJson(json.Serialize(new { items = rows, page, size, total = 2414, totalPages = 25,
+                        readScopeVersion = scope, readDataVersion = data, readSnapshotRevision = revision }));
+                    response.Headers.Add("X-Uten-Read-Scope-Version", scope);
+                    return response;
+                }), new SummaryAuthStore(), state.Store))
+            {
+                await session.LoginAsync("fixture", "fixture-password", CancellationToken.None).ConfigureAwait(false);
+                var owner = session.CaptureMutationOwner(); var service = new GoodsReadService(session); GoodsPage first = null;
+                var result = await CompletePagedSnapshot.ReadAsync<GoodsRecord>(async (page, size, token) =>
+                {
+                    var value = await service.SummariesAsync(category, "  原始 & 货品  ", page, size,
+                        first == null ? null : first.ReadSnapshotRevision, token).ConfigureAwait(false);
+                    if (first == null) first = value;
+                    return new SnapshotPage<GoodsRecord> { Items = value.Items, Page = value.Page, Size = value.Size,
+                        Total = value.Total, TotalPages = value.TotalPages, ReadScopeVersion = value.ReadScopeVersion,
+                        ReadDataVersion = value.ReadDataVersion, ReadSnapshotRevision = value.ReadSnapshotRevision };
+                }, item => Guid.Parse(item.Id).ToString("D"), () => true, CancellationToken.None, maximumConcurrentBatches: 4).ConfigureAwait(false);
+                check(result.Count == 2414 && reads == 25 && result[2413].Code == "G2414", "actual typed Core/HTTP/Goods chain collects the true last row");
+                check(result[2413].Price == "9007199254740993.2300" && result[2413].UnitId == category,
+                    "numeric strings and relationship UUIDs retain exact authority");
+                check(writes == 0 && state.Store.ListJournal(owner).Count == 0 && state.Store.ListDrafts(owner).Count == 0,
+                    "read-only POST creates no write, draft, unknown command or mutation journal");
+                int before = reads;
+                foreach (var invalid in new Action[] {
+                    () => session.ReadGoodsSummariesAsync(category, null, 1, 101, null, CancellationToken.None),
+                    () => session.ReadGoodsSummariesAsync(category, null, 2, 100, null, CancellationToken.None),
+                    () => session.ReadGoodsSummariesAsync("legacy-id", null, 1, 100, null, CancellationToken.None),
+                    () => session.ReadGoodsSummariesAsync(category, null, 2, 100, revision + "\n", CancellationToken.None) })
+                { try { invalid(); throw new InvalidOperationException("Invalid read was accepted."); } catch (ArgumentException) { assertions++; } }
+                check(reads == before, "invalid size, UUID or snapshot never reaches HTTP");
+                missing = true;
+                try { await service.SummariesAsync(category, null, 1, 100, null, CancellationToken.None).ConfigureAwait(false); throw new InvalidOperationException("Missing endpoint became empty."); }
+                catch (ApiException error) { check(error.Code == "NOT_FOUND" && error.StatusCode == 404, "404 remains a real failure, never empty success or old GET fallback"); }
+                missing = false; allowed = false;
+                await session.LoginAsync("fixture", "fixture-password", CancellationToken.None).ConfigureAwait(false); before = reads;
+                try { await service.SummariesAsync(category, null, 1, 100, null, CancellationToken.None).ConfigureAwait(false); throw new InvalidOperationException("View permission bypassed."); }
+                catch (UnauthorizedAccessException) { assertions++; }
+                try { await session.ReadGoodsSummariesAsync(category, null, 1, 100, null, CancellationToken.None).ConfigureAwait(false); throw new InvalidOperationException("Core permission bypassed."); }
+                catch (ApiException error) { check(error.Code == "FORBIDDEN", "Core rechecks goods:view before the precise read POST"); }
+                check(reads == before && writes == 0, "permission rejection sends no request or business write");
+            }
+            return assertions;
+        }
+        private static HttpResponseMessage SummaryJson(string body, HttpStatusCode status = HttpStatusCode.OK)
+        { return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") }; }
+        private sealed class SummaryHandler : HttpMessageHandler
+        {
+            private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> action;
+            internal SummaryHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> action) { this.action = action; }
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage message, CancellationToken token) { return action(message, token); }
+        }
+        private sealed class SummaryAuthStore : ISessionStore
+        {
+            private StoredSession active; private readonly List<StoredSession> pending = new List<StoredSession>();
+            public StoredSession Load() { return active; } public void Save(StoredSession value) { active = value; }
+            public void Clear() { active = null; } public void EndSession(StoredSession value) { EnqueueRevocation(value ?? active); active = null; }
+            public void EnqueueRevocation(StoredSession value) { if (value != null) pending.Add(value); }
+            public IList<StoredSession> PendingRevocations() { return pending.ToList(); }
+            public void AcknowledgeRevocation(string id) { pending.RemoveAll(value => value.Id == id); }
         }
 
         private static void ExpectFailure(Action action, Action<bool, string> check, string message)

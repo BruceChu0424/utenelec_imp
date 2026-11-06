@@ -215,7 +215,7 @@ class FinanceChartAuxCompleteSummaryPostgresTest {
         if(payload!=null){
             builder.header("Content-Type","application/json");
         }
-        
+
         builder.method(method,payload==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(payload));
         var response=http.send(builder.build(),HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as("%s %s",method,path.replaceAll("readSnapshotRevision=[^&]+","readSnapshotRevision=<opaque>")) .isEqualTo(expected);
@@ -223,7 +223,7 @@ class FinanceChartAuxCompleteSummaryPostgresTest {
         if(expected==200&&path.contains("/summaries")){
             assertThat(response.headers().firstValue("X-Uten-Read-Scope-Version")).contains(body.path("readScopeVersion").asText());
         }
-        
+
         return body;
     }
     private byte[] chartFile() throws Exception {

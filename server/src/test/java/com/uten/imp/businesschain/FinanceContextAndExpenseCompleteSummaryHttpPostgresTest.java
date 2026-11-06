@@ -137,7 +137,7 @@ class FinanceContextAndExpenseCompleteSummaryHttpPostgresTest extends CompleteSu
         var actual=new LinkedHashSet<String>();for(var row:first.path("items")){
             assertThat(actual.add(row.path("id").asText())).isTrue();
         }
-        
+
         for(var row:tail.path("items")){
             assertThat(actual.add(row.path("id").asText())).isTrue();
         }

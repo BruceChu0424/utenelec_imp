@@ -193,9 +193,9 @@ class FinanceAssetAccountingCompleteSummaryPostgresTest {
             for(var row:db.queryForList("SELECT id::text,status,row_version,actor_id"+(table.equals("finance_asset_opening_groups")?",as_of::text,source_voucher_id,reason":",kind,source_name,source_system,submitted_by")+" FROM "+table+" WHERE id IN ("+String.join(",",Collections.nCopies(expected.size(),"?"))+")",expected.stream().map(UUID::fromString).toArray())){
             byId.put(row.get("id").toString(),row);
         }
-        
+
         }
-        
+
         var ids=new LinkedHashSet<String>();var rows=new ArrayList<JsonNode>();String revision=null,data=null,authority=null;
         int pages=Math.max(1,(expected.size()+999)/1000);
         for(int page=1;page<=pages;page++) {
@@ -219,11 +219,11 @@ class FinanceAssetAccountingCompleteSummaryPostgresTest {
                     if(original.get("submitted_by")==null){
                         assertThat(row.get("submittedBy").isNull()).isTrue();
                     }
-                    
+
                     else {
                         assertThat(row.path("submittedBy").asText()).isEqualTo(original.get("submitted_by").toString());
                     }
-                    
+
                 }
             }
         }

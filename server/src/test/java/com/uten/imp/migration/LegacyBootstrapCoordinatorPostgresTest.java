@@ -122,6 +122,28 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 Files.copy(file, target);
             }
         }
+        // The child suite exercises shared Flyway and explicit importer source
+        // authorities and both callers. Freeze the same list as its Python
+        // candidate fixtures, with original bytes and no absent-source fallback.
+        var sharedSources = Files.readAllLines(originalFixtures.resolve("reviewed-shared-sources.txt"), StandardCharsets.UTF_8)
+                .stream().map(String::strip).filter(line -> !line.isEmpty() && !line.startsWith("#")).toList();
+        assertThat(sharedSources).isNotEmpty().doesNotHaveDuplicates();
+        StringBuilder sharedManifest = new StringBuilder();
+        Path repositoryRoot = Path.of("..").toAbsolutePath().normalize();
+        for (String relative : sharedSources) {
+            Path relativePath = Path.of(relative);
+            assertThat(relativePath.isAbsolute()).isFalse();
+            assertThat(relativePath.normalize()).isEqualTo(relativePath);
+            Path source = repositoryRoot.resolve(relativePath).normalize();
+            Path target = candidate.resolve(relativePath).normalize();
+            assertThat(source.startsWith(repositoryRoot) && target.startsWith(candidate)).isTrue();
+            assertThat(Files.isRegularFile(source, java.nio.file.LinkOption.NOFOLLOW_LINKS)).isTrue();
+            byte[] bytes = Files.readAllBytes(source);
+            Files.createDirectories(target.getParent());
+            Files.write(target, bytes);
+            sharedManifest.append(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)))
+                    .append("  ").append(relative).append('\n');
+        }
         var image = new ImageFromDockerfile()
                 .withDockerfileFromBuilder(builder -> builder.from("postgres:16-alpine")
                         .run("apk add --no-cache bash python3 py3-pip git coreutils docker-cli")
@@ -149,7 +171,12 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 .locations("filesystem:" + migrationDirectory).load().migrate();
         seedPreservedAdministrator(legacy);
         clusterId = scalar("SELECT system_identifier FROM pg_control_system()");
-        shell("mkdir -p /bootstrap/server/legacy_migration /bootstrap/server/src/main/resources/db/migration /bootstrap/server/target");
+        shell("mkdir -p /bootstrap/server/legacy_migration /bootstrap/server/src/main/resources/db/migration /bootstrap/server/target"
+                + " /bootstrap/deploy/contracts /bootstrap/contracts/flyway-version /bootstrap/tool /bootstrap/deploy/setup");
+        for (String relative : sharedSources) put(ROOT + "/" + relative, Files.readAllBytes(candidate.resolve(relative)));
+        put(ROOT + "/server/target/python-shared-sources.sha256", sharedManifest.toString());
+        shell("cd /bootstrap && sha256sum --strict -c server/target/python-shared-sources.sha256"
+                + " > /tmp/verified-python-shared-sources.log");
         postgres.copyFileToContainer(MountableFile.forHostPath(javaDirectory),
                 ROOT + "/server/src/main/java");
         put(ROOT + "/server/target/python-entity-sources.sha256", javaManifest.toString());

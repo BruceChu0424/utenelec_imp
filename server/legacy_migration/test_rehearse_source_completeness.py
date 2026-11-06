@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import shutil
+from legacy_test_sources import copy_reviewed_shared_sources
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -34,6 +35,7 @@ class CoordinatorCompletenessTest(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.base=Path(self.temp.name);self.f=Fixture(self.base)
         for name in ('clean','overlay','hr','masters','code'):(self.base/name).mkdir()
         self.code=self.base/'code'
+        copy_reviewed_shared_sources(self.base, legacy_directory=self.code)
         for name in ('source_schema_contract.json','source_profile_contract.json'):
             shutil.copy2(self.base/name,self.code/name)
         for name in ('export_legacy.ps1','export_rehearsal_reference_audit.ps1','export_legacy_goods_media.ps1','export_source_completeness_audit.ps1'):

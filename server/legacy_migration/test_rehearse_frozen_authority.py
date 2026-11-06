@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import rehearse_local_import as importer
 from test_rehearse_source_completeness import empty_workshop_policy
+from legacy_test_sources import copy_reviewed_shared_sources
 
 
 class FrozenExecutionAuthorityTest(unittest.TestCase):
@@ -20,6 +21,7 @@ class FrozenExecutionAuthorityTest(unittest.TestCase):
             (legacy/name).write_text('bootstrap-v16\n' if name=='mapping-version.txt' else 'fixture\n',encoding='utf-8')
         for n in range(125): (legacy/f'fixture_{n:03d}.py').write_text('pass\n')
         (migrations/'V1__fixture.sql').write_text('SELECT 1;\n')
+        copy_reviewed_shared_sources(root)
         return legacy
 
     def frozen(self,root,legacy,dirty=None,untracked=None):

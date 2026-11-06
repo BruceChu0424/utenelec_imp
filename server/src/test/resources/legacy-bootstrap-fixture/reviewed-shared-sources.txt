@@ -1,0 +1,12 @@
+# Actual repository inputs needed by the complete private Python suite.
+deploy/contracts/flyway_version_contract.py
+contracts/flyway-version/fixtures.json
+tool/sync_flyway_version_contract.py
+deploy/setup/harden-existing-postgres-roles.sh
+server/legacy_migration/personnel_source_archive.py
+server/legacy_migration/warehouse_crosswalk.csv
+server/legacy_migration/export_rehearsal_reference_audit.ps1
+server/legacy_migration/export_legacy_goods_media.ps1
+server/legacy_migration/source_schema_contract.json
+server/legacy_migration/source_profile_contract.json
+server/legacy_migration/export_source_completeness_audit.ps1

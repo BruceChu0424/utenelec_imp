@@ -2,7 +2,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import verify_candidate as verifier
+from legacy_test_sources import copy_reviewed_shared_sources
 
 REAL_ROOT = Path(__file__).resolve().parents[2]
 
@@ -27,10 +27,7 @@ class CandidateVersionIdentityTest(unittest.TestCase):
                      'cleanup_hr_keep_admin.sql', 'warehouse_crosswalk.csv', 'migrate_purchase.sql'):
             (self.legacy / name).write_text('# reviewed fixture source\n', encoding='utf-8')
         (self.legacy / 'mapping-version.txt').write_text('bootstrap-v22\n', encoding='ascii')
-        for relative in verifier.VERSION_CONTRACT_INPUTS:
-            shared = self.root / relative
-            shared.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(REAL_ROOT / relative,shared)
+        copy_reviewed_shared_sources(self.root)
         for name in ('V01__enable_pgcrypto.sql', 'V990_1__precision.sql', 'V999_1__one.sql',
                      'V999_10__ten.sql', 'V1070__head.sql'):
             (self.migrations / name).write_bytes(b'\xef\xbb\xbfSELECT 1;\r\n')

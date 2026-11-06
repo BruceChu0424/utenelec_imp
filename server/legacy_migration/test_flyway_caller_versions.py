@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 import verify_candidate
+from legacy_test_sources import copy_reviewed_shared_sources
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,10 +33,7 @@ class CandidateVersionTests(unittest.TestCase):
         self.manifest = self.root / "checksums.tsv"
 
     def prepare(self, rows):
-        import shutil
-        for relative in verify_candidate.VERSION_CONTRACT_INPUTS:
-            target=self.root/relative;target.parent.mkdir(parents=True,exist_ok=True)
-            shutil.copyfile(ROOT/relative,target)
+        copy_reviewed_shared_sources(self.root)
         for _, name in reversed(rows):
             (self.migrations / name).write_bytes(b"\xef\xbb\xbfSELECT 1;\r\n")
         for arguments in (("init", "-q"), ("config", "user.name", "Synthetic fixture"),

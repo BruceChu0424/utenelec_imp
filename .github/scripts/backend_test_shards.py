@@ -49,14 +49,19 @@ WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkboo
 MATERIAL_PRODUCER_PROPERTY = "uten.materialForecast.contractDirectory"
 MATERIAL_PRODUCER_REVIEW = ("com.uten.imp.features.master.goods.pricing.MaterialAutomaticProducerContractTest"
                             "#actualAutomaticCollectorFilesInteroperateWithTheProductionReaders")
-# These two acceptance methods require a reviewed local runtime payload (and,
-# for the full lifecycle test, public SHFE). Their gates are not reusable by
-# other tests: only the declared gate's exact absence may explain their skip.
+# These acceptance methods need reviewed local runtime inputs or an operator
+# driving a loopback UI server. Their gates are not reusable by other tests:
+# only the declared gate's exact absence may explain their recorded skip.
 METHOD_OPTIONAL_GATES = {
     "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest"
     "#actualProductionLauncherPreparesTheReviewedPayload": "UTEN_RUN_MARKET_PREPARATION_SMOKE",
     "com.uten.imp.businesschain.MaterialForecastManagedRuntimeSmokeTest"
     "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
+    # This starts a real local Web/API application and waits for its owned stop
+    # marker (up to two hours). CI retains it in inventory as manual acceptance;
+    # an ordinary database regression cannot borrow this exact method's gate.
+    "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
+    "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
 }
 # Keep the preparation workflow contract named explicitly for its dedicated
 # mandatory CI step and the existing stricter negative regressions.

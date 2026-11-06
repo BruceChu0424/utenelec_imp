@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -43,7 +43,7 @@ void main() {
           scale: layout.$2,
         );
         await tester.tap(find.text('报表中的科目管理'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.byType(AlertDialog), findsNothing);
         expect(find.byType(Dialog), findsNothing);
         final panel = tester.getRect(find.byType(FinanceChartDialog));
@@ -58,7 +58,7 @@ void main() {
           );
         }
         tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         final search = find.descendant(
           of: find.byType(UtenSearchBar),
           matching: find.byType(TextField),
@@ -67,13 +67,16 @@ void main() {
         expect(search.hitTestable(), findsOneWidget);
         await tester.enterText(search, '库存');
         await tester.pump(const Duration(milliseconds: 350));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('库存现金'), findsOneWidget);
-        expect(
-          tester.getRect(find.byType(UtenDialogActions).first).bottom,
-          lessThanOrEqualTo(600),
-        );
-        expect(find.text('关闭').hitTestable(), findsOneWidget);
+        final close = find
+            .descendant(
+              of: find.byType(FinanceChartDialog),
+              matching: find.byType(UtenCloseButton),
+            )
+            .hitTestable();
+        expect(close, findsOneWidget);
+        expect(tester.getRect(close).bottom, lessThanOrEqualTo(600));
         if (capture && layout.$1 == 390) {
           await saveAuditScreenshot(
             tester,
@@ -81,8 +84,8 @@ void main() {
             'finance-chart-panel-390-keyboard',
           );
         }
-        await tester.tap(find.text('关闭'));
-        await tester.pumpAndSettle();
+        await tester.tap(close);
+        await pumpAndSettleWithIo(tester);
         expect(state.result, isFalse);
         expect(find.byType(FinanceChartDialog), findsNothing);
         expect(tester.takeException(), isNull);
@@ -98,26 +101,26 @@ void main() {
       final api = _transport()..holdApply = Completer<void>();
       final state = await _mount(tester, api);
       await tester.tap(find.text('报表中的科目管理'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final close = tester
-          .widget<UtenButton>(
+          .widget<UtenCloseButton>(
             find.descendant(
               of: find.byType(FinanceChartDialog),
-              matching: find.widgetWithText(UtenButton, '关闭'),
+              matching: find.byType(UtenCloseButton),
             ),
           )
           .onPressed!;
       if (find.text('导入科目目录').evaluate().isEmpty) {
         await tester.tap(find.byTooltip('表格操作'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
       }
       await tester.tap(find.text('导入科目目录'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final closeImport = tester
-          .widget<UtenButton>(
+          .widget<UtenCloseButton>(
             find.descendant(
               of: find.byType(FinanceChartImportWorkbench),
-              matching: find.widgetWithText(UtenButton, '关闭'),
+              matching: find.byType(UtenCloseButton),
             ),
           )
           .onPressed!;
@@ -135,6 +138,7 @@ void main() {
             find.byType(UtenBusyOverlayCard).evaluate().isNotEmpty,
         reason:
             'The original apply must dispatch once after its durable draft and actual waiting card are ready',
+        realIo: true,
       );
       expect(api.applyCalls, hasLength(1));
       expect(api.applyCalls.single.body, {
@@ -145,9 +149,9 @@ void main() {
       expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
       expect(state.result, isNull);
       api.holdApply!.complete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(state.result, isTrue);
       expect(api.applied, 1);
       expect(api.applyCalls, hasLength(1));
@@ -252,7 +256,7 @@ Future<_State> _mount(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   return state;
 }
 

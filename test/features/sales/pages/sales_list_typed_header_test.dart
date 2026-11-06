@@ -65,7 +65,9 @@ class _Api extends ApiClient {
 void main() {
   for (final kind in SalesDocType.values) {
     testWidgets(
-      '${kind.name} date and visible amount headers query the server, retaining the history scope',
+      kind.isShipment
+          ? '${kind.name} date headers retain history while shipment money is display-only'
+          : '${kind.name} date and visible amount headers query the server, retaining the history scope',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(1700, 1000));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -136,24 +138,41 @@ void main() {
           await tester.pumpAndSettle();
           expect(api.queries.last['currencyId'], _currency);
         }
-        await tester.ensureVisible(
-          find.text(kind == SalesDocType.order ? '订单金额' : '合计'),
-        );
-        await tester.tap(find.text(kind == SalesDocType.order ? '订单金额' : '合计'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const Key('uten-column-keyword-input')),
-          '>=12345678901234.1234',
-        );
-        await tester.testTextInput.receiveAction(TextInputAction.search);
-        await tester.pumpAndSettle();
-        expect(api.queries.last['search.total'], '>=12345678901234.1234');
+        if (kind.isShipment) {
+          final amount = table().columns.singleWhere(
+            (column) => column.key == 'total',
+          );
+          expect(amount.label, '货款');
+          expect(
+            amount.columnSearchEnabled,
+            isFalse,
+            reason: '发货货款按单元格原币显示，不能混币种检索或排序',
+          );
+          expect(amount.sortable, isFalse);
+          expect(api.queries.last.containsKey('search.total'), isFalse);
+          expect(api.queries.last['sort'], isNull);
+        } else {
+          await tester.ensureVisible(
+            find.text(kind == SalesDocType.order ? '订单金额' : '合计'),
+          );
+          await tester.tap(
+            find.text(kind == SalesDocType.order ? '订单金额' : '合计'),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('uten-column-keyword-input')),
+            '>=12345678901234.1234',
+          );
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+          await tester.pumpAndSettle();
+          expect(api.queries.last['search.total'], '>=12345678901234.1234');
+          table().onSortChange!('total', false);
+          await tester.pumpAndSettle();
+          expect(api.queries.last['sort'], 'total');
+          expect(api.queries.last['order'], 'desc');
+          expect(api.queries.last['page'], 1);
+        }
         expect(api.queries.last['search.billDate'], '2026-10-01..2026-10-28');
-        table().onSortChange!('total', false);
-        await tester.pumpAndSettle();
-        expect(api.queries.last['sort'], 'total');
-        expect(api.queries.last['order'], 'desc');
-        expect(api.queries.last['page'], 1);
         if (kind == SalesDocType.order || kind == SalesDocType.quote) {
           await tester.ensureVisible(find.text('交货'));
           await tester.tap(find.text('交货'));

@@ -679,16 +679,9 @@ class WorkshopContinuousSupplyEndToEndTest {
     /** The next independent business action starts after its preceding committed cost phase.
      * The actual inbound callback and its synchronous assertions still run without a worker inside them. */
     private void drainPriorValueWork(Case c) {
-        var goods=new java.util.LinkedHashSet<>(List.of(c.parent(),c.child()));
-        goods.addAll(db.queryForList("""
-                SELECT DISTINCT goods_id FROM production_material_demands
-                WHERE execution_segment_id IN (?,?) AND NOT is_deleted
-                UNION SELECT DISTINCT pool.goods_id FROM stock_value_pools pool
-                JOIN warehouses warehouse ON warehouse.id=pool.warehouse_id
-                WHERE pool.warehouse_id=? OR warehouse.workshop_department_id=?
-                """,UUID.class,c.segment(),c.childSegment(),c.leaf(),c.workshop()));
-        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
-                db,List.copyOf(goods));
+        InventoryValueWorkTestSupport.drainProductionPhase(
+                beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,
+                List.of(c.parent(),c.child()),List.of(c.segment(),c.childSegment()),c.leaf(),c.workshop());
     }
 
     /** Exercise the real report picker; do not duplicate its material arithmetic in the test. */

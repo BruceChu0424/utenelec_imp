@@ -1015,7 +1015,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         assertThrows(ApiException.class,()->stock.confirmProductionMaterialReturn(request.documentId(),
                 new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.world().warehouseId(),"adv-normal-parent-reject")));
-        var detail=stock.confirmProductionMaterialReturn(request.documentId(),command);
+        var detail=confirmMaterialReturn(c,request.documentId(),command);
         assertTrue(detail.isProductionMaterialReturn()); assertEquals(c.leaf(),detail.getMaterialReturnSourceWarehouseId());
         assertEquals(c.world().warehouseId(),detail.getMaterialReturnMainWarehouseId()); assertEquals(received,detail.getWarehouseId());
         assertEquals(request.documentId(),stock.confirmProductionMaterialReturn(request.documentId(),command).getId());
@@ -1058,7 +1058,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         assertThrows(ApiException.class,()->stock.approve(request.documentId()));
         assertThrows(ApiException.class,()->stock.confirmProductionMaterialReturn(request.documentId(),
                 new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(source.sourceWarehouseId(),"adv-reject-tech-as-receiving")));
-        stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-free-direct-received"));
+        confirmMaterialReturn(c,request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-free-direct-received"));
         qty("7",physical(source.sourceWarehouseId(),c.material())); qty("3",physical(c.leaf(),c.material()));
         assertEquals("WAITING",status(c.segment())); assertEquals("BATCH",route(c.segment()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_stock_postings WHERE demand_id=?",Integer.class,parentDemand(c)));
@@ -1098,14 +1098,14 @@ class ProductionExecutionRouteGateEndToEndTest {
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(null,new BigDecimal("4"),source.directTransferItemId())))).getFirst();
         assertThrows(ApiException.class,()->start(c)); qty("0",capacity(c));
         fixture.loginAs(c.world().superAdminUserId());
-        stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-held-direct-received"));
+        confirmMaterialReturn(c,request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-held-direct-received"));
         qty("10",db.queryForObject("SELECT qty FROM stock_document_items WHERE id=?",BigDecimal.class,original));
         qty("6",db.queryForObject("SELECT fn_production_draw_item_effective_qty(?)",BigDecimal.class,original));
         fixture.loginAs(c.workerUser());
         segments.recheckMaterial(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"adv-held-normal-prepare"));
         qty("6",capacity(c));
         UUID normal=db.queryForObject("SELECT item.id FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id JOIN production_planning_package_documents mapping ON mapping.document_id=document.id WHERE mapping.execution_segment_id=? AND mapping.document_type='DRAW' AND document.warehouse_id=?",UUID.class,c.segment(),c.leaf());
-        fixture.loginAs(c.world().superAdminUserId()); stock.reverse(request.documentId());
+        fixture.loginAs(c.world().superAdminUserId()); reverseReturn(c,request.documentId());
         qty("0",db.queryForObject("SELECT fn_production_draw_item_effective_qty(?)",BigDecimal.class,normal));
         qty("10",db.queryForObject("SELECT fn_production_draw_item_effective_qty(?)",BigDecimal.class,original));
         qty("4",physical(source.sourceWarehouseId(),c.material())); qty("0",physical(c.leaf(),c.material()));
@@ -1134,7 +1134,7 @@ class ProductionExecutionRouteGateEndToEndTest {
                 c.segment(),"adv-issued-direct-surplus","本车间实际领入但未使用的三件送正常仓",
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("3"))))).getFirst();
         assertNull(request.warehouseId()); fixture.loginAs(c.world().superAdminUserId());
-        stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-issued-direct-normal-received"));
+        confirmMaterialReturn(c,request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-issued-direct-normal-received"));
         qty("0",physical(source.sourceWarehouseId(),c.material())); qty("3",physical(c.leaf(),c.material())); qty("7",capacity(c));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM stock_movements WHERE source_doc_id=? AND warehouse_id=?",Integer.class,request.documentId(),source.sourceWarehouseId()));
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_execution_segment_events WHERE execution_segment_id=? AND action='START'",Integer.class,c.segment()));
@@ -1157,7 +1157,7 @@ class ProductionExecutionRouteGateEndToEndTest {
                 c.segment(),"adv-full-normal-return","已领十件全部由当前车间送到正常仓库",
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),BigDecimal.TEN)))).getFirst();
         fixture.loginAs(c.world().superAdminUserId());
-        stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-full-normal-confirm"));
+        confirmMaterialReturn(c,request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-full-normal-confirm"));
         var assignment=otherWorkshopAssignment(c,"adv-full-return-move");
         segments.assign(c.plan(),c.segment(),assignment);
         assertTrue(assertThrows(ApiException.class,()->stock.reverse(request.documentId())).getMessage().contains("改回"));
@@ -1214,9 +1214,12 @@ class ProductionExecutionRouteGateEndToEndTest {
                 c.segment(),"adv-return-intent-request","三件先送正常仓，是否再次领用由本车间明确核料",
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(null,new BigDecimal("3"),source.directTransferItemId())))).getFirst();
         fixture.loginAs(c.world().superAdminUserId());
-        stock.confirmProductionMaterialReturn(pending.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-return-intent-received"));
+        confirmMaterialReturn(c,pending.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-return-intent-received"));
         transfer(c,"7");
         assertEquals("WAITING",status(c.segment())); assertEquals(0,drawCount(c.segment()));
+        // Let the original committed cost phase finish before testing that
+        // background reconciliation still cannot invent workshop intent.
+        drainPriorValueWork(c);
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         beans.getBean(com.uten.imp.features.production.fulfillment.ProductionReadinessReconciler.class).runBatch();
         assertEquals("WAITING",status(c.segment())); assertEquals(0,drawCount(c.segment()),"后台不得把已送正常仓的余料自动变成新待发承诺");
@@ -1251,10 +1254,10 @@ class ProductionExecutionRouteGateEndToEndTest {
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("5"))))).getFirst();
         qty("5",pending.lines().getFirst().qty());qty("5",pending.lines().getFirst().baseQty());
         fixture.loginAs(c.world().superAdminUserId());
-        stock.confirmProductionMaterialReturn(pending.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-base-receive-five"));
+        confirmMaterialReturn(c,pending.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-base-receive-five"));
         qty("5",physical(c.leaf(),c.material()));qty("7",capacity(c));
         assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_material_return_receiving_confirmations WHERE stock_document_id=?",Integer.class,pending.documentId()));
-        stock.reverse(pending.documentId());qty("0",physical(c.leaf(),c.material()));qty("12",capacity(c));
+        reverseReturn(c,pending.documentId());qty("0",physical(c.leaf(),c.material()));qty("12",capacity(c));
         qty("5",returns.sources(c.plan(),c.segment()).getFirst().availableQty());
     }
 
@@ -1351,6 +1354,7 @@ class ProductionExecutionRouteGateEndToEndTest {
         qty("10",db.queryForObject("SELECT SUM(qty_base) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",BigDecimal.class,parentDemand(c)));
     }
     private void start(Case c) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         segments.start(c.plan(),c.segment(),new SegmentTransitionRequest(version(c.segment()),"rg-start-"+c.segment()));
     }
@@ -1474,6 +1478,7 @@ class ProductionExecutionRouteGateEndToEndTest {
 
     /** 子件报工「转下一道工序」，直送给父件对本子件的需求。 */
     private void transfer(Case c, String quantity) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         var report = new com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest();
         report.setIdempotencyKey("rg-report-" + c.childSegment() + "-" + quantity + "-" + UUID.randomUUID());
@@ -1526,6 +1531,7 @@ class ProductionExecutionRouteGateEndToEndTest {
     }
 
     private void receive(Case c, UUID goods, UUID warehouse, String quantity) {
+        drainPriorValueWork(c);
         fixture.loginAs(c.world().superAdminUserId());
         var request = new StockDocSaveRequest();
         request.setDocType("OTHER_IN");
@@ -1541,6 +1547,23 @@ class ProductionExecutionRouteGateEndToEndTest {
         line.setAmountLocal(line.getAmountOriginal());
         request.setItems(List.of(line));
         stock.approve(stock.create(request).getId());
+    }
+
+    private com.uten.imp.features.stock.dto.StockDocDetail confirmMaterialReturn(Case c,UUID document,
+            com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest command) {
+        drainPriorValueWork(c);
+        return stock.confirmProductionMaterialReturn(document,command);
+    }
+
+    private void reverseReturn(Case c,UUID document) {
+        drainPriorValueWork(c);
+        stock.reverse(document);
+    }
+
+    private void drainPriorValueWork(Case c) {
+        InventoryValueWorkTestSupport.drainProductionPhase(
+                beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,
+                List.of(c.parent(),c.material()),java.util.Arrays.asList(c.segment(),c.childSegment()),c.leaf(),c.workshop());
     }
 
     /** 提升生成的草稿领料单：车间先确认领料汇总(领料申请)，再由仓库一次发料

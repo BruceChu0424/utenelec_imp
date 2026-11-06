@@ -7,7 +7,9 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -44,6 +46,24 @@ final class InventoryValueWorkTestSupport {
 
     static void drain(InventoryValueWorkService worker, JdbcTemplate jdbc, List<UUID> goodsIds) {
         drain(worker,jdbc,goodsIds,DRAIN_DEADLINE);
+    }
+
+    /** The preceding committed production phase, outside the next business command. */
+    static void drainProductionPhase(InventoryValueWorkService worker, JdbcTemplate jdbc,
+            List<UUID> products, List<UUID> executionSegments, UUID warehouse, UUID workshop) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Complete the preceding cost phase before the next business transaction");
+        var segments=executionSegments.stream().filter(Objects::nonNull).toList();
+        if(products.isEmpty()||segments.isEmpty())throw new IllegalArgumentException("A concrete production fixture scope is required");
+        var goods=new LinkedHashSet<>(products);
+        goods.addAll(new NamedParameterJdbcTemplate(jdbc).queryForList("""
+                SELECT DISTINCT goods_id FROM production_material_demands
+                WHERE execution_segment_id IN (:segments) AND NOT is_deleted
+                UNION SELECT DISTINCT pool.goods_id FROM stock_value_pools pool
+                JOIN warehouses warehouse ON warehouse.id=pool.warehouse_id
+                WHERE pool.warehouse_id=:warehouse OR warehouse.workshop_department_id=:workshop
+                """,Map.of("segments",segments,"warehouse",warehouse,"workshop",workshop),UUID.class));
+        drain(worker,jdbc,List.copyOf(goods));
     }
 
     /** Large actual batches may opt into a bounded deadline; normal fixtures keep 45 seconds. */

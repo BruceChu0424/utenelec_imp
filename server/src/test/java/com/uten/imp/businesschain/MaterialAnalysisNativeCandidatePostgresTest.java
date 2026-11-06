@@ -190,7 +190,9 @@ class MaterialAnalysisNativeCandidatePostgresTest {
                 SELECT count(*) FROM preplan_supply_actions
                 WHERE analysis_id=? AND external_document_id=?
                 """, Long.class, analysisId, pending.orderId()));
+        ReflectionTestUtils.invokeMethod(h.fixture,"drainCosts",world);
         h.fixture.drawAndIssueSubcontract(item, BigDecimal.ONE, "candidate-noise-draw-" + item);
+        ReflectionTestUtils.invokeMethod(h.fixture,"drainCosts",world);
 
         var request = new ReceiptSaveRequest();
         request.setBillDate(BusinessTime.today());
@@ -222,6 +224,7 @@ class MaterialAnalysisNativeCandidatePostgresTest {
         var confirm = ReflectionTestUtils.<ProcurementIqcStockInContracts.ConfirmRequest>invokeMethod(h.fixture,
                 "latestIqcStockInRequest", "SUBCONTRACT", receipt, inspection, BigDecimal.ONE,
                 "candidate-noise-stock-" + receipt, "CANDIDATE-NOISE");
+        ReflectionTestUtils.invokeMethod(h.fixture,"drainCosts",world);
         stockIn.confirm("SUBCONTRACT", receipt, confirm);
         h.fixture.loginAs(world.superAdminUserId());
         assertEquals(0, BigDecimal.ONE.compareTo(db.queryForObject("""

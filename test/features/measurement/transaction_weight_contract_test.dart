@@ -76,13 +76,24 @@ void main() {
       expect(stockGrid, contains("key: 'bookWeight'"));
       expect(stockGrid, contains("key: 'countWeight'"));
       // 列序: 数量(单位内联, 2026-10-10 T9 删独立单位列) → 实称重量 → 入库仓库。
-      for (final page in [arrival, finished]) {
-        final qty = page.indexOf('shared.quantity(');
+      for (final entry in [
+        (page: arrival, quantity: 'shared.receivedQuantity('),
+        (page: finished, quantity: 'shared.quantity('),
+      ]) {
+        final page = entry.page;
+        final qty = page.indexOf(entry.quantity);
         final weight = page.indexOf('shared.weight(');
         final warehouse = page.indexOf('shared.warehouse(');
         expect(qty, greaterThan(0));
         expect(weight, greaterThan(qty));
         expect(warehouse, greaterThan(weight));
+        if (page == arrival) {
+          final gift = page.indexOf("key: 'giftQty'", qty);
+          final physical = page.indexOf("key: 'physicalQty'", qty);
+          expect(gift, greaterThan(qty));
+          expect(physical, greaterThan(gift));
+          expect(physical, lessThan(weight));
+        }
       }
     },
   );

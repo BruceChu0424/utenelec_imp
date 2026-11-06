@@ -7362,6 +7362,12 @@ void main() {
           row[key] = jsonDecode(exact);
         }
         row['quantityFactsExact'] = {
+          'planningUncoveredQty': exact,
+          'requiredQty': exact,
+          'sourceRequiredQty': exact,
+          'netShortageQty': exact,
+          'shortageQty': exact,
+          'demandSupplyGapQty': exact,
           'additionalSupplyRecommendedQty': exact,
           'priorityMakeSupplementQty': '0',
           'minOrderQty': '0',

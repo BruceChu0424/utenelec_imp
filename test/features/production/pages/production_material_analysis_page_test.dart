@@ -4369,7 +4369,7 @@ void main() {
     },
   );
 
-  testWidgets('编号按文本、数量按数值条件筛选，物料办理不检索按钮且表头不挂说明', (tester) async {
+  testWidgets('编号按文本、数量按数值条件筛选，物料办理不检索按钮且缺口说明紧邻表头', (tester) async {
     final json = unconfirmedBuyChildTree()..['allowedActions'] = const ['VIEW'];
     await _pumpPage(
       tester,
@@ -4406,8 +4406,8 @@ void main() {
       final header = await _materialHeaderCell(tester, label);
       expect(
         find.descendant(of: header, matching: find.byType(UtenColumnHintIcon)),
-        findsNothing,
-        reason: '「$label」列头不该有 ⓘ',
+        label == '还缺数量' ? findsOneWidget : findsNothing,
+        reason: '缺口的来源与物料损耗预算说明保留在对应列头，其他无说明列不加提示',
       );
       if (label != '物料办理') {
         expect(

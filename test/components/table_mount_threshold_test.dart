@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,6 +63,31 @@ ScrollableState _vertical(WidgetTester tester) => tester
           state.position.axis == Axis.vertical &&
           state.position.hasContentDimensions,
     );
+
+({int rows, double viewport, double extent}) _geometryBudget(
+  WidgetTester tester,
+) {
+  final element = find
+      .byWidgetPredicate((widget) => widget is UtenAncestorRowWindow)
+      .evaluate()
+      .single;
+  final window = element.widget as UtenAncestorRowWindow;
+  final viewport = _vertical(tester).position.viewportDimension;
+  final extent = window.viewportOnly
+      ? viewport
+      : math.max(viewport, MediaQuery.sizeOf(element).height);
+  // The existing window contract reserves at most 64px for input-heavy rows
+  // or half a viewport (capped at 320px) for ordinary browsing. Two boundary
+  // rows cover partially visible rows; this is independent of collection N.
+  final overscan = window.expensiveRows
+      ? math.min(64.0, extent * .1)
+      : math.min(320.0, extent * .5);
+  return (
+    rows: ((extent + overscan * 2) / window.estimatedRowExtent).ceil() + 2,
+    viewport: viewport,
+    extent: extent,
+  );
+}
 
 void main() {
   for (final server in [false, true]) {
@@ -130,9 +157,9 @@ void main() {
   }
 
   for (final grid in [true, false]) {
-    for (final count in [20, 63, 199]) {
+    for (final count in [20, 63, 199, 20000]) {
       testWidgets(
-        '${grid ? 'grid' : 'master'} $count rows use real mount budget below the old 200-row cutoff',
+        '${grid ? 'grid' : 'master'} $count complete rows mount within viewport geometry without staged placeholders',
         (tester) async {
           final frames = <Duration, int>{};
           void record() {
@@ -204,10 +231,20 @@ void main() {
             ),
           );
           final first = frames.values.fold(0, (a, b) => a + b);
-          debugPrint('mount-threshold grid=$grid rows=$count first=$first');
-          expect(first, lessThanOrEqualTo(4));
+          final budget = _geometryBudget(tester);
+          debugPrint(
+            'mount-threshold grid=$grid rows=$count first=$first '
+            'viewport=${budget.viewport} extent=${budget.extent} '
+            'geometryLimit=${budget.rows}',
+          );
+          expect(first, lessThanOrEqualTo(budget.rows));
+          expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+          expect(
+            find.byKey(const ValueKey('field-0')).hitTestable(),
+            findsOneWidget,
+          );
           await _wait(tester);
-          expect(frames.values.every((value) => value <= 4), isTrue);
+          expect(frames.values.every((value) => value <= budget.rows), isTrue);
           expect(
             find.byKey(const ValueKey('field-0')).hitTestable(),
             findsOneWidget,
@@ -217,10 +254,12 @@ void main() {
           for (var hop = 0; hop < 8; hop++) {
             final before = position.maxScrollExtent;
             position.jumpTo(before);
+            await tester.pump();
+            expect(find.byType(UtenRowMountPlaceholder), findsNothing);
             await _wait(tester);
             if ((position.maxScrollExtent - before).abs() < .5) break;
           }
-          expect(frames.values.every((value) => value <= 4), isTrue);
+          expect(frames.values.every((value) => value <= budget.rows), isTrue);
           expect(
             find.byKey(ValueKey('field-${count - 1}')).hitTestable(),
             findsOneWidget,
@@ -231,81 +270,89 @@ void main() {
     }
   }
 
-  testWidgets(
-    '200-row server load-more sliver bounds actual Elements across far jumps',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1100, 720));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final frames = <Duration, int>{};
-      var loads = 0;
-      void record() {
-        final stamp = SchedulerBinding.instance.currentFrameTimeStamp;
-        frames.update(stamp, (value) => value + 1, ifAbsent: () => 1);
-      }
+  for (final count in [200, 20000]) {
+    testWidgets(
+      '$count complete server rows retain the measured window with a legacy callback',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1100, 720));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final frames = <Duration, int>{};
+        var loads = 0;
+        void record() {
+          final stamp = SchedulerBinding.instance.currentFrameTimeStamp;
+          frames.update(stamp, (value) => value + 1, ifAbsent: () => 1);
+        }
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: MasterDataTableView<int>(
-              items: List.generate(200, (i) => i),
-              virtualized: true,
-              rowKeyOf: (row) => '$row',
-              onLoadMore: () => loads++,
-              columns: [
-                for (var c = 0; c < 8; c++)
-                  MasterColumnDef<int>(
-                    key: 'c$c',
-                    label: '列$c',
-                    width: 180,
-                    value: (row) => '$row',
-                    cellBuilder: (_, row) => c == 0
-                        ? _Probe(row, record)
-                        : TextFormField(initialValue: '值 $row'),
-                  ),
-              ],
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MasterDataTableView<int>(
+                items: List.generate(count, (i) => i),
+                virtualized: true,
+                rowKeyOf: (row) => '$row',
+                onLoadMore: () => loads++,
+                columns: [
+                  for (var c = 0; c < 8; c++)
+                    MasterColumnDef<int>(
+                      key: 'c$c',
+                      label: '列$c',
+                      width: 180,
+                      value: (row) => '$row',
+                      cellBuilder: (_, row) => c == 0
+                          ? _Probe(row, record)
+                          : TextFormField(initialValue: '值 $row'),
+                    ),
+                ],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              ),
             ),
           ),
-        ),
-      );
-      await _wait(tester);
-      final position = _vertical(tester).position;
-      frames.clear();
-      for (var hop = 0; hop < 8; hop++) {
-        final before = position.maxScrollExtent;
-        position.jumpTo(before);
-        await _wait(tester);
-        debugPrint(
-          'server-jump-hop=$hop pixels=${position.pixels} max=${position.maxScrollExtent} before=$before',
         );
-        if ((position.maxScrollExtent - before).abs() < .5) break;
-      }
-      final builtAtEnd = frames.values.fold(0, (a, b) => a + b);
-      debugPrint(
-        'server-sliver-jump newElements=$builtAtEnd maxPerFrame=${frames.values.fold(0, (a, b) => a > b ? a : b)}',
-      );
-      expect(frames.values.every((value) => value <= 4), isTrue);
-      expect(builtAtEnd, lessThan(80));
-      expect(
-        find.byKey(const ValueKey('field-199')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(loads, greaterThan(0));
-      position.jumpTo(0);
-      await _wait(tester);
-      final firstField = find.byKey(const ValueKey('field-0'));
-      debugPrint(
-        'server-return pixels=${position.pixels} max=${position.maxScrollExtent} field0=${firstField.evaluate().length} rect=${firstField.evaluate().isEmpty ? null : tester.getRect(firstField)}',
-      );
-      expect(frames.values.every((value) => value <= 4), isTrue);
-      expect(
-        find.byKey(const ValueKey('field-0')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+        final budget = _geometryBudget(tester);
+        expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+        await _wait(tester);
+        final position = _vertical(tester).position;
+        frames.clear();
+        for (var hop = 0; hop < 8; hop++) {
+          final before = position.maxScrollExtent;
+          position.jumpTo(before);
+          await tester.pump();
+          expect(find.byType(UtenRowMountPlaceholder), findsNothing);
+          await _wait(tester);
+          debugPrint(
+            'server-jump-hop=$hop pixels=${position.pixels} max=${position.maxScrollExtent} before=$before',
+          );
+          if ((position.maxScrollExtent - before).abs() < .5) break;
+        }
+        final builtAtEnd = frames.values.fold(0, (a, b) => a + b);
+        debugPrint(
+          'server-window-jump rows=$count newElements=$builtAtEnd '
+          'maxPerFrame=${frames.values.fold(0, (a, b) => a > b ? a : b)} '
+          'geometryLimit=${budget.rows}',
+        );
+        expect(frames.values.every((value) => value <= budget.rows), isTrue);
+        expect(builtAtEnd, lessThan(80));
+        expect(
+          find.byKey(ValueKey('field-${count - 1}')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(loads, 0);
+        position.jumpTo(0);
+        await _wait(tester);
+        final firstField = find.byKey(const ValueKey('field-0'));
+        debugPrint(
+          'server-return pixels=${position.pixels} max=${position.maxScrollExtent} field0=${firstField.evaluate().length} rect=${firstField.evaluate().isEmpty ? null : tester.getRect(firstField)}',
+        );
+        expect(frames.values.every((value) => value <= budget.rows), isTrue);
+        expect(
+          find.byKey(const ValueKey('field-0')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

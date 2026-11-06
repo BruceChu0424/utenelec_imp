@@ -5088,12 +5088,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // jump. Large local tables instead keep one content-height child and let
     // the shared measured row window locate destination rows directly. Server
     // prepend/pagination and row dragging retain their existing anchor paths.
+    // A retained onLoadMore compatibility callback does not make a complete
+    // collection partial or justify walking every intermediate sliver child.
     final itemCount = summaryIndex + (summaryInline ? 1 : 0);
     if ((widget.virtualized ||
             widget.primary ||
             (!widget.embedded && hasBoundedHeight)) &&
         !_automaticPagination &&
-        widget.onLoadMore == null &&
         widget.rowDrag == null) {
       final ids = <Object>[
         // Anonymous report rows keep the same position identity as the
@@ -5139,11 +5140,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           });
       _trackFallbackInsertion(
         orderedIds,
-        eligible:
-            !_automaticPagination &&
-            widget.onLoadMore == null &&
-            !_prepending &&
-            stableRowIds,
+        eligible: !_automaticPagination && !_prepending && stableRowIds,
       );
       final currentIds = orderedIds.toSet();
       _deferredRowMounts.removeWhere((id, _) => !currentIds.contains(id));

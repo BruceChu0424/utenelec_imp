@@ -273,8 +273,8 @@ class _UtenAncestorRowWindowState<T extends Object>
   ScrollableState? _scrollable;
   ScrollPosition? _position;
   double? _topInContent;
-  double _viewportExtent = 800;
-  double _screenExtent = 800;
+  double _viewportExtent = 0;
+  double _screenExtent = 0;
   int _first = 0;
   int _last = -1;
   bool _measurementQueued = false;
@@ -377,6 +377,12 @@ class _UtenAncestorRowWindowState<T extends Object>
       _topInContent = null;
       next?.addListener(_onScroll);
     }
+    // Sliver children are built during their ancestor viewport's layout. Use
+    // that already known dimension before the first row subtree is mounted;
+    // the post-frame geometry receipt must not start from an arbitrary 800px.
+    _viewportExtent = next?.hasViewportDimension == true
+        ? next!.viewportDimension
+        : _screenExtent;
     _reindex();
     _setRange(notify: false);
     _scheduleGeometry();

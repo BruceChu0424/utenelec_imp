@@ -218393,7 +218393,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -221176,7 +221176,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -222697,7 +222697,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -226358,7 +226358,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -227701,7 +227701,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -232160,7 +232160,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -232328,7 +232328,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "58271b3c154e43cefef00425628efdf581145ccfb0ee2ffc144ed1bcb3be44b5"
+          "targetSha256": "a0ae8de2e5cf9d30153d15010c23b52125021149fbf0cfe0a546e1ee1bbece08"
         },
         {
           "directive": "import",
@@ -232352,7 +232352,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9881deb41793348b4ef1782c79b47128be8ff26cfb9050953469b09371d5f290"
+          "targetSha256": "f172d62fc6c5d06bf6ae1cb96258d3448d0c6c032fa6f1abee063513eada2ac6"
         },
         {
           "directive": "import",
@@ -238147,7 +238147,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -238933,7 +238933,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -244171,7 +244171,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00"
+          "targetSha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e"
         },
         {
           "directive": "import",
@@ -278286,8 +278286,8 @@
     },
     {
       "source": "lib/features/warehouse/models/warehouse_insight.dart",
-      "sha256": "58271b3c154e43cefef00425628efdf581145ccfb0ee2ffc144ed1bcb3be44b5",
-      "lineCount": 780
+      "sha256": "a0ae8de2e5cf9d30153d15010c23b52125021149fbf0cfe0a546e1ee1bbece08",
+      "lineCount": 787
     },
     {
       "source": "lib/features/warehouse/models/warehouse_iqc_return.dart",
@@ -278731,7 +278731,7 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_insight_tables.dart",
-      "sha256": "9881deb41793348b4ef1782c79b47128be8ff26cfb9050953469b09371d5f290",
+      "sha256": "f172d62fc6c5d06bf6ae1cb96258d3448d0c6c032fa6f1abee063513eada2ac6",
       "lineCount": 706
     },
     {
@@ -279306,8 +279306,8 @@
     },
     {
       "source": "lib/shared/measurement/weight_params.dart",
-      "sha256": "98d22578e8379398968d70c6e262ee2772d4e0c4767ea5b5cd8cc46f48d9ba00",
-      "lineCount": 1558
+      "sha256": "ff02471064de04c0d73a8336a8704349041c0ccf39f2176dbe499ecc9e88d10e",
+      "lineCount": 1565
     },
     {
       "source": "lib/shared/measurement/weight_predictor.dart",

@@ -48,8 +48,9 @@ final class MaterialNodeUpsertProbe {
     static String snapshots(UUID analysis,UUID actor,List<Map<String,Object>> rows) {
         var columns=(List<String>)ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT_COLUMNS");
         Object shape=ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT");
-        assertNotNull(columns);assertNotNull(shape);assertEquals(46,columns.size());
-        assertEquals(List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(42,46));
+        assertNotNull(columns);assertNotNull(shape);assertEquals(49,columns.size());
+        assertEquals(List.of("delivery_context","delivery_frontier","delivery_operations"),columns.subList(17,20));
+        assertEquals(List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(45,49));
         Function<Map<String,Object>,Object[]> values=row->{
             Object[] result=new Object[columns.size()];
             for(int index=0;index<columns.size();index++) {
@@ -63,6 +64,9 @@ final class MaterialNodeUpsertProbe {
                     case "confirmed_route","route_reason","route_confirmed_by","route_confirmed_at" -> null;
                     case "calculation_mode" -> "EDGE_RULE";
                     case "active" -> true;
+                    // The real input contract transports the original JSONB as
+                    // varchar JSON; JDBC's PGobject is not a snapshot scalar.
+                    case "delivery_operations" -> row.get(column)==null?null:row.get(column).toString();
                     default -> row.get(column);
                 };
             }

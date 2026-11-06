@@ -35,9 +35,11 @@ class MaterialSnapshotInputPostgresTest {
     void typedJsonRetainsTheEntireScalarContractAndArrayOrder(String name)throws Exception {
         MaterialSnapshotInput shape=(MaterialSnapshotInput)ReflectionTestUtils.getField(MaterialAnalysisService.class,name);
         assertNotNull(shape);
-        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?46:15,columns.size());
+        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?49:15,columns.size());
         if(name.equals("NODE_INPUT"))assertEquals(
-                List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(42,46));
+                List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(45,49));
+        if(name.equals("NODE_INPUT"))assertEquals(
+                List.of("delivery_context","delivery_frontier","delivery_operations"),columns.subList(17,20));
         String definitions=(String)ReflectionTestUtils.getField(shape,"definitions");assertNotNull(definitions);
         String[] types=Arrays.stream(definitions.split(", ")).limit(columns.size())
                 .map(definition->definition.substring(definition.indexOf(' ')+1)).toArray(String[]::new);
@@ -56,7 +58,13 @@ class MaterialSnapshotInputPostgresTest {
             assertEquals(first[columns.indexOf("route_reason")],tree.get(0).path("route_reason").asText());
             assertEquals(first[columns.indexOf("route_confirmed_by")].toString(),tree.get(0).path("route_confirmed_by").asText());
             assertEquals("2026-09-12T09:10:11.123456+08:00",tree.get(0).path("route_confirmed_at").asText());
-            for(String column:columns.subList(42,46))assertTrue(tree.get(1).path(column).isNull(),column);
+            for(String column:columns.subList(45,49))assertTrue(tree.get(1).path(column).isNull(),column);
+            assertFalse(tree.get(0).path("delivery_context").asBoolean());
+            assertTrue(tree.get(0).path("delivery_frontier").asBoolean());
+            assertEquals("[\"LASER\"]",tree.get(0).path("delivery_operations").asText());
+            assertTrue(tree.get(1).path("delivery_context").asBoolean());
+            assertFalse(tree.get(1).path("delivery_frontier").asBoolean());
+            assertEquals("[]",tree.get(1).path("delivery_operations").asText());
         }
         var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         try(Connection connection=source.getConnection()) {
@@ -98,10 +106,11 @@ class MaterialSnapshotInputPostgresTest {
                 case "numeric" -> alternate?new BigDecimal("0.0000"):new BigDecimal("12345678901234.1234");
                 case "integer" -> alternate?0:2;
                 case "bigint" -> alternate?0L:3L;
-                case "boolean" -> alternate;
+                case "boolean" -> column.equals("delivery_frontier")?!alternate:alternate;
                 case "date" -> alternate?null:LocalDate.of(2026,9,12);
                 case "timestamptz" -> "2026-09-12T09:10:11.123456+08:00";
-                case "varchar","text" -> column.equals("confirmed_route")?"BUY":column.equals("parent_node_key")?(alternate?"":null):
+                case "varchar","text" -> column.equals("delivery_operations")?(alternate?"[]":"[\"LASER\"]"):
+                        column.equals("confirmed_route")?"BUY":column.equals("parent_node_key")?(alternate?"":null):
                         alternate?"":"节点, (部件) \"引号\" '单引号' \\ 斜线\n下一行 🧪";
                 default -> throw new IllegalStateException(types[index]);
             };

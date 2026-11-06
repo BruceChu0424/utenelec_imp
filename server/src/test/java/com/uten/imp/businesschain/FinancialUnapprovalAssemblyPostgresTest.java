@@ -60,7 +60,7 @@ class FinancialUnapprovalAssemblyPostgresTest {
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
     @ParameterizedTest @ValueSource(booleans={false,true})
-    void anImmediateCallerCanAssembleOnlyTheOriginalFactsAndCannotEditAfterForcingCompletion(boolean receipt){
+    void anImmediateCallerCanAssembleOnlyTheOriginalFactsAndCannotEditAfterForcingCompletion(boolean receipt)throws Exception{
         String family=receipt?"financeReceipt":"financePayment";
         String header=receipt?"finance_receipts":"finance_payments";
         String lines=receipt?"finance_receipt_lines":"finance_payment_lines";
@@ -119,7 +119,7 @@ class FinancialUnapprovalAssemblyPostgresTest {
                 assertThat(policies(lines,parent,clone)).isEqualTo(sourcePolicy);
                 // This session-local sentinel checks only constraint timing;
                 // it supplies no financial or source/approval business facts.
-                rejects(connection->update(connection,"INSERT INTO pg_temp.financial_assembly_other_guard(accepted) VALUES(false)"));
+                rejects("23514",connection->update(connection,"INSERT INTO pg_temp.financial_assembly_other_guard(accepted) VALUES(false)"));
                 // Complete the actual deferred owner now, then try to bypass it.
                 // All of these real writes must still fail in this creation TX.
                 db.execute("SET CONSTRAINTS document_unapproval_financial_source_complete IMMEDIATE");
@@ -211,11 +211,14 @@ class FinancialUnapprovalAssemblyPostgresTest {
     }
     @FunctionalInterface private interface SqlAction {void run(Connection connection)throws SQLException;}
     private void rejects(SqlAction action){
+        rejects("55000",action);
+    }
+    private void rejects(String state,SqlAction action){
         db.execute((ConnectionCallback<Void>)connection->{
             Savepoint saved=connection.setSavepoint();
             try{
                 SQLException failure=Assertions.assertThrows(SQLException.class,()->action.run(connection));
-                assertThat(failure.getSQLState()).isIn("23514","55000");
+                assertThat(failure.getSQLState()).isEqualTo(state);
             }finally{connection.rollback(saved);connection.releaseSavepoint(saved);}
             return null;
         });

@@ -180,8 +180,9 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
             Fixture f=historicalNullBasis;
             String original=scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item());
             c.setAutoCommit(false);UUID draft=draft(c,f),line=UUID.randomUUID();lineage(c,f,draft,line);
-            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unit_rate',1))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item()))
-                .isInstanceOf(SQLException.class).hasMessageContaining("quantity clone differs from its original identity or operands");
+            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unapproval_source_item_id',?::uuid,'unit_rate',1))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item(),f.item()))
+                .isInstanceOfSatisfying(SQLException.class,error->assertThat(error.getSQLState()).isEqualTo("55000"))
+                .hasMessageContaining("quantity clone differs from its original identity or operands");
             c.rollback();c.setAutoCommit(true);
             assertThat(scalar(c,"SELECT to_jsonb(i)::text FROM purchase_receipt_items i WHERE id=?",f.item())).isEqualTo(original);
             assertThat(scalar(c,"SELECT count(*) FROM document_unapprovals WHERE draft_id=?",draft)).isEqualTo("0");
@@ -192,8 +193,9 @@ class PurchaseReceiptSuccessorQuantityPostgresTest {
         try(var c=cloneConnection()) {
             Fixture f=seed(c,true,(short)-1);
             c.setAutoCommit(false);UUID draft=draft(c,f),line=UUID.randomUUID();lineage(c,f,draft,line);
-            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unit_id',NULL,'unit_rate',NULL))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item()))
-                .isInstanceOf(SQLException.class).hasMessageContaining("quantity clone differs from its original identity or operands");
+            assertThatThrownBy(()->scalar(c,"SELECT fn_unapproval_source_item('purchase_receipt_items',to_jsonb(i)||jsonb_build_object('id',?::uuid,'receipt_id',?::uuid,'updated_by',?::uuid,'unapproval_source_item_id',?::uuid,'unit_id',NULL,'unit_rate',NULL))::text FROM purchase_receipt_items i WHERE id=?",line,draft,f.actor(),f.item(),f.item()))
+                .isInstanceOfSatisfying(SQLException.class,error->assertThat(error.getSQLState()).isEqualTo("55000"))
+                .hasMessageContaining("quantity clone differs from its original identity or operands");
             c.rollback();c.setAutoCommit(true);
             assertThat(scalar(c,"SELECT unit_id IS NOT NULL AND unit_rate=1 AND quantity_adoption_version=2 FROM purchase_receipt_items WHERE id=?",f.item())).isEqualTo("t");
             assertThat(scalar(c,"SELECT count(*) FROM document_unapprovals WHERE draft_id=?",draft)).isEqualTo("0");

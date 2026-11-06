@@ -32,7 +32,6 @@ Future<UtenPrintTable> _table(Map<String, dynamic> response) =>
       endpointOf: () => '/finance/reports/gl/fixture',
       queryOf: () => {'layout': 'template'},
       isCurrent: () => true,
-      requireComplete: true,
       rowLimit: maximumCompleteOriginalPrintRows,
       useSuggestedWidths: true,
       includeValueUnits: false,

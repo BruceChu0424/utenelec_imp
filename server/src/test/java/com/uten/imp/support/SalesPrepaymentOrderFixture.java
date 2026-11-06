@@ -12,8 +12,10 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +26,7 @@ public final class SalesPrepaymentOrderFixture {
 
     public static UUID createApproved(BeanFactory beans, JdbcTemplate db,
             UUID client, UUID currency, LocalDate date) {
+        boolean ownsPublicTransactions=!TransactionSynchronizationManager.isActualTransactionActive();
         UUID employee=UUID.randomUUID(),user=UUID.randomUUID(),unit=UUID.randomUUID(),goods=UUID.randomUUID();
         String suffix=user.toString().replace("-", "").substring(0,24), login="prepay-"+suffix;
         UUID department=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
@@ -59,10 +62,33 @@ public final class SalesPrepaymentOrderFixture {
             var claims=beans.getBean(TaskClaimService.class);
             long revision=SalesManagerReviewFixtures.approveOrderForFinance(db,claims,
                     beans.getBean(SalesManagerReviewService.class),order,0L);
+            if(ownsPublicTransactions)awaitPendingFinanceNotice(db,order,user);
             var claim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString());
             beans.getBean(SalesOrderFinanceConfirmService.class).confirm(order,
                     new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,revision,claim.claimId()));
             return order;
         } finally {SecurityContextHolder.getContext().setAuthentication(previous);}
+    }
+
+    /** Await this original event's committed receipt, not a transient empty
+     * SKIP LOCKED queue. The real notice worker and claim lock budget stay on. */
+    public static UUID awaitPendingFinanceNotice(JdbcTemplate db,UUID order,UUID actor){
+        if(TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("An uncommitted outer transaction cannot await its own outbox delivery");
+        var events=db.queryForList("""
+                SELECT id FROM business_outbox
+                WHERE event_type='SALES_ORDER_PENDING_FINANCE_CONFIRM'
+                  AND aggregate_type='SALES_ORDER' AND aggregate_id=? AND created_by=?
+                """,UUID.class,order,actor);
+        if(events.size()!=1)throw new AssertionError("Expected this order and actor's one original pending-finance event");
+        UUID event=events.getFirst();
+        org.awaitility.Awaitility.await().alias("original pending-finance event committed: "+event)
+                .pollInSameThread().pollDelay(Duration.ZERO).pollInterval(Duration.ofMillis(50))
+                .atMost(Duration.ofSeconds(20)).until(()->Boolean.TRUE.equals(db.queryForObject("""
+                        SELECT status=1 AND processed_at IS NOT NULL FROM business_outbox
+                        WHERE id=? AND event_type='SALES_ORDER_PENDING_FINANCE_CONFIRM'
+                          AND aggregate_type='SALES_ORDER' AND aggregate_id=? AND created_by=?
+                        """,Boolean.class,event,order,actor)));
+        return event;
     }
 }

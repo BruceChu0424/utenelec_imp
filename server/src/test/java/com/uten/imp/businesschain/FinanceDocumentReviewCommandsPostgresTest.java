@@ -79,6 +79,10 @@ class FinanceDocumentReviewCommandsPostgresTest {
     @Autowired com.uten.imp.features.finance.gl.NativeFinancialPostingAccountService nativeAccounts;
     @Autowired com.uten.imp.features.finance.statement.FinanceAuxiliaryService auxiliaries;
     @Autowired com.uten.imp.features.stock.valuation.InventoryValueWorkService inventoryWork;
+    @Autowired com.uten.imp.features.sales.order.SalesOrderService salesOrders;
+    @Autowired com.uten.imp.features.sales.SalesManagerReviewService salesManagers;
+    @Autowired com.uten.imp.features.common.taskclaim.TaskClaimService claims;
+    @MockitoSpyBean com.uten.imp.features.notice.NoticeService notices;
     private FullChainEndToEndTest harness;
     private FinanceUnapprovalEligibilityEndToEndTest factory;
     private FinanceUnapprovalEligibilityEndToEndTest.Fixture f;
@@ -95,6 +99,54 @@ class FinanceDocumentReviewCommandsPostgresTest {
         assertThat(harness).isNotNull();
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
+
+    @Test void anActualPendingFinanceNoticeRetainsItsHeaderLockAndTheSameOwnerCanClaimAfterDeliveryCommits()throws Exception{
+        harness.loginAs(f.world().superAdminUserId());
+        UUID finance=harness.createUserWithPerms(f.world(),"notice-claim-owner-"+UUID.randomUUID(),
+                "notice:read","sales_order_finance:view","sales_order_finance:confirm");
+        var preview=transaction.execute(status->beans.getBean(com.uten.imp.features.sales.SalesPriceAuthority.class)
+                .loadMasterPrices(List.of(f.world().goodsD())).get(f.world().goodsD()));
+        assertThat(preview).isNotNull();
+        var input=harness.orderRequest(f.world(),f.world().goodsD(),"1",preview.toPlainString());input.setBillDate(BusinessTime.today());
+        UUID order=salesOrders.create(input).getId();
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);var once=new AtomicBoolean();
+        com.uten.imp.features.notice.NoticeService noticeTarget=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(notices);
+        doAnswer(call->{
+            if(Thread.currentThread().getName().equals("business-outbox-dispatch")&&once.compareAndSet(false,true)){
+                entered.countDown();
+                if(!release.await(20,TimeUnit.SECONDS))throw new AssertionError("The original notice lock must be released by this test");
+            }
+            return call.callRealMethod();
+        }).when(noticeTarget).publishForUser(eq(finance),anyString(),anyString(),anyString(),anyString(),anyString(),
+                eq("SALES_ORDER_PENDING_FINANCE_CONFIRM"),nullable(String.class),eq(order));
+        try{
+            salesOrders.approve(order);
+            com.uten.imp.support.SalesManagerReviewFixtures.approveOrderForFinance(db,claims,salesManagers,order,0L);
+            assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+            UUID event=db.queryForObject("SELECT id FROM business_outbox WHERE event_type='SALES_ORDER_PENDING_FINANCE_CONFIRM' AND aggregate_type='SALES_ORDER' AND aggregate_id=? AND created_by=?",UUID.class,order,f.world().superAdminUserId());
+            assertThat(db.queryForObject("SELECT status=0 AND processed_at IS NULL FROM business_outbox WHERE id=?",Boolean.class,event)).isTrue();
+            String original=db.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order);
+            harness.loginAs(finance);
+            assertThatThrownBy(()->claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString())).satisfies(error->{
+                var cause=org.springframework.core.NestedExceptionUtils.getMostSpecificCause(error);
+                assertThat(cause).isInstanceOf(java.sql.SQLException.class);
+                assertThat(((java.sql.SQLException)cause).getSQLState()).isEqualTo("55P03");
+            });
+            assertThat(db.queryForObject("SELECT count(*) FROM task_claims WHERE target_type='SALES_ORDER_FINANCE_CONFIRM' AND target_key=?",Integer.class,order.toString())).isZero();
+            assertThat(db.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order)).isEqualTo(original);
+            release.countDown();
+            assertThat(com.uten.imp.support.SalesPrepaymentOrderFixture.awaitPendingFinanceNotice(db,order,f.world().superAdminUserId())).isEqualTo(event);
+            var acquired=claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString());
+            assertThat(claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString()).claimId()).isEqualTo(acquired.claimId());
+            assertThat(db.queryForObject("SELECT count(*) FROM task_claims WHERE target_type='SALES_ORDER_FINANCE_CONFIRM' AND target_key=? AND released_at IS NULL",Integer.class,order.toString())).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order)).isEqualTo(original);
+            assertThat(db.queryForObject("SELECT finance_confirmed FROM sales_orders WHERE id=?",Boolean.class,order)).isFalse();
+        }finally{
+            release.countDown();
+            doCallRealMethod().when(noticeTarget).publishForUser(eq(finance),anyString(),anyString(),anyString(),anyString(),anyString(),
+                    eq("SALES_ORDER_PENDING_FINANCE_CONFIRM"),nullable(String.class),eq(order));
+        }
+    }
 
     @ParameterizedTest @ValueSource(strings={"financeReceipt","financePayment","financeExpense","financeOtherIncome","financeBankTransfer"})
     void changedAndAbaDraftsCannotBeApprovedWithTheEarlierDisplayedSnapshot(String family){
@@ -497,7 +549,7 @@ class FinanceDocumentReviewCommandsPostgresTest {
             assertThatThrownBy(()->actions.execute(d.family(),d.id(),original)).satisfies(error->{
                 var sql=org.springframework.core.NestedExceptionUtils.getMostSpecificCause(error);
                 assertThat(sql).isInstanceOf(java.sql.SQLException.class);
-                assertThat(((java.sql.SQLException)sql).getSQLState()).isIn("23514","55000");
+                assertThat(((java.sql.SQLException)sql).getSQLState()).isEqualTo("23514");
             });
             assertThat(moneyFacts(d)).isEqualTo(posted);
             assertThat(receiptMoney(d.id())).isEqualTo(originalMoney);

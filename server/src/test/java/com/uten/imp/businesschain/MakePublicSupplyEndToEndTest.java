@@ -29,6 +29,15 @@ import static org.junit.jupiter.api.Assertions.*;
     "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
     "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class MakePublicSupplyEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5, "HALF_UP"),
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -268,8 +277,9 @@ class MakePublicSupplyEndToEndTest {
         amount("1000",db.queryForObject("SELECT sum(qty) FROM preplan_analysis_stock_exact_pegs WHERE make_public_claim_id=?",BigDecimal.class,claim));
         sources=ReflectionTestUtils.invokeMethod(mixed,"sources",c);
         var salesSource=sources.stream().filter(row->row.orderItemId()!=null).findFirst().orElseThrow();
+        ReflectionTestUtils.invokeMethod(mixed,"drainValuation",c);
         UUID salesReport=ReflectionTestUtils.invokeMethod(mixed,"approveReport",c,salesSource);
-        UUID salesInbound=ReflectionTestUtils.invokeMethod(mixed,"finishInbound",c,salesReport);
+        UUID salesInbound=ReflectionTestUtils.invokeMethod(mixed,"finishInbound",c,salesReport,true);
         amount("1000",received(claim));amount("0",available(planItem));
         amount("2000",db.queryForObject("SELECT sum(qty) FROM stock_balances WHERE goods_id=?",BigDecimal.class,product));
         ReflectionTestUtils.invokeMethod(mixed,"drainValuation",c);

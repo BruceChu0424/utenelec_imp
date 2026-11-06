@@ -1020,12 +1020,20 @@ class WorkshopPublicSurplusEndToEndTest {
     }
 
     private UUID finishInbound(Case c, UUID reportId) {
+        return finishInbound(c,reportId,false);
+    }
+
+    private UUID finishInbound(Case c, UUID reportId, boolean awaitValuation) {
         UUID reportItem = db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted", UUID.class, reportId);
         FinishedArrivalTestSupport.registerItems(arrivals, reportId, "wps-arrival-" + reportId, c.world().warehouseId(),
                 List.of(reportItem), "真实生产完工入库");
         UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?", UUID.class, reportItem);
         BigDecimal quantity = db.queryForObject("SELECT qty FROM production_daily_report_items WHERE id=?", BigDecimal.class, reportItem);
         quality.decide(inspection, new DecisionRequest("PASS", quantity, null, null, null, "wps-pass-" + reportId));
+        // A later independent warehouse confirmation keeps the successful FQC
+        // fact and waits for its original source work. The exact product and
+        // material pools include this task's newly created goods.
+        if(awaitValuation)drainValuation(c);
         UUID inbound = db.queryForObject("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND NOT is_deleted", UUID.class, reportId);
         fixture.confirmFinishedInboundFully(inbound);
         return inbound;

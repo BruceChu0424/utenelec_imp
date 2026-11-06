@@ -77,7 +77,12 @@ class UtenBusyOverlay extends StatefulWidget {
   static Future<T> yieldWhile<T>(Future<T> Function() body) async {
     // Previously inserted owners may not have mounted until this frame ends.
     // The modal body starts afterwards, so its own new waiting layer stays visible.
-    await WidgetsBinding.instance.endOfFrame;
+    final binding = WidgetsBinding.instance;
+    final frame = binding.endOfFrame;
+    // A caller may already be in a post-frame callback. endOfFrame then
+    // registers for the next frame without scheduling it itself.
+    binding.ensureVisualUpdate();
+    await frame;
     // Yield the operations which were already waiting. A newly started task
     // inside the modal (for example password verification) owns its own mask.
     final owners = Set<_UtenBusyOverlayState>.of(_active);

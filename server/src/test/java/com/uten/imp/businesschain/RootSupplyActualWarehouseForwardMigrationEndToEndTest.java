@@ -62,7 +62,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     // unrelated to this real V854 fixture; keep encryption and migration beans real.
     @MockitoBean(enforceOverride = true) SmsGatewaySecretRewrap smsGatewaySecretRewrap;
 
-    @Test void realExistingSourcesAndAppliedHistoryRemainByteForByteAndTheirReversalStillWorks() {
+    @Test void realExistingSourcesAndAppliedHistoryRemainByteForByteAndTheirReversalStillWorks() throws java.sql.SQLException {
         assertThat(cipher.available()).isTrue();
         verify(smsGatewaySecretRewrap).onStartup();
         assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NULL", Boolean.class)).isTrue();
@@ -105,6 +105,11 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(currentMigration.migrate().migrationsExecuted)
                     .isEqualTo(CURRENT_MIGRATION_COUNT-migrationFileCountUpTo(855));
             currentMigration.validate();assertThat(currentMigration.migrate().migrationsExecuted).isZero();
+            // This historical fixture keeps an application context across DDL.
+            // Retire its V854 physical sessions before current-schema commands,
+            // as a deployed application does, retaining normal prepared caching.
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            dataSource.unwrap(com.zaxxer.hikari.HikariDataSource.class).getHikariPoolMXBean().softEvictConnections();
             assertThat(db.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history WHERE success",Integer.class))
                     .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION));
             assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NOT NULL", Boolean.class)).isTrue();
@@ -123,6 +128,23 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             // independently require the precise new column to remain NULL.
             assertThat(db.queryForObject("SELECT data_type='integer' AND is_nullable='YES' AND column_default IS NULL FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_receipt_items' AND column_name='order_item_legacy_id'",Boolean.class)).isTrue();
             assertThat(db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND order_item_legacy_id IS NOT NULL",Integer.class,fixture.receipt())).isZero();
+            // Later forward metadata has exact historical defaults. Compare all
+            // original fields separately; never drop an undeclared new field.
+            assertThat(db.queryForObject("""
+                    SELECT count(*) FROM production_material_analysis_materials WHERE analysis_id=? AND
+                    (delivery_context IS DISTINCT FROM false OR delivery_frontier IS DISTINCT FROM false
+                     OR delivery_operations IS DISTINCT FROM '[]')
+                    """,Integer.class,fixture.analysis())).isZero();
+            assertThat(db.queryForObject("""
+                    SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND
+                    (quantity_adoption_version IS DISTINCT FROM 1 OR quantity_precision_policy IS NOT NULL
+                     OR unapproval_source_item_id IS NOT NULL)
+                    """,Integer.class,fixture.receipt())).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM preplan_root_output_events WHERE analysis_id=? AND qty_source IS NOT NULL",Integer.class,fixture.analysis())).isZero();
+            assertThat(db.queryForObject("""
+                    SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND
+                    (delivery_plan_snapshot IS NOT NULL OR delivery_plan_fingerprint IS NOT NULL)
+                    """,Integer.class,fixture.analysis())).isZero();
             assertThat(businessFacts(fixture,true)).containsExactlyElementsOf(beforeCurrent);
             assertThat(db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::numeric<=855 ORDER BY installed_rank",String.class))
                     .containsExactlyElementsOf(historyThrough855);
@@ -174,20 +196,26 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
         return businessFacts(fixture,false);
     }
 
-    private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture,boolean projectV909NullableColumn) {
+    private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture,boolean projectForwardMetadata) {
         java.util.ArrayList<String> facts=new java.util.ArrayList<>();
         facts.addAll(db.queryForList("SELECT row_to_json(analysis)::text FROM production_material_analyses analysis WHERE id=?",String.class,fixture.analysis()));
-        facts.addAll(db.queryForList("SELECT row_to_json(material)::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList(projectForwardMetadata
+                ? "SELECT (to_jsonb(material)-'delivery_context'-'delivery_frontier'-'delivery_operations')::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id"
+                : "SELECT row_to_json(material)::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(action)::text FROM preplan_supply_actions action WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(allocation)::text FROM preplan_supply_action_allocations allocation WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(request)::text FROM purchase_requests request WHERE id IN(SELECT external_document_id FROM preplan_supply_actions WHERE analysis_id=? AND external_document_type='PURCHASE_REQUEST') ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM purchase_request_items item WHERE id IN(SELECT external_item_id FROM preplan_supply_action_allocations WHERE analysis_id=?) ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(receipt)::text FROM purchase_receipts receipt WHERE id=?",String.class,fixture.receipt()));
-        facts.addAll(db.queryForList(projectV909NullableColumn
-                ? "SELECT (to_jsonb(item)-'order_item_legacy_id')::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id"
+        facts.addAll(db.queryForList(projectForwardMetadata
+                ? "SELECT (to_jsonb(item)-'order_item_legacy_id'-'quantity_adoption_version'-'quantity_precision_policy'-'unapproval_source_item_id')::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id"
                 : "SELECT row_to_json(item)::text FROM purchase_receipt_items item WHERE receipt_id=? ORDER BY id",String.class,fixture.receipt()));
-        facts.addAll(db.queryForList("SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
-        facts.addAll(db.queryForList("SELECT row_to_json(item)::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList(projectForwardMetadata
+                ? "SELECT (to_jsonb(output)-'qty_source')::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id"
+                : "SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
+        facts.addAll(db.queryForList(projectForwardMetadata
+                ? "SELECT (to_jsonb(item)-'delivery_plan_snapshot'-'delivery_plan_fingerprint')::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id"
+                : "SELECT row_to_json(item)::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(reservation)::text FROM stock_reservations reservation WHERE source_doc_id=? ORDER BY id",String.class,fixture.receipt()));
         facts.addAll(db.queryForList("SELECT row_to_json(balance)::text FROM stock_balances balance WHERE goods_id IN (?,?) ORDER BY id",String.class,fixture.goods().get(0),fixture.goods().get(1)));
         facts.addAll(db.queryForList("SELECT row_to_json(entitlement)::text FROM preplan_stock_entitlement_events entitlement WHERE source_receipt_id=? OR beneficiary_analysis_id=? ORDER BY id",String.class,fixture.receipt(),fixture.analysis()));

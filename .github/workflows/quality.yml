@@ -88,7 +88,7 @@ jobs:
           UTEN_RUN_DB_TESTS: "true"
         run: python3 .github/scripts/backend_test_shards.py plan --output server/target-ci-plan --shards 16 --history .github/test-timings/backend.json
       - name: Preserve exact test plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-plan
           path: server/target-ci-plan/
@@ -131,7 +131,7 @@ jobs:
         run: python3 .github/scripts/backend_test_shards.py run --plan server/target-ci-plan/plan.json --shard ${{ matrix.shard }} --output server/target-ci-reports
       - name: Preserve test results and timings even after failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-results-${{ matrix.shard }}
           path: |
@@ -183,7 +183,7 @@ jobs:
         run: python3 .github/scripts/backend_test_shards.py baseline --plan server/target-ci-plan/plan.json --output server/target-ci-reference
       - name: Preserve unfiltered reference even after failure
         if: always() && env.RUN_REFERENCE == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-unfiltered-reference
           path: |
@@ -255,7 +255,7 @@ jobs:
           test "$REFERENCE_RESULT" = success
       - name: Preserve complete-suite reconciliation and future scheduling hints
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-test-summary
           path: |
@@ -281,7 +281,7 @@ jobs:
       - name: Plan every Flutter test file into eight complete partitions
         run: python3 .github/scripts/flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8 --history .github/test-timings/flutter.json
       - name: Preserve exact Flutter file plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: flutter-test-plan
           path: build/flutter-ci-plan/
@@ -378,7 +378,7 @@ jobs:
         run: python3 .github/scripts/flutter_test_shards.py run --plan build/flutter-ci-plan/plan.json --shard ${{ matrix.shard }} --output build/flutter-ci-reports
       - name: Preserve complete Flutter partition evidence after success or failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: flutter-test-results-${{ matrix.shard }}
           path: build/flutter-ci-reports/
@@ -413,7 +413,7 @@ jobs:
           python3 .github/scripts/flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json --output build/flutter-ci-reports
       - name: Preserve complete browser evidence even on failure
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: flutter-test-results-browser
           path: build/flutter-ci-reports/
@@ -512,7 +512,7 @@ jobs:
           test "$BUILD_RESULT" = success
       - name: Preserve complete Flutter coverage and scheduling hints
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: flutter-test-summary
           path: |
@@ -580,7 +580,7 @@ jobs:
           python3 deploy/client/prepare_android_ndk.py --sdk-root "$sdk_root" --output-dir "$RUNNER_TEMP/android-ndk" 2>&1 | tee -a "$RUNNER_TEMP/android-ndk/prepare.log"
       - name: Preserve NDK download and integrity diagnostics
         if: ${{ always() && steps.android_ndk.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: android-ndk-preparation
           path: |
@@ -606,7 +606,7 @@ jobs:
           python3 deploy/client/check_android_build_log.py "$RUNNER_TEMP/android-build.log"
       - name: Preserve Android compiler diagnostics
         if: ${{ always() && steps.android_build.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: android-build-log
           path: ${{ runner.temp }}/android-build.log

@@ -433,6 +433,57 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(allowed["skipped"][0]["permitted"])
         self.assertFalse(runner.audit_cases(plan(), 0, [case], 0)["complete"])
 
+    def test_private_finance_source_absence_keeps_all_public_parser_methods_mandatory(self):
+        classname = "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
+        private = "privateSuppliedFilesAreReadOnlyOptionalEvidence"
+        gate = "UTEN_FINANCE_SOURCE_DIR"
+        public = (
+            "rawBiff3GbkBalancesAndLiteral83ColumnJournalsReconcileWithoutExecutingFileFlags",
+            "duplicateEntryIdentityAndUnbalancedVoucherAreLocatedRatherThanSilentlyDropped",
+            "numericVoucherNumbersAreRejectedBeforeLeadingZerosCanBeGuessed",
+            "sourcePeriodAndOccurrenceMismatchCannotCertifyCompleteness",
+        )
+        cls = test_class(classname, (*public, private))
+        cls["methods"][-1]["environment_gates"] = [gate]
+        cases = [testcase(name, classname) for name in public]
+        cases.append(testcase(private, classname, "skipped", f"Environment variable [{gate}] does not exist"))
+        result = runner.audit_cases(plan([cls]), 0, cases, 0)
+        self.assertTrue(result["complete"])
+        self.assertEqual(5, result["testcase_count"])
+        self.assertEqual(1, len(result["skipped"]))
+        self.assertTrue(result["skipped"][0]["permitted"])
+        for name in public:
+            with self.subTest(mandatory=name):
+                changed = copy.deepcopy(cases)
+                changed[public.index(name)] = testcase(name, classname, "skipped", f"Environment variable [{gate}] does not exist")
+                self.assertFalse(runner.audit_cases(plan([cls]), 0, changed, 0)["complete"])
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, cases[:-1], 0)["complete"])
+
+    def test_private_finance_source_gate_cannot_hide_old_assumptions_bad_inputs_or_other_methods(self):
+        classname = "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
+        private = "privateSuppliedFilesAreReadOnlyOptionalEvidence"
+        gate = "UTEN_FINANCE_SOURCE_DIR"
+        cls = test_class(classname, (private,), gates=(gate,))
+        for reason in (
+            "org.opentest4j.TestAbortedException: Assumption failed: assumption is not true",
+            "disabled temporarily",
+            f"Environment variable [{gate}] with value [] does not match regular expression [.+]",
+            f"Environment variable [{gate}] does not exist extra",
+            "Environment variable [UNREVIEWED_PRIVATE_DIR] does not exist",
+        ):
+            with self.subTest(reason=reason):
+                case = testcase(private, classname, "skipped", reason)
+                self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        for declared in ((), ("UNREVIEWED_PRIVATE_DIR",), (gate, "UTEN_RUN_DB_TESTS")):
+            with self.subTest(declared=declared):
+                changed = test_class(classname, (private,), gates=declared)
+                case = testcase(private, classname, "skipped", f"Environment variable [{gate}] does not exist")
+                self.assertFalse(runner.audit_cases(plan([changed]), 0, [case], 0)["complete"])
+        other = test_class(classname, ("someOtherParserEvidence",), gates=(gate,))
+        case = testcase("someOtherParserEvidence", classname, "skipped", f"Environment variable [{gate}] does not exist")
+        self.assertFalse(runner.audit_cases(plan([other]), 0, [case], 0)["complete"])
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [testcase(private, classname, "failed")], 1)["complete"])
+
     def test_reviewed_operator_input_absence_is_bound_to_exact_declared_methods(self):
         expected = {
             "com.uten.imp.features.admin.materialforecast.MaterialForecastRuntimePreparationSmokeTest"
@@ -441,6 +492,8 @@ class CoverageTests(unittest.TestCase):
             "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
             "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
             "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
+            "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
+            "#privateSuppliedFilesAreReadOnlyOptionalEvidence": "UTEN_FINANCE_SOURCE_DIR",
         }
         self.assertEqual(expected, runner.METHOD_OPTIONAL_GATES)
         for identity, gate in expected.items():
@@ -595,6 +648,32 @@ class CoverageTests(unittest.TestCase):
                     else:
                         self.assertNotIn(identity, properties)
                         properties[identity] = {"named": name, "matches": pattern}
+        # This reviewed input directory is a single method condition inside a
+        # class whose other four generated/public parser methods must execute.
+        # It deliberately does not inherit the class-level smoke-test rules.
+        parser = java / "features/finance/gl/FinanceAccountingWorkbookParserTest.java"
+        parser_source = lexical.sub(lambda match: " " if match[0].startswith(("//", "/*")) else match[0],
+                                    parser.read_text(encoding="utf-8"))
+        declarations = list(condition.finditer(parser_source))
+        self.assertEqual(1, len(declarations))
+        declaration = declarations[0]
+        self.assertEqual(("EnabledIfEnvironmentVariable", "UTEN_FINANCE_SOURCE_DIR", ".+"), declaration.groups())
+        header = re.search(r'\bclass\s+FinanceAccountingWorkbookParserTest\b', parser_source)
+        self.assertGreater(declaration.start(), header.end())
+        self.assertRegex(parser_source,
+                         r'@Test\s+@EnabledIfEnvironmentVariable\(named\s*=\s*"UTEN_FINANCE_SOURCE_DIR",\s*matches\s*=\s*"\.\+"\)'
+                         r'\s+void\s+privateSuppliedFilesAreReadOnlyOptionalEvidence\s*\(')
+        self.assertEqual(["UTEN_FINANCE_SOURCE_DIR"],
+                         re.findall(r'System\s*\.\s*getenv\s*\(\s*"([^"\\]+)"\s*\)', parser_source))
+        self.assertNotRegex(parser_source, r'@Disabled\w*\b|\bAssumptions\s*\.|\bassume(?:True|False|That)\s*\(')
+        self.assertEqual({
+            "rawBiff3GbkBalancesAndLiteral83ColumnJournalsReconcileWithoutExecutingFileFlags",
+            "duplicateEntryIdentityAndUnbalancedVoucherAreLocatedRatherThanSilentlyDropped",
+            "numericVoucherNumbersAreRejectedBeforeLeadingZerosCanBeGuessed",
+            "sourcePeriodAndOccurrenceMismatchCannotCertifyCompleteness",
+            "privateSuppliedFilesAreReadOnlyOptionalEvidence",
+        }, set(re.findall(r'@Test\b(?:(?![;{}]).)*?\bvoid\s+(\w+)\s*\(', parser_source, re.DOTALL)))
+        environment[runner.FINANCE_SOURCE_REVIEW] = runner.FINANCE_SOURCE_ENV
         self.assertEqual(runner.METHOD_OPTIONAL_GATES, environment)
         self.assertEqual({runner.MATERIAL_PRODUCER_REVIEW:
                           {"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}}, properties)

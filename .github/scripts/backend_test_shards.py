@@ -49,6 +49,9 @@ WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkboo
 MATERIAL_PRODUCER_PROPERTY = "uten.materialForecast.contractDirectory"
 MATERIAL_PRODUCER_REVIEW = ("com.uten.imp.features.master.goods.pricing.MaterialAutomaticProducerContractTest"
                             "#actualAutomaticCollectorFilesInteroperateWithTheProductionReaders")
+FINANCE_SOURCE_ENV = "UTEN_FINANCE_SOURCE_DIR"
+FINANCE_SOURCE_REVIEW = ("com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
+                         "#privateSuppliedFilesAreReadOnlyOptionalEvidence")
 # These acceptance methods need reviewed local runtime inputs or an operator
 # driving a loopback UI server. Their gates are not reusable by other tests:
 # only the declared gate's exact absence may explain their recorded skip.
@@ -62,6 +65,9 @@ METHOD_OPTIONAL_GATES = {
     # an ordinary database regression cannot borrow this exact method's gate.
     "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
     "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
+    # Only the local private-original evidence method needs these files.
+    # The four public/generated workbook parser tests remain mandatory.
+    FINANCE_SOURCE_REVIEW: FINANCE_SOURCE_ENV,
 }
 # Keep the preparation workflow contract named explicitly for its dedicated
 # mandatory CI step and the existing stricter negative regressions.

@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.gl;
 
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import java.io.*;
 import java.nio.*;
 import java.nio.charset.Charset;
@@ -41,8 +42,10 @@ class FinanceAccountingWorkbookParserTest {
         }
         assertThat(parsed.vouchers().getFirst().closingCandidate()).isFalse();
     }
-    @Test void privateSuppliedFilesAreReadOnlyOptionalEvidence() throws Exception {
-        String root=System.getenv("UTEN_FINANCE_SOURCE_DIR");Assumptions.assumeTrue(root!=null&&!root.isBlank());
+    @Test
+    @EnabledIfEnvironmentVariable(named = "UTEN_FINANCE_SOURCE_DIR", matches = ".+")
+    void privateSuppliedFilesAreReadOnlyOptionalEvidence() throws Exception {
+        String root=System.getenv("UTEN_FINANCE_SOURCE_DIR");
         var folder=Path.of(root);Path voucher=folder.resolve("2026年9月份会计分录凭证.xls");
         Path balance;
         try(var files=Files.walk(folder)){balance=files.filter(file->file.getFileName().toString().matches(".*9月份科目余额表.xls")).findFirst().orElseThrow();}

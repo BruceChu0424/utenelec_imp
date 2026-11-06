@@ -214,9 +214,9 @@ class SubcontractStepDrawMigrationPostgresTest {
                     receiptId, "T-V798-R-" + f.tag());
             exec("""
                     INSERT INTO subcontract_receipt_items(id, bill_no, bill_date, receipt_id, order_item_id, goods_id,
-                        goods_snapshot_source, qty, unit_rate, material_basis_qty)
-                    VALUES (?, 'T', current_date, ?, ?, ?, 'MASTER_AT_SAVE', 3, 1, 3)
-                    """, receiptItem, receiptId, orderItem, p);
+                        goods_snapshot_source, qty, unit_rate, material_basis_qty, unit_id)
+                    VALUES (?, 'T', current_date, ?, ?, ?, 'MASTER_AT_SAVE', 3, 1, 3, ?)
+                    """, receiptItem, receiptId, orderItem, p, f.unit());
             exec("UPDATE subcontract_material_issue_items SET consumed_qty = 6 WHERE id = ?", item1);
             exec("UPDATE subcontract_material_issue_items SET consumed_qty = 0.3 WHERE id = ?", item2);
         });
@@ -489,9 +489,9 @@ class SubcontractStepDrawMigrationPostgresTest {
                     receiptId, "T-ZERO-R-" + f.tag());
             exec("""
                     INSERT INTO subcontract_receipt_items(id, bill_no, bill_date, receipt_id, order_item_id, goods_id,
-                        goods_snapshot_source, qty, unit_rate, material_basis_qty)
-                    VALUES (?, 'T', current_date, ?, ?, ?, 'MASTER_AT_SAVE', 3, 1, 0)
-                    """, receiptItem, receiptId, orderItem, p);
+                        goods_snapshot_source, qty, unit_rate, material_basis_qty, unit_id)
+                    VALUES (?, 'T', current_date, ?, ?, ?, 'MASTER_AT_SAVE', 3, 1, 0, ?)
+                    """, receiptItem, receiptId, orderItem, p, f.unit());
         });
         assertEquals(Boolean.FALSE, scalar("SELECT fn_subcontract_receipt_material_complete(?)", receiptItem),
                 "没有计划行的回厂行成本永远不完整");

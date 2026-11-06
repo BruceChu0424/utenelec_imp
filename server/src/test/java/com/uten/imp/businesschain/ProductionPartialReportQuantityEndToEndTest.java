@@ -70,12 +70,13 @@ class ProductionPartialReportQuantityEndToEndTest {
         amount("0", scalar("SELECT produced_qty FROM sales_order_items WHERE id=?", orderItem));
         amount("800", scalar("SELECT produced_qty FROM plan_order_item_links WHERE plan_item_id=? AND NOT is_deleted", planItem));
         amount("800", reports.detail(first).getMaterialUsages().getFirst().getQtyBase());
-        ReflectionTestUtils.invokeMethod(fixture, "finishInbound", task, first);
+        ReflectionTestUtils.invokeMethod(fixture, "finishInbound", task, first,true);
         amount("800", scalar("SELECT produced_qty FROM sales_order_items WHERE id=?", orderItem));
         amount("800", scalar("SELECT SUM(reported_qty) FROM production_fqc_inspections WHERE source_report_id=?", first));
         amount("800", scalar("SELECT SUM(passed_qty) FROM production_fqc_inspections WHERE source_report_id=?", first));
         assertTask(task, "IN_PROGRESS", "800", "200", "800");
 
+        ReflectionTestUtils.invokeMethod(fixture,"drainValuation",task);
         ReportablePlanLine secondSource = source(fixture, task);
         amount("200", secondSource.maxReportQty());
         assertEquals(firstSource.executionSegmentId(), secondSource.executionSegmentId());
@@ -88,7 +89,7 @@ class ProductionPartialReportQuantityEndToEndTest {
         assertTask(task, "IN_PROGRESS", "800", "200", "800");
         reports.approve(second, approve(second));
         assertTask(task, "REPORT_INSPECTION", "1000", "0", "800");
-        ReflectionTestUtils.invokeMethod(fixture, "finishInbound", task, second);
+        ReflectionTestUtils.invokeMethod(fixture, "finishInbound", task, second,true);
         assertTask(task, "COMPLETED", "1000", "0", "1000");
         amount("200", scalar("SELECT SUM(reported_qty) FROM production_fqc_inspections WHERE source_report_id=?", second));
         amount("1000", scalar("SELECT SUM(qty) FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id WHERE item.execution_segment_id=? AND report.status=1 AND NOT report.is_deleted AND NOT item.is_deleted", segment));

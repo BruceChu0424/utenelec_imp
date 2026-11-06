@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -25,48 +26,15 @@ class BusinessTaskNoticeStatePostgresTest {
 
     @BeforeEach void schema() throws Exception {
         db=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
+        db.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+        MigratedProjectionSchema.createCurrentColumns(db,
+                "users", "employees", "departments", "employee_secondary_departments", "production_plans", "production_execution_segments", "stock_documents", "stock_document_items", "sales_orders", "sales_quotes", "sales_order_items", "goods", "production_material_analysis_items", "production_plan_items", "production_material_analysis_plan_links");
         db.execute("""
-                DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE users(id uuid,employee_id uuid,status text,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE employees(id uuid,department_id uuid,status text,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE departments(id uuid,parent_id uuid,manager_id uuid,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE employee_secondary_departments(employee_id uuid,department_id uuid);
-                CREATE TABLE production_plans(id uuid,status int,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,
-                    is_stopped boolean DEFAULT FALSE,is_canceled boolean DEFAULT FALSE,material_analysis_id uuid,material_analysis_item_id uuid);
-                CREATE TABLE production_execution_segments(id uuid,plan_id uuid,status text,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE stock_documents(id uuid,warehouse_id uuid,status int,doc_type text,is_deleted boolean DEFAULT FALSE,
-                    requested boolean DEFAULT TRUE,pending boolean DEFAULT TRUE);
-                CREATE TABLE stock_document_items(id uuid,doc_id uuid,warehouse_id uuid,is_deleted boolean DEFAULT FALSE);
-                CREATE FUNCTION fn_production_draw_pending(uuid) RETURNS boolean LANGUAGE sql AS
-                    'SELECT pending FROM stock_documents WHERE id=$1';
-                CREATE TABLE sales_orders(id uuid,status int,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,
-                    is_stopped boolean DEFAULT FALSE,finance_confirmed boolean DEFAULT TRUE,finance_rejected boolean DEFAULT FALSE,requoted_to_id uuid,source_quote_id uuid,
-                  manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED',
-                  manager_approved_at timestamptz,
-                  manager_approved_by uuid,
-                  manager_rejected_at timestamptz,
-                  manager_rejected_by uuid,
-                  manager_reject_reason text,
-                  manager_review_remark text,
-                  manager_decision_claim_id uuid);
-                CREATE TABLE sales_quotes(id uuid,maker_id uuid,status int,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,
-                    finance_confirmed_at timestamptz,finance_return_reason text,customer_accepted_at timestamptz,
-                    customer_accepted_revision int,review_revision int,
-                  manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED',
-                  manager_approved_at timestamptz,
-                  manager_approved_by uuid,
-                  manager_rejected_at timestamptz,
-                  manager_rejected_by uuid,
-                  manager_reject_reason text,
-                  manager_review_remark text,
-                  manager_decision_claim_id uuid);
-                CREATE TABLE sales_order_items(id uuid,order_id uuid,goods_id uuid,qty numeric,shipped_qty numeric DEFAULT 0,
-                    returned_qty numeric DEFAULT 0,flag_qty numeric DEFAULT 0,reserved_qty numeric DEFAULT 0,
-                    planned_qty numeric DEFAULT 0,produced_qty numeric DEFAULT 0,is_deleted boolean DEFAULT FALSE, legacy_counter_import_run_id uuid);
-                CREATE TABLE goods(id uuid,is_deleted boolean DEFAULT FALSE, client_goods_name text, currency_id uuid);
-                CREATE TABLE production_material_analysis_items(sales_order_item_id uuid,source_type text);
-                CREATE TABLE production_plan_items(id uuid,plan_id uuid,sales_order_item_id uuid,qty numeric,is_deleted boolean DEFAULT FALSE, legacy_production_import_run_id uuid);
-                CREATE TABLE production_material_analysis_plan_links(id uuid,plan_id uuid,analysis_id uuid,analysis_item_id uuid,submitted_qty numeric);
+                -- Existing registered oracle controls model function outcomes, not business document fields.
+                ALTER TABLE stock_documents ADD COLUMN requested boolean DEFAULT TRUE, ADD COLUMN pending boolean DEFAULT TRUE;
+                ALTER TABLE sales_orders ALTER COLUMN manager_review_state SET NOT NULL;
+                ALTER TABLE sales_quotes ALTER COLUMN manager_review_state SET NOT NULL;
+                CREATE FUNCTION fn_production_draw_pending(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT pending FROM stock_documents WHERE id=$1';
                 """);
         db.execute(Files.readString(Path.of("src/main/resources/db/migration/V876__business_task_notice_scope.sql")));
         user=UUID.randomUUID(); employee=UUID.randomUUID();
@@ -95,13 +63,13 @@ class BusinessTaskNoticeStatePostgresTest {
     @Test void initialPlanningHandoffStopsAfterSourceAcquisitionOrWhenDemandIsCovered() {
         UUID order=UUID.randomUUID(),item=UUID.randomUUID(),goods=UUID.randomUUID();
         db.update("INSERT INTO goods(id) VALUES(?)",goods);
-        db.update("INSERT INTO sales_orders(id,status) VALUES(?,1)",order);
+        db.update("INSERT INTO sales_orders(id,status,finance_confirmed) VALUES(?,1,true)",order);
         db.update("INSERT INTO sales_order_items(id,order_id,goods_id,qty) VALUES(?,?,?,10)",item,order,goods);
         assertThat(visible("SALES_ORDER_APPROVED","SALES_ORDER",order)).isTrue();
         db.update("UPDATE sales_order_items SET reserved_qty=10 WHERE id=?",item);
         assertThat(visible("SALES_ORDER_APPROVED","SALES_ORDER",order)).isFalse();
         db.update("UPDATE sales_order_items SET reserved_qty=0 WHERE id=?",item);
-        db.update("INSERT INTO production_material_analysis_items VALUES(?,'SALES_ORDER_ITEM')",item);
+        db.update("INSERT INTO production_material_analysis_items(sales_order_item_id,source_type) VALUES(?,'SALES_ORDER_ITEM')",item);
         assertThat(visible("SALES_ORDER_APPROVED","SALES_ORDER",order)).isFalse();
     }
 

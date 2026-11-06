@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeAll;
@@ -69,21 +70,20 @@ class MaterialAnalysisArrayMembershipPostgresTest {
         dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,is_deleted boolean,is_accountable boolean,is_line_side boolean NOT NULL DEFAULT FALSE)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc,"warehouses");
+        jdbc.execute("ALTER TABLE warehouses ADD PRIMARY KEY(id); ALTER TABLE warehouses ALTER COLUMN is_line_side SET NOT NULL");
         String migration = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "src/main/resources/db/migration/V613__operational_warehouse_leaf_identity.sql"));
         int leafStart = migration.indexOf("CREATE OR REPLACE FUNCTION fn_warehouse_is_operational_leaf(");
         int leafEnd = migration.indexOf("\n$$;", leafStart) + 4;
         assertTrue(leafStart >= 0 && leafEnd > leafStart);
         jdbc.execute(migration.substring(leafStart, leafEnd));
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "stock_reservations", "production_material_analysis_materials");
         jdbc.execute("""
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY,warehouse_id uuid,goods_id uuid,
-                    color_id uuid,is_deleted boolean,status integer,owner_type text,qualified boolean, material_projection_initial_consumed_qty numeric(18,4), material_projection_tx_id xid8)
-                """);
-        jdbc.execute("""
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,
-                    analysis_item_id uuid,node_key text,unit_id uuid,
-                    design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric)
+                ALTER TABLE stock_reservations ADD PRIMARY KEY(id), ADD COLUMN qualified boolean;
+                ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+                ALTER TABLE production_material_analysis_materials ALTER COLUMN usage_basis SET NOT NULL;
                 """);
         jdbc.execute("""
                 CREATE TABLE entitlement_evidence(stock_reservation_id uuid,beneficiary_analysis_id uuid,
@@ -113,12 +113,12 @@ class MaterialAnalysisArrayMembershipPostgresTest {
                 FROM generate_series(1,1000)g(i)
                 """);
         jdbc.update("""
-                INSERT INTO stock_reservations
+                INSERT INTO stock_reservations(id,warehouse_id,goods_id,color_id,is_deleted,status,owner_type,qualified)
                 SELECT reservation_id,?,goods_id,CASE WHEN i%3=0 THEN CAST(? AS uuid) ELSE NULL END,
                        FALSE,0,'PREPLAN_ANALYSIS',TRUE FROM candidate_fixture
                 """, WAREHOUSE, COLOR);
         jdbc.update("""
-                INSERT INTO production_material_analysis_materials
+                INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,unit_id)
                 SELECT material_id,?,md5('stable-analysis-'||ref_number)::uuid,'root/'||ref_number,?
                 FROM candidate_fixture
                 """, ANALYSIS, UNIT);
@@ -137,11 +137,11 @@ class MaterialAnalysisArrayMembershipPostgresTest {
                 case "nonleaf-technical-warehouse" -> TECHNICAL_WAREHOUSE;
                 default -> WAREHOUSE;
             };
-            jdbc.update("INSERT INTO stock_reservations VALUES (?,?,?,NULL,?,?,?,?)", reservation,
+            jdbc.update("INSERT INTO stock_reservations(id,warehouse_id,goods_id,color_id,is_deleted,status,owner_type,qualified) VALUES (?,?,?,NULL,?,?,?,?)", reservation,
                     warehouse, fixtureId("goods-1"), guard.equals("deleted"), guard.equals("inactive") ? 1 : 0,
                     guard.equals("other-owner") ? "OTHER" : "PREPLAN_ANALYSIS", !guard.equals("unqualified"));
             UUID beneficiary = guard.equals("other-analysis") ? OTHER_ANALYSIS : ANALYSIS;
-            jdbc.update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?)", material,
+            jdbc.update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,unit_id) VALUES (?,?,?,?,?)", material,
                     guard.equals("material-mismatch") ? OTHER_ANALYSIS : beneficiary,
                     fixtureId("stable-analysis-70"), "root/70", UNIT);
             jdbc.update("INSERT INTO entitlement_evidence VALUES (?,?,?,?)", reservation, beneficiary, material,

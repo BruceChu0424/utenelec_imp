@@ -1,0 +1,100 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart
+00:00 +0: retirement preserves a return to saved input after an older CAS has started existing=false
+00:04 +1: retirement preserves a return to saved input after an older CAS has started existing=true
+00:04 +2: pending initial draft storage blocks real input and cannot overwrite the original on logout
+00:05 +3: session retirement retains final burst input with existing draft=false
+00:05 +4: session retirement retains final burst input with existing draft=true
+00:06 +5: reload safety covers initializing, autosaved input and active submission
+00:07 +6: unknown submission blocks restart until explicit verified completion
+00:07 +7: a malformed later platform row cannot partly restore earlier user input
+00:08 +8: grid presentation changes never capture the business draft
+00:08 +9: live capability editor retains owner input through permission ABA and repeated initialization guards
+00:09 +10: live capability editor keeps sticky account ABA identity fence
+00:09 +11: live capability editor keeps sticky server ABA identity fence
+00:09 +12: live capability editor keeps sticky session epoch ABA identity fence
+00:10 +13: live capability editor keeps sticky dataset ABA identity fence
+00:10 +14: a replacement dataset blocks the old editor before any create
+00:10 +15: impersonation actor replacement fences the old editor and its ABA return
+00:10 +16: impersonation actor missing fences the old editor and its ABA return
+00:10 +17: impersonation target missing fences the old editor and its ABA return
+00:11 +18: same-dataset actor refresh leaves the editor able to checkpoint and submit once
+00:11 +19: default early source guard preserves permission ABA before draft initialization
+00:11 +20: permission ABA during attachment restoration cannot revive the old editor
+00:12 +21: draft capture owns incomplete fields and deferred attachment bytes before async persistence
+00:12 +22: blocked restoration excludes an already focused keyboard editor
+00:13 +23: fresh structured REMOTE_ACCESS_DENIED admission overrides a conservative business callback
+00:13 +24: REMOTE_ACCESS_DENIED cannot erase an earlier unknown command on an explicit replay
+00:13 +25: an unstructured admission-looking 403 is not proof that the write was refused
+00:13 +26: ABA account during initial draft storage read cannot bind old state again
+00:14 +27: ABA account during partial draft reset cannot rearm the previous page
+00:14 +28: ABA server during initial draft storage read cannot bind old state again
+00:14 +29: ABA server during partial draft reset cannot rearm the previous page
+00:14 +30: ABA dataset during initial draft storage read cannot bind old state again
+00:14 +31: ABA dataset during partial draft reset cannot rearm the previous page
+00:15 +32: unknown exit keeps evidence and offers only save original or continue
+00:16 +33: unknown exit rejects forced discard including late outcome=false
+00:16 +34: unknown exit rejects forced discard including late outcome=true
+00:17 +35: definite server rejection survives a failing local checkpoint replay=false
+00:17 +36: definite server rejection survives a failing local checkpoint replay=true
+00:17 +37: default 400 rejection keeps original editable draft behavior
+00:17 +38: replay caller may retain unknown marker after later 400
+00:18 +39: default 422 rejection keeps original editable draft behavior
+00:18 +40: replay caller may retain unknown marker after later 422
+00:18 +41: source reload preserves failed local draft and starts a new identity
+00:18 +42: failed reload remains blocked and never checkpoints partial state
+00:19 +43: identity change during source reload cannot unlock a different account
+00:19 +44: unresolved submission cannot use source reload after restore failure
+00:20 +45: metadata-only grid edits survive local draft recovery with their source version
+00:20 +46: identity change during pre-submit checkpoint never dispatches under the new user
+00:21 +47: confirmed save navigation bypasses busy but ordinary busy exit is blocked
+00:21 +48: overlapping autosave and explicit checkpoints use one writer
+00:21 +49: explicit duplicate-code conflict permits correction and a new submit
+00:22 +50: identity switch while storage opens keeps the old form blocked
+00:22 +51: identity fence hides previous form and prevents cross-scope completion server=false
+00:22 +52: identity fence hides previous form and prevents cross-scope completion server=true
+00:23 +53: two pushed editors of same route prompt only the top instance
+00:23 +54: returning to initial values discards cleanly and the same identity saves again
+00:24 +55: submission after returning to initial values checkpoints and sends once
+00:24 +56: definite rejection back at initial values clears the pending marker before discarding
+00:24 +57: exit persistence shows one wait only after save confirmation
+00:25 +58: exit persistence shows one wait only after discard confirmation
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: false
+  Actual: <true>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart:1806:11)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart line 1806
+The test description was:
+  exit persistence shows one wait only after discard confirmation
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:26 +58 -1: exit persistence shows one wait only after discard confirmation [E]
+  Test failed. See exception logs above.
+  The test description was: exit persistence shows one wait only after discard confirmation
+  
+00:26 +58 -1: explicit exit owns one permit while background checkpoints stay quiet
+00:26 +59 -1: explicit exit storage failure releases wait and preserves input for retry
+00:26 +60 -1: identity retirement during explicit exit cannot grant navigation or bind new owner
+00:27 +61 -1: discard storage failure retires its wait but keeps original draft and page
+00:27 +62 -1: repeated exit confirmation stays interactive and cancellation opens no wait
+00:28 +63 -1: empty defaults do not create draft or prompt
+00:28 +64 -1: autosave survives hard disposal and restores raw input and selection
+00:28 +65 -1: go navigation stays on cancel, persists on save and removes on discard
+00:29 +66 -1: failed durable write cannot close after choosing save
+00:30 +67 -1: business completion leaves tombstone and no leave prompt
+00:30 +68 -1: unknown non-idempotent submit survives restart and cannot submit twice
+00:31 +69 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart: exit persistence shows one wait only after discard confirmation

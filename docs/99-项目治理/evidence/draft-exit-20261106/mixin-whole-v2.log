@@ -1,0 +1,73 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart
+00:00 +0: retirement preserves a return to saved input after an older CAS has started existing=false
+00:02 +1: retirement preserves a return to saved input after an older CAS has started existing=true
+00:02 +2: pending initial draft storage blocks real input and cannot overwrite the original on logout
+00:03 +3: session retirement retains final burst input with existing draft=false
+00:03 +4: session retirement retains final burst input with existing draft=true
+00:03 +5: reload safety covers initializing, autosaved input and active submission
+00:04 +6: unknown submission blocks restart until explicit verified completion
+00:05 +7: a malformed later platform row cannot partly restore earlier user input
+00:05 +8: grid presentation changes never capture the business draft
+00:05 +9: live capability editor retains owner input through permission ABA and repeated initialization guards
+00:05 +10: live capability editor keeps sticky account ABA identity fence
+00:06 +11: live capability editor keeps sticky server ABA identity fence
+00:06 +12: live capability editor keeps sticky session epoch ABA identity fence
+00:06 +13: live capability editor keeps sticky dataset ABA identity fence
+00:06 +14: a replacement dataset blocks the old editor before any create
+00:06 +15: impersonation actor replacement fences the old editor and its ABA return
+00:06 +16: impersonation actor missing fences the old editor and its ABA return
+00:07 +17: impersonation target missing fences the old editor and its ABA return
+00:07 +18: same-dataset actor refresh leaves the editor able to checkpoint and submit once
+00:07 +19: default early source guard preserves permission ABA before draft initialization
+00:07 +20: permission ABA during attachment restoration cannot revive the old editor
+00:07 +21: draft capture owns incomplete fields and deferred attachment bytes before async persistence
+00:08 +22: blocked restoration excludes an already focused keyboard editor
+00:08 +23: fresh structured REMOTE_ACCESS_DENIED admission overrides a conservative business callback
+00:08 +24: REMOTE_ACCESS_DENIED cannot erase an earlier unknown command on an explicit replay
+00:08 +25: an unstructured admission-looking 403 is not proof that the write was refused
+00:08 +26: ABA account during initial draft storage read cannot bind old state again
+00:09 +27: ABA account during partial draft reset cannot rearm the previous page
+00:09 +28: ABA server during initial draft storage read cannot bind old state again
+00:09 +29: ABA server during partial draft reset cannot rearm the previous page
+00:09 +30: ABA dataset during initial draft storage read cannot bind old state again
+00:09 +31: ABA dataset during partial draft reset cannot rearm the previous page
+00:09 +32: unknown exit keeps evidence and offers only save original or continue
+00:10 +33: unknown exit rejects forced discard including late outcome=false
+00:10 +34: unknown exit rejects forced discard including late outcome=true
+00:11 +35: definite server rejection survives a failing local checkpoint replay=false
+00:11 +36: definite server rejection survives a failing local checkpoint replay=true
+00:11 +37: default 400 rejection keeps original editable draft behavior
+00:11 +38: replay caller may retain unknown marker after later 400
+00:12 +39: default 422 rejection keeps original editable draft behavior
+00:12 +40: replay caller may retain unknown marker after later 422
+00:12 +41: source reload preserves failed local draft and starts a new identity
+00:12 +42: failed reload remains blocked and never checkpoints partial state
+00:13 +43: identity change during source reload cannot unlock a different account
+00:13 +44: unresolved submission cannot use source reload after restore failure
+00:14 +45: metadata-only grid edits survive local draft recovery with their source version
+00:14 +46: identity change during pre-submit checkpoint never dispatches under the new user
+00:14 +47: confirmed save navigation bypasses busy but ordinary busy exit is blocked
+00:14 +48: overlapping autosave and explicit checkpoints use one writer
+00:15 +49: explicit duplicate-code conflict permits correction and a new submit
+00:15 +50: identity switch while storage opens keeps the old form blocked
+00:15 +51: identity fence hides previous form and prevents cross-scope completion server=false
+00:15 +52: identity fence hides previous form and prevents cross-scope completion server=true
+00:15 +53: two pushed editors of same route prompt only the top instance
+00:16 +54: returning to initial values discards cleanly and the same identity saves again
+00:16 +55: submission after returning to initial values checkpoints and sends once
+00:16 +56: definite rejection back at initial values clears the pending marker before discarding
+00:16 +57: exit persistence shows one wait only after save confirmation
+00:17 +58: exit persistence shows one wait only after discard confirmation
+00:17 +59: explicit exit owns one permit while background checkpoints stay quiet
+00:18 +60: explicit exit storage failure releases wait and preserves input for retry
+00:18 +61: identity retirement during explicit exit cannot grant navigation or bind new owner
+00:18 +62: discard storage failure retires its wait but keeps original draft and page
+00:19 +63: repeated exit confirmation stays interactive and cancellation opens no wait
+00:19 +64: empty defaults do not create draft or prompt
+00:19 +65: autosave survives hard disposal and restores raw input and selection
+00:19 +66: go navigation stays on cancel, persists on save and removes on discard
+00:20 +67: failed durable write cannot close after choosing save
+00:21 +68: business completion leaves tombstone and no leave prompt
+00:21 +69: unknown non-idempotent submit survives restart and cannot submit twice
+00:21 +70: All tests passed!

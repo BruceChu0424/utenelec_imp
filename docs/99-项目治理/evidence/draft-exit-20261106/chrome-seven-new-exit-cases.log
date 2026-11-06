@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_mixin_test.dart
+00:00 +0: exit persistence shows one wait only after save confirmation
+00:02 +1: exit persistence shows one wait only after discard confirmation
+00:02 +2: explicit exit owns one permit while background checkpoints stay quiet
+00:03 +3: explicit exit storage failure releases wait and preserves input for retry
+00:03 +4: identity retirement during explicit exit cannot grant navigation or bind new owner
+00:03 +5: discard storage failure retires its wait but keeps original draft and page
+00:05 +6: repeated exit confirmation stays interactive and cancellation opens no wait
+00:05 +7: All tests passed!

@@ -643,6 +643,9 @@ jobs:
         run: |
           python3 -m unittest discover -s deploy/updater -p "test*.py" -v
           python3 -m unittest discover -s deploy/release -p "test_material_forecast_payload.py" -v
+          python3 -m unittest discover -s deploy/release -p "test_flyway*.py" -v
+          python3 tool/sync_flyway_version_contract.py --check
+          python3 -m unittest discover -s server/legacy_migration -p "test_flyway_caller_versions.py" -v
           # The host daemon runs as root and must inspect every process fd.
           # Exercise its authority fixtures without weakening fail-closed cleanup.
           sudo /usr/bin/python3 -m unittest discover -s deploy/simple -p "test*.py" -v

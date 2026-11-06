@@ -27,7 +27,7 @@ public final class SubcontractShortDeliveryPolicy {
     }
 
     /** 成品履约下限；供料损耗百分比只影响材料预算。 */
-    public static BigDecimal floorQty(BigDecimal orderedQty, BigDecimal allowedLossPct) {
+    public static BigDecimal floorQty(BigDecimal orderedQty) {
         return orderedQty;
     }
 
@@ -45,17 +45,17 @@ public final class SubcontractShortDeliveryPolicy {
     }
 
     /** 严重程度按成品短交比例，独立于供料预算。 */
-    public static BigDecimal severeThresholdPct(BigDecimal allowedLossPct) {
+    public static BigDecimal severeThresholdPct() {
         return SEVERE_MIN_SHORTFALL_PCT;
     }
 
     /** 程度; 不短交(D ≥ Q)返回 null。 */
-    public static String severity(BigDecimal orderedQty, BigDecimal allowedLossPct, BigDecimal deliveredQty) {
+    public static String severity(BigDecimal orderedQty, BigDecimal deliveredQty) {
         BigDecimal delivered = deliveredQty == null ? BigDecimal.ZERO : deliveredQty;
         if (orderedQty == null || delivered.compareTo(orderedQty) >= 0) return null;
         // Business severity uses the original ratio, never a chosen display rounding.
         return shortfallQty(orderedQty,delivered).multiply(HUNDRED)
-                .compareTo(orderedQty.multiply(severeThresholdPct(allowedLossPct)))>=0 ? SEVERE : BELOW_FLOOR;
+                .compareTo(orderedQty.multiply(severeThresholdPct()))>=0 ? SEVERE : BELOW_FLOOR;
     }
 
     /** 低于允许下限的两档(要弹窗、要紧急通知)。 */
@@ -64,7 +64,7 @@ public final class SubcontractShortDeliveryPolicy {
     }
 
     /** 成品短交没有由材料预算自动授予的正常损耗份额；负责人仍可明确受控认损。 */
-    public static BigDecimal allowedLossQty(BigDecimal orderedQty, BigDecimal allowedLossPct) {
+    public static BigDecimal allowedLossQty() {
         return BigDecimal.ZERO;
     }
 }

@@ -150,7 +150,11 @@ public final class NativeFacetCandidates {
                     try {
                         setter.setValues(statement);statement.setQueryTimeout(30);
                         try(var result=statement.executeQuery()) {
-                            var output=new ArrayList<Object[]>();while(result.next())output.add(new Object[]{result.getObject(1),result.getObject(2),result.getObject(3)});return output;
+                            var output=new ArrayList<Object[]>();
+                            while(result.next()) {
+                                output.add(new Object[]{result.getObject(1),result.getObject(2),result.getObject(3)});
+                            }
+                            return output;
                         }
                     } finally {setter.cleanupParameters();}
                 });

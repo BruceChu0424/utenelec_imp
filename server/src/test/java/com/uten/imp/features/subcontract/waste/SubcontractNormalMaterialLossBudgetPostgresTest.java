@@ -104,7 +104,11 @@ class SubcontractNormalMaterialLossBudgetPostgresTest {
     private static Object[] read(World w) {
         String sql=SubcontractWasteService.shortDeliveryLossSourcesSql().replace(":orderItemId","'"+w.orderItem()+"'::uuid");
         return db.queryForObject(sql,(rs,row)->{
-            Object[] values=new Object[19];for(int i=0;i<values.length;i++)values[i]=rs.getObject(i+1);return values;
+            Object[] values=new Object[19];
+            for(int i=0;i<values.length;i++) {
+                values[i]=rs.getObject(i+1);
+            }
+            return values;
         });
     }
     private static void amount(String expected,BigDecimal actual) { assertThat(actual).isEqualByComparingTo(expected); }

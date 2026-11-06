@@ -238,7 +238,7 @@ public class SubcontractShortDeliveryService
             findings.add(new ShortDeliveryFinding(
                     fact.orderItemId(), fact.orderBillNo(), fact.goodsLabel(), fact.unitName(),
                     fact.orderedQty(), fact.allowedLossPct(),
-                    SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(), fact.allowedLossPct()),
+                    SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty()),
                     fact.deliveredQty(), now, after,
                     outstandingShortfall(fact, after),
                     SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), after),
@@ -518,12 +518,11 @@ public class SubcontractShortDeliveryService
                     "该行累计回厂为 0，不能按接受损耗结案；请红冲订货单或用受控改量处理");
         }
         String severity = SubcontractShortDeliveryPolicy.severity(
-                fact.orderedQty(), fact.allowedLossPct(), fact.deliveredQty());
+                fact.orderedQty(), fact.deliveredQty());
         if (SubcontractShortDeliveryPolicy.isBelowFloor(severity) && (note == null || note.isBlank())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "成品未达到订货目标，短交结案必须填写说明");
         }
-        BigDecimal allowedShortfall = SubcontractShortDeliveryPolicy.allowedLossQty(
-                fact.orderedQty(), fact.allowedLossPct()).subtract(fact.settledLossQty())
+        BigDecimal allowedShortfall = SubcontractShortDeliveryPolicy.allowedLossQty().subtract(fact.settledLossQty())
                 .max(BigDecimal.ZERO).min(shortfall);
         String cause = "委外回厂短交结案(订货单 " + fact.orderBillNo() + " 第 " + fact.lineNo() + " 行，短交 "
                 + plain(shortfall) + (fact.unitName() == null ? "" : " " + fact.unitName()) + ")";
@@ -1022,7 +1021,7 @@ public class SubcontractShortDeliveryService
     private static String remainingSeverity(ItemFacts fact, BigDecimal deliveredQty) {
         if (outstandingShortfall(fact, deliveredQty).signum() == 0) return null;
         // The original total allowance is shared with past accepted loss, never granted again.
-        return SubcontractShortDeliveryPolicy.severity(fact.orderedQty(), fact.allowedLossPct(), deliveredQty);
+        return SubcontractShortDeliveryPolicy.severity(fact.orderedQty(), deliveredQty);
     }
 
     private record OpenCase(UUID id, String status, LocalDate expectedCompleteBy, long version,
@@ -1183,7 +1182,7 @@ public class SubcontractShortDeliveryService
         snapshot.put("orderedQty", fact.orderedQty());
         snapshot.put("allowedLossPct", fact.allowedLossPct());
         snapshot.put("deliveryPolicyVersion", 2);
-        snapshot.put("floorQty", SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(),fact.allowedLossPct()));
+        snapshot.put("floorQty", SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty()));
         snapshot.put("deliveredQty", fact.deliveredQty());
         snapshot.put("shortfallQty", outstandingShortfall(fact, fact.deliveredQty()));
         snapshot.put("settledLossQtyBefore", fact.settledLossQty());

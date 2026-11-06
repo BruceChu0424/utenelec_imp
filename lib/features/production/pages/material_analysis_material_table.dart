@@ -2668,16 +2668,13 @@ abstract class _MaterialAnalysisMaterialTableState
               row.aggregate?.unitName)
           ?.trim();
 
-  /// 数量展示文本 + 行单位（2026-10-10 T9 全站口径）：单位列退役，数量列的
-  /// 只读值统一经 [formatQtyWithUnit] 把单位拼在数字后（`12 个`）。展示原文
-  /// 本就是四位精确数量，这里按四位小数回排、不改数值精度；空值落「—」，
-  /// 解析不出的原文（如「无法确认」）原样返回不带单位。
+  /// 两视图共用原始十进制文本的单位排版，不经 double 丢失来源或分摊末位。
+  /// 空值落「—」，不可核对的原文（如「无法确认」）原样保留。
   String _qtyTextWithUnit(String? text, String? unit) {
     final raw = text?.trim() ?? '';
     if (raw.isEmpty || raw == '—') return '—';
-    final value = double.tryParse(raw);
-    if (value == null) return raw;
-    return formatQtyWithUnit(value, unit, maxDecimals: 4);
+    final formatted = formatExactQtyWithUnit(raw, unit);
+    return formatted.isEmpty ? raw : formatted;
   }
 
   /// 按产品视图的层级连线轮换色（2026-10-10 用户口径「两个颜色换着显示，

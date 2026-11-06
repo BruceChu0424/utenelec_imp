@@ -429,6 +429,10 @@ void materialPolicyCases() {
         '100',
       );
       await _settlePreview(tester);
+      // 追加数量结束编辑时先完成真实的可用数量选择，才进入下一格改比例。
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      await _acceptAvailableQuantityChoice(tester);
       Map<String, dynamic> latestPreviewGroup() => _records(
         requests
             .lastWhere(
@@ -449,6 +453,11 @@ void materialPolicyCases() {
       await tester.pump(const Duration(milliseconds: 650));
       await _settlePreview(tester);
       expect(latestPreviewGroup()['allowedOverproductionRate'], 0.225);
+      expect(
+        find.byKey(const Key('material-aggregate-cancel-drafts')).hitTestable(),
+        findsOneWidget,
+        reason: '比例提交与可用数量选择完成后才能撤销尚未提交的数量草稿',
+      );
       await tester.tap(
         find.byKey(const Key('material-aggregate-cancel-drafts')),
       );

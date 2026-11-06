@@ -91,16 +91,6 @@ final class _MaterialAggregateTableController {
           ],
         );
 
-  /// 数量展示文本 + 单位（2026-10-10 T9：单位列退役）：原文是四位精确数量，
-  /// 只拼单位不改精度；解析不出的原文原样返回。
-  static String? _withUnit(String? text, String? unit) {
-    final raw = text?.trim() ?? '';
-    if (raw.isEmpty || raw == '—') return text;
-    final value = double.tryParse(raw);
-    if (value == null) return raw;
-    return formatQtyWithUnit(value, unit, maxDecimals: 4);
-  }
-
   Widget quantityCell(
     ThemeData theme,
     _MaterialAggregate aggregate, {
@@ -109,7 +99,10 @@ final class _MaterialAggregateTableController {
     final ordered = orderedQty(aggregate) > 0.000000001;
     // 2026-10-10 T9：单位列退役，锁定的累计已下单量内联单位（与主表同口径）。
     final unit = aggregate.unitName?.trim();
-    final displayedOrder = _withUnit(issuedText(aggregate), unit) ?? '无法确认';
+    final issued = issuedText(aggregate);
+    final displayedOrder = issued == null
+        ? '无法确认'
+        : owner._qtyTextWithUnit(issued, unit);
     final breakdown = issuedBreakdown(aggregate);
     final cellKey = ValueKey(
       'material-aggregate-${append ? 'append' : 'order'}-${aggregate.key}',
@@ -424,8 +417,8 @@ final class _MaterialAggregateTableController {
     final groups = draftGroups(draft);
     if (groups.isEmpty) return;
     if (!validText(draft.totalText)) return;
-    // 平分粒度跟着用户敲的小数位走(2026-10-06 用户口径「优先整数」)：整数
-    // 总量落整数份额，83.3334 这类服务端分摊尾巴不再层层上屏。
+    // 有限分配保留全部有效位；除不尽时要求本次明确的精度选择，
+    // 最后一来源承接精确余量，原来源事实与手输总量均不改写。
     final List<String> shares;
     try {
       shares = splitWithCurrentPrecision(draft, [

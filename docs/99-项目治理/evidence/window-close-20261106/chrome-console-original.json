@@ -1,0 +1,472 @@
+[
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "log",
+      "args": [
+        {
+          "type": "string",
+          "value": "Dart test runner browser host running"
+        }
+      ],
+      "executionContextId": 1,
+      "timestamp": 1793988550615.91,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "main",
+            "scriptId": "3",
+            "url": "http://localhost:58928/static/host.dart.js",
+            "lineNumber": 7278,
+            "columnNumber": 34
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "warning",
+      "args": [
+        {
+          "type": "string",
+          "value": "Null check operator used on a null value\nhost.dart.js 15409:12  main_closure.call$0\nhost.dart.js 4089:16   StaticClosure._rootRun\nhost.dart.js 10850:39  _CustomZone.run$1$1\nhost.dart.js 4190:88   Object.runZonedGuarded\nhost.dart.js 7282:9    main\nhost.dart.js 16464:7   <fn>\nhost.dart.js 16445:7   <fn>\nhost.dart.js 16458:5   dartProgram\nhost.dart.js 16467:3   <fn>\n"
+        }
+      ],
+      "executionContextId": 1,
+      "timestamp": 1793988550778.26,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "call$2",
+            "scriptId": "3",
+            "url": "http://localhost:58928/static/host.dart.js",
+            "lineNumber": 15644,
+            "columnNumber": 54
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "log",
+      "args": [
+        {
+          "type": "string",
+          "value": "Starting suite http://localhost:58928/features/finance/finance_chart_import_recovery_test.html"
+        }
+      ],
+      "executionContextId": 1,
+      "timestamp": 1793988550785.837,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "_connectToIframe",
+            "scriptId": "3",
+            "url": "http://localhost:58928/static/host.dart.js",
+            "lineNumber": 7305,
+            "columnNumber": 34
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "log",
+      "args": [
+        {
+          "type": "string",
+          "value": "Appended iframe with src http://localhost:58928/features/finance/finance_chart_import_recovery_test.html#%7B%22metadata%22:%7B%22testOn%22:null,%22timeout%22:%7B%22duration%22:null,%22scaleFactor%22:1%7D,%22skip%22:null,%22skipReason%22:null,%22verboseTrace%22:null,%22chainStackTraces%22:true,%22retry%22:null,%22tags%22:%5B%5D,%22onPlatform%22:%5B%5D,%22forTag%22:%7B%7D,%22languageVersionComment%22:null%7D,%22browser%22:%22chrome%22%7D"
+        }
+      ],
+      "executionContextId": 1,
+      "timestamp": 1793988550789.473,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "_connectToIframe",
+            "scriptId": "3",
+            "url": "http://localhost:58928/static/host.dart.js",
+            "lineNumber": 7315,
+            "columnNumber": 34
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "debug",
+      "args": [
+        {
+          "type": "string",
+          "value": "Injecting <script> tag. Using callback."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988551469.745,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "_loadJSEntrypoint",
+            "scriptId": "4",
+            "url": "http://localhost:58928/features/finance/flutter.js",
+            "lineNumber": 0,
+            "columnNumber": 2477
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "warning",
+      "args": [
+        {
+          "type": "string",
+          "value": "registerExtension() from dart:developer is only supported in build/run/test environments where the developer event method hooks have been set by package:dwds v11.1.0 or higher."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988563970.934,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "_registerExtension",
+            "scriptId": "12",
+            "url": "http://localhost:58928/dart_sdk.js",
+            "lineNumber": 67093,
+            "columnNumber": 16
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "warning",
+      "args": [
+        {
+          "type": "string",
+          "value": "Font manifest does not exist at `assets/FontManifest.json` - ignoring."
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988564103.384,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "DomConsole$124warn",
+            "scriptId": "12",
+            "url": "http://localhost:58928/dart_sdk.js",
+            "lineNumber": 226127,
+            "columnNumber": 17
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "log",
+      "args": [
+        {
+          "type": "string",
+          "value": "Connecting channel for suite http://localhost:58928/features/finance/finance_chart_import_recovery_test.html"
+        }
+      ],
+      "executionContextId": 1,
+      "timestamp": 1793988564411.382,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "call$1",
+            "scriptId": "3",
+            "url": "http://localhost:58928/static/host.dart.js",
+            "lineNumber": 15684,
+            "columnNumber": 38
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  unknown private upload persists only sha/name/size before dispatch, Hub lookup recovers original\n  renamed source without another upload\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988592345.885,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  apply lost success keeps original nonRFC importId, real Hub reads original receipt with write loss\n  without another mutation\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988627129.43,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  stale apply GET false never releases; cancellation stops old ID, explicit repreview creates child\n  with new current versions and no upload\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988663393.703,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  repreview lost success restores original UUID and parent through Hub, loads child and still\n  requires explicit apply\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988696691.528,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  by-sha not found never claims unsaved, later keeps private upload without a financial cancellation\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988723042.405,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  read withdrawal does not expose old import data or send another upload or application\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988747533.482,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  apply cancellation response loss is recovered by original GET and never releases the stopped ID\n  for apply\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988779457.44,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  late original apply after hard disposal cannot overtake a cancellation tombstone or republish into\n  the recovered owner\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988813563.35,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Runtime.consoleAPICalled",
+    "params": {
+      "type": "error",
+      "args": [
+        {
+          "type": "string",
+          "value": "══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown running a test:\npumpAndSettle timed out\n\nWhen the exception was thrown, this was the stack:\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/errors.dart 274:3       throw_\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 13896:85            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 589:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 48:47                                           _rootRunUnary\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 733:19                                               runUnary\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 222:18                                        handleValue\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 948:44                                        handleValueCallback\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 977:13                                        _propagateToListeners\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 720:5                                         [_completeWithValue]\nhttp://localhost:58928/dart-sdk/lib/async/future_impl.dart 804:7                                         <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 162:18                                     <fn>\nhttp://localhost:58928/packages/fake_async/fake_async.dart.js 167:40                                     flushMicrotasks\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17578:27            <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 618:19               <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 643:23               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:113                 <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 245:95                  <fn>\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 537:3                _asyncStartSync\nhttp://localhost:58928/packages/flutter_test/src/test_text_input_key_handler.dart.js 17605:22            <fn>\nhttp://localhost:58928/dart-sdk/lib/async/future.dart 287:40                                             <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 27:47                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 292:16                  [_run]\nhttp://localhost:58928/packages/stack_trace/src/stack_zone_specification.dart.js 235:71                  <fn>\nhttp://localhost:58928/dart-sdk/lib/async/zone_root.dart 35:13                                           _rootRun\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 726:19                                               run\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 625:7                                                runGuarded\nhttp://localhost:58928/dart-sdk/lib/async/zone.dart 666:23                                               <fn>\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 40:34                                  _microtaskLoop\nhttp://localhost:58928/dart-sdk/lib/async/schedule_microtask.dart 49:5                                   _startMicrotaskLoop\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/private/ddc_runtime/operations.dart 118:77  tear\nhttp://localhost:58928/dart-sdk/lib/_internal/js_dev_runtime/patch/async_patch.dart 183:69               <fn>\n\nThe test description was:\n  a successful repreview envelope with wrong lineage cannot clear its original request or enable\n  apply\n════════════════════════════════════════════════════════════════════════════════════════════════════"
+        }
+      ],
+      "executionContextId": 2,
+      "timestamp": 1793988846406.432,
+      "stackTrace": {
+        "callFrames": [
+          {
+            "functionName": "dump",
+            "scriptId": "111",
+            "url": "http://localhost:58928/packages/flutter/src/foundation/_error_dumper_web.dart.js",
+            "lineNumber": 34,
+            "columnNumber": 64
+          }
+        ]
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Log.entryAdded",
+    "params": {
+      "entry": {
+        "source": "network",
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "timestamp": 1793988550984.412,
+        "url": "http://localhost:58928/favicon.ico",
+        "networkRequestId": "46588.5"
+      }
+    }
+  },
+  {
+    "target": "B93847F067CEE7939A99867571391A75",
+    "method": "Log.entryAdded",
+    "params": {
+      "entry": {
+        "source": "network",
+        "level": "error",
+        "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "timestamp": 1793988564102.109,
+        "url": "http://localhost:58928/features/finance/assets/FontManifest.json",
+        "networkRequestId": "46588.1425"
+      }
+    }
+  }
+]

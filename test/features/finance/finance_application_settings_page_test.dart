@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
@@ -365,21 +366,32 @@ void main() {
           'finance-settings-editor-390-keyboard',
         );
       }
-      // The native scrollable dialog shares a viewport for title and fields.
-      // Input positioning may scroll the title above that viewport; returning
-      // to its origin must reveal the whole heading without clipping/overflow.
+      // The header and original input stay reachable with the keyboard open.
+      // The header close control may keep the heading in view already; both
+      // that layout and an actually scrolled heading must restore safely.
       final title = find.text('启用/关闭原申请流程');
       final titleViewport = find
           .ancestor(of: title, matching: find.byType(Scrollable))
           .first;
       final position = tester.state<ScrollableState>(titleViewport).position;
-      expect(position.pixels, greaterThan(0));
+      expect(position.pixels, greaterThanOrEqualTo(0));
+      expect(position.maxScrollExtent.isFinite, isTrue);
       position.jumpTo(0);
       await tester.pumpAndSettle();
       final titleRect = tester.getRect(title);
       final viewportRect = tester.getRect(titleViewport);
       expect(titleRect.top, greaterThanOrEqualTo(viewportRect.top));
       expect(titleRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
+      final close = find
+          .byWidgetPredicate(
+            (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+          )
+          .hitTestable();
+      expect(close, findsOneWidget);
+      final closeRect = tester.getRect(close);
+      expect(closeRect.top, greaterThanOrEqualTo(viewportRect.top));
+      expect(closeRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
+      expect(closeRect.right, lessThanOrEqualTo(viewportRect.right));
       if (capture) {
         await saveAuditScreenshot(
           tester,

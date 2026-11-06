@@ -1,0 +1,202 @@
+[
+  {
+    "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+    "owner": "_GoodsCostEditor._addPriceColumn",
+    "beforeCallback": "() => Navigator.pop(dialogContext)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(dialogContext)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('关闭'))]",
+    "beforeSha256": "3f2d89d24f7b9fa9f6c562e66e5fb46043333bd86c0695d1409882b1602d5a11"
+  },
+  {
+    "path": "lib/features/finance/pages/finance_application_settings_page.dart",
+    "owner": "_SettingsEditorState.build",
+    "beforeCallback": "() => Navigator.pop(context)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(context)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context), child: const Text('关闭'))]",
+    "beforeSha256": "a7c7d1a25872baf23416606964985ce3bed06d231b335e3b2f18c06b7a7fb00d"
+  },
+  {
+    "path": "lib/features/finance/pages/finance_application_settings_page.dart",
+    "owner": "_SettingsEditorState.build",
+    "beforeCallback": "_busy ? null : _close",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "_close",
+      "closeEnabled": "!_busy",
+      "closeTooltip": "_sent == null ? '关闭' : '稍后核对'"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_sent == null ? '关闭' : '稍后核对'))",
+    "beforeSha256": "a7c7d1a25872baf23416606964985ce3bed06d231b335e3b2f18c06b7a7fb00d"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
+    "owner": "_FinanceAccountingImportSurfaceState.build",
+    "beforeCallback": "_busy ? null : _close",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: const Text('关闭'))",
+    "beforeSha256": "bfa655abb275dab037e1c2dfe918f4e4c1beefe607f55f2e0de0610e3acf568d"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
+    "owner": "_AuxiliaryDirectoryState.build",
+    "beforeCallback": "_busy ? null : () => Navigator.pop(context)",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenDialogActions(children: [TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('关闭'))])",
+    "beforeSha256": "78b94a87e90a515bb62f617b9799f2beb5a2a41f11d8b6962dd2382a6de865f2"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_auxiliary_import_dialog.dart",
+    "owner": "_AuxiliaryImportState.build",
+    "beforeCallback": "_busy || _loading || (_unknownUpload || _unknownApply) && formDraftRecoveryId == null ? null : _close",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenDialogActions(children: [TextButton(onPressed: _busy || _loading || (_unknownUpload || _unknownApply) && formDraftRecoveryId == null ? null : _close, child: const Text('关闭'))])",
+    "beforeSha256": "d99e6b0feb7e90087da0f246ab70d999e6c56a99ba86958d27e692e27bb9e896"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_batch_recovery_panel.dart",
+    "owner": "_FinanceBatchRecoveryState.build",
+    "beforeCallback": "_busy ? null : () => widget.onFinish(null)",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : () => widget.onFinish(null), child: const Text('关闭'))",
+    "beforeSha256": "e0aeebb95276a40f47d7f5d4849d9d41ea4f97e4004cc3e3c82c059f9a894083"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+    "owner": "_FinanceChartDialogState.build",
+    "beforeCallback": "_closeDirectory",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "_closeDirectory"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: _closeDirectory, child: const Text('关闭'))]",
+    "beforeSha256": "d858e588c393e4b2130fa7537c1ce8edeed7320d30a8fc3d72dea68d84df20a5"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_dialog.dart",
+    "owner": "_FinanceChartDialogState.build",
+    "beforeCallback": "_locked ? null : _closeDirectory",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "_closeDirectory"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: _locked ? null : _closeDirectory, child: const Text('关闭'))]",
+    "beforeSha256": "d858e588c393e4b2130fa7537c1ce8edeed7320d30a8fc3d72dea68d84df20a5"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_import_workbench.dart",
+    "owner": "_ChartImportState.build",
+    "beforeCallback": "() => Navigator.pop(context, _changed)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(context, _changed)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context, _changed), child: const Text('关闭'))]",
+    "beforeSha256": "13ab09c6bf395e9c6de53ec8e55724c56287fa0362cfb2e8be3ab128869ecca0"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_import_workbench.dart",
+    "owner": "_ChartImportState.build",
+    "beforeCallback": "_busy ? null : _close",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "_close",
+      "closeTooltip": "_pending != null || _upload != null && _previewId == null ? '稍后核对' : '关闭'"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_pending != null || _upload != null && _previewId == null ? '稍后核对' : '关闭'))",
+    "beforeSha256": "13ab09c6bf395e9c6de53ec8e55724c56287fa0362cfb2e8be3ab128869ecca0"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+    "owner": "_ChartMetadataDialogState.build",
+    "beforeCallback": "() => Navigator.pop(context, false)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(context, false)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context, false), child: const Text('关闭'))]",
+    "beforeSha256": "934a43a4ef50b9aea846364fc1c47bf04992dab06d87420c970dc8f0375665a8"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_chart_metadata_dialog.dart",
+    "owner": "_ChartMetadataDialogState.build",
+    "beforeCallback": "_busy ? null : _close",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "_close",
+      "closeEnabled": "!_busy",
+      "closeTooltip": "_sent == null ? '关闭' : '稍后核对'"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_sent == null ? '关闭' : '稍后核对'))",
+    "beforeSha256": "934a43a4ef50b9aea846364fc1c47bf04992dab06d87420c970dc8f0375665a8"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_document_review_command.dart",
+    "owner": "_FinanceDocumentReviewCommandState.build",
+    "beforeCallback": "() => Navigator.pop(context)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(context)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))]",
+    "beforeSha256": "b51370390b1c5f0c6597b6d0466016b687c7112ba65101312ad5ebcfa97ff800"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_durable_command_dialog.dart",
+    "owner": "_FinanceDurableCommandDialogState.build",
+    "beforeCallback": "() => Navigator.pop(context)",
+    "headerChanges": {
+      "showCloseButton": "true",
+      "onClose": "() => Navigator.pop(context)"
+    },
+    "hasExistingSiblingHeader": false,
+    "removed": "actions: [UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context), child: const Text('关闭'))]",
+    "beforeSha256": "6547d3f893e4cc23151d1061b73b78f5818a6e4a1705b35c51d5c500df34cd8c"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
+    "owner": "_EditorState.build",
+    "beforeCallback": "_saving ? null : _close",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _saving ? null : _close, child: const Text('关闭'))",
+    "beforeSha256": "ee8637b1ff5907eaeccb427b4836dedf9411be6df5c109bb92efd1c5b804bf3a"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
+    "owner": "_MaterialDirectory.build",
+    "beforeCallback": "() => Navigator.of(context).pop(_changed)",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "TextButton(onPressed: () => Navigator.of(context).pop(_changed), child: const Text('关闭'))",
+    "beforeSha256": "81254a5e6095bd1401b4f0e4f1312e433e262a3b588b80c6f4b9c4f8650d6165"
+  },
+  {
+    "path": "lib/features/finance/widgets/finance_template_input_dialog.dart",
+    "owner": "_FinanceTemplateInputSurfaceState.build",
+    "beforeCallback": "_saving ? null : _close",
+    "headerChanges": {},
+    "hasExistingSiblingHeader": true,
+    "removed": "UtenButton(type: UtenButtonType.secondary, onPressed: _saving ? null : _close, child: const Text('关闭'))",
+    "beforeSha256": "f96d88504c8aba036757c4bc55d5a83ed1a678e28277e5674e8971fcff4eaadc"
+  }
+]

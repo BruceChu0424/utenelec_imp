@@ -1166,11 +1166,6 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
           UtenDialogActions(
             children: [
               UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: _saving ? null : _close,
-                child: const Text('关闭'),
-              ),
-              UtenButton(
                 onPressed: _saving || _loading || _error != null ? null : _save,
                 child: Text(
                   _saving

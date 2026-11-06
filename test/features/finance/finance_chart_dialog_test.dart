@@ -256,7 +256,14 @@ void main() {
       await tester.tap(find.text('确认导入科目目录'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(UtenButton, '重试原导入请求'), findsOneWidget);
-      expect(find.widgetWithText(UtenButton, '稍后核对'), findsOneWidget);
+      expect(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenCloseButton && widget.tooltip == '稍后核对',
+            )
+            .hitTestable(),
+        findsOneWidget,
+      );
       expect(find.widgetWithText(UtenButton, '确认导入科目目录'), findsNothing);
       expect(
         tester

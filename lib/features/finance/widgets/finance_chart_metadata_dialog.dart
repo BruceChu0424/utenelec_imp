@@ -418,20 +418,19 @@ class _ChartMetadataDialogState extends ConsumerState<_ChartMetadataDialog>
     final current = formDraftIdentityIsCurrent && _canRead;
     if (!current) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context, false),
         title: const Text('访问范围已变化'),
         content: const Text('原科目名称草稿已保留，请以具备公司财务读取权限的原账号重新打开。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final editable = current && _canWrite && _ready && !_busy && _sent == null;
     return withFormDraft(
       UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _close,
+        closeEnabled: !_busy,
+        closeTooltip: _sent == null ? '关闭' : '稍后核对',
         key: const Key('finance-chart-metadata-editor'),
         maxWidth: 600,
         title: UtenDialogTitleWithHint(
@@ -489,11 +488,7 @@ class _ChartMetadataDialogState extends ConsumerState<_ChartMetadataDialog>
                 if (mounted) setState(() => _recoveryMenuOpen = value);
               },
             ),
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _busy ? null : _close,
-            child: Text(_sent == null ? '关闭' : '稍后核对'),
-          ),
+
           UtenButton(
             onPressed:
                 current &&

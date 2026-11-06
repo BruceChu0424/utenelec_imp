@@ -514,14 +514,10 @@ class _FinanceDocumentReviewCommandState
     ref.watch(currentPermissionsProvider);
     if (!formDraftIdentityIsCurrent || !_read) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
         title: const Text('访问范围已变化'),
         content: const Text('原请求和草稿已保留，请恢复原身份及读取权限后核对。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return withFormDraft(

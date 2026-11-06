@@ -823,15 +823,10 @@ class _FinanceDurableCommandDialogState
     ref.watch(currentPermissionsProvider);
     if (!formDraftIdentityIsCurrent || !_canRead) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
         title: const Text('访问范围已变化'),
         content: const Text('原财务草稿与未决请求已保留，请以具备原读取权限的账号重新打开。'),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     return withFormDraft(

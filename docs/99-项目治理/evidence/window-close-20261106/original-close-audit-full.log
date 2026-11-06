@@ -1,0 +1,181 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/core/window_close_source_contract_test.dart
+00:00 +0: ordinary footer close is rejected for const Text('关闭')
+00:00 +1: ordinary footer close is rejected for const Text('Close')
+00:00 +2: ordinary footer close is rejected for const Text('닫기')
+00:00 +3: ordinary footer close is rejected for Text(l10n.clientUpdateClose)
+00:00 +4: ordinary footer close is rejected for Text(locked ? '关闭' : '取消')
+00:00 +5: ordinary footer close is rejected for Text(r('close'))
+00:00 +6: ordinary footer close is rejected for Text(l10n.releaseNotesClose)
+00:00 +7: raw constructor, raw cross icon and left close are rejected
+00:00 +8: nested dialog content is not the outer action own label
+00:00 +9: private action wrappers cannot introduce ordinary close labels
+00:00 +10: Row collection branches preserve close as the last control
+00:00 +11: centered Column close requires alignment review; right aligned passes
+00:00 +12: choice helper close requires its explicit result-preserving flag
+00:00 +13: localized acknowledgements and helper aliases cannot hide dismissers
+00:00 +14: informational helper acknowledgement needs the explicit close role
+00:00 +15: business acknowledgement requires an exact side-effect exception
+00:00 +16: an exception count cannot cover another identical raw action
+00:00 +17: unified close guards are inventoried; Cancel remains a decision
+00:00 +18: business close needs exact reviewed fingerprint and count
+00:00 +19: new raw icons cannot hide behind a filepath exemption
+00:00 +20: repository window close controls use the public source contract
+00:40 +20 -1: repository window close controls use the public source contract [E]
+  Expected: empty
+    Actual: [
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/basic_data/widgets/goods_cost_editor.dart',
+                'owner': '_GoodsCostEditor._addPriceColumn',
+                'line': 1562,
+                'fingerprint': '9b2c4457972804655ecf19b09ae3ffe85fcc68258af58bad4027f8ebd689f690',
+                'source': 'TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/pages/finance_application_settings_page.dart',
+                'owner': '_SettingsEditorState.build',
+                'line': 853,
+                'fingerprint': 'e813b670def2aeb8f87dcff0c0d1df885bb43456d0ddd9649f0adacd8c457aa5',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/pages/finance_application_settings_page.dart',
+                'owner': '_SettingsEditorState.build',
+                'line': 998,
+                'fingerprint': '4d0c877e2c79cfadb1b9a51104bc4b7a8b2c7755503d1c6e9b5ba0b8f84ae3d6',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_sent == null ? \'关闭\' : \'稍后核对\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_accounting_import_dialog.dart',
+                'owner': '_FinanceAccountingImportSurfaceState.build',
+                'line': 2218,
+                'fingerprint': 'a3ea473dd38a64cf29b92eb7a3eebbb3a3b150da5ce4ab9307b652e27d8086e7',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_auxiliary_dialog.dart',
+                'owner': '_AuxiliaryDirectoryState.build',
+                'line': 291,
+                'fingerprint': '28585d094e103e8158b0eba0197a2f7b9b4050b006c35f62cf89f06e9085f093',
+                'source': 'TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_auxiliary_import_dialog.dart',
+                'owner': '_AuxiliaryImportState.build',
+                'line': 960,
+                'fingerprint': '549e2118f4a3c14754fec4e0d8d9c62fbe6ea4ad92414c04f27c9ec39d589b7e',
+                'source': 'TextButton(onPressed: _busy || _loading || (_unknownUpload || _unknownApply) && formDraftRecoveryId == null ? null : _close, child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_batch_recovery_panel.dart',
+                'owner': '_FinanceBatchRecoveryState.build',
+                'line': 385,
+                'fingerprint': '4907a068aac6ecd60ada03840b499dc826a153c2cf6dde63c9d9c33ee0a006eb',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : () => widget.onFinish(null), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_dialog.dart',
+                'owner': '_FinanceChartDialogState.build',
+                'line': 555,
+                'fingerprint': '8fc9ae737c186eb37ecc41589342b9407226d156e8a66ae57f7a7d98d9ffa0b3',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _closeDirectory, child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_dialog.dart',
+                'owner': '_FinanceChartDialogState.build',
+                'line': 610,
+                'fingerprint': 'f5512061d456e2ac6802d3e343d0b39dfe0ef8ac08b3bcdf38c30a4f8ebc8401',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _locked ? null : _closeDirectory, child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_import_workbench.dart',
+                'owner': '_ChartImportState.build',
+                'line': 731,
+                'fingerprint': '3d2e4d81d9637109cd4c80b1be221b5025010f997fbc9e278f36b0b90e924803',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context, _changed), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_import_workbench.dart',
+                'owner': '_ChartImportState.build',
+                'line': 985,
+                'fingerprint': '0c9c296748727e0018d3637415aaf4241adea4d8786c385e3abb91d7a264b9aa',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_pending != null || _upload != null && _previewId == null ? \'稍后核对\' : \'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_metadata_dialog.dart',
+                'owner': '_ChartMetadataDialogState.build',
+                'line': 424,
+                'fingerprint': 'cb527b4bad4d63ba1859f4b7e53d533efaa09c521ca0f2ceff11c1d8440f06fa',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context, false), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_chart_metadata_dialog.dart',
+                'owner': '_ChartMetadataDialogState.build',
+                'line': 492,
+                'fingerprint': '4d0c877e2c79cfadb1b9a51104bc4b7a8b2c7755503d1c6e9b5ba0b8f84ae3d6',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _busy ? null : _close, child: Text(_sent == null ? \'关闭\' : \'稍后核对\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_document_review_command.dart',
+                'owner': '_FinanceDocumentReviewCommandState.build',
+                'line': 520,
+                'fingerprint': 'eac492f20deaf783df94f75652eac8a0bf25a57de116e8d136205087c0fbe22a',
+                'source': 'TextButton(onPressed: () => Navigator.pop(context), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_durable_command_dialog.dart',
+                'owner': '_FinanceDurableCommandDialogState.build',
+                'line': 829,
+                'fingerprint': 'e813b670def2aeb8f87dcff0c0d1df885bb43456d0ddd9649f0adacd8c457aa5',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: () => Navigator.pop(context), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_expense_analysis_dialog.dart',
+                'owner': '_EditorState.build',
+                'line': 1138,
+                'fingerprint': '67c94ab0d3a9daedd71355db01efccd96ad887df30193173dc886413033d6079',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _saving ? null : _close, child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_material_statement_dialog.dart',
+                'owner': '_MaterialDirectory.build',
+                'line': 913,
+                'fingerprint': '49f64c0ef8442cd31a0b339eb7865d45713bc11322b8212b143a26b44cd162d8',
+                'source': 'TextButton(onPressed: () => Navigator.of(context).pop(_changed), child: const Text(\'关闭\'))'
+              },
+              {
+                'kind': 'semantic-close-button',
+                'path': 'lib/features/finance/widgets/finance_template_input_dialog.dart',
+                'owner': '_FinanceTemplateInputSurfaceState.build',
+                'line': 806,
+                'fingerprint': '67c94ab0d3a9daedd71355db01efccd96ad887df30193173dc886413033d6079',
+                'source': 'UtenButton(type: UtenButtonType.secondary, onPressed: _saving ? null : _close, child: const Text(\'关闭\'))'
+              }
+            ]
+  Use the public right-side red close control or a reviewed business/clear/remove exception with exact owner, AST and count.
+  
+  package:matcher                                         expect
+  package:flutter_test/src/widget_tester.dart 473:18      expect
+  test\core\window_close_source_contract_test.dart 269:5  main.<fn>
+  
+00:40 +20 -1: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/core/window_close_source_contract_test.dart: repository window close controls use the public source contract

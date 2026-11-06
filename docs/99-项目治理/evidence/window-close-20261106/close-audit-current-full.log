@@ -1,0 +1,24 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/core/window_close_source_contract_test.dart
+00:00 +0: ordinary footer close is rejected for const Text('关闭')
+00:00 +1: ordinary footer close is rejected for const Text('Close')
+00:00 +2: ordinary footer close is rejected for const Text('닫기')
+00:00 +3: ordinary footer close is rejected for Text(l10n.clientUpdateClose)
+00:00 +4: ordinary footer close is rejected for Text(locked ? '关闭' : '取消')
+00:00 +5: ordinary footer close is rejected for Text(r('close'))
+00:00 +6: ordinary footer close is rejected for Text(l10n.releaseNotesClose)
+00:00 +7: raw constructor, raw cross icon and left close are rejected
+00:00 +8: nested dialog content is not the outer action own label
+00:00 +9: private action wrappers cannot introduce ordinary close labels
+00:00 +10: Row collection branches preserve close as the last control
+00:00 +11: centered Column close requires alignment review; right aligned passes
+00:00 +12: choice helper close requires its explicit result-preserving flag
+00:00 +13: localized acknowledgements and helper aliases cannot hide dismissers
+00:00 +14: informational helper acknowledgement needs the explicit close role
+00:00 +15: business acknowledgement requires an exact side-effect exception
+00:00 +16: an exception count cannot cover another identical raw action
+00:00 +17: unified close guards are inventoried; Cancel remains a decision
+00:00 +18: business close needs exact reviewed fingerprint and count
+00:00 +19: new raw icons cannot hide behind a filepath exemption
+00:00 +20: repository window close controls use the public source contract
+00:11 +21: All tests passed!

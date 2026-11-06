@@ -1,0 +1,89 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_chart_import_recovery_test.dart
+00:00 +0: test\features\finance\finance_chart_import_recovery_test.dart: unknown private upload persists only sha/name/size before dispatch, Hub lookup recovers original renamed source without another upload
+00:27 +0 -1: test\features\finance\finance_chart_import_recovery_test.dart: unknown private upload persists only sha/name/size before dispatch, Hub lookup recovers original renamed source without another upload [E]
+  Test failed. See exception logs above.
+  The test description was: unknown private upload persists only sha/name/size before dispatch, Hub lookup recovers original renamed source without another upload
+  
+00:27 +0 -1: test\features\finance\finance_chart_import_recovery_test.dart: apply lost success keeps original nonRFC importId, real Hub reads original receipt with write loss without another mutation
+01:02 +0 -2: test\features\finance\finance_chart_import_recovery_test.dart: apply lost success keeps original nonRFC importId, real Hub reads original receipt with write loss without another mutation [E]
+  Test failed. See exception logs above.
+  The test description was: apply lost success keeps original nonRFC importId, real Hub reads original receipt with write loss without another mutation
+  
+01:02 +0 -2: test\features\finance\finance_chart_import_recovery_test.dart: stale apply GET false never releases; cancellation stops old ID, explicit repreview creates child with new current versions and no upload
+01:38 +0 -3: test\features\finance\finance_chart_import_recovery_test.dart: stale apply GET false never releases; cancellation stops old ID, explicit repreview creates child with new current versions and no upload [E]
+  Test failed. See exception logs above.
+  The test description was: stale apply GET false never releases; cancellation stops old ID, explicit repreview creates child with new current versions and no upload
+  
+01:38 +0 -3: test\features\finance\finance_chart_import_recovery_test.dart: repreview lost success restores original UUID and parent through Hub, loads child and still requires explicit apply
+02:12 +0 -4: test\features\finance\finance_chart_import_recovery_test.dart: repreview lost success restores original UUID and parent through Hub, loads child and still requires explicit apply [E]
+  Test failed. See exception logs above.
+  The test description was: repreview lost success restores original UUID and parent through Hub, loads child and still requires explicit apply
+  
+02:12 +0 -4: test\features\finance\finance_chart_import_recovery_test.dart: by-sha not found never claims unsaved, later keeps private upload without a financial cancellation
+02:38 +0 -5: test\features\finance\finance_chart_import_recovery_test.dart: by-sha not found never claims unsaved, later keeps private upload without a financial cancellation [E]
+  Test failed. See exception logs above.
+  The test description was: by-sha not found never claims unsaved, later keeps private upload without a financial cancellation
+  
+02:38 +0 -5: test\features\finance\finance_chart_import_recovery_test.dart: read withdrawal does not expose old import data or send another upload or application
+03:03 +0 -6: test\features\finance\finance_chart_import_recovery_test.dart: read withdrawal does not expose old import data or send another upload or application [E]
+  Test failed. See exception logs above.
+  The test description was: read withdrawal does not expose old import data or send another upload or application
+  
+03:03 +0 -6: test\features\finance\finance_chart_import_recovery_test.dart: apply cancellation response loss is recovered by original GET and never releases the stopped ID for apply
+03:34 +0 -7: test\features\finance\finance_chart_import_recovery_test.dart: apply cancellation response loss is recovered by original GET and never releases the stopped ID for apply [E]
+  Test failed. See exception logs above.
+  The test description was: apply cancellation response loss is recovered by original GET and never releases the stopped ID for apply
+  
+03:34 +0 -7: test\features\finance\finance_chart_import_recovery_test.dart: late original apply after hard disposal cannot overtake a cancellation tombstone or republish into the recovered owner
+04:09 +0 -8: test\features\finance\finance_chart_import_recovery_test.dart: late original apply after hard disposal cannot overtake a cancellation tombstone or republish into the recovered owner [E]
+  Test failed. See exception logs above.
+  The test description was: late original apply after hard disposal cannot overtake a cancellation tombstone or republish into the recovered owner
+  
+04:09 +0 -8: test\features\finance\finance_chart_import_recovery_test.dart: a successful repreview envelope with wrong lineage cannot clear its original request or enable apply
+04:41 +0 -9: test\features\finance\finance_chart_import_recovery_test.dart: a successful repreview envelope with wrong lineage cannot clear its original request or enable apply [E]
+  Test failed. See exception logs above.
+  The test description was: a successful repreview envelope with wrong lineage cannot clear its original request or enable apply
+  
+04:41 +0 -9: test\features\finance\finance_chart_import_recovery_test.dart: narrow enlarged original preview and original request actions remain reachable
+05:09 +0 -10: test\features\finance\finance_chart_import_recovery_test.dart: narrow enlarged original preview and original request actions remain reachable [E]
+  Test failed. See exception logs above.
+  The test description was: narrow enlarged original preview and original request actions remain reachable
+  
+05:09 +0 -10: loading D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/features/finance/finance_chart_metadata_recovery_test.dart
+05:38 +0 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: fresh conflict and missing receipt keep the original metadata frozen until cancellation proof, current single-account review and explicit new save
+05:48 +1 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: metadata cancellation remains readable after write loss and never permits a new PUT
+05:50 +2 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: metadata later-check exit retains its unknown original request without another write
+05:52 +3 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: hard reopen through the real financial hub replays the original metadata body and version after another edit
+05:55 +4 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: an unfinished name draft reopens without a PUT or replacing its original version
+05:57 +5 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: losing write authority keeps the original receipt recovery available and never sends another PUT
+05:59 +6 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: a actor mismatch cannot finish or unfreeze the original metadata request
+06:01 +7 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: a code mismatch cannot finish or unfreeze the original metadata request
+06:03 +8 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: a request mismatch cannot finish or unfreeze the original metadata request
+06:04 +9 -10: test\features\finance\finance_chart_metadata_recovery_test.dart: a name mismatch cannot finish or unfreeze the original metadata request
+06:06 +10 -10: loading D:/Projects/uten_imp_worktrees/ci-window-close-20261106/test/components/uten_close_button_test.dart
+06:31 +10 -10: test\components\uten_close_button_test.dart: android dark=false keeps the same close contract
+06:32 +11 -10: test\components\uten_close_button_test.dart: android dark=true keeps the same close contract
+06:32 +12 -10: test\components\uten_close_button_test.dart: fuchsia dark=false keeps the same close contract
+06:32 +13 -10: test\components\uten_close_button_test.dart: fuchsia dark=true keeps the same close contract
+06:32 +14 -10: test\components\uten_close_button_test.dart: iOS dark=false keeps the same close contract
+06:33 +15 -10: test\components\uten_close_button_test.dart: iOS dark=true keeps the same close contract
+06:33 +16 -10: test\components\uten_close_button_test.dart: linux dark=false keeps the same close contract
+06:33 +17 -10: test\components\uten_close_button_test.dart: linux dark=true keeps the same close contract
+06:33 +18 -10: test\components\uten_close_button_test.dart: macOS dark=false keeps the same close contract
+06:33 +19 -10: test\components\uten_close_button_test.dart: macOS dark=true keeps the same close contract
+06:33 +20 -10: test\components\uten_close_button_test.dart: windows dark=false keeps the same close contract
+06:34 +21 -10: test\components\uten_close_button_test.dart: windows dark=true keeps the same close contract
+06:34 +22 -10: test\components\uten_close_button_test.dart: keyboard focus is visible and activates the supplied callback
+06:34 +23 -10: test\components\uten_close_button_test.dart: busy owners can disable closing without a navigation fallback
+06:34 +24 -10: test\components\uten_close_button_test.dart: async close confirmation accepts one activation at a time
+06:34 +25 -10: test\components\uten_close_button_test.dart: native strip preserves login geometry and control roles
+06:35 +26 -10: test\components\uten_close_button_test.dart: narrow web layouts retain touch-sized controls
+06:35 +27 -10: Some tests failed.
+
+Failing tests:
+  test\features\finance\finance_chart_import_recovery_test.dart: a successful repreview envelope with wrong lineage cannot clear its original request or enable apply
+  test\features\finance\finance_chart_import_recovery_test.dart: apply cancellation response loss is recovered by original GET and never releases the stopped ID for apply
+  test\features\finance\finance_chart_import_recovery_test.dart: apply lost success keeps original nonRFC importId, real Hub reads original receipt with write loss without another mutation
+  test\features\finance\finance_chart_import_recovery_test.dart: by-sha not found never claims unsaved, later keeps private upload without a financial cancellation
+  ... and 6 more

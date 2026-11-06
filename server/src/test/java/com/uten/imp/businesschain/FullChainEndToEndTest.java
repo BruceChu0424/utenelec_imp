@@ -11842,11 +11842,31 @@ class FullChainEndToEndTest {
                 .compareTo(new BigDecimal("120")),"仓里剩的直属料12仍按原价120");
         UUID originalReceiptItem=jdbc.queryForObject("select id from subcontract_receipt_items where receipt_id=?",UUID.class,receiptId);
         assertEquals("SUBCONTRACT_RECEIPT_ITEM",strFor("select source_kind from stock_value_production_cost_objects where execution_segment_id=?",originalReceiptItem));
-        assertEquals("FROZEN_BOM_ESTIMATE",strFor("select consumption_basis from subcontract_receipt_material_consumptions where receipt_item_id=?",originalReceiptItem),
-                "ADR-143 §三.7: 领料制回厂按冻结单耗逐种核销直属料");
+        assertEquals(2,jdbc.queryForObject("select material_consumption_version from subcontract_receipt_items where id=?",Integer.class,originalReceiptItem));
+        assertEquals("FROZEN_BASE_BOM_ACTUAL",strFor("select consumption_basis from subcontract_receipt_material_consumptions where receipt_item_id=?",originalReceiptItem),
+                "V2 新回厂按冻结基本单耗逐种核销真实8个直属料；历史V1不在本场景重写");
         // 直属料核销后的价值走直属料自己的价值池, 全部结转进委外件, 不在 COST_WIP 留余额。
         assertEquals(0,bigDecimalFor("select coalesce(sum(n.owned_value_local),0) from stock_value_nodes n join stock_value_pools p on p.id=n.pool_id where p.goods_id=? and n.owner_kind='COST_WIP'",material).signum());
-        if(reverseStored==0)return;
+        if(reverseStored==0){
+            if(!reviseOrder){
+                loginAs(w.superAdminUserId());
+                assertFalse(jdbc.queryForObject("select is_closed from subcontract_orders where id=?",Boolean.class,orderId));
+                // The first four boxes used all eight supplied units, but six
+                // boxes remain authorized. The same expected-work identity must
+                // become actionable when a later real issue supplies them.
+                String bill=strFor("select bill_no from subcontract_orders where id=?",orderId);
+                assertTrue(arrivalControl.expectations(1,50,"SUBCONTRACT",bill).getItems().isEmpty());
+                UUID secondIssue=submitSubcontractDraw(itemId,new BigDecimal("6"),"sc-qty-next-draw-"+itemId).getFirst();
+                subcontractMaterialIssueService.approve(secondIssue);
+                assertEquals("OPEN",strFor("select status from inbound_expectations where order_type='SUBCONTRACT' and order_id=?",orderId));
+                var next=arrivalControl.expectations(1,50,"SUBCONTRACT",bill);
+                assertEquals(1,next.getItems().size());
+                assertEquals(orderId,next.getItems().getFirst().orderId());
+                assertTrue(next.getItems().getFirst().allowedActions().contains("CREATE_SUBCONTRACT_RECEIPT"));
+                assertEquals(0,next.getItems().getFirst().remainingQty().compareTo(new BigDecimal("6")));
+            }
+            return;
+        }
         loginAs(w.superAdminUserId());
         if(reverseStored==2){
             var shipmentRequest=directCustomerShipmentRequest(w,"FREE","1");

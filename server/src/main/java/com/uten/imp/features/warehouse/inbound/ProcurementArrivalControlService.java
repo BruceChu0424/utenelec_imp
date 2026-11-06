@@ -151,17 +151,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         // bounds. Neither is an actual receipt or a loss deduction.
         return """
                 COALESCE((SELECT LEAST(
-                    GREATEST(fn_subcontract_normal_receipt_limit(supplied_item.id)
-                        + COALESCE(supplied_item.arrival_overage_posted_qty,0)
-                        + COALESCE(supplied_item.returned_qty,0)
-                        + COALESCE((SELECT SUM(rejection.failed_qty)
-                            FROM procurement_iqc_rejection_cases rejection
-                            WHERE rejection.receipt_type='SUBCONTRACT'
-                              AND rejection.order_item_id=supplied_item.id AND NOT rejection.is_deleted
-                              AND rejection.return_recorded_at IS NOT NULL
-                              AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
-                        - COALESCE(supplied_item.received_qty,0)
-                        - fn_subcontract_settled_loss_qty(supplied_item.id),0),
+                    %2$s,
                     GREATEST(fn_subcontract_returnable_qty(supplied_item.id)
                         + COALESCE(supplied_item.arrival_overage_posted_qty,0)
                         + COALESCE((SELECT SUM(rejection.failed_qty)
@@ -175,7 +165,33 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     FROM subcontract_order_items supplied_item
                     WHERE supplied_item.id=%1$s.order_item_id AND NOT supplied_item.is_deleted),
                   GREATEST(%1$s.ordered_qty-%1$s.accepted_qty,0))
-                """.formatted(itemAlias);
+                """.formatted(itemAlias, subcontractNormalRemainingQty("supplied_item"));
+    }
+
+    /** Outstanding receipt authority survives a temporary shortage of supplied material. */
+    private static String subcontractNormalRemainingQty(String orderItemAlias) {
+        return """
+                GREATEST(fn_subcontract_normal_receipt_limit(%1$s.id)
+                    + COALESCE(%1$s.arrival_overage_posted_qty,0)
+                    + COALESCE(%1$s.returned_qty,0)
+                    + COALESCE((SELECT SUM(rejection.failed_qty)
+                        FROM procurement_iqc_rejection_cases rejection
+                        WHERE rejection.receipt_type='SUBCONTRACT'
+                          AND rejection.order_item_id=%1$s.id AND NOT rejection.is_deleted
+                          AND rejection.return_recorded_at IS NOT NULL
+                          AND rejection.status IN('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')),0)
+                    - COALESCE(%1$s.received_qty,0)
+                    - fn_subcontract_settled_loss_qty(%1$s.id),0)
+                """.formatted(orderItemAlias);
+    }
+
+    /** Lifecycle of the expected work, independent of its currently executable material capacity. */
+    private static String subcontractExpectationOutstandingQty(String itemAlias) {
+        return """
+                COALESCE((SELECT (%2$s) * source.unit_rate / NULLIF(%1$s.unit_rate,0)
+                    FROM subcontract_order_items source
+                    WHERE source.id=%1$s.order_item_id AND NOT source.is_deleted),0)
+                """.formatted(itemAlias, subcontractNormalRemainingQty("source"));
     }
 
     /** The original finished target in the expectation's frozen unit, independent of approved public excess. */
@@ -662,7 +678,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND item.order_item_id IN (%s)
                   )
                 """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
-                                ? "(" + currentReceivableQty("item") + ") > 0"
+                                ? "(" + subcontractExpectationOutstandingQty("item") + ") > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", placeholders),
                 prepend(orderType, orderItemIds));
         if (SUBCONTRACT.equals(orderType) && chainNotice != null) {
@@ -3091,7 +3107,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         AND receipt_item.receipt_id = ?
                   )
                 """.formatted(terminatedOrder("expectation"), SUBCONTRACT.equals(orderType)
-                                ? "(" + currentReceivableQty("item") + ") > 0"
+                                ? "(" + subcontractExpectationOutstandingQty("item") + ") > 0"
                                 : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", receiptItemTable), orderType, receiptId);
         // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」
         // 行动卡；订单红冲路径置 CANCELED 时同样撤回（见 cancelForOrderReversal

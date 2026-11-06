@@ -71,8 +71,12 @@ class GlPostingLegacyCashScopePostgresTest {
                 assertThat(row.get("styleCode")).isEqualTo("GL-NATIVE-COST");
                 assertThat((BigDecimal)row.get("debit")).isEqualByComparingTo("7");
             });
-            BigDecimal debit=report.rows().stream().filter(row->"DETAIL".equals(row.get("__rowKind"))).map(row->(BigDecimal)row.get("debit")).reduce(BigDecimal.ZERO,BigDecimal::add);
-            BigDecimal credit=report.rows().stream().filter(row->"DETAIL".equals(row.get("__rowKind"))).map(row->(BigDecimal)row.get("credit")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            // Original-sheet subtotal/currency/total rows describe the same facts again.
+            // Reconcile only detail, retaining every rendered summary row in the report.
+            var detail=report.rows().stream().filter(row->"DETAIL".equals(row.get("__rowKind"))).toList();
+            assertThat(detail).isNotEmpty();
+            BigDecimal debit=detail.stream().map(row->(BigDecimal)row.get("debit")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal credit=detail.stream().map(row->(BigDecimal)row.get("credit")).reduce(BigDecimal.ZERO,BigDecimal::add);
             assertThat(debit).isEqualByComparingTo("7");
             assertThat(debit).isEqualByComparingTo(credit);
         }

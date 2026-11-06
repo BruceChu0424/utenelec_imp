@@ -120,7 +120,7 @@ public class ProductionFqcInspectionService
                 SELECT 'fqc:'||q.id::text AS identity,'FQC'::text AS kind,coalesce(q.report_no,q.id::text) AS bill_no,
                        '无检查单 · 计划 '||coalesce(q.plan_no,'—') AS party,coalesce(q.goods_name,'—') AS goods,coalesce(q.goods_code,'—') AS goods_code,
                        coalesce(q.color_name,'—') AS color_name,coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place,'—') AS place,1 AS item_count,
-                       concat_ws(' ',rtrim(rtrim(round(q.reported_qty-q.passed_qty-q.failed_qty,4)::text,'0'),'.'),nullif(q.unit_name,'')) AS pending_qty,
+                       concat_ws(' ',trim_scale(q.reported_qty-q.passed_qty-q.failed_qty)::text,nullif(q.unit_name,'')) AS pending_qty,
                        q.created_at AS entered_at,q.status AS status_code,q.created_at AS sequence_at,ARRAY[q.goods_name]::text[] AS goods_names FROM (
                 """+looseSource+") q";
         return List.of(new com.uten.imp.application.port.QualityPendingSourcePort.Plan("FQC_SHEET",sheetPlan,pendingBindings(sheets)),

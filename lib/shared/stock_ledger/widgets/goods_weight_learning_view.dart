@@ -763,10 +763,12 @@ class _GoodsWeightLearningViewState
         columnSearchEnabled: true,
         sortable: true,
         info: '按百分比数值检索，例如 >5 表示偏差大于 5%。',
-        value: (o) =>
-            o.deviationPct == null ? '' : formatSignedPct(o.deviationPct!),
+        exactValueOf: (o) => o.deviationPctText,
+        value: (o) => o.deviationPctText == null
+            ? ''
+            : formatSignedPct(o.deviationPctText!),
         cellBuilder: (_, o) {
-          final pct = o.deviationPct;
+          final pct = o.deviationPctText;
           if (pct == null) return const Text('');
           final color = weightAlertColor(theme, o.alertLevel);
           return Text(

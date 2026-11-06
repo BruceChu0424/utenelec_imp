@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -64,20 +65,11 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
     static void fixture() {
         dataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "production_material_analysis_materials");
         jdbc.execute("""
-                CREATE TABLE production_material_analysis_materials(
-                  id uuid PRIMARY KEY,analysis_id uuid NOT NULL,analysis_item_id uuid NOT NULL,node_key varchar NOT NULL,
-                  goods_id uuid,color_id uuid,unit_id uuid,parent_node_key varchar,depth integer,
-                  confirmed_route varchar,route_confirmed_at timestamptz,created_at timestamptz DEFAULT now(),
-                  active boolean NOT NULL DEFAULT TRUE,
-                  required_qty numeric NOT NULL DEFAULT 0,allocated_available_qty numeric NOT NULL DEFAULT 0,
-                  allocated_start_qty numeric NOT NULL DEFAULT 0,allocated_finish_qty numeric NOT NULL DEFAULT 0,
-                  allocated_ship_qty numeric NOT NULL DEFAULT 0,shortage_qty numeric NOT NULL DEFAULT 0,
-                  lower_level_pending boolean NOT NULL DEFAULT FALSE,available_qty numeric NOT NULL DEFAULT 0,
-                  reserved_qty numeric NOT NULL DEFAULT 0,safety_stock_qty numeric NOT NULL DEFAULT 0,
-                  inbound_qty numeric NOT NULL DEFAULT 0,expected_ready_date date,updated_at timestamptz,updated_by uuid,
-                  design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric,
-                  UNIQUE(analysis_id,id),UNIQUE(analysis_item_id,node_key))
+                ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id), ADD UNIQUE(analysis_id,id), ADD UNIQUE(analysis_item_id,node_key);
+                ALTER TABLE production_material_analysis_materials ALTER COLUMN analysis_id SET NOT NULL, ALTER COLUMN analysis_item_id SET NOT NULL, ALTER COLUMN node_key SET NOT NULL, ALTER COLUMN active SET NOT NULL, ALTER COLUMN required_qty SET NOT NULL, ALTER COLUMN allocated_available_qty SET NOT NULL, ALTER COLUMN allocated_start_qty SET NOT NULL, ALTER COLUMN allocated_finish_qty SET NOT NULL, ALTER COLUMN allocated_ship_qty SET NOT NULL, ALTER COLUMN shortage_qty SET NOT NULL, ALTER COLUMN lower_level_pending SET NOT NULL, ALTER COLUMN available_qty SET NOT NULL, ALTER COLUMN reserved_qty SET NOT NULL, ALTER COLUMN safety_stock_qty SET NOT NULL, ALTER COLUMN inbound_qty SET NOT NULL, ALTER COLUMN usage_basis SET NOT NULL;
                 """);
         for (String definition : List.of(
                 "route_history ON " + TABLE + "(goods_id,color_id,unit_id,route_confirmed_at DESC,id) WHERE confirmed_route IS NOT NULL",
@@ -294,9 +286,9 @@ class MaterialAnalysisAllocationSnapshotPostgresTest {
 
     private static String seedSql() {
         return """
-                INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,goods_id,unit_id,depth)
+                INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,node_key,goods_id,unit_id,depth,active,required_qty,allocated_available_qty,allocated_start_qty,allocated_finish_qty,allocated_ship_qty,shortage_qty,lower_level_pending,available_qty,reserved_qty,safety_stock_qty,inbound_qty,usage_basis,created_at,updated_at,updated_by)
                 SELECT md5(?||'-node-'||i)::uuid,?,md5(?||'-item-'||(i/98))::uuid,
-                       'root/'||(i%98),md5('goods-'||i)::uuid,md5('unit')::uuid,1
+                       'root/'||(i%98),md5('goods-'||i)::uuid,md5('unit')::uuid,1,TRUE,0,0,0,0,0,0,FALSE,0,0,0,0,'DESIGN',now(),NULL,NULL
                 FROM generate_series(0,?-1)g(i)
                 """;
     }

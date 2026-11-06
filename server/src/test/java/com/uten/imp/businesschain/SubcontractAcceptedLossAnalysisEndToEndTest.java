@@ -43,6 +43,14 @@ import static org.junit.jupiter.api.Assertions.assertAll;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class SubcontractAcceptedLossAnalysisEndToEndTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "subcontract.shortfall.percent", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
     }
@@ -103,6 +111,8 @@ class SubcontractAcceptedLossAnalysisEndToEndTest {
                 "loss-analysis-keeper-"+UUID.randomUUID().toString().substring(0,8));
         ReflectionTestUtils.invokeMethod(inbound,"stockIn",keeper,received.receiptId(),pass,"loss-analysis-stock-"+UUID.randomUUID(),w);
         h.fixture.loginAs(w.superAdminUserId());
+        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
+                h.db,List.of(c.common(),c.child(),c.material()));
         // New normal-loss supply must never silently settle finished shortfall.
         amount("0",h.db.queryForObject("SELECT fn_subcontract_settled_loss_qty(?)",BigDecimal.class,item));
         UUID shortCase=h.db.queryForObject("""
@@ -120,6 +130,27 @@ class SubcontractAcceptedLossAnalysisEndToEndTest {
         UUID action=h.db.queryForObject("SELECT action_id FROM preplan_aggregate_batches WHERE id=?",UUID.class,batch.batchId());
         amount(receivedQty,h.db.queryForObject("SELECT fn_preplan_action_received_qty(?)",BigDecimal.class,action));
         assertAll("Every analysis phase preserves actual receipts and exact private demand",analysisChecks);
+        assertFinalLossSource(c,shortCase);
+    }
+
+    private void assertFinalLossSource(AggregateMaterialOrderEndToEndTest.Case c,UUID shortCase) {
+        String sql="""
+                SELECT line.case_id,line.normal_value_node_id,line.excess_value_node_id,
+                       line.loss_book_value_local,line.valuation_status
+                FROM subcontract_loss_case_lines line JOIN subcontract_loss_cases loss ON loss.id=line.case_id
+                WHERE loss.waste_id=(SELECT waste_id FROM subcontract_short_delivery_cases WHERE id=?)
+                """;
+        var original=h.db.queryForMap(sql,shortCase);
+        assertEquals("MISSING_COST",original.get("valuation_status"),
+                "A queued final cost revision must not freeze the earlier availability as VALUED");
+        amount("0",(BigDecimal)original.get("loss_book_value_local"));
+        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
+                h.db,List.of(c.common(),c.child(),c.material()));
+        assertEquals(original,h.db.queryForMap(sql,shortCase),"Settling work cannot replace original loss interval references");
+        var detail=beans.getBean(com.uten.imp.features.finance.payables.SubcontractLossClaimService.class)
+                .detail((UUID)original.get("case_id"));
+        assertEquals("VALUED",detail.lines().getFirst().valuationStatus());
+        amount("0",new BigDecimal(detail.lines().getFirst().lossBookValueLocal()));
     }
 
     private void assertAnalysis(AggregateMaterialOrderEndToEndTest.Case c,String fulfilled,String childRequirement,String remaining) {

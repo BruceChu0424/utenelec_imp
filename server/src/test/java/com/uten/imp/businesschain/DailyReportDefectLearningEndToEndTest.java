@@ -124,7 +124,7 @@ class DailyReportDefectLearningEndToEndTest {
         qty("3",db.queryForObject("SELECT total_defect_qty FROM goods_bom_learning_profiles WHERE goods_id=?",BigDecimal.class,product));
 
         // Arrival, FQC and the finished receipt only ever carry the good pieces.
-        for(UUID report:List.of(firstReport,lastReport))invoke(fixture,"finishInbound",task,report);
+        for(UUID report:List.of(firstReport,lastReport))invoke(fixture,"finishInbound",task,report,true);
         qty("4",inspectedQty(firstItem.getId()));qty("6",inspectedQty(lastItem.getId()));
         qty("10",planQuantity(planItem,"iqty"));
         qty("10",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,product));

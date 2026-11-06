@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension;
 import com.uten.imp.application.concurrency.FulfillmentSourceConflictException;
@@ -39,11 +40,16 @@ class SalesDeliveryUpdateFootprintPostgresTest {
     static FulfillmentInventoryMutationAdapter inventory;
     @BeforeAll static void start() {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());db=new JdbcTemplate(dataSource);
-        db.execute("CREATE TABLE sales_orders(id uuid PRIMARY KEY)");
-        db.execute("CREATE TABLE sales_order_items(id uuid PRIMARY KEY,order_id uuid,goods_id uuid,color_id uuid,is_deleted boolean DEFAULT FALSE,delivery_plan jsonb DEFAULT '{\"mode\":\"ASSEMBLED\",\"processes\":[]}',delivery_bom_snapshot jsonb)");
-        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,color_id uuid,unit_id uuid,is_deleted boolean DEFAULT FALSE,auto_created boolean DEFAULT FALSE,status text DEFAULT '使用',issue_method text DEFAULT 'PER_ORDER')");
-        db.execute("CREATE TABLE goods_bom_items(id uuid PRIMARY KEY,goods_id uuid,component_goods_id uuid,color_id uuid,qty numeric DEFAULT 1,consumption_basis text DEFAULT 'PER_UNIT',basis_output_qty numeric DEFAULT 1,allow_partial_package boolean DEFAULT TRUE,is_deleted boolean DEFAULT FALSE)");
-        db.execute("CREATE TABLE goods_bom_delivery_rules(bom_edge_id uuid PRIMARY KEY,mandatory_assembly boolean DEFAULT FALSE,material_role text DEFAULT 'PART',required_operations jsonb DEFAULT '[]')");
+        // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
+        MigratedProjectionSchema.createCurrentColumns(db,
+                "sales_orders", "sales_order_items", "goods", "goods_bom_items", "goods_bom_delivery_rules");
+        db.execute("""
+                ALTER TABLE sales_orders ADD PRIMARY KEY (id);
+                ALTER TABLE sales_order_items ADD PRIMARY KEY (id);
+                ALTER TABLE goods ADD PRIMARY KEY (id);
+                ALTER TABLE goods_bom_items ADD PRIMARY KEY (id);
+                ALTER TABLE goods_bom_delivery_rules ADD PRIMARY KEY (bom_edge_id);
+                """);
         var bean=new LocalContainerEntityManagerFactoryBean();bean.setDataSource(dataSource);bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         bean.setPackagesToScan("com.uten.imp.features.sales.order");var properties=new Properties();properties.setProperty("hibernate.hbm2ddl.auto","none");
         bean.setJpaProperties(properties);bean.afterPropertiesSet();factory=bean.getObject();em=SharedEntityManagerCreator.createSharedEntityManager(factory);
@@ -60,8 +66,8 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         UUID order=UUID.randomUUID(),item=UUID.randomUUID(),root=UUID.randomUUID(),child=UUID.randomUUID(),edge=UUID.randomUUID();
         db.update("INSERT INTO sales_orders(id) VALUES(?)",order);
         db.update("INSERT INTO goods(id) VALUES(?),(?)",root,child);
-        db.update("INSERT INTO sales_order_items(id,order_id,goods_id) VALUES(?,?,?)",item,order,root);
-        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?)",edge,root,child);
+        db.update("INSERT INTO sales_order_items(id,order_id,goods_id,delivery_plan) VALUES(?,?,?,'{\"mode\":\"ASSEMBLED\",\"processes\":[]}')",item,order,root);
+        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,consumption_basis,basis_output_qty,allow_partial_package) VALUES(?,?,?,1,'PER_UNIT',1,true)",edge,root,child);
         return new World(order,item,root,child,edge);
     }
     private SalesMutationFootprintService service(
@@ -128,7 +134,7 @@ class SalesDeliveryUpdateFootprintPostgresTest {
         var w=world();UUID periodic=UUID.randomUUID(),descendant=UUID.randomUUID(),historical=UUID.randomUUID();
         UUID periodicEdge=UUID.randomUUID(),nestedEdge=UUID.randomUUID();
         db.update("INSERT INTO goods(id,issue_method) VALUES(?,'PERIODIC'),(?,'PER_ORDER'),(?,'PERIODIC')",periodic,descendant,historical);
-        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id) VALUES(?,?,?),(?,?,?)",
+        db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,consumption_basis,basis_output_qty,allow_partial_package) VALUES(?,?,?,1,'PER_UNIT',1,true),(?,?,?,1,'PER_UNIT',1,true)",
                 periodicEdge,w.root(),periodic,nestedEdge,periodic,descendant);
         var taken=new AtomicReference<Set<InventoryDimension>>();var sales=service(taken,null);
         transactions.executeWithoutResult(tx->sales.lockOrderUpdate(w.order(),List.of(new SalesMutationFootprintService.ProposedOrderLine(w.root(),null,false))));

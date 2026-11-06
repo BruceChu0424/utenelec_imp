@@ -280,32 +280,21 @@ class ExpenseClaimFullchainMigrationPostgresTest {
     }
 
     // Fixed fixture of the observed pre-Flyway invoice table, independent of the repaired migration text.
-    private static final String INVOICE_TABLE_DDL = historicalInvoiceTable();
+    private static final String INVOICE_TABLE_DDL = historicalTable("expense_claim_invoices_pre_v608.sql");
 
-    private static String historicalInvoiceTable() {
+    private static String historicalTable(String name) {
         try {
             return new org.springframework.core.io.ClassPathResource(
-                    "migration-fixtures/expense_claim_invoices_pre_v608.sql")
+                    "migration-fixtures/"+name)
                     .getContentAsString(StandardCharsets.UTF_8);
         } catch (java.io.IOException failure) {
             throw new java.io.UncheckedIOException(failure);
         }
     }
 
-    private static final String EVENT_TABLE_DDL = """
-            CREATE TABLE expense_claim_events (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                claim_id UUID NOT NULL REFERENCES expense_claims(id) ON DELETE CASCADE,
-                event_type TEXT NOT NULL,actor_employee_id UUID REFERENCES employees(id) ON DELETE RESTRICT,
-                actor_name_snapshot TEXT NOT NULL,remark TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,created_by UUID,updated_by UUID,
-                CONSTRAINT expense_claim_events_type_chk CHECK(event_type IN
-                    ('CREATED','SUBMITTED','WITHDRAWN','EDITED','APPROVED','REJECTED','PAID')),
-                CONSTRAINT expense_claim_events_text_len_chk CHECK(char_length(actor_name_snapshot) BETWEEN 1 AND 100
-                    AND (remark IS NULL OR char_length(remark)<=1000))
-            )
-            """;
+    // Independent observed pre-V608 table, byte-identical to the former Java literal.
+    // This is real historical upgrade evidence, never a current-schema query projection.
+    private static final String EVENT_TABLE_DDL = historicalTable("expense_claim_events_pre_v608.sql");
 
     private static PostgreSQLContainer database() {
         return new PostgreSQLContainer("postgres:16-alpine")

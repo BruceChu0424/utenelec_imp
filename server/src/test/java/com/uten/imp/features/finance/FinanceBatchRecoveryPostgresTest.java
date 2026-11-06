@@ -60,13 +60,13 @@ class FinanceBatchRecoveryPostgresTest {
 
     @BeforeAll static void start()throws Exception {
         PG.start();source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());db=new JdbcTemplate(source);
-        migrate("1074");actor=user("batch-owner");otherActor=user("batch-other");
+        migrate("1079");actor=user("batch-owner");otherActor=user("batch-other");
         legacyKey="legacy-"+UUID.randomUUID();legacyCommand=command(legacyKey,"legacy");
         String hash=ImmutableDocumentStore.digest(("expenses:"+FinanceBatchEntryService.canonical(JSON.valueToTree(legacyCommand.documents()))).getBytes(StandardCharsets.UTF_8));
         String result="{\"items\":[{\"id\":\""+UUID.randomUUID()+"\",\"status\":0,\"items\":[],\"amountLocal\":\"1.000000000000000000000001\"}]}";
         db.update("INSERT INTO finance_batch_entry_commands(actor_id,idempotency_key,document_type,request_hash,result)VALUES(?,?,'expenses',?,?::jsonb)",actor,legacyKey,hash,result);
         legacyBefore=db.queryForObject("SELECT to_jsonb(c)::text FROM finance_batch_entry_commands c WHERE actor_id=? AND idempotency_key=?",String.class,actor,legacyKey);
-        migrate("1075");
+        migrate("1080");
         db.execute("CREATE TABLE batch_recovery_documents(id uuid PRIMARY KEY,command_key text NOT NULL,body jsonb NOT NULL)");
         db.execute("CREATE TABLE batch_recovery_gate(id integer PRIMARY KEY,enabled boolean NOT NULL);INSERT INTO batch_recovery_gate VALUES(1,true)");
     }

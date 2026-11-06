@@ -1,5 +1,6 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -30,15 +31,13 @@ class ProcurementInspectionOptionalPassReasonPostgresTest {
     static void startPostgresAndApplyV335() throws Exception {
         POSTGRES.start();
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            var jdbc=new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true));
+            MigratedProjectionSchema.createCurrentColumns(jdbc,"procurement_inspection_events");
             statement.execute("""
-                    CREATE TABLE procurement_inspection_events (actor_user_id uuid,
-                        action TEXT NOT NULL CHECK (action IN (
-                            'RECEIVED', 'PASS', 'FAIL', 'PRODUCTION_WOKEN', 'RECEIPT_REVERSED')),
-                        reason TEXT,
-                        CONSTRAINT procurement_inspection_events_reason_chk CHECK (
-                            action IN ('RECEIVED', 'PRODUCTION_WOKEN', 'RECEIPT_REVERSED')
-                            OR NULLIF(btrim(reason), '') IS NOT NULL)
-                    )
+                    ALTER TABLE procurement_inspection_events ALTER COLUMN action SET NOT NULL;
+                    ALTER TABLE procurement_inspection_events ADD CHECK(action IN('RECEIVED','PASS','FAIL','PRODUCTION_WOKEN','RECEIPT_REVERSED'));
+                    ALTER TABLE procurement_inspection_events ADD CONSTRAINT procurement_inspection_events_reason_chk CHECK(
+                      action IN('RECEIVED','PRODUCTION_WOKEN','RECEIPT_REVERSED') OR NULLIF(btrim(reason),'') IS NOT NULL);
                     """);
 
             String sql = Files.readString(Path.of(

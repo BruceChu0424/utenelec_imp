@@ -925,6 +925,7 @@ class WeightObservation {
     this.expectedUnitWeightKg,
     this.expectedWeightKg,
     this.deviationPct,
+    this.deviationPctExact,
     this.alertLevel = WeightAlertLevel.none,
     this.estimateBasisUsed,
     this.estimateTierUsed,
@@ -988,6 +989,9 @@ class WeightObservation {
   final double? expectedUnitWeightKg;
   final double? expectedWeightKg;
   final double? deviationPct;
+  final String? deviationPctExact;
+  String? get deviationPctText =>
+      financeExactDecimal(deviationPctExact ?? deviationPct);
   final WeightAlertLevel alertLevel;
   final String? estimateBasisUsed;
   final String? estimateTierUsed;
@@ -1047,7 +1051,10 @@ class WeightObservation {
         excludedReason: _str(j['excludedReason']),
         expectedUnitWeightKg: _num(j['expectedUnitWeightKg']),
         expectedWeightKg: _num(j['expectedWeightKg']),
-        deviationPct: _num(j['deviationPct']),
+        deviationPct: _num(j['deviationPctExact'] ?? j['deviationPct']),
+        deviationPctExact: financeExactDecimal(
+          j['deviationPctExact'] ?? j['deviationPct'],
+        ),
         alertLevel: WeightAlertLevel.parse(j['alertLevel']?.toString()),
         estimateBasisUsed: _str(j['estimateBasisUsed']),
         estimateTierUsed: _str(j['estimateTierUsed']),

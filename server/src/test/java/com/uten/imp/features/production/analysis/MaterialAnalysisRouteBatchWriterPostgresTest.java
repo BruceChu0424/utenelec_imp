@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -52,28 +53,26 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
         connection.setAutoCommit(false);
         var source=new SingleConnectionDataSource(connection,true);db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
         db.execute("CREATE SCHEMA route_test");db.execute("SET LOCAL search_path=route_test");
+        MigratedProjectionSchema.createCurrentColumns(db,
+                "goods", "production_material_analysis_materials", "production_material_analysis_items", "production_material_analysis_plan_links", "preplan_supply_actions", "preplan_supply_action_allocations", "preplan_aggregate_batches", "preplan_aggregate_batch_events");
         db.execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY,source_type varchar,is_deleted boolean DEFAULT false,version bigint DEFAULT 0,updated_at timestamptz,updated_by uuid, client_goods_name text, currency_id uuid);
+                ALTER TABLE goods ADD PRIMARY KEY(id);
                 CREATE FUNCTION fn_goods_has_order_bom(uuid) RETURNS boolean LANGUAGE SQL AS 'SELECT false';
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,analysis_item_id uuid NOT NULL,
-                    node_role varchar DEFAULT 'BOM_COMPONENT',active boolean DEFAULT true,confirmed_route varchar,source_suggestion varchar,
-                    route_reason varchar,route_confirmed_by uuid,route_confirmed_at timestamptz,updated_at timestamptz,updated_by uuid,
-                    actual_bom_qty numeric,expected_ready_date date);
+                ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id), ALTER COLUMN analysis_id SET NOT NULL, ALTER COLUMN analysis_item_id SET NOT NULL;
                 CREATE UNIQUE INDEX material_analysis ON production_material_analysis_materials(analysis_id,id);
                 CREATE UNIQUE INDEX material_source ON production_material_analysis_materials(analysis_item_id,id);
-                CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,is_deleted boolean DEFAULT false,parent_analysis_material_id uuid);
+                ALTER TABLE production_material_analysis_items ADD PRIMARY KEY(id), ALTER COLUMN analysis_id SET NOT NULL;
                 CREATE UNIQUE INDEX source_parent ON production_material_analysis_items(parent_analysis_material_id) WHERE NOT is_deleted AND parent_analysis_material_id IS NOT NULL;
                 CREATE UNIQUE INDEX source_analysis ON production_material_analysis_items(analysis_id,id);
-                CREATE TABLE production_material_analysis_plan_links(analysis_id uuid NOT NULL,analysis_item_id uuid NOT NULL,
-                    allocation_status varchar,submitted_qty numeric NOT NULL,public_surplus_qty numeric NOT NULL,plan_id uuid DEFAULT gen_random_uuid() UNIQUE);
+                ALTER TABLE production_material_analysis_plan_links ALTER COLUMN analysis_id SET NOT NULL, ALTER COLUMN analysis_item_id SET NOT NULL, ALTER COLUMN submitted_qty SET NOT NULL, ALTER COLUMN public_surplus_qty SET NOT NULL, ADD UNIQUE(plan_id);
                 CREATE INDEX link_source ON production_material_analysis_plan_links(analysis_item_id,allocation_status,plan_id);
-                CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,action_group_key varchar,route varchar,status varchar);
+                ALTER TABLE preplan_supply_actions ADD PRIMARY KEY(id), ALTER COLUMN analysis_id SET NOT NULL;
                 CREATE INDEX action_group ON preplan_supply_actions(analysis_id,action_group_key);
-                CREATE TABLE preplan_supply_action_allocations(analysis_id uuid NOT NULL,analysis_material_id uuid NOT NULL,action_id uuid NOT NULL);
+                ALTER TABLE preplan_supply_action_allocations ALTER COLUMN analysis_id SET NOT NULL, ALTER COLUMN analysis_material_id SET NOT NULL, ALTER COLUMN action_id SET NOT NULL;
                 CREATE INDEX allocation_material ON preplan_supply_action_allocations(analysis_material_id,action_id);
-                CREATE TABLE preplan_aggregate_batches(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,action_id uuid NOT NULL,configuration_snapshot jsonb);
+                ALTER TABLE preplan_aggregate_batches ADD PRIMARY KEY(id), ALTER COLUMN analysis_id SET NOT NULL, ALTER COLUMN action_id SET NOT NULL;
                 CREATE INDEX batch_analysis ON preplan_aggregate_batches(analysis_id);
-                CREATE TABLE preplan_aggregate_batch_events(batch_id uuid NOT NULL,event_type varchar,intent_snapshot jsonb,expected_version bigint);
+                ALTER TABLE preplan_aggregate_batch_events ALTER COLUMN batch_id SET NOT NULL;
                 CREATE INDEX event_batch ON preplan_aggregate_batch_events(batch_id);
                 CREATE TABLE row_audit(old_row jsonb,new_row jsonb);
                 CREATE FUNCTION audit_material() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO row_audit VALUES(to_jsonb(OLD),to_jsonb(NEW));RETURN NEW;END $$;
@@ -140,7 +139,7 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
             var checkpoint=connection.setSavepoint();insertProof(kind,guarded,"MAKE","APPROVED",false,"0.0001");
             UUID source=db.queryForObject("SELECT analysis_item_id FROM production_material_analysis_materials WHERE id=?",UUID.class,guarded.materialId());
             // Negative input cannot offset a separate positive proof, even in imported legacy rows.
-            db.update("INSERT INTO production_material_analysis_plan_links(analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty) VALUES(?,?,'APPROVED',-1,0)",analysis,source);
+            db.update("INSERT INTO production_material_analysis_plan_links(plan_id,analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty) VALUES(gen_random_uuid(),?,?,'APPROVED',-1,0)",analysis,source);
             for(boolean legacy:List.of(true,false))conflict(()->writer(legacy).apply(analysis,actor,List.of(changes.get(0)),List.of(guarded)));
             connection.rollback(checkpoint);
         }
@@ -192,8 +191,8 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
             named.update("""
                     INSERT INTO production_material_analysis_items(id,analysis_id)
                     SELECT md5('historical-source-'||i)::uuid,:foreign FROM generate_series(1,10000) i;
-                    INSERT INTO production_material_analysis_plan_links(analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty)
-                    SELECT :foreign,md5('historical-source-'||i)::uuid,'APPROVED',1,0 FROM generate_series(1,10000) i
+                    INSERT INTO production_material_analysis_plan_links(plan_id,analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty)
+                    SELECT gen_random_uuid(),:foreign,md5('historical-source-'||i)::uuid,'APPROVED',1,0 FROM generate_series(1,10000) i
                     """,Map.of("foreign",foreign));
             db.execute("ANALYZE production_material_analysis_items; ANALYZE production_material_analysis_plan_links");
         }
@@ -239,14 +238,14 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
             if(kind.equals("ROOT_PLAN"))db.update("UPDATE production_material_analysis_materials SET node_role='ROOT_SUPPLY' WHERE id=?",row.materialId());
             else db.update("UPDATE production_material_analysis_items SET parent_analysis_material_id=? WHERE id=?",row.materialId(),source);
             db.update("UPDATE production_material_analysis_items SET is_deleted=? WHERE id=?",deleted,source);
-            db.update("INSERT INTO production_material_analysis_plan_links(analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty) VALUES(?,?,?,0,CAST(? AS numeric))",analysis,source,status,quantity);return;
+            db.update("INSERT INTO production_material_analysis_plan_links(plan_id,analysis_id,analysis_item_id,allocation_status,submitted_qty,public_surplus_qty) VALUES(gen_random_uuid(),?,?,?,0,CAST(? AS numeric))",analysis,source,status,quantity);return;
         }
-        UUID action=UUID.randomUUID();db.update("INSERT INTO preplan_supply_actions VALUES(?,?,?,?,?)",action,analysis,kind.equals("GROUP")?row.groupKey():"different",route,status);
-        if(kind.equals("ALLOCATION"))db.update("INSERT INTO preplan_supply_action_allocations VALUES(?,?,?)",analysis,row.materialId(),action);
+        UUID action=UUID.randomUUID();db.update("INSERT INTO preplan_supply_actions(id,analysis_id,action_group_key,route,status) VALUES(?,?,?,?,?)",action,analysis,kind.equals("GROUP")?row.groupKey():"different",route,status);
+        if(kind.equals("ALLOCATION"))db.update("INSERT INTO preplan_supply_action_allocations(analysis_id,analysis_material_id,action_id) VALUES(?,?,?)",analysis,row.materialId(),action);
         if(kind.startsWith("INTENT")) {
             UUID batch=UUID.randomUUID();String intent=new ObjectMapper().writeValueAsString(Map.of("originalMaterialLineIds",List.of(row.materialId())));
-            db.update("INSERT INTO preplan_aggregate_batches VALUES(?,?,?,CAST(? AS jsonb))",batch,analysis,action,kind.equals("INTENT_FALLBACK")?intent:"{}");
-            db.update("INSERT INTO preplan_aggregate_batch_events VALUES(?,'APPEND',CAST(? AS jsonb))",batch,kind.equals("INTENT_FALLBACK")?"{}":intent);
+            db.update("INSERT INTO preplan_aggregate_batches(id,analysis_id,action_id,configuration_snapshot) VALUES(?,?,?,CAST(? AS jsonb))",batch,analysis,action,kind.equals("INTENT_FALLBACK")?intent:"{}");
+            db.update("INSERT INTO preplan_aggregate_batch_events(batch_id,event_type,intent_snapshot) VALUES(?,'APPEND',CAST(? AS jsonb))",batch,kind.equals("INTENT_FALLBACK")?"{}":intent);
         }
     }
 

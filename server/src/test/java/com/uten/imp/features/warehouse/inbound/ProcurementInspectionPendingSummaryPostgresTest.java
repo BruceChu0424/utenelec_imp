@@ -14,7 +14,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,12 +33,11 @@ import static org.mockito.Mockito.mock;
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementInspectionPendingSummaryPostgresTest {
-    /** 本类独享的全量迁移容器；兼容 API 由本类负责停止。 */
-    private static final PostgreSQLContainer DB =
-            MigratedSchemaBaseline.startMigratedContainer("iqc_pending_summary");
-    private static EntityManagerFactory emf;
-    private static ProcurementInspectionController controller;
-    private static JdbcTemplate jdbc;
+    /** 每个用例持真实当前 schema 的独立租约，跨用例不清理或改写别的来源。 */
+    private MigratedSchemaBaseline.ScopedDatabase DB;
+    private EntityManagerFactory emf;
+    private ProcurementInspectionController controller;
+    private JdbcTemplate jdbc;
     private static final UUID RECEIPT = UUID.randomUUID();
     private static final UUID SUPPLIER = UUID.randomUUID();
     private static final UUID PIECE_UNIT = UUID.randomUUID();
@@ -47,10 +45,11 @@ class ProcurementInspectionPendingSummaryPostgresTest {
     private static final UUID BOX_GOODS = UUID.randomUUID();
     private static final UUID BAG_GOODS = UUID.randomUUID();
     private static final UUID BLUE = UUID.randomUUID();
-    private static UUID warehouse;
+    private UUID warehouse;
 
-    @BeforeAll
-    static void setup() {
+    @BeforeEach
+    void setup() throws Exception {
+        DB = MigratedSchemaBaseline.openDatabase("iqc_pending_summary");
         var ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(ds);
         // 真实 schema 的必填列与外键都要如实满足：供应商要分类，待检明细要仓库。
@@ -87,10 +86,10 @@ class ProcurementInspectionPendingSummaryPostgresTest {
         controller = new ProcurementInspectionController(service);
     }
 
-    @AfterAll
-    static void close() {
+    @AfterEach
+    void close() throws Exception {
         if (emf != null) emf.close();
-        DB.stop();
+        if (DB != null) DB.close();
     }
 
     @Test
@@ -122,7 +121,22 @@ class ProcurementInspectionPendingSummaryPostgresTest {
         assertThat(row.pendingQtyText()).doesNotContain("100");
     }
 
-    private static void insertPendingItem(
+    @Test
+    void pendingSummaryPreservesTheLastFractionalUnitAcrossSubtractionAndGrouping() {
+        BigDecimal tick = new BigDecimal("0.000000000000000000000001");
+        insertPendingItem(UUID.randomUUID(), BOX_GOODS, PIECE_UNIT, BLUE, "PENDING",
+                tick, BigDecimal.ZERO, BigDecimal.ZERO);
+        insertPendingItem(UUID.randomUUID(), BOX_GOODS, PIECE_UNIT, BLUE, "PARTIAL",
+                BigDecimal.ONE, BigDecimal.ONE.subtract(tick), BigDecimal.ZERO);
+        var summaries = controller.pendingReceipts();
+        assertThat(summaries).hasSize(1);
+        var row = summaries.getFirst();
+        assertThat(row.itemCount()).isEqualTo(2);
+        assertThat(row.pendingBaseQty()).isEqualByComparingTo(tick.multiply(new BigDecimal("2")));
+        assertThat(row.pendingQtyText()).isEqualTo("0.000000000000000000000002 个");
+    }
+
+    private void insertPendingItem(
             UUID id, UUID goods, UUID unit, UUID color, String status,
             BigDecimal received, BigDecimal passed, BigDecimal failed) {
         // receipt_item_id 无外键（投影只按 receipt 头聚合），仓库来自上面建好的真实仓库行。

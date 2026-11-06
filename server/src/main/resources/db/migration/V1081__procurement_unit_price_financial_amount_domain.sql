@@ -11,7 +11,7 @@ BEGIN
         WHERE conrelid=target::regclass AND conname=target||'_price_exact_input' AND contype='c';
         normalized:=replace(replace(regexp_replace(definition,'[[:space:]()]','','g'),'::numeric',''),'''','');
         IF normalized IS DISTINCT FROM 'CHECKabsprice<100000000000000ANDscaletrim_scaleprice<=10' THEN
-            RAISE EXCEPTION 'V1076 original price domain differs for %: %',target,definition;
+            RAISE EXCEPTION 'V1081 original price domain differs for %: %',target,definition;
         END IF;
         EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I',target,target||'_price_exact_input');
         EXECUTE format('ALTER TABLE %I ADD CONSTRAINT %I CHECK(price IS NULL OR fn_financial_amount_is_exact(price))',

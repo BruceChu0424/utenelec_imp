@@ -148,7 +148,7 @@ public class StockLedgerQueryService {
         String counterpart = "CASE WHEN ledger.counterpart_kind='WAREHOUSE' OR ledger.source_doc_type IN (:headerVisibleSources) "
                 + "THEN ledger.counterpart_name WHEN ledger.counterpart_kind IS NOT NULL THEN '已隐藏' END";
         String balanceWeight = goods.exactKgPerUnit() == null ? "ledger.balance_weight_after"
-                : "CASE WHEN ledger.balance_qty_after>=0 THEN round(ledger.balance_qty_after*:headerExactKg,4) END";
+                : "CASE WHEN ledger.balance_qty_after>=0 THEN ledger.balance_qty_after*:headerExactKg END";
         return Map.ofEntries(
                 Map.entry("date", com.uten.imp.common.util.SqlColumnSearch.Field.instant("ledger.transaction_date")),
                 Map.entry("billNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.bill_no")),
@@ -243,7 +243,7 @@ public class StockLedgerQueryService {
         };
     }
 
-    /** 按重量计的货品: 重量 = 数量 × 换算系数 (4 位); 负数量不知道重量, 数量 0 重量 0。 */
+    /** 按重量计的货品: 重量 = 数量 × 精确换算系数; 负数量不知道重量, 数量 0 重量 0。 */
     static BigDecimal exactWeight(BigDecimal qty, BigDecimal kgPerUnit) {
         if (qty == null) return null;
         if (qty.signum() < 0) return null;

@@ -52,8 +52,8 @@ class FinanceChartMetadataCancellationPostgresTest {
         db.execute(applications.substring(first,last+3));
         db.execute(statement(applications,"CREATE TRIGGER finance_application_operations_immutable"));
         seedOld();historical=oldBytes();
-        db.execute(resource("V1072__finance_application_settings_operation_receipts.sql"));
-        db.execute(resource("V1074__shared_finance_command_receipts.sql"));
+        db.execute(resource("V1077__finance_application_settings_operation_receipts.sql"));
+        db.execute(resource("V1079__shared_finance_command_receipts.sql"));
         assertThat(oldBytes()).isEqualTo(historical);
     }
     @AfterAll static void stop(){PG.stop();}

@@ -446,7 +446,7 @@ BEGIN
     SELECT pg_get_functiondef('fn_guard_procurement_finance_commercial_snapshot()'::regprocedure) INTO definition;
     needle:='(total_amount_input IS NOT NULL AND price<>fn_procurement_reference_price_proof(total_amount_input,qty,reference_price_precision_policy))';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>2 THEN
-        RAISE EXCEPTION 'V1078 Main reference price snapshot verification anchor differs';END IF;
+        RAISE EXCEPTION 'V1083 Main reference price snapshot verification anchor differs';END IF;
     definition:=replace(definition,'FROM purchase_order_items','FROM purchase_order_items reference_item');
     definition:=replace(definition,'FROM subcontract_order_items','FROM subcontract_order_items reference_item');
     EXECUTE replace(definition,needle,'(total_amount_input IS NOT NULL AND NOT fn_procurement_reference_price_matches(to_jsonb(reference_item)))');
@@ -458,13 +458,13 @@ BEGIN
     needle:='ELSIF (p_new->>''price'')::numeric IS DISTINCT FROM fn_procurement_reference_price_proof(
     (p_new->>''total_amount_input'')::numeric,(p_new->>''qty'')::numeric,p_new->''reference_price_precision_policy'') THEN RETURN FALSE;';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1078 Main quantity reference proof anchor differs';END IF;
+        RAISE EXCEPTION 'V1083 Main quantity reference proof anchor differs';END IF;
     EXECUTE replace(definition,needle,'ELSIF NOT fn_procurement_reference_price_matches(p_new) THEN RETURN FALSE;');
 
     SELECT pg_get_functiondef('fn_is_pending_purchase_case_qty_revision(jsonb,jsonb)'::regprocedure) INTO definition;
     needle:='(i.total_amount_input IS NOT NULL AND i.price IS DISTINCT FROM
                fn_procurement_reference_price_proof(i.total_amount_input,i.qty,i.reference_price_precision_policy))';
     IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN
-        RAISE EXCEPTION 'V1078 Main pending-case reference proof anchor differs';END IF;
+        RAISE EXCEPTION 'V1083 Main pending-case reference proof anchor differs';END IF;
     EXECUTE replace(definition,needle,'(i.total_amount_input IS NOT NULL AND NOT fn_procurement_reference_price_matches(to_jsonb(i)))');
 END $saved_reference_price_verification$;

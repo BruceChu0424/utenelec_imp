@@ -24,6 +24,7 @@ abstract class InventoryValueLedger {
     protected final NamedParameterJdbcTemplate db;
     protected final InventoryMutationLock inventoryMutex;
     protected final boolean productionCostInstalled;
+    protected final boolean productionBusinessRefreshInstalled;
     protected final boolean consumptionReturnsInstalled;
     protected final ValueAuthorityStore authority;
     protected final boolean exactPrecisionInstalled;
@@ -41,6 +42,10 @@ abstract class InventoryValueLedger {
                 "SELECT to_regprocedure('public.fn_inventory_value_revaluation_contract_version()') IS NOT NULL",Map.of(),Boolean.class));
         this.productionCostInstalled=Boolean.TRUE.equals(db.queryForObject(
                 "SELECT to_regclass('public.stock_value_production_cost_objects') IS NOT NULL",Map.of(),Boolean.class));
+        this.productionBusinessRefreshInstalled=productionCostInstalled&&Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('public.stock_value_production_cost_objects')
+                    AND attname='business_refresh_pending' AND NOT attisdropped)
+                """,Map.of(),Boolean.class));
         this.consumptionReturnsInstalled=Boolean.TRUE.equals(db.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('public.stock_value_nodes')
                     AND attname='returned_consumption_qty' AND NOT attisdropped)
@@ -440,7 +445,8 @@ abstract class InventoryValueLedger {
         // blocks physical operations and cannot label a distant affected leaf
         // FINAL before its queued ancestors have propagated.
         return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE status='PENDING')"
-                +(productionCostInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_objects WHERE business_refresh_pending) OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty JOIN stock_value_production_cost_objects object USING(execution_segment_id) WHERE object.current_revision_id IS NOT NULL AND dirty.observed_revision>dirty.cleared_revision)":""),Map.of(),Boolean.class));
+                +(productionCostInstalled?(productionBusinessRefreshInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_objects WHERE business_refresh_pending)":"")
+                    +" OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty JOIN stock_value_production_cost_objects object USING(execution_segment_id) WHERE object.current_revision_id IS NOT NULL AND dirty.observed_revision>dirty.cleared_revision)":""),Map.of(),Boolean.class));
     }
     protected State state(Node n){return effectivePending(n)?State.PENDING:state(n,propagationPending());}
     protected State state(Node n,boolean publicationPending){return (effectivePending(n)||publicationPending

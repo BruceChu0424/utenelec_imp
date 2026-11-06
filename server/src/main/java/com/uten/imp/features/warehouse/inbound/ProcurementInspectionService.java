@@ -935,11 +935,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
                                        ' · ' ORDER BY unit_total.unit_name) AS text
                             FROM (
                                 SELECT COALESCE(base_unit.name, '') AS unit_name,
-                                       rtrim(rtrim(SUM(
+                                       trim_scale(SUM(
                                            item.received_base_qty
                                            - item.passed_base_qty
-                                           - item.failed_base_qty)::text,
-                                           '0'), '.') AS qty_text
+                                           - item.failed_base_qty))::text AS qty_text
                                 FROM procurement_inspection_items item
                                 LEFT JOIN goods item_goods ON item_goods.id = item.goods_id
                                 LEFT JOIN units base_unit ON base_unit.id = item_goods.unit_id

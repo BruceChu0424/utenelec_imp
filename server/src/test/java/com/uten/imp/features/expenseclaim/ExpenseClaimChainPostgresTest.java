@@ -189,7 +189,7 @@ class ExpenseClaimChainPostgresTest {
         var account=account();UUID style=expenseStyle();
         var pay=new ExpenseClaimPaymentRequest(account,style,BusinessTime.today(),approved.version());
         assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class)
-            .hasMessageContaining("审批人与打款人");
+            .hasMessageContaining("本轮审批人与实际打款人须分离");
         for(Actor prior:List.of(reviewer,financeReview)) {
             String permission=prior.equals(reviewer)?"expense:approve:finance_initial":"expense:approve:finance_review";
             login(prior,permission,"expense:pay","attachment:view","attachment:download","attachment:upload");
@@ -197,7 +197,7 @@ class ExpenseClaimChainPostgresTest {
             assertThat(claims.listPayable(null,null,null,null,1,100,null,null,approved.claimNo()).getItems()).isEmpty();
             assertThat(claims.facets("payable").claimNos()).extracting(ExpenseClaimFacetsDto.Bucket::value).doesNotContain(approved.claimNo());
             assertThat(claims.counts().pendingPaymentCount()).isEqualTo(claims.listPayable(null,null,null,null,1,100).getTotal());
-            assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class).hasMessageContaining("本轮所有审批人");
+            assertThatThrownBy(()->claims.payVersioned(claimId,pay)).isInstanceOf(ApiException.class).hasMessageContaining("本轮审批人与实际打款人须分离");
             var actor=new AuthUser(prior.user(),prior.employee(),prior.login(),Set.of("expense:pay","attachment:upload"),false,true,false);
             assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->proofAccess.requireCanManageForUpdate(claimId,actor))).isInstanceOf(ApiException.class);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM notices WHERE audience_user_id=? AND aggregate_id=? AND source_event='EXPENSE_CLAIM_PENDING_PAYMENT'",Long.class,prior.user(),claimId)).isZero();
@@ -475,7 +475,7 @@ class ExpenseClaimChainPostgresTest {
         UUID ownPayment=selfPayable.id();
         UUID reviewedPayment=approvedByMixed.id();
         assertThatThrownBy(()->claims.pay(ownPayment,null)).hasMessageContaining("不能给自己");
-        assertThatThrownBy(()->claims.pay(reviewedPayment,null)).hasMessageContaining("审批人与打款人必须分离");
+        assertThatThrownBy(()->claims.pay(reviewedPayment,null)).hasMessageContaining("本轮审批人与实际打款人须分离");
         assertThat(claims.detail(otherPending.id()).status()).isEqualTo("REVIEWING");
         assertThat(claims.detail(otherPayable.id()).status()).isEqualTo("APPROVED");
     }

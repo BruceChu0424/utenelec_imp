@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,15 +24,13 @@ class PreplanMakeAdmittedBudgetPostgresTest {
     @BeforeAll static void schema() throws Exception {
         PG.start();
         db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
+        MigratedProjectionSchema.createCurrentColumns(db,
+                "production_material_analysis_items", "production_material_analysis_materials", "preplan_reallocation_make_supplements");
         db.execute("""
-            CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid,
-              parent_analysis_material_id uuid,source_type text,requested_qty numeric,is_deleted boolean DEFAULT false);
-            CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,
-              required_qty numeric,active boolean DEFAULT true,
-              design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric);
-            CREATE TABLE preplan_reallocation_make_supplements(child_analysis_item_id uuid,
-              source_analysis_material_id uuid,qty numeric);
-            """);
+                ALTER TABLE production_material_analysis_items ADD PRIMARY KEY(id);
+                ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+                ALTER TABLE production_material_analysis_materials ALTER COLUMN usage_basis SET NOT NULL;
+                """);
         String migration=Files.readString(Path.of("src/main/resources/db/migration/V568__preplan_reallocation_make_supplements.sql"));
         int start=migration.indexOf("CREATE FUNCTION fn_preplan_direct_make_admitted_qty(");
         assertThat(start).isGreaterThanOrEqualTo(0);
@@ -46,7 +45,7 @@ class PreplanMakeAdmittedBudgetPostgresTest {
         assertThat(budget(child,material)).isEqualByComparingTo("10");
         supplement();
         assertThat(budget(child,material)).isEqualByComparingTo("14");
-        db.update("INSERT INTO preplan_reallocation_make_supplements VALUES (?,?,100)",child,UUID.randomUUID());
+        db.update("INSERT INTO preplan_reallocation_make_supplements(child_analysis_item_id,source_analysis_material_id,qty) VALUES (?,?,100)",child,UUID.randomUUID());
         assertThat(budget(child,material)).isEqualByComparingTo("14");
         db.update("UPDATE production_material_analysis_items SET requested_qty=13 WHERE id=?",child);
         assertThat(budget(child,material)).isEqualByComparingTo("13");
@@ -64,7 +63,7 @@ class PreplanMakeAdmittedBudgetPostgresTest {
         db.update("UPDATE production_material_analysis_materials SET active=false WHERE id=?",material);
         assertThat(budget(child,material)).isEqualByComparingTo("14");
     }
-    private void supplement() { db.update("INSERT INTO preplan_reallocation_make_supplements VALUES (?,?,4)",child,material); }
+    private void supplement() { db.update("INSERT INTO preplan_reallocation_make_supplements(child_analysis_item_id,source_analysis_material_id,qty) VALUES (?,?,4)",child,material); }
     private BigDecimal budget(UUID childId,UUID materialId) {
         return db.queryForObject("SELECT fn_preplan_direct_make_admitted_qty(?,?)",BigDecimal.class,childId,materialId);
     }

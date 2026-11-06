@@ -630,6 +630,10 @@ class AccountPostingReversalPostgresTest {
                     VALUES (?, 'AP', 'PURCHASE', 'PAYABLE', 'PURCHASE_RECEIPT', ?, ?, ?, DATE '2026-08-01', ?, ?,
                             7.000000, 100.0000, 700.0000, 0, 0, 0, 0, 100.0000, 0, 700.0000, false, 1, false)
                     """, ledger, receiptId, receiptNo, receiptNo, supplier, currency);
+            // Original native approval freezes the real debt's account and
+            // original currency after the receipt/AP source has been flushed.
+            // The shared fixture also binds the actual transaction actor and
+            // verifies the unchanged source bytes and native evidence kind.
             com.uten.imp.testsupport.NativeArApApprovalFixture.capture(jdbc,transactionIdentity,nativeAccounts,ledger);
         });
     }

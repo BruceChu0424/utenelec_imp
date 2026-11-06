@@ -1,5 +1,6 @@
 package com.uten.imp.common.finance;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -38,11 +39,12 @@ class PurchaseQuantityPolicyGuardPostgresTest {
 
     @BeforeEach void originalAdoption() throws Exception {
         jdbc.execute("DROP SCHEMA IF EXISTS adoption CASCADE; CREATE SCHEMA adoption; SET search_path TO adoption");
-        jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid,qty numeric,charged_base_qty numeric,gift_qty numeric,gift_base_qty numeric,quantity_semantics text,quantity_adoption_version smallint DEFAULT 1,quantity_precision_policy jsonb)");
+        // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "purchase_orders", "purchase_order_items", "purchase_receipt_items");
         jdbc.execute("""
-                CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,status smallint,qty numeric,unit_id uuid,unit_rate numeric,
-                 quantity_semantics text,gift_qty numeric,charged_base_qty numeric,gift_base_qty numeric,
-                 quantity_adoption_version smallint DEFAULT 2,quantity_precision_policy jsonb,remark text)
+                ALTER TABLE purchase_orders ADD PRIMARY KEY (id);
+                ALTER TABLE purchase_order_items ADD PRIMARY KEY (id);
                 """);
         String precision = sql("V990_1__explicit_business_precision_choices.sql");
         jdbc.execute(precision.substring(0, precision.indexOf("-- The same original/local book split")));
@@ -90,7 +92,7 @@ class PurchaseQuantityPolicyGuardPostgresTest {
     }
 
     @Test void subcontractAdoptionWithoutPurchaseOnlyColumnsKeepsItsOwnLifecycle() throws Exception {
-        jdbc.execute("CREATE TABLE subcontract_material_return_items(id uuid,qty numeric,unit_id uuid,unit_rate numeric,adopted_base_qty numeric,quantity_adoption_version smallint DEFAULT 2,quantity_precision_policy jsonb)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc,"subcontract_material_return_items");
         jdbc.execute("CREATE TRIGGER adoption BEFORE INSERT OR UPDATE ON subcontract_material_return_items FOR EACH ROW EXECUTE FUNCTION fn_guard_document_quantity_adoption()");
         UUID item = UUID.randomUUID();
         jdbc.update("INSERT INTO subcontract_material_return_items(id,qty,unit_id,unit_rate) VALUES(?,1,?,3)", item, UUID.randomUUID());
@@ -100,16 +102,11 @@ class PurchaseQuantityPolicyGuardPostgresTest {
     }
 
     @Test void purchaseReturnApprovalStillClosesTheActualFrozenSourceRemainder() throws Exception {
-        jdbc.execute("CREATE TABLE purchase_returns(id uuid,status smallint,is_deleted boolean DEFAULT false)");
-        jdbc.execute("""
-                CREATE TABLE purchase_return_items(id uuid,return_id uuid,receipt_item_id uuid,qty numeric,unit_id uuid,unit_rate numeric,
-                 quantity_semantics text,gift_qty numeric,charged_base_qty numeric,gift_base_qty numeric,
-                 quantity_adoption_version smallint DEFAULT 2,quantity_precision_policy jsonb,quantity_source_proof jsonb,is_deleted boolean DEFAULT false)
-                """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc,"purchase_returns","purchase_return_items");
         jdbc.execute("CREATE TRIGGER adoption BEFORE INSERT OR UPDATE ON purchase_return_items FOR EACH ROW EXECUTE FUNCTION fn_guard_document_quantity_adoption()");
         UUID receipt = UUID.randomUUID(), first = UUID.randomUUID(), current = UUID.randomUUID(), unit = UUID.randomUUID();
         // The old v1 receipt retained four-place adoption of 3 * 0.333333 = 1.0000.
-        jdbc.update("INSERT INTO purchase_receipt_items(id,qty,charged_base_qty,gift_qty,gift_base_qty,quantity_semantics) VALUES(?,3,1,0,0,'CHARGED_PLUS_GIFT_V1')", receipt);
+        jdbc.update("INSERT INTO purchase_receipt_items(id,qty,charged_base_qty,gift_qty,gift_base_qty,quantity_semantics,quantity_adoption_version) VALUES(?,3,1,0,0,'CHARGED_PLUS_GIFT_V1',1)", receipt);
         jdbc.update("INSERT INTO purchase_returns(id,status) VALUES(?,1),(?,0)", first, current);
         jdbc.update("INSERT INTO purchase_return_items(id,return_id,receipt_item_id,qty,unit_id,unit_rate,quantity_semantics,gift_qty,charged_base_qty,gift_base_qty) VALUES(?,?,?,?,?,0.333333,'CHARGED_PLUS_GIFT_V1',0,0.333333,0)", UUID.randomUUID(), first, receipt, 1, unit);
         UUID item = UUID.randomUUID();
@@ -121,8 +118,9 @@ class PurchaseQuantityPolicyGuardPostgresTest {
     }
 
     private static UUID seed(int status) {
-        UUID item = UUID.randomUUID();
-        jdbc.update("INSERT INTO purchase_order_items(id,status,qty,unit_id,unit_rate,quantity_semantics,gift_qty) VALUES(?,?,1,?,3,'CHARGED_PLUS_GIFT_V1',1)", item, status, UUID.randomUUID());
+        UUID item = UUID.randomUUID(), order = UUID.randomUUID();
+        jdbc.update("INSERT INTO purchase_orders(id,status) VALUES(?,?)",order,status);
+        jdbc.update("INSERT INTO purchase_order_items(id,order_id,qty,unit_id,unit_rate,quantity_semantics,gift_qty) VALUES(?,?,1,?,3,'CHARGED_PLUS_GIFT_V1',1)", item, order, UUID.randomUUID());
         return item;
     }
     private static void choose(String policy) { jdbc.queryForObject("SELECT set_config('app.business_precision_choices',?,false)", String.class, policy); }

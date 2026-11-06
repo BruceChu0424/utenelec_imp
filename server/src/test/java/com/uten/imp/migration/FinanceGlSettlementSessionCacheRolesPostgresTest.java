@@ -232,7 +232,12 @@ class FinanceGlSettlementSessionCacheRolesPostgresTest {
     private static Connection runtime() throws SQLException {return DriverManager.getConnection(PG.getJdbcUrl(),"cache_runtime","fixture-runtime-only");}
     private static void execute(Connection connection,String sql) throws SQLException {try(Statement statement=connection.createStatement()){statement.execute(sql);}}
     private static int insert(Connection connection,String sql,Object... parameters) throws SQLException {
-        try(PreparedStatement statement=connection.prepareStatement(sql)){for(int n=0;n<parameters.length;n++)statement.setObject(n+1,parameters[n]);return statement.executeUpdate();}
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (int n = 0; n < parameters.length; n++) {
+                statement.setObject(n + 1, parameters[n]);
+            }
+            return statement.executeUpdate();
+        }
     }
     private static void call(Connection connection,boolean dirty) throws SQLException {
         try(PreparedStatement statement=connection.prepareStatement("SELECT fn_finance_gl_settlement_lock_style(?,?)")){statement.setObject(1,STYLE);statement.setBoolean(2,dirty);statement.execute();}

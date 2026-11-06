@@ -1,5 +1,6 @@
 package com.uten.imp.common.finance;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.testsupport.MigrationSqlResources;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -60,20 +61,22 @@ class ProcurementReferencePricePolicyPostgresTest {
 
     @BeforeEach void originalSchemaAndProofs() throws Exception {
         jdbc.execute("DROP SCHEMA IF EXISTS reference_price CASCADE; CREATE SCHEMA reference_price; SET search_path TO reference_price");
-        jdbc.execute("CREATE TABLE currencies(id uuid,status text,is_deleted boolean DEFAULT false); CREATE TABLE settlement_methods(id uuid,status text,is_deleted boolean DEFAULT false)");
+        // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "currencies", "settlement_methods", "purchase_orders", "purchase_order_items", "subcontract_orders", "subcontract_order_items", "purchase_receipt_items", "procurement_order_approval_cases", "procurement_order_source_revisions", "procurement_order_approval_events");
+        jdbc.execute("""
+                ALTER TABLE purchase_orders ADD PRIMARY KEY (id);
+                ALTER TABLE purchase_order_items ADD PRIMARY KEY (id);
+                ALTER TABLE subcontract_orders ADD PRIMARY KEY (id);
+                ALTER TABLE subcontract_order_items ADD PRIMARY KEY (id);
+                ALTER TABLE procurement_order_approval_cases ADD PRIMARY KEY (id);
+                """);
+        // These are the real historical ADD COLUMN steps under test, not hand-written types.
+        // Rebuild them with the unchanged V760/V1062 SQL; every other column stays catalog-derived.
+        jdbc.execute("ALTER TABLE purchase_order_items DROP COLUMN total_amount_input, DROP COLUMN reference_price_precision_policy");
+        jdbc.execute("ALTER TABLE subcontract_order_items DROP COLUMN total_amount_input, DROP COLUMN reference_price_precision_policy");
         jdbc.update("INSERT INTO currencies(id,status) VALUES(?,'使用')", CURRENCY);
         jdbc.update("INSERT INTO settlement_methods(id,status) VALUES(?,'使用')", SETTLEMENT);
-        jdbc.execute("""
-                DO $fixture$ DECLARE prefix text; BEGIN
-                FOREACH prefix IN ARRAY ARRAY['purchase','subcontract'] LOOP
-                 EXECUTE format('CREATE TABLE %I(id uuid PRIMARY KEY,status smallint DEFAULT 0,currency_id uuid,exchange_rate numeric,tax_rate numeric,settlement_method_id uuid,total_original numeric,total_local numeric,is_deleted boolean DEFAULT false)',prefix||'_orders');
-                 EXECUTE format('CREATE TABLE %I(id uuid PRIMARY KEY,order_id uuid,legacy_id bigint,qty numeric,price numeric,amount_original numeric,amount_local numeric,unit_id uuid,unit_rate numeric DEFAULT 1,quantity_semantics text DEFAULT ''CHARGED_PLUS_GIFT_V1'',gift_qty numeric DEFAULT 0,charged_base_qty numeric,gift_base_qty numeric,quantity_adoption_version smallint DEFAULT 2,quantity_precision_policy jsonb,extra_columns jsonb DEFAULT ''[]'',is_deleted boolean DEFAULT false)',prefix||'_order_items');
-                END LOOP; END $fixture$;
-                """);
-        jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid,qty numeric,charged_base_qty numeric,gift_qty numeric,gift_base_qty numeric)");
-        jdbc.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,request_type text DEFAULT 'ORDER',status text,version bigint DEFAULT 1,attempt integer DEFAULT 1,amount_snapshot numeric,submission_snapshot jsonb,snapshot_hash text,display_snapshot jsonb)");
-        jdbc.execute("CREATE TABLE procurement_order_source_revisions(id uuid,order_type text,order_id uuid,order_item_id uuid,old_qty numeric,new_qty numeric,before_item jsonb,created_txid bigint DEFAULT txid_current(),pending_case_id uuid,pending_case_version bigint)");
-        jdbc.execute("CREATE TABLE procurement_order_approval_events(case_id uuid,event_type text,actor_user_id uuid,actor_employee_id uuid,event_snapshot jsonb)");
         String exact = read("V990_1__explicit_business_precision_choices.sql");
         jdbc.execute(exact.substring(0, exact.indexOf("-- The same original/local book split")));
         String old = read("V518__procurement_iqc_replacement_consideration.sql");
@@ -144,7 +147,7 @@ class ProcurementReferencePricePolicyPostgresTest {
                 total = MoneyPolicy.revisedTotalAmountInput(BigDecimal.ONE, new BigDecimal("6"), new BigDecimal("7"));
                 reference = ProcurementReferencePrice.adopt(total, new BigDecimal("7"));
             }
-            jdbc.update("INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,before_item) VALUES(?,'PURCHASE',?,?,6,7,CAST(? AS jsonb))", UUID.randomUUID(), order, item, oldItem);
+            jdbc.update("INSERT INTO procurement_order_source_revisions(created_txid,id,order_type,order_id,order_item_id,old_qty,new_qty,before_item) VALUES(txid_current(),?,'PURCHASE',?,?,6,7,CAST(? AS jsonb))", UUID.randomUUID(), order, item, oldItem);
             String nextHeader = jdbc.queryForObject("SELECT CAST(? AS jsonb)||jsonb_build_object('total_original',CAST(? AS numeric),'total_local',CAST(? AS numeric))", String.class, oldHeader, total, total);
             assertThat(jdbc.queryForObject("SELECT fn_is_proven_procurement_header_revision('PURCHASE',CAST(? AS jsonb),CAST(? AS jsonb))", Boolean.class, oldHeader, nextHeader)).isTrue();
             jdbc.update("UPDATE purchase_order_items SET qty=7,total_amount_input=?,price=?,amount_original=?,amount_local=? WHERE id=?", total, reference.price(), total, total, item);
@@ -176,7 +179,7 @@ class ProcurementReferencePricePolicyPostgresTest {
         source.getConnection().setAutoCommit(false);
         try {
             String oldItem = row("purchase", item);
-            jdbc.update("INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,before_item,pending_case_id,pending_case_version) VALUES(?,'PURCHASE',?,?,6,7,CAST(? AS jsonb),?,1)", UUID.randomUUID(), order, item, oldItem, review);
+            jdbc.update("INSERT INTO procurement_order_source_revisions(created_txid,id,order_type,order_id,order_item_id,old_qty,new_qty,before_item,pending_case_id,pending_case_version) VALUES(txid_current(),?,'PURCHASE',?,?,6,7,CAST(? AS jsonb),?,1)", UUID.randomUUID(), order, item, oldItem, review);
             var selected = Map.of(PURPOSE, new BusinessPrecisionContext.Choice(10, "DOWN"), "money.revised-total", new BusinessPrecisionContext.Choice(4, "HALF_UP")); choose(selected);
             BigDecimal total; ProcurementReferencePrice.Adoption reference;
             try (var ignored = BusinessPrecisionContext.use(selected)) {

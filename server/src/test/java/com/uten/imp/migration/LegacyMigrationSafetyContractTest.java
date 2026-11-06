@@ -91,17 +91,20 @@ class LegacyMigrationSafetyContractTest {
                 .contains("python3 -i \"$here/verify_candidate.py\"")
                 .contains("read -r expected_flyway_migration_count expected_flyway_head mapping_version")
                 .contains("select count(*), count(*) filter (where success), "
-                        + "count(distinct version), coalesce(max(version::integer), 0) "
-                        + "from flyway_schema_history where version is not null")
-                .contains("select version::integer, script, checksum from flyway_schema_history "
-                        + "where version is not null order by version::integer")
+                        + "count(distinct version)")
+                .contains("order by string_to_array(latest.version, '.')::numeric[] desc limit 1")
+                .contains("select version, script, checksum from flyway_schema_history "
+                        + "where version is not null order by string_to_array(version, '.')::numeric[]")
+                .contains("flyway_contract history 3<<<\"$raw_live_flyway_rows\"")
+                .contains("flyway_contract summary 3<<<\"$live_flyway_rows\"")
                 .contains("cmp -s")
                 .contains("tail -n +2 \"$flyway_checksum_manifest\"")
                 .contains("'uten-imp-flyway-checksums.tsv'")
                 .contains("uten_legacy_target_system_identifier")
                 .contains("uten_legacy_target_approval_reference")
                 .contains("current_database(), system_identifier from pg_control_system()")
-                .doesNotContain("expected_flyway_migration_count=388", "expected_flyway_head=426");
+                .doesNotContain("expected_flyway_migration_count=388", "expected_flyway_head=426",
+                        "version::integer", "max(version)");
         String verifier = compact(Files.readString(LEGACY_ROOT.resolve("verify_candidate.py")));
         assertThat(verifier).contains("uten-imp-flyway-checksums-v1")
                 .contains("flyway_checksum(path.read_bytes())")

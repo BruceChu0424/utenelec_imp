@@ -74,9 +74,9 @@ public final class MigrationRehearsalSupport {
         return value;
     }
 
-    record MigrationCatalog(java.util.List<org.flywaydb.core.api.MigrationVersion> versions) {
-        MigrationCatalog { versions = java.util.List.copyOf(versions); }
-        String headVersion() {
+    public record MigrationCatalog(java.util.List<org.flywaydb.core.api.MigrationVersion> versions) {
+        public MigrationCatalog { versions = java.util.List.copyOf(versions); }
+        public String headVersion() {
             var head = versions.stream().max(java.util.Comparator.naturalOrder()).orElseThrow(
                     () -> new IllegalStateException("db/migration 下未发现任何 V*__*.sql，无法推导迁移头"));
             if (head.compareTo(org.flywaydb.core.api.MigrationVersion.fromVersion("0")) <= 0) {
@@ -89,7 +89,7 @@ public final class MigrationRehearsalSupport {
         }
     }
 
-    static MigrationCatalog readMigrationCatalog(Path directory) throws IOException {
+    public static MigrationCatalog readMigrationCatalog(Path directory) throws IOException {
         java.util.List<org.flywaydb.core.api.MigrationVersion> versions = new java.util.ArrayList<>();
         try (Stream<Path> files = Files.list(directory)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {

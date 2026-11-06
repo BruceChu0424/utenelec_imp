@@ -1,5 +1,6 @@
 package com.uten.imp.common.saleschain;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 在真实 PostgreSQL 上验证 {@link SalesOrderChainSql} 与 {@link SalesChainStatus} 对同一张用例表
  * （{@link SalesChainStatusTest#CASES}）给出相同结果，并验证 V545 回填 SQL 只改"仍有未排量的 3/4/5/6 行"。
- * 只建两张与 sales_order_items / plan_order_item_links 同列型的影子表，不跑 Flyway（规则与表结构无关）。
+ * 两张查询投影的完整列和类型来自实际迁移目录；保留私有 case_no、原键与非空边界，不安装业务触发器。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class SalesOrderChainSqlPostgresTest {
@@ -39,24 +40,13 @@ class SalesOrderChainSqlPostgresTest {
     static void start() throws Exception {
         POSTGRES.start();
         try (Connection c = connection(); Statement st = c.createStatement()) {
+            var jdbc=new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(c,true));
+            MigratedProjectionSchema.createCurrentColumns(jdbc,"sales_order_items","plan_order_item_links");
             st.execute("""
-                    CREATE TABLE sales_order_items (
-                        id uuid PRIMARY KEY,
-                        case_no int NOT NULL,
-                        is_deleted boolean NOT NULL DEFAULT false,
-                        chain_status smallint,
-                        qty numeric(18,4), shipped_qty numeric(18,4), returned_qty numeric(18,4),
-                        flag_qty numeric(18,4), reserved_qty numeric(18,4),
-                        planned_qty numeric(18,4), produced_qty numeric(18,4),
-                        updated_at timestamptz NOT NULL DEFAULT now(),
-                        client_goods_name VARCHAR(500),
-                        client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb,
-                        goods_name_en_snapshot varchar(255), legacy_counter_import_run_id uuid)
-                    """);
-            st.execute("""
-                    CREATE TABLE plan_order_item_links (
-                        id uuid PRIMARY KEY, order_item_id uuid NOT NULL,
-                        is_deleted boolean NOT NULL DEFAULT false, produced_qty numeric(18,4))
+                    ALTER TABLE sales_order_items ADD PRIMARY KEY(id), ADD COLUMN case_no int NOT NULL;
+                    ALTER TABLE sales_order_items ALTER COLUMN is_deleted SET NOT NULL, ALTER COLUMN updated_at SET NOT NULL, ALTER COLUMN extra_columns SET NOT NULL;
+                    ALTER TABLE plan_order_item_links ADD PRIMARY KEY(id);
+                    ALTER TABLE plan_order_item_links ALTER COLUMN order_item_id SET NOT NULL, ALTER COLUMN is_deleted SET NOT NULL;
                     """);
         }
     }

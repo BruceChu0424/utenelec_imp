@@ -73,8 +73,9 @@ class FinishedInboundCostFootprintEndToEndTest {
     @Test void subsequentConsumedInputsChangeDiscoveryAndCrossWarehouseReceiptAndWithdrawalKeepTheSameCostFamily() {
         Case c=consumedFirstHalf("partial-cost-footprint");
         fixture.confirmFinishedInboundFully(c.inbound());
-        var before=document(c.inbound());
         assertEquals(0,pendingInputs(c.segment()));
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",c.world());
+        var before=document(c.inbound());
         UUID destination=UUID.randomUUID();
         db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,?,?,'使用',TRUE)",
                 destination,"COST-FP-"+destination,"成本足迹第二成品仓");
@@ -87,6 +88,7 @@ class FinishedInboundCostFootprintEndToEndTest {
                 "New confirmed consumption must invalidate the old discovery even for an existing receipt");
         assertActualInputs(c,document(secondInbound));
         assertTrue(document(secondInbound).mainWarehouseIds().containsAll(List.of(c.world().warehouseId(),destination)));
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",c.world());
         fixture.confirmFinishedInboundFully(secondInbound);
         ReflectionTestUtils.invokeMethod(fixture,"drainCosts",c.world());
         stock.reverseFinishedInbound(secondInbound);

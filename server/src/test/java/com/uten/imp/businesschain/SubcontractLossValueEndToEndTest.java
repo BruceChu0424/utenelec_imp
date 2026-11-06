@@ -195,6 +195,9 @@ class SubcontractLossValueEndToEndTest {
     @Test void unrelatedPendingCostDoesNotHideKnownFreeLossOrInventAnUnknownCost(){
         var free=ready("loss-free-unrelated-pending","3","0");
         UUID freeCase=lossCase(loss(free,"1","0"));
+        drain();
+        assertEquals("VALUED",claims.detail(freeCase).lines().getFirst().valuationStatus(),
+                "The known-free source must settle its own work before introducing unrelated pending work");
         var unknown=ready("loss-unknown-unrelated-pending","3",null);
         UUID unknownCase=lossCase(loss(unknown,"1","0"));
         fixture.loginAs(free.world().superAdminUserId());

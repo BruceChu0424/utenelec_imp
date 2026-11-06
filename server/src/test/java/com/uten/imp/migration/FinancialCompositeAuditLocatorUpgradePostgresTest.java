@@ -14,7 +14,7 @@ import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 
-/** Genuine1084 ->1085 forward: original audit bytes/facts/guards stay, only new UPDATE metadata gains identity. */
+/** Genuine1088 ->1089 forward: original audit bytes/facts/guards stay, only new UPDATE metadata gains identity. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class FinancialCompositeAuditLocatorUpgradePostgresTest {
     private static final ObjectMapper JSON=new ObjectMapper();
@@ -22,7 +22,7 @@ class FinancialCompositeAuditLocatorUpgradePostgresTest {
     @Test void actualSameMonthClientsAndChangedCompositeKeysKeepPrivateValuesOutAndOldRowsUntouched() throws Exception {
         try(var database=new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("financial_locator_upgrade")
                 .withUsername("locator_fixture").withPassword("anonymous-locator-only")){
-            database.start();migrate(database,"1084");
+            database.start();migrate(database,"1088");
             var db=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             UUID actor=actor(db),a=client(db,"A"),b=client(db,"B"),unit=UUID.randomUUID();String period="2026-09";
             String marker="ANONYMOUS-PRIVATE-"+UUID.randomUUID(),number="123.123456789012345678901234";
@@ -49,8 +49,8 @@ class FinancialCompositeAuditLocatorUpgradePostgresTest {
             String triggers=allTriggers(db);String constraints=allConstraints(db);
             long writerOid=db.queryForObject("SELECT 'public.fn_audit()'::regprocedure::oid::bigint",Long.class);
             String redactor=db.queryForObject("SELECT pg_get_functiondef('public.fn_audit_redact_row(text,jsonb)'::regprocedure)",String.class);
-            migrate(database,"1085");
-            assertThat(db.queryForObject("SELECT max(version::numeric)::int FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class)).isEqualTo(1085);
+            migrate(database,"1089");
+            assertThat(db.queryForObject("SELECT max(version::numeric)::int FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class)).isEqualTo(1089);
             assertThat(auditRowsThrough(db,originalMaximum)).isEqualTo(originalAudits);
             assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(value) ORDER BY client_id)::text FROM finance_sales_cost_inputs value WHERE period=?",String.class,period)).isEqualTo(originalFacts);
             assertThat(allTriggers(db)).isEqualTo(triggers);assertThat(allConstraints(db)).isEqualTo(constraints);

@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.count;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
@@ -53,16 +54,15 @@ class StockCountReviewWarehouseScopePostgresTest {
     }
     @AfterAll static void stop() { PG.stop(); }
     @BeforeEach void seed() throws Exception {
+        db.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+        MigratedProjectionSchema.createCurrentColumns(db,
+                "warehouses", "employees", "users", "stock_count_requests", "stock_count_request_lines");
         db.execute("""
-                DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE warehouses(id uuid PRIMARY KEY,code text,name text,parent_id uuid,is_deleted boolean DEFAULT false,
-                    status text DEFAULT '使用',is_line_side boolean DEFAULT false,is_accountable boolean DEFAULT true);
-                CREATE TABLE employees(id uuid PRIMARY KEY,full_name text,status text DEFAULT 'active',is_deleted boolean DEFAULT false);
-                CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,login_account text,status text DEFAULT 'active',is_deleted boolean DEFAULT false);
-                CREATE TABLE stock_count_requests(id uuid PRIMARY KEY,request_no text,warehouse_id uuid NOT NULL,
-                    review_route text,status text,row_version bigint DEFAULT 0,submitted_by uuid,reason text,review_reason text,
-                    stock_document_id uuid,submitted_at timestamptz DEFAULT now(),reviewed_at timestamptz);
-                CREATE TABLE stock_count_request_lines(request_id uuid,goods_code text,goods_name text,color_name text);
+                ALTER TABLE warehouses ADD PRIMARY KEY(id);
+                ALTER TABLE employees ADD PRIMARY KEY(id);
+                ALTER TABLE users ADD PRIMARY KEY(id);
+                ALTER TABLE stock_count_requests ADD PRIMARY KEY(id);
+                ALTER TABLE stock_count_requests ALTER COLUMN warehouse_id SET NOT NULL;
                 """);
         try(var resource=getClass().getResourceAsStream("/db/migration/V693__warehouse_keepers_notice_routing.sql")) {
             String migration=new String(resource.readAllBytes(),StandardCharsets.UTF_8);
@@ -167,7 +167,7 @@ class StockCountReviewWarehouseScopePostgresTest {
     }
 
     @Test void keywordSearchUsesTheSameScopedRowsForItsTotalAndPagedResults() {
-        db.update("INSERT INTO stock_count_request_lines VALUES (?,'PP-9','PP 颗粒','黑色'),(?,'PP-9','PP 颗粒','黑色')",firstA,firstB);
+        db.update("INSERT INTO stock_count_request_lines(request_id,goods_code,goods_name,color_name) VALUES (?,'PP-9','PP 颗粒','黑色'),(?,'PP-9','PP 颗粒','黑色')",firstA,firstB);
         defaultScope=new WarehouseTaskScope(true,subtree(parentA),false);
         var matching=controller.list("WAREHOUSE","PENDING",null,null," pp-9 ",1,1);
         assertThat(matching.getTotal()).isEqualTo(1);

@@ -115,7 +115,7 @@ class StockLedgerQueryPostgresTest {
     }
 
     @Test
-    void weightRecordHeadersRespectUnitsHalfEvenPrecisionAndNameVisibility() throws Exception {
+    void weightRecordHeadersRespectExactUnitsAndNameVisibility() throws Exception {
         World world = seed(dataSource);
         try (StockReadSideSeed seed = new StockReadSideSeed(dataSource)) {
             for (var values : List.of(new String[]{"1000", "2.312000"}, new String[]{"500", "1.156000"},
@@ -133,10 +133,12 @@ class StockLedgerQueryPostgresTest {
         assertThat(first.getTotal()).isEqualTo(2);
         assertThat(first.getItems().getFirst().id()).isNotEqualTo(second.getItems().getFirst().id());
         assertThat(first.getItems().getFirst().unitWeightKg()).isEqualByComparingTo("0.002312");
-        var halfway = weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
-                java.util.Map.of("unitWeight", "0.000000000002"), null, null);
-        assertThat(halfway.getTotal()).isEqualTo(1);
-        assertThat(halfway.getItems().getFirst().unitWeightKg()).isEqualByComparingTo("0.000000000002");
+        var fractional = weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
+                java.util.Map.of("unitWeight", "0.0000000000025"), null, null);
+        assertThat(fractional.getTotal()).isEqualTo(1);
+        assertThat(fractional.getItems().getFirst().unitWeightKg()).isEqualByComparingTo("0.0000000000025");
+        assertThat(weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
+                java.util.Map.of("unitWeight", "0.000000000002"), null, null).getTotal()).isZero();
         assertThat(weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
                 java.util.Map.of("unitWeight", "0.000000000003"), null, null).getTotal()).isZero();
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> weightService(world.goods(), false)
@@ -219,7 +221,7 @@ class StockLedgerQueryPostgresTest {
         assertThat(service(false, Set.of()).ledger(world.goods(), null, null, false, null, null, null, null,
                 false, 1, 50, false, true, false, java.util.Map.of("counterpart", "流水客户"), null, null).getTotal()).isZero();
         assertThat(allowed.ledger(world.exactGoods(), null, null, false, null, null, null, null,
-                false, 1, 50, false, true, false, java.util.Map.of("balanceWeight", "12.3457"), null, null).getTotal()).isEqualTo(1);
+                false, 1, 50, false, true, false, java.util.Map.of("balanceWeight", "12.34567"), null, null).getTotal()).isEqualTo(1);
     }
 
     @Test
@@ -349,7 +351,7 @@ class StockLedgerQueryPostgresTest {
 
         assertThat(page.getItems()).singleElement().satisfies(row -> {
             assertThat(row.weightSource()).isEqualTo("EXACT");
-            assertThat(row.balanceWeightKgAfter()).isEqualByComparingTo("12.3457");
+            assertThat(row.balanceWeightKgAfter()).isEqualByComparingTo("12.34567");
         });
         assertThat(page.getSummary().openingWeightKg()).isEqualByComparingTo("0");
     }

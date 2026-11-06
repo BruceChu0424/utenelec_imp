@@ -213,7 +213,7 @@ Future<void> _capturePreview(WidgetTester tester, String name) async {
 
 void main() {
   testWidgets(
-    'cancel real same-DTO destination navigation preserves page one editor and its complete raw draft',
+    'cancel a real filter destination preserves the complete list editor and its raw draft',
     (tester) async {
       final reads = <int>[];
       var saves = 0;
@@ -244,6 +244,7 @@ void main() {
       MasterDataTableView<_Row> table() =>
           tester.widget(find.byType(MasterDataTableView<_Row>));
       final rows = table().rowsController!;
+      expect(reads, [1, 2, 3]);
       await rows.loadNextPage();
       await tester.pumpAndSettle();
       await rows.loadNextPage();
@@ -285,7 +286,7 @@ void main() {
                 position.maxScrollExtent > 200,
           );
       final offset = position.pixels;
-      rows.goToPage(3);
+      table().onFilterChanged('name', '新筛选');
       await tester.pumpAndSettle();
       expect(find.text('放弃未保存的修改？'), findsOneWidget);
       await tester.tap(find.text('继续编辑'));
@@ -364,8 +365,8 @@ void main() {
         } else {
           pending.complete(page());
         }
-        await loading;
         await tester.pumpAndSettle();
+        await loading;
         expect(tester.state<EditableTextState>(editable), same(originalState));
         expect(focus.hasFocus, isTrue);
         expect(text.value, composing);
@@ -665,10 +666,10 @@ void main() {
   );
 
   testWidgets(
-    'pagination requires an explicit decision about unsaved cell changes',
+    'a filter change requires an explicit decision about unsaved cell changes',
     (tester) async {
       var saves = 0;
-      await _pump(tester, totalPages: 2, save: (_, _, _) async => saves++);
+      await _pump(tester, save: (_, _, _) async => saves++);
       await tester.tap(find.text('编辑模式'));
       await tester.pumpAndSettle();
       await _activateName(tester);
@@ -676,7 +677,7 @@ void main() {
       final table = tester.widget<MasterDataTableView<_Row>>(
         find.byType(MasterDataTableView<_Row>),
       );
-      table.onPageChange!(2);
+      table.onFilterChanged('name', '新筛选');
       await tester.pumpAndSettle();
       expect(find.text('放弃未保存的修改？'), findsOneWidget);
       await tester.tap(find.text('继续编辑'));

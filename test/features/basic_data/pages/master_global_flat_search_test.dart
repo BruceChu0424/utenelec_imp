@@ -29,7 +29,7 @@ void main() {
             ? "减少动画 "
             : lite
             ? "省电 "
-            : ""}搜索跨分类直接显示全局结果，翻页不截分类，清空回原分类';
+            : ""}搜索跨分类显示完整全局结果，滚动不读取，清空回原分类';
     testWidgets(title, (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -76,13 +76,20 @@ void main() {
               final global =
                   request.queryParameters['categoryId'] == null &&
                   keyword != null;
-              final items = global
-                  ? (page == 1
-                        ? [
-                            _row('exact-b', '共同名称', 'cat-b'),
-                            _row('near-a', '共同名称扩展', 'cat-a'),
-                          ]
-                        : [_row('last-b', '其他共同名称', 'cat-b')])
+              final size =
+                  (request.queryParameters['size'] as num?)?.toInt() ?? 20;
+              final complete = global
+                  ? [
+                      _row('exact-b', '共同名称', 'cat-b'),
+                      _row('near-a', '共同名称扩展', 'cat-a'),
+                      for (var i = 0; i < 18; i++)
+                        _row(
+                          'middle-$i',
+                          '共同名称其他$i',
+                          i.isEven ? 'cat-a' : 'cat-b',
+                        ),
+                      _row('last-b', '其他共同名称', 'cat-b'),
+                    ]
                   : [
                       _row(
                         request.queryParameters['categoryId'] == 'cat-b'
@@ -94,11 +101,11 @@ void main() {
                       ),
                     ];
               data = {
-                'items': items,
+                'items': complete.skip((page - 1) * size).take(size).toList(),
                 'page': page,
-                'size': request.queryParameters['size'] ?? 20,
-                'total': global ? 21 : 1,
-                'totalPages': global ? 2 : 1,
+                'size': size,
+                'total': complete.length,
+                'totalPages': (complete.length + size - 1) ~/ size,
               };
             }
             handler.resolve(
@@ -168,7 +175,13 @@ void main() {
       await tester.enterText(search, '共同名称');
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pumpAndSettle();
-      expect(_rowIds(tester), ['exact-b', 'near-a']);
+      final completeIds = [
+        'exact-b',
+        'near-a',
+        for (var i = 0; i < 18; i++) 'middle-$i',
+        'last-b',
+      ];
+      expect(_rowIds(tester), completeIds);
       expect(tester.element(search), same(searchElement));
       final globalTable = tester.widget<MasterDataTableView<dynamic>>(_table);
       expect(globalTable.facets['name']?.single.value, '跨分类选项');
@@ -186,15 +199,24 @@ void main() {
             .length,
         categoryReads,
       );
-      _nextPage(tester);
+      final readsBeforeScroll = requests.length;
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      await tester.drag(_table, const Offset(0, -500));
       await tester.pumpAndSettle();
-      expect(_rowIds(tester), ['last-b']);
+      expect(_rowIds(tester), completeIds);
+      expect(find.text('其他共同名称').hitTestable(), findsOneWidget);
+      await tester.drag(_table, const Offset(0, 500));
+      await tester.pumpAndSettle();
+      expect(requests.length, readsBeforeScroll);
       final query = requests.lastWhere(
         (r) =>
             (r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            r.queryParameters['size'] == 20 &&
-            r.queryParameters['page'] == 2,
+            r.queryParameters['size'] == 100 &&
+            r.queryParameters['page'] == 1,
       );
       expect(query.queryParameters.containsKey('categoryId'), isFalse);
       expect(query.queryParameters['name'], '跨分类选项');
@@ -211,7 +233,7 @@ void main() {
         (r) =>
             (r.path == '/master/${kind}s' ||
                 r.path == '/master/${kind}s/search') &&
-            r.queryParameters['size'] == 20,
+            r.queryParameters['size'] == 100,
       );
       expect(scoped.queryParameters['categoryId'], 'cat-b');
       expect(scoped.queryParameters['page'], 1);
@@ -223,7 +245,7 @@ void main() {
       );
       await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
       await tester.pumpAndSettle();
-      expect(_rowIds(tester), ['exact-b', 'near-a']);
+      expect(_rowIds(tester), completeIds);
       expect(find.text('搜索范围：全部分类'), findsOneWidget);
       await tester.enterText(search, '');
       await tester.pump(const Duration(milliseconds: 450));
@@ -268,23 +290,6 @@ List<String> _rowIds(WidgetTester tester) {
   }
   if (widget is MasterDataTableView<MouldListItem>) {
     return widget.items.map((r) => r.id).toList();
-  }
-  throw StateError('Missing master table');
-}
-
-void _nextPage(WidgetTester tester) {
-  final widget = tester.widget(_table);
-  if (widget is MasterDataTableView<ClientListItem>) {
-    widget.onPageChange!(2);
-    return;
-  }
-  if (widget is MasterDataTableView<SupplierListItem>) {
-    widget.onPageChange!(2);
-    return;
-  }
-  if (widget is MasterDataTableView<MouldListItem>) {
-    widget.onPageChange!(2);
-    return;
   }
   throw StateError('Missing master table');
 }

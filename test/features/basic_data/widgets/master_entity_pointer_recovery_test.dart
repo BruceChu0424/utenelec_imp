@@ -78,6 +78,7 @@ class _HarnessState extends State<_Harness> {
   bool pending = false;
   int openings = 0;
   int listCalls = 0;
+  late Offset initialRowPoint;
   final reads = <_Read>[];
 
   void search({required String? keyword, required bool pending}) {
@@ -171,7 +172,9 @@ Future<_HarnessState> _pumpHarness(
     ),
   );
   await tester.pumpAndSettle();
-  return key.currentState!;
+  final state = key.currentState!;
+  state.initialRowPoint = tester.getCenter(find.text('原始货品'));
+  return state;
 }
 
 bool _queryBlocked(WidgetTester tester) => tester
@@ -209,9 +212,26 @@ Future<void> _expectBlocked(
   String row,
 ) async {
   expect(_queryBlocked(tester), isTrue);
+  expect(
+    tester
+        .widget<MasterDataTableView<String>>(
+          find.byType(MasterDataTableView<String>),
+        )
+        .items,
+    [row],
+  );
   final previousOpenings = harness.openings;
-  await _doubleClick(tester, row);
-  await _rightClick(tester, row);
+  await tester.tapAt(harness.initialRowPoint);
+  await tester.pump(const Duration(milliseconds: 70));
+  await tester.tapAt(harness.initialRowPoint);
+  await tester.pump();
+  final gesture = await tester.startGesture(
+    harness.initialRowPoint,
+    kind: PointerDeviceKind.mouse,
+    buttons: kSecondaryButton,
+  );
+  await gesture.up();
+  await tester.pump();
   expect(harness.openings, previousOpenings);
   expect(find.text('查看详情'), findsNothing);
 }

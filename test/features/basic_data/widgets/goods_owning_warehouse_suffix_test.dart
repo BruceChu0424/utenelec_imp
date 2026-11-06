@@ -15,6 +15,7 @@ import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import '../../../support/pump_until.dart';
 
 class _Warehouses extends MasterNameService {
   _Warehouses() : super(ApiClient(Dio()));
@@ -133,7 +134,11 @@ void main() {
 
     final gate = names.gate = Completer<void>();
     await tester.tap(picker);
-    await tester.pump(const Duration(milliseconds: 100));
+    await pumpUntil(
+      tester,
+      () => names.loads == 1,
+      reason: '真实字典读取应在公共等待任务首帧之后开始',
+    );
     expect(names.loads, 1);
     expect(tester.widget<IconButton>(clear).onPressed, isNull);
     expect(tester.widget<IconButton>(picker).onPressed, isNull);

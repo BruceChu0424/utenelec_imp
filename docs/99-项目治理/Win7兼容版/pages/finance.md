@@ -346,7 +346,7 @@
 
 ## W7-BIZ-072 · lib/features/finance/pages/finance_report_table_page.dart
 
-模块 `finance`；1920 行；SHA256 `0c4fd165cf151579b3eba275024251eefd355a2e75d3280f4a02de0b4009ee7c`。
+模块 `finance`；1920 行；SHA256 `56b1a8a3533ae2ef6fb1457f72a4763c8f06a8381b177694c101a7ea8b1e79c7`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

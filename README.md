@@ -5,7 +5,7 @@
 | 项目 | 当前值 |
 |---|---|
 | 源码候选与发布状态 | 本地集成候选 **2.5.48+2549**（核对基线：2026-11-05）；本轮仅进行源码整合和 CI 修复；正式打包、发布和服务器更新已取消。精确提交、启动、CI 与交付证据分别见[当前版本验证](docs/99-项目治理/当前版本验证.md)。 |
-| 数据库迁移头 | 本地候选源码 **V1071 / 1009** 个迁移文件；按[迁移目录](server/src/main/resources/db/migration)与[迁移索引](docs/数据迁移/README.md)核对。目标库实际版本另查其 `flyway_schema_history`。原三个并行任务继续排除；“统一修复货品导出选择”已完成并纳入本轮 CI 源码。 |
+| 数据库迁移头 | 本地候选源码 **V1073 / 1012** 个迁移文件，Git HEAD 已跟踪 V1069/V1072/V1073 且近期齐号；按[迁移目录](server/src/main/resources/db/migration)与[迁移索引](docs/数据迁移/README.md)核对。目标库实际版本另查其 `flyway_schema_history`。三个并行任务若在本轮修复期间完成则审查纳入，不等待它们；“统一修复货品导出选择”已纳入。 |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 4.1.1、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |

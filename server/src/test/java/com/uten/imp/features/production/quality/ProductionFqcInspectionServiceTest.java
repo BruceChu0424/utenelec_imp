@@ -320,7 +320,7 @@ class ProductionFqcInspectionServiceTest {
         return sql.getValue();
     }
 
-    private static ProductionFqcInspectionService service(
+    static ProductionFqcInspectionService service(
             EntityManager em,
             ProductionDocumentAccessPolicy productionAccess,
             ProductionFqcTaskAccessPolicy taskAccess) {

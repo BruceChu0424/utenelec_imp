@@ -145,6 +145,23 @@ class ServerJarPackagingIT {
             Object flyway = configurationFactory.invoke(null, "a".repeat(64));
             assertThat(flyway.getClass().getName()).isEqualTo("org.flywaydb.core.Flyway");
             assertThat(flyway.getClass().getClassLoader()).isSameAs(loader);
+
+            // Loading the configuration alone does not resolve callback dependencies.
+            // Flyway probes callbacks before opening its migration transaction; do the
+            // same through the isolated artifact loader so target/classes cannot hide
+            // a missing compatibility helper or its nested record in the shaded JAR.
+            Object configuration = flyway.getClass().getMethod("getConfiguration").invoke(flyway);
+            Class<?> configurationType = loader.loadClass("org.flywaydb.core.api.configuration.Configuration");
+            Object[] callbacks = (Object[]) configurationType.getMethod("getCallbacks").invoke(configuration);
+            Class<?> eventType = loader.loadClass("org.flywaydb.core.api.callback.Event");
+            Class<?> contextType = loader.loadClass("org.flywaydb.core.api.callback.Context");
+            Object beforeValidate = eventType.getField("BEFORE_VALIDATE").get(null);
+            assertThat(callbacks).hasSize(2);
+            for (Object callback : callbacks) {
+                assertThat(callback.getClass().getClassLoader()).isSameAs(loader);
+                assertThat(callback.getClass().getMethod("supports", eventType, contextType)
+                        .invoke(callback, beforeValidate, null)).isEqualTo(false);
+            }
         }
     }
 

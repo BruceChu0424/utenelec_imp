@@ -83,6 +83,8 @@ class AccountPostingReversalPostgresTest {
     }
 
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private org.springframework.beans.factory.BeanFactory beans;
+    @Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativePostingAccounts;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private FinanceExpenseService expenses;
     @Autowired private FinanceOtherIncomeService incomes;
@@ -537,6 +539,7 @@ class AccountPostingReversalPostgresTest {
         LocalDate billDate = BusinessTime.today();
         FinanceReceiptSaveRequest request = new FinanceReceiptSaveRequest();
         request.setReceiptKind("CUSTOMER_PREPAYMENT");
+        request.setSalesOrderId(com.uten.imp.support.SalesPrepaymentOrderFixture.createApproved(beans,jdbc,client,currency,billDate));
         request.setBillDate(billDate);
         request.setClientId(client);
         request.setAccountId(receiving);
@@ -601,8 +604,8 @@ class AccountPostingReversalPostgresTest {
                     + "total_original,total_local,warehouse_id,status) VALUES(?,?,DATE '2026-08-01',?,?,7,100,700,?,1)",
                     receiptId, receiptNo, supplier, currency, warehouseId);
             jdbc.update("INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,goods_id,unit_id,unit_rate,qty,"
-                    + "price,amount_original,amount_local,replacement_intent,goods_snapshot_source) "
-                    + "VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,1,100,700,'NORMAL','MASTER_AT_SAVE')",
+                    + "charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) "
+                    + "VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,100,0,1,100,700,'NORMAL','MASTER_AT_SAVE')",
                     receiptItemId, receiptNo, receiptId, goodsId, unitId);
             jdbc.update("INSERT INTO procurement_receipt_consideration_parts(id,receipt_type,receipt_id,receipt_item_id,"
                     + "billing_mode,base_qty,nominal_original,nominal_local,payable_original,payable_local,created_by) "
@@ -622,6 +625,9 @@ class AccountPostingReversalPostgresTest {
                     VALUES (?, 'AP', 'PURCHASE', 'PAYABLE', 'PURCHASE_RECEIPT', ?, ?, ?, DATE '2026-08-01', ?, ?,
                             7.000000, 100.0000, 700.0000, 0, 0, 0, 0, 100.0000, 0, 700.0000, false, 1, false)
                     """, ledger, receiptId, receiptNo, receiptNo, supplier, currency);
+            // Original native approval freezes the real debt's account and
+            // original currency after the receipt/AP source has been flushed.
+            nativePostingAccounts.captureArAp(ledger);
         });
     }
 

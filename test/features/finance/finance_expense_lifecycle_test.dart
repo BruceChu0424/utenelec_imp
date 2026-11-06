@@ -47,7 +47,11 @@ void main() {
       expect(listUri.queryParameters['returnTo'], '/finance');
       expect(api.lists.last['view'], 'ACTIVE');
       expect(api.lists.last['status'], 1);
-      expect(_table(tester).items.single.glStatus, 1);
+      expect(_table(tester).items.map((row) => row.glStatus), [1, 1]);
+      expect(_table(tester).items.map((row) => row.id), [
+        'pending-1',
+        'pending-2',
+      ]);
       expect(router.canPop(), isTrue);
 
       await tester.tap(find.byTooltip('返回'));
@@ -64,14 +68,13 @@ void main() {
   );
 
   testWidgets(
-    'confirmation refresh signal retains scope and recovers the last pending page',
+    'confirmation refresh signal retains scope and reloads the complete pending list',
     (tester) async {
       final api = _ExpenseLifecycleApi();
       await _pump(tester, api, FinanceDocType.expense);
       await selectFilterSegment(tester, '待财务确认');
       await tester.pumpAndSettle();
-      await _table(tester).onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutRead(tester, api);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(MaterialApp)),
         listen: false,
@@ -80,7 +83,7 @@ void main() {
           container.read(badgeSummaryProvider.notifier)
               as FixedBadgeSummaryNotifier;
       final refreshBefore = badge.refreshCalls;
-      _table(tester).onRowTap!(_table(tester).items.single);
+      _table(tester).onRowTap!(_table(tester).items.last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('confirm fixture'));
       await tester.pumpAndSettle();
@@ -93,7 +96,7 @@ void main() {
     },
   );
   testWidgets(
-    'view-only staff see pending GL work; paging, facets and clearing retain lifecycle',
+    'view-only staff see complete pending GL work; scrolling, facets and clearing retain lifecycle',
     (tester) async {
       final api = _ExpenseLifecycleApi();
       await _pump(tester, api, FinanceDocType.expense);
@@ -119,11 +122,12 @@ void main() {
       expect(api.facets.last['view'], 'ACTIVE');
       expect(api.facets.last['status'], 1);
       var table = _table(tester);
-      expect(table.items.single.glStatus, 1);
+      expect(table.items.map((row) => row.glStatus), [1, 1]);
+      expect(table.items.map((row) => row.id), ['pending-1', 'pending-2']);
       expect(
         table.columns
             .firstWhere((column) => column.key == 'status')
-            .value(table.items.single),
+            .value(table.items.first),
         '待财务确认',
       );
       expect(table.selectable, isFalse);
@@ -145,8 +149,7 @@ void main() {
         1,
         reason: 'clearing retains the pending-confirmation parent',
       );
-      await _table(tester).onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutRead(tester, api);
       expect(api.lists.last['page'], 2);
       expect(api.lists.last['view'], 'ACTIVE');
       expect(api.facets.last['status'], 1);
@@ -157,7 +160,8 @@ void main() {
       expect(api.lists.last.containsKey('status'), isFalse);
       expect(api.lists.last.containsKey('hf.recordOrigin'), isFalse);
       table = _table(tester);
-      expect(table.items.single.glStatus, 2);
+      expect(table.items.map((row) => row.glStatus), [2, 2]);
+      expect(table.items.map((row) => row.id), ['history-1', 'history-2']);
       expect(
         table.facets['status']!.map((bucket) => bucket.value),
         isNot(contains('0')),
@@ -174,8 +178,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.lists.last['view'], 'HISTORY');
       expect(api.lists.last.containsKey('status'), isFalse);
-      await _table(tester).onPageChange!(2);
-      await tester.pumpAndSettle();
+      await _scrollWithoutRead(tester, api);
       expect(api.lists.last['page'], 2);
       expect(api.lists.last['view'], 'HISTORY');
       expect(tester.takeException(), isNull);
@@ -192,11 +195,16 @@ void main() {
       expect(api.lists.last['view'], 'ACTIVE');
       await selectFilterSegment(tester, '历史单据');
       await tester.pumpAndSettle();
-      expect(_table(tester).items.single.glStatus, 2);
+      expect(_table(tester).items.map((row) => row.glStatus), [2, 2]);
+      final beforeLateReply = api.lists.length;
       api.pendingActive!.complete(_ExpenseLifecycleApi.page('ACTIVE', 1));
       await tester.pumpAndSettle();
-      expect(_table(tester).items.single.glStatus, 2);
-      expect(_table(tester).items.single.id, 'history-1');
+      expect(_table(tester).items.map((row) => row.glStatus), [2, 2]);
+      expect(_table(tester).items.map((row) => row.id), [
+        'history-1',
+        'history-2',
+      ]);
+      expect(api.lists, hasLength(beforeLateReply));
       expect(tester.takeException(), isNull);
     },
   );
@@ -225,6 +233,22 @@ MasterDataTableView<FinanceDocListItem> _table(WidgetTester tester) =>
         (widget) => widget is MasterDataTableView<FinanceDocListItem>,
       ),
     );
+
+Future<void> _scrollWithoutRead(
+  WidgetTester tester,
+  _ExpenseLifecycleApi api,
+) async {
+  final beforeScroll = api.lists.length;
+  await tester.drag(
+    find.byType(MasterDataTableView<FinanceDocListItem>),
+    const Offset(0, -500),
+  );
+  await tester.pumpAndSettle();
+  expect(api.lists, hasLength(beforeScroll));
+  expect(_table(tester).currentPage, 1);
+  expect(_table(tester).totalPages, 1);
+  expect(find.byKey(const ValueKey('master-table-page-next')), findsNothing);
+}
 
 Future<GoRouter> _pump(
   WidgetTester tester,

@@ -29,7 +29,30 @@ class _Api extends ApiClient {
       (status == 'SUBMITTED' ? 1 : 0) + (remoteCreated ? 1 : 0);
   final listCalls = <Map<String, dynamic>>[];
   int facetCalls = 0;
+  final nativeFacetReads = <Map<String, dynamic>>[];
   int summaryCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    expect(path, '/expense-claims/facets');
+    nativeFacetReads.add(Map.of(body!));
+    return {
+      'field': body['__facetField'],
+      'page': body['__facetPage'],
+      'size': 100,
+      'hasMore': false,
+      'readScopeVersion': 'expense-return-authority',
+      'readSnapshotRevision': 'expense-return-snapshot',
+      'readDataVersion': 'expense-return-data',
+      'items': [
+        {'value': 'BX1', 'label': 'BX1', 'count': 1},
+        if (remoteCreated) {'value': 'BX2', 'label': 'BX2', 'count': 1},
+      ],
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -238,7 +261,7 @@ void main() {
           if (stale) {
             expect(api.listCalls.length, originalCalls + 1);
             expect(_table(tester).items, isEmpty);
-            expect(api.facetCalls, originalFacetCalls + 1);
+            expect(api.facetCalls, originalFacetCalls + (approval ? 1 : 0));
             if (approval) expect(api.summaryCalls, originalSummaryCalls + 1);
             expect(badges.refreshCalls, 1);
             if (!approval) {
@@ -265,9 +288,23 @@ void main() {
               _table(tester).items.last.status,
               ExpenseClaimStatus.submitted,
             );
-            expect(api.facetCalls, originalFacetCalls + 1);
+            expect(api.facetCalls, originalFacetCalls + (approval ? 1 : 0));
             if (approval) expect(api.summaryCalls, originalSummaryCalls + 1);
             expect(badges.refreshCalls, 1);
+          }
+          expect(api.nativeFacetReads, isEmpty);
+          if (!approval) {
+            final claimNo = find.byKey(
+              const ValueKey('master-column-filter-claimNo'),
+            );
+            await tester.ensureVisible(claimNo);
+            await tester.tap(claimNo);
+            await tester.pumpAndSettle();
+            expect(api.nativeFacetReads, hasLength(1));
+            expect(api.nativeFacetReads.single['queue'], 'mineActive');
+            expect(api.nativeFacetReads.single['__facetField'], 'claimNo');
+            expect(find.text('BX1'), findsWidgets);
+            if (!stale) expect(find.text('BX2'), findsWidgets);
           }
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox());

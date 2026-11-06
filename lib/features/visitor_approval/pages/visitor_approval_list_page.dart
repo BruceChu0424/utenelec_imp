@@ -441,7 +441,7 @@ class _VisitorApprovalListPageState
               return RefreshIndicator(
                 onRefresh: () async {
                   setState(() => _page = _tableRows.visiblePage ?? _page);
-                  readLease.invalidate();
+                  readLease.refresh();
                   ref.invalidate(visitorApprovalListProvider(_query));
                   ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
                 },
@@ -457,7 +457,7 @@ class _VisitorApprovalListPageState
                       ? humanErrorMessage(list.error!) ?? '访客审批列表读取失败，请稍后重试'
                       : null,
                   onRetry: () {
-                    readLease.invalidate();
+                    readLease.refresh();
                     ref.invalidate(visitorApprovalListProvider(_query));
                   },
                   columns: _columns(l10n),

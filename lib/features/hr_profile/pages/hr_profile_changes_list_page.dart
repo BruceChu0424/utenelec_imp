@@ -419,7 +419,7 @@ class _HrProfileChangesListPageState
           ? humanErrorMessage(async.error!) ?? '员工资料变更列表读取失败，请稍后重试'
           : null,
       onRetry: () {
-        readLease.invalidate();
+        readLease.refresh();
         ref.invalidate(hrProfileChangeQueueProvider(_query));
       },
       columns: _columns(l10n),

@@ -303,7 +303,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
           Widget body = RefreshIndicator(
             onRefresh: () async {
               setState(() => _page = _tableRows.visiblePage ?? _page);
-              readLease.invalidate();
+              readLease.refresh();
               ref.invalidate(myAsHostProvider(_query));
             },
             child: MasterDataTableView<VisitorApplication>(
@@ -318,7 +318,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                   ? humanErrorMessage(list.error!) ?? '接待列表读取失败，请稍后重试'
                   : null,
               onRetry: () {
-                readLease.invalidate();
+                readLease.refresh();
                 ref.invalidate(myAsHostProvider(_query));
               },
               columns: _columns(l10n),

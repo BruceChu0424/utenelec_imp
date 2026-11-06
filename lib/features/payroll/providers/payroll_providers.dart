@@ -164,12 +164,12 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
   }
 
   Future<void> refresh() {
-    _reader.invalidate();
+    _reader.refresh();
     return _reloadPage(_visiblePage?.call() ?? _page);
   }
 
   Future<void> retry() {
-    _reader.invalidate();
+    _reader.refresh();
     return _reloadPage(_page);
   }
 

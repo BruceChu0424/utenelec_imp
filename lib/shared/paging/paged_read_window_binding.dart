@@ -14,6 +14,12 @@ class PagedReadWindowSession<T> {
   bool get empty => _core.empty;
 
   void invalidate() => _core.invalidate();
+  void beginRead() {
+    _core.pending = true;
+    _core.failed = false;
+    _core.empty = false;
+  }
+
   void fail({bool accessDenied = false}) {
     if (accessDenied) {
       invalidate();

@@ -118,6 +118,20 @@ class ScopedPagedRead<T> {
     _flight = null;
   }
 
+  /// Retire the current read and cache while the same authorized query keeps
+  /// its last complete rendering with pending/failed state attached. Owner/query
+  /// replacement and confirmed access rejection still invalidate the proof.
+  void refresh() {
+    if (_disposed || _ownerCurrent?.call() == false) {
+      invalidate();
+      return;
+    }
+    _request++;
+    _accepted = null;
+    _flight = null;
+    _session?.beginRead();
+  }
+
   void dispose() {
     _disposed = true;
     invalidate();
@@ -162,6 +176,8 @@ class ScopedPagedRead<T> {
     bool current() => baseCurrent() && (activity?.call() ?? true);
     if (_accepted case final accepted?) {
       session.bindResult(accepted, pending: true);
+    } else {
+      session.beginRead();
     }
     late final _CompleteFlight<T> flight;
     Future<PagedResult<T>> load() async {

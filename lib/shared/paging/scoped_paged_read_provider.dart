@@ -113,4 +113,12 @@ class ScopedPagedReadProviderLease<R> {
     _readFailure = null;
     _reader.invalidate();
   }
+
+  /// A read-only refresh/retry may retain the same owner's complete rows.
+  /// Writes and authority boundaries continue to use [invalidate].
+  void refresh() {
+    _intent = null;
+    _readFailure = null;
+    _reader.refresh();
+  }
 }

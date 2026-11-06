@@ -196,7 +196,7 @@ class _HrCelebrationHistoryPanelState
                 ? humanErrorMessage(result.error!) ?? '发布记录未能加载，请重试'
                 : null,
             onRetry: () {
-              readLease.invalidate();
+              readLease.refresh();
               ref.invalidate(_historyProvider(query));
             },
             facets: const {},

@@ -226,7 +226,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     return RefreshIndicator(
       onRefresh: () async {
         setState(() => _page = _tableRows.visiblePage ?? _page);
-        readLease.invalidate();
+        readLease.refresh();
         ref.invalidate(myProfileChangeTableProvider);
         await ref.read(
           myProfileChangeTableProvider((status: _status, page: _page)).future,
@@ -243,7 +243,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         loadingMore: async.isLoading && async.hasValue,
         error: async.hasError ? '${async.error}' : null,
         onRetry: () {
-          readLease.invalidate();
+          readLease.refresh();
           ref.invalidate(
             myProfileChangeTableProvider((status: _status, page: _page)),
           );

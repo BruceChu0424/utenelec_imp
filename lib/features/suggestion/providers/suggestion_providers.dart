@@ -114,7 +114,7 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
   }
 
   Future<void> refresh() async {
-    _reader.invalidate();
+    _reader.refresh();
     await _goTo(
       _visiblePage?.call() ?? state.value?.page ?? _page,
       keepPrevious: false,

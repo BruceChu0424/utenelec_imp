@@ -13,6 +13,7 @@ import 'package:uten_imp/features/visitor_approval/pages/my_visitors_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/pump_until.dart';
 
 class _FakeVisitorStaffRepository extends Fake
     implements VisitorStaffRepository {
@@ -93,23 +94,17 @@ MasterDataTableView<VisitorApplication> _table(WidgetTester tester) =>
 
 void _expectHostReviewingReadWindow(
   _FakeVisitorStaffRepository repo, {
-  required int pageTwoReads,
+  required List<int> pages,
 }) {
   expect(repo.listCalls.first, {'status': null, 'page': 1});
-  expect(
-    repo.listCalls.where((call) => call['page'] == 2),
-    hasLength(pageTwoReads),
-  );
   expect(repo.listCalls, [
-    {'status': null, 'page': 1},
-    {'status': null, 'page': 2},
-    if (pageTwoReads == 2) {'status': null, 'page': 2},
-  ], reason: '显式重试失败页复用已接受前页；后台预读不能重复失败页或改变分类');
+    for (final page in pages) {'status': null, 'page': page},
+  ], reason: '完整读取按原范围取得全部内部批；失败后的明确重试重新验证完整范围');
 }
 
 void main() {
   testWidgets(
-    'pending family page keeps the mounted table and appends its rows',
+    'pending internal batch keeps the table mounted and publishes only the complete result',
     (tester) async {
       SharedPreferences.setMockInitialValues(const {});
       final preferences = await SharedPreferences.getInstance();
@@ -119,18 +114,17 @@ void main() {
         nextPage: nextPage,
       );
       await tester.pumpWidget(_app(repo, preferences));
-      await tester.pumpAndSettle();
+      await pumpUntil(
+        tester,
+        () => repo.listCalls.length == 2,
+        reason: '完整接待列表尚未读取第二个内部批',
+      );
 
       final finder = find.byKey(const Key('my-visitors-table'));
       final originalState = tester.state(finder);
-      final request = _table(tester).rowsController!.loadNextPage();
-      await tester.pump();
-      await tester.pump();
       expect(tester.state(finder), same(originalState));
-      expect(_table(tester).loadingMore, isTrue);
-      expect(_table(tester).rowsController!.items.map((row) => row.id), [
-        'first',
-      ]);
+      expect(_table(tester).isLoading, isTrue);
+      expect(_table(tester).items, isEmpty);
 
       nextPage.complete(
         PagedResult(
@@ -144,44 +138,59 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await request;
       expect(tester.state(finder), same(originalState));
-      expect(_table(tester).currentPage, 2);
+      expect(_table(tester).currentPage, 1);
+      expect(_table(tester).totalPages, 1);
       expect(_table(tester).rowsController!.items.map((row) => row.id), [
         'first',
         'second',
       ]);
-      _expectHostReviewingReadWindow(repo, pageTwoReads: 1);
+      final beforeScroll = repo.listCalls.length;
+      await tester.drag(finder, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(repo.listCalls, hasLength(beforeScroll));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      _expectHostReviewingReadWindow(repo, pages: [1, 2]);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
   );
 
   testWidgets(
-    'failed family append keeps earlier rows and can retry page two',
+    'failed complete refresh retains accepted rows and explicit retry reads the complete range',
     (tester) async {
       SharedPreferences.setMockInitialValues(const {});
       final preferences = await SharedPreferences.getInstance();
-      final firstAttempt = Completer<PagedResult<VisitorApplication>>();
       final repo = _FakeVisitorStaffRepository(
         items: [_application('first', VisitorApplicationStatus.hostReviewing)],
-        nextPage: firstAttempt,
       );
       await tester.pumpWidget(_app(repo, preferences));
       await tester.pumpAndSettle();
 
       final finder = find.byKey(const Key('my-visitors-table'));
       final originalState = tester.state(finder);
-      final request = _table(tester).rowsController!.loadNextPage();
-      await tester.pump();
-      await tester.pump();
+      final firstAttempt = Completer<PagedResult<VisitorApplication>>();
+      repo.nextPage = firstAttempt;
+      await tester
+          .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+          .onRefresh();
+      await pumpUntil(
+        tester,
+        () => repo.listCalls.length == 3,
+        reason: '完整刷新尚未进入待失败的第二个内部批',
+      );
+      expect(_table(tester).loadingMore, isTrue);
+      expect(_table(tester).items.map((row) => row.id), ['first']);
       firstAttempt.completeError(StateError('offline'));
       await tester.pumpAndSettle();
-      await request;
       expect(
         repo.listCalls.where((call) => call['page'] == 2),
         hasLength(1),
-        reason: 'the foreground append must join its pending look-ahead read',
+        reason:
+            'a failed complete read does not repeat its failed batch automatically',
       );
       expect(tester.state(finder), same(originalState));
       expect(_table(tester).currentPage, 1);
@@ -205,12 +214,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(_table(tester).currentPage, 2);
+      expect(_table(tester).currentPage, 1);
+      expect(_table(tester).totalPages, 1);
       expect(_table(tester).rowsController!.items.map((row) => row.id), [
         'first',
         'second',
       ]);
-      _expectHostReviewingReadWindow(repo, pageTwoReads: 2);
+      expect(tester.state(finder), same(originalState));
+      _expectHostReviewingReadWindow(repo, pages: [1, 1, 2, 1, 2]);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

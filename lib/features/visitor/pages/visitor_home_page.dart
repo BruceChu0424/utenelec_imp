@@ -209,7 +209,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                   return RefreshIndicator(
                     onRefresh: () async {
                       setState(() => _page = _tableRows.visiblePage ?? _page);
-                      readLease.invalidate();
+                      readLease.refresh();
                       ref.invalidate(visitorApplicationsProvider(_query));
                     },
                     child: MasterDataTableView<VisitorApplication>(
@@ -227,7 +227,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                           ? humanErrorMessage(apps.error!) ?? '预约列表读取失败，请稍后重试'
                           : null,
                       onRetry: () {
-                        readLease.invalidate();
+                        readLease.refresh();
                         ref.invalidate(visitorApplicationsProvider(_query));
                       },
                       columns: _columns(l10n),

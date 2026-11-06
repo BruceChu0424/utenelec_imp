@@ -145,14 +145,12 @@ Finder get _search => find.descendant(
 );
 void main() {
   testWidgets(
-    'settlement prepares two adjacent pages and search wins over a delayed old page',
+    'settlement completes all batches and search retires a delayed old refresh',
     (tester) async {
       final api = _Api();
-      await _pump(tester, api);
+      final container = await _pump(tester, api);
       expect(api.calls, [
-        (page: 1, keyword: ''),
-        (page: 2, keyword: ''),
-        (page: 3, keyword: ''),
+        for (var page = 1; page <= 100; page++) (page: page, keyword: ''),
       ]);
       expect(
         tester
@@ -164,23 +162,36 @@ void main() {
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
             .items,
-        hasLength(100),
+        hasLength(10000),
+      );
+      expect(
+        tester
+            .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
+            .items
+            .last
+            .id,
+        'method-10000',
+      );
+      final beforeScroll = api.calls.length;
+      await tester.drag(_table, const Offset(0, -700));
+      await tester.pumpAndSettle();
+      expect(api.calls, hasLength(beforeScroll));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
       );
       final gate = Completer<Map<String, dynamic>>();
       api.nextPage = gate;
-      tester
-          .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
-          .onPageChange!(4);
+      container.read(readScopeRevisionProvider.notifier).state++;
       await tester.pump();
-      expect(api.calls.last, (page: 4, keyword: ''));
+      await tester.pump();
+      expect(api.calls.last, (page: 1, keyword: ''));
       await tester.enterText(_search, '末端');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
       expect(api.calls, [
+        for (var page = 1; page <= 100; page++) (page: page, keyword: ''),
         (page: 1, keyword: ''),
-        (page: 2, keyword: ''),
-        (page: 3, keyword: ''),
-        (page: 4, keyword: ''),
         (page: 1, keyword: '末端'),
       ]);
       expect(
@@ -191,8 +202,9 @@ void main() {
             .id,
         'method-9999',
       );
-      gate.complete(api.page(4));
+      gate.complete(api.page(1));
       await tester.pumpAndSettle();
+      expect(api.calls, hasLength(102));
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)

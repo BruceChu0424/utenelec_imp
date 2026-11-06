@@ -156,7 +156,7 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
           Widget body = RefreshIndicator(
             onRefresh: () async {
               setState(() => _page = _tableRows.visiblePage ?? _page);
-              readLease.invalidate();
+              readLease.refresh();
               ref.invalidate(visitorBlacklistProvider(_page));
             },
             child: MasterDataTableView<VisitorBlacklistItem>(
@@ -172,7 +172,7 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
                   ? humanErrorMessage(list.error!) ?? '黑名单读取失败，请稍后重试'
                   : null,
               onRetry: () {
-                readLease.invalidate();
+                readLease.refresh();
                 ref.invalidate(visitorBlacklistProvider(_page));
               },
               columns: _columns(l10n),

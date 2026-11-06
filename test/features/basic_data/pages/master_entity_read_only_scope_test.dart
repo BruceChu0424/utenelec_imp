@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../support/versioned_summary_test_response.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -121,11 +122,14 @@ void main() {
           expect(find.text(scenario.label), findsWidgets);
           if (scenario.kind == 'goods') {
             final goodsReads = api.reads.where(
-              (read) => read.path == '/master/goods',
+              (read) => read.path == '/master/goods/summaries',
             );
             expect(goodsReads, isNotEmpty);
             expect(
-              goodsReads.every((read) => read.query['excludeDisabled'] != true),
+              goodsReads.every(
+                (read) =>
+                    (read.body['filter'] as Map)['excludeDisabled'] != true,
+              ),
               isTrue,
             );
           }
@@ -142,15 +146,23 @@ void main() {
           final queries = api.reads.where(
             (read) =>
                 read.path == '/master/${scenario.kind}' ||
-                read.path == '/master/${scenario.kind}/search',
+                read.path == '/master/${scenario.kind}/search' ||
+                read.path == '/master/${scenario.kind}/summaries',
           );
           expect(queries, isNotEmpty);
           expect(
-            queries.last.query['keyword'] ?? queries.last.body['keyword'],
+            queries.last.query['keyword'] ??
+                queries.last.body['keyword'] ??
+                (queries.last.body['filter'] as Map?)?['keyword'],
             '许可',
           );
           expect(
-            queries.every((read) => !read.query.containsKey('categoryId')),
+            queries.every(
+              (read) =>
+                  !read.query.containsKey('categoryId') &&
+                  !((read.body['filter'] as Map?)?.containsKey('categoryId') ??
+                      false),
+            ),
             isTrue,
           );
           _openFirst(tester, scenario.kind);
@@ -401,6 +413,32 @@ class _ReadApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/summaries')) {
+      final request = Map<String, dynamic>.from(body! as Map);
+      reads.add((path: path, query: Map.of(query ?? {}), body: request));
+      final scenario = _cases.singleWhere(
+        (item) => path == '/master/${item.kind}/summaries',
+      );
+      expect(request['size'], 100);
+      return versionedSummaryTestResponse(
+        [
+          {
+            'id': '${scenario.kind}-1',
+            'code': 'READ-001',
+            'name': scenario.label,
+            'status': '使用',
+            'categoryId': 'visible-row-category',
+            'categoryName': '本行分类',
+            'sourceType': '自制',
+            'version': 1,
+            'writable': false,
+          },
+        ],
+        request,
+        revision: 'a' * 64,
+        dataVersion: 'b' * 64,
+      );
+    }
     if (path.endsWith('/search')) {
       reads.add((
         path: path,

@@ -403,8 +403,8 @@ void main() {
           .widget<MasterDataTableView<HrCelebrationPublication>>(
             find.byKey(const Key('hr-celebration-history-table')),
           );
-      expect(history.totalPages, 2);
-      expect(history.items.single.employeeName, '历史员工1');
+      expect(history.totalPages, 1);
+      expect(history.items.map((row) => row.employeeName), ['历史员工1', '历史员工2']);
       expect(history.selectable, isFalse);
       expect(history.rowMenuBuilder, isNull);
       expect(history.batchActionsBuilder, isNull);
@@ -413,13 +413,18 @@ void main() {
         find.byKey(const Key('hr-task-celebration-auto-switch')),
         findsNothing,
       );
-      await history.onPageChange!(2);
+      final readsBeforeScroll = List<int>.of(hrTasks.historyPages);
+      await tester.drag(
+        find.byKey(const Key('hr-celebration-history-table')),
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
       history = tester.widget<MasterDataTableView<HrCelebrationPublication>>(
         find.byKey(const Key('hr-celebration-history-table')),
       );
-      expect(history.items.single.publishedAt, startsWith('2024-'));
+      expect(history.items.last.publishedAt, startsWith('2024-'));
       expect(hrTasks.historyPages, [1, 2]);
+      expect(hrTasks.historyPages, readsBeforeScroll);
       await tester.tap(
         find.byKey(const ValueKey('master-column-filter-employeeName')),
       );

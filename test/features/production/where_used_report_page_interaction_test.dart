@@ -443,11 +443,26 @@ class _MetadataWhereUsedApi extends _WhereUsedApi {
     final result = await super.get(path, query: query);
     if (path != '/production/reports/where-used') return result;
     final omitted = query?['includeCount'] == false;
+    final page = (query?['page'] as num?)?.toInt() ?? 1;
+    final original = Map<String, dynamic>.from(
+      (result['rows'] as List).first as Map,
+    );
+    final complete = [
+      original,
+      for (var i = 1; i <= 50; i++)
+        {
+          ...original,
+          '__productId': 'complete-product-$i',
+          'goodsCode': 'CP-COMPLETE-$i',
+          'goodsName': '完整关联产品$i',
+        },
+    ];
     return {
       ...result,
+      'rows': complete.skip((page - 1) * 50).take(50).toList(),
       'readScopeVersion': 'where-used-fixture-v1',
       'statisticsGeneratedAt': omitted ? null : '2026-10-25T00:00:00Z',
-      'page': query?['page'] ?? 1,
+      'page': page,
       'total': omitted ? -1 : 51,
       'totalPages': omitted ? -1 : 2,
     };
@@ -985,7 +1000,7 @@ void main() {
     });
   }
   testWidgets(
-    'relationship pagination reuses metadata but sorting reloads it',
+    'complete relationship batches reuse metadata, scrolling reads nothing and sorting reloads',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final api = _MetadataWhereUsedApi();
@@ -996,9 +1011,21 @@ void main() {
       );
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(finder);
-      expect(table().totalPages, 2);
-      await table().onPageChange!(2);
+      expect(table().totalPages, 1);
+      expect(table().items, hasLength(51));
+      expect(
+        table().items.map((row) => row['__productId']).toSet(),
+        hasLength(51),
+      );
+      expect(api.reportQueries.map((query) => query['page']), [1, 2]);
+      final beforeScroll = api.reportCalls;
+      await tester.drag(finder, const Offset(0, -2000));
       await tester.pumpAndSettle();
+      expect(api.reportCalls, beforeScroll);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(api.lastQuery, containsPair('includeCount', false));
       expect(api.lastQuery, containsPair('includeFacets', false));
       expect(api.lastQuery, containsPair('includeTotals', false));
@@ -1007,8 +1034,8 @@ void main() {
         api.lastQuery,
         containsPair('readScopeVersion', 'where-used-fixture-v1'),
       );
-      expect(table().currentPage, 2);
-      expect(table().totalPages, 2);
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
       table().onSortChange!('goodsCode', false);
       await tester.pumpAndSettle();
       final sorted = api.reportQueries
@@ -2310,8 +2337,18 @@ void main() {
         find.byKey(const Key('where-used-product-detail-dialog')),
         findsNothing,
       );
+      expect(
+        api.reportCalls,
+        1,
+        reason: 'An inactive report does not read behind the opened detail',
+      );
       router.pop();
       await tester.pumpAndSettle();
+      expect(
+        api.reportCalls,
+        2,
+        reason: 'Returning revalidates the original relationship query once',
+      );
       await tester.tap(
         find.text('墙壁插座成品'),
         buttons: kSecondaryButton,
@@ -2340,11 +2377,13 @@ void main() {
       // 整页详情 (tab=bom 组装信息)：BOM 表拉取并显示空态。
       expect(find.text('暂无组装信息'), findsOneWidget);
       expect(bom.listCalls, [_productId, _productId]);
+      expect(api.reportCalls, 2);
 
       // 返回反查页（等价于详情页返回键 pop）。
       router.pop();
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsOneWidget);
+      expect(api.reportCalls, 3);
 
       // 关系依据保留历史数量和库存跳转；双击直接打开完整 BOM。
       await tester.tap(
@@ -2360,6 +2399,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('stock goodsId=$_productId'), findsOneWidget);
+      expect(api.reportCalls, 3);
 
       await tester.tap(find.byKey(const Key('stock-test-back')));
       await tester.pumpAndSettle();
@@ -2371,7 +2411,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('墙壁插座成品'), findsOneWidget);
-      expect(api.reportCalls, 1);
+      expect(api.reportCalls, 4);
+      for (final query in api.reportQueries) {
+        expect(query, containsPair('materialGoodsId', _materialId));
+        expect(query, containsPair('source', 'all'));
+        _expectRecentDates(query);
+      }
     },
   );
 

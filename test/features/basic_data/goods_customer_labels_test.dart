@@ -5,7 +5,9 @@ import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
+import 'package:uten_imp/features/basic_data/models/currency_node.dart';
 import 'package:uten_imp/features/basic_data/providers/color_unit_dict.dart';
+import 'package:uten_imp/features/basic_data/providers/currency_dict.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -304,6 +306,16 @@ Future<void> _pumpGoods(
         colorDictProvider.overrideWith((ref) async => const []),
         unitDictProvider.overrideWith(
           (ref) async => const [UnitListItem(id: 'unit-pcs', name: '个')],
+        ),
+        currencyDictProvider.overrideWith(
+          (ref) async => const [
+            CurrencyListItem(
+              id: 'currency-cny',
+              code: 'CNY',
+              name: '人民币',
+              baseCurrency: true,
+            ),
+          ],
         ),
       ],
       child: MaterialApp(

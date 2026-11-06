@@ -128,7 +128,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(field().items, hasLength(1001));
       expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
-      expect(find.byKey(const Key('finance-report-context-retry')), findsNothing);
+      expect(
+        find.byKey(const Key('finance-report-context-retry')),
+        findsNothing,
+      );
       expect(api.postRequests, isEmpty);
       expect(tester.takeException(), isNull);
     },

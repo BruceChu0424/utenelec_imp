@@ -41,6 +41,7 @@ class SubcontractMaterialReturnOriginalCostEndToEndTest {
  @Autowired SubcontractMaterialIssueService issues;
  @Autowired SubcontractMaterialReturnService returns;
  @Autowired StockDocService stock;
+ @Autowired com.uten.imp.features.documents.DocumentUnapprovalService unapproval;
  SubcontractStepDrawEndToEndTest fixture;
  @BeforeEach void setup(){fixture=new SubcontractStepDrawEndToEndTest();beans.autowireBean(fixture);fixture.setup();}
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
@@ -72,6 +73,37 @@ class SubcontractMaterialReturnOriginalCostEndToEndTest {
    assertThat(decimal("SELECT returned_qty FROM subcontract_material_issue_items WHERE id=?",s.issueItem())).isEqualByComparingTo("4");
    assertThat(db.queryForObject("SELECT status FROM subcontract_material_returns WHERE id=?",Integer.class,s.returnId())).isEqualTo(1);
    assertThat(db.queryForObject("SELECT COUNT(*) FROM stock_value_events WHERE source_doc_type='SUBCONTRACT_MATERIAL_RETURN' AND source_doc_id=? AND operation='POSITION_STORE_REVERSE'",Integer.class,s.returnId())).isZero();
+ }
+
+ @Test void unapprovalKeepsFrozenInputsThenAnExplicitDraftSaveCanRepostTheOriginalSourceCost(){
+   Scenario s=scenario();
+   String originalPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE material_return_id=?",String.class,s.returnId());
+   var command=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("material-return-clone-"+s.returnId(),"保留原已采用数量并重提同源材料退货");
+   var draft=(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"subcontractMaterialReturn",s.returnId(),command);
+   pool(s,"6","120");assertThat(supplierValue(s)).isEqualByComparingTo("100");
+   assertThat(draft.getStatus()).isZero();assertThat(draft.getItems().getFirst().getQty()).isEqualByComparingTo("4");
+   var original=draft.getItems().getFirst();
+   var request=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest();
+   request.setBillDate(draft.getBillDate());request.setSupplierId(draft.getSupplierId());request.setWarehouseId(draft.getWarehouseId());
+   request.setWorkerId(draft.getWorkerId());request.setBStyle(draft.getBStyle());request.setRemark(draft.getRemark());
+   var line=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine();
+   line.setLineNo(original.getLineNo());line.setGoodsId(original.getGoodsId());line.setColorId(original.getColorId());
+   line.setUnitId(original.getUnitId());line.setUnitRate(original.getUnitRate());line.setQty(original.getQty());
+   line.setMaterialIssueItemId(original.getMaterialIssueItemId());line.setOrderItemId(original.getOrderItemId());
+   line.setParentGoodsId(original.getParentGoodsId());line.setParentColorId(original.getParentColorId());line.setWeight(original.getWeight());
+   line.setSourceDocNo(original.getSourceDocNo());line.setRemark(original.getRemark());line.setGirthQty(original.getGirthQty());
+   line.setIssueNo(original.getIssueNo());line.setOrderNo(original.getOrderNo());request.setItems(List.of(line));
+   try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
+     returns.update(draft.getId(),request);
+   }catch(RuntimeException failure){throw failure;}catch(Exception failure){throw new IllegalStateException(failure);}
+   assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM subcontract_material_return_items WHERE material_return_id=?",String.class,draft.getId())).isEqualTo("12");
+   assertThat(db.queryForObject("SELECT unapproval_source_item_id IS NULL FROM subcontract_material_return_items WHERE material_return_id=?",Boolean.class,draft.getId())).isTrue();
+   returns.approve(draft.getId());pool(s,"10","160");assertThat(supplierValue(s)).isEqualByComparingTo("60");
+   assertThat(decimal("SELECT known_value_local FROM stock_value_events WHERE source_doc_type='SUBCONTRACT_MATERIAL_RETURN' AND source_doc_id=? AND operation='POSITION_STORE'",draft.getId())).isEqualByComparingTo("40");
+   assertThat(decimal("SELECT returned_qty FROM subcontract_material_issue_items WHERE id=?",s.issueItem())).isEqualByComparingTo("4");
+   assertThat(db.queryForObject("SELECT quantity_precision_policy::text FROM subcontract_material_return_items WHERE material_return_id=?",String.class,s.returnId())).isEqualTo(originalPolicy);
+   var replay=(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail)unapproval.unapprove("subcontractMaterialReturn",s.returnId(),command);
+   assertThat(replay.getId()).isEqualTo(draft.getId());pool(s,"10","160");
  }
 
  private Scenario scenario(){

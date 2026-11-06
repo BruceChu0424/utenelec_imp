@@ -74,6 +74,14 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestExecutionListeners(listeners=WorkshopMaterialStockAuthorizationPostgresTest.Cleanup.class,
         mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class WorkshopMaterialStockAuthorizationPostgresTest {
+    // Explicit inputs for these scenarios; finite source values remain exact.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"));
+    }
+    private final AutoCloseable scenarioPrecision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices());
+    @org.junit.jupiter.api.AfterEach void releaseScenarioPrecision() throws Exception { scenarioPrecision.close(); }
+
     private static MigratedSchemaBaseline.ScopedDatabase database;
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         // FINAL is guarded by the entire database's durable valuation queues.
@@ -349,13 +357,26 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         Posting gain=gainCount(b,goods,transferred,"0",closing);
         assertKnownGain(gain,reference);
         assertFalse(db.queryForObject("SELECT source_final FROM stock_value_nodes WHERE id=?",Boolean.class,unpricedSource));
-        inTx(()->{
+        String originalSource=db.queryForObject("SELECT to_jsonb(node)::text FROM stock_value_nodes node WHERE id=?",String.class,unpricedSource);
+        UUID refusedEvent=UUID.randomUUID();
+        ApiException refused=assertThrows(ApiException.class,()->inTx(()->{
+            lock(goods);
+            return values.adjustSource(new SourceAdjustment(new EventContext(refusedEvent,"TEST_COST_ADJUST",refusedEvent,refusedEvent,1,
+                    b.user(),b.world().employeeId(),"workshop-refused-final:"+refusedEvent,BusinessTime.startOfDay(today())),
+                    unpricedSource,new BigDecimal("100"),true));
+        }));
+        assertTrue(refused.getMessage().contains("未知原成本不能由一笔追加费用自动核定"),refused.getMessage());
+        assertEquals(originalSource,db.queryForObject("SELECT to_jsonb(node)::text FROM stock_value_nodes node WHERE id=?",String.class,unpricedSource));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_value_events WHERE source_event_id=?",Integer.class,refusedEvent));
+        var confirmed=inTx(()->{
             lock(goods);
             UUID event=UUID.randomUUID();
-            return values.adjustSource(new SourceAdjustment(new EventContext(event,"TEST_COST_ADJUST",event,event,1,
-                    b.user(),b.world().employeeId(),"workshop-late-price:"+event,BusinessTime.startOfDay(today())),
-                    unpricedSource,new BigDecimal("100"),true));
+            return values.confirmSourceTotal(new InventoryValuationPort.SourceTotalConfirmation(new EventContext(event,"TEST_COST_ADJUST",event,event,1,
+                    b.user(),b.world().employeeId(),"workshop-confirmed-total:"+event,BusinessTime.startOfDay(today())),
+                    unpricedSource,new BigDecimal("100")));
         });
+        assertEquals("TOTAL_CONFIRMATION",db.queryForObject("SELECT request_payload->>'inputKind' FROM stock_value_events WHERE id=?",String.class,confirmed.eventId()));
+        money("100",db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",BigDecimal.class,unpricedSource));
         settleValue(goods);
         balance(b.bin(),goods,closing,partlyKnown?"320":"100");
         money(reference,db.queryForObject("""

@@ -1,0 +1,75 @@
+{
+  "baseMain": "66ca68371",
+  "baseCombinedSource": "9541452122513fc1a2aaf7f8e475e790e3f0699f",
+  "files": {
+    "lib/shared/drafts/form_draft_mixin.dart": "e63b52a2f0cfd7bbf5e21f8378b9f1e4ece19956a010f8cd707bf91e4e779c5e",
+    "test/shared/drafts/form_draft_exit_navigation_race_test.dart": "fafcfe40105262c300958aa71810e24d1c3361fd8a8d94cec087dda414c93ede",
+    "docs/02-组件库/表单草稿自动保护.md": "808f45c7f0545801d9339da2e9686f156184c0ee583a1e09dc4abe9847c0957b"
+  },
+  "originalSeven": {
+    "pass": 2,
+    "fail": 5,
+    "observedPopNames": [
+      "/new",
+      "/behind"
+    ],
+    "expectedPopNames": [
+      "/new"
+    ],
+    "failures": [
+      "two requests before save decision",
+      "two requests before discard decision",
+      "two requests before unknown-save decision",
+      "late explicit confirmation while original route mounted",
+      "late direct persistence while original route mounted"
+    ]
+  },
+  "fixedNativeThreeWholes": {
+    "pass": 78,
+    "fail": 0,
+    "skip": 0
+  },
+  "fixedSixCallerWholes": {
+    "pass": 89,
+    "fail": 0,
+    "skip": 0
+  },
+  "fixedChromeTwoWholes": {
+    "pass": 8,
+    "fail": 0,
+    "skip": 0
+  },
+  "finalStyleSevenWhole": {
+    "pass": 7,
+    "fail": 0
+  },
+  "strictFatalInfos": {
+    "exit": 0,
+    "errors": 0,
+    "warnings": 0,
+    "infos": 0
+  },
+  "testStyleBridge": {
+    "beforeSha256": "3107e2063260c13da0db073be69b322b3e56947993222ed096089a3e8305946d",
+    "afterSha256": "fafcfe40105262c300958aa71810e24d1c3361fd8a8d94cec087dda414c93ede",
+    "onlyChange": "curly braces around the existing unknown-submission assertion; all setup/actions/assertions identical"
+  },
+  "evidenceSha256": {
+    "race-original-seven.log": "a3dde45bc1ad6c01d2849dda5be7ed02095fdb549a2e1b1c9cd284af6c1c68ba",
+    "race-fixed-three.log": "cae1debba8f31ce7cdac0dcad47e4a0d82d3eceec89712c7e898120521bcf0de",
+    "race-fixed-three.jsonl": "3568c3a9ac09f839ac345d3d717d659006e8f3833ec92296b52e524de3961cc5",
+    "race-six-callers.log": "ebc70e6955ac5bc545cba50f18fe43998b50beaae918851c01ab042e347865c4",
+    "race-six-callers.jsonl": "52d173d05671059e85cf25c7cff92519e54e5a7285d64831caa1ff07eaad35d0",
+    "race-chrome-two-wholes.log": "44942bffb781a609b2516c987489ea68b8985c360b1f5cabdee925109039c169",
+    "race-final-seven.log": "7aff608b37f1b360beffa85bb8c3ea46c5e9b912009a5c5698439bd0ad15d043",
+    "race-final-chrome-two-wholes.log": "be8a5bcf36994186838c89b0b15244ca416778d5cf87525ba6ffceaed5637cb7",
+    "race-final-strict.log": "54d34554f76d836e0c032ae51b08d1f5d78c9e5bfd558adc706ad1a7347869c6",
+    "race-style-bridge.json": "980656e21bb8bbc33aa3c5441e0f705ccfce2e37edf883ad7a39bd0567a5077c"
+  },
+  "scope": "unique pending confirmation owner plus original-route fences shared by explicit confirm and direct persistence; no caller-specific pop workaround",
+  "limits": [
+    "Chrome program source is identical to final source; the only test style followup adds braces around an existing assertion and has exact before/after hash plus final full7 native rerun",
+    "Original chart-import wire initialization Chrome timeout remains independently unresolved; not masked by this fix",
+    "No rule, exception, fingerprint, wait duration, expectation, or performance budget was relaxed"
+  ]
+}

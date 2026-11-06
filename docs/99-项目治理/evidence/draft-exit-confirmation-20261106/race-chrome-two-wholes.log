@@ -1,0 +1,12 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart
+00:00 +0: test\shared\drafts\form_draft_exit_navigation_race_test.dart: two explicit exits before save decision pop only their original route
+00:02 +1: test\shared\drafts\form_draft_exit_navigation_race_test.dart: two explicit exits before discard decision pop only their original route
+00:04 +2: test\shared\drafts\form_draft_exit_navigation_race_test.dart: two explicit exits before stay decision pop only their original route
+00:05 +3: test\shared\drafts\form_draft_exit_navigation_race_test.dart: two explicit exits before unknown-save decision pop only their original route
+00:07 +4: test\shared\drafts\form_draft_exit_navigation_race_test.dart: retired route cannot use another exit permit while its closing animation is mounted
+00:08 +5: test\shared\drafts\form_draft_exit_navigation_race_test.dart: retired route cannot reuse direct persistence during its exit transition
+00:09 +6: test\shared\drafts\form_draft_exit_navigation_race_test.dart: confirmed business completion still exits before its busy finally finishes
+00:10 +7: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_interruption_test.dart
+00:22 +7: test\shared\drafts\form_draft_exit_interruption_test.dart: hard disposal during explicit exit releases wait and retains the exact draft
+00:23 +8: All tests passed!

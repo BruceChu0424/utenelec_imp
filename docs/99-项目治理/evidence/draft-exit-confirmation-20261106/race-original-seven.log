@@ -1,0 +1,142 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart
+00:00 +0: two explicit exits before save decision pop only their original route
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['/new']
+  Actual: ['/new', '/behind']
+   Which: at location [1] is ['/new', '/behind'] which longer than expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart:165:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart line 165
+The test description was:
+  two explicit exits before save decision pop only their original route
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +0 -1: two explicit exits before save decision pop only their original route [E]
+  Test failed. See exception logs above.
+  The test description was: two explicit exits before save decision pop only their original route
+  
+00:02 +0 -1: two explicit exits before discard decision pop only their original route
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['/new']
+  Actual: ['/new', '/behind']
+   Which: at location [1] is ['/new', '/behind'] which longer than expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart:165:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart line 165
+The test description was:
+  two explicit exits before discard decision pop only their original route
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:02 +0 -2: two explicit exits before discard decision pop only their original route [E]
+  Test failed. See exception logs above.
+  The test description was: two explicit exits before discard decision pop only their original route
+  
+00:02 +0 -2: two explicit exits before stay decision pop only their original route
+00:03 +1 -2: two explicit exits before unknown-save decision pop only their original route
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['/new']
+  Actual: ['/new', '/behind']
+   Which: at location [1] is ['/new', '/behind'] which longer than expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart:165:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart line 165
+The test description was:
+  two explicit exits before unknown-save decision pop only their original route
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +1 -3: two explicit exits before unknown-save decision pop only their original route [E]
+  Test failed. See exception logs above.
+  The test description was: two explicit exits before unknown-save decision pop only their original route
+  
+00:03 +1 -3: retired route cannot use another exit permit while its closing animation is mounted
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['/new']
+  Actual: ['/new', '/behind']
+   Which: at location [1] is ['/new', '/behind'] which longer than expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart:199:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart line 199
+The test description was:
+  retired route cannot use another exit permit while its closing animation is mounted
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +1 -4: retired route cannot use another exit permit while its closing animation is mounted [E]
+  Test failed. See exception logs above.
+  The test description was: retired route cannot use another exit permit while its closing animation is mounted
+  
+00:04 +1 -4: retired route cannot reuse direct persistence during its exit transition
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['/new']
+  Actual: ['/new', '/behind']
+   Which: at location [1] is ['/new', '/behind'] which longer than expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart:218:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart line 218
+The test description was:
+  retired route cannot reuse direct persistence during its exit transition
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +1 -5: retired route cannot reuse direct persistence during its exit transition [E]
+  Test failed. See exception logs above.
+  The test description was: retired route cannot reuse direct persistence during its exit transition
+  
+00:04 +1 -5: confirmed business completion still exits before its busy finally finishes
+00:04 +2 -5: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot reuse direct persistence during its exit transition
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: retired route cannot use another exit permit while its closing animation is mounted
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before discard decision pop only their original route
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before save decision pop only their original route
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart: two explicit exits before unknown-save decision pop only their original route

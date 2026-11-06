@@ -1,0 +1,10 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/shared/drafts/form_draft_exit_navigation_race_test.dart
+00:00 +0: two explicit exits before save decision pop only their original route
+00:02 +1: two explicit exits before discard decision pop only their original route
+00:03 +2: two explicit exits before stay decision pop only their original route
+00:03 +3: two explicit exits before unknown-save decision pop only their original route
+00:04 +4: retired route cannot use another exit permit while its closing animation is mounted
+00:04 +5: retired route cannot reuse direct persistence during its exit transition
+00:05 +6: confirmed business completion still exits before its busy finally finishes
+00:05 +7: All tests passed!

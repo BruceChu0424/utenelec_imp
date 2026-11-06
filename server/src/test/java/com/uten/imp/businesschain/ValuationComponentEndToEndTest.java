@@ -518,22 +518,24 @@ class ValuationComponentEndToEndTest {
                     JOIN pg_namespace ns ON ns.oid=class.relnamespace JOIN pg_proc fn ON fn.oid=trigger.tgfoid
                     WHERE ns.nspname='public' AND NOT trigger.tgisinternal
                       AND class.relname IN('stock_value_nodes','stock_value_edges','stock_value_events','stock_value_node_revisions')
-                      AND (trigger.tgname='trg_00_inventory_value_precision'
-                        OR fn.proname IN('fn_guard_stock_value_projection_identity','fn_stock_value_append_only','fn_guard_stock_value_exact_revision_metadata'))
+                      AND fn.proname IN('fn_guard_inventory_value_precision','fn_guard_stock_value_projection_identity',
+                                        'fn_stock_value_append_only','fn_guard_stock_value_exact_revision_metadata')
                     ORDER BY class.relname,trigger.tgname
                     """);
             assertThat(triggers).isNotEmpty();
-            try{
-                for(var trigger:triggers)db.execute("ALTER TABLE "+identifier(trigger.get("table_name"))+" DISABLE TRIGGER "+identifier(trigger.get("tgname")));
-                db.update("UPDATE stock_value_nodes SET value_precision_version=1,business_precision_policy=NULL WHERE pool_id IN(SELECT id FROM stock_value_pools WHERE goods_id=?)",c.goods());
-                db.update("UPDATE stock_value_edges SET value_precision_version=1,business_precision_policy=NULL WHERE parent_node_id IN(SELECT node.id FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?)",c.goods());
-                db.update("UPDATE stock_value_events SET value_precision_version=1,business_precision_policy=NULL WHERE pool_id IN(SELECT id FROM stock_value_pools WHERE goods_id=?)",c.goods());
-                db.update("UPDATE stock_value_node_revisions SET value_precision_version=1,business_precision_policy=NULL WHERE node_id IN(SELECT node.id FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?)",c.goods());
-                // Deferred physical/source guards stay enabled and validate the unchanged facts before trigger mode DDL.
-                db.execute("SET CONSTRAINTS ALL IMMEDIATE");
-            }finally{
-                for(var trigger:triggers){String enabled=trigger.get("enabled").toString();String mode=switch(enabled){case "O"->"ENABLE";case "A"->"ENABLE ALWAYS";case "R"->"ENABLE REPLICA";case "D"->"DISABLE";default->throw new AssertionError("Unknown trigger mode");};db.execute("ALTER TABLE "+identifier(trigger.get("table_name"))+" "+mode+" TRIGGER "+identifier(trigger.get("tgname")));}
-            }
+            // V1063 split the precision function into INSERT and UPDATE triggers.
+            // Capture by the actual metadata function, with every original mode.
+            for(var trigger:triggers)db.execute("ALTER TABLE "+identifier(trigger.get("table_name"))+" DISABLE TRIGGER "+identifier(trigger.get("tgname")));
+            db.update("UPDATE stock_value_nodes SET value_precision_version=1,business_precision_policy=NULL WHERE pool_id IN(SELECT id FROM stock_value_pools WHERE goods_id=?)",c.goods());
+            db.update("UPDATE stock_value_edges SET value_precision_version=1,business_precision_policy=NULL WHERE parent_node_id IN(SELECT node.id FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?)",c.goods());
+            db.update("UPDATE stock_value_events SET value_precision_version=1,business_precision_policy=NULL WHERE pool_id IN(SELECT id FROM stock_value_pools WHERE goods_id=?)",c.goods());
+            db.update("UPDATE stock_value_node_revisions SET value_precision_version=1,business_precision_policy=NULL WHERE node_id IN(SELECT node.id FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?)",c.goods());
+            // Deferred physical/source guards stay enabled and validate the unchanged facts before trigger mode DDL.
+            db.execute("SET CONSTRAINTS ALL IMMEDIATE");
+            // On failure PostgreSQL rolls back both metadata and transactional
+            // trigger DDL. Do not issue more SQL in an aborted transaction and
+            // replace the original failure with 25P02 during cleanup.
+            for(var trigger:triggers){String enabled=trigger.get("enabled").toString();String mode=switch(enabled){case "O"->"ENABLE";case "A"->"ENABLE ALWAYS";case "R"->"ENABLE REPLICA";case "D"->"DISABLE";default->throw new AssertionError("Unknown trigger mode");};db.execute("ALTER TABLE "+identifier(trigger.get("table_name"))+" "+mode+" TRIGGER "+identifier(trigger.get("tgname")));}
         });
         Map<String,String> after=historicalBusinessFacts(c);
         assertThat(after.keySet()).isEqualTo(before.keySet());

@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -36,26 +37,28 @@ class DirectMakeDeliveryClosedCreditPostgresTest {
         admin.execute("CREATE SCHEMA direct_make_credit");
         String url=DB.getJdbcUrl()+(DB.getJdbcUrl().contains("?")?"&":"?")+"currentSchema=direct_make_credit";
         jdbc=new JdbcTemplate(new DriverManagerDataSource(url,DB.getUsername(),DB.getPassword()));
+        // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "production_material_analysis_items", "production_material_analysis_materials", "sales_delivery_entitlement_handoffs", "preplan_stock_entitlement_events", "preplan_analysis_stock_exact_pegs", "stock_document_items", "stock_documents", "production_plan_items", "production_plans", "sales_shipment_delivery_components", "sales_shipment_items", "sales_shipments", "stock_movements", "stock_reservations", "sales_delivery_fulfillment_allocations", "sales_delivery_fulfillment_groups", "sales_delivery_fulfillment_events", "sales_delivery_entitlement_restores", "preplan_reallocation_make_supplements");
         jdbc.execute("""
-                CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid,parent_analysis_material_id uuid,source_type text,is_deleted boolean DEFAULT false,delivery_plan_snapshot jsonb,sales_order_item_id uuid,requested_qty numeric);
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,analysis_item_id uuid,delivery_frontier boolean,delivery_context boolean,depth int,goods_id uuid,color_id uuid,unit_id uuid,node_key text,required_qty numeric);
-                CREATE TABLE sales_delivery_entitlement_handoffs(id uuid PRIMARY KEY,component_id uuid,allocation_id uuid,source_analysis_id uuid,source_material_id uuid,entitlement_material_id uuid,entitlement_analysis_id uuid,aggregate_alias_id uuid,source_entitlement_event_id uuid,source_reservation_id uuid,target_reservation_id uuid,release_event_id uuid,quantity numeric);
-                CREATE TABLE preplan_stock_entitlement_events(id uuid PRIMARY KEY,event_type text,stock_reservation_id uuid,beneficiary_analysis_id uuid,beneficiary_analysis_material_id uuid,source_exact_peg_id uuid,counter_event_id uuid);
-                CREATE TABLE preplan_analysis_stock_exact_pegs(id uuid PRIMARY KEY,make_source_analysis_item_id uuid,make_public_claim_id uuid,source_receipt_type text,stock_reservation_id uuid,source_stock_document_item_id uuid,source_stock_document_id uuid,qty numeric);
-                CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,bill_type text,is_deleted boolean DEFAULT false,upstream_item_id uuid);
-                CREATE TABLE stock_documents(id uuid PRIMARY KEY,status int,is_deleted boolean DEFAULT false);
-                CREATE TABLE production_plan_items(id uuid PRIMARY KEY,plan_id uuid,is_deleted boolean DEFAULT false);
-                CREATE TABLE production_plans(id uuid PRIMARY KEY,material_analysis_id uuid,material_analysis_item_id uuid,is_deleted boolean DEFAULT false);
-                CREATE TABLE sales_shipment_delivery_components(id uuid PRIMARY KEY,order_item_id uuid,goods_id uuid,color_id uuid,unit_id uuid,bom_fingerprint text,bom_path jsonb,reversal_movement_id uuid,shipment_item_id uuid,shipment_id uuid,movement_id uuid,required_qty numeric,warehouse_id uuid);
-                CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid,order_item_id uuid,is_deleted boolean DEFAULT false);
-                CREATE TABLE sales_shipments(id uuid PRIMARY KEY,status int,is_deleted boolean DEFAULT false);
-                CREATE TABLE stock_movements(id uuid PRIMARY KEY,source_doc_type text,source_doc_id uuid,source_item_id uuid,movement_type int,direction int,qty numeric,goods_id uuid,color_id uuid,warehouse_id uuid,unit_id uuid);
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY,owner_type text,owner_id uuid,qty numeric,consumed_qty numeric,released_qty numeric,status int,is_deleted boolean DEFAULT false);
-                CREATE TABLE sales_delivery_fulfillment_allocations(id uuid PRIMARY KEY,analysis_id uuid,analysis_item_id uuid,shipment_item_id uuid);
-                CREATE TABLE sales_delivery_fulfillment_groups(shipment_item_id uuid PRIMARY KEY,shipment_id uuid,order_item_id uuid,state text);
-                CREATE TABLE sales_delivery_fulfillment_events(id uuid PRIMARY KEY,allocation_id uuid,event_type text,counter_event_id uuid);
-                CREATE TABLE sales_delivery_entitlement_restores(id uuid PRIMARY KEY,handoff_id uuid);
-                CREATE TABLE preplan_reallocation_make_supplements(child_analysis_item_id uuid,source_analysis_material_id uuid,qty numeric);
+                ALTER TABLE production_material_analysis_items ADD PRIMARY KEY (id);
+                ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY (id);
+                ALTER TABLE sales_delivery_entitlement_handoffs ADD PRIMARY KEY (id);
+                ALTER TABLE preplan_stock_entitlement_events ADD PRIMARY KEY (id);
+                ALTER TABLE preplan_analysis_stock_exact_pegs ADD PRIMARY KEY (id);
+                ALTER TABLE stock_document_items ADD PRIMARY KEY (id);
+                ALTER TABLE stock_documents ADD PRIMARY KEY (id);
+                ALTER TABLE production_plan_items ADD PRIMARY KEY (id);
+                ALTER TABLE production_plans ADD PRIMARY KEY (id);
+                ALTER TABLE sales_shipment_delivery_components ADD PRIMARY KEY (id);
+                ALTER TABLE sales_shipment_items ADD PRIMARY KEY (id);
+                ALTER TABLE sales_shipments ADD PRIMARY KEY (id);
+                ALTER TABLE stock_movements ADD PRIMARY KEY (id);
+                ALTER TABLE stock_reservations ADD PRIMARY KEY (id);
+                ALTER TABLE sales_delivery_fulfillment_allocations ADD PRIMARY KEY (id);
+                ALTER TABLE sales_delivery_fulfillment_groups ADD PRIMARY KEY (shipment_item_id);
+                ALTER TABLE sales_delivery_fulfillment_events ADD PRIMARY KEY (id);
+                ALTER TABLE sales_delivery_entitlement_restores ADD PRIMARY KEY (id);
                 CREATE FUNCTION fn_preplan_aggregate_source_capacity(p_material uuid) RETURNS numeric LANGUAGE sql STABLE AS $$SELECT required_qty FROM production_material_analysis_materials WHERE id=p_material$$;
                 """);
         jdbc.execute(new ClassPathResource("db/migration/V1058__direct_make_closed_delivery_credit.sql").getContentAsString(StandardCharsets.UTF_8));

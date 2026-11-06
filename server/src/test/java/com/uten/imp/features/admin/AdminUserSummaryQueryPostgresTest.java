@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.admin.dto.UserSummary;
 import org.junit.jupiter.api.AfterAll;
@@ -41,22 +42,22 @@ class AdminUserSummaryQueryPostgresTest {
         DATABASE.start();
         var jdbc = new JdbcTemplate(new DriverManagerDataSource(
                 DATABASE.getJdbcUrl(), DATABASE.getUsername(), DATABASE.getPassword()));
-        jdbc.execute("CREATE TABLE departments(id uuid PRIMARY KEY, name text, parent_id uuid, is_deleted boolean NOT NULL DEFAULT FALSE)");
-        jdbc.execute("CREATE TABLE positions(id uuid PRIMARY KEY, name text)");
+        // Complete migrated columns/defaults; retain this oracle's original keys and constraints.
+        MigratedProjectionSchema.createCurrentColumns(jdbc,
+                "departments", "positions", "employees", "users", "employee_sensitive");
         jdbc.execute("""
-                CREATE TABLE employees(id uuid PRIMARY KEY, code text, full_name text, status text,
-                    department_id uuid, position_id uuid, is_deleted boolean NOT NULL DEFAULT FALSE)
+                ALTER TABLE departments ADD PRIMARY KEY (id);
+                ALTER TABLE positions ADD PRIMARY KEY (id);
+                ALTER TABLE employees ADD PRIMARY KEY (id);
+                ALTER TABLE users ADD PRIMARY KEY (id);
+                ALTER TABLE employee_sensitive ADD PRIMARY KEY (employee_id);
+                ALTER TABLE users ADD UNIQUE (employee_id), ADD UNIQUE (login_account);
+                ALTER TABLE departments ALTER COLUMN is_deleted SET NOT NULL;
+                ALTER TABLE employees ALTER COLUMN is_deleted SET NOT NULL;
+                ALTER TABLE users ALTER COLUMN is_super_admin SET NOT NULL, ALTER COLUMN status SET NOT NULL, ALTER COLUMN must_change_password SET NOT NULL, ALTER COLUMN remote_access SET NOT NULL, ALTER COLUMN is_deleted SET NOT NULL;
                 """);
-        jdbc.execute("""
-                CREATE TABLE users(id uuid PRIMARY KEY, employee_id uuid UNIQUE, login_account text UNIQUE,
-                    password_hash text, is_super_admin boolean NOT NULL DEFAULT FALSE,
-                    status text NOT NULL DEFAULT 'active', must_change_password boolean NOT NULL DEFAULT FALSE,
-                    last_login_at timestamptz, remote_access boolean NOT NULL DEFAULT FALSE,
-                    temp_password_expires_at timestamptz, is_deleted boolean NOT NULL DEFAULT FALSE)
-                """);
-        jdbc.execute("CREATE TABLE employee_sensitive(employee_id uuid PRIMARY KEY, phone_enc text)");
         jdbc.update("INSERT INTO departments(id,name) VALUES (?, '部门')", DEPARTMENT);
-        jdbc.update("INSERT INTO positions VALUES (?, '岗位')", POSITION);
+        jdbc.update("INSERT INTO positions(id,name) VALUES (?, '岗位')", POSITION);
     }
 
     @AfterAll static void stop() { DATABASE.stop(); }
@@ -127,7 +128,7 @@ class AdminUserSummaryQueryPostgresTest {
             if (index < 20) {
                 UUID department = UUID.randomUUID(), position = UUID.randomUUID();
                 jdbc.update("INSERT INTO departments(id,name) VALUES (?, ?)", department, "分页部门" + index);
-                jdbc.update("INSERT INTO positions VALUES (?, ?)", position, "分页岗位" + index);
+                jdbc.update("INSERT INTO positions(id,name) VALUES (?, ?)", position, "分页岗位" + index);
                 jdbc.update("UPDATE employees SET department_id=?,position_id=? WHERE id="
                         + "(SELECT employee_id FROM users WHERE id=?)", department, position, user);
             }
@@ -169,7 +170,7 @@ class AdminUserSummaryQueryPostgresTest {
 
     @Test void accountWithoutAnEmployeeAndExistingEmployeeDeepLinkKeepTheirDifferentContracts() {
         UUID orphan = UUID.randomUUID();
-        jdbc.update("INSERT INTO users(id,login_account) VALUES (?, 'unbound')", orphan);
+        jdbc.update("INSERT INTO users(id,login_account,is_super_admin,status,must_change_password,remote_access,is_deleted) VALUES (?, 'unbound',false,'active',false,false,false)", orphan);
         var summary = query.byId(orphan).orElseThrow();
         assertNull(summary.getEmployeeId());
         assertNull(summary.getDepartmentName());
@@ -226,7 +227,7 @@ class AdminUserSummaryQueryPostgresTest {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO employees(id,code,full_name,status,department_id,position_id,is_deleted) VALUES (?,?,?,?,?,?,?)",
                 id, code, name, status, DEPARTMENT, POSITION, deleted);
-        if (phone != null) jdbc.update("INSERT INTO employee_sensitive VALUES (?,?)", id, phone);
+        if (phone != null) jdbc.update("INSERT INTO employee_sensitive(employee_id,phone_enc) VALUES (?,?)", id, phone);
         return id;
     }
 
@@ -235,7 +236,7 @@ class AdminUserSummaryQueryPostgresTest {
         UUID user = UUID.randomUUID();
         jdbc.update("INSERT INTO employees(id,code,full_name,status,department_id,position_id) VALUES (?,?,?,'active',?,?)",
                 employee, code, name, DEPARTMENT, POSITION);
-        jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash) VALUES (?,?,?,'excluded-test-hash')",
+        jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,is_super_admin,status,must_change_password,remote_access,is_deleted) VALUES (?,?,?,'excluded-test-hash',false,'active',false,false,false)",
                 user, employee, login);
         return user;
     }

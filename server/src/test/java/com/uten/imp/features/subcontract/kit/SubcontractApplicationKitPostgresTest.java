@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.kit;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -48,56 +49,34 @@ class SubcontractApplicationKitPostgresTest {
         connection = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA kit_test; SET LOCAL search_path TO kit_test; SET LOCAL jit TO off");
+        MigratedProjectionSchema.createCurrentColumns(new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)), "warehouses", "goods", "goods_bom_items", "subcontract_applications", "subcontract_application_items", "subcontract_orders", "subcontract_order_items", "subcontract_order_item_sources", "procurement_order_approval_cases", "subcontract_material_plans", "subcontract_material_plan_items", "subcontract_material_issues", "subcontract_material_issue_items", "preplan_supply_actions", "preplan_supply_action_allocations", "production_material_analysis_materials", "stock_reservations");
         execute("""
-                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
-                    is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
-                CREATE TABLE goods(id uuid PRIMARY KEY, color_id uuid, is_deleted boolean DEFAULT false,
-                    auto_created boolean DEFAULT false, issue_method text DEFAULT 'PER_ORDER', client_goods_name text, currency_id uuid);
-                CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid,
-                    qty numeric(18,6), is_deleted boolean DEFAULT false, consumption_basis text DEFAULT 'PER_UNIT',
-                    control_stage text DEFAULT 'START', sort_order integer DEFAULT 1,
-                    retirement_reason text, retirement_resolved_at timestamptz);
-                CREATE TABLE subcontract_applications(id uuid PRIMARY KEY, status smallint DEFAULT 1,
-                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false);
-                CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid,
-                    color_id uuid, unit_rate numeric(18,6) DEFAULT 1, qty numeric(18,4), ordered_qty numeric(18,4) DEFAULT 0,
-                    is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status smallint DEFAULT 0,
-                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false, termination_case_id uuid);
-                CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, goods_id uuid, color_id uuid,
-                    qty numeric(18,4), unit_rate numeric(18,6) DEFAULT 1, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4), line_no integer);
-                CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text,
-                    attempt integer DEFAULT 1, finance_tax_rate numeric(7,4), decided_txid bigint, replacement_order_id uuid,
-                    request_type text NOT NULL DEFAULT 'ORDER' CHECK(request_type IN('ORDER','CLOSE','CLOSE_AND_REORDER')),
-                    UNIQUE(order_type,order_id,attempt));
-                CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
-                    is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
-                    base_bom_unit_qty numeric, material_loss_pct numeric(5,2) NOT NULL DEFAULT 0,
-                    line_no integer, goods_id uuid, color_id uuid, bom_unit_qty numeric, planned_qty numeric(18,4),
-                    issued_qty numeric(18,4) DEFAULT 0, is_deleted boolean DEFAULT false, draw_closed_at timestamptz);
-                CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, plan_item_id uuid,
-                    qty numeric(18,4), is_deleted boolean DEFAULT false,
-                    warehouse_split_command_id uuid, warehouse_split_at timestamptz);
-                CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text, operation_type text,
-                    status text, external_document_type text, external_document_id uuid, public_surplus_external_item_id uuid);
-                CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, action_id uuid, analysis_id uuid,
-                    analysis_material_id uuid, external_item_id uuid, allocated_qty numeric(18,4));
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
-                    analysis_item_id uuid, node_key text, parent_node_key text, node_role text DEFAULT 'BOM_COMPONENT',
-                    depth integer, goods_id uuid, color_id uuid, active boolean DEFAULT true);
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid,
-                    owner_type text, status smallint DEFAULT 0, is_deleted boolean DEFAULT false,
-                    qty numeric(18,4), consumed_qty numeric(18,4) DEFAULT 0, released_qty numeric(18,4) DEFAULT 0);
-                CREATE TABLE fixture_entitlement_lots(entitlement_event_id uuid PRIMARY KEY, stock_reservation_id uuid,
-                    beneficiary_analysis_id uuid, beneficiary_analysis_material_id uuid, remaining_qty numeric(18,4));
-                CREATE VIEW v_preplan_stock_entitlement_lot_balance AS SELECT * FROM fixture_entitlement_lots;
-                CREATE TABLE fixture_public_stock(warehouse_id uuid, goods_id uuid, color_id uuid, available_qty numeric(18,4));
-                CREATE VIEW v_stock_available AS SELECT * FROM fixture_public_stock;
-                """);
+            ALTER TABLE warehouses ADD PRIMARY KEY(id);
+            ALTER TABLE goods ADD PRIMARY KEY(id);
+            ALTER TABLE goods_bom_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_applications ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_application_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_orders ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_order_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_order_item_sources ADD PRIMARY KEY(id);
+            ALTER TABLE procurement_order_approval_cases ALTER COLUMN request_type SET NOT NULL;
+            ALTER TABLE procurement_order_approval_cases ADD CHECK(request_type IN('ORDER','CLOSE','CLOSE_AND_REORDER'));
+            ALTER TABLE procurement_order_approval_cases ADD UNIQUE(order_type,order_id,attempt);
+            ALTER TABLE subcontract_material_plans ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_plan_items ALTER COLUMN material_loss_pct SET NOT NULL;
+            ALTER TABLE subcontract_material_issues ADD PRIMARY KEY(id);
+            ALTER TABLE subcontract_material_issue_items ADD PRIMARY KEY(id);
+            ALTER TABLE preplan_supply_actions ADD PRIMARY KEY(id);
+            ALTER TABLE preplan_supply_action_allocations ADD PRIMARY KEY(id);
+            ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+            ALTER TABLE stock_reservations ADD PRIMARY KEY(id);
+            CREATE TABLE fixture_entitlement_lots(entitlement_event_id uuid PRIMARY KEY, stock_reservation_id uuid,
+                beneficiary_analysis_id uuid, beneficiary_analysis_material_id uuid, remaining_qty numeric(18,4));
+            CREATE VIEW v_preplan_stock_entitlement_lot_balance AS SELECT * FROM fixture_entitlement_lots;
+            CREATE TABLE fixture_public_stock(warehouse_id uuid, goods_id uuid, color_id uuid, available_qty numeric(18,4));
+            CREATE VIEW v_stock_available AS SELECT * FROM fixture_public_stock;
+        """);
         // 这个聚焦夹具只有一个可用仓; 领料「还要领」的上限这里只取计划量(委外商自带料另有用例覆盖)。
         execute("""
                 CREATE FUNCTION fn_warehouse_counts_as_usable(uuid) RETURNS boolean LANGUAGE sql STABLE
@@ -244,7 +223,7 @@ class SubcontractApplicationKitPostgresTest {
         source(1, 1, "20");
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("未送审的草稿不扣剩余").isEqualByComparingTo("70");
-        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status) VALUES ('SUBCONTRACT', ?, 'PENDING')", orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'PENDING',1)", orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)", app(1))).isEqualByComparingTo("50");
         update("UPDATE procurement_order_approval_cases SET status='REJECTED' WHERE order_id=?",orderId(1));
@@ -268,7 +247,7 @@ class SubcontractApplicationKitPostgresTest {
     // =====================================================================================
 
     private void application(int number, String qty) throws Exception {
-        update("INSERT INTO subcontract_applications(id) VALUES (?)", applicationHeader(number));
+        update("INSERT INTO subcontract_applications(id,status) VALUES (?,1)", applicationHeader(number));
         update("INSERT INTO subcontract_application_items(id, application_id, goods_id, qty) VALUES (?, ?, ?, ?)",
                 app(number), applicationHeader(number), PARENT_GOODS, new BigDecimal(qty));
         update("""

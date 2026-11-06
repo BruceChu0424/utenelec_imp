@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -62,31 +63,98 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
 
     @BeforeAll static void database() throws Exception {
         source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());jdbc=new JdbcTemplate(source);
-        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,code text,name text,is_deleted boolean,is_accountable boolean,is_defective boolean,is_line_side boolean DEFAULT FALSE)");
-        jdbc.execute("CREATE TABLE goods(id uuid PRIMARY KEY,min_qty double precision, default_purchase_price_color_id uuid, default_purchase_price_currency_id uuid, default_purchase_price_supplier_id uuid, default_purchase_price_tax_rate numeric(18,4), default_purchase_price_unit_id uuid, default_subcontract_price_color_id uuid, default_subcontract_price_currency_id uuid, default_subcontract_price_supplier_id uuid, default_subcontract_price_tax_rate numeric(18,4), default_subcontract_price_unit_id uuid, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text, currency_id uuid)");
-        jdbc.execute("CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid,goods_id uuid,color_id uuid,unit_id uuid,active boolean, "
-                + "design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "warehouses");
+        jdbc.execute("""
+            ALTER TABLE warehouses ADD PRIMARY KEY(id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "goods");
+        jdbc.execute("""
+            ALTER TABLE goods ADD PRIMARY KEY(id);
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "production_material_analysis_materials");
+        jdbc.execute("""
+            ALTER TABLE production_material_analysis_materials ADD PRIMARY KEY(id);
+            ALTER TABLE production_material_analysis_materials ALTER COLUMN usage_basis SET NOT NULL;
+        """);
         jdbc.execute("CREATE INDEX ON production_material_analysis_materials(analysis_id,goods_id)");
         jdbc.execute("CREATE TABLE stock_facts(warehouse_id uuid,goods_id uuid,color_id uuid,on_hand_qty numeric,reserved_qty numeric,available_qty numeric)");
         jdbc.execute("CREATE VIEW v_stock_available AS SELECT * FROM stock_facts");
-        jdbc.execute("CREATE TABLE stock_reservations(id uuid PRIMARY KEY,warehouse_id uuid,goods_id uuid,color_id uuid,is_deleted boolean,status integer,owner_type text,owner_id uuid,qty numeric,consumed_qty numeric,released_qty numeric, material_projection_initial_consumed_qty numeric(18,4), material_projection_tx_id xid8)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "stock_reservations");
+        jdbc.execute("""
+            ALTER TABLE stock_reservations ADD PRIMARY KEY(id);
+        """);
         jdbc.execute("CREATE INDEX ON stock_reservations(warehouse_id,goods_id,color_id)");
-        jdbc.execute("CREATE TABLE preplan_stock_entitlement_events(stock_reservation_id uuid)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "preplan_stock_entitlement_events");
         jdbc.execute("CREATE TABLE entitlement_facts(stock_reservation_id uuid,beneficiary_analysis_id uuid,beneficiary_analysis_material_id uuid,effective_qty numeric)");
         jdbc.execute("CREATE VIEW v_preplan_stock_entitlement_beneficiary_balance AS SELECT * FROM entitlement_facts");
-        jdbc.execute("CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY,route text,status text,warehouse_id uuid,goods_id uuid,color_id uuid,requested_qty numeric,safety_replenishment_qty numeric,safety_external_item_id uuid,external_document_id uuid, aggregate_allocation_check_revision bigint NOT NULL DEFAULT 0)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "preplan_supply_actions");
+        jdbc.execute("""
+            ALTER TABLE preplan_supply_actions ADD PRIMARY KEY(id);
+            ALTER TABLE preplan_supply_actions ALTER COLUMN aggregate_allocation_check_revision SET NOT NULL;
+        """);
         jdbc.execute("CREATE INDEX ON preplan_supply_actions(warehouse_id,goods_id,color_id)");
-        jdbc.execute("CREATE TABLE preplan_supply_action_allocations(action_id uuid,external_item_id uuid)");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "preplan_supply_action_allocations");
         jdbc.execute("CREATE INDEX ON preplan_supply_action_allocations(action_id)");
-        jdbc.execute("CREATE TABLE purchase_requests(id uuid PRIMARY KEY,is_deleted boolean,status integer,is_stopped boolean,quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')))");
-        jdbc.execute("CREATE TABLE purchase_request_items(row_version bigint NOT NULL DEFAULT 0, id uuid PRIMARY KEY,request_id uuid,qty numeric,ordered_qty numeric,unit_rate numeric,is_deleted boolean,gift_ordered_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_ordered_qty>=0),quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')))");
-        jdbc.execute("CREATE TABLE purchase_orders(id uuid PRIMARY KEY,status integer,is_deleted boolean,termination_case_id uuid,quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')))");
-        jdbc.execute("CREATE TABLE purchase_order_items(total_amount_input numeric, id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean,extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb,gift_received_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_received_qty>=0),gift_returned_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_returned_qty>=0),quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')), legacy_counter_import_run_id uuid)");
-        jdbc.execute("CREATE TABLE purchase_receipts(id uuid PRIMARY KEY,status integer,is_deleted boolean,legacy_import_run_id uuid,quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')))");
-        jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid PRIMARY KEY,order_item_id uuid,receipt_id uuid,qty numeric,unit_rate numeric,is_deleted boolean,legacy_import_run_id uuid,finance_approval_case_id uuid,charged_base_qty numeric(18,4),gift_base_qty numeric(18,4),gift_returned_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_returned_qty>=0),quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED' CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')),gift_replacement_intent text CHECK(gift_replacement_intent IN('NORMAL','RETURN_REPLACEMENT')), order_item_legacy_id integer)");
-        jdbc.execute("CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY,receipt_item_id uuid,receipt_type text,status text,warehouse_stocked_base_qty numeric,failed_base_qty numeric,received_base_qty numeric,quantity_tranche text NOT NULL DEFAULT 'LEGACY' CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT')))");
-        jdbc.execute("CREATE TABLE procurement_iqc_rejection_cases(order_item_id uuid,receipt_type text,failed_base_qty numeric,is_deleted boolean,return_recorded_at timestamptz,status text)");
-        jdbc.execute("CREATE TABLE purchase_order_item_sources(id uuid PRIMARY KEY,order_item_id uuid,request_item_id uuid,alloc_qty numeric,line_no integer,allocated_gift_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(allocated_gift_qty>=0))");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_requests");
+        jdbc.execute("""
+            ALTER TABLE purchase_requests ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_requests ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_requests ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_request_items");
+        jdbc.execute("""
+            ALTER TABLE purchase_request_items ALTER COLUMN row_version SET NOT NULL;
+            ALTER TABLE purchase_request_items ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_request_items ALTER COLUMN gift_ordered_qty SET NOT NULL;
+            ALTER TABLE purchase_request_items ADD CHECK(gift_ordered_qty>=0);
+            ALTER TABLE purchase_request_items ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_request_items ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_orders");
+        jdbc.execute("""
+            ALTER TABLE purchase_orders ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_orders ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_orders ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_order_items");
+        jdbc.execute("""
+            ALTER TABLE purchase_order_items ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_order_items ALTER COLUMN extra_columns SET NOT NULL;
+            ALTER TABLE purchase_order_items ALTER COLUMN gift_received_qty SET NOT NULL;
+            ALTER TABLE purchase_order_items ADD CHECK(gift_received_qty>=0);
+            ALTER TABLE purchase_order_items ALTER COLUMN gift_returned_qty SET NOT NULL;
+            ALTER TABLE purchase_order_items ADD CHECK(gift_returned_qty>=0);
+            ALTER TABLE purchase_order_items ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_order_items ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_receipts");
+        jdbc.execute("""
+            ALTER TABLE purchase_receipts ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_receipts ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_receipts ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_receipt_items");
+        jdbc.execute("""
+            ALTER TABLE purchase_receipt_items ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_receipt_items ALTER COLUMN gift_returned_qty SET NOT NULL;
+            ALTER TABLE purchase_receipt_items ADD CHECK(gift_returned_qty>=0);
+            ALTER TABLE purchase_receipt_items ALTER COLUMN quantity_semantics SET NOT NULL;
+            ALTER TABLE purchase_receipt_items ADD CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1'));
+            ALTER TABLE purchase_receipt_items ADD CHECK(gift_replacement_intent IN('NORMAL','RETURN_REPLACEMENT'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "procurement_inspection_items");
+        jdbc.execute("""
+            ALTER TABLE procurement_inspection_items ADD PRIMARY KEY(id);
+            ALTER TABLE procurement_inspection_items ALTER COLUMN quantity_tranche SET NOT NULL;
+            ALTER TABLE procurement_inspection_items ADD CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT'));
+        """);
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "procurement_iqc_rejection_cases");
+        MigratedProjectionSchema.createCurrentColumns(jdbc, "purchase_order_item_sources");
+        jdbc.execute("""
+            ALTER TABLE purchase_order_item_sources ADD PRIMARY KEY(id);
+            ALTER TABLE purchase_order_item_sources ALTER COLUMN allocated_gift_qty SET NOT NULL;
+            ALTER TABLE purchase_order_item_sources ADD CHECK(allocated_gift_qty>=0);
+        """);
         jdbc.execute("CREATE INDEX ON purchase_order_item_sources(request_item_id)");
         String migration=Files.readString(Path.of("src/main/resources/db/migration/V554__procurement_source_remaining_supply.sql"));
         jdbc.execute(function(migration,"fn_procurement_bounded_interval_qty"));
@@ -103,14 +171,14 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         warehouse(SIBLING,MAIN,"A2",false,true,false);warehouse(BAD,MAIN,"A3",false,true,true);
         warehouse(OTHER,null,"B",false,true,false);
         warehouse(id("deleted"),LEAF,"Z",true,true,false);warehouse(id("non-accountable"),null,"N",false,false,false);
-        jdbc.update("INSERT INTO goods VALUES (?,5),(?,NULL),(?,-2)",G,G2,G3);
+        jdbc.update("INSERT INTO goods(id,min_qty) VALUES(?,5),(?,NULL),(?,-2)",G,G2,G3);
         material("g-null",ANALYSIS,G,null,UNIT,true);material("g-second-unit",ANALYSIS,G,null,OTHER_UNIT,true);
         material("g-blue",ANALYSIS,G,BLUE,UNIT,true);material("g2",ANALYSIS,G2,null,UNIT,true);
         material("inactive",ANALYSIS,G3,null,UNIT,false);material("foreign",OTHER_ANALYSIS,G3,null,UNIT,true);
         jdbc.update("INSERT INTO stock_facts VALUES (?,?,NULL,50,32,18),(?,?,?,2,5,-3),(?,?,NULL,3,0,3)",LEAF,G,LEAF,G,BLUE,BAD,G);
         reservation("legacy",ANALYSIS,"10","2","1");reservation("other",OTHER_ANALYSIS,"5","0","0");
         reservation("tracked",OTHER_ANALYSIS,"20","0","0");
-        jdbc.update("INSERT INTO preplan_stock_entitlement_events VALUES (?),(?)",id("tracked"),id("tracked"));
+        jdbc.update("INSERT INTO preplan_stock_entitlement_events(stock_reservation_id) VALUES(?),(?)",id("tracked"),id("tracked"));
         jdbc.update("INSERT INTO entitlement_facts VALUES (?,?,?,3.5),(?,?,?,50),(?,?,?,8)",
                 id("tracked"),ANALYSIS,id("g-null"),id("tracked"),ANALYSIS,id("inactive"),id("tracked"),OTHER_ANALYSIS,id("foreign"));
         Action ordered=action("ordered-safety",G,null,LEAF,"10","10",true,false,false,"CREATED");
@@ -173,17 +241,17 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
 
     @ParameterizedTest @ValueSource(strings={"force_custom_plan","force_generic_plan","auto"})
     void manyDemandActionsDoNotRepeatTheWholeSafetyProgressViewPerDimension(String mode) throws Exception {
-        jdbc.execute("INSERT INTO goods SELECT md5('perf-g-'||i)::uuid,0 FROM generate_series(0,79)g(i)");
-        jdbc.update("INSERT INTO production_material_analysis_materials SELECT md5('perf-m-'||i)::uuid,?,md5('perf-g-'||((i-1)%80))::uuid,NULL,?,TRUE FROM generate_series(1,8000)g(i)",ANALYSIS,UNIT);
-        jdbc.execute("INSERT INTO purchase_requests SELECT md5('perf-a-'||i)::uuid,FALSE,0,FALSE FROM generate_series(1,1000)g(i)");
+        jdbc.execute("INSERT INTO goods(id,min_qty) SELECT md5('perf-g-'||i)::uuid,0 FROM generate_series(0,79)g(i)");
+        jdbc.update("INSERT INTO production_material_analysis_materials(id,analysis_id,goods_id,color_id,unit_id,active) SELECT md5('perf-m-'||i)::uuid,?,md5('perf-g-'||((i-1)%80))::uuid,NULL,?,TRUE FROM generate_series(1,8000)g(i)",ANALYSIS,UNIT);
+        jdbc.execute("INSERT INTO purchase_requests(id,is_deleted,status,is_stopped) SELECT md5('perf-a-'||i)::uuid,FALSE,0,FALSE FROM generate_series(1,1000)g(i)");
         jdbc.execute("INSERT INTO purchase_request_items(id,request_id,qty,ordered_qty,unit_rate,is_deleted) SELECT id,id,1,0,1,FALSE FROM purchase_requests WHERE id NOT IN (SELECT request_id FROM purchase_request_items)");
         jdbc.update("""
-                INSERT INTO preplan_supply_actions
+                INSERT INTO preplan_supply_actions(id,route,status,warehouse_id,goods_id,color_id,requested_qty,safety_replenishment_qty,safety_external_item_id,external_document_id)
                 SELECT md5('perf-a-'||i)::uuid,'BUY','CREATED',?,
                        CASE WHEN i<=500 THEN md5('perf-g-'||(i%80))::uuid ELSE CAST(? AS uuid) END,
                        NULL,1,0,NULL,md5('perf-a-'||i)::uuid FROM generate_series(1,1000)g(i)
                 """,LEAF,G3);
-        jdbc.execute("INSERT INTO preplan_supply_action_allocations SELECT id,id FROM preplan_supply_actions WHERE id=external_document_id");
+        jdbc.execute("INSERT INTO preplan_supply_action_allocations(action_id,external_item_id) SELECT id,id FROM preplan_supply_actions WHERE id=external_document_id");
         for(String table:TABLES)jdbc.execute("ANALYZE "+table);
         try(Connection connection=source.getConnection()) {
             connection.setAutoCommit(false);connection.setReadOnly(true);
@@ -254,29 +322,29 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     }
     private static List<Object> row(Map<String,List<Object>> rows,UUID goods,UUID color,UUID unit,UUID warehouse){return rows.get(key(goods,color,unit,warehouse));}
     private static String key(UUID goods,UUID color,UUID unit,UUID warehouse){return goods+"|"+color+"|"+unit+"|"+warehouse;}
-    private static void warehouse(UUID id,UUID parent,String code,boolean deleted,boolean accountable,boolean defective){jdbc.update("INSERT INTO warehouses VALUES (?,?,?,?,?,?,?)",id,parent,code,code,deleted,accountable,defective);}
-    private static void material(String id,UUID analysis,UUID goods,UUID color,UUID unit,boolean active){jdbc.update("INSERT INTO production_material_analysis_materials VALUES (?,?,?,?,?,?)",id(id),analysis,goods,color,unit,active);}
-    private static void reservation(String seed,UUID owner,String quantity,String consumed,String released){jdbc.update("INSERT INTO stock_reservations VALUES (?,?,?,NULL,FALSE,0,'PREPLAN_ANALYSIS',?,?,?,?)",id(seed),LEAF,G,owner,new BigDecimal(quantity),new BigDecimal(consumed),new BigDecimal(released));}
+    private static void warehouse(UUID id,UUID parent,String code,boolean deleted,boolean accountable,boolean defective){jdbc.update("INSERT INTO warehouses(id,parent_id,code,name,is_deleted,is_accountable,is_defective) VALUES(?,?,?,?,?,?,?)",id,parent,code,code,deleted,accountable,defective);}
+    private static void material(String id,UUID analysis,UUID goods,UUID color,UUID unit,boolean active){jdbc.update("INSERT INTO production_material_analysis_materials(id,analysis_id,goods_id,color_id,unit_id,active) VALUES(?,?,?,?,?,?)",id(id),analysis,goods,color,unit,active);}
+    private static void reservation(String seed,UUID owner,String quantity,String consumed,String released){jdbc.update("INSERT INTO stock_reservations(id,warehouse_id,goods_id,color_id,is_deleted,status,owner_type,owner_id,qty,consumed_qty,released_qty) VALUES(?,?,?,NULL,FALSE,0,'PREPLAN_ANALYSIS',?,?,?,?)",id(seed),LEAF,G,owner,new BigDecimal(quantity),new BigDecimal(consumed),new BigDecimal(released));}
     private record Action(UUID id,UUID item) {}
     private static Action action(String seed,UUID goods,UUID color,UUID warehouse,String safety,String quantity,boolean safetySlice,boolean stopped,boolean deleted,String status) {
         UUID action=id(seed+"-action"),request=id(seed+"-request"),item=id(seed+"-item");
-        jdbc.update("INSERT INTO purchase_requests VALUES (?,?,0,?)",request,deleted,stopped);
+        jdbc.update("INSERT INTO purchase_requests(id,is_deleted,status,is_stopped) VALUES(?,?,0,?)",request,deleted,stopped);
         jdbc.update("INSERT INTO purchase_request_items(id,request_id,qty,ordered_qty,unit_rate,is_deleted) VALUES (?,?,?,0,1,FALSE)",item,request,new BigDecimal(quantity));
-        jdbc.update("INSERT INTO preplan_supply_actions VALUES (?,'BUY',?,?,?,?,?,?,?,?)",action,status,warehouse,goods,color,
+        jdbc.update("INSERT INTO preplan_supply_actions(id,route,status,warehouse_id,goods_id,color_id,requested_qty,safety_replenishment_qty,safety_external_item_id,external_document_id) VALUES(?,'BUY',?,?,?,?,?,?,?,?)",action,status,warehouse,goods,color,
                 safetySlice?BigDecimal.ZERO:new BigDecimal(quantity),new BigDecimal(safety),safetySlice?item:null,request);
-        if(!safetySlice){ jdbc.update("INSERT INTO preplan_supply_action_allocations VALUES (?,?)",action,item); }return new Action(action,item);
+        if(!safetySlice){ jdbc.update("INSERT INTO preplan_supply_action_allocations(action_id,external_item_id) VALUES(?,?)",action,item); }return new Action(action,item);
     }
     private static UUID orderedReceipt(String seed,String quantity,String received,String qualified,String failed,String returnedFailure) {
         UUID order=id(seed+"-order"),item=id(seed+"-order-item"),receipt=id(seed+"-receipt"),receiptItem=id(seed+"-receipt-item");
         jdbc.update("INSERT INTO purchase_orders(id,status,is_deleted) VALUES (?,1,FALSE)",order);
         jdbc.update("INSERT INTO purchase_order_items(id,order_id,qty,received_qty,returned_qty,unit_rate,is_deleted) VALUES (?,?,?,?,0,1,FALSE)",item,order,new BigDecimal(quantity),new BigDecimal(received));
-        jdbc.update("INSERT INTO purchase_receipts VALUES (?,1,FALSE)",receipt);
-        jdbc.update("INSERT INTO purchase_receipt_items VALUES (?,?,?,?,1,FALSE)",receiptItem,item,receipt,new BigDecimal(received));
+        jdbc.update("INSERT INTO purchase_receipts(id,status,is_deleted) VALUES(?,1,FALSE)",receipt);
+        jdbc.update("INSERT INTO purchase_receipt_items(quantity_adoption_version,id,order_item_id,receipt_id,qty,unit_rate,is_deleted) VALUES(1,?,?,?,?,1,FALSE)",receiptItem,item,receipt,new BigDecimal(received));
         String status=new BigDecimal(qualified).add(new BigDecimal(failed)).compareTo(new BigDecimal(received))==0?"RESOLVED":"PARTIAL";
-        jdbc.update("INSERT INTO procurement_inspection_items VALUES (?,?,'PURCHASE',?,?,?,?)",id(seed+"-inspection"),receiptItem,status,new BigDecimal(qualified),new BigDecimal(failed),new BigDecimal(received));
-        jdbc.update("INSERT INTO procurement_iqc_rejection_cases VALUES (?,'PURCHASE',?,FALSE,now(),'RETURN_RECORDED')",item,new BigDecimal(returnedFailure));return item;
+        jdbc.update("INSERT INTO procurement_inspection_items(id,receipt_item_id,receipt_type,status,warehouse_stocked_base_qty,failed_base_qty,received_base_qty) VALUES(?,?,'PURCHASE',?,?,?,?)",id(seed+"-inspection"),receiptItem,status,new BigDecimal(qualified),new BigDecimal(failed),new BigDecimal(received));
+        jdbc.update("INSERT INTO procurement_iqc_rejection_cases(order_item_id,receipt_type,failed_base_qty,is_deleted,return_recorded_at,status) VALUES(?,'PURCHASE',?,FALSE,now(),'RETURN_RECORDED')",item,new BigDecimal(returnedFailure));return item;
     }
-    private static void orderSource(UUID orderItem,UUID requestItem,String quantity,int line){jdbc.update("INSERT INTO purchase_order_item_sources VALUES (?,?,?,?,?)",id(orderItem+"|"+requestItem),orderItem,requestItem,new BigDecimal(quantity),line);jdbc.update("UPDATE purchase_request_items SET ordered_qty=? WHERE id=?",new BigDecimal(quantity),requestItem);}
+    private static void orderSource(UUID orderItem,UUID requestItem,String quantity,int line){jdbc.update("INSERT INTO purchase_order_item_sources(id,order_item_id,request_item_id,alloc_qty,line_no) VALUES(?,?,?,?,?)",id(orderItem+"|"+requestItem),orderItem,requestItem,new BigDecimal(quantity),line);jdbc.update("UPDATE purchase_request_items SET ordered_qty=? WHERE id=?",new BigDecimal(quantity),requestItem);}
     private static String function(String sql,String name){int start=sql.indexOf("CREATE OR REPLACE FUNCTION "+name+"(");assertTrue(start>=0);int end=sql.indexOf("$$;",start);assertTrue(end>start);return sql.substring(start,end+3);}
     private static BigDecimal bd(String value){return new BigDecimal(value).stripTrailingZeros();}
     private static UUID id(String seed){try{var bytes=ByteBuffer.wrap(MessageDigest.getInstance("MD5").digest(seed.getBytes(StandardCharsets.UTF_8)));return new UUID(bytes.getLong(),bytes.getLong());}catch(Exception failure){throw new IllegalStateException(failure);}}

@@ -1,3 +1,4 @@
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 通知详情互动区：
 // - acknowledge 模式：「点击收到」按钮 + N 人已收到 + 近期收到人。
@@ -383,7 +384,46 @@ class _BlessingWallSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final async = ref.watch(noticeBlessingsProvider(noticeId));
+    final provider = noticeBlessingsProvider(noticeId);
+    final async = ref.watch(provider);
+    final retryOwner = captureReadOwner(ref);
+    var retryInFlight = false;
+    Future<void> retry() async {
+      if (!context.mounted || !retryOwner() || retryInFlight) return;
+      final state = ref.read(provider);
+      if (state.isLoading || !state.hasError) return;
+      retryInFlight = true;
+      try {
+        await runNoticeActionWithBusy<void>(
+          context,
+          title: '正在读取完整祝福墙',
+          action: () async {
+            if (!context.mounted || !retryOwner()) return;
+            ref.invalidate(provider);
+            final pending = ref.read(provider.future);
+            try {
+              await pending;
+            } catch (error) {
+              if (!context.mounted || !retryOwner()) return;
+              // The same provider exposes this exact failed read via AsyncError.
+              // A newer owner/future must not receive the retired retry's error.
+              if (identical(pending, ref.read(provider.future)) &&
+                  !ref.read(provider).hasError) {
+                context.appError(humanErrorMessage(error) ?? '祝福没有加载出来，请稍后重试');
+              }
+            }
+          },
+        );
+      } catch (error) {
+        // A waiting-surface failure is distinct from the provider's read error.
+        if (context.mounted && retryOwner()) {
+          context.appError(humanErrorMessage(error) ?? '加载弹层未能打开，请重试');
+        }
+      } finally {
+        retryInFlight = false;
+      }
+    }
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
@@ -410,8 +450,8 @@ class _BlessingWallSheet extends ConsumerWidget {
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => UtenEmpty.error(
                     message: humanErrorMessage(e) ?? '祝福没有加载出来，请稍后重试',
-                    onAction: () =>
-                        ref.invalidate(noticeBlessingsProvider(noticeId)),
+                    actionLabel: l10n.commonRetry,
+                    onAction: retry,
                   ),
                   data: (items) {
                     if (items.isEmpty) {

@@ -425,6 +425,10 @@ public class ExpenseClaimService {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            com.uten.imp.common.web.NativeFacetCandidates.current().criteriaRows(em,"claimNo",ExpenseClaim.class,spec,"claimNo");
+            return new PageResponse<>(List.of(),page,size,0,0);
+        }
         Pageable pageable = Pageables.of(page, size, claimSort(sort, order, newestFirst));
         Page<ExpenseClaim> result = claimRepository.findAll(spec, pageable);
         return new PageResponse<>(
@@ -573,31 +577,61 @@ public class ExpenseClaimService {
     }
     @Transactional(readOnly=true)
     public ExpenseClaimFacetsDto facets(String queue,boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode,boolean includeAbandoned) {
+        return facets(queue,includeDeleted,onlyDeleted,stage,departmentCode,includeAbandoned,true);
+    }
+    @Transactional(readOnly=true)
+    public ExpenseClaimFacetsDto facets(String queue,boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode,boolean includeAbandoned,boolean includeClaimNos) {
         AuthUser user = requireStaff();
         if(includeAbandoned) {
             require(user,"expense:apply");
             if(!"minehistory".equalsIgnoreCase(queue))throw new ApiException(ErrorCode.VALIDATION_FAILED,"已放弃报销仅可在历史单据中查看");
-            return applicantQuery.abandonedHistoryFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted);
+            return includeClaimNos?applicantQuery.abandonedHistoryFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted)
+                    :applicantQuery.abandonedHistoryFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted,false);
         }
         queue=queue==null?"":queue.trim().toLowerCase(Locale.ROOT);
         if (Set.of("pending","payable","history","browse").contains(queue)) {
             if(!has(user,"expense:view") && !("pending".equals(queue)&&ExpenseApprovalPolicy.hasAny(user))
                     && !("payable".equals(queue)&&has(user,"expense:pay"))
                     && !("history".equals(queue)&&(ExpenseApprovalPolicy.hasAny(user)||has(user,"expense:pay"))))throw new ApiException(ErrorCode.FORBIDDEN);
-            return applicantQuery.workflowFacets(user,observerScope(user),queue,stage,departmentCode);
+            var scope=observerScope(user);
+            return includeClaimNos?applicantQuery.workflowFacets(user,scope,queue,stage,departmentCode)
+                    :applicantQuery.workflowFacets(user,scope,queue,stage,departmentCode,false);
         }
         switch (queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT)) {
             case "mineactive", "minehistory" -> {
                 require(user,"expense:apply");
+                if(!includeClaimNos)return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),List.of());
                 return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),toBuckets(applicantQuery.mineClaimNoFacets(
                         user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted,"minehistory".equalsIgnoreCase(queue))));
             }
             case "mine" -> {
                 require(user,"expense:apply");
+                if(!includeClaimNos)return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),List.of());
                 return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(),includeDeleted||onlyDeleted,onlyDeleted)));
             }
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,"未知报销队列");
         }
+    }
+
+    /** Native claim-number buckets use the corresponding actual list entrance and its one Specification. */
+    @Transactional(readOnly=true)
+    public ExpenseClaimFacetsDto nativeClaimNoFacets(String rawQueue,String status,Integer year,Integer month,UUID departmentId,String category,
+            boolean includeDeleted,boolean onlyDeleted,String stage,String departmentCode,boolean actionRequired,boolean includeAbandoned) {
+        if(!com.uten.imp.common.web.NativeFacetCandidates.active()||!com.uten.imp.common.web.NativeFacets.wants("claimNo"))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"报销单号候选读取范围无效");
+        String queue=rawQueue==null?"":rawQueue.trim().toLowerCase(Locale.ROOT);
+        switch(queue) {
+            case "mine","mineactive","minehistory" -> {
+                String statuses=actionRequired?"ACTION_REQUIRED":status;
+                if(statuses==null||statuses.isBlank())statuses="minehistory".equals(queue)?"PAID":"mineactive".equals(queue)?"DRAFT,SUBMITTED,REVIEWING,APPROVED,REJECTED":null;
+                listMine(statuses,year,month,departmentId,category,1,100,null,null,null,includeDeleted,onlyDeleted,includeAbandoned);
+            }
+            case "browse" -> listBrowse(year,month,departmentId,category,1,100,null,null,null);
+            case "pending","history" -> listScoped(queue,year,month,departmentId,category,1,100,null,null,null,stage,departmentCode);
+            case "payable" -> listPayable(year,month,departmentId,category,1,100,null,null,null);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,"未知报销队列");
+        }
+        return new ExpenseClaimFacetsDto(List.of(),List.of(),List.of(),List.of());
     }
 
     private static List<ExpenseClaimFacetsDto.Bucket> toBuckets(

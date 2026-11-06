@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -39,6 +40,7 @@ const _capabilities = PlatformTableCapabilities(
 class _Repository extends PlatformTableRepository {
   _Repository() : super(ApiClient(Dio()));
   bool failSearch = false;
+  List<PlatformColumnDefinition>? catalog;
   int creates = 0;
   PlatformColumnDefinition? created;
   Completer<void>? createGate;
@@ -58,6 +60,7 @@ class _Repository extends PlatformTableRepository {
     queries.add(query);
     await searchGate?.future;
     if (failSearch) throw const FormatException('列目录暂时不可用');
+    if (catalog != null) return catalog!;
     return [_note, _number]
         .where(
           (column) =>
@@ -311,6 +314,46 @@ Future<void> _confirmDelete(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'complete35000 platform definitions mount a local window and select the Chinese tail without another read',
+    (tester) async {
+      final all = List.generate(
+        35000,
+        (i) => PlatformColumnDefinition(
+          id: 'definition-$i',
+          scope: 'resource',
+          name: '平台中文目录$i',
+        ),
+      );
+      final repo = _Repository()..catalog = all;
+      final controller = _Controller(repo, columnEditingEnabled: true);
+      await _open(tester, controller);
+      final window = tester
+          .widget<UtenAncestorRowWindow<PlatformColumnDefinition>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is UtenAncestorRowWindow<PlatformColumnDefinition>,
+            ),
+          );
+      expect(window.rows, hasLength(35000));
+      expect(window.controller.mountedRowCount, lessThan(64));
+      expect(find.text('平台中文目录34999'), findsNothing);
+      final before = repo.queries.length;
+      final revealed = window.controller.reveal(all.last, alignment: .5);
+      await tester.pumpAndSettle();
+      expect(await revealed, isTrue);
+      expect(find.text('平台中文目录34999').hitTestable(), findsOneWidget);
+      expect(window.controller.mountedRowCount, lessThan(64));
+      expect(repo.queries, hasLength(before));
+      await tester.tap(find.text('平台中文目录34999'));
+      await tester.pumpAndSettle();
+      expect(controller.selected!.id, 'definition-34999');
+      expect(repo.creates, 0);
+      expect(repo.deletions, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('只能删除自己创建的列，已显示列也能进入确认且取消不删除', (tester) async {
     final repository = _Repository();
     final controller = _Controller(repository, columnEditingEnabled: true)

@@ -419,11 +419,16 @@ class DioExpenseRepository implements ExpenseRepository {
 
   Future<Map<String, List<MasterFacetBucket>>> facetsScoped(
     ApprovalFacetQueue queue,
-    ExpenseApprovalReadScope scope,
-  ) async {
+    ExpenseApprovalReadScope scope, {
+    bool includeClaimNos = true,
+  }) async {
     final json = await _api.get(
       '$_claims/facets',
-      query: {'queue': queue.name, ...scope.query},
+      query: {
+        'queue': queue.name,
+        ...scope.query,
+        if (!includeClaimNos) 'includeClaimNos': false,
+      },
     );
     return {
       'departmentName': parseFacetBuckets(json, 'departments'),

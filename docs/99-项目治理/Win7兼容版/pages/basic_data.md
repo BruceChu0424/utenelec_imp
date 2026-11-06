@@ -166,7 +166,7 @@
 
 ## W7-BIZ-027 · lib/features/basic_data/pages/goods_price_analysis_page.dart
 
-模块 `basic_data`；1633 行；SHA256 `1715cf7a3805a6fcd4599360a8e194043f39e9d7e9b720c007f3e6cb529d6399`。
+模块 `basic_data`；1633 行；SHA256 `732191fb77ca80ee1c1f9d77543925a3dad04bf1b56572e4719ac53c3ff9b583`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -238,7 +238,7 @@
 
 ## W7-BIZ-031 · lib/features/basic_data/pages/mould_category_page.dart
 
-模块 `basic_data`；1044 行；SHA256 `0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073`。
+模块 `basic_data`；1044 行；SHA256 `af29c8992c7bcb6fceb9fe29d9b22b59a4d31549261af8b2c1a5c2354718a313`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -274,7 +274,7 @@
 
 ## W7-BIZ-033 · lib/features/basic_data/pages/payment_style_page.dart
 
-模块 `basic_data`；2590 行；SHA256 `056a1b23b7788071e94710ea657f70590f9c649afb1d06f1edefc9ff952352fb`。
+模块 `basic_data`；2590 行；SHA256 `9c461dcf3a8cb1db26c65c188318195ccb1a2be03f01d23e26a9bfd65673254e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -364,7 +364,7 @@
 
 ## W7-BIZ-038 · lib/features/basic_data/pages/warehouse_page.dart
 
-模块 `basic_data`；1991 行；SHA256 `2607da8783521bc59549591bed5f0f884e4693e581e98c9282701d2d1a580e07`。
+模块 `basic_data`；1991 行；SHA256 `6ef28fad37f0233725f6f85500005cd79482ba234d9f9b3c70d5b52896672d22`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

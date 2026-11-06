@@ -54,7 +54,7 @@ public class SalesReportController {
 
     /** 明细报表（4 单据类型参数化；docType 决定查哪张明细表 + 列集）。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/{docType}/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{docType}/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse detail(
             @PathVariable String docType,
@@ -78,7 +78,7 @@ public class SalesReportController {
 
     /** 汇总报表（4 单据类型参数化；一行一单号）。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/{docType}/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{docType}/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse summary(
             @PathVariable String docType,

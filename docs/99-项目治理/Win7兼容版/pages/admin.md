@@ -4,7 +4,7 @@
 
 ## W7-BIZ-001 · lib/features/admin/pages/admin_ai_settings_page.dart
 
-模块 `admin`；867 行；SHA256 `837310b1d73e6e56ac10b951c1e1c7c676ef10ce740c1601993ce5dea3e60422`。
+模块 `admin`；867 行；SHA256 `0ed93de0be0d5dfa9596efa1725da7e420bacfdc349311e1bbfacfdfce5b603c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-005 · lib/features/admin/pages/admin_audit_log_page.dart
 
-模块 `admin`；1775 行；SHA256 `78a5c303b0e91e1b7ec219ef6e1ee780b11de7f20b2d95e67b6ff48372faa438`。
+模块 `admin`；1775 行；SHA256 `da290ecc27b5d4fcf7d35f2215907e2a33312e519c4eecef11a9894ec584269c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,7 +94,7 @@
 
 ## W7-BIZ-006 · lib/features/admin/pages/admin_audit_session_detail_page.dart
 
-模块 `admin`；279 行；SHA256 `fffba2e5d74509f886ac20617822a4d4f6a7d30e0bc5ac71aee160ba83034ab1`。
+模块 `admin`；279 行；SHA256 `c6a4ba7149a1adc410997dcb6802ca694dae6dcfa12432f7fdefd94dbad0091c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -112,7 +112,7 @@
 
 ## W7-BIZ-007 · lib/features/admin/pages/admin_permissions_page.dart
 
-模块 `admin`；1023 行；SHA256 `862a5d2e3ecdb3c2ace4d74760aeece33e19c3d9afc60b224998eb2bccb919c2`。
+模块 `admin`；1023 行；SHA256 `a2f811333597d193a369b46e3bcef5ea37376d421a606d906c066666ccab5221`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -184,7 +184,7 @@
 
 ## W7-BIZ-012 · lib/features/admin/pages/server_operations_page.dart
 
-模块 `admin`；580 行；SHA256 `a4a8dd88dc641604b7b3bfc91be33c96f9b46401987eae45e1353676e3a9c550`。
+模块 `admin`；580 行；SHA256 `a93997f9ff6ce28be37b209c19fb12e52105f945c1ebe307c73ccbc849025a06`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

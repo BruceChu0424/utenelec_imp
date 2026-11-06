@@ -22,7 +22,7 @@
 
 ## W7-BIZ-166 · lib/features/visitor/pages/visitor_apply_page.dart
 
-模块 `visitor`；448 行；SHA256 `8fee3123149fc122d7b318552c5b74cf3237bdae6bf883f4f0f413defbf708ef`。
+模块 `visitor`；448 行；SHA256 `b84efdbbf25c552342c97306fea4ff259d47b6b96a5b026ce49320cb572ca608`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 // 报销审批列表页（审批人 + 财务打款双队列）
 // 文档：docs/03-页面/报销审批列表页.md
@@ -264,6 +265,17 @@ class _ExpenseApprovalListPageState
         );
     int fact(String key) => ref.watch<int>(badgeFactProvider(key));
     final scope = ref.watch(expenseApprovalReadScopeProvider);
+    final facetQuery = <String, dynamic>{
+      'queue': queue.name,
+      ...scope.query,
+      'year': ?filters.year,
+      'month': ?filters.month,
+      'departmentId': ?filters.departmentId,
+      'category': ?filters.category,
+      'claimNo': ?filters.claimNo,
+      'sort': ?sortColumn,
+      if (sortColumn != null) 'order': sortAscending ? 'asc' : 'desc',
+    };
     final summaryAsync = scope.isScoped
         ? null
         : ref.watch(expenseQueueSummaryProvider);
@@ -435,6 +447,17 @@ class _ExpenseApprovalListPageState
           // 2026-09-25 单号列统一：facets 响应含报销单号桶（claimNo）。
           // 嵌入态 'status' 桶 = 队列切换（待审核/待付款），计数与原队列段同源。
           facets: {...facets.value ?? const {}, ...statusFacets},
+          facetPageLoaders: nativeFacetLoaders(
+            ref,
+            path: '/expense-claims/facets',
+            fields: const ['claimNo'],
+            filters: facetQuery,
+          ),
+          facetSearchScope: nativeFacetSearchScope(
+            ref,
+            '/expense-claims/facets',
+            facetQuery,
+          ),
           nullCounts: const {},
           filters: {
             ...filters.asTableFilters,

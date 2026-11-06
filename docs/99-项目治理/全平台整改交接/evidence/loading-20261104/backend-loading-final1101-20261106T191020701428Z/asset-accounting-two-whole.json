@@ -1,0 +1,81 @@
+{
+  "startedAtUtc": "2026-11-06T19:01:00.974103+00:00",
+  "sourceAggregateSha256": "d1dfbf4df2f1dcd290391d3dc027b4667f03b5e9a882a4f3f243767c87e4e49a",
+  "sourceCompileReceiptSha256": "64d8f2405e8dd8a87d0091c848954d430c0a73fc09e724e2573287196c2b5532",
+  "taskOwner": "backend-final-original-asset-accounting-closeout",
+  "selection": "FinanceAssetAccountingCompleteSummaryPostgresTest",
+  "wholeNoMethodFilter": true,
+  "originalAssertionsAndBudgetsUnchanged": true,
+  "args": [
+    "C:\\tools\\apache-maven-3.9.16\\bin\\mvn.CMD",
+    "-f",
+    "server/pom.xml",
+    "-Duten.build.directory=target-loading-main-final1101-asset-20261106",
+    "-Duten.test.jvm.heap.args=-Xmx2304m",
+    "-Duten.test.context.cache.maxSize=1",
+    "-Dtest=FinanceAssetAccountingCompleteSummaryPostgresTest",
+    "surefire:test"
+  ],
+  "target": "D:\\Projects\\uten_imp\\server\\target-loading-main-final1101-asset-20261106",
+  "sharedCompiledClassesReadOnlyJunctionsTo": "D:\\Projects\\uten_imp\\server\\target-loading-main-final1101-20261106",
+  "sourceCompanyConnected": false,
+  "state": "completed",
+  "ownedPostgresCaps": [
+    {
+      "containerId": "d764c6a151957ffe223b3a1f15b674e4d26d8b52aba8e36f64b9c4011c922bc8",
+      "sourceClass": "FinanceAssetAccountingCompleteSummaryPostgresTest",
+      "database": "uten_migrated_template",
+      "memoryBytes": 1073741824,
+      "nanoCpus": 1000000000,
+      "verifiedExactCurrentRunLogAndTestcontainer": true
+    }
+  ],
+  "mavenCmdPid": 51556,
+  "completedAtUtc": "2026-11-06T19:04:52.511570+00:00",
+  "actualExitCode": 0,
+  "reports": [
+    {
+      "name": "FinanceAssetAccountingCompleteSummaryPostgresTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "360e07e13ff9c126b8245220176d61119ae09ce84e8c9f9caeea9bcc67a6f4e1"
+    }
+  ],
+  "sourceDrift": [
+    "server/src/main/java/com/uten/imp/common/finance/ProcurementIqcReplacementAllocationService.java",
+    "server/src/main/java/com/uten/imp/common/finance/ProcurementOrderQuantityBounds.java",
+    "server/src/main/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreview.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialPreparationBudgetReader.java",
+    "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjection.java",
+    "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryProductionCostService.java",
+    "server/src/main/java/com/uten/imp/features/stock/valuation/SubcontractOwnMaterialCostService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/plan/SubcontractMaterialPlanService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthority.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptItem.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReturnCapacity.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPolicy.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java",
+    "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalContracts.java",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+    "server/src/test/java/com/uten/imp/businesschain/AggregateMaterialOrderEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractAcceptedLossAnalysisEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractShortDeliveryEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractStepDrawEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/SubcontractToleranceAutoSettleEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreviewTest.java",
+    "server/src/test/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjectionPostgresTest.java",
+    "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryAutoSettleTest.java",
+    "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPolicyTest.java",
+    "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPreStockHoldTest.java",
+    "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalMaterialBoundTest.java",
+    "server/src/test/java/com/uten/imp/migration/LegacyQuantityUnapprovalCompositionPostgresTest.java"
+  ],
+  "logSha256": "139f5abfc4db715df4718ddb1c449e1228e8a338e1fdff1afd2bb265f7fb9a58"
+}

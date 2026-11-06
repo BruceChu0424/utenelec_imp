@@ -24,12 +24,33 @@ public final class NativeFacets {
     /** Keep the original named SQL: Hibernate's query string may already be positional. */
     public static Query query(EntityManager em,String field,String sql){return NativeFacetCandidates.query(em,field,sql);}
 
+    public static Query queryLabeled(EntityManager em,String field,String sql) {return NativeFacetCandidates.query(em,field,sql,true);}
+    public static boolean wants(String field) {return !NativeFacetCandidates.active()||NativeFacetCandidates.current().wants(field);}
+    public static List<Map<String,Object>> jdbcRows(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc,
+            String field,String sql,org.springframework.jdbc.core.namedparam.SqlParameterSource parameters,boolean labeled) {
+        if(NativeFacetCandidates.active())return NativeFacetCandidates.current().jdbcRows(jdbc,field,sql,parameters,labeled);
+        return jdbc.query(sql,parameters,(result,index)->labeled
+                ?bucket(result.getString(1),result.getString(2),result.getLong(3))
+                :bucket(result.getString(1),result.getLong(2)));
+    }
+
+    public static List<Map<String,Object>> jdbcRows(org.springframework.jdbc.core.JdbcTemplate jdbc,
+            String field,String sql,Object[] parameters,boolean labeled) {
+        if(NativeFacetCandidates.active())return NativeFacetCandidates.current().jdbcRows(jdbc,field,sql,parameters,labeled);
+        return jdbc.query(sql,new org.springframework.jdbc.core.ArgumentPreparedStatementSetter(parameters),(result,index)->labeled
+                ?bucket(result.getString(1),result.getString(2),result.getLong(3))
+                :bucket(result.getString(1),result.getLong(2)));
+    }
+
     /** 单桶：{value, count, label=value}。 */
     public static Map<String, Object> bucket(String value, long count) {
+        return bucket(value,value,count);
+    }
+    public static Map<String,Object> bucket(String value,String label,long count) {
         Map<String, Object> bucket = new LinkedHashMap<>();
         bucket.put("value", value);
         bucket.put("count", count);
-        bucket.put("label", value);
+        bucket.put("label", label);
         return bucket;
     }
 
@@ -38,7 +59,9 @@ public final class NativeFacets {
         List<Map<String, Object>> buckets = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             String value = row[0] == null ? "" : row[0].toString();
-            buckets.add(bucket(value, ((Number) row[1]).longValue()));
+            if(row.length==2)buckets.add(bucket(value, ((Number) row[1]).longValue()));
+            else if(row.length==3)buckets.add(bucket(value,row[1]==null?"":row[1].toString(),((Number)row[2]).longValue()));
+            else throw new IllegalStateException("Native facet queries require explicit two or three column projections");
         }
         return buckets;
     }

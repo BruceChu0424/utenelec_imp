@@ -55,7 +55,7 @@ public class SubcontractReportController {
 
     /** 8 张明细/汇总报表：doc/view 路由分发。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/{doc}/{view}")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{doc}/{view}", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('subcontract_report:view')")
     public ReportTableResponse table(
             @PathVariable String doc,

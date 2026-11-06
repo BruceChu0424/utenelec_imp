@@ -114,7 +114,6 @@ public class ExpenseClaimController {
      * 对应列表一致（服务层按队列再校验 expense:approve / expense:pay / expense:apply；
      * mine 为我的报销单号桶，2026-09-25 单号列统一）。
      */
-    @GetMapping("/facets")
     @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay','expense:apply')")
     public ExpenseClaimFacetsDto facets(@RequestParam String queue,
             @RequestParam(defaultValue="false") boolean includeDeleted,
@@ -122,6 +121,27 @@ public class ExpenseClaimController {
             @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode,
             @RequestParam(defaultValue="false") boolean includeAbandoned) {
         return service.facets(queue,includeDeleted,onlyDeleted,approvalStage,departmentCode,includeAbandoned);
+    }
+
+    @GetMapping("/facets")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay','expense:apply')")
+    public ExpenseClaimFacetsDto facetsMetadata(@RequestParam String queue,
+            @RequestParam(defaultValue="false") boolean includeDeleted,@RequestParam(defaultValue="false") boolean onlyDeleted,
+            @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode,
+            @RequestParam(defaultValue="false") boolean includeAbandoned,@RequestParam(defaultValue="true") boolean includeClaimNos) {
+        return includeClaimNos?service.facets(queue,includeDeleted,onlyDeleted,approvalStage,departmentCode,includeAbandoned)
+                :service.facets(queue,includeDeleted,onlyDeleted,approvalStage,departmentCode,includeAbandoned,false);
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/facets")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay','expense:apply')")
+    public ExpenseClaimFacetsDto nativeClaimNoFacets(@RequestParam String queue,@RequestParam(required=false) String status,
+            @RequestParam(required=false) Integer year,@RequestParam(required=false) Integer month,
+            @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) String category,
+            @RequestParam(defaultValue="false") boolean includeDeleted,@RequestParam(defaultValue="false") boolean onlyDeleted,
+            @RequestParam(required=false) String approvalStage,@RequestParam(required=false) String departmentCode,
+            @RequestParam(defaultValue="false") boolean actionRequired,@RequestParam(defaultValue="false") boolean includeAbandoned) {
+        return service.nativeClaimNoFacets(queue,status,year,month,departmentId,category,includeDeleted,onlyDeleted,approvalStage,departmentCode,actionRequired,includeAbandoned);
     }
 
     /** 队列汇总（V608 审批页统计卡）：两队列单数/金额 + 本月提交 + 本月打款。 */

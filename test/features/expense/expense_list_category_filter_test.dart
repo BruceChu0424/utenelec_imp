@@ -11,6 +11,7 @@ import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/expense/pages/expense_list_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/native_facet_fake_transport.dart';
 
 void main() {
   testWidgets('draft is the first visible reimbursement category', (
@@ -137,7 +138,9 @@ void main() {
       find.byKey(const Key('expense-list-table')),
     );
     expect(table.facets.keys, contains('claimNo'));
-    expect(table.facets['claimNo']!.single.value, 'BX2026-09-01-0001');
+    expect(table.facets['claimNo'], isEmpty);
+    final candidates = await table.facetPageLoaders['claimNo']!('', 1);
+    expect(candidates.items.single.value, 'BX2026-09-01-0001');
     expect(
       table.columns.where((c) => c.key == 'claimNo').single.sortable,
       isTrue,
@@ -158,7 +161,12 @@ void main() {
       find.byKey(const Key('expense-list-table')),
     );
     expect(filteredView.currentPage, 1, reason: '换单号筛选回第 1 页，投机页不改变展示');
-    expect(filteredView.items.single.claimNo, 'BX2026-09-01-0001');
+    expect(filteredView.items, hasLength(3));
+    expect(filteredView.items.map((claim) => claim.id).toSet(), hasLength(3));
+    expect(
+      filteredView.items.map((claim) => claim.claimNo),
+      everyElement('BX2026-09-01-0001'),
+    );
 
     tester
         .widget<MasterDataTableView<ExpenseClaim>>(
@@ -170,30 +178,14 @@ void main() {
     expect(api.lastQuery?['sort'], 'claimNo');
     expect(api.lastQuery?['order'], 'asc');
 
-    await tester
-        .widget<MasterDataTableView<ExpenseClaim>>(
-          find.byKey(const Key('expense-list-table')),
-        )
-        .onPageChange!(2);
+    final beforeScroll = api.queries.length;
+    await tester.drag(
+      find.byKey(const Key('expense-list-table')),
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<MasterDataTableView<ExpenseClaim>>(
-            find.byKey(const Key('expense-list-table')),
-          )
-          .currentPage,
-      2,
-    );
-    expect(
-      api.queries.where(
-        (query) =>
-            query['page'] == 2 &&
-            query['sort'] == 'claimNo' &&
-            query['order'] == 'asc',
-      ),
-      hasLength(1),
-      reason: 'pagination adopts its existing warm read',
-    );
+    expect(api.queries, hasLength(beforeScroll), reason: '完整摘要在本地滚动不触发HTTP');
+    expect(find.text('下一页'), findsNothing);
     tester
         .widget<MasterDataTableView<ExpenseClaim>>(
           find.byKey(const Key('expense-list-table')),
@@ -210,7 +202,7 @@ void main() {
   });
 }
 
-class _ExpenseApi extends ApiClient {
+class _ExpenseApi extends ApiClient with NativeFacetFakeTransport {
   _ExpenseApi({this.totalPages = 1}) : super(Dio());
 
   final int totalPages;
@@ -244,7 +236,7 @@ class _ExpenseApi extends ApiClient {
       return {
         'items': [
           {
-            'id': 'claim-1',
+            'id': 'claim-${query?['page'] ?? 1}',
             'claimNo': 'BX2026-09-01-0001',
             'applicantId': 'emp-1',
             'applicantName': '王小明',
@@ -267,7 +259,7 @@ class _ExpenseApi extends ApiClient {
           },
         ],
         'page': query?['page'] ?? 1,
-        'size': 24,
+        'size': query?['size'] ?? 24,
         'total': totalPages,
         'totalPages': totalPages,
       };

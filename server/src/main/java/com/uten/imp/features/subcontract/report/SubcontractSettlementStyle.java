@@ -29,5 +29,8 @@ public final class SubcontractSettlementStyle {
         return LABELS.getOrDefault(code, Objects.toString(code));
     }
 
+    /** Same immutable authoritative labels for bounded native candidate SQL. */
+    public static Map<Integer,String> allLabels() { return LABELS; }
+
     private SubcontractSettlementStyle() {}
 }

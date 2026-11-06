@@ -1090,8 +1090,34 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public Map<String, List<Map<String, Object>>> warehouseExceptionFacets(
             String keyword, boolean includeHistory, UUID supplierId, UUID warehouseId,
             String status, WarehouseTaskScope warehouseScope) {
+        return warehouseExceptionFacets(keyword,includeHistory,supplierId,warehouseId,status,warehouseScope,null,null);
+    }
+
+    @Transactional(readOnly=true)
+    public Map<String, List<Map<String, Object>>> warehouseExceptionFacets(
+            String keyword, boolean includeHistory, UUID supplierId, UUID warehouseId,
+            String status, WarehouseTaskScope warehouseScope,String receiptBillNo,String orderBillNo) {
         WarehouseExceptionFilters filters = warehouseExceptionFilters(
                 keyword, includeHistory, supplierId, warehouseId, status, warehouseScope);
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            String field=com.uten.imp.common.web.NativeFacets.wants("receiptBillNo")?"receiptBillNo"
+                    :com.uten.imp.common.web.NativeFacets.wants("orderBillNo")?"orderBillNo":null;
+            if(field==null)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该入口不支持所选候选字段");
+            // Preserve the other current bill filter; only this selected field
+            // is excluded from its own authoritative candidate universe.
+            String other="receiptBillNo".equals(field)?orderBillNo:receiptBillNo;
+            if(other!=null&&!other.isBlank()) {
+                filters.clauses().add("exception."+("receiptBillNo".equals(field)?"order_bill_no_snapshot":"receipt_bill_no_snapshot")+" = ?");
+                filters.args().add(other.trim());
+            }
+            String value="exception."+("receiptBillNo".equals(field)?"receipt_bill_no_snapshot":"order_bill_no_snapshot");
+            String grouped="SELECT "+value+",COUNT(*) FROM procurement_arrival_exceptions exception"
+                    +" JOIN goods goods ON goods.id=exception.goods_id LEFT JOIN suppliers supplier ON supplier.id=exception.supplier_id"
+                    +" LEFT JOIN warehouses warehouse ON warehouse.id=exception.warehouse_id WHERE "+filters.where()
+                    +" GROUP BY "+value;
+            com.uten.imp.common.web.NativeFacets.jdbcRows(jdbc,field,grouped,filters.args().toArray(),false);
+            return Map.of();
+        }
         String where = filters.where();
         String fromJoins = """
                 FROM procurement_arrival_exceptions exception
@@ -1830,6 +1856,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         String trimmedKeyword = normalizeKeyword(keyword);
         ExpectationFilters filters = expectationFilters(
                 normalizedType, trimmedKeyword, supplierId, warehouseScope, null);
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            if(!com.uten.imp.common.web.NativeFacets.wants("billNo"))throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该入口不支持所选候选字段");
+            String grouped="SELECT expectation.bill_no_snapshot,COUNT(*) FROM inbound_expectations expectation WHERE ("
+                    +warehouseWorkRemaining()+") AND ("+expectationVisible()+") "+filters.sql()
+                    +" GROUP BY expectation.bill_no_snapshot";
+            com.uten.imp.common.web.NativeFacets.jdbcRows(jdbc,"billNo",grouped,filters.args().toArray(),false);
+            return Map.of();
+        }
         List<Map<String, Object>> buckets = jdbc.query("""
                         SELECT expectation.bill_no_snapshot, COUNT(*)
                         FROM inbound_expectations expectation

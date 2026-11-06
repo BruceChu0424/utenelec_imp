@@ -76,7 +76,7 @@
 
 ## W7-BIZ-098 · lib/features/production/pages/production_board_page.dart
 
-模块 `production`；2441 行；SHA256 `c233d1593bf69d75435e05faebc491139e9ca7e463a17b866b3cc3577b6d5e55`。
+模块 `production`；2441 行；SHA256 `a583f5ce80dde085aaa5da66899dab66de9405f0cf1300f36a99b6c349d23342`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -130,7 +130,7 @@
 
 ## W7-BIZ-101 · lib/features/production/pages/production_daily_report_detail_page.dart
 
-模块 `production`；1760 行；SHA256 `7ef9bc2d82edddc3837bf539bbe23360ec05f2ccf500fc23ae5b3af3a10859bd`。
+模块 `production`；1760 行；SHA256 `72328023827b7f3b44a43b8816106247d8f865e0be29560ac1aacb8ba74abf92`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -166,7 +166,7 @@
 
 ## W7-BIZ-103 · lib/features/production/pages/production_daily_report_list_page.dart
 
-模块 `production`；498 行；SHA256 `682e6c7318d939b276e7c33d184da1090d337f6240b2db80bf823a5837768ff0`。
+模块 `production`；498 行；SHA256 `3b81914b2e2fe565f0de9e435e0d5592462d66a0bb60444de038e85a76a02991`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -238,7 +238,7 @@
 
 ## W7-BIZ-107 · lib/features/production/pages/production_material_analysis_history_page.dart
 
-模块 `production`；658 行；SHA256 `f01f0a1bd2e0c9e3d24db7984acbaf93703986ff20b4e9bf7762b68c456fff32`。
+模块 `production`；658 行；SHA256 `1ff07425b2fe57933504834bd6dc1d33b75b263890e7509ccc2e548386a984df`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -310,7 +310,7 @@
 
 ## W7-BIZ-219 · lib/features/production/pages/production_over_limit_pages.dart
 
-模块 `production`；708 行；SHA256 `c8c59375ea5192286688c9e03d285fc786258c1e4d752a11937ba48495498b06`。
+模块 `production`；708 行；SHA256 `35c45759559f91a9778738761fdaeb80a565a19180748b97c49511b44c2df509`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -328,7 +328,7 @@
 
 ## W7-BIZ-220 · lib/features/production/pages/production_overproduction_rate_pages.dart
 
-模块 `production`；548 行；SHA256 `2b353c6622d2b20ae42fa476c41c8865d15a8dd0a9105bd1b94d76450cb698c4`。
+模块 `production`；548 行；SHA256 `0111038f9a717ce8dd56b05854d821f2aba351a124c4cbb7dd9091aa152a10da`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -382,7 +382,7 @@
 
 ## W7-BIZ-112 · lib/features/production/pages/production_plan_list_page.dart
 
-模块 `production`；698 行；SHA256 `d19aea36e0fd1d980025b10f24cd165ae911efd72fb147522ef537cb1256f32f`。
+模块 `production`；698 行；SHA256 `be0d28c27437db7254e5d491a9e222f9f1d8481a278e786a244c8f13adafb47b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -418,25 +418,25 @@
 
 ## W7-BIZ-114 · lib/features/production/pages/production_report_page.dart
 
-模块 `production`；618 行；SHA256 `ad12b3afadbaeda22f3c1aa94f1897c718626b4f28e867a1fc33742ed76a18b6`。
+模块 `production`；632 行；SHA256 `f79dc1aa8f4646475aa16ccb9165d7a6c6878bd5f3461dd7884bdd0d1a88ec14`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | ProductionReportPage @62 (page-class)<br>_ProductionReportPageState @71 (state-class) |
+| 页面/状态类 | ProductionReportPage @63 (page-class)<br>_ProductionReportPageState @72 (state-class) |
 | 真实路由绑定 | plan-detail；lib/features/production/production_routes.dart @321；builder ['ProductionReportPage']；redirect None<br>plan-summary；lib/features/production/production_routes.dart @327；builder ['ProductionReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | production_report:export @547；定义 lib/shared/auth/permissions.dart:477<br>production_report:export @556；定义 lib/shared/auth/permissions.dart:477 |
+| 权限 | production_report:export @548；定义 lib/shared/auth/permissions.dart:477<br>production_report:export @557；定义 lib/shared/auth/permissions.dart:477 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @134 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @165 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @203 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @317 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @363 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @367 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @542 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @554 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @610 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
+| 动作处理 | addPostFrameCallback @135 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @166 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @204 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @318 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @364 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @368 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @543 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @555 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @624 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/shared/providers/document_status_counts_provider.dart` (sharedComponents)；`lib/shared/providers/draft_counts_provider.dart` (sharedComponents)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/production/config/production_report_config.dart` (other)。
+直接源依赖：`lib/shared/providers/native_facet_options.dart` (sharedComponents)；`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/shared/providers/document_status_counts_provider.dart` (sharedComponents)；`lib/shared/providers/draft_counts_provider.dart` (sharedComponents)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/production/config/production_report_config.dart` (other)。
 
 ## W7-BIZ-115 · lib/features/production/pages/production_workshop_tasks_page.dart
 
-模块 `production`；3782 行；SHA256 `e74d65d695296ab1e7707d3bcdd865bcede07d947b921ddb3d198738101bb42d`。
+模块 `production`；3782 行；SHA256 `6fbcf1b0da7f662e17edd68a279ef24055f02ef71f6c2e4234c2d14c8fdd918e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

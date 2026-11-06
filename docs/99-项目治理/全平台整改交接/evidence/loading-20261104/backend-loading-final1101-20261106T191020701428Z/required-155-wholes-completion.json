@@ -1,0 +1,169 @@
+{
+  "startedAtUtc": "2026-11-06T18:54:15.642228+00:00",
+  "mavenCmdPid": 39068,
+  "sourceAggregateSha256": "853afeaf0c063d11a5ca4ea89e90a3714dd58d560c67771431dc325e501ba30c",
+  "state": "completed",
+  "companyConnected": false,
+  "monitorCorrection": "The resource monitor must accept the selected ExpenseApprovalWorkflowPostgresTest fixture database expense_workflow/fixture_admin as well as test/test. This observer holds the original Maven process handle and does not stop or rerun tests.",
+  "ownedPostgresCaps": [
+    {
+      "containerId": "1a55b9bf3a9fc34daa1746012358f66303fbe7d2791af94f65f388bb7b049c8e",
+      "database": "test",
+      "memoryBytes": 805306368,
+      "nanoCpus": 1000000000,
+      "verifiedExactCurrentRunLogAndTestcontainer": true
+    },
+    {
+      "containerId": "588fcb6a14967b332e82b002af6aa30db9e9b68675f731d5c01daf75034092e6",
+      "database": "test",
+      "memoryBytes": 805306368,
+      "nanoCpus": 1000000000,
+      "verifiedExactCurrentRunLogAndTestcontainer": true
+    },
+    {
+      "containerId": "b7edd41eccf549d3787d453e2d928b9467fdd8bdaed110157c23b0b7c4ec220f",
+      "database": "expense_workflow",
+      "memoryBytes": 805306368,
+      "nanoCpus": 1000000000,
+      "verifiedExactCurrentRunLogAndTestcontainer": true
+    }
+  ],
+  "completedAtUtc": "2026-11-06T18:59:56.402024+00:00",
+  "actualMavenNaturalExitCode": 0,
+  "reports": [
+    {
+      "name": "FinanceContextAndExpenseCompleteSummaryHttpPostgresTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "efda1034a620175a8a3cb7e2d964dac29bec7498b1156444defcd0c14cc9f01d"
+    },
+    {
+      "name": "VersionedSummaryPagesPostgresTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "ba8d696379e34abfbc03b0dfd4a17260a86dfd084dfdab291fd576d68633e9eb"
+    },
+    {
+      "name": "ExpenseApprovalWorkflowPostgresTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "3f5989458ee7939b98295379004c484e177d82d2f7a067e2b552140715d93456"
+    },
+    {
+      "name": "FlywayChecksumManifestExporterTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "699561b7f43f2707029e646ea516e29ffc7932f672a140719ee7119c15004c5e"
+    },
+    {
+      "name": "LegacyMigrationSafetyContractTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "da69fde2e665e6284ad558fdc3e87e2fd53c39164cfca25310ebe30c940913f5"
+    },
+    {
+      "name": "ReadScopePublicationTest",
+      "tests": 21,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "58d25dd91ac6a1bada7637962e039ad4c8900ce426365808c4edeb35a2790f66"
+    },
+    {
+      "name": "NativeFacetCandidatesTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "6d7246afb460aec06e3d8bee7d5fe8f09bb24bdfb72348a8243119d2b49e609c"
+    },
+    {
+      "name": "NativeFacetsTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "d9fc3946ccda0bc2148a6ddfb225e40d9b063a7528a849ff842aff9b0c833b90"
+    },
+    {
+      "name": "NativeFacetCandidateInterceptorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "decb2633a5aa83a23ea09b047eb8abffa3a504877c4ead001bc01c5078647ef3"
+    },
+    {
+      "name": "NativeFacetCandidateMvcTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "698e52139a6f6799abafc05a808f25db47e688fbfa455935e857b69414c1319a"
+    },
+    {
+      "name": "NativeFacetSnapshotAspectTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "9b5aab2086269ae10ddd94da4e92d1322d87d461da366f1138e6f9ce19930c68"
+    },
+    {
+      "name": "NativeFacetReadOnlyPolicyTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "dcdd233e94e90d813d3635a986981b2034d1b1b83072bcb199f0605d04907830"
+    },
+    {
+      "name": "ExpenseFacetMetadataProjectionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "a1934f45b49308f1a031d2ebf479aa19fdaa1508bb4412055a9a772487fcdfb7"
+    },
+    {
+      "name": "ExpenseClaimServiceTest",
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "ba11f9baed6ee6b33846b299225aed7446f3631a8a59bd384b93205a3f044671"
+    },
+    {
+      "name": "NativeReadScopeVersionAuthorityTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "10817f7e75944b8bc1cf7a40c4b238f260e6ed48c5a8a85f0ac9b61c3b641488"
+    },
+    {
+      "name": "ReadScopeVersionAuthorityTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "a0b7465a108b1de68cd09d00e3e44f4d45e138995f112e96b794a1cc83395f59"
+    }
+  ],
+  "wholeNoMethodFilter": true,
+  "sourceDrift": [
+    "server/src/test/java/com/uten/imp/businesschain/GoodsBomEditEndToEndTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/ValuationComponentEndToEndTest.java"
+  ],
+  "logSha256": "a87da40fc01e5370b3add526da2743cf137158aa8b035e231dad6c1809df5c49"
+}

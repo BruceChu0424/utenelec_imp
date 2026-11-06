@@ -73,7 +73,7 @@ public class StockQueryController {
      *
      * GET /api/stock/instant-inventory?categoryId=&warehouseId=&includeDefective=&keyword=&page=&size=&sort=&order=
      */
-    @GetMapping("/instant-inventory")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/instant-inventory", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('stock:view')")
     public PageResponse<InstantInventoryRow> instantInventory(
             @RequestParam(required = false) UUID categoryId,
@@ -110,7 +110,7 @@ public class StockQueryController {
      * 行动清单使用独立路由，旧服务端返回 404，不能静默忽略 attention 后把全部库存冒充风险。
      * 查询与原接口复用同一个服务；attention 缺失或非法均返回 400。
      */
-    @GetMapping("/instant-inventory/attention")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/instant-inventory/attention", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('stock:view')")
     public PageResponse<InstantInventoryRow> instantInventoryAttention(
             @RequestParam(required = false) UUID categoryId,

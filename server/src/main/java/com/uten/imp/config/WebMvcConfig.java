@@ -63,13 +63,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // their physical/owner profile before the report opens its read plan.
         registry.addInterceptor(new com.uten.imp.common.report.NativeTaskReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/**");
+        // Exact candidate ownership precedes the broader report plan; GET paths keep the original behavior.
+        registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
+                .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
         registry.addInterceptor(new ReportReadPlanInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/sales/reports/**", "/api/purchase/reports/**",
                         "/api/subcontract/reports/**", "/api/production/reports/**",
                         "/api/stock/reports/**", "/api/finance/reports/**",
                         "/api/finance/statement-documents/reviews/*/original-table");
-        registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
-                .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
         registry.addInterceptor(new com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**",
                         "/api/finance/asset-opening-groups/summaries","/api/finance/accounting-imports/summaries",

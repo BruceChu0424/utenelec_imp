@@ -1,3 +1,4 @@
+import 'support/pump_until.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -484,6 +485,167 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(TextField), findsNothing);
       }
+    },
+  );
+
+  testWidgets(
+    'a failed late facet batch exposes no prefix and retry reaches all1001 local candidates',
+    (tester) async {
+      final requests = <int>[];
+      final gate = Completer<MasterFacetPage>();
+      var fail = true;
+      String? selected;
+      addTearDown(() {
+        if (!gate.isCompleted) {
+          gate.complete(const MasterFacetPage(items: [], hasMore: false));
+        }
+      });
+      MasterFacetPage batch(int page) => MasterFacetPage(
+        items: [
+          for (var i = (page - 1) * 100; i < page * 100 && i < 1001; i++)
+            MasterFacetBucket(value: 'id-$i', label: '范围中文候选$i', count: 1),
+        ],
+        hasMore: page < 11,
+        page: page,
+        size: 100,
+      );
+      await tester.pumpWidget(
+        _page((_, _, page) async {
+          requests.add(page);
+          if (page == 2 && fail) return gate.future;
+          return batch(page);
+        }, selected: (value) => selected = value),
+      );
+      await _open(tester);
+      await pumpUntil(
+        tester,
+        () => requests.contains(2),
+        reason: 'The late internal batch must really be pending.',
+      );
+      await tester.pump();
+      expect(
+        find.text('范围中文候选0 (1)'),
+        findsNothing,
+        reason: 'An unchecked first batch cannot be selected.',
+      );
+      gate.completeError(StateError('late batch offline'));
+      await tester.pumpAndSettle();
+      expect(find.text('候选加载失败，点击重试'), findsOneWidget);
+      expect(find.text('范围中文候选0 (1)'), findsNothing);
+      fail = false;
+      await tester.tap(find.text('候选加载失败，点击重试'));
+      await tester.pumpAndSettle();
+      expect(requests, [1, 2, for (var page = 1; page <= 11; page++) page]);
+      final first = find.text('范围中文候选0 (1)');
+      expect(first, findsOneWidget);
+      final scrollElement = find
+          .ancestor(of: first, matching: find.byType(Scrollable))
+          .evaluate()
+          .single;
+      final localScroll = find.byElementPredicate(
+        (element) => identical(element, scrollElement),
+      );
+      final before = requests.length;
+      await tester.scrollUntilVisible(
+        find.text('范围中文候选1000 (1)'),
+        1400,
+        scrollable: localScroll,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('范围中文候选1000 (1)').hitTestable(), findsOneWidget);
+      expect(requests, hasLength(before));
+      await tester.tap(find.text('范围中文候选1000 (1)'));
+      await tester.pumpAndSettle();
+      expect(selected, 'id-1000');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'an old query held tail cannot publish its prefix or overwrite the new complete candidate scope',
+    (tester) async {
+      final gate = Completer<MasterFacetPage>();
+      final requests = <(String, int)>[];
+      addTearDown(() {
+        if (!gate.isCompleted) {
+          gate.complete(const MasterFacetPage(items: [], hasMore: false));
+        }
+      });
+      await tester.pumpWidget(
+        _page((_, query, page) async {
+          requests.add((query, page));
+          if (query == '旧中文') {
+            if (page == 2) return gate.future;
+            return const MasterFacetPage(
+              items: [
+                MasterFacetBucket(value: 'old-prefix', label: '旧前缀', count: 1),
+              ],
+              hasMore: true,
+            );
+          }
+          if (query == '新中文') {
+            return const MasterFacetPage(
+              items: [
+                MasterFacetBucket(
+                  value: 'new-tail',
+                  label: '新完整中文末尾',
+                  count: 1,
+                ),
+              ],
+              hasMore: false,
+            );
+          }
+          return _initial;
+        }),
+      );
+      await _open(tester);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '旧中文');
+      await tester.pump(const Duration(milliseconds: 251));
+      await pumpUntil(
+        tester,
+        () => requests.contains(('旧中文', 2)),
+        reason: 'The old tail must actually be outstanding.',
+      );
+      expect(find.text('旧前缀 (1)'), findsNothing);
+      await tester.enterText(find.byType(TextField).last, '新中文');
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      expect(find.text('新完整中文末尾 (1)'), findsOneWidget);
+      gate.complete(
+        const MasterFacetPage(
+          items: [MasterFacetBucket(value: 'old-tail', label: '旧尾部', count: 1)],
+          hasMore: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('新完整中文末尾 (1)'), findsOneWidget);
+      expect(find.text('旧前缀 (1)'), findsNothing);
+      expect(find.text('旧尾部 (1)'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'same-count facet data-version replacement rejects the entire new scope',
+    (tester) async {
+      await tester.pumpWidget(
+        _page(
+          (_, _, page) async => MasterFacetPage(
+            items: [MasterFacetBucket(value: 'value-$page', count: 1)],
+            hasMore: page == 1,
+            page: page,
+            size: 100,
+            readScopeVersion: 'authorized-owner',
+            readSnapshotRevision: 'a' * 64,
+            readDataVersion: (page == 1 ? 'c' : 'd') * 64,
+          ),
+        ),
+      );
+      await _open(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('候选加载失败，点击重试'), findsOneWidget);
+      expect(find.text('value-1 (1)'), findsNothing);
+      expect(find.text('value-2 (1)'), findsNothing);
+      expect(tester.takeException(), isNull);
     },
   );
 

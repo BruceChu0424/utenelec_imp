@@ -67,6 +67,15 @@ class ReadScopeRevisionInterceptor extends Interceptor {
             ? 'master_settlement_method'
             : null) ??
         reportDomain ??
+        // These owning summary endpoints publish only the existing version
+        // header. Match their exact server routes; unrelated finance reads do
+        // not gain a synthetic authority profile.
+        (options.method == 'GET' &&
+                RegExp(
+                  r'^/(?:api/)?finance/(?:(?:asset-opening-groups|accounting-imports|auxiliary-imports)/summaries|chart/imports/summaries|expense-analysis/note-imports/summaries|payable-statement-adjustments|statement-documents/reviews/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/(?:summary|original-table))$',
+                ).hasMatch(options.path)
+            ? 'finance'
+            : null) ??
         (RegExp(
               r'^/(?:api/)?business-applications/[0-9a-fA-F-]{36}/prepayment-finance-candidates$',
             ).hasMatch(options.path)

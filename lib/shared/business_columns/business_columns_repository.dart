@@ -1,3 +1,4 @@
+import '../paging/versioned_summary_read.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
@@ -13,11 +14,25 @@ class BusinessColumnsRepository {
     '/business-columns/${Uri.encodeComponent(scope)}/${Uri.encodeComponent(id)}',
   );
 
-  Future<List<BusinessColumn>> search(String scope, String query) async =>
-      (await api.getList(
-        '/business-columns',
-        query: {'scope': scope, 'q': query},
-      )).map(BusinessColumn.fromJson).toList(growable: false);
+  Future<List<BusinessColumn>> search(String scope, String query) =>
+      readCompleteVersionedSummaries<BusinessColumn>(
+        // The picker's existing PagedReadIntent supplies its repository/query
+        // owner. The shared reader inherits that fence for every batch.
+        isCurrent: () => true,
+        batchSize: 1000,
+        loadPage: (page, size, revision) => api.get(
+          '/business-columns/summaries',
+          query: {
+            'scope': scope,
+            'q': query,
+            'page': page,
+            'size': size,
+            'readSnapshotRevision': ?revision,
+          },
+        ),
+        decode: BusinessColumn.fromJson,
+        idOf: (column) => column.id,
+      );
 
   Future<bool> supportsArithmetic(String scope) async =>
       (await api.get(

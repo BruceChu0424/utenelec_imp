@@ -1274,6 +1274,8 @@ class _HeaderApi extends ApiClient {
       ],
       'hasMore': false,
       'readScopeVersion': 'scope-1',
+      'readSnapshotRevision': 'a' * 64,
+      'readDataVersion': 'c' * 64,
     };
   }
 

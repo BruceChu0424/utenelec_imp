@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
   final requests = <({String path, Map<String, dynamic> body})>[];
   Completer<Map<String, dynamic>>? paused;
+  bool missingProof = false;
   @override
   Future<Map<String, dynamic>> postForm(
     String path, {
@@ -38,6 +40,10 @@ class _Api extends ApiClient {
       ],
       'hasMore': body['__facetPage'] == 1,
       'readScopeVersion': 'current-proof',
+      if (!missingProof)
+        'readSnapshotRevision':
+            (body['__facetKeyword'] == 'query-B' ? 'b' : 'a') * 64,
+      if (!missingProof) 'readDataVersion': 'c' * 64,
     };
   }
 }
@@ -79,7 +85,7 @@ void main() {
     (tester) async {
       final api = _Api();
       final (ref, _) = await _mount(tester, api);
-      expect(nativeFacetPaths.length, 22);
+      expect(nativeFacetPaths.length, 102);
       for (final path in nativeFacetPaths) {
         final filters = <String, dynamic>{
           'keyword': '采购 %_ 原文',
@@ -98,7 +104,9 @@ void main() {
         )['billNo']!;
         filters['keyword'] = 'later mutation';
         final first = await tester.runAsync(() => loader('%_ 中文', 1));
-        final second = await tester.runAsync(() => loader('%_ 中文', 2));
+        final second = await tester.runAsync(
+          () => first!.internalPageLoader!(2),
+        );
         expect(first!.hasMore, isTrue);
         expect(second!.hasMore, isFalse);
         expect(second.items.single.count, 7);
@@ -114,10 +122,68 @@ void main() {
           '__facetKeyword': '%_ 中文',
           '__facetPage': 2,
           '__facetSize': 100,
+          '__facetReadSnapshotRevision': 'a' * 64,
         });
       }
     },
   );
+  testWidgets(
+    'response continuations retain separate query tokens even when an older first response arrives late',
+    (tester) async {
+      final api = _Api();
+      final (ref, _) = await _mount(tester, api);
+      final loader = nativeFacetLoaders(
+        ref,
+        path: '/finance/payables/facets',
+        fields: const ['sourceDocNo'],
+      )['sourceDocNo']!;
+      final gate = Completer<Map<String, dynamic>>();
+      api.paused = gate;
+      final pendingA = loader('query-A', 1);
+      api.paused = null;
+      final firstB = await tester.runAsync(() => loader('query-B', 1));
+      gate.complete({
+        'field': 'sourceDocNo',
+        'page': 1,
+        'size': 100,
+        'items': <Map<String, dynamic>>[],
+        'hasMore': true,
+        'readScopeVersion': 'current-proof',
+        'readSnapshotRevision': 'a' * 64,
+        'readDataVersion': 'c' * 64,
+      });
+      final firstA = await pendingA;
+      await tester.runAsync(() => firstB!.internalPageLoader!(2));
+      expect(api.requests.last.body['__facetKeyword'], 'query-B');
+      expect(api.requests.last.body['__facetReadSnapshotRevision'], 'b' * 64);
+      await tester.runAsync(() => firstA.internalPageLoader!(2));
+      expect(api.requests.last.body['__facetKeyword'], 'query-A');
+      expect(api.requests.last.body['__facetReadSnapshotRevision'], 'a' * 64);
+    },
+  );
+  testWidgets(
+    'a native response without immutable snapshot proof fails closed',
+    (tester) async {
+      final api = _Api()..missingProof = true;
+      final (ref, _) = await _mount(tester, api);
+      final loader = nativeFacetLoaders(
+        ref,
+        path: '/finance/payables/facets',
+        fields: const ['sourceDocNo'],
+      )['sourceDocNo']!;
+      await expectLater(
+        loader('', 1),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.code,
+            'code',
+            'INCOMPLETE_READ_PROTOCOL',
+          ),
+        ),
+      );
+    },
+  );
+
   testWidgets('late candidate response cannot cross owner A-B-A', (
     tester,
   ) async {

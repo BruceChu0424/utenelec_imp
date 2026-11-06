@@ -28,6 +28,7 @@ class VersionedSummaryPagesPostgresTest {
     private static String runtimePassword;
     private String domain;
     private VersionedSummaryPages pages;
+    private ReadScopeVersionAuthority authority;
     private SummaryReadMarkerCompactor compactor;
     private DataSourceTransactionManager manager;
     @BeforeAll static void start() {
@@ -58,7 +59,7 @@ class VersionedSummaryPagesPostgresTest {
         db.update("UPDATE summary_protocol_auth SET token=? WHERE id=1",UUID.randomUUID().toString());
         var current=mock(SecurityContextCurrentUser.class);
         UUID actor=UUID.randomUUID();when(current.get()).thenReturn(Optional.of(new AuthUser(actor,actor,"summary-fixture",Set.of("finance_report:view"),false,true,false)));
-        var authority=mock(ReadScopeVersionAuthority.class);
+        authority=mock(ReadScopeVersionAuthority.class);
         when(authority.scopeForCurrentSnapshot(anyString(),any())).thenAnswer(call->{
             assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("repeatable read");
             assertThat(db.queryForObject("SHOW transaction_read_only",String.class)).isEqualTo("on");
@@ -197,5 +198,46 @@ class VersionedSummaryPagesPostgresTest {
             for(int i=0;i<values.length;i++) { statement.setObject(i+1,values[i]); }
             return statement.executeUpdate();
         }
+    }
+
+    @Test void nativeFacet1001LabeledBucketsUseTheSameRrAndTaskAudienceAndRejectSameCountChanges() {
+        when(authority.scopeForCurrentSnapshot(anyString(),any(),eq(true))).thenAnswer(call->{
+            assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("repeatable read");
+            assertThat(db.queryForObject("SHOW transaction_read_only",String.class)).isEqualTo("on");
+            return "task-"+db.queryForObject("SELECT token FROM summary_protocol_auth WHERE id=1",String.class);
+        });
+        db.update("INSERT INTO summary_protocol_fixture SELECT n,CASE WHEN n=1001 THEN '中文 %_ 末尾' ELSE '中文客户'||n END FROM generate_series(1,1001) n");
+        var jdbc=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(db);
+        java.util.function.BiFunction<Integer,String,com.uten.imp.common.web.NativeFacetCandidates.Page> read=(page,expected)->{
+            try(var scope=com.uten.imp.common.web.NativeFacetCandidates.open("clientId","中文",page,100)) {
+                scope.requireSnapshot();
+                var request=new VersionedSummaryPages.Request(domain,"native_workshop_tasks",Map.of("field","clientId","keyword","中文"),"all",page,100,100,expected);
+                var snapshot=pages.read(request,()->{},()->{
+                    assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("repeatable read");
+                    return Map.of("clientId",com.uten.imp.common.web.NativeFacets.jdbcRows(jdbc,"clientId",
+                        "SELECT lpad(id::text,6,'0'),value,COUNT(*) FROM summary_protocol_fixture GROUP BY id,value",
+                        new org.springframework.jdbc.core.namedparam.MapSqlParameterSource(),true));
+                },true);
+                scope.snapshot(snapshot.readScopeVersion(),snapshot.readSnapshotRevision(),snapshot.readDataVersion());
+                return scope.result(snapshot.value(),snapshot.readScopeVersion());
+            }
+        };
+        var first=read.apply(1,null);assertThat(first.items()).hasSize(100);assertThat(first.hasMore()).isTrue();
+        List<Map<String,Object>> all=new ArrayList<>(first.items());
+        for(int page=2;page<=11;page++) {
+            var next=read.apply(page,first.readSnapshotRevision());assertThat(next.readDataVersion()).isEqualTo(first.readDataVersion());assertThat(next.hasMore()).isEqualTo(page<11);all.addAll(next.items());
+        }
+        assertThat(all).hasSize(1001);assertThat(all.getLast()).containsEntry("value","001001").containsEntry("label","中文 %_ 末尾").containsEntry("count",1L);
+        assertThat(all.stream().map(row->row.get("value")).distinct().count()).isEqualTo(1001);
+        try(var scope=com.uten.imp.common.web.NativeFacetCandidates.open("clientId","中文 %_",1,100)) {
+            var request=new VersionedSummaryPages.Request(domain,"native_workshop_tasks",Map.of("field","clientId","keyword","中文 %_","mode","positional"),"all",1,100,100,null);
+            var exact=pages.read(request,()->{},()->com.uten.imp.common.web.NativeFacets.jdbcRows(db,"clientId",
+                    "SELECT lpad(id::text,6,'0'),value,COUNT(*) FROM summary_protocol_fixture WHERE id>? AND value<>? GROUP BY id,value",
+                    new Object[]{0,"never-a-visible-label"},true),true);
+            assertThat(exact.value()).singleElement().satisfies(row->assertThat(row).containsEntry("value","001001").containsEntry("label","中文 %_ 末尾").containsEntry("count",1L));
+        }
+        db.update("UPDATE summary_protocol_fixture SET value='中文已变化' WHERE id=1");changed(()->read.apply(2,first.readSnapshotRevision()));
+        verify(authority,atLeastOnce()).scopeForCurrentSnapshot(anyString(),any(),eq(true));
+        assertThat(com.uten.imp.common.web.NativeFacetCandidates.active()).isFalse();
     }
 }

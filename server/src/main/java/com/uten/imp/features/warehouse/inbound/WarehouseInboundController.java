@@ -62,7 +62,7 @@ public class WarehouseInboundController {
 
     /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
-    @GetMapping("/expectations/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/expectations/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     public Map<String, List<Map<String, Object>>> expectationFacets(
             @RequestParam(defaultValue = "") String orderType,
             @RequestParam(defaultValue = "") String keyword,
@@ -114,17 +114,19 @@ public class WarehouseInboundController {
 
     /** 到货异常 facets（2026-09-25 单号列统一）：{receiptBillNo/orderBillNo:[各单号]}——
      *  同列表过滤口径（不含单号列自身值筛选）。 */
-    @GetMapping("/arrival-exceptions/facets")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/arrival-exceptions/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     public Map<String, List<Map<String, Object>>> arrivalExceptionFacets(
             @RequestParam(required = false) String keyword,
             @RequestParam(name = "history", defaultValue = "false") boolean includeHistory,
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(required = false) String receiptBillNo,
+            @RequestParam(required = false) String orderBillNo) {
         return service.warehouseExceptionFacets(keyword, includeHistory,
                 supplierId, warehouseId, status,
-                warehouseScopes.currentForRead(scopeWarehouseId));
+                warehouseScopes.currentForRead(scopeWarehouseId),receiptBillNo,orderBillNo);
     }
 
     /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */

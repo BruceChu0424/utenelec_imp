@@ -1,0 +1,21 @@
+{
+  "atUtc": "2026-11-06T18:51:28.788064+00:00",
+  "officialProducerWholeNaturalExitCode": 0,
+  "officialProducerWholeTests": 2,
+  "sourceSqlCount": 1036,
+  "sourceHead": 1101,
+  "compound": 14,
+  "officialJavaPythonBytesEqual": true,
+  "officialTsvSha256": "6469c481887e6ee851c0a47fbe9825a41d90266e97812343123d2b9ecde20c67",
+  "metadataSha256": "7b385be59cae71243cd3ca63fc5bfad6f0550f2a5cc6f0b42bcbd8a7ace15096",
+  "metadataKeys": [
+    "digestAlgorithm",
+    "headVersion",
+    "migrationCount",
+    "migrationSetSha256",
+    "migrations"
+  ],
+  "sourceCompilerClock": "853afeaf0c063d11a5ca4ea89e90a3714dd58d560c67771431dc325e501ba30c",
+  "actualInstalledHistoryStillPending": true,
+  "companyConnected": false
+}

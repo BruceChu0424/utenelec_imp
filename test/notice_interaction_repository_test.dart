@@ -288,7 +288,14 @@ void main() {
                 'mine': false,
               },
             ],
-            'count': 1,
+            'page': 1,
+            'size': 50,
+            'total': 1,
+            'totalPages': 1,
+            'scope': 'all',
+            'readScopeVersion': 'notice-reader',
+            'readSnapshotRevision': 'notice-wall-snapshot',
+            'readDataVersion': 'notice-wall-data',
           };
         }),
       );

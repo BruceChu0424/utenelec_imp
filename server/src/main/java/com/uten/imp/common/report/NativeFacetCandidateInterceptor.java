@@ -11,7 +11,7 @@ import java.util.Set;
 /** Candidate reads bind original handler filters from a bounded body, never the URL. */
 public final class NativeFacetCandidateInterceptor implements AsyncHandlerInterceptor {
     static final String ATTRIBUTE=NativeFacetCandidateInterceptor.class.getName()+".scope";
-    private static final Set<String> RESERVED=Set.of("__facetField","__facetKeyword","__facetPage","__facetSize");
+    private static final Set<String> RESERVED=Set.of("__facetField","__facetKeyword","__facetPage","__facetSize","__facetReadSnapshotRevision");
     private final ReadScopeVersionAuthority authority;
     private final SecurityContextCurrentUser users;
     public NativeFacetCandidateInterceptor(ReadScopeVersionAuthority authority,SecurityContextCurrentUser users) {
@@ -37,10 +37,15 @@ public final class NativeFacetCandidateInterceptor implements AsyncHandlerInterc
         long page=number(single(request,"__facetPage","1"));
         long size=number(single(request,"__facetSize","100"));
         if(size>100)throw invalid("候选每页最多100项");
+        String expected=single(request,"__facetReadSnapshotRevision",null);
+        if(expected!=null&&!expected.matches("[0-9a-f]{64}"))throw invalid("候选快照版本无效");
+        if(page>1&&expected==null)throw invalid("候选后续批次缺少首批快照版本");
         boolean tasks=handler instanceof HandlerMethod method&&method.hasMethodAnnotation(BusinessTaskRead.class);
         ReadScopePublication.capture(request,authority,users,route.profile(),tasks);
         var scope=NativeFacetCandidates.open(field,single(request,"__facetKeyword",""),page,(int)size);
+        scope.requireSnapshot();
         request.setAttribute(ATTRIBUTE,scope);
+        request.setAttribute(ATTRIBUTE+".tasks",tasks);
         com.uten.imp.audit.AuditRequestContext.markControlledRead(request);
         return true;
     }

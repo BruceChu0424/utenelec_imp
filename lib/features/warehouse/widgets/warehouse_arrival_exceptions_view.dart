@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_party_options.dart';
@@ -454,8 +455,6 @@ class _WarehouseArrivalExceptionsViewState
               if (current()) setState(() {});
             }, onError: (Object _, StackTrace _) {}),
       );
-      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets());
       setState(() {
         _result = result;
         _acceptedQuery = query;
@@ -507,24 +506,19 @@ class _WarehouseArrivalExceptionsViewState
     );
   }
 
-  /// 收货单号/订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径
-  /// （不含单号列自身值筛选）。
-  Future<void> _loadBillNoFacets() => _columnFilters.loadFacets(
-    () => ref
-        .read(procurementInboundRepositoryProvider)
-        .arrivalExceptionBillNoFacets(
-          keyword: _keyword,
-          history: _history,
-          supplierId: _supplierIdFilter,
-          warehouseId: _warehouseIdFilter,
-          status: _statusFilter,
-          scope: WarehouseListScope.of(context),
-        ),
-    isCurrent: captureReadOwner(ref),
-    onLoaded: () {
-      if (mounted) setState(() {});
-    },
-  );
+  Map<String, dynamic> get _nativeFacetQuery => {
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    if (_history) 'history': true,
+    'supplierId': ?_supplierIdFilter,
+    'warehouseId': ?_warehouseIdFilter,
+    'status': ?_statusFilter,
+    'receiptBillNo': ?_columnFilters['receiptBillNo'],
+    'orderBillNo': ?_columnFilters['orderBillNo'],
+    'sort': ?_kSortFields[_columnFilters.sortColumn],
+    if (_columnFilters.sortColumn != null)
+      'order': _columnFilters.sortAscending ? 'asc' : 'desc',
+    ...WarehouseListScope.of(context).queryParameters,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -621,10 +615,22 @@ class _WarehouseArrivalExceptionsViewState
           'receiptBillNo': _columnFilters.bucketOf('receiptBillNo'),
           'orderBillNo': _columnFilters.bucketOf('orderBillNo'),
         },
-        facetPageLoaders: {'supplierName': supplierPartyFacetLoader(ref)},
-        facetSearchScope: partyFacetSearchScope(
-          ref,
-          'warehouse_arrival_exceptions_view-party',
+        facetPageLoaders: {
+          'supplierName': supplierPartyFacetLoader(ref),
+          ...nativeFacetLoaders(
+            ref,
+            path: '/warehouse/inbound/arrival-exceptions/facets',
+            fields: const ['receiptBillNo', 'orderBillNo'],
+            filters: _nativeFacetQuery,
+          ),
+        },
+        facetSearchScope: (
+          partyFacetSearchScope(ref, 'warehouse_arrival_exceptions_view-party'),
+          nativeFacetSearchScope(
+            ref,
+            '/warehouse/inbound/arrival-exceptions/facets',
+            _nativeFacetQuery,
+          ),
         ),
         nullCounts: const {},
         filters: {

@@ -5,7 +5,110 @@ import java.util.*;
 /** Exact read-only candidate routes; no wildcard permission or SQL field selection. */
 public final class NativeFacetRoutes {
     private NativeFacetRoutes() { }
-    public record Route(String profile, Set<String> fields) { }
+    public record Route(String profile, Set<String> fields,String dataDomain) { }
+    private static final Map<String,String> DATA_DOMAINS=Map.ofEntries(
+            Map.entry("/api/finance/reports/column-candidates","native-facet-finance-columns"),
+            Map.entry("/api/finance/reports/account/statement/facets","native-facet-account-statement"),
+            Map.entry("/api/finance/payables/facets","native-facet-procurement-payables"),
+            Map.entry("/api/finance/subcontract-loss-claims/facets","native-facet-subcontract-loss-claims"),
+            Map.entry("/api/warehouse/quality-results/facets","native-facet-warehouse-quality-results"),
+            Map.entry("/api/procurement/inspection/records/facets","native-facet-inspection-records"),
+            Map.entry("/api/subcontract/short-deliveries/facets","native-facet-short-deliveries"),
+            Map.entry("/api/warehouse/document-history/purchase-receipts/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/document-history/subcontract-receipts/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/document-history/subcontract-material-issues/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/document-history/subcontract-returns/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/document-history/subcontract-material-returns/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/document-history/subcontract-wastes/facets","native-facet-warehouse-history"),
+            Map.entry("/api/warehouse/production-finished-in/tasks/facets","native-facet-finished-in"),
+            Map.entry("/api/production/schedule/pending/facets","native-facet-production-schedule"),
+            Map.entry("/api/production/quality-inspections/records/facets","native-facet-fqc-records"),
+            Map.entry("/api/sales/orders/progress/facets","native-facet-sales-progress"),
+            Map.entry("/api/sales/orders/finance-confirmation/pending/facets","native-facet-sales-finance-pending"),
+            Map.entry("/api/production/material-analyses/sales-candidates/facets","native-facet-analysis-sales-candidates"),
+            Map.entry("/api/production/execution-workbench/facets","native-facet-execution-workbench"),
+            Map.entry("/api/production/workshop-tasks/facets","native-facet-execution-workbench"),
+            Map.entry("/api/production/overproduction-rate/requests/facets","native-facet-overproduction-requests"),
+            Map.entry("/api/purchase/reports/expediting","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/order/detail","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/order/summary","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/receipt/detail","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/receipt/summary","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/request/detail","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/request/summary","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/return/detail","native-facet-report-purchase"),
+            Map.entry("/api/purchase/reports/return/summary","native-facet-report-purchase"),
+            Map.entry("/api/sales/reports/ORDER/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/ORDER/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/SHIPMENT/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/SHIPMENT/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/OTHER_SHIPMENT/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/OTHER_SHIPMENT/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/RETURN/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/RETURN/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/order/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/order/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/shipment/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/shipment/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/other_shipment/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/other_shipment/summary","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/return/detail","native-facet-report-sales"),
+            Map.entry("/api/sales/reports/return/summary","native-facet-report-sales"),
+            Map.entry("/api/subcontract/reports/order/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/receipt/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/receipt/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/return/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/return/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/material-issue/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/material-issue/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/material-return/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/material-return/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/ORDER/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/RECEIPT/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/RECEIPT/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/RETURN/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/RETURN/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/MATERIAL_ISSUE/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/MATERIAL_ISSUE/summary","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/MATERIAL_RETURN/detail","native-facet-report-subcontract"),
+            Map.entry("/api/subcontract/reports/MATERIAL_RETURN/summary","native-facet-report-subcontract"),
+            Map.entry("/api/production/reports/plan/detail","native-facet-report-production"),
+            Map.entry("/api/production/reports/plan/summary","native-facet-report-production"),
+            Map.entry("/api/stock/reports/TRANSFER/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/TRANSFER/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/OTHER_IN/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/OTHER_IN/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/DRAW/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/DRAW/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/WDRAW/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/WDRAW/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/FINISHED_IN/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/FINISHED_IN/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/FINISHED_OUT/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/FINISHED_OUT/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/CHECK/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/CHECK/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/transfer/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/transfer/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/other_in/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/other_in/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/draw/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/draw/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/wdraw/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/wdraw/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/finished_in/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/finished_in/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/finished_out/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/finished_out/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/check/detail","native-facet-report-stock"),
+            Map.entry("/api/stock/reports/check/summary","native-facet-report-stock"),
+            Map.entry("/api/stock/instant-inventory","native-facet-instant-stock"),
+            Map.entry("/api/stock/instant-inventory/attention","native-facet-instant-stock"),
+            Map.entry("/api/expense-claims/facets","native-facet-expense-claim-no"),
+            Map.entry("/api/warehouse/task-center/inbound","native-facet-warehouse-inbound"),
+            Map.entry("/api/warehouse/task-center/outbound","native-facet-warehouse-outbound"),
+            Map.entry("/api/warehouse/inbound/expectations/facets","native-facet-arrival-expectations"),
+            Map.entry("/api/warehouse/inbound/arrival-exceptions/facets","native-facet-arrival-exceptions"));
     private static final Map<String, Route> ROUTES = routes();
     public static Route find(String path) { return ROUTES.get(path); }
     public static Set<String> paths() { return ROUTES.keySet(); }
@@ -32,10 +135,92 @@ public final class NativeFacetRoutes {
         add(routes,"/api/production/material-analyses/sales-candidates/facets","native_feature","orderNo");
         add(routes,"/api/production/execution-workbench/facets","native_production_owner","orders");
         add(routes,"/api/production/workshop-tasks/facets","native_workshop_tasks","sourcePlan","segment");
-        add(routes,"/api/production/overproduction-rate/requests/facets","native_feature","plan","segment");
+        add(routes,"/api/production/overproduction-rate/requests/facets","native_production_owner","plan","segment");
+        add(routes,"/api/purchase/reports/expediting","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/order/detail","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/order/summary","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/receipt/detail","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/receipt/summary","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/request/detail","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/request/summary","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/return/detail","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/purchase/reports/return/summary","native_purchase_owner","approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
+        add(routes,"/api/sales/reports/ORDER/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/ORDER/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/SHIPMENT/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/SHIPMENT/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/OTHER_SHIPMENT/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/OTHER_SHIPMENT/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/RETURN/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/RETURN/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/order/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/order/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/shipment/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/shipment/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/other_shipment/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/other_shipment/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/return/detail","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/sales/reports/return/summary","native_sales_owner","approved","billNo","clientName","closed","settlementStyle");
+        add(routes,"/api/subcontract/reports/order/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/receipt/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/receipt/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/return/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/return/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/material-issue/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/material-issue/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/material-return/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/material-return/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/ORDER/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/RECEIPT/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/RECEIPT/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/RETURN/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/RETURN/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/MATERIAL_ISSUE/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/MATERIAL_ISSUE/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/MATERIAL_RETURN/detail","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/subcontract/reports/MATERIAL_RETURN/summary","native_subcontract_owner","approved","billNo","closed","settlementStyle","supplierName","warehouseName");
+        add(routes,"/api/production/reports/plan/detail","native_production_owner","approved","billNo","categoryName","closed","salesOrderNo","workshop");
+        add(routes,"/api/production/reports/plan/summary","native_production_owner","approved","billNo","categoryName","closed","salesOrderNo","workshop");
+        add(routes,"/api/stock/reports/TRANSFER/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/TRANSFER/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/OTHER_IN/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/OTHER_IN/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/DRAW/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/DRAW/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/WDRAW/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/WDRAW/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/FINISHED_IN/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/FINISHED_IN/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/FINISHED_OUT/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/FINISHED_OUT/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/CHECK/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/CHECK/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/transfer/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/transfer/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/other_in/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/other_in/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/draw/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/draw/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/wdraw/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/wdraw/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/finished_in/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/finished_in/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/finished_out/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/finished_out/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/check/detail","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/reports/check/summary","stock","approved","billNo","warehouseName");
+        add(routes,"/api/stock/instant-inventory","stock","owningWarehouse","color","series","unit");
+        add(routes,"/api/stock/instant-inventory/attention","stock","owningWarehouse","color","series","unit");
+        add(routes,"/api/expense-claims/facets","expense","claimNo");
+        add(routes,"/api/warehouse/task-center/inbound","native_warehouse_tasks","billNo");
+        add(routes,"/api/warehouse/task-center/outbound","native_warehouse_tasks","billNo");
+        add(routes,"/api/warehouse/inbound/expectations/facets","native_warehouse_tasks","billNo");
+        add(routes,"/api/warehouse/inbound/arrival-exceptions/facets","native_warehouse_tasks","receiptBillNo","orderBillNo");
         return Collections.unmodifiableMap(routes);
     }
     private static void add(Map<String,Route> routes,String path,String profile,String... fields) {
-        routes.put(path,new Route(profile,Set.of(fields)));
+        String domain=DATA_DOMAINS.get(path);
+        if(domain==null)throw new IllegalStateException("Missing native facet data authority: "+path);
+        routes.put(path,new Route(profile,Set.of(fields),domain));
     }
 }

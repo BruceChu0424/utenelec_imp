@@ -118,12 +118,17 @@ public class VersionedSummaryPages {
 
     /** Detail readers can reuse a summary's exact query/size token without returning all summary rows. */
     public <T> Snapshot<T> read(Request request, Runnable authorize, Supplier<T> reader) {
+        return read(request,authorize,reader,false);
+    }
+
+    /** Task candidate readers retain the original fresh-task audience in both RR phases. */
+    public <T> Snapshot<T> read(Request request, Runnable authorize, Supplier<T> reader, boolean businessTasks) {
         validate(request);
         long deadline=deadline();
         AuthUser subject=current.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         Snapshot<T> result=Objects.requireNonNull(snapshot(deadline).execute(status -> {
             authorize.run();
-            Stamp stamp=stamp(request,subject);
+            Stamp stamp=stamp(request,subject,businessTasks);
             if(request.expectedReadSnapshotRevision()!=null && !request.expectedReadSnapshotRevision().equals(stamp.revision()))
                 throw changed();
             T value=reader.get();
@@ -132,7 +137,7 @@ public class VersionedSummaryPages {
         remaining(deadline);
         // A fresh committed snapshot is a publication fence, separate from the data RR transaction.
         // No implicit retry or partial publication is allowed after a mutation/permission/reset.
-        Stamp latest=Objects.requireNonNull(snapshot(deadline).execute(status -> { authorize.run();return stamp(request,subject); }));
+        Stamp latest=Objects.requireNonNull(snapshot(deadline).execute(status -> { authorize.run();return stamp(request,subject,businessTasks); }));
         remaining(deadline);
         if(!result.readScopeVersion().equals(latest.authorization()))
             throw new ApiException(ErrorCode.READ_SCOPE_CHANGED,"身份或可见范围已变化，请重新读取");
@@ -163,8 +168,9 @@ public class VersionedSummaryPages {
         return local;
     }
 
-    private Stamp stamp(Request request,AuthUser subject) {
-        String auth=authorization.scopeForCurrentSnapshot(request.authorizationDomain(),subject);
+    private Stamp stamp(Request request,AuthUser subject,boolean businessTasks) {
+        String auth=businessTasks?authorization.scopeForCurrentSnapshot(request.authorizationDomain(),subject,true)
+                :authorization.scopeForCurrentSnapshot(request.authorizationDomain(),subject);
         List<Map<String,Object>> rows=jdbc.queryForList("""
                 SELECT a.business_dataset_id,a.business_reset_generation,d.epoch,
                        (d.compacted_markers+(SELECT count(*) FROM summary_read_markers m WHERE m.domain=d.domain))::text AS revision

@@ -33,7 +33,8 @@ class _Wire {
       InterceptorsWrapper(
         onRequest: (request, handler) {
           Object body;
-          if (request.path == subcontractSupplierLossSummaryPath) {
+          if (request.path ==
+              '$subcontractSupplierLossSummaryPath/goods/summaries') {
             summaries++;
             expectSync(request.queryParameters['supplierId'], 'supplier-1');
             if (failSummary) {
@@ -66,6 +67,24 @@ class _Wire {
                     'maxLossPctExact': '0.00002',
                   },
               ],
+            };
+            final original = Map<String, dynamic>.from(body as Map);
+            expectSync(request.queryParameters['page'], 1);
+            expectSync(request.queryParameters['size'], 1000);
+            body = <String, dynamic>{
+              'items': original['byGoods'],
+              'page': 1,
+              'size': 1000,
+              'total': goodsCount,
+              'totalPages': goodsCount == 0 ? 0 : 1,
+              'scope': 'all',
+              'readScopeVersion': 'supplier-loss-authority',
+              'readSnapshotRevision': 'supplier-loss-snapshot',
+              'readDataVersion': 'supplier-loss-data',
+              'summary': {
+                ...original,
+                'byGoods': const <Map<String, dynamic>>[],
+              },
             };
           } else if (request.path == '/master/suppliers/supplier-1') {
             body = {

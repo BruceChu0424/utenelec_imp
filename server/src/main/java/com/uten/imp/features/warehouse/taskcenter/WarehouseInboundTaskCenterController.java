@@ -43,7 +43,7 @@ public class WarehouseInboundTaskCenterController {
     private static final String VIEW_AUTHORITIES = "hasAnyAuthority('warehouse_inbound:view','warehouse_purchase_receipt_history:view',"
             + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view','workshop_material:view')";
 
-    @GetMapping
+    @org.springframework.web.bind.annotation.RequestMapping(method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize(VIEW_AUTHORITIES)
     public Page list(@RequestParam(defaultValue="ALL") String source,
                      @RequestParam(defaultValue="ACTIVE") String view,

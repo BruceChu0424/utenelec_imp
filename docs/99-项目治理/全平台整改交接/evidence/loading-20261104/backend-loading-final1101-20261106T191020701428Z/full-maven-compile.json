@@ -1,0 +1,24 @@
+{
+  "startedAtUtc": "2026-11-06T18:36:33.605136+00:00",
+  "sourceAggregateSha256": "aaac334b5a0c2f5ec472da84bc659686d81f60268a85fd2f687577da86938705",
+  "files": 7188,
+  "target": "target-loading-main-final1101-20261106",
+  "args": [
+    "C:\\tools\\apache-maven-3.9.16\\bin\\mvn.CMD",
+    "-f",
+    "server/pom.xml",
+    "-Duten.build.directory=target-loading-main-final1101-20261106",
+    "-DskipTests",
+    "test-compile"
+  ],
+  "state": "completed",
+  "companyConnected": false,
+  "completedAtUtc": "2026-11-06T18:41:57.482950+00:00",
+  "actualExitCode": 0,
+  "logSha256": "f4eaabf63eb364a4ebf2f094491df7d3e8390082311fde9e4edcfc87b6034cf5",
+  "sourceDrift": [
+    "server/src/test/java/com/uten/imp/businesschain/FinanceAssetAccountingCompleteSummaryPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceChartAuxCompleteSummaryPostgresTest.java",
+    "server/src/test/java/com/uten/imp/businesschain/FinanceContextAndExpenseCompleteSummaryHttpPostgresTest.java"
+  ]
+}

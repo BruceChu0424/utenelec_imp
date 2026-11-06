@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/network/interceptors/read_scope_revision_interceptor.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
@@ -33,6 +36,7 @@ import '../../support/document_scope_capability_overrides.dart';
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/owned_provider_widget_tests.dart';
 import '../../support/uten_test_actions.dart';
+import '../../support/pump_until.dart';
 
 final _providerTests = OwnedProviderWidgetTests();
 
@@ -286,7 +290,139 @@ bool _hasEditing(WidgetTester tester) => tester
           ['编辑', '审核', '删除', '提交负责人审核'].contains((button.child as Text).data),
     );
 
+class _SummaryProofAdapter implements HttpClientAdapter {
+  _SummaryProofAdapter(this.domain);
+  final String? domain;
+  String version = 'summary-before';
+  final lateStarted = Completer<void>();
+  final lateReply = Completer<ResponseBody>();
+  ResponseBody response(String proof) => ResponseBody.fromString(
+    '{}',
+    200,
+    headers: {
+      Headers.contentTypeHeader: ['application/json'],
+      'X-Uten-Read-Scope-Version': [proof],
+      if (domain != null) 'X-Uten-Read-Scope-Domain': [domain!],
+    },
+  );
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (options.queryParameters['late'] == true) {
+      lateStarted.complete();
+      return lateReply.future;
+    }
+    return response(version);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 void main() {
+  for (final summary in [
+    (path: '/finance/asset-opening-groups/summaries', domain: null),
+    (
+      path: '/subcontract/short-deliveries/supplier-summary/goods/summaries',
+      domain: 'native_subcontract_owner:browse',
+    ),
+  ]) {
+    _providerTests.testWidgets(
+      'actual Dio summary proof retires accepted private detail and late reply: ${summary.path}',
+      (tester) async {
+        final api = _Api(_Family.purchase);
+        final container = await _pump(tester, api);
+        final originalScope = container.read(authenticatedScopeProvider);
+        final originalPermissions = container.read(currentPermissionsProvider);
+        expect(find.textContaining('A-private'), findsWidgets);
+        const subject = AuthenticatedRequestIdentity(
+          baseUrl: 'https://scope.fixture/api',
+          lineage: 'private-view',
+          intent: 1,
+          impersonationLineage: null,
+        );
+        final adapter = _SummaryProofAdapter(summary.domain);
+        final dio = Dio(BaseOptions(baseUrl: subject.baseUrl))
+          ..httpClientAdapter = adapter;
+        addTearDown(() => dio.close(force: true));
+        dio.interceptors.add(
+          ReadScopeRevisionInterceptor(
+            currentRevision: () => container.read(readScopeRevisionProvider),
+            retire: () =>
+                container.read(readScopeRevisionProvider.notifier).state++,
+            identity: (_) => subject,
+            isCurrent: (_) async => true,
+          ),
+        );
+        await pumpUntilCompletes(
+          tester,
+          dio.get<dynamic>(summary.path).then<void>((_) {}),
+          reason: 'initial summary proof stream did not complete',
+        );
+        final late = dio.get<dynamic>(
+          summary.path,
+          queryParameters: {'late': true},
+        );
+        await pumpUntil(
+          tester,
+          () => adapter.lateStarted.isCompleted,
+          reason: 'late summary proof request did not start',
+        );
+        final reread = Completer<Map<String, dynamic>>();
+        api.gates.add(reread);
+        adapter.version = 'summary-after';
+        await pumpUntilCompletes(
+          tester,
+          expectLater(
+            dio.get<dynamic>(summary.path),
+            throwsA(
+              isA<DioException>().having(
+                (e) => (e.response?.data as Map?)?['code'],
+                'code',
+                'READ_SCOPE_CHANGED',
+              ),
+            ),
+          ),
+          reason: 'changed summary proof stream did not complete',
+        );
+        await _frames(tester);
+        expect(container.read(readScopeRevisionProvider), 1);
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.textContaining('A-private'), findsNothing);
+        expect(_hasEditing(tester), isFalse);
+        final lateCheck = expectLater(
+          late,
+          throwsA(
+            isA<DioException>().having(
+              (e) => (e.response?.data as Map?)?['code'],
+              'code',
+              'READ_SCOPE_CHANGED',
+            ),
+          ),
+        );
+        adapter.lateReply.complete(adapter.response('summary-before'));
+        await pumpUntilCompletes(
+          tester,
+          lateCheck,
+          reason: 'retired summary proof stream did not complete',
+        );
+        await _frames(tester);
+        expect(container.read(readScopeRevisionProvider), 1);
+        expect(find.textContaining('A-private'), findsNothing);
+        reread.complete(api.detail('A-current'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('A-current'), findsWidgets);
+        expect(container.read(authenticatedScopeProvider), originalScope);
+        expect(container.read(currentPermissionsProvider), originalPermissions);
+        expect(api.writes, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final family in _Family.values) {
     for (final failedLateRead in [false, true]) {
       _providerTests.testWidgets(

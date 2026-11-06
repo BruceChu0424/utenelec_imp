@@ -339,6 +339,16 @@ public class StockQueryService {
     public PageResponse<InstantInventoryRow> instantInventory(InstantInventoryFilter filter, int page, int size,
                                                               String sort, String order) {
         InstantSql sql = instantSql(filter, sort);
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            for(String field:List.of("owningWarehouse","color","series","unit")) {
+                if(!com.uten.imp.common.web.NativeFacets.wants(field))continue;
+                InstantSql facetScope=instantSql(nativeFacetFilter(filter,field),sort);
+                var query=com.uten.imp.common.web.NativeFacets.queryLabeled(em,field,instantFacetSql(facetScope,field,true));
+                facetScope.bindAll(query);com.uten.imp.common.web.NativeFacets.rowsOf(query);
+                return new PageResponse<>(List.of(),1,1,0,0);
+            }
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"即时库存不支持所选候选字段");
+        }
         PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
 
         // 表格下方合计：把 core(= 列表查询本体，已含分类子树/仓库范围/含不良品仓开关/关键字
@@ -350,13 +360,7 @@ public class StockQueryService {
                         em, sql.core(), "", "", sql::bindAll, INSTANT_TOTAL_SPECS);
         // 归属仓库 facet：在同一口径(未应用归属筛选本身)的 core 上聚合，
         // 行粒度=货品×颜色(与列表行一致)，空归属由 nullCounts 单独计。
-        var facetQ = em.createNativeQuery(
-                "SELECT ow.id AS v, COALESCE(ow.name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + sql.coreFacet() + ") t "
-                        + "JOIN goods g2 ON g2.id = t.goods_id "
-                        + "LEFT JOIN warehouses ow ON ow.id = g2.owning_warehouse_id "
-                        + "WHERE g2.owning_warehouse_id IS NOT NULL "
-                        + "GROUP BY ow.id, ow.name ORDER BY c DESC, label ASC LIMIT 50");
+        var facetQ = em.createNativeQuery(instantFacetSql(sql,"owningWarehouse")+" ORDER BY c DESC,label ASC LIMIT 50");
         sql.bindBase(facetQ);
         List<Object[]> facetRows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(facetQ);
         List<com.uten.imp.common.web.FacetBucket> owningBuckets = new ArrayList<>(facetRows.size());
@@ -374,24 +378,9 @@ public class StockQueryService {
         // 颜色/物料系列/单位 三列 facet：与 owningWarehouse 同范式——在 coreFacet
         // (未应用归属与这三列筛选本身)的同一口径上聚合；空值桶不下发(前端无对应
         // null 筛选参数)，按值筛选走 colorId/series/unitId。
-        var colorFacetQ = em.createNativeQuery(
-                "SELECT t.color_id AS v, COALESCE(t.color_name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + sql.coreFacet() + ") t "
-                        + "WHERE t.color_id IS NOT NULL "
-                        + "GROUP BY t.color_id, t.color_name ORDER BY c DESC, label ASC LIMIT 50");
-        var seriesFacetQ = em.createNativeQuery(
-                "SELECT t.series AS v, t.series AS label, COUNT(*) AS c "
-                        + "FROM (" + sql.coreFacet() + ") t "
-                        + "WHERE t.series IS NOT NULL AND t.series <> '' "
-                        + "GROUP BY t.series ORDER BY c DESC, v ASC LIMIT 50");
-        var unitFacetQ = em.createNativeQuery(
-                "SELECT u2.id AS v, COALESCE(u2.name, '') AS label, COUNT(*) AS c "
-                        + "FROM (" + sql.coreFacet() + ") t "
-                        + "JOIN goods g2 ON g2.id = t.goods_id "
-                        + "LEFT JOIN units u2 ON (u2.id = g2.unit_id "
-                        + "    OR (g2.unit_id IS NULL AND u2.legacy_id = NULLIF(g2.unit_legacy_id, 0))) "
-                        + "WHERE u2.id IS NOT NULL "
-                        + "GROUP BY u2.id, u2.name ORDER BY c DESC, label ASC LIMIT 50");
+        var colorFacetQ = em.createNativeQuery(instantFacetSql(sql,"color")+" ORDER BY c DESC,label ASC LIMIT 50");
+        var seriesFacetQ = em.createNativeQuery(instantFacetSql(sql,"series")+" ORDER BY c DESC,v ASC LIMIT 50");
+        var unitFacetQ = em.createNativeQuery(instantFacetSql(sql,"unit")+" ORDER BY c DESC,label ASC LIMIT 50");
         for (var q : List.of(colorFacetQ, seriesFacetQ, unitFacetQ)) {
             sql.bindBase(q);
         }
@@ -448,6 +437,35 @@ public class StockQueryService {
         long existing = ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE id=:goodsId AND is_deleted=false")
                 .setParameter("goodsId", goodsId).getSingleResult()).longValue();
         if (existing == 0) throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
+    }
+
+    private static InstantInventoryFilter nativeFacetFilter(InstantInventoryFilter filter,String field) {
+        return new InstantInventoryFilter(filter.categoryId(),filter.warehouseId(),filter.includeDefective(),filter.includeLineSide(),filter.keyword(),
+                "owningWarehouse".equals(field)?null:filter.owningWarehouse(),
+                "owningWarehouse".equals(field)?null:filter.owningWarehouseNull(),
+                "color".equals(field)?null:filter.colorId(),"series".equals(field)?null:filter.series(),
+                "unit".equals(field)?null:filter.unitId(),filter.attention(),filter.goodsId(),
+                !"color".equals(field)&&filter.colorNull(),filter.inventoryOnly(),filter.includeRelated(),filter.warehouseRelatedOnly(),filter.dateFrom(),filter.dateTo());
+    }
+
+    /** One owned original projection for both old GET buckets and complete native candidates. */
+    private static String instantFacetSql(InstantSql sql,String field) { return instantFacetSql(sql,field,false); }
+    private static String instantFacetSql(InstantSql sql,String field,boolean currentOtherFilters) {
+        String source=" FROM ("+(currentOtherFilters?sql.core():sql.coreFacet())+") t ";
+        return switch(field) {
+            case "owningWarehouse" -> "SELECT ow.id AS v,COALESCE(ow.name,'') AS label,COUNT(*) AS c"+source
+                    +" JOIN goods g2 ON g2.id=t.goods_id LEFT JOIN warehouses ow ON ow.id=g2.owning_warehouse_id"
+                    +" WHERE g2.owning_warehouse_id IS NOT NULL GROUP BY ow.id,ow.name";
+            case "color" -> "SELECT t.color_id AS v,COALESCE(t.color_name,'') AS label,COUNT(*) AS c"+source
+                    +" WHERE t.color_id IS NOT NULL GROUP BY t.color_id,t.color_name";
+            case "series" -> "SELECT t.series AS v,t.series AS label,COUNT(*) AS c"+source
+                    +" WHERE t.series IS NOT NULL AND t.series<>'' GROUP BY t.series";
+            case "unit" -> "SELECT u2.id AS v,COALESCE(u2.name,'') AS label,COUNT(*) AS c"+source
+                    +" JOIN goods g2 ON g2.id=t.goods_id LEFT JOIN units u2 ON (u2.id=g2.unit_id"
+                    +" OR (g2.unit_id IS NULL AND u2.legacy_id=NULLIF(g2.unit_legacy_id,0)))"
+                    +" WHERE u2.id IS NOT NULL GROUP BY u2.id,u2.name";
+            default -> throw new IllegalArgumentException("Unknown owned inventory facet field");
+        };
     }
 
     private PageResponse<InstantInventoryRow> instantPage(InstantSql sql, int page, int size,

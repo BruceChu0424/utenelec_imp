@@ -57,7 +57,7 @@ public class PurchaseReportController {
     // ---------- 9 张报表 ----------
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/expediting")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/expediting", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse expediting(
             @RequestParam(required = false) String billNo,
@@ -74,7 +74,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/request/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/request/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse requestDetail(
             @RequestParam(required = false) String billNo,
@@ -91,7 +91,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/request/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/request/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse requestSummary(
             @RequestParam(required = false) String billNo,
@@ -108,7 +108,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/order/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/order/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse orderDetail(
             @RequestParam(required = false) String billNo,
@@ -126,7 +126,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/order/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/order/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse orderSummary(
             @RequestParam(required = false) String billNo,
@@ -144,7 +144,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/receipt/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/receipt/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse receiptDetail(
             @RequestParam(required = false) String billNo,
@@ -163,7 +163,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/receipt/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/receipt/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse receiptSummary(
             @RequestParam(required = false) String billNo,
@@ -182,7 +182,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/return/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/return/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse returnDetail(
             @RequestParam(required = false) String billNo,
@@ -201,7 +201,7 @@ public class PurchaseReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/return/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/return/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('purchase_report:view')")
     public ReportTableResponse returnSummary(
             @RequestParam(required = false) String billNo,

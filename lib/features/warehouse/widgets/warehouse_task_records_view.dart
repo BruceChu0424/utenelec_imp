@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
@@ -223,6 +224,26 @@ class _WarehouseTaskRecordsViewState
 
   Future<void> _load(int page, {bool useCache = false}) =>
       trackRefresh(_loadPage(page, useCache: useCache), replaceKey: 'rows');
+
+  String get _facetPath => '/warehouse/task-center/${widget.direction.name}';
+  Map<String, dynamic> get _facetQuery => {
+    'source': _effectiveSource,
+    'view': widget.view.apiValue,
+    'status': ?_effectiveStatus,
+    if (widget.keyword.trim().isNotEmpty) 'keyword': widget.keyword.trim(),
+    if (_billNo?.trim().isNotEmpty == true) 'billNo': _billNo!.trim(),
+    if (_dates != null) ...{
+      'dateFrom': ChinaDateTime.formatDate(_dates!.start),
+      'dateTo': ChinaDateTime.formatDate(_dates!.end),
+    },
+    'sort': ?_sort,
+    if (_sort != null) 'order': _ascending ? 'asc' : 'desc',
+    for (final entry in _headerColumns.entries)
+      if (entry.key.startsWith('search.') &&
+          entry.value?.trim().isNotEmpty == true)
+        entry.key: entry.value!.trim(),
+    ...WarehouseListScope.of(context).queryParameters,
+  };
 
   Future<void> _loadPage(int page, {bool useCache = false}) async {
     if (!mounted) return;
@@ -1267,6 +1288,13 @@ class _WarehouseTaskRecordsViewState
             ...?result?.statusFacets,
           ],
         },
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: _facetPath,
+          fields: const ['billNo'],
+          filters: _facetQuery,
+        ),
+        facetSearchScope: nativeFacetSearchScope(ref, _facetPath, _facetQuery),
         nullCounts: const {},
         filters: {'status': _status, 'billNo': _billNo, ..._headerColumns},
         onFilterChanged: _filter,

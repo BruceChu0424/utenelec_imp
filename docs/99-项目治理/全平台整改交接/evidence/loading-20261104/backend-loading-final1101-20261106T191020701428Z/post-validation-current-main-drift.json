@@ -1,0 +1,237 @@
+{
+  "atUtc": "2026-11-06T19:08:42.982808+00:00",
+  "currentHead": "1e9118917894ebabb15b2fbca9819eda879f946e",
+  "testedFrozenSourceClock": "d1dfbf4df2f1dcd290391d3dc027b4667f03b5e9a882a4f3f243767c87e4e49a",
+  "testedSqlCount": 1036,
+  "testedSqlHead": 1101,
+  "currentSqlCount": 1039,
+  "currentSqlHead": 1101,
+  "changedSinceTestFrame": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementIqcReplacementAllocationService.java",
+      "frozenSha256": "2a2b4217403111e363ffc0b627068220188016d61e17cd281a2e2302fe7218ed",
+      "currentSha256": "f783247e8c437a3182444a138e715d955c0cdd810207b7a38e8d1d4f95586809"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementOrderQuantityBounds.java",
+      "frozenSha256": "a019362afadd2c8f2101129af14cdc32b8994cca883f95655f13c549078aa492",
+      "currentSha256": "db5dd1532b9348ad060f033f6535bc192dc08d885a0125d50211baa1e52e546c"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreview.java",
+      "frozenSha256": "020fb8c3ccb487082267898099e46419839b4eb8b793ccc84ed85e5639d5c5da",
+      "currentSha256": "7ea1af18416a4b1b60a64884a7289402da047da180ff2b5698d08c8eb3982585"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java",
+      "frozenSha256": "5e8a435e5b5788876cbbb753403433249bf8e18ecb6196ada7013da4c9f47b7b",
+      "currentSha256": "41851433039e658ae7044a0fce852e0a6b159fcb28564b79e261fdf8eee0646f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+      "frozenSha256": "b7851ccdeb36d391cdd758bb15db3c0d67f61356aeff39d3fc0ce4dbbf1a2848",
+      "currentSha256": "c6865bb127ec42357a16ec8e38831d4ef3104dd8f76d082d70726aa3849b8b32"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialPreparationBudgetReader.java",
+      "frozenSha256": "cc8fd49afd07485e333b9194b1351eb55da25da354fd83fc4b219c0653159a28",
+      "currentSha256": "11999d927b0f0bf94fe6438abf30659fee9701af08d5369fdf4df25f3bcf3e78"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjection.java",
+      "frozenSha256": "9318a77088fe0f6f2ce0a8d82a016092ba096333ea5c4e5e8fd65001e42b7aa2",
+      "currentSha256": "fc23d8b803fcdd76a15b94de3e22b5041c8143e49afd459cb59df7a62561a65a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryProductionCostService.java",
+      "frozenSha256": "d7832b844e61f0a521a10454540b68f6e25e30261a8309b24486ee2c194b744e",
+      "currentSha256": "fe3811c3dd650525c7e7bb1d38b015bff1db704dd2030ef53adee7923be5d178"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/stock/valuation/SubcontractOwnMaterialCostService.java",
+      "frozenSha256": "b775714f599fe830fc81fbc9c074c202304b16d88d486a89125ab79930dc7f37",
+      "currentSha256": "baec36bd145bc9f5b5e1d0ff3fd9ddf89808cd0f43b168cb89602b935e0e9737"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+      "frozenSha256": "4b6e3105f5e71a2306ace3b658659ec009b9dca42708b95f480a9d7ebeaf70fa",
+      "currentSha256": "58f9b0aece23ecfb295477650eb4c4a623ffaa6c1bf47d9c6cdf7b5289332d57"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/plan/SubcontractMaterialPlanService.java",
+      "frozenSha256": "e9500f5dd5ac8f5d446f0fe220bc45eff893543cfbab9f84ea4454413d40756a",
+      "currentSha256": "e198b0a7a2b308b5b01ef05c369e8a47e4728b10d08b21ad394ef4b44801ec6b"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthority.java",
+      "frozenSha256": "dabca97ccec7135cf925daa24aa3f7f26e5b902bbf9eafdfaec0eb3fc795424b",
+      "currentSha256": "8b1c484ad2451e06ff9d7ec908d2010ba6ee8dd7c86ebf6b20abb2ba2577de82"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptItem.java",
+      "frozenSha256": "7d2ee9f45dc8d6a43c1c329835ab3ea78097228d5bb9ddc5eaf96440f71de7e0",
+      "currentSha256": "8880d5c4df646071262af81895d27a3d1536e47e996b0e6dc72d95102d78ee1f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java",
+      "frozenSha256": "78c5b16760cae6eeb1c3035dfd7337e12e6a46e42e3600940f57b5964bae1893",
+      "currentSha256": "7d8d0e6b07692f8a6602fc2f1adfd7a8d3c14c97e9ba1471a97f77c4e668f94a"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReturnCapacity.java",
+      "frozenSha256": "0e9ff11e4384ad0e72dc0ff9cff1a9135330e8f1e8355d6f74c6fdd0726fff4b",
+      "currentSha256": "d493d4831cbcc0de5c485b93699dd1b8f311ea470643254642abe38900cf7b2e"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPolicy.java",
+      "frozenSha256": "e08001b2d668216d367b9b04f91e66e26a1cfa2a99e1677322eeeb10d222ca07",
+      "currentSha256": "afbfe32502549920e77c9307f69d05c79c3bde1368a3cfb87cb1a46ccac8a62f"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java",
+      "frozenSha256": "2a95daeeaa2252223614e12417f886dec216a244bc28921a54cd64c3ab27ca05",
+      "currentSha256": "eb1e8a704ba68d40e0d691f3edab6931b72a75922ea34c57f305411c2b8a73a7"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
+      "frozenSha256": "749f8873fd51715d7644a1d85fbb4938362fe2cbe297e3529613d78eaf0617ad",
+      "currentSha256": "9f0c431fad59b37a083ca770d2b9108510d336cc7cb1899ded3b323bce15c217"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalContracts.java",
+      "frozenSha256": "93183c74b6bb3b90d5049a37208f79206e1768ada18917ca75bc08a1dcdef77f",
+      "currentSha256": "490992691fa33b7e6597b41afe5b0c0ac5654792e8b3eff8854334a8ebf3e5db"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+      "frozenSha256": "7c61bffdd013b0072e4036d77d3a008e7d095a4f3d2684a8a6e24dbb032f87d8",
+      "currentSha256": "78ade54d13cc353bf32b49907adb03e0a0e86f4fede4abb78654eda448cc0952"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/AggregateMaterialOrderEndToEndTest.java",
+      "frozenSha256": "ed7ae22a3226d11a21cc96854bf47ea3e02db8578862058b05a8765d866dafc9",
+      "currentSha256": "54544b09d138455189d519684f930d67035ca0bb6095589e741f3b1581b6ca5b"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractAcceptedLossAnalysisEndToEndTest.java",
+      "frozenSha256": "03c71f3907f2f5b3ad01120f889fe1f70f1499033570ae6b27fa4a5a10bbf974",
+      "currentSha256": "a92c9aa6c9d58f032ef73be52fdb0388f65d830f4c95194236006b7ab53a3712"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractShortDeliveryEndToEndTest.java",
+      "frozenSha256": "bacd52c827749e1a4413049144e9bc5c624e7ad865beb11e21228082d4b23708",
+      "currentSha256": "59859ba23f351129ac5bf4ea0722f3b64455cde1aa548bbf6d08378faaa3afee"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractStepDrawEndToEndTest.java",
+      "frozenSha256": "09608dfd5cf47308507aaaeddb45e52d5d56b02547c4bf00a871871a20c73775",
+      "currentSha256": "a88ff62744870a76edf6992910405f1582f1dce4bb284f98a646188b60907d9f"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractToleranceAutoSettleEndToEndTest.java",
+      "frozenSha256": "ac31b4f30cb7ffa310585c2e05550bf9a657c100dda2a979fd6bfaa5177d6eb8",
+      "currentSha256": "5c278a8e060230036a0a5937c35c659c7f31ece6b26f74498b114908ab5cf5c2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementReceiptAmountPreviewTest.java",
+      "frozenSha256": "77ce8454a53606abd57a6a16a841276895e9d814c49b02b92bafbc3f6ce7cd28",
+      "currentSha256": "d42309513716bd02ffefe5500b7caa78b7b4c118410c0ec0a466b1c3bf8bd42e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjectionPostgresTest.java",
+      "frozenSha256": "c676bd5a16e6c8b53bf099e6efa8bb80735f75ce766a2a14844cb1b8a5d8c47a",
+      "currentSha256": "2491fe98a5f9b2662a28cd60407f4bb8aaa6d5d4ee8533336ae5dd8c6c87efaf"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryAutoSettleTest.java",
+      "frozenSha256": "8315e8144b7c1fbfdebca877a5da5ff1d3a27349a27db0dd8b8e6a980c886cd5",
+      "currentSha256": "1e6fa9f74d70108c985d637d40e3301aeec87b1b8878f92be85e51fc5ae8a14e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPolicyTest.java",
+      "frozenSha256": "b299ca75e1cde66de22544c73f521edf13a7c64db2aff0fc4dbb59d1133834ef",
+      "currentSha256": "0eb2f0280a64184e2968967a659bdac5b708c50e24c3d58bea35029e3ae68dc8"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPreStockHoldTest.java",
+      "frozenSha256": "4a9a32691a86c89bc226fd29f677352be279774e24cfd8f483c8c7f39786b73a",
+      "currentSha256": "1628660c0c6c16b70338a858e1e54bc88b1729dc66abce8357865c69d9165a53"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalMaterialBoundTest.java",
+      "frozenSha256": "a2b8f413ba4a4a55068a6ad305510f3441cd29bedc3bb25958caad569d3c8fa2",
+      "currentSha256": "a416ead90f3336f673bf7543ea8fc283298f30fadc3ea391dd88b1615e6289e8"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/LegacyQuantityUnapprovalCompositionPostgresTest.java",
+      "frozenSha256": "3134346b4fa5ee4a01f830b53d439eb227b30bdecb29c3d585a4066a37655239",
+      "currentSha256": "e7708cc1dcc5132fcdffb7ed754b9a8c0023177c043a48fcfac33c5349d95df5"
+    }
+  ],
+  "addedSinceTestFrame": [
+    {
+      "path": "server/src/main/java/com/uten/imp/common/finance/SubcontractReceiptAllowance.java",
+      "currentSha256": "3fc34c9d4c6569040cb9484fbe7bdacead66f049ec4ca01a1b390fecc9e8b625"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractMaterialSupplyRequirement.java",
+      "currentSha256": "53b31411ee6fd71a87341bb5c3a5c7b30d0df664653d1aa6c6ec26c0e8c81d2e"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1097__subcontract_actual_receipts_and_base_consumption.sql",
+      "currentSha256": "7f2af1875dabadf72ad46470214b83513bf1f40b72792e654e027caad011e331"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1098__subcontract_finished_target_short_delivery.sql",
+      "currentSha256": "b108a91b15ece1392fb20ddd9bed17fe46cf3b71510f92abbed6120b838c08f3"
+    },
+    {
+      "path": "server/src/main/resources/db/migration/V1099__inherit_subcontract_receipt_consumption_version.sql",
+      "currentSha256": "36e362c7d22bc2bc3f3dc0beef1f3cb23ef68f72466a22c83c23e90281e5af08"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractActualReceiptAllowanceEndToEndTest.java",
+      "currentSha256": "c14c89c69c054bae332ac2390a120c80885fbf3aef7d7717bdba961ca948597e"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractFullChainTestContext.java",
+      "currentSha256": "5275819ae4dcbbb6a17f823cbe6b38aec7b1308f6e079f67c68b09f8d7d6f2b2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/businesschain/SubcontractMaterialAnalysisSupplyEndToEndTest.java",
+      "currentSha256": "38754a5d054d673b654419f76a336e8b05ffe471e63ccbe0276644617a82aed2"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/ProcurementOrdinaryReturnCapacityTest.java",
+      "currentSha256": "65850835d600a7a1ffbd012cf5eaf499ab5e9900db35734c7922a9bac715fa35"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/finance/SubcontractReceiptAllowanceTest.java",
+      "currentSha256": "d644c652c6ebeea566df15db4d71ff53aa239f83d59feb589775622324603710"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/production/analysis/SubcontractMaterialSupplyRequirementTest.java",
+      "currentSha256": "d9ea1eb289def75b54d8e3bcebed846207a3c052b4ffc215151cb8db2d97fdb9"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/waste/SubcontractNormalMaterialLossBudgetPostgresTest.java",
+      "currentSha256": "26762d1cee8ebb3bf5e1d4612817d3a3eda4ec081636a9f95a881d0b31bcfcb7"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/subcontract/waste/SubcontractNormalMaterialLossBudgetTest.java",
+      "currentSha256": "ad87f0bd6a0f3484cf9627e11289d8fe5f2b29f3477ccbc8cfd592075e4a7cd4"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/features/warehouse/inbound/SubcontractArrivalActualQuantityContractTest.java",
+      "currentSha256": "f0800734fcc6eea6ebc09d83314b0b14a49da2d0835b01c259389be27eb0e330"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/migration/SubcontractActualConsumptionUpgradePostgresTest.java",
+      "currentSha256": "04f3180cc7678ac06fb20aa100337f1dbefb56082c6bd792bda76b9671f7c571"
+    }
+  ],
+  "deletedSinceTestFrame": [],
+  "latestMainQualifiedByPrior157Tests": false,
+  "noCurrentSourceOverwritten": true,
+  "backendOrdinaryResourcesReleased": true
+}

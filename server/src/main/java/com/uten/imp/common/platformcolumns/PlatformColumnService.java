@@ -36,6 +36,8 @@ public class PlatformColumnService {
     private final ObjectMapper mapper;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    @Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
     /** ADR-149 仓库数据范围; 未注入(直接 new 的契约测试)时批量读不开复用窗口。 */
     private WarehouseTaskScopePort warehouseScopes;
 
@@ -74,6 +76,10 @@ public class PlatformColumnService {
 
     @Transactional(readOnly=true)
     public List<Definition> search(String scope,String query) {
+        return search(scope,query,false);
+    }
+
+    private List<Definition> search(String scope,String query,boolean complete) {
         var adapter=resource(scope);adapter.requireDefinitionAccess(false);
         String needle=BusinessColumnService.normalize(query==null?"":query);
         if(needle.length()>80)throw invalid("列名搜索不能超过80字符");
@@ -88,17 +94,36 @@ public class PlatformColumnService {
                   OR EXISTS(SELECT 1 FROM generate_series(1,length(CAST(:q AS text))-1) n
                     WHERE position(substring(CAST(:q AS text) from n for 2) IN d.normalized_name)>0))
                 ORDER BY CASE WHEN d.normalized_name=:q THEN 0 WHEN position(:q IN d.normalized_name)>0 THEN 1 ELSE 2 END,
-                  personal_usage_count DESC,d.usage_count DESC,d.id LIMIT 500
-                """,parameters,this::definition);
+                  personal_usage_count DESC,d.usage_count DESC,d.id
+                """+(complete?"":" LIMIT 500"),parameters,this::definition);
         candidates=candidates.stream().filter(d->!"RELATED".equals(d.type())||relationAllowed(adapter,d.relationKey())).toList();
-        Map<UUID,Definition> catalog=loadDefinitions(scope,candidates.stream().map(Definition::id).collect(java.util.stream.Collectors.toSet()));
+        Map<UUID,Definition> catalog=loadDefinitions(scope,candidates.stream().map(Definition::id).collect(java.util.stream.Collectors.toSet()),complete);
         Comparator<Definition> order=Comparator.comparingInt((Definition d)->tier(d.name(),needle))
                 .thenComparing(Comparator.comparingDouble((Definition d)->similarity(d.name(),needle)).reversed())
                 .thenComparing(Comparator.comparingLong(Definition::personalUsageCount).reversed())
                 .thenComparing(Comparator.comparingLong(Definition::usageCount).reversed()).thenComparing(Definition::id);
         return candidates.stream().filter(d->adapter.canViewPrice()||!protectedDefinition(d,catalog,adapter,new HashSet<>()))
                 .filter(d->needle.isEmpty()||tier(d.name(),needle)<2||similarity(d.name(),needle)>=0.4)
-                .sorted(order).limit(50).map(d->visibleDefinition(d,adapter.canViewPrice())).toList();
+                .sorted(order).limit(complete?Long.MAX_VALUE:50).map(d->visibleDefinition(d,adapter.canViewPrice())).toList();
+    }
+
+    /** Full catalog membership and original ranking; transport size is never a total-result limit. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Definition> summaries(
+            String scope,String query,int page,int size,String revision) {
+        resource(scope).requireDefinitionAccess(false);
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+                "platform-column-definitions","native_feature",List.of("complete-column-catalog-v1",scope,com.uten.imp.common.columns.BusinessColumnService.normalize(query==null?"":query)),
+                "all",page,size,1000,revision);
+        var rows=new java.util.concurrent.atomic.AtomicReference<List<Definition>>();
+        java.util.function.Supplier<List<Definition>> all=()->{
+            if(rows.get()==null)rows.set(search(scope,query,true));
+            return rows.get();
+        };
+        return summaryPages.page(request,()->{resource(scope).requireDefinitionAccess(false);},()->(long)all.get().size(),(readPage,readSize)->{
+            var values=all.get();int from=(int)Math.min(values.size(),Math.multiplyExact((long)readPage-1,readSize));
+            int to=(int)Math.min(values.size(),(long)from+readSize);
+            return values.subList(from,to);
+        });
     }
 
     @Transactional
@@ -652,17 +677,27 @@ public class PlatformColumnService {
         return operand.constant()==null?operand:new Operand(null,null,ExtraColumnCalculator.decimal(operand.constant(),"计算常量").toPlainString());
     }
     private Map<UUID,Definition> loadDefinitions(String scope,Set<UUID> ids) {
+        return loadDefinitions(scope,ids,false);
+    }
+
+    private Map<UUID,Definition> loadDefinitions(String scope,Set<UUID> ids,boolean completeCatalog) {
         Map<UUID,Definition> definitions=new LinkedHashMap<>();Set<UUID> pending=new LinkedHashSet<>(ids);
         for(int depth=0;!pending.isEmpty();depth++) {
-            if(depth>MAX_DEPTH||definitions.size()+pending.size()>MAX_DEPENDENCIES)throw invalid("计算列依赖过多或过深");
-            Map<String,Object> parameters=params(scope);parameters.put("ids",pending);
-            List<Definition> loaded=jdbc.query("""
+            if(depth>MAX_DEPTH||(!completeCatalog&&definitions.size()+pending.size()>MAX_DEPENDENCIES))throw invalid("计算列依赖过多或过深");
+            // Catalog roots are independent choices; the original8192-node
+            // command/dependency graph budget still applies to every write.
+            var rootIds=new ArrayList<>(pending);var loaded=new ArrayList<Definition>();
+            int batchSize=completeCatalog?500:Math.max(1,rootIds.size());
+            for(int offset=0;offset<rootIds.size();offset+=batchSize){
+            Map<String,Object> parameters=params(scope);parameters.put("ids",rootIds.subList(offset,Math.min(rootIds.size(),offset+batchSize)));
+            loaded.addAll(jdbc.query("""
                     SELECT d.*,COALESCE(u.usage_count,0) AS personal_usage_count,
                       EXISTS(SELECT 1 FROM platform_column_definition_deletions deleted WHERE deleted.definition_id=d.id) AS definition_deleted
                     FROM platform_column_definitions d
                     LEFT JOIN platform_column_usage u ON u.definition_id=d.id AND u.user_id=:actor
                     WHERE d.scope=:scope AND (d.owner_user_id=:owner OR (d.value_type='RELATED' AND d.owner_user_id=:actor)) AND d.id IN(:ids)
-                    """,parameters,this::definition);
+                    """,parameters,this::definition));
+            }
             if(loaded.size()!=pending.size())throw invalid("扩展列不存在或不属于当前模块");
             pending=new LinkedHashSet<>();
             for(Definition definition:loaded){

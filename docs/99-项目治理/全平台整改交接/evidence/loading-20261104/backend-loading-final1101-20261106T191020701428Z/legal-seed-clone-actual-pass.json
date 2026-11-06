@@ -1,0 +1,12 @@
+{
+  "atUtc": "2026-11-06T18:42:01.682823+00:00",
+  "containerId": "88a1e9e8174f3c1099087e2d7a50169f743935f1f0c5ee35d6ba440c984d2f9e",
+  "prototype1097NotFinal1101": true,
+  "companyConnected": false,
+  "transaction": "BEGIN/SET CONSTRAINTS ALL IMMEDIATE/ROLLBACK",
+  "actualExitCode": 0,
+  "inputSha256": "621a2b73958c24b283c0e4248c10d15675b68b6341ba9b7c06ca8ee3e0926d85",
+  "logSha256": "d56e6ea8c98a8cd9fdd763a16714e5c29ce91acaa7237dfd76e02f0920e9c978",
+  "guardAlterations": false,
+  "originalThresholdsUnchanged": true
+}

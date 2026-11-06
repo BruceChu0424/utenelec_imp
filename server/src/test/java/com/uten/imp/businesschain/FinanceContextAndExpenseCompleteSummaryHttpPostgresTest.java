@@ -310,9 +310,9 @@ class FinanceContextAndExpenseCompleteSummaryHttpPostgresTest extends CompleteSu
                 """,employeePrefix,world.departmentId());
         db.update("""
                 INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password)
-                SELECT gen_random_uuid(),employee.id,?||substring(employee.code from char_length(?)+1),?,'inactive',true
+                SELECT gen_random_uuid(),employee.id,?||substring(employee.code from char_length(?)+1),?,'disabled',true
                 FROM employees employee WHERE employee.code LIKE ?
-                ""","wall-author-"+tag+"-",employeePrefix,passwords.encode("Fixture-inactive-author-1!"),employeePrefix+"%");
+                ""","wall-author-"+tag+"-",employeePrefix,passwords.encode("Fixture-disabled-author-1!"),employeePrefix+"%");
         db.update("""
                 INSERT INTO notice_blessings(id,notice_id,user_id,sender_name,content,created_by)
                 SELECT gen_random_uuid(),?,id,'历史祝福人'||login_account,'完整祝福'||login_account,id FROM users WHERE login_account LIKE ?
@@ -346,17 +346,19 @@ class FinanceContextAndExpenseCompleteSummaryHttpPostgresTest extends CompleteSu
                 SELECT gen_random_uuid(),?||n,'完整损耗货品'||n,'自制','使用',?,1,?+n FROM generate_series(1,51) n
                 """,prefix,world.unitId(),base);
         UUID order=UUID.randomUUID();int legacy=500000000+java.util.concurrent.ThreadLocalRandom.current().nextInt(90000000);
+        String orderBillNo=beans.getBean(com.uten.imp.common.docnumber.DocNumberService.class)
+                .nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.SUB_ORDER);
         // Legal retained-import read fixture, all original archive/identity/quantity guards remain enabled.
         // It does not claim that this read test executed51 real receipt/stock workflows.
         db.update("""
-                INSERT INTO subcontract_orders(id,legacy_id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,tax_rate,status,created_by)
-                VALUES(?,?,?,DATE '2025-01-01',?,?,1,0,1,?)
-                """,order,legacy,"LOSS-ORDER-"+tag.toUpperCase(Locale.ROOT),world.supplierId(),world.currencyId(),world.superAdminUserId());
+                INSERT INTO subcontract_orders(id,legacy_id,bill_no,bill_date,supplier_id,currency_id,settlement_method_id,exchange_rate,tax_rate,status,created_by)
+                VALUES(?,?,?,DATE '2025-01-01',?,?,(SELECT id FROM settlement_methods ORDER BY id LIMIT 1),1,0,1,?)
+                """,order,legacy,orderBillNo,world.supplierId(),world.currencyId(),world.superAdminUserId());
         db.update("""
-                INSERT INTO subcontract_order_items(id,legacy_id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,qty,price,amount_original,amount_local,received_qty)
-                SELECT gen_random_uuid(),?+row_number() OVER(ORDER BY goods.id)::int,?,DATE '2025-01-01',?,row_number() OVER(ORDER BY goods.id)::int,goods.id,?,1,1,1,1,1,1
+                INSERT INTO subcontract_order_items(id,legacy_id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,qty,price,amount_original,amount_local,received_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
+                SELECT gen_random_uuid(),?+row_number() OVER(ORDER BY goods.id)::int,?,DATE '2025-01-01',?,row_number() OVER(ORDER BY goods.id)::int,goods.id,?,1,1,1,1,1,1,goods.code,goods.name,'MASTER_AT_APPROVAL'
                 FROM goods WHERE code LIKE ?
-                """,legacy,"LOSS-ORDER-"+tag.toUpperCase(Locale.ROOT),order,world.unitId(),prefix+"%");
+                """,legacy,orderBillNo,order,world.unitId(),prefix+"%");
         String before=db.queryForObject("SELECT md5(jsonb_agg(to_jsonb(summary) ORDER BY goods_id)::text) FROM v_subcontract_supplier_goods_loss_summary summary WHERE supplier_id=?",String.class,world.supplierId());
         String path="/api/subcontract/short-deliveries/supplier-summary/goods/summaries?supplierId="+world.supplierId()+"&size=50";
         var response=request("GET",path+"&page=1",null,token,200);var first=body(response);completeTailProof(response,first);

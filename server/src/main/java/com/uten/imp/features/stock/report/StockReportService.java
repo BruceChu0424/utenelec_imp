@@ -644,11 +644,12 @@ public class StockReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        final Map<String,String> nativeFilters=com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(activeFacets,specs.stream().map(FacetSpec::key).toList());
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
 
-        WhereBuilder.Built full = mainWhere.build(activeFacetClauses(specs, activeFacets, null));
+        WhereBuilder.Built full = mainWhere.build(activeFacetClauses(specs, nativeFilters, null));
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
@@ -656,6 +657,21 @@ public class StockReportService {
         boolean explicitOrder = sort != null && sortKeys.contains(sort);
         String resolvedOrder = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
         String effectiveOrderBy = explicitOrder ? resolvedOrder : mainWhere.orderBy(resolvedOrder);
+
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            for(FacetSpec spec:specs) {
+                if(!com.uten.imp.common.web.NativeFacets.wants(spec.key()))continue;
+                if(false)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"当前无权读取该列候选");
+            var facetScope=mainWhere.build(activeFacetClauses(specs,nativeFilters,spec.key()));
+                String grouped="SELECT "+spec.selectExpr()+",COUNT(*) AS cnt "+fromJoin+" "+facetScope.sql()
+                        +" GROUP BY "+spec.groupExpr();
+                if("approved".equals(spec.key()))grouped=com.uten.imp.common.report.NativeReportFacetProducer.completeApprovalStates(grouped);
+                com.uten.imp.common.report.NativeReportFacetProducer.read(em,spec.key(),grouped,
+                        query->facetScope.params().forEach(query::setParameter),ReportTableResponse.NULL_FACET,"approved".equals(spec.key()) ? com.uten.imp.common.report.NativeReportFacetProducer.booleanApprovalLabel() : com.uten.imp.common.report.NativeReportFacetProducer.originalLabel());
+                return new ReportTableResponse(columns,List.of(),Map.of(),1,1,0,0,List.of());
+            }
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该报表不支持所选候选字段");
+        }
 
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
@@ -683,7 +699,7 @@ public class StockReportService {
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
         for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
-            WhereBuilder.Built facetScope = mainWhere.build(activeFacetClauses(specs, activeFacets, spec.key()));
+            WhereBuilder.Built facetScope = mainWhere.build(activeFacetClauses(specs, nativeFilters, spec.key()));
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
                     + facetScope.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
             facetScope.params().forEach(fq::setParameter);

@@ -38,6 +38,7 @@ class ExpenseApprovalWorkflowPostgresTest {
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired ExpenseClaimService claims;
+    @Autowired com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
     @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxProcessor outbox;
     @Autowired com.uten.imp.features.approvalpolicy.DepartmentApprovalPolicyService approvalSettings;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
@@ -60,11 +61,13 @@ class ExpenseApprovalWorkflowPostgresTest {
         login(outsider,"expense:approve:department");
         assertThat(claims.counts().pendingApprovalCount()).isZero();
         assertThat(claims.listScoped("pending",null,null,null,null,1,50,null,null,null,"DEPARTMENT","DEPT_HR").getItems()).isEmpty();
+        assertNativeListParity("pending",null,"DEPARTMENT","DEPT_HR",false);
         assertThatThrownBy(()->claims.approve(id,submitted)).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->leases.claim("EXPENSE_APPROVE",id.toString())).isInstanceOf(ApiException.class);
         login(initial,"expense:approve:finance_initial","attachment:view","attachment:download");
         long initialBaseline=claims.counts().financeInitialPendingApprovalCount();
         assertThat(claims.listScoped("pending",null,null,null,null,1,50,null,null,doc.claimNo(),null,null).getItems()).isEmpty();
+        assertNativeListParity("pending",null,null,null,false);
         assertThatThrownBy(()->claims.approve(id,submitted)).isInstanceOf(ApiException.class);
         login(peer,"expense:approve:department","attachment:view","attachment:download");
         assertThat(claims.detail(id).canApprove()).isTrue();
@@ -77,6 +80,7 @@ class ExpenseApprovalWorkflowPostgresTest {
         login(peer,"expense:approve:department","attachment:view","attachment:download");assertThatThrownBy(()->claims.detail(id)).isInstanceOf(ApiException.class);
         login(manager,"expense:approve:department","expense:approve:finance_initial","attachment:view","attachment:download");
         assertThat(claims.listScoped("pending",null,null,null,null,1,50,null,null,doc.claimNo(),null,null).getItems()).isEmpty();
+        assertNativeListParity("pending",null,null,null,false);
         assertThat(claims.listHistory(null,null,null,null,1,50).getItems()).extracting(ExpenseClaimDto::id).contains(id);
         long firstVersion=doc.version();
         assertThatThrownBy(()->claims.approve(id,firstVersion)).isInstanceOf(ApiException.class);
@@ -183,6 +187,7 @@ class ExpenseApprovalWorkflowPostgresTest {
         var colleague=draft(employee,"GENERAL");login(employee,"expense:apply");colleague=claims.submit(colleague.id(),colleague.version());
         login(substitute,"expense:approve:department","attachment:view","attachment:download");
         assertThat(claims.listScoped("pending",null,null,null,null,1,50,null,null,null,"DEPARTMENT",code).getItems()).extracting(ExpenseClaimDto::id).containsExactly(submitted.id());
+        assertNativeListParity("pending",null,"DEPARTMENT",code,false);
         assertThat(claims.counts().departmentPendingByCode()).containsEntry(code,1L);
         UUID colleagueId=colleague.id();assertThatThrownBy(()->claims.detail(colleagueId)).isInstanceOf(ApiException.class);
         assertThat(sqlEligible(substitute,"expense:approve:department",own.id())).isTrue();
@@ -193,7 +198,9 @@ class ExpenseApprovalWorkflowPostgresTest {
         login(manager,"expense:apply");assertThat(claims.detail(own.id()).approvalRoutingStale()).isTrue();
         assertThat(claims.counts().mineRoutingStaleCount()).isEqualTo(1);
         assertThat(claims.listMine("ACTION_REQUIRED",null,null,null,null,1,50).getItems()).extracting(ExpenseClaimDto::id).contains(own.id());
+        assertNativeListParity("mineActive",null,null,null,true);
         assertThat(claims.listMine("SUBMITTED,REVIEWING,APPROVED",null,null,null,null,1,50).getItems()).extracting(ExpenseClaimDto::id).doesNotContain(own.id());
+        assertNativeListParity("mineActive","SUBMITTED,REVIEWING,APPROVED",null,null,false);
         for(int retry=0;retry<100;retry++) {
             if(jdbc.queryForObject("SELECT count(*) FROM notices WHERE audience_user_id=? AND action_route=? AND title='审批安排已变化，请撤回重提'",Long.class,manager.user(),"/expense/"+own.id())>0)break;
             outbox.processNext();Thread.sleep(100);
@@ -230,4 +237,26 @@ class ExpenseApprovalWorkflowPostgresTest {
         var user=new AuthUser(actor.user(),actor.employee(),actor.login(),Set.of(permissions),false,true,false);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));
     }
     private record Actor(UUID user,UUID employee,String login){}
+
+    /** Both reads execute the original shared Specification; fixtures above exercise live approval, self-recusal and stale routing. */
+    private void assertNativeListParity(String queue,String status,String stage,String departmentCode,boolean actionRequired) {
+        var expected="mineActive".equals(queue)
+                ?claims.listMine(actionRequired?"ACTION_REQUIRED":status,null,null,null,null,1,100).getItems()
+                :claims.listScoped(queue,null,null,null,null,1,100,null,null,null,stage,departmentCode).getItems();
+        Map<String,Object> query=new LinkedHashMap<>();query.put("queue",queue);query.put("status",status);query.put("stage",stage);query.put("departmentCode",departmentCode);query.put("actionRequired",actionRequired);
+        List<String> actual=new ArrayList<>();String revision=null;boolean hasMore;
+        for(int page=1;;page++) {
+            try(var scope=com.uten.imp.common.web.NativeFacetCandidates.open("claimNo","",page,100)) {
+                var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("native-facet-expense-claim-no","expense",query,"all",page,100,100,revision);
+                var snapshot=summaryPages.read(request,()->{},()->claims.nativeClaimNoFacets(queue,status,null,null,null,null,false,false,stage,departmentCode,actionRequired,false));
+                scope.snapshot(snapshot.readScopeVersion(),snapshot.readSnapshotRevision(),snapshot.readDataVersion());
+                var result=scope.result(snapshot.value(),snapshot.readScopeVersion());
+                if(revision==null)revision=result.readSnapshotRevision();else assertThat(result.readSnapshotRevision()).isEqualTo(revision);
+                result.items().forEach(row->{assertThat(row.get("count")).isEqualTo(1L);actual.add(row.get("value").toString());});hasMore=result.hasMore();
+            }
+            if(!hasMore)break;
+        }
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(expected.stream().map(ExpenseClaimDto::claimNo).toList());
+        assertThat(com.uten.imp.common.web.NativeFacetCandidates.active()).isFalse();
+    }
 }

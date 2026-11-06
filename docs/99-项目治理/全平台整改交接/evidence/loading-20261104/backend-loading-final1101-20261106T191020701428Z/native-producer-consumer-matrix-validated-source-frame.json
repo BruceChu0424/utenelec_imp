@@ -1,0 +1,4634 @@
+{
+  "atUtc": "2026-11-06T18:50:25.697454+00:00",
+  "mainHead": "80c614f35ebf7b9f197d4be471136357166f4333",
+  "schemaCount": 1036,
+  "head": 1101,
+  "exactNativeRoutes": 102,
+  "nativeDomains": 27,
+  "rootDomains": 4,
+  "nativeTableDomainEdges": 720,
+  "rootTableDomainEdges": 19,
+  "physicalTables": 203,
+  "statementTriggers": 812,
+  "sourceRegistry": {
+    "path": "server/src/main/java/com/uten/imp/common/report/NativeFacetRoutes.java",
+    "sha256": "950d40574021e099be44410517c26fdcf727562661d4d5c4e3f0f3307e7bec28"
+  },
+  "generatedClientRouteTable": {
+    "path": "lib/core/network/native_facet_routes.dart",
+    "sha256": "f012c6a432f0ad7e7cd80f8d281df2bb43566854f768f5eef58df643caed88dd",
+    "exactRouteSetEquality": true
+  },
+  "sourceBasisSha256": "812cbf7dbb7190ccf65b8d383b36cbafc567b261868b75a5334b179acb279140",
+  "routes": [
+    {
+      "path": "/api/finance/reports/column-candidates",
+      "profile": "finance",
+      "fields": [
+        "value"
+      ],
+      "dataDomain": "native-facet-finance-columns",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+          "sha256": "0fe1f2f0f572bbb928efc3f5805711d1fa037dfde18e3b54f25f49dc679d369a"
+        }
+      ],
+      "mutableTables": [
+        "account_flow_monthly_summaries",
+        "accounts",
+        "ar_ap_ledger",
+        "ar_ap_source_refs",
+        "client_categories",
+        "clients",
+        "currencies",
+        "customer_open_item_offset_batches",
+        "customer_open_item_offsets",
+        "departments",
+        "employees",
+        "finance_bank_transfer_lines",
+        "finance_bank_transfers",
+        "finance_expense_items",
+        "finance_expenses",
+        "finance_other_income_items",
+        "finance_other_incomes",
+        "finance_payments",
+        "finance_receipt_lines",
+        "finance_receipts",
+        "finance_reconciliations",
+        "finance_supplier_advance_applications",
+        "finance_supplier_advance_refunds",
+        "finance_supplier_advances",
+        "payment_styles",
+        "sales_orders",
+        "supplier_categories",
+        "supplier_open_item_offsets",
+        "suppliers"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/finance/reports/account/statement/facets",
+      "profile": "native_feature",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-account-statement",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+          "sha256": "0fe1f2f0f572bbb928efc3f5805711d1fa037dfde18e3b54f25f49dc679d369a"
+        }
+      ],
+      "mutableTables": [
+        "finance_reconciliations"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/finance/payables/facets",
+      "profile": "native_feature",
+      "fields": [
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-procurement-payables",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesService.java",
+          "sha256": "375da2f22fdd7e7c7842974a892609bd8423fdd7f956c451efade3740a43d75a"
+        }
+      ],
+      "mutableTables": [
+        "ar_ap_ledger",
+        "currencies",
+        "settlement_methods",
+        "suppliers"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/finance/subcontract-loss-claims/facets",
+      "profile": "native_feature",
+      "fields": [
+        "wasteBillNo"
+      ],
+      "dataDomain": "native-facet-subcontract-loss-claims",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimService.java",
+          "sha256": "e424282664186bb6e7bff4049602e27d70adae9a70cf78cf11ee29424117021c"
+        }
+      ],
+      "mutableTables": [
+        "subcontract_loss_cases",
+        "suppliers"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/quality-results/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-warehouse-quality-results",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseQualityResultService.java",
+          "sha256": "277afdcdba732e485f48e51ab82d84e9997d869a3e8dfbbcecce6fcae7d5559c"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "goods",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "procurement_iqc_stock_in_batch_items",
+        "purchase_receipts",
+        "subcontract_receipts",
+        "suppliers",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/procurement/inspection/records/facets",
+      "profile": "native_feature",
+      "fields": [
+        "sourceNo",
+        "referenceNo"
+      ],
+      "dataDomain": "native-facet-inspection-records",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordQueryService.java",
+          "sha256": "d60ea28c7531125b092f8aad2a3e53f03edfb1e45878919e5b263a667d5b9c03"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/short-deliveries/facets",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "orderBillNo"
+      ],
+      "dataDomain": "native-facet-short-deliveries",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java",
+          "sha256": "2a95daeeaa2252223614e12417f886dec216a244bc28921a54cd64c3ab27ca05"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "subcontract_order_items",
+        "subcontract_short_delivery_cases",
+        "subcontract_wastes",
+        "suppliers",
+        "units",
+        "users"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/purchase-receipts/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/subcontract-receipts/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/subcontract-material-issues/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/subcontract-returns/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/subcontract-material-returns/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/document-history/subcontract-wastes/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo",
+        "sourceDocNo"
+      ],
+      "dataDomain": "native-facet-warehouse-history",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueries.java",
+          "sha256": "1206c81009afd5c9e83f064fd064b4eb3d0429c233a4a2b89df782bf935181d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryQueryService.java",
+          "sha256": "0c2fca4fb1fcc5b3c2dd86859cac9b0285b488e9bd612e50a18da65dfd4c0e8f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/history/WarehouseHistoryType.java",
+          "sha256": "ef29889a37ebf764db5afd169ec383abc363af7e54e1a2616bc3792aad8a7263"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "procurement_inspection_items",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/production-finished-in/tasks/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "taskNo",
+        "planNo"
+      ],
+      "dataDomain": "native-facet-finished-in",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskService.java",
+          "sha256": "4930d68dae68cccfa09c0274b417cae54b87ad8992a8e51d7d0cf85dcd5b3831"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V548__production_finished_arrival_registration_reversal.sql",
+          "sha256": "2d18c28453841324a7b886c34e7ab40f5cc9608a458d3962b80bad143e89e28b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_finished_arrival_registration_items",
+        "production_finished_in_confirmations",
+        "production_fqc_inspections",
+        "production_fqc_legacy_exemptions",
+        "production_plan_items",
+        "production_plans",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/schedule/pending/facets",
+      "profile": "native_feature",
+      "fields": [
+        "orderBillNo"
+      ],
+      "dataDomain": "native-facet-production-schedule",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/schedule/ProductionScheduleService.java",
+          "sha256": "efb06a846bf4c846ec6dea9a97b812b906b7ec52326b7bfb641c0522d0df9417"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "execution_segment_sales_allocations",
+        "goods",
+        "goods_bom_actual_usages",
+        "goods_bom_items",
+        "plan_order_item_links",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segments",
+        "production_fqc_decision_events",
+        "production_fqc_inspections",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_tasks",
+        "production_material_analyses",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_demands",
+        "production_material_increment_requests",
+        "production_plan_items",
+        "production_planning_packages",
+        "production_plans",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "stock_balances",
+        "stock_measurement_holds",
+        "stock_reservation_storage_positions",
+        "stock_reservations",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/quality-inspections/records/facets",
+      "profile": "native_fqc_records",
+      "fields": [
+        "sourceNo",
+        "referenceNo",
+        "sheetNo"
+      ],
+      "dataDomain": "native-facet-fqc-records",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordQueryService.java",
+          "sha256": "5ca26ae892ecd917b9eb6834a54b842250140fc12229268725e58775163be2c9"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "production_daily_reports",
+        "production_execution_segments",
+        "production_fqc_cancellation_events",
+        "production_fqc_decision_events",
+        "production_fqc_inspection_sheet_items",
+        "production_fqc_inspection_sheets",
+        "production_fqc_inspections",
+        "production_plans",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/orders/progress/facets",
+      "profile": "native_sales_owner",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-sales-progress",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java",
+          "sha256": "a86cf6298dd1d6a2818202cf543a7d450fee5b322e946123e036f816d97c3c75"
+        }
+      ],
+      "mutableTables": [
+        "ar_ap_source_refs",
+        "clients",
+        "colors",
+        "currencies",
+        "customer_open_item_offsets",
+        "departments",
+        "employees",
+        "execution_segment_sales_allocations",
+        "finance_receipts",
+        "goods",
+        "plan_order_item_links",
+        "platform_record_fields",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segment_events",
+        "production_execution_segments",
+        "production_material_analyses",
+        "production_material_analysis_items",
+        "production_material_analysis_plan_links",
+        "production_plan_items",
+        "production_planning_packages",
+        "production_plans",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "sales_shipment_finance_release_events",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_document_items",
+        "stock_documents",
+        "stock_reservations",
+        "units"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/orders/finance-confirmation/pending/facets",
+      "profile": "native_feature",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-sales-finance-pending",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmService.java",
+          "sha256": "29c07824aae9a1a10d4fee18da1615f1794d755d381199daf2d13f9692a2ec1b"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_order_qty_change_logs",
+        "sales_order_revision_logs",
+        "sales_orders",
+        "sales_quotes",
+        "sales_shipment_items",
+        "sales_shipments",
+        "settlement_methods",
+        "units"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/material-analyses/sales-candidates/facets",
+      "profile": "native_feature",
+      "fields": [
+        "orderNo"
+      ],
+      "dataDomain": "native-facet-analysis-sales-candidates",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisSalesSourceQuery.java",
+          "sha256": "6f0140cd685904100f143e95993b8e1b7b8d1174cabc2bcc3190ef56fd4a388f"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
+          "sha256": "b7851ccdeb36d391cdd758bb15db3c0d67f61356aeff39d3fc0ce4dbbf1a2848"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "execution_segment_sales_allocations",
+        "goods",
+        "goods_bom_items",
+        "plan_order_item_links",
+        "platform_record_fields",
+        "preplan_aggregate_batch_events",
+        "preplan_aggregate_batches",
+        "preplan_aggregate_material_aliases",
+        "preplan_analysis_stock_exact_pegs",
+        "preplan_future_supply_transfer_cancellations",
+        "preplan_future_supply_transfers",
+        "preplan_make_entitlement_delegations",
+        "preplan_make_public_claim_cancellations",
+        "preplan_make_public_claims",
+        "preplan_public_supply_events",
+        "preplan_reallocation_make_supplements",
+        "preplan_root_output_events",
+        "preplan_stock_entitlement_events",
+        "preplan_supply_action_allocations",
+        "preplan_supply_actions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "procurement_iqc_stock_in_batch_items",
+        "procurement_iqc_stock_in_batches",
+        "procurement_order_approval_cases",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segment_events",
+        "production_execution_segment_splits",
+        "production_execution_segments",
+        "production_fqc_decision_events",
+        "production_fqc_inspections",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_release_allocations",
+        "production_fqc_release_commands",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_tasks",
+        "production_material_analyses",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_analysis_plan_links",
+        "production_material_demands",
+        "production_material_discovery_requests",
+        "production_material_increment_requests",
+        "production_material_settlement_postings",
+        "production_material_stock_postings",
+        "production_plan_items",
+        "production_planning_package_documents",
+        "production_planning_packages",
+        "production_plans",
+        "production_workshop_direct_source_allocations",
+        "production_workshop_direct_source_events",
+        "production_workshop_direct_transfer_items",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "stock_document_items",
+        "stock_documents",
+        "stock_movements",
+        "stock_reservations",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_short_delivery_cases",
+        "subcontract_wastes",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/execution-workbench/facets",
+      "profile": "native_production_owner",
+      "fields": [
+        "orders"
+      ],
+      "dataDomain": "native-facet-execution-workbench",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+          "sha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "execution_segment_sales_allocations",
+        "goods",
+        "goods_bom_items",
+        "goods_periodic_material_choices",
+        "plan_order_item_links",
+        "platform_record_fields",
+        "preplan_aggregate_batch_events",
+        "preplan_aggregate_batches",
+        "preplan_aggregate_direct_transfer_slices",
+        "preplan_aggregate_material_aliases",
+        "preplan_analysis_stock_exact_pegs",
+        "preplan_future_supply_transfer_cancellations",
+        "preplan_future_supply_transfers",
+        "preplan_make_entitlement_delegations",
+        "preplan_make_public_claim_cancellations",
+        "preplan_make_public_claims",
+        "preplan_public_supply_events",
+        "preplan_reallocation_make_supplements",
+        "preplan_root_output_events",
+        "preplan_stock_entitlement_events",
+        "preplan_supply_action_allocations",
+        "preplan_supply_actions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "procurement_iqc_stock_in_batch_items",
+        "procurement_iqc_stock_in_batches",
+        "procurement_order_approval_cases",
+        "production_actual_output_supplement_claims",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_actual_output_supplement_reversals",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_periodic_materials",
+        "production_execution_segment_events",
+        "production_execution_segment_splits",
+        "production_execution_segments",
+        "production_fqc_contribution_adjustments",
+        "production_fqc_decision_events",
+        "production_fqc_inspections",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_allocation_events",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_recovery_cancellation_events",
+        "production_fqc_release_allocations",
+        "production_fqc_release_commands",
+        "production_fqc_replenishment_cycle_cancellations",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_ready_events",
+        "production_fqc_replenishment_ready_reversals",
+        "production_fqc_replenishment_tasks",
+        "production_material_analyses",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_analysis_plan_links",
+        "production_material_demands",
+        "production_material_discovery_requests",
+        "production_material_increment_decisions",
+        "production_material_increment_requests",
+        "production_material_increment_reversals",
+        "production_material_make_receipt_allocations",
+        "production_material_return_receiving_confirmations",
+        "production_material_return_request_cancellations",
+        "production_material_return_request_items",
+        "production_material_return_requests",
+        "production_material_settlement_events",
+        "production_material_settlement_postings",
+        "production_material_stock_postings",
+        "production_material_supply_pegs",
+        "production_over_limit_dispositions",
+        "production_overproduction_rate_requests",
+        "production_plan_items",
+        "production_planning_package_document_items",
+        "production_planning_package_documents",
+        "production_planning_packages",
+        "production_planning_urges",
+        "production_plans",
+        "production_workshop_direct_legacy_anomalies",
+        "production_workshop_direct_source_allocations",
+        "production_workshop_direct_source_events",
+        "production_workshop_direct_transfer_items",
+        "production_workshop_direct_transfers",
+        "production_workshop_material_custody_moves",
+        "production_workshop_material_custody_reversals",
+        "production_workshop_material_return_slices",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "stock_balances",
+        "stock_document_items",
+        "stock_documents",
+        "stock_measurement_holds",
+        "stock_movements",
+        "stock_reservations",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_short_delivery_cases",
+        "subcontract_wastes",
+        "subplan_links",
+        "units",
+        "warehouses",
+        "workshop_material_settings"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/workshop-tasks/facets",
+      "profile": "native_workshop_tasks",
+      "fields": [
+        "sourcePlan",
+        "segment"
+      ],
+      "dataDomain": "native-facet-execution-workbench",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
+          "sha256": "5ed46d4c2a823a3c5df435b34efdf902b28cb34c9fb058eee5756a291e83cd9b"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "execution_segment_sales_allocations",
+        "goods",
+        "goods_bom_items",
+        "goods_periodic_material_choices",
+        "plan_order_item_links",
+        "platform_record_fields",
+        "preplan_aggregate_batch_events",
+        "preplan_aggregate_batches",
+        "preplan_aggregate_direct_transfer_slices",
+        "preplan_aggregate_material_aliases",
+        "preplan_analysis_stock_exact_pegs",
+        "preplan_future_supply_transfer_cancellations",
+        "preplan_future_supply_transfers",
+        "preplan_make_entitlement_delegations",
+        "preplan_make_public_claim_cancellations",
+        "preplan_make_public_claims",
+        "preplan_public_supply_events",
+        "preplan_reallocation_make_supplements",
+        "preplan_root_output_events",
+        "preplan_stock_entitlement_events",
+        "preplan_supply_action_allocations",
+        "preplan_supply_actions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "procurement_iqc_stock_in_batch_items",
+        "procurement_iqc_stock_in_batches",
+        "procurement_order_approval_cases",
+        "production_actual_output_supplement_claims",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_actual_output_supplement_reversals",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_periodic_materials",
+        "production_execution_segment_events",
+        "production_execution_segment_splits",
+        "production_execution_segments",
+        "production_fqc_contribution_adjustments",
+        "production_fqc_decision_events",
+        "production_fqc_inspections",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_allocation_events",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_recovery_cancellation_events",
+        "production_fqc_release_allocations",
+        "production_fqc_release_commands",
+        "production_fqc_replenishment_cycle_cancellations",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_ready_events",
+        "production_fqc_replenishment_ready_reversals",
+        "production_fqc_replenishment_tasks",
+        "production_material_analyses",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_analysis_plan_links",
+        "production_material_demands",
+        "production_material_discovery_requests",
+        "production_material_increment_decisions",
+        "production_material_increment_requests",
+        "production_material_increment_reversals",
+        "production_material_make_receipt_allocations",
+        "production_material_return_receiving_confirmations",
+        "production_material_return_request_cancellations",
+        "production_material_return_request_items",
+        "production_material_return_requests",
+        "production_material_settlement_events",
+        "production_material_settlement_postings",
+        "production_material_stock_postings",
+        "production_material_supply_pegs",
+        "production_over_limit_dispositions",
+        "production_overproduction_rate_requests",
+        "production_plan_items",
+        "production_planning_package_document_items",
+        "production_planning_package_documents",
+        "production_planning_packages",
+        "production_planning_urges",
+        "production_plans",
+        "production_workshop_direct_legacy_anomalies",
+        "production_workshop_direct_source_allocations",
+        "production_workshop_direct_source_events",
+        "production_workshop_direct_transfer_items",
+        "production_workshop_direct_transfers",
+        "production_workshop_material_custody_moves",
+        "production_workshop_material_custody_reversals",
+        "production_workshop_material_return_slices",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "stock_balances",
+        "stock_document_items",
+        "stock_documents",
+        "stock_measurement_holds",
+        "stock_movements",
+        "stock_reservations",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_short_delivery_cases",
+        "subcontract_wastes",
+        "subplan_links",
+        "units",
+        "warehouses",
+        "workshop_material_settings"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/overproduction-rate/requests/facets",
+      "profile": "native_production_owner",
+      "fields": [
+        "plan",
+        "segment"
+      ],
+      "dataDomain": "native-facet-overproduction-requests",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionOverproductionRateService.java",
+          "sha256": "5a39e5f13951e520ef9da72c6aee2af066c0a2a128f3f03a79291a4ac9a0abde"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "execution_segment_sales_allocations",
+        "goods",
+        "plan_order_item_links",
+        "platform_record_fields",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segments",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_overproduction_rate_decisions",
+        "production_overproduction_rate_requests",
+        "production_plan_items",
+        "production_planning_packages",
+        "production_plans",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "units"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/expediting",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/order/detail",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/order/summary",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/receipt/detail",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/receipt/summary",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/request/detail",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/request/summary",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/return/detail",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/purchase/reports/return/summary",
+      "profile": "native_purchase_owner",
+      "fields": [
+        "approved",
+        "billDate",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "stopped",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-purchase",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+          "sha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V853__purchase_physical_request_fulfilment.sql",
+          "sha256": "85ecccc993161229726e45ac5b3623f012d772e38ca79c415fd6f5997622c09b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "departments",
+        "employees",
+        "goods",
+        "legacy_departments",
+        "material_categories",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "purchase_return_items",
+        "purchase_returns",
+        "stock_balances",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/ORDER/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/ORDER/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/SHIPMENT/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/SHIPMENT/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/OTHER_SHIPMENT/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/OTHER_SHIPMENT/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/RETURN/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/RETURN/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/order/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/order/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/shipment/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/shipment/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/other_shipment/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/other_shipment/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/return/detail",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/sales/reports/return/summary",
+      "profile": "native_sales_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "clientName",
+        "closed",
+        "settlementStyle"
+      ],
+      "dataDomain": "native-facet-report-sales",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
+          "sha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V68__sales_report_cols.sql",
+          "sha256": "57e78cf9a86b58a68d8101770258187f401ebdd07bea730d6d7a2419e9806f11"
+        }
+      ],
+      "mutableTables": [
+        "client_categories",
+        "clients",
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "sales_order_items",
+        "sales_orders",
+        "sales_other_shipment_items",
+        "sales_other_shipments",
+        "sales_quotes",
+        "sales_return_items",
+        "sales_returns",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_balances",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/order/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/receipt/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/receipt/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/return/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/return/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/material-issue/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/material-issue/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/material-return/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/material-return/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/ORDER/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/RECEIPT/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/RECEIPT/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/RETURN/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/RETURN/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/MATERIAL_ISSUE/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/MATERIAL_ISSUE/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/MATERIAL_RETURN/detail",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/subcontract/reports/MATERIAL_RETURN/summary",
+      "profile": "native_subcontract_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "closed",
+        "settlementStyle",
+        "supplierName",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-subcontract",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+          "sha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "currencies",
+        "employees",
+        "goods",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_return_items",
+        "subcontract_material_returns",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "subcontract_return_items",
+        "subcontract_returns",
+        "subcontract_waste_items",
+        "subcontract_wastes",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/reports/plan/detail",
+      "profile": "native_production_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "categoryName",
+        "closed",
+        "salesOrderNo",
+        "workshop"
+      ],
+      "dataDomain": "native-facet-report-production",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
+          "sha256": "cd472601bce48e2f7cf83b852685ed1b6ddac131d552fa8b15a68de7a086affa"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "material_categories",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_plan_items",
+        "production_plans",
+        "subplan_links",
+        "unit_measurement_profiles",
+        "units"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/production/reports/plan/summary",
+      "profile": "native_production_owner",
+      "fields": [
+        "approved",
+        "billNo",
+        "categoryName",
+        "closed",
+        "salesOrderNo",
+        "workshop"
+      ],
+      "dataDomain": "native-facet-report-production",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
+          "sha256": "cd472601bce48e2f7cf83b852685ed1b6ddac131d552fa8b15a68de7a086affa"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "employees",
+        "goods",
+        "material_categories",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_plan_items",
+        "production_plans",
+        "subplan_links",
+        "unit_measurement_profiles",
+        "units"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/TRANSFER/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/TRANSFER/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/OTHER_IN/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/OTHER_IN/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/DRAW/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/DRAW/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/WDRAW/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/WDRAW/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/FINISHED_IN/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/FINISHED_IN/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/FINISHED_OUT/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/FINISHED_OUT/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/CHECK/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/CHECK/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/transfer/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/transfer/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/other_in/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/other_in/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/draw/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/draw/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/wdraw/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/wdraw/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/finished_in/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/finished_in/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/finished_out/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/finished_out/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/check/detail",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/reports/check/summary",
+      "profile": "stock",
+      "fields": [
+        "approved",
+        "billNo",
+        "warehouseName"
+      ],
+      "dataDomain": "native-facet-report-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
+          "sha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "goods",
+        "stock_document_items",
+        "stock_documents",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/instant-inventory",
+      "profile": "stock",
+      "fields": [
+        "owningWarehouse",
+        "color",
+        "series",
+        "unit"
+      ],
+      "dataDomain": "native-facet-instant-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+          "sha256": "a09e9a54596eb99d6a5a92748a0d80b677de9a17d8d6a60be104cedd024ae0bb"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "goods",
+        "goods_weight_estimates",
+        "material_categories",
+        "procurement_inspection_items",
+        "production_plan_items",
+        "production_plans",
+        "stock_balances",
+        "stock_measurement_holds",
+        "stock_movements",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/stock/instant-inventory/attention",
+      "profile": "stock",
+      "fields": [
+        "owningWarehouse",
+        "color",
+        "series",
+        "unit"
+      ],
+      "dataDomain": "native-facet-instant-stock",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
+          "sha256": "a09e9a54596eb99d6a5a92748a0d80b677de9a17d8d6a60be104cedd024ae0bb"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "goods",
+        "goods_weight_estimates",
+        "material_categories",
+        "procurement_inspection_items",
+        "production_plan_items",
+        "production_plans",
+        "stock_balances",
+        "stock_measurement_holds",
+        "stock_movements",
+        "unit_measurement_profiles",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/expense-claims/facets",
+      "profile": "expense",
+      "fields": [
+        "claimNo"
+      ],
+      "dataDomain": "native-facet-expense-claim-no",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/application/policy/DepartmentApprovalRouting.java",
+          "sha256": "3f6a9f04df491588daebe69d16b212846c162b87afc35d438d60f888f7aca1d4"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicantQuery.java",
+          "sha256": "729454d3728d8ceea82d1eee992565def19cd5a9e8e73588cc00564015065108"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApprovalPolicy.java",
+          "sha256": "5a443b2ba0517e9d85a2156bd795b22868a1db035c890759853f317ee2cf6d32"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
+          "sha256": "ff7be794ba9b781a8c3f63565e9313c2b3213fd2aabd0d3ed7a4230fabc1ac31"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V1002__department_approval_substitution_policy.sql",
+          "sha256": "b8c390e8969153bb65ab05c956cc61cc36886bdd3baf80f47d2ee1fa13758f26"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V999_11__financial_application_original_six_workflows.sql",
+          "sha256": "0bbdcbe4f7a60b1bbc7f5f47c55450bd5aaeaf9777dbdcccaf9dca52a578011c"
+        }
+      ],
+      "mutableTables": [
+        "department_approval_policies",
+        "departments",
+        "employee_secondary_departments",
+        "employees",
+        "expense_claim_events",
+        "expense_claim_items",
+        "expense_claims",
+        "finance_expense_application_links"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/task-center/inbound",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-warehouse-inbound",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
+          "sha256": "424c9e2e16e95e99dd8c19a2c2de0e2925fef8d670f22685795e0f917166a9b3"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseWorkshopMaterialTaskProjection.java",
+          "sha256": "74b4dd4c423aab2b0bcc1527ebb314244744087b059feca257df4d388dfeea1c"
+        },
+        {
+          "path": "server/src/main/resources/db/migration/V548__production_finished_arrival_registration_reversal.sql",
+          "sha256": "2d18c28453841324a7b886c34e7ab40f5cc9608a458d3962b80bad143e89e28b"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "departments",
+        "employees",
+        "execution_segment_sales_allocations",
+        "goods",
+        "inbound_expectation_items",
+        "inbound_expectations",
+        "plan_draw_links",
+        "plan_order_item_links",
+        "procurement_arrival_exceptions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "procurement_iqc_stock_in_batch_items",
+        "procurement_order_approval_cases",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segments",
+        "production_finished_arrival_registration_items",
+        "production_finished_arrival_registration_reversals",
+        "production_finished_arrival_registrations",
+        "production_fqc_decision_events",
+        "production_fqc_inspection_sheet_items",
+        "production_fqc_inspection_sheets",
+        "production_fqc_inspections",
+        "production_fqc_legacy_exemptions",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_release_commands",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_tasks",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_demands",
+        "production_material_increment_requests",
+        "production_material_return_requests",
+        "production_plan_items",
+        "production_planning_package_documents",
+        "production_planning_packages",
+        "production_plans",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "stock_balance_adjustment_requests",
+        "stock_document_items",
+        "stock_documents",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses",
+        "workshop_material_requisition_lines",
+        "workshop_material_requisitions"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/task-center/outbound",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-warehouse-outbound",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
+          "sha256": "51b2591dcb52a8966e495f15ce7dd4700fc7bf1eba34ed345a68085698a0a1f1"
+        },
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseWorkshopMaterialTaskProjection.java",
+          "sha256": "74b4dd4c423aab2b0bcc1527ebb314244744087b059feca257df4d388dfeea1c"
+        }
+      ],
+      "mutableTables": [
+        "clients",
+        "colors",
+        "departments",
+        "employees",
+        "execution_segment_sales_allocations",
+        "goods",
+        "plan_draw_links",
+        "plan_order_item_links",
+        "procurement_order_approval_cases",
+        "production_actual_output_supplement_proofs",
+        "production_actual_output_supplement_requests",
+        "production_daily_report_items",
+        "production_daily_reports",
+        "production_execution_segment_events",
+        "production_execution_segments",
+        "production_fqc_decision_events",
+        "production_fqc_inspections",
+        "production_fqc_lot_decision_commands",
+        "production_fqc_recovery_authorizations",
+        "production_fqc_replenishment_cycles",
+        "production_fqc_replenishment_tasks",
+        "production_material_analysis_items",
+        "production_material_analysis_materials",
+        "production_material_demands",
+        "production_material_discovery_lines",
+        "production_material_discovery_requests",
+        "production_material_increment_requests",
+        "production_material_increment_reversals",
+        "production_material_stock_postings",
+        "production_plan_items",
+        "production_planning_package_document_items",
+        "production_planning_package_documents",
+        "production_planning_packages",
+        "production_plans",
+        "purchase_orders",
+        "sales_order_items",
+        "sales_orders",
+        "sales_quotes",
+        "sales_shipment_finance_release_events",
+        "sales_shipment_items",
+        "sales_shipments",
+        "stock_document_items",
+        "stock_documents",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_plan_items",
+        "subcontract_material_plans",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_selected_outbound_commands",
+        "suppliers",
+        "unit_measurement_profiles",
+        "units",
+        "users",
+        "warehouses",
+        "workshop_material_requisition_lines",
+        "workshop_material_requisitions"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/inbound/expectations/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "billNo"
+      ],
+      "dataDomain": "native-facet-arrival-expectations",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+          "sha256": "7c61bffdd013b0072e4036d77d3a008e7d095a4f3d2684a8a6e24dbb032f87d8"
+        }
+      ],
+      "mutableTables": [
+        "colors",
+        "goods",
+        "inbound_expectation_items",
+        "inbound_expectations",
+        "procurement_arrival_exceptions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_request_items",
+        "purchase_requests",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_plan_items",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "suppliers",
+        "units",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    },
+    {
+      "path": "/api/warehouse/inbound/arrival-exceptions/facets",
+      "profile": "native_warehouse_tasks",
+      "fields": [
+        "receiptBillNo",
+        "orderBillNo"
+      ],
+      "dataDomain": "native-facet-arrival-exceptions",
+      "producerSourceInputs": [
+        {
+          "path": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
+          "sha256": "7c61bffdd013b0072e4036d77d3a008e7d095a4f3d2684a8a6e24dbb032f87d8"
+        }
+      ],
+      "mutableTables": [
+        "employees",
+        "goods",
+        "inbound_expectation_items",
+        "inbound_expectations",
+        "procurement_arrival_exceptions",
+        "procurement_inspection_events",
+        "procurement_inspection_items",
+        "procurement_iqc_rejection_cases",
+        "purchase_order_item_sources",
+        "purchase_order_items",
+        "purchase_orders",
+        "purchase_receipt_items",
+        "purchase_receipts",
+        "purchase_request_items",
+        "purchase_requests",
+        "subcontract_application_items",
+        "subcontract_applications",
+        "subcontract_material_issue_items",
+        "subcontract_material_issues",
+        "subcontract_material_plan_items",
+        "subcontract_order_item_sources",
+        "subcontract_order_items",
+        "subcontract_orders",
+        "subcontract_receipt_items",
+        "subcontract_receipts",
+        "suppliers",
+        "users",
+        "warehouses"
+      ],
+      "dataRevisionProtocol": "V1101 four statement events per physical table; original fn_mark_summary_read_domain transaction deduplication",
+      "runtimeEvidence": "Only named executed whole receipts qualify; static mapping is not a 102-route HTTP or per-field SQL acceptance claim"
+    }
+  ],
+  "consumerCallsites": [
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "sha256": "5c5d10ac45979e1ac2b85b72c114b675df81b1640d915e7ee8e1255e327eca12",
+      "callLines": [
+        1291
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "sha256": "f2a43e642a17ef5194af1b12b1ab4ba4d6bff4100560d2ad5b1622fef94ea6e7",
+      "callLines": [
+        620
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+      "sha256": "006a140ad378a5ca71b11dc3df5d3e62621ec0c7882ff5b4ad255fd2f1533d5e",
+      "callLines": [
+        591
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "sha256": "3a7dfb372e58a832ca29651b2a5c3ecf52c86c57f2b728d6f85146ae2a6b57ad",
+      "callLines": [
+        818
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "sha256": "27bc8e8fb0d986b7231716cca2b3b3fb54d200bbe073db6d14527f1f80e13e17",
+      "callLines": [
+        365
+      ]
+    },
+    {
+      "path": "lib/shared/providers/native_facet_options.dart",
+      "sha256": "d31264e59c285a5ccaf27255293c080dde117c3db496a3943c06a84d64c4e517",
+      "callLines": [
+        21
+      ]
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "sha256": "ab08df1d67813c12962518b88fbc46740e39c405ef7f2f19f37d5526a63da6b1",
+      "callLines": [
+        844
+      ]
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "sha256": "3a4c7986eda226403189185e95cbcae08bc4d4db86b4a0c35bef43be1d5bbfa3",
+      "callLines": [
+        556
+      ]
+    },
+    {
+      "path": "lib/features/expense/pages/expense_list_page.dart",
+      "sha256": "92f34983a3dbc1ada270cad76878edbfe97651a56ab3fba0c14a17bdfc9d5d42",
+      "callLines": [
+        291
+      ]
+    },
+    {
+      "path": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "sha256": "9ac8e52510ce664c2a34ee728d0d3f9cb8c0731a4af18f89661fe667ee6523ec",
+      "callLines": [
+        450
+      ]
+    },
+    {
+      "path": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256": "2634aee6318ad6727704c1769ca6fdbb9ce829fe65ac2a28114a3a986835c6a8",
+      "callLines": [
+        1043
+      ]
+    },
+    {
+      "path": "lib/features/finance/providers/finance_report_facet_options.dart",
+      "sha256": "64f44dd29ccf1b3b512e747c59e1b1ed5870b6ae5c8eb1bd7f00f633fc6341ac",
+      "callLines": [
+        15
+      ]
+    },
+    {
+      "path": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "sha256": "582b2f7b8bbb6fdcabdec5c58a4ca8f6bc8a9bdc3d072dc36cc556aa326acde1",
+      "callLines": [
+        1038
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "sha256": "1c20d30ff07a1d8e0d2f313342841b6a3bfccebd39472b97372c5f9f487ef91b",
+      "callLines": [
+        574
+      ]
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "sha256": "3a3b31482a2aa4d8a4ce6d9e8740c26db4c57f2025acdab8d2e3f0441126905f",
+      "callLines": [
+        367
+      ]
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "sha256": "2a5d3dbb3ceaa83422e62786f2cd1fc5fba13a9d5b4f3d0698c52162801b37a3",
+      "callLines": [
+        743
+      ]
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256": "c71bf7146ef7d56882f381a0e14cd6153d11b6c2ae13912bb188f7136631baaf",
+      "callLines": [
+        622
+      ]
+    },
+    {
+      "path": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "sha256": "66ebd8d98933cb89a010bde8604ba85e79d23ee222ef940330da8e6ab3f96321",
+      "callLines": [
+        1033
+      ]
+    },
+    {
+      "path": "lib/features/basic_data/pages/account_detail_page.dart",
+      "sha256": "ddb35b41577785c129cee8a912ed6536a6b6b00b708d8d4965f60a4fb4c8fbe1",
+      "callLines": [
+        1144
+      ]
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "sha256": "f282d7cedd97613957e8263d04a5be345dc07a67e59dc358c7254fa33ae5568c",
+      "callLines": [
+        542
+      ]
+    },
+    {
+      "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "sha256": "22da1eb2fe2bb9049e4e34a0936839282fc05b74d72f9b563f25851ae9fc2268",
+      "callLines": [
+        642
+      ]
+    },
+    {
+      "path": "lib/features/sales/pages/sales_report_page.dart",
+      "sha256": "65f02a992acc695f40d357b41790f7174dbb4a98fd03f15ad2539b79a5157b48",
+      "callLines": [
+        584,
+        1017
+      ]
+    },
+    {
+      "path": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "sha256": "c81db325d57cac78606872133ca322ca861abd2f4faf638d79e650baecd2bb19",
+      "callLines": [
+        791
+      ]
+    },
+    {
+      "path": "lib/features/production/widgets/production_execution_group_panel.dart",
+      "sha256": "e64a72d9aa9ccdc39d799c7efac77b21a1a92294dc7f9da0fc486eda56891cf6",
+      "callLines": [
+        236
+      ]
+    },
+    {
+      "path": "lib/features/production/pages/material_analysis_candidates.dart",
+      "sha256": "480ce0782378ef9a2ab052c0b8eac310c72e27a277f059933695544b03e0bdf9",
+      "callLines": [
+        773
+      ]
+    },
+    {
+      "path": "lib/features/production/pages/production_board_page.dart",
+      "sha256": "a583f5ce80dde085aaa5da66899dab66de9405f0cf1300f36a99b6c349d23342",
+      "callLines": [
+        1069
+      ]
+    },
+    {
+      "path": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "sha256": "0111038f9a717ce8dd56b05854d821f2aba351a124c4cbb7dd9091aa152a10da",
+      "callLines": [
+        270
+      ]
+    },
+    {
+      "path": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "f79dc1aa8f4646475aa16ccb9165d7a6c6878bd5f3461dd7884bdd0d1a88ec14",
+      "callLines": [
+        568
+      ]
+    },
+    {
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "sha256": "6fbcf1b0da7f662e17edd68a279ef24055f02ef71f6c2e4234c2d14c8fdd918e",
+      "callLines": [
+        3140
+      ]
+    }
+  ],
+  "sharedConsumerEntries": [
+    {
+      "path": "lib/shared/providers/native_facet_options.dart",
+      "sha256": "d31264e59c285a5ccaf27255293c080dde117c3db496a3943c06a84d64c4e517"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_server_column_filters.dart",
+      "sha256": "a6fc45967a696783811146056ad8c3580c793f84c06fdf88f04be111739bee78"
+    },
+    {
+      "path": "lib/core/network/interceptors/read_scope_revision_interceptor.dart",
+      "sha256": "dca268bc4d525bcd4ffd3847c14b02db481863727a0ffc99fd82796e5ebea94b"
+    }
+  ],
+  "rootSummaryConsumers": [
+    {
+      "domain": "business-column-definitions",
+      "path": "lib/shared/business_columns/business_columns_repository.dart",
+      "sha256": "b8f734b11eb2a21dcd79f70353cfa80b96f5b87dc89307c6d870b68661b3169a"
+    },
+    {
+      "domain": "platform-column-definitions",
+      "path": "lib/shared/platform_tables/platform_table_repository.dart",
+      "sha256": "07391e240c82a667e14832e810a5b68cde7bb0aafc4e9dea0a3d1ae407e04ce3"
+    },
+    {
+      "domain": "subcontract-supplier-loss-summary",
+      "path": "lib/shared/repositories/subcontract_loss_summary_loader.dart",
+      "sha256": "697bc8a47681bb840c92aaa6f9c2c4f321c4699fc58b0e4938f78fec40d1e67d"
+    },
+    {
+      "domain": "notice-blessings",
+      "path": "lib/features/notice/repositories/notice_repository.dart",
+      "sha256": "2f340c195f11deb46f76dec1069b4d9dc39a5616f6144d38d208bba356570339"
+    }
+  ],
+  "runtimeAcceptance": false,
+  "limitations": "This inventory binds actual current producer sources and generated/shared consumers. It does not claim all102 routes or every selected field received real HTTP/PG business acceptance."
+}

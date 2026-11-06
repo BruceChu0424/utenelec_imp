@@ -10,9 +10,9 @@ class NativeFacetCandidateInterceptorTest {
         var request=new MockHttpServletRequest("POST",path);request.setContentType("application/x-www-form-urlencoded;charset=UTF-8");
         request.setParameter("__facetField",field);request.setParameter("__facetPage","1");request.setParameter("__facetSize","100");return request;
     }
-    @Test void completeRegistryHasTwentyTwoExactRoutesAndThirtyFourOriginalFields() {
-        assertThat(NativeFacetRoutes.paths()).hasSize(22);
-        assertThat(NativeFacetRoutes.paths().stream().mapToInt(path->NativeFacetRoutes.find(path).fields().size()).sum()).isEqualTo(34);
+    @Test void completeRegistryRetainsOriginalRoutesAndAddsOnlyProducerDeclaredExactAliases() {
+        assertThat(NativeFacetRoutes.paths()).hasSize(102);
+        assertThat(NativeFacetRoutes.find("/api/purchase/reports/order/detail").fields()).containsExactlyInAnyOrder("approved","billDate","billNo","closed","settlementStyle","stopped","supplierName","warehouseName");
         for(String path:NativeFacetRoutes.paths())for(String field:NativeFacetRoutes.find(path).fields()) {
             var request=request(path,field);assertThat(interceptor.preHandle(request,new MockHttpServletResponse(),this)).isTrue();
             assertThat(NativeFacetCandidates.active()).isTrue();interceptor.afterCompletion(request,new MockHttpServletResponse(),this,new RuntimeException());
@@ -39,6 +39,9 @@ class NativeFacetCandidateInterceptorTest {
         var duplicate=request("/api/finance/payables/facets","sourceDocNo");duplicate.setParameter("__facetPage","1","2");assertThatThrownBy(()->interceptor.preHandle(duplicate,response,this)).isInstanceOf(ApiException.class);
         var overflow=request("/api/finance/payables/facets","sourceDocNo");overflow.setParameter("__facetPage","2147483648");assertThatThrownBy(()->interceptor.preHandle(overflow,response,this)).isInstanceOf(ApiException.class);
         var big=request("/api/finance/payables/facets","sourceDocNo");big.setParameter("keyword","x".repeat(32769));assertThatThrownBy(()->interceptor.preHandle(big,response,this)).isInstanceOf(ApiException.class);
+        var tail=request("/api/finance/payables/facets","sourceDocNo");tail.setParameter("__facetPage","2");
+        assertThatThrownBy(()->interceptor.preHandle(tail,response,this)).isInstanceOf(ApiException.class);
+        tail.setParameter("__facetReadSnapshotRevision","a".repeat(64));interceptor.preHandle(tail,response,this);interceptor.afterCompletion(tail,response,this,null);
         assertThat(NativeFacetCandidates.active()).isFalse();
     }
     @Test void getCompatibilityAndAsyncRetirementDoNotLeakScope() {

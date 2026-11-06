@@ -60,7 +60,7 @@ public class ProductionReportController {
     // ===== 生产计划（PLAN） =====
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/plan/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/plan/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_report:view')")
     public ReportTableResponse planDetail(
             @RequestParam(required = false) String billNo,
@@ -78,7 +78,7 @@ public class ProductionReportController {
     }
 
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/plan/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/plan/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('production_report:view')")
     public ReportTableResponse planSummary(
             @RequestParam(required = false) String billNo,

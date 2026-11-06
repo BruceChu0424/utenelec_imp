@@ -52,7 +52,7 @@ public class StockReportController {
 
     /** 明细报表（7 单据类型参数化；docType 决定列集 + 标签）。departmentId 仅 DRAW 有意义（各车间领料统计）。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/{docType}/detail")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{docType}/detail", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('stock_report:view')")
     public ReportTableResponse detail(
             @PathVariable String docType,
@@ -75,7 +75,7 @@ public class StockReportController {
 
     /** 汇总报表（7 单据类型参数化；一行一单号）。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    @GetMapping("/{docType}/summary")
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{docType}/summary", method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize("hasAuthority('stock_report:view')")
     public ReportTableResponse summary(
             @PathVariable String docType,

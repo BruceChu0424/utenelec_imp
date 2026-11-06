@@ -327,6 +327,14 @@ public class NoticeController {
         return Map.of("items", p.items(), "count", p.count());
     }
 
+    @GetMapping("/{id}/blessings/summaries")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<com.uten.imp.features.notice.dto.NoticeBlessingDto> blessingSummaries(
+            @PathVariable UUID id,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.blessingSummaries(id,page,size,readSnapshotRevision);
+    }
+
     @GetMapping("/{id}/acknowledgers")
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> listAcknowledgers(

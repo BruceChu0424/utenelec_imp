@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 即时库存页（仓库管理 hub 入口，stock:view）。
@@ -1039,6 +1040,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         ],
         // facet 桶/空值计数由服务端随列表下发（未应用归属筛选的同一口径聚合）。
         facets: _page?.facets ?? const {},
+        facetPageLoaders: nativeFacetLoaders(
+          ref,
+          path: '/stock/instant-inventory',
+          fields: const ['owningWarehouse', 'color', 'series', 'unit'],
+          filters: _exportQuery,
+        ),
+        facetSearchScope: nativeFacetSearchScope(
+          ref,
+          '/stock/instant-inventory',
+          _exportQuery,
+        ),
         nullCounts: _page?.facetNullCounts ?? const {},
         filters: _filters,
         onFilterChanged: (key, value) =>

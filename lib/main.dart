@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/network/api_endpoint_configuration.dart';
+import 'core/network/api_provider_retry.dart';
 import 'core/runtime/client_runtime_profile.dart';
 import 'core/runtime/local_test_network.dart';
 import 'core/runtime/native_runtime_identity.dart';
@@ -132,6 +133,7 @@ Future<void> bootstrapUtenApp({
   }
 
   final application = ProviderScope(
+    retry: apiProviderRetry,
     overrides: [
       // 把 prefs 注入到全局 sharedPreferencesProvider
       // 所有偏好 Provider（theme/locale/fontScale/performance）都从这里读

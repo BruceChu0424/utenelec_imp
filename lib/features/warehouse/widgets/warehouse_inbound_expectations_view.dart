@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_party_options.dart';
@@ -532,8 +533,6 @@ class _WarehouseInboundExpectationsViewState
               if (current()) setState(() {});
             }, onError: (Object _, StackTrace _) {}),
       );
-      // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
-      unawaited(_loadBillNoFacets(scope));
       if (!current()) return;
       setState(() {
         _result = result;
@@ -601,24 +600,16 @@ class _WarehouseInboundExpectationsViewState
     );
   }
 
-  /// 订货单号 facets（2026-09-25 单号列统一）：与列表同过滤口径（不含单号自身筛选）。
-  Future<void> _loadBillNoFacets(WarehouseTaskScope scope) =>
-      _columnFilters.loadFacets(
-        () async => {
-          'billNo': await ref
-              .read(procurementInboundRepositoryProvider)
-              .expectationBillNoFacets(
-                orderType: _orderType,
-                keyword: _keyword.isEmpty ? null : _keyword,
-                supplierId: _supplierIdFilter,
-                scope: scope,
-              ),
-        },
-        isCurrent: captureReadOwner(ref),
-        onLoaded: () {
-          if (mounted) setState(() {});
-        },
-      );
+  Map<String, dynamic> get _nativeFacetQuery => {
+    'orderType': ?_orderType?.name.toUpperCase(),
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    'supplierId': ?_supplierIdFilter,
+    'billNo': ?_columnFilters['billNo'],
+    'sort': ?_kSortFields[_columnFilters.sortColumn],
+    if (_columnFilters.sortColumn != null)
+      'order': _columnFilters.sortAscending ? 'asc' : 'desc',
+    ...WarehouseListScope.of(context).queryParameters,
+  };
 
   /// 双击行：按当前到货步骤直达下一步操作（2026-09-05 用户口径：不要
   /// 「到货详情」中间页，双击即到对应办理页）——待登记→登记实际到货页；
@@ -822,10 +813,25 @@ class _WarehouseInboundExpectationsViewState
           // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
           'billNo': _columnFilters.bucketOf('billNo'),
         },
-        facetPageLoaders: {'supplierName': supplierPartyFacetLoader(ref)},
-        facetSearchScope: partyFacetSearchScope(
-          ref,
-          'warehouse_inbound_expectations_view-party',
+        facetPageLoaders: {
+          'supplierName': supplierPartyFacetLoader(ref),
+          ...nativeFacetLoaders(
+            ref,
+            path: '/warehouse/inbound/expectations/facets',
+            fields: const ['billNo'],
+            filters: _nativeFacetQuery,
+          ),
+        },
+        facetSearchScope: (
+          partyFacetSearchScope(
+            ref,
+            'warehouse_inbound_expectations_view-party',
+          ),
+          nativeFacetSearchScope(
+            ref,
+            '/warehouse/inbound/expectations/facets',
+            _nativeFacetQuery,
+          ),
         ),
         nullCounts: const {},
         filters: {

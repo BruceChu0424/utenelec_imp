@@ -167,6 +167,8 @@ public class NoticeService {
     private final NoticePopupPreferenceRepository popupPrefRepo;
     private final NoticeAcknowledgmentRepository ackRepo;
     private final NoticeBlessingRepository blessRepo;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
     private final NoticeCelebrationSubjectRepository subjectRepo;
     private final EmployeeRepository employeeRepo;
     private final SecurityContextCurrentUser currentUser;
@@ -640,15 +642,25 @@ public class NoticeService {
         long total = blessRepo.countByNoticeId(id);
         if (offset >= total) return new BlessingPage(List.of(), total);
         List<NoticeBlessingRow> rows = blessRepo.findPage(id, safeSize, offset);
-        List<NoticeBlessingDto> items = rows.stream()
-                .map(r -> new NoticeBlessingDto(
-                        r.getId().toString(),
-                        r.getSenderName(),
-                        r.getContent(),
-                        r.getCreatedAt(),
-                        userId.equals(r.getUserId())))
-                .toList();
+        List<NoticeBlessingDto> items = blessingDtos(userId,rows);
         return new BlessingPage(items, total);
+    }
+
+    /** Complete current wall; inline top-five previews and legacy zero-based pages keep their own contracts. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<NoticeBlessingDto> blessingSummaries(
+            UUID id,int page,int size,String revision) {
+        Runnable authorize=()->{
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("notice:read");
+            requireVisible(id,requireStaffId());
+        };
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+                "notice-blessings","native_feature",List.of("current-blessings-v1",id),"all",page,size,50,revision);
+        return summaryPages.page(request,authorize,()->blessRepo.countByNoticeId(id),
+                (readPage,readSize)->blessingDtos(requireStaffId(),blessRepo.findPage(id,readSize,Math.multiplyExact((long)readPage-1,readSize))));
+    }
+
+    private static List<NoticeBlessingDto> blessingDtos(UUID userId,List<NoticeBlessingRow> rows) {
+        return rows.stream().map(r->new NoticeBlessingDto(r.getId().toString(),r.getSenderName(),r.getContent(),r.getCreatedAt(),userId.equals(r.getUserId()))).toList();
     }
 
     /** Historical versions keep each edit/withdraw/re-blessing; current audience/scope still applies. */

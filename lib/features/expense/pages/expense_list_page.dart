@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 // 报销列表页（我的报销）
 // 文档：docs/03-页面/报销列表页.md
 //
@@ -158,6 +159,23 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     final claimNoFilter = ref.watch(expenseClaimNoFilterProvider);
     final sortColumn = ref.watch(expenseSortColumnProvider);
     final sortAscending = ref.watch(expenseSortAscendingProvider);
+    final facetQuery = <String, dynamic>{
+      'queue': filter == ExpenseFilter.finished ? 'mineHistory' : 'mineActive',
+      if (filter == ExpenseFilter.finished && statusFilter == null)
+        'includeAbandoned': true,
+      if (filter == ExpenseFilter.all && statusFilter == null)
+        'actionRequired': true,
+      if (statusFilter != null)
+        'status': statusFilter.apiValue
+      else if (filter != ExpenseFilter.all && filter.apiStatuses != null)
+        'status': filter.apiStatuses!
+            .map((status) => status.apiValue)
+            .join(','),
+      'category': ?categoryFilter,
+      'claimNo': ?claimNoFilter,
+      'sort': ?sortColumn,
+      if (sortColumn != null) 'order': sortAscending ? 'asc' : 'desc',
+    };
     final paginationScope = (
       filter,
       statusFilter,
@@ -181,7 +199,6 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
           total: 0,
           totalPages: 0,
         );
-    final mineFacets = ref.watch(expenseMineFacetsProvider);
     // 草稿表格已有右下角批量组，新建并入同组；其他分类和加载/错误态
     // 由 Scaffold 提供唯一入口，避免页面浮动组遮住表格批量删除。
     // 嵌入模式下没有 Scaffold，非草稿段的「新建报销」悬浮按钮由宿主页提供。
@@ -268,9 +285,20 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
               'status': _statusFacets(filter),
               // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
               'category': _categoryFacets(),
-              // 报销单号桶来自服务端（facets?queue=mine，2026-09-25 单号列统一）。
-              'claimNo': mineFacets.value?['claimNo'] ?? const [],
+              // The selected header owns its complete native candidate read.
+              'claimNo': const [],
             },
+            facetPageLoaders: nativeFacetLoaders(
+              ref,
+              path: '/expense-claims/facets',
+              fields: const ['claimNo'],
+              filters: facetQuery,
+            ),
+            facetSearchScope: nativeFacetSearchScope(
+              ref,
+              '/expense-claims/facets',
+              facetQuery,
+            ),
             nullCounts: const {},
             filters: {
               'status': statusFilter?.name,

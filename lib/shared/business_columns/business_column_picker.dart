@@ -1,3 +1,4 @@
+import '../../components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:async';
 import '../paging/paged_read_intent.dart';
@@ -82,6 +83,10 @@ class _BusinessColumnPicker extends ConsumerStatefulWidget {
 enum _ColumnView { existing, create, manage }
 
 class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
+  final _systemCatalogWindow =
+      UtenAncestorRowWindowController<BusinessSystemColumn>();
+  final _businessCatalogWindow =
+      UtenAncestorRowWindowController<BusinessColumn>();
   final _name = TextEditingController();
   final _exampleBase = TextEditingController(text: '100');
   final _exampleValue = TextEditingController(text: '20');
@@ -147,7 +152,7 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
           knownCapability?.$1 == repository
               ? Future.value(knownCapability!.$2)
               : repository.supportsArithmetic(widget.scope),
-        ]),
+        ], eagerError: true),
       );
       if (!mounted ||
           generation != _generation ||
@@ -337,65 +342,67 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
           if (builtIns.isNotEmpty)
             ColumnEditorSection(
               title: _text.businessColumnSystem,
-              child: Column(
-                children: [
-                  for (final c in builtIns)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(c.label),
-                      leading: const Icon(Icons.view_column_outlined),
-                      trailing: const Icon(Icons.add_rounded),
-                      onTap: !_ready
-                          ? null
-                          : () => _completeChoice(
-                              BusinessColumnChoice(systemKey: c.key),
-                            ),
-                    ),
-                ],
+              child: UtenAncestorRowWindow<BusinessSystemColumn>(
+                controller: _systemCatalogWindow,
+                rows: builtIns,
+                estimatedRowExtent: 56,
+                expensiveRows: false,
+                deferRowMounts: false,
+                rowBuilder: (_, c, _) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(c.label),
+                  leading: const Icon(Icons.view_column_outlined),
+                  trailing: const Icon(Icons.add_rounded),
+                  onTap: !_ready
+                      ? null
+                      : () => _completeChoice(
+                          BusinessColumnChoice(systemKey: c.key),
+                        ),
+                ),
               ),
             ),
           if (columns.isNotEmpty)
             ColumnEditorSection(
               title: _text.businessColumnBrowse,
               description: _text.businessColumnReuseHint,
-              child: Column(
-                children: [
-                  for (final c in columns)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Row(
-                        children: [
-                          Flexible(child: Text(c.label)),
-                          UtenFieldHintIcon(info: _description(c), dense: true),
-                        ],
-                      ),
-                      leading: Icon(
-                        c.affectsAmount
-                            ? Icons.calculate_outlined
-                            : Icons.notes_rounded,
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (c.canDelete)
-                            IconButton(
-                              key: ValueKey('business-column-delete-${c.id}'),
-                              tooltip: _text.platformColumnDeleteTitle,
-                              color: Theme.of(context).colorScheme.error,
-                              onPressed: !_ready ? null : () => _delete(c),
-                              icon: const Icon(Icons.delete_outline),
-                            ),
-                          if (!_existingIds.contains(c.id))
-                            const Icon(Icons.add_rounded),
-                        ],
-                      ),
-                      onTap: !_ready || _atLimit || _existingIds.contains(c.id)
-                          ? null
-                          : () => _completeChoice(
-                              BusinessColumnChoice(column: c),
-                            ),
-                    ),
-                ],
+              child: UtenAncestorRowWindow<BusinessColumn>(
+                controller: _businessCatalogWindow,
+                rows: columns,
+                estimatedRowExtent: 56,
+                expensiveRows: false,
+                deferRowMounts: false,
+                rowBuilder: (_, c, _) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Row(
+                    children: [
+                      Flexible(child: Text(c.label)),
+                      UtenFieldHintIcon(info: _description(c), dense: true),
+                    ],
+                  ),
+                  leading: Icon(
+                    c.affectsAmount
+                        ? Icons.calculate_outlined
+                        : Icons.notes_rounded,
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (c.canDelete)
+                        IconButton(
+                          key: ValueKey('business-column-delete-${c.id}'),
+                          tooltip: _text.platformColumnDeleteTitle,
+                          color: Theme.of(context).colorScheme.error,
+                          onPressed: !_ready ? null : () => _delete(c),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      if (!_existingIds.contains(c.id))
+                        const Icon(Icons.add_rounded),
+                    ],
+                  ),
+                  onTap: !_ready || _atLimit || _existingIds.contains(c.id)
+                      ? null
+                      : () => _completeChoice(BusinessColumnChoice(column: c)),
+                ),
               ),
             ),
           if (builtIns.isEmpty && columns.isEmpty)

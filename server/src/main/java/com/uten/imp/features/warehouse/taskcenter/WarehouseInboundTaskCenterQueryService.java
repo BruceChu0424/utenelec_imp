@@ -89,7 +89,7 @@ public class WarehouseInboundTaskCenterQueryService {
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
                 WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
-        var headers = WarehouseTaskHeaderQuery.criteria(filter.columnSearch(), true);
+        var headers = WarehouseTaskHeaderQuery.criteria(com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(filter.columnSearch(),List.of("billNo")), true);
         String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate());
         int page = Math.max(1,filter.page());
         int size = Math.max(1,Math.min(100,filter.size()));
@@ -115,6 +115,12 @@ public class WarehouseInboundTaskCenterQueryService {
                 identityFilter+=" AND (line_data->>'key'=:lineKey OR (record_type='WORKSHOP_REQUISITION'"
                         + " AND split_part(line_data->>'key','~',1)=:lineKey))";
             }
+        }
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            if(identity!=null||!com.uten.imp.common.web.NativeFacets.wants("billNo"))throw invalid("该入口不支持所选候选字段");
+            com.uten.imp.common.web.NativeFacets.jdbcRows(jdbc,"billNo",
+                    WarehouseInboundTaskCenterSql.billNoFacets(base,true),parameters,false);
+            return new Page(List.of(),1,1,0,0,Map.of());
         }
         WarehouseTaskPageMetadata metadata = identity == null && includeMetadata
                 ? WarehouseTaskPageMetadata.from(jdbc.query(WarehouseInboundTaskCenterSql.metadata(base),parameters,

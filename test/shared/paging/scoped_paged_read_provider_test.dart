@@ -121,7 +121,7 @@ Future<(_ViewState, ProviderContainer)> _mount(
 // Provider-owned complete snapshots replace user page navigation and look-ahead.
 void main() {
   test(
-    'invalid snapshots stop automatic full-query replay while network recovery remains enabled',
+    'snapshot and API failures stay terminal until an explicit fresh read',
     () async {
       for (final error in <Object>[
         ApiException('SNAPSHOT_CHANGED', ''),
@@ -130,6 +130,10 @@ void main() {
         const FormatException('malformed'),
         StateError('missing typed snapshot'),
         const UiWorkCancelled(),
+        NetworkException(),
+        NetworkTimeoutException(),
+        ApiException('INTERNAL', '', httpStatus: 503),
+        ApiException('RATE_LIMITED', '', httpStatus: 429),
       ]) {
         var requests = 0;
         final provider = FutureProvider<int>((ref) async {
@@ -153,20 +157,10 @@ void main() {
         subscription.close();
         container.dispose();
       }
-      expect(pagedReadProviderRetry(0, NetworkException()), isNotNull);
+      final other = Exception('non API source');
       expect(
-        pagedReadProviderRetry(
-          0,
-          ApiException('INTERNAL', '', httpStatus: 503),
-        ),
-        isNotNull,
-      );
-      expect(
-        pagedReadProviderRetry(
-          0,
-          ApiException('RATE_LIMITED', '', httpStatus: 429),
-        ),
-        isNotNull,
+        pagedReadProviderRetry(0, other),
+        ProviderContainer.defaultRetry(0, other),
       );
     },
   );

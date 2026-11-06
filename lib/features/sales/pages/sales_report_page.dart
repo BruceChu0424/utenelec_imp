@@ -1,3 +1,4 @@
+import '../../../shared/providers/native_facet_options.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 // 销售报表页（销售管理，sales_report:view）：
@@ -578,6 +579,19 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         ),
       ],
       facets: data.facets,
+      facetPageLoaders: data.facets.isEmpty
+          ? const {}
+          : nativeFacetLoaders(
+              ref,
+              path: _readEndpoint,
+              fields: data.facets.keys,
+              filters: nativeFacetReadQuery(_readQuery),
+            ),
+      facetSearchScope: nativeFacetSearchScope(
+        ref,
+        _readEndpoint,
+        nativeFacetReadQuery(_readQuery),
+      ),
       nullCounts: const {},
       filters: {for (final e in _filters.entries) e.key: e.value},
       onFilterChanged: _onFilterChanged,
@@ -998,6 +1012,19 @@ class _SalesClientDetailDialogState
                         serverColumnSearchKeys: data.columnSearchKeys,
                         items: data.rows,
                         facets: data.facets,
+                        facetPageLoaders: data.facets.isEmpty
+                            ? const {}
+                            : nativeFacetLoaders(
+                                ref,
+                                path: _readEndpoint,
+                                fields: data.facets.keys,
+                                filters: nativeFacetReadQuery(_readQuery),
+                              ),
+                        facetSearchScope: nativeFacetSearchScope(
+                          ref,
+                          _readEndpoint,
+                          nativeFacetReadQuery(_readQuery),
+                        ),
                         nullCounts: const {},
                         filters: _headers,
                         onFilterChanged: _onHeaderChanged,

@@ -60,8 +60,8 @@ class WebMvcConfigInterceptorOrderTest {
         InOrder order = inOrder(registry);
         order.verify(registry).addInterceptor(audit);
         order.verify(registry).addInterceptor(any(NativeTaskReadScopeInterceptor.class));
-        order.verify(registry).addInterceptor(any(ReportReadPlanInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.NativeFacetCandidateInterceptor.class));
+        order.verify(registry).addInterceptor(any(ReportReadPlanInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(any(MasterReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.PurchasePrintReadScopeInterceptor.class));
@@ -92,8 +92,8 @@ class WebMvcConfigInterceptorOrderTest {
         org.assertj.core.api.Assertions.assertThat(chain).filteredOn(NativeTaskReadScopeInterceptor.class::isInstance).hasSize(1);
         org.assertj.core.api.Assertions.assertThat(chain.get(0)).isSameAs(audit);
         org.assertj.core.api.Assertions.assertThat(chain.get(1)).isInstanceOf(NativeTaskReadScopeInterceptor.class);
-        org.assertj.core.api.Assertions.assertThat(chain.get(2)).isInstanceOf(ReportReadPlanInterceptor.class);
-        org.assertj.core.api.Assertions.assertThat(chain.get(3)).isInstanceOf(com.uten.imp.common.report.NativeFacetCandidateInterceptor.class);
+        org.assertj.core.api.Assertions.assertThat(chain.get(2)).isInstanceOf(com.uten.imp.common.report.NativeFacetCandidateInterceptor.class);
+        org.assertj.core.api.Assertions.assertThat(chain.get(3)).isInstanceOf(ReportReadPlanInterceptor.class);
     }
 
     private static final class VisibleRegistry extends InterceptorRegistry {

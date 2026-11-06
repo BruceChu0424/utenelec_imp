@@ -2,45 +2,17 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
-import '../../core/performance/ui_work_budget.dart';
+import '../../core/network/api_provider_retry.dart';
 import '../models/paged_result.dart';
 import '../providers/export_context_epoch_provider.dart';
 import 'paged_query_identity.dart';
 import 'scoped_paged_read.dart';
 import 'read_view_activity.dart';
 
-/// Invalid snapshots require an explicit fresh read; retrying the same malformed
-/// query automatically can drain the complete directory repeatedly. Transient
-/// transport and server failures retain Riverpod's ordinary recovery policy.
-Duration? pagedReadProviderRetry(int retryCount, Object error) {
-  if (pagedReadAccessDenied(error) ||
-      error is UiWorkCancelled ||
-      error is FormatException ||
-      error is TypeError ||
-      error is ArgumentError ||
-      error is StateError) {
-    return null;
-  }
-  if (error is ApiException) {
-    final status = error.httpStatus;
-    if (const {
-          'INVALID_PAGINATION',
-          'SNAPSHOT_CHANGED',
-          'REQUEST_STALE',
-          'READ_SCOPE_CHANGED',
-          'INCOMPLETE_LIST_LOADER',
-        }.contains(error.code) ||
-        error.code.startsWith('INCOMPLETE_') ||
-        status != null &&
-            status >= 400 &&
-            status < 500 &&
-            status != 408 &&
-            status != 429) {
-      return null;
-    }
-  }
-  return ProviderContainer.defaultRetry(retryCount, error);
-}
+/// Complete reads publish a terminal failure. ApiClient keeps the original
+/// bounded transport retry; explicit refresh/recovery owns the next full read.
+Duration? pagedReadProviderRetry(int retryCount, Object error) =>
+    apiProviderRetry(retryCount, error);
 
 /// A query-family provider owns its complete result and cancellation lease.
 /// Shared read ownership and request coalescing stay in [ScopedPagedRead].

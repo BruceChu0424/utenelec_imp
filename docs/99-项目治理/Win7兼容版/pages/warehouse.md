@@ -94,7 +94,7 @@
 
 ## W7-BIZ-222 · lib/features/warehouse/pages/finance_arrival_exception_pages.dart
 
-模块 `warehouse`；1137 行；SHA256 `8fd493404281034b9d72d8f91091084eb892872ecf068098b1d81ed9f2d6e667`。
+模块 `warehouse`；1137 行；SHA256 `a4975b8ad78f125fd99f000319c327c3c52e7aa1d549d9e03b29923af303c52f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -130,7 +130,7 @@
 
 ## W7-BIZ-223 · lib/features/warehouse/pages/procurement_return_task_pages.dart
 
-模块 `warehouse`；1017 行；SHA256 `4672a4878cfd30672a37be2d2e48bd68224e2e389b43f5846fa4801f5dc49229`。
+模块 `warehouse`；1017 行；SHA256 `991c21e8198a115f8cb312fbb71fb8b7683a74852c127d3efef827edab49a8cb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -184,7 +184,7 @@
 
 ## W7-BIZ-181 · lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart
 
-模块 `warehouse`；652 行；SHA256 `04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183`。
+模块 `warehouse`；652 行；SHA256 `253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -292,7 +292,7 @@
 
 ## W7-BIZ-187 · lib/features/warehouse/pages/stock_doc_list_page.dart
 
-模块 `warehouse`；831 行；SHA256 `d77ca84cf1d145e3d89032b66afb50ef26f19e1f85840cc4e60d10c384473008`。
+模块 `warehouse`；831 行；SHA256 `cf77985c59c39cc60a6cb5dbd05d36fa0334910fb41a56ca5e064d1f6ad8aedd`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -418,7 +418,7 @@
 
 ## W7-BIZ-194 · lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart
 
-模块 `warehouse`；109 行；SHA256 `f73dbeebf9a373ad4794bb3916284ca04a7f7001e13876d5dcb6a5d087a3841c`。
+模块 `warehouse`；109 行；SHA256 `d248c92295c48c5b16f4c99d9553bac5d217cea026e02d2ed726dd99b119324f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -472,7 +472,7 @@
 
 ## W7-BIZ-197 · lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart
 
-模块 `warehouse`；124 行；SHA256 `be311766853f6855630e98a539e8eed6bb1758bd1b814ffb8f6aeb0cc708594a`。
+模块 `warehouse`；124 行；SHA256 `9bfb57c9e8c3532492faf7891d455a359b5fb36afceb2059e1560399eb8fc30d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -544,7 +544,7 @@
 
 ## W7-BIZ-201 · lib/features/warehouse/pages/warehouse_quality_results_page.dart
 
-模块 `warehouse`；1120 行；SHA256 `8e19d3f8d0c9c210e8a3a7c3056342d5a56ef8cf23a61b1abcab52457877ca9c`。
+模块 `warehouse`；1120 行；SHA256 `2a5d3dbb3ceaa83422e62786f2cd1fc5fba13a9d5b4f3d0698c52162801b37a3`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -562,21 +562,21 @@
 
 ## W7-BIZ-202 · lib/features/warehouse/pages/warehouse_report_table_page.dart
 
-模块 `warehouse`；627 行；SHA256 `cc1936f9d69dfa5ee3caa3dd32b3eca20c072f111192dcfa56c669fbde3651cd`。
+模块 `warehouse`；641 行；SHA256 `1c20d30ff07a1d8e0d2f313342841b6a3bfccebd39472b97372c5f9f487ef91b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | WarehouseReportTablePage @65 (page-class)<br>_WarehouseReportTablePageState @74 (state-class) |
+| 页面/状态类 | WarehouseReportTablePage @66 (page-class)<br>_WarehouseReportTablePageState @75 (state-class) |
 | 真实路由绑定 | detail；router @1602；builder ['WarehouseReportTablePage']；redirect None<br>summary；router @1609；builder ['WarehouseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | stock_report:export @553；定义 lib/shared/auth/permissions.dart:296<br>stock_report:export @562；定义 lib/shared/auth/permissions.dart:296 |
+| 权限 | stock_report:export @554；定义 lib/shared/auth/permissions.dart:296<br>stock_report:export @563；定义 lib/shared/auth/permissions.dart:296 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @136 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @167 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @212 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @325 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @371 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @376 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @548 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @560 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @617 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
+| 动作处理 | addPostFrameCallback @137 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @168 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @213 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @326 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @372 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @377 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @549 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @561 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @631 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_field.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/measurement/weight_prefs.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_text.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/warehouse/config/warehouse_report_config.dart` (other)。
+直接源依赖：`lib/shared/providers/native_facet_options.dart` (sharedComponents)；`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_field.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/measurement/weight_prefs.dart` (sharedComponents)；`lib/shared/measurement/widgets/weight_text.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/shared/providers/master_name_provider.dart` (sharedComponents)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/warehouse/config/warehouse_report_config.dart` (other)。
 
 ## W7-BIZ-203 · lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart
 
@@ -706,7 +706,7 @@
 
 ## W7-BIZ-210 · lib/features/warehouse/pages/warehouse_task_center_page.dart
 
-模块 `warehouse`；431 行；SHA256 `c9e26b015c19ed93faeb5bc4de6e13e70f8c410c543502b6ff05afa08d5b0251`。
+模块 `warehouse`；431 行；SHA256 `7649e897eb48b45907fca9a302f98f56680b61457c9eeaee9a5c814a7d0ec11f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

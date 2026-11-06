@@ -657,8 +657,8 @@ final expenseApprovalFacetsProvider = FutureProvider.autoDispose
         ApprovalQueue.history => ApprovalFacetQueue.history,
         ApprovalQueue.browse => ApprovalFacetQueue.browse,
       };
-      return scope.isScoped && repository is DioExpenseRepository
-          ? repository.facetsScoped(facetQueue, scope)
+      return repository is DioExpenseRepository
+          ? repository.facetsScoped(facetQueue, scope, includeClaimNos: false)
           : repository.facets(facetQueue);
     }, dependencies: [expenseApprovalReadScopeProvider]);
 

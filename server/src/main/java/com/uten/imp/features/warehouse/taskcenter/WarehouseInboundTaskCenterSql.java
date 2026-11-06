@@ -131,9 +131,11 @@ final class WarehouseInboundTaskCenterSql {
                 + " GROUP BY workflow_status ORDER BY workflow_status";
     }
 
-    static String billNoFacets(String base) {
+    static String billNoFacets(String base) { return billNoFacets(base,false); }
+    static String billNoFacets(String base,boolean completeCandidates) {
         return base+" SELECT bill_no,COUNT(*) FROM inbound_rows "+predicate(true,false)
-                +" AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no LIMIT 500";
+                +" AND bill_no IS NOT NULL GROUP BY bill_no ORDER BY bill_no"
+                +(completeCandidates?"":" LIMIT 500");
     }
 
     static String expectationBadgeSql(WarehouseTaskScope scope) {

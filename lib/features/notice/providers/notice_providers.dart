@@ -4,6 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/data_write_revision.dart';
+import '../../../shared/paging/shared_read_provider_owner.dart';
+import '../../../shared/paging/scoped_paged_read_provider.dart'
+    show pagedReadProviderRetry;
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/notice.dart';
@@ -252,11 +258,43 @@ Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
   return deleted;
 }
 
-/// 祝福墙分页（详情页 / 全部祝福弹层用）。
+/// One complete wall shared by detail/all-wall consumers for this notice.
+/// Successful writes/actor/realm changes retire both accepted and pending data.
 final noticeBlessingsProvider = FutureProvider.autoDispose
-    .family<List<NoticeBlessing>, String>((ref, id) async {
-      return ref.watch(noticeRepositoryProvider).listBlessings(id, size: 50);
-    });
+    .family<List<NoticeBlessing>, String>(
+      (ref, id) async {
+        final repository = ref.watch(noticeRepositoryProvider);
+        final identity = ref.watch(authenticatedScopeProvider);
+        final owner = captureSharedReadProviderOwner(ref);
+        bool current() =>
+            owner() &&
+            identity == ref.read(authenticatedScopeProvider) &&
+            identical(repository, ref.read(noticeRepositoryProvider));
+        Future<List<NoticeBlessing>> read() =>
+            AuthenticatedRequestScope.sharedRead(
+              current,
+              () => repository.listBlessings(id, size: 50),
+            );
+        if (repository is DioNoticeRepository) {
+          final scope = await repository.blessingReadApiClient
+              .captureRequestScope(isCurrent: current);
+          return scope.run(read);
+        }
+        // Independent repository implementations retain the same full-wall
+        // contract; no production fallback accepts a legacy prefix response.
+        return read();
+      },
+      // A complete snapshot failure is a visible terminal read outcome.
+      // Only explicit retry/invalidation may start again from page1; the
+      // ApiClient's existing bounded per-transport retry remains unchanged.
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        noticeRepositoryProvider,
+        authenticatedScopeProvider,
+        exportContextEpochProvider,
+        dataWriteRevisionProvider,
+      ],
+    );
 
 /// 当前用户「今日庆典」（登录弹窗 + 今日概览庆典卡片）。
 /// 服务端按 birth/hire date + 今日庆典通知判定；不含任何日期原值（PII 安全）。

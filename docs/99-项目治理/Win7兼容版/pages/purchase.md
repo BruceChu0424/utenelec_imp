@@ -40,7 +40,7 @@
 
 ## W7-BIZ-123 · lib/features/purchase/pages/purchase_doc_list_page.dart
 
-模块 `purchase`；1108 行；SHA256 `696412278d02a110dd77f127d0a526b61f9a622278e6a038c5aedd7b2a57d9fd`。
+模块 `purchase`；1108 行；SHA256 `37918adbd784213d90f74b6ed498c36435422e1ab09d467d10d57bf8f1d29867`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,7 +94,7 @@
 
 ## W7-BIZ-126 · lib/features/purchase/pages/purchase_report_page.dart
 
-模块 `purchase`；351 行；SHA256 `d4d0f99952255cfb8cd87a07398f9479e87711bb3388e4bffbb8c6f6f4bea7e1`。
+模块 `purchase`；351 行；SHA256 `0e62f0d8199e7c4df029e23585298f26d5b0e36a26aa2a42f3173b7d05503f2b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -112,18 +112,18 @@
 
 ## W7-BIZ-127 · lib/features/purchase/pages/purchase_report_table_page.dart
 
-模块 `purchase`；593 行；SHA256 `9ca1de5f5ab16d618f85d996831da1594121946a86965e3890ba68402fbbfe40`。
+模块 `purchase`；607 行；SHA256 `f282d7cedd97613957e8263d04a5be345dc07a67e59dc358c7254fa33ae5568c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | PurchaseReportTablePage @58 (page-class)<br>_PurchaseReportTablePageState @67 (state-class) |
+| 页面/状态类 | PurchaseReportTablePage @59 (page-class)<br>_PurchaseReportTablePageState @68 (state-class) |
 | 真实路由绑定 | /purchase/report/:kind；router @1241；builder ['PurchaseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | purchase_report:export @521；定义 lib/shared/auth/permissions.dart:582<br>purchase_report:export @530；定义 lib/shared/auth/permissions.dart:582 |
+| 权限 | purchase_report:export @522；定义 lib/shared/auth/permissions.dart:582<br>purchase_report:export @531；定义 lib/shared/auth/permissions.dart:582 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @130 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @160 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @205 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @316 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @369 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @373 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @516 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @528 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @585 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
+| 动作处理 | addPostFrameCallback @131 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @161 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @206 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @317 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @370 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @374 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @517 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @529 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @599 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/purchase/config/purchase_report_config.dart` (other)。
+直接源依赖：`lib/shared/providers/native_facet_options.dart` (sharedComponents)；`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/purchase/config/purchase_report_config.dart` (other)。

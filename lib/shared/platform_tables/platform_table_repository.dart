@@ -1,3 +1,4 @@
+import '../paging/versioned_summary_read.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../auth/permissions.dart';
@@ -37,16 +38,29 @@ class PlatformTableRepository {
     // the controller repairs the layout from the returned authorized roots.
     final selected = ids?.where(_definitionId.hasMatch).toSet().toList();
     if (selected != null && selected.isEmpty) return const [];
-    return (await api.getList(
-      '/platform-columns/$scope/definitions',
-      query: {
-        if (selected == null) 'q': query,
-        if (selected != null) ...{
-          'ids': selected.join(','),
-          'availableOnly': true,
+    if (selected != null) {
+      return (await api.getList(
+        '/platform-columns/$scope/definitions',
+        query: {'ids': selected.join(','), 'availableOnly': true},
+      )).map(PlatformColumnDefinition.fromJson).toList(growable: false);
+    }
+    return readCompleteVersionedSummaries<PlatformColumnDefinition>(
+      // Catalog callers already supply their live query/authorization intent.
+      // Saved bounded definition-ID restoration keeps its original endpoint.
+      isCurrent: () => true,
+      batchSize: 1000,
+      loadPage: (page, size, revision) => api.get(
+        '/platform-columns/$scope/definitions/summaries',
+        query: {
+          'q': query,
+          'page': page,
+          'size': size,
+          'readSnapshotRevision': ?revision,
         },
-      },
-    )).map(PlatformColumnDefinition.fromJson).toList(growable: false);
+      ),
+      decode: PlatformColumnDefinition.fromJson,
+      idOf: (column) => column.id,
+    );
   }
 
   static final _definitionId = RegExp(

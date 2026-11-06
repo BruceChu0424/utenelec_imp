@@ -12,11 +12,22 @@ class MasterFacetPage {
     required this.hasMore,
     this.page,
     this.size,
+    this.readScopeVersion,
+    this.readSnapshotRevision,
+    this.readDataVersion,
+    this.internalPageLoader,
   });
   final List<MasterFacetBucket> items;
   final bool hasMore;
   final int? page;
   final int? size;
+  final String? readScopeVersion;
+  final String? readSnapshotRevision;
+  final String? readDataVersion;
+
+  /// A continuation belongs to this response's exact query, authorization and
+  /// first snapshot. It is used only by the complete reader, never scrolling.
+  final Future<MasterFacetPage> Function(int page)? internalPageLoader;
 
   factory MasterFacetPage.fromJson(Map<String, dynamic> json) =>
       MasterFacetPage(
@@ -27,6 +38,9 @@ class MasterFacetPage {
         hasMore: json['hasMore'] == true,
         page: (json['page'] as num?)?.toInt(),
         size: (json['size'] as num?)?.toInt(),
+        readScopeVersion: json['readScopeVersion'] as String?,
+        readSnapshotRevision: json['readSnapshotRevision'] as String?,
+        readDataVersion: json['readDataVersion'] as String?,
       );
 }
 

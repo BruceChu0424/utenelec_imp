@@ -84,6 +84,7 @@ public class ProductionReportService {
     private ReportTableResponse execute(List<ReportColumn> columns,String dataSelect,String fromJoin,
             WhereBuilder mainWhere,String orderBy,List<FacetSpec> specs,Map<String,String> activeFacets,
             int page,int size,String sort,String order,Map<String,String> expressions) {
+        final Map<String,String> nativeFilters=com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(activeFacets,specs.stream().map(FacetSpec::key).toList());
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -92,11 +93,11 @@ public class ProductionReportService {
         Map<String,com.uten.imp.common.util.JpaColumnSearch.Kind> dates=new LinkedHashMap<>();
         for(String key:List.of("billDate","shipmentDate","orderDate","deliveryDate","planBeginDate","planEndDate"))
             dates.put(key,com.uten.imp.common.util.JpaColumnSearch.Kind.DATE);
-        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(mainWhere,activeFacets,types,expressions,dates);
+        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(mainWhere,nativeFilters,types,expressions,dates);
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
-        if (activeFacets != null) {
-            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
+        if (nativeFilters != null) {
+            for (Map.Entry<String, String> e : nativeFilters.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
                 if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
                     facetClauses.add(facetClause(spec, e.getValue()));
@@ -113,6 +114,19 @@ public class ProductionReportService {
         boolean explicitSort=sort!=null&&sortKeys.contains(sort);
         String resolved=ReportSort.resolveOrderBy(sort,order,orderBy,sortKeys);
         String effectiveOrderBy = explicitSort?resolved:mainWhere.orderBy(resolved);
+
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            for(FacetSpec spec:specs) {
+                if(!com.uten.imp.common.web.NativeFacets.wants(spec.key()))continue;
+                if(false)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"当前无权读取该列候选");
+                String grouped="SELECT "+spec.selectExpr()+",COUNT(*) AS cnt "+fromJoin+" "+full.sql()
+                        +" GROUP BY "+spec.groupExpr();
+                com.uten.imp.common.report.NativeReportFacetProducer.read(em,spec.key(),grouped,
+                        query->full.params().forEach(query::setParameter),ReportTableResponse.NULL_FACET,com.uten.imp.common.report.NativeReportFacetProducer.originalLabel());
+                return new ReportTableResponse(columns,List.of(),Map.of(),1,1,0,0,Map.of(),List.of());
+            }
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该报表不支持所选候选字段");
+        }
 
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");

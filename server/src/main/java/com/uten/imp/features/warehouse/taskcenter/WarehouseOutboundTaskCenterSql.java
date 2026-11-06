@@ -134,13 +134,14 @@ final class WarehouseOutboundTaskCenterSql {
                     GROUP BY status ORDER BY status
                     """;
         }
-        String billNoFacetsSql() {
+        String billNoFacetsSql() { return billNoFacetsSql(false); }
+        String billNoFacetsSql(boolean completeCandidates) {
             return cte + " " + """
                     SELECT bill_no,COUNT(*) FROM physical_rows
                     WHERE context_match AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
                       AND NULLIF(bill_no,'') IS NOT NULL
-                    GROUP BY bill_no ORDER BY bill_no LIMIT 500
-                    """;
+                    GROUP BY bill_no ORDER BY bill_no
+                    """+(completeCandidates?"":" LIMIT 500");
         }
     }
 
@@ -184,7 +185,7 @@ final class WarehouseOutboundTaskCenterSql {
             }
         }
         parameters.putAll(TaskKeywordSearch.parameters(filter.keyword()));
-        var headers = WarehouseTaskHeaderQuery.criteria(filter.columnSearch(), false);
+        var headers = WarehouseTaskHeaderQuery.criteria(com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(filter.columnSearch(),List.of("billNo")), false);
         parameters.putAll(headers.parameters());
         parameters.put("billNo", filter.billNo());
         parameters.put("dateFrom", filter.dateFrom());

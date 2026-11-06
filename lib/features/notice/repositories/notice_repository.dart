@@ -2,6 +2,9 @@
 // 后端：server .../features/notice/NoticeController（/api/notices）
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -252,6 +255,8 @@ abstract interface class NoticeRepository {
   Future<Notice> withdrawBlessing(String id);
 
   /// 祝福墙分页列表。
+  /// Full visible blessing wall, never a selected page; page/size remain
+  /// source-compatible arguments. The card's recent-five preview is separate.
   Future<List<NoticeBlessing>> listBlessings(
     String id, {
     int page = 0,
@@ -279,6 +284,9 @@ class DioNoticeRepository implements NoticeRepository {
   DioNoticeRepository(this._api);
 
   final ApiClient _api;
+
+  /// Read-only owner capture; transport/credential identity stays with ApiClient.
+  ApiClient get blessingReadApiClient => _api;
 
   @override
   Future<List<Notice>> list({bool? onlyUnread, bool? importantOnly}) async {
@@ -580,13 +588,29 @@ class DioNoticeRepository implements NoticeRepository {
     int page = 0,
     int size = 20,
   }) async {
-    final json = await _api.get(
-      ApiEndpoints.noticeBlessings(id),
-      query: {'page': page, 'size': size},
-    );
-    final items = (json['items'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
-    return [for (final m in items) NoticeBlessing.fromJson(m)];
+    // Compatibility arguments never select a user page. The wall is one
+    // complete authorized result; its internal transport stays fixed at50.
+    final owner = PagedReadIntent.currentRead ?? () => true;
+    Future<List<NoticeBlessing>> read() =>
+        readCompleteVersionedSummaries<NoticeBlessing>(
+          isCurrent: owner,
+          batchSize: 50,
+          loadPage: (batch, batchSize, revision) => _api.get(
+            '${ApiEndpoints.noticeBlessings(id)}/summaries',
+            query: {
+              'page': batch,
+              'size': batchSize,
+              'readSnapshotRevision': ?revision,
+            },
+          ),
+          decode: NoticeBlessing.fromJson,
+          idOf: (row) => row.id,
+        );
+    // A provider/caller already carrying its captured identity must not adopt
+    // fresh credentials midway. Direct repository users capture once as well.
+    if (AuthenticatedRequestScope.current != null) return read();
+    final scope = await _api.captureRequestScope(isCurrent: owner);
+    return scope.run(read);
   }
 
   @override

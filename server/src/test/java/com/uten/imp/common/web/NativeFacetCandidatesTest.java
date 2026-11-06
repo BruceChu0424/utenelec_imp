@@ -26,7 +26,7 @@ class NativeFacetCandidatesTest {
         when(em.createNativeQuery(argThat((String value)->value!=null&&value.startsWith("SELECT candidate.value")))).thenReturn(paged);
         Parameter<Object> owner=mock();when(owner.getName()).thenReturn("owners");when(original.getParameters()).thenReturn(Set.of(owner));
         when(original.getParameterValue(owner)).thenReturn(List.of("actor-A"));
-        when(paged.getResultList()).thenReturn(Arrays.asList(new Object[]{"0001 %_ 中文",7L},new Object[]{"0002",3L},new Object[]{"0003",1L}));
+        when(paged.getResultList()).thenReturn(Arrays.asList(new Object[]{"0001 %_ 中文","0001 %_ 中文",7L},new Object[]{"0002","0002",3L},new Object[]{"0003","0003",1L}));
         try(var scope=NativeFacetCandidates.open("billNo","%_ 中文",6,2)) {
             assertThat(NativeFacets.rowsOf(NativeFacets.query(em,"sourceNo","SELECT source_no,COUNT(*) FROM facts GROUP BY 1"))).isEmpty();
             var rows=NativeFacets.rowsOf(NativeFacets.query(em,"billNo",sql));
@@ -72,6 +72,39 @@ class NativeFacetCandidatesTest {
             var tagged=NativeFacets.query(em,"billNo","SELECT value,COUNT(*) FROM facts WHERE owner_id=? GROUP BY 1");
             assertThatThrownBy(()->NativeFacets.rowsOf(tagged)).isInstanceOf(IllegalStateException.class).hasMessageContaining("named");
             verify(paged,never()).getResultList();
+        }
+    }
+
+    @Test void explicitLabeledQueryMatchesNamesAndPreservesIdLabelsAndOriginalCounts() {
+        EntityManager em=mock(EntityManager.class);Query original=mock(Query.class),paged=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(original,paged);when(original.getParameters()).thenReturn(Set.of());
+        when(paged.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{"supplier-id","中文供应商%_",17L}));
+        try(var scope=NativeFacetCandidates.open("supplierId","中文 %_",1,100)) {
+            assertThat(NativeFacets.wants("supplierId")).isTrue();assertThat(NativeFacets.wants("billNo")).isFalse();
+            var rows=NativeFacets.rowsOf(NativeFacets.queryLabeled(em,"supplierId","SELECT supplier_id,supplier_name,COUNT(*) FROM facts GROUP BY 1,2"));
+            assertThat(rows).singleElement().satisfies(row->{assertThat(row.get("value")).isEqualTo("supplier-id");assertThat(row.get("label")).isEqualTo("中文供应商%_");assertThat(row.get("count")).isEqualTo(17L);});
+            var sql=org.mockito.ArgumentCaptor.forClass(String.class);verify(em,times(2)).createNativeQuery(sql.capture());
+            assertThat(sql.getAllValues().get(1)).contains("raw_candidate(value,label,bucket_count)","candidate.label","LIMIT :__nativeFacetLimit");
+            verify(paged).setHint("jakarta.persistence.query.timeout",30_000);verify(paged).setParameter("__nativeFacetLimit",101);
+        }
+        assertThat(NativeFacets.wants("billNo")).isTrue();
+    }
+    @Test void publicationFailsClosedWithoutTheOwningSnapshotAndDoesNotInventFallbackProof() {
+        try(var scope=NativeFacetCandidates.open("billNo","",1,100)) {
+            scope.requireSnapshot();
+            assertThatThrownBy(()->scope.result(Map.of(),"auth")).isInstanceOf(IllegalStateException.class).hasMessageContaining("owning snapshot");
+            scope.snapshot("auth","a".repeat(64),"b".repeat(64));
+            var page=scope.result(Map.of(),"auth");assertThat(page.readSnapshotRevision()).isEqualTo("a".repeat(64));assertThat(page.readDataVersion()).isEqualTo("b".repeat(64));
+            assertThatThrownBy(()->scope.result(Map.of(),"other")).isInstanceOf(ApiException.class);
+        }
+    }
+
+    @Test void nonselectedJdbcProjectionsDoNotExecuteOrBindAnyBusinessQuery() {
+        var jdbc=mock(org.springframework.jdbc.core.JdbcTemplate.class);var named=mock(org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate.class);
+        try(var scope=NativeFacetCandidates.open("billNo","",1,100)) {
+            assertThat(NativeFacets.jdbcRows(jdbc,"other","SELECT value,COUNT(*) FROM authority_facts GROUP BY value",new Object[0],false)).isEmpty();
+            assertThat(NativeFacets.jdbcRows(named,"other","SELECT value,COUNT(*) FROM authority_facts GROUP BY value",new org.springframework.jdbc.core.namedparam.MapSqlParameterSource(),false)).isEmpty();
+            verifyNoInteractions(jdbc,named);
         }
     }
 }

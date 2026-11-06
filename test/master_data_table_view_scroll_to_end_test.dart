@@ -301,6 +301,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final newRequest in [false, true]) {
+    testWidgets(
+      'a pending measured end reveal follows the newest source and request: $newRequest',
+      (tester) async {
+        final key = GlobalKey<_HarnessState>();
+        await tester.pumpWidget(_app(key, virtualized: true));
+        key.currentState!.update(count: 80, request: 1);
+        await tester.pump();
+        key.currentState!.update(count: 200, request: newRequest ? 2 : 1);
+        await tester.pumpAndSettle();
+        expect(find.text('ROW-199').hitTestable(), findsOneWidget);
+        expect(find.text('ROW-0').hitTestable(), findsNothing);
+        final scroll = Scrollable.of(
+          tester.element(find.text('ROW-199')),
+        ).position;
+        scroll.jumpTo(0);
+        await tester.pumpAndSettle();
+        key.currentState!.update();
+        await tester.pumpAndSettle();
+        expect(
+          find.text('ROW-0').hitTestable(),
+          findsOneWidget,
+          reason:
+              'Old completion cannot schedule a stale reveal or repeat the accepted end request.',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('disposing with a pending layout correction is safe', (
     tester,
   ) async {

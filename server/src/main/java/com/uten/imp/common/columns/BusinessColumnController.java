@@ -14,6 +14,13 @@ public class BusinessColumnController {
     public List<BusinessColumnService.Definition> search(@RequestParam String scope, @RequestParam(required=false) String q) {
         return service.search(scope, q);
     }
+    @GetMapping("/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<BusinessColumnService.Definition> summaries(
+            @RequestParam String scope,@RequestParam(required=false) String q,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="100") int size,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.summaries(scope,q,page,size,readSnapshotRevision);
+    }
     @GetMapping("/capabilities")
     public BusinessColumnService.Capabilities capabilities(@RequestParam String scope) { return service.capabilities(scope); }
     @PostMapping

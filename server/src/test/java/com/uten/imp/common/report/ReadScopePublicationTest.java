@@ -39,6 +39,11 @@ class ReadScopePublicationTest {
     }
     @Test void completeSummaryAndOriginalRoutesPublishTheirOwnAuthorityAndOriginalBodyUsesTheSamePlan() {
         var routes=java.util.Map.ofEntries(
+                java.util.Map.entry("/api/production/overproduction-rate/requests/facets","native_production_owner"),
+                java.util.Map.entry("/api/business-columns/summaries","native_feature"),
+                java.util.Map.entry("/api/platform-columns/expense_claim/definitions/summaries","native_feature"),
+                java.util.Map.entry("/api/subcontract/short-deliveries/supplier-summary/goods/summaries","native_subcontract_owner"),
+                java.util.Map.entry("/api/notices/00000000-0000-4000-8000-000000000001/blessings/summaries","native_feature"),
                 java.util.Map.entry("/api/master/goods/periodic-bom/preparation/summaries","master_goods"),
                 java.util.Map.entry("/api/master/goods/periodic-bom/preparation/products/00000000-0000-4000-8000-000000000001","master_goods"),
                 java.util.Map.entry("/api/master/goods/periodic-bom/preparation/material-options","master_goods"),
@@ -304,5 +309,109 @@ class ReadScopePublicationTest {
                 new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
         assertEquals(ErrorCode.READ_SCOPE_CHANGED,failure.getCode());
         assertNull(response.getHeader(ReadScopePublication.HEADER));assertNull(response.getHeader("X-Uten-Read-Scope-Domain"));
+    }
+
+    @ReadOnlyReportQuery public void nativeCandidateHandler() { }
+    @Test void declaredNativeCandidateOwnershipPrecedesTheBroaderReportPlanWithoutChangingLegacyGets() throws Exception {
+        String nativeProof="a".repeat(64);
+        when(authority.scopeFor("native_purchase_owner",subject,false)).thenReturn(nativeProof);
+        when(authority.scopeFor("purchase",subject)).thenReturn("old-purchase-profile");
+        var request=new MockHttpServletRequest("POST","/api/purchase/reports/order/detail");request.setContentType("application/x-www-form-urlencoded");request.setParameter("__facetField","billNo");
+        var response=new MockHttpServletResponse();var handler=new org.springframework.web.method.HandlerMethod(this,getClass().getMethod("nativeCandidateHandler"));
+        var nativeInterceptor=new NativeFacetCandidateInterceptor(authority,users);
+        nativeInterceptor.preHandle(request,response,handler);interceptor.preHandle(request,response,handler);
+        try {
+            var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+            assertEquals("native_purchase_owner",proof.domain());assertEquals(nativeProof,ReportReadPlan.current().readScopeVersion());
+            var scope=com.uten.imp.common.web.NativeFacetCandidates.current();scope.completeRecords(Map.of("中文原单%_",2L));scope.snapshot(nativeProof,"b".repeat(64),"c".repeat(64));
+            var page=scope.result(Map.of(),nativeProof);
+            new ReportReadScopeAdvice(authority).beforeBodyWrite(page,null,MediaType.APPLICATION_JSON,null,new ServletServerHttpRequest(request),new ServletServerHttpResponse(response));
+            assertEquals(page.readScopeVersion(),response.getHeader(ReadScopePublication.HEADER));assertEquals("native_purchase_owner:browse",response.getHeader("X-Uten-Read-Scope-Domain"));
+            verify(authority,never()).scopeFor("purchase",subject);
+        } finally {interceptor.afterCompletion(request,response,handler,null);nativeInterceptor.afterCompletion(request,response,handler,null);}
+        var legacy=new MockHttpServletRequest("GET","/api/purchase/reports/order/detail");
+        nativeInterceptor.preHandle(legacy,response,handler);interceptor.preHandle(legacy,response,handler);
+        try {assertFalse(com.uten.imp.common.web.NativeFacetCandidates.active());assertEquals("purchase",((ReadScopePublication.Proof)legacy.getAttribute(ReadScopePublication.ATTRIBUTE)).domain());}
+        finally {interceptor.afterCompletion(legacy,response,handler,null);}
+    }
+
+    @Test void overproductionLegacyFacetReauthorizesProductionOwnersAndRejectsLateLossAsScopeChanged() {
+        String path="/api/production/overproduction-rate/requests/facets";
+        assertEquals("native_production_owner",NativeFacetRoutes.find(path).profile());
+        when(authority.scopeFor("native_production_owner",subject,false)).thenReturn("opening-owner","revoked-owner");
+        var request=new MockHttpServletRequest("GET",path);var response=new MockHttpServletResponse();
+        new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+        var error=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(
+                Map.of("plan",List.of(NativeFacets.bucket("private-plan",1))),null,MediaType.APPLICATION_JSON,null,
+                new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+        assertEquals(ErrorCode.READ_SCOPE_CHANGED,error.getCode());assertNull(response.getHeader(ReadScopePublication.HEADER));
+        verify(authority,never()).scopeFor(eq("native_feature"),any(),anyBoolean());
+    }
+
+    @Test void overproductionAndPrivateSupplierHeaderRetireTheirOwningProofOnLateScopeLoss() {
+        for(var route:List.of(
+                new String[]{"GET","/api/production/overproduction-rate/requests/facets","native_production_owner"},
+                new String[]{"POST","/api/production/overproduction-rate/requests/facets","native_production_owner"},
+                new String[]{"GET","/api/subcontract/short-deliveries/supplier-summary/goods/summaries","native_subcontract_owner"})) {
+            reset(authority);
+            String method=route[0],domain=route[2];
+            String before="a".repeat(64),after="b".repeat(64);
+            when(authority.scopeFor(domain,subject)).thenReturn(before,after);
+            when(authority.scopeFor(domain,subject,false)).thenReturn(before,after);
+            var request=new MockHttpServletRequest(method,route[1]);
+            if(method.equals("POST")) {
+                request.setContentType("application/x-www-form-urlencoded");
+                request.addParameter("__facetField","plan");
+            }
+            var response=new MockHttpServletResponse();
+            var candidates=new NativeFacetCandidateInterceptor(authority,users);
+            new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            candidates.preHandle(request,response,null);
+            try {
+                var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+                assertNotNull(proof,method);assertEquals(domain,proof.domain(),method);
+                var error=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(
+                        Map.of("items",List.of()),null,MediaType.APPLICATION_JSON,null,
+                        new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+                assertEquals(ErrorCode.READ_SCOPE_CHANGED,error.getCode(),method);
+                assertNull(response.getHeader(ReadScopePublication.HEADER),method);
+                verify(authority,never()).scopeFor("native_feature",subject);
+                verify(authority,never()).scopeFor("native_feature",subject,false);
+            } finally {candidates.afterCompletion(request,response,null,null);}
+        }
+    }
+    @Test void sharedCompleteSummaryFixtureKeepsExactOwningPublicationProfiles() throws Exception {
+        var path=java.nio.file.Path.of(System.getProperty("uten.completeSummary.fixture","../contracts/read-scope-domains/complete-summary-v1.json"));
+        if(!java.nio.file.Files.exists(path))path=java.nio.file.Path.of("contracts/read-scope-domains/complete-summary-v1.json");
+        var fixture=new com.fasterxml.jackson.databind.ObjectMapper().readTree(java.nio.file.Files.readString(path));
+        assertEquals(1,fixture.path("schemaVersion").asInt());assertEquals(14,fixture.path("cases").size());
+        for(var entry:fixture.path("cases")) {
+            reset(authority);
+            String domain=entry.path("profile").asText(),version="c".repeat(64);
+            when(authority.scopeFor(domain,subject)).thenReturn(version);
+            when(authority.scopeFor(domain,subject,false)).thenReturn(version);
+            var request=new MockHttpServletRequest(entry.path("method").asText(),"/api"+entry.path("path").asText());
+            var response=new MockHttpServletResponse();var candidates=new NativeFacetCandidateInterceptor(authority,users);
+            if(request.getMethod().equals("POST")) {request.setContentType("application/x-www-form-urlencoded");request.addParameter("__facetField","plan");}
+            new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            candidates.preHandle(request,response,null);
+            new BusinessDocumentReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            try {
+                var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+                assertNotNull(proof,entry.toString());assertEquals(domain,proof.domain(),entry.toString());
+                new ReportReadScopeAdvice(authority).beforeBodyWrite(Map.of("items",List.of()),null,MediaType.APPLICATION_JSON,null,
+                        new ServletServerHttpRequest(request),new ServletServerHttpResponse(response));
+                assertEquals(version,response.getHeader(ReadScopePublication.HEADER),entry.toString());
+                assertEquals(entry.path("headerDomain").isNull()?null:entry.path("headerDomain").asText(),response.getHeader("X-Uten-Read-Scope-Domain"),entry.toString());
+            } finally {candidates.afterCompletion(request,response,null,null);}
+        }
+        assertEquals(8,fixture.path("unclassified").size());
+        for(var entry:fixture.path("unclassified")) {
+            var request=new MockHttpServletRequest(entry.path("method").asText(),"/api"+entry.path("path").asText());
+            var response=new MockHttpServletResponse();
+            new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            new BusinessDocumentReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            assertNull(request.getAttribute(ReadScopePublication.ATTRIBUTE),entry.toString());
+        }
     }
 }

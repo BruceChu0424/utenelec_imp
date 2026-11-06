@@ -106,6 +106,14 @@ public class SubcontractShortDeliveryController {
         return service.decide(id, request);
     }
 
+    @GetMapping("/supplier-summary/goods/summaries")
+    @PreAuthorize("hasAuthority('subcontract_order:view')")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Snapshot<java.util.Map<String,Object>> supplierGoodsSummaries(
+            @RequestParam UUID supplierId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="100") int size,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.supplierGoodsSummaries(supplierId,page,size,readSnapshotRevision);
+    }
+
     @GetMapping("/supplier-summary")
     @PreAuthorize("hasAuthority('subcontract_order:view')")
     public SupplierLossSummary supplierSummary(@RequestParam UUID supplierId) {

@@ -22,6 +22,8 @@ public class BusinessColumnService {
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper mapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
 
     public record Definition(UUID id, String scope, String name, String type, String operation, long usageCount,
                              boolean canDelete) {
@@ -40,6 +42,10 @@ public class BusinessColumnService {
 
     @Transactional(readOnly = true)
     public List<Definition> search(String scope, String q) {
+        return search(scope,q,false);
+    }
+
+    private List<Definition> search(String scope,String q,boolean complete) {
         requireScope(scope);
         requirePermission(scope, false);
         String needle = normalize(q == null ? "" : q);
@@ -54,17 +60,40 @@ public class BusinessColumnService {
                         WHERE position(substring(CAST(:q AS text) from n for 2) IN normalized_name) > 0))
                 ORDER BY CASE WHEN normalized_name = :q THEN 0
                               WHEN position(:q IN normalized_name) > 0 THEN 1 ELSE 2 END,
-                         usage_count DESC, name, id LIMIT 500
-                """).setParameter("scope", scope).setParameter("q", needle).getResultList();
+                         usage_count DESC, name, id
+                """+(complete?"":" LIMIT 500")).setParameter("scope", scope).setParameter("q", needle).getResultList();
         UUID actor = currentUser.id().orElse(null);
         return rank(rows.stream().map(r -> new Suggestion(definitionForUser(r),
-                actor != null && actor.equals(r[6]))).toList(), needle);
+                actor != null && actor.equals(r[6]))).toList(), needle,complete);
+    }
+
+    /** Full catalog membership and original ranking; transport size is never a total-result limit. */
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Definition> summaries(
+            String scope,String query,int page,int size,String revision) {
+        requireScope(scope);requirePermission(scope,false);
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+                "business-column-definitions","native_feature",List.of("complete-column-catalog-v1",scope,com.uten.imp.common.columns.BusinessColumnService.normalize(query==null?"":query)),
+                "all",page,size,1000,revision);
+        var rows=new java.util.concurrent.atomic.AtomicReference<List<Definition>>();
+        java.util.function.Supplier<List<Definition>> all=()->{
+            if(rows.get()==null)rows.set(search(scope,query,true));
+            return rows.get();
+        };
+        return summaryPages.page(request,()->{requireScope(scope);requirePermission(scope,false);},()->(long)all.get().size(),(readPage,readSize)->{
+            var values=all.get();int from=(int)Math.min(values.size(),Math.multiplyExact((long)readPage-1,readSize));
+            int to=(int)Math.min(values.size(),(long)from+readSize);
+            return values.subList(from,to);
+        });
     }
 
     record Suggestion(Definition definition, boolean createdByUser) { }
 
     /** Similarity suggests an existing definition; its type and operation always remain explicit. */
     static List<Definition> rank(List<Suggestion> suggestions, String needle) {
+        return rank(suggestions,needle,false);
+    }
+
+    static List<Definition> rank(List<Suggestion> suggestions,String needle,boolean complete) {
         Comparator<Suggestion> ranking = Comparator
                 .comparingInt((Suggestion s) -> matchTier(normalize(s.definition().name()), needle))
                 .thenComparing(Comparator.comparingDouble((Suggestion s) -> similarity(s.definition().name(), needle)).reversed())
@@ -74,7 +103,7 @@ public class BusinessColumnService {
         return suggestions.stream().filter(s -> needle.isEmpty()
                         || normalize(s.definition().name()).contains(needle)
                         || similarity(s.definition().name(), needle) >= 0.4)
-                .sorted(ranking).limit(50).map(Suggestion::definition).toList();
+                .sorted(ranking).limit(complete?Long.MAX_VALUE:50).map(Suggestion::definition).toList();
     }
 
     private static int matchTier(String name, String needle) {

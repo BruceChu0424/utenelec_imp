@@ -169,6 +169,8 @@ public class SubcontractShortDeliveryService
     private final EmployeeNameResolver nameResolver;
     private final ObjectMapper objectMapper;
     @Autowired
+    private com.uten.imp.common.readsnapshot.VersionedSummaryPages summaryPages;
+    @Autowired
     private ObjectProvider<com.uten.imp.application.port.ProcurementArrivalControlPort> arrivalControl;
     /**
      * ADR-143 §4.4 领料重算唤醒(按订货明细): 认损耗结案与损耗红冲改变订货明细是否结清,
@@ -818,6 +820,10 @@ public class SubcontractShortDeliveryService
 
     @Transactional(readOnly = true)
     public SupplierLossSummary supplierSummary(UUID supplierId) {
+        return supplierSummary(supplierId,true);
+    }
+
+    private SupplierLossSummary supplierSummary(UUID supplierId,boolean includeGoods) {
         if (supplierId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择供应商");
         }
@@ -837,19 +843,7 @@ public class SubcontractShortDeliveryService
                     m.put("lastLossAt", rs.getTimestamp(7));
                     return m;
                 }, supplierId);
-        List<GoodsLossRow> byGoods = jdbc.query("""
-                SELECT v.goods_id, goods.code, goods.name, v.settled_line_count, v.accepted_loss_count,
-                       v.ordered_qty, v.loss_qty, v.loss_pct, v.max_loss_pct, v.last_loss_at
-                FROM v_subcontract_supplier_goods_loss_summary v
-                JOIN goods ON goods.id = v.goods_id
-                WHERE v.supplier_id = ?
-                ORDER BY v.loss_pct DESC, v.loss_qty DESC, goods.code
-                LIMIT 50
-                """, (rs, n) -> new GoodsLossRow(
-                        rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
-                        rs.getLong(4), rs.getLong(5), rs.getBigDecimal(6), rs.getBigDecimal(7),
-                        rs.getBigDecimal(8), rs.getBigDecimal(9), offset(rs.getTimestamp(10))),
-                supplierId);
+        List<GoodsLossRow> byGoods = includeGoods?supplierGoods(supplierId,0,50):List.of();
         List<CaseRow> recent = list("HISTORY", null, supplierId, null, null, null, 1, 10).getItems().stream()
                 .filter(row -> STATUS_ACCEPTED.equals(row.status())).toList();
         if (summary == null) {
@@ -861,6 +855,40 @@ public class SubcontractShortDeliveryService
                 (BigDecimal) summary.get("ordered"), (BigDecimal) summary.get("loss"),
                 (BigDecimal) summary.get("lossPct"), (BigDecimal) summary.get("maxLossPct"),
                 offset((Timestamp) summary.get("lastLossAt")), byGoods, recent);
+    }
+
+    private List<GoodsLossRow> supplierGoods(UUID supplierId,long offset,int size) {
+        return jdbc.query("""
+                SELECT v.goods_id, goods.code, goods.name, v.settled_line_count, v.accepted_loss_count,
+                       v.ordered_qty, v.loss_qty, v.loss_pct, v.max_loss_pct, v.last_loss_at
+                FROM v_subcontract_supplier_goods_loss_summary v
+                JOIN goods ON goods.id = v.goods_id
+                WHERE v.supplier_id = ?
+                ORDER BY v.loss_pct DESC, v.loss_qty DESC, goods.code,goods.id
+                                """+" LIMIT ? OFFSET ?",(rs, n) -> new GoodsLossRow(
+                        rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
+                        rs.getLong(4), rs.getLong(5), rs.getBigDecimal(6), rs.getBigDecimal(7),
+                        rs.getBigDecimal(8), rs.getBigDecimal(9), offset(rs.getTimestamp(10))),supplierId,size,offset);
+    }
+
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Snapshot<Map<String,Object>> supplierGoodsSummaries(
+            UUID supplierId,int page,int size,String revision) {
+        if(supplierId==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请先选择供应商");
+        var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request(
+                "subcontract-supplier-loss-summary","native_subcontract_owner",List.of("supplier-loss-complete-v1",supplierId),"all",page,size,1000,revision);
+        return summaryPages.read(request,()->com.uten.imp.security.CurrentAuthorityGuard.requireAll(VIEW_AUTHORITY),()->{
+            long total=java.util.Objects.requireNonNull(jdbc.queryForObject("SELECT count(*) FROM v_subcontract_supplier_goods_loss_summary summary JOIN goods ON goods.id=summary.goods_id WHERE summary.supplier_id=?",Long.class,supplierId));
+            long pages=total==0?0:1+(total-1)/size;
+            if(pages>Integer.MAX_VALUE)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"完整摘要读取未完成");
+            long offset=Math.multiplyExact((long)page-1,size);var items=supplierGoods(supplierId,offset,size);
+            if(items.size()!=Math.max(0,Math.min(size,total-offset)))throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"完整摘要读取未完成");
+            var result=new LinkedHashMap<String,Object>();result.put("items",items);result.put("page",page);result.put("size",size);
+            result.put("total",total);result.put("totalPages",(int)pages);result.put("scope","all");
+            // Scalar weighted totals and the explicit recent-history sample
+            // belong to the same first-page RR snapshot, never a second GET.
+            if(page==1)result.put("summary",supplierSummary(supplierId,false));
+            return result;
+        });
     }
 
     /** 供应商列表「损耗率(%)」列：一次查页内供应商的加权损耗率(无结清行的供应商不出现)。 */

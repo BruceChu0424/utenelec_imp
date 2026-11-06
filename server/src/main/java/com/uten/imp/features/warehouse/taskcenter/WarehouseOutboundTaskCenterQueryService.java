@@ -79,6 +79,12 @@ public class WarehouseOutboundTaskCenterQueryService {
         String ownDraftMaker = filter.scopeWarehouseId() == null
                 ? currentUser.employeeId().map(UUID::toString).orElse("") : "";
         var sql = WarehouseOutboundTaskCenterSql.build(filter, access, scope, ownDraftMaker);
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            if(!com.uten.imp.common.web.NativeFacets.wants("billNo"))throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该入口不支持所选候选字段");
+            var query=com.uten.imp.common.web.NativeFacets.query(em,"billNo",sql.billNoFacetsSql(true));
+            bind(query,sql);com.uten.imp.common.web.NativeFacets.rowsOf(query);
+            return new Page(List.of(),1,1,0,0,Map.of());
+        }
         var metadata = includeMetadata?WarehouseTaskPageMetadata.from(NativeQueryResults.objectArrayRows(
                 bind(em.createNativeQuery(sql.metadataSql()), sql))):null;
         long total = metadata==null?((Number)bind(em.createNativeQuery(sql.countSql()),sql).getSingleResult()).longValue():metadata.total();

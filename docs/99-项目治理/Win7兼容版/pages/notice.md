@@ -40,7 +40,7 @@
 
 ## W7-BIZ-086 · lib/features/notice/pages/notice_publish_page.dart
 
-模块 `notice`；951 行；SHA256 `8375e46ee7503cd261c1219310bc05b57dd73a94615e24bbffc7c4f7885f7506`。
+模块 `notice`；951 行；SHA256 `80ee278dc036a6781d7bf4a272dd9d8b929e0634535a6ab76ef49f9ce234d8ec`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

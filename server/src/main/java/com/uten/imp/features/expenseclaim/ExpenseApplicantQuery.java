@@ -54,6 +54,12 @@ public class ExpenseApplicantQuery {
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto workflowFacets(
             com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope,
             String queue,String stage,String departmentCode) {
+        return workflowFacets(actor,scope,queue,stage,departmentCode,true);
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto workflowFacets(
+            com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope,
+            String queue,String stage,String departmentCode,boolean includeClaimNos) {
         String statuses=switch(queue) {
             case "pending" -> "c.status IN ('SUBMITTED','REVIEWING')";
             case "payable" -> "c.status='APPROVED'";
@@ -64,7 +70,7 @@ public class ExpenseApplicantQuery {
         String where=" FROM expense_claims c WHERE NOT c.is_deleted AND "+statuses+" AND "+observerVisibility(actor,scope,queue)+scopeSql(actor,queue,stage,departmentCode);
         var departments=observerBuckets("SELECT c.applicant_department_id::text,COALESCE((SELECT d.name FROM departments d WHERE d.id=c.applicant_department_id),''),count(*)"+where+" GROUP BY 1,2 ORDER BY 2,1",actor,scope);
         var months=observerBuckets("SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),count(*)"+where+" GROUP BY 1,2 ORDER BY 1 DESC",actor,scope);
-        var claims=observerBuckets("SELECT c.claim_no,c.claim_no,count(*)"+where+" GROUP BY 1,2 ORDER BY 1",actor,scope);
+        var claims=includeClaimNos?observerBuckets("SELECT c.claim_no,c.claim_no,count(*)"+where+" GROUP BY 1,2 ORDER BY 1",actor,scope):List.<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket>of();
         // Category counts are distinct documents, matching the list's EXISTS predicate.
         var categories=observerBuckets("SELECT category,category,count(*) FROM (SELECT DISTINCT c.id,i.category "+
                 where.replace(" FROM expense_claims c", " FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id")+
@@ -382,12 +388,15 @@ public class ExpenseApplicantQuery {
     }
 
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto abandonedHistoryFacets(UUID actor,boolean includeDeleted,boolean onlyDeleted) {
+        return abandonedHistoryFacets(actor,includeDeleted,onlyDeleted,true);
+    }
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto abandonedHistoryFacets(UUID actor,boolean includeDeleted,boolean onlyDeleted,boolean includeClaimNos) {
         String where="""
             FROM expense_claims c WHERE c.applicant_id=:actor AND (
               ((:onlyDeleted AND c.is_deleted OR NOT :onlyDeleted AND (:includeDeleted OR NOT c.is_deleted)) AND c.status='PAID')
               OR (c.is_deleted AND c.status='REJECTED' AND c.abandoned_at IS NOT NULL))
             """;
-        var numbers=abandonedBuckets("SELECT c.claim_no,c.claim_no,count(*) "+where+" GROUP BY c.claim_no ORDER BY c.claim_no LIMIT 500",actor,includeDeleted,onlyDeleted);
+        var numbers=includeClaimNos?abandonedBuckets("SELECT c.claim_no,c.claim_no,count(*) "+where+" GROUP BY c.claim_no ORDER BY c.claim_no LIMIT 500",actor,includeDeleted,onlyDeleted):List.<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket>of();
         var categories=abandonedBuckets("SELECT i.category,i.category,count(DISTINCT c.id) "+where.replace("FROM expense_claims c","FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id")+" GROUP BY i.category ORDER BY i.category",actor,includeDeleted,onlyDeleted);
         return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(List.of(),List.of(),categories,numbers);
     }

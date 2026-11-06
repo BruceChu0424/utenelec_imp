@@ -49,7 +49,7 @@ public class WarehouseOutboundTaskCenterController {
     private static final String VIEW_AUTHORITIES = "hasAnyAuthority('warehouse_sales_outbound:view','subcontract_outbound:view',"
             + "'warehouse_subcontract_outbound_history:view','stock_doc:view','workshop_material:view')";
 
-    @GetMapping
+    @org.springframework.web.bind.annotation.RequestMapping(method={org.springframework.web.bind.annotation.RequestMethod.GET,org.springframework.web.bind.annotation.RequestMethod.POST})
     @PreAuthorize(VIEW_AUTHORITIES)
     public WarehouseTaskCenterContracts.Page list(
             @RequestParam(defaultValue = "ALL") String source,

@@ -98,26 +98,27 @@ public class PurchaseReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order, Map<String, String> searchOverrides) {
+        final Map<String,String> nativeFilters=com.uten.imp.common.report.NativeReportFacetProducer.selectedScope(activeFacets,specs.stream().map(FacetSpec::key).toList());
         UnitProjection unitProjection=unitProjection(columns,dataSelect,fromJoin);
         columns=unitProjection.columns();dataSelect=unitProjection.select();fromJoin=unitProjection.from();
         boolean priceMasked = purchasePriceMasked();
         var hiddenSearchKeys=priceMasked?columns.stream().filter(PurchaseReportService::isCommercialColumn)
                 .map(ReportColumn::key).collect(java.util.stream.Collectors.toSet()):java.util.Set.<String>of();
-        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(activeFacets,hiddenSearchKeys::contains);
+        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(nativeFilters,hiddenSearchKeys::contains);
         List<ReportColumn> safeColumns = priceMasked
                 ? columns.stream().filter(c -> !isCommercialColumn(c)).toList()
                 : columns;
         Map<String, String> searchableTypes = new LinkedHashMap<>();
         for (ReportColumn column : safeColumns) searchableTypes.put(column.key(), column.type());
         var columnSearchKeys = com.uten.imp.common.report.ProcurementReportColumnSearch.apply(
-                mainWhere, activeFacets, searchableTypes, searchOverrides);
+                mainWhere, nativeFilters, searchableTypes, searchOverrides);
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
-        if (activeFacets != null) {
-            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
+        if (nativeFilters != null) {
+            for (Map.Entry<String, String> e : nativeFilters.entrySet()) {
                 FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
                 if (spec != null && (!priceMasked || !isCommercialKey(spec.key()))
                         && e.getValue() != null && !e.getValue().isBlank()) {
@@ -134,6 +135,19 @@ public class PurchaseReportService {
         String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         // data
+        if(com.uten.imp.common.web.NativeFacetCandidates.active()) {
+            for(FacetSpec spec:specs) {
+                if(!com.uten.imp.common.web.NativeFacets.wants(spec.key()))continue;
+                if(priceMasked && isCommercialKey(spec.key()))throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"当前无权读取该列候选");
+                String grouped="SELECT "+spec.selectExpr()+",COUNT(*) AS cnt "+fromJoin+" "+full.sql()
+                        +" GROUP BY "+spec.groupExpr();
+                com.uten.imp.common.report.NativeReportFacetProducer.read(em,spec.key(),grouped,
+                        query->full.params().forEach(query::setParameter),ReportTableResponse.NULL_FACET,"style".equals(spec.filterType()) ? com.uten.imp.common.report.NativeReportFacetProducer.styleLabel(PurchaseSettlementStyle.allLabels()) : com.uten.imp.common.report.NativeReportFacetProducer.originalLabel());
+                return new ReportTableResponse(safeColumns,List.of(),Map.of(),1,1,0,0,List.of());
+            }
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"该报表不支持所选候选字段");
+        }
+
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);

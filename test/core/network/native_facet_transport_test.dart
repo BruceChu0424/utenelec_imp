@@ -65,7 +65,7 @@ void main() {
   test(
     'only the generated exact candidate routes are treated as read-only',
     () async {
-      expect(nativeFacetPaths, hasLength(22));
+      expect(nativeFacetPaths, hasLength(102));
       expect(nativeFacetPaths, contains('/finance/reports/column-candidates'));
       for (final path in nativeFacetPaths) {
         expect(

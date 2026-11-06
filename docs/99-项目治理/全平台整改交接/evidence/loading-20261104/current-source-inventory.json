@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "76ed3a78f2235a90be6e2f35e201338489ea1546",
+  "baselineCommit": "1e9118917894ebabb15b2fbca9819eda879f946e",
   "interpretation": "Lexical discovery only. A marker is neither a defect nor proof of completed caller, role, scale or UI acceptance. Module reviews and executable receipts are required.",
   "runtimeAcceptance": false,
   "normalization": "UTF-8 without BOM; CRLF/CR normalized to LF",
@@ -19,7 +19,7 @@
     "finance": 84,
     "hr_profile": 2,
     "hr_task": 5,
-    "notice": 5,
+    "notice": 7,
     "operations_workbench": 2,
     "payroll": 3,
     "procurement_iqc_rejection": 1,
@@ -31,7 +31,7 @@
     "report": 4,
     "sales": 15,
     "security": 1,
-    "shared": 133,
+    "shared": 135,
     "shell": 1,
     "stock": 9,
     "subcontract": 15,
@@ -882,7 +882,7 @@
     },
     {
       "source": "lib/features/admin/widgets/impersonation_actions.dart",
-      "normalizedSha256": "77ef560f20ee588d46dd3630e0472bbb6b166c0164c8c5ab3901f5e70ddb6d14",
+      "normalizedSha256": "e7a3206421645694659e9ee56a3a2a67c7a3527d112476af58bb6f2d4d9e52a6",
       "markers": {
         "completeDirectoryCandidates": [
           110
@@ -1434,7 +1434,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/client_access_employee_loader.dart",
-      "normalizedSha256": "ff6cfd8f1bfb1905424d7e22847c54152bd66cf4b2e40719280504ca8bcabe48",
+      "normalizedSha256": "7948685e5bb05be4fc3077fdd18cbd57959a0413958837b45cf4e337654a9a5d",
       "markers": {
         "completeDirectoryCandidates": [
           38
@@ -1574,13 +1574,13 @@
     },
     {
       "source": "lib/features/basic_data/widgets/goods_cost_editor.dart",
-      "normalizedSha256": "3f2d89d24f7b9fa9f6c562e66e5fb46043333bd86c0695d1409882b1602d5a11",
+      "normalizedSha256": "b86d7ca686b2513cb84168ba5a4c8b600b209ec4a699a703b380cd11f5fec65b",
       "markers": {
         "tablePresentation": [
           1178,
-          1890,
-          2070,
-          2240
+          1886,
+          2066,
+          2236
         ]
       }
     },
@@ -1680,10 +1680,10 @@
     },
     {
       "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-      "normalizedSha256": "dd6e84df343194d5518610a48a801cdd3b1a2bbdb9d93b7a07856a064da00016",
+      "normalizedSha256": "01565b3b8c1c0f9121a16ee64ba0cc28e556b164ff969827dd412cfba5cb5c51",
       "markers": {
         "completeResults": [
-          8367
+          8415
         ],
         "tablePresentation": [
           26,
@@ -1696,46 +1696,45 @@
           999,
           1000,
           1304,
-          2375,
-          2447,
-          3061,
-          3065,
-          3120,
-          3310,
-          3440,
-          3480,
-          4269,
-          4367,
-          4699,
-          7421,
-          7747,
-          8485,
-          9134,
-          9151,
-          9200
+          2420,
+          2492,
+          3107,
+          3111,
+          3166,
+          3356,
+          3486,
+          3526,
+          4316,
+          4415,
+          4747,
+          7468,
+          7794,
+          8521,
+          9171,
+          9188,
+          9237
         ],
         "columnFacets": [
           480,
           653,
-          7325,
-          7330,
-          7333,
-          8157,
-          8184,
-          8259,
-          8267,
-          8293,
-          8381,
-          8481,
-          8636,
-          8649
+          7372,
+          7377,
+          7380,
+          8204,
+          8231,
+          8306,
+          8314,
+          8340,
+          8424,
+          8517,
+          8672,
+          8686
         ],
         "completeDirectoryCandidates": [
           519,
           957,
-          2122,
-          8375,
-          8387
+          2167,
+          9478
         ],
         "asyncJoinCandidates": [
           1219
@@ -1873,84 +1872,84 @@
     },
     {
       "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
-      "normalizedSha256": "c06bdea4ff7f1af5ecb58dc8a4983de3e4a2ae3a256e84ba61e1b8289d1c549e",
+      "normalizedSha256": "906958b8ac1d461c5eb10accd253dc5e972c697d1f23041139310e5abb1fbcfa",
       "markers": {
         "pagedRows": [
           537,
           1034,
-          1119
+          1120
         ],
         "tablePresentation": [
-          1421,
-          1480,
-          1769
+          1423,
+          1482,
+          1771
         ],
         "columnFacets": [
-          1878
+          1880
         ],
         "explicitReadOwnership": [
-          1138,
-          1216,
-          1220,
-          1294,
-          1304,
-          1322
+          1140,
+          1218,
+          1222,
+          1296,
+          1306,
+          1324
         ],
         "completeDirectoryCandidates": [
-          1105,
-          1880
+          1106,
+          1882
         ]
       }
     },
     {
       "source": "lib/features/basic_data/widgets/uten_master_picker.dart",
-      "normalizedSha256": "22e98df40fa4e28ea23455239498ee875c4256be4b66b764115e5a555edca2a7",
+      "normalizedSha256": "579afcbb7423e171d8428836aefa04fe8db6671e4cbfe9f12d4b112afcc7d3d3",
       "markers": {
         "pagedRows": [
           148,
           361,
-          492
+          493
         ],
         "tablePresentation": [
-          730,
-          753
+          732,
+          755
         ],
         "explicitReadOwnership": [
-          429,
-          432,
-          436,
-          585
+          430,
+          433,
+          437,
+          587
         ],
         "completeDirectoryCandidates": [
           18,
           181,
           281,
           347,
-          385,
-          425,
-          428,
-          459,
-          541,
-          773
+          386,
+          426,
+          429,
+          460,
+          543,
+          775
         ]
       }
     },
     {
       "source": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
-      "normalizedSha256": "feccde847c57f55fa6ffa420af54a23451b27d2f2ab675cb3c9786214a124d8c",
+      "normalizedSha256": "b9bedfd72469ec818fb9e853cd443e47b3bfae0cb95bbac3b8e43db80fda389b",
       "markers": {
         "pagedRows": [
-          61,
-          339
+          60,
+          338
         ],
         "tablePresentation": [
-          483
+          488
         ],
         "explicitReadOwnership": [
-          261
+          260
         ],
         "completeDirectoryCandidates": [
-          591
+          574
         ]
       }
     },
@@ -2026,7 +2025,7 @@
     },
     {
       "source": "lib/features/company_files/widgets/company_file_access_editor.dart",
-      "normalizedSha256": "09d8b60a0195c5d3fc1256eab56f23bfc42e1eef3755af6d9aed6c9f20191c2c",
+      "normalizedSha256": "ccc4e71c95b39c356ae4cb5c6b5d54d7cc43d5c5f67a05597fecf8ce1e2cf476",
       "markers": {
         "explicitReadOwnership": [
           32,
@@ -2219,20 +2218,23 @@
     },
     {
       "source": "lib/features/expense/pages/expense_approval_list_page.dart",
-      "normalizedSha256": "285f85abe8d429a29abf11d87de4735ecf1c0bdb0180ea8e5ba16dc9412f0fec",
+      "normalizedSha256": "9ac6a33866690a9ab4728b35e0958db283a80159805e5c45958af827e3ce577d",
       "markers": {
         "tablePresentation": [
-          418
+          430
         ],
         "categoriesAndCounts": [
-          265
+          266
+        ],
+        "columnFacets": [
+          450
         ],
         "completeDirectoryCandidates": [
-          263,
-          487
+          264,
+          510
         ],
         "asyncJoinCandidates": [
-          792
+          815
         ]
       }
     },
@@ -2258,16 +2260,19 @@
     },
     {
       "source": "lib/features/expense/pages/expense_list_page.dart",
-      "normalizedSha256": "afa3ed28fa33fbc2a94895bffebdc462ec1dc02aa72b1979ebf30286c6c34a0b",
+      "normalizedSha256": "f06a05f2bbd2cd9ea001ed945e6d3ab3555ca5adbfc5b400ca32ce6fc2e3d2b3",
       "markers": {
         "tablePresentation": [
-          6,
-          105,
-          247
+          7,
+          106,
+          264
+        ],
+        "columnFacets": [
+          291
         ],
         "completeDirectoryCandidates": [
-          182,
-          319
+          200,
+          347
         ]
       }
     },
@@ -2282,7 +2287,7 @@
     },
     {
       "source": "lib/features/expense/providers/expense_providers.dart",
-      "normalizedSha256": "c50cb98b84dd3267440fcce44ad1906ce757b62e4c2185dd3c0157b789c82c1a",
+      "normalizedSha256": "dee0e24af03781d09953014e1dbee82cac6db94a1c22d11efbe511672f0b37bf",
       "markers": {
         "pagedRows": [
           124,
@@ -2366,7 +2371,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "normalizedSha256": "0953878da8044ccdb5b4dbaeed6c443796ee614a64ec0e04c3b6eb545eeb2df7",
+      "normalizedSha256": "c71bf7146ef7d56882f381a0e14cd6153d11b6c2ae13912bb188f7136631baaf",
       "markers": {
         "tablePresentation": [
           10,
@@ -2401,7 +2406,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_application_settings_page.dart",
-      "normalizedSha256": "a7c7d1a25872baf23416606964985ce3bed06d231b335e3b2f18c06b7a7fb00d",
+      "normalizedSha256": "d28093ecaa2f1168af2ad0f902a5241986ec6668dbec0e767ad8dbf13f7b97ba",
       "markers": {
         "tablePresentation": [
           237
@@ -2467,7 +2472,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
-      "normalizedSha256": "244671885555dd4d56aff61c89b32333ad399063d875b117bb09922336a9d1de",
+      "normalizedSha256": "25ccec6d616dc4dbbe9d59752ea48c58ca4db8fc5bc4e0ae15911c41fcff4b7c",
       "markers": {
         "pagedRows": [
           85,
@@ -2652,7 +2657,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
-      "normalizedSha256": "638a721b2932627d9a6cecdb0a31959791ceb018177dcad8fa9d0e9956bd991e",
+      "normalizedSha256": "21bceaba1d6db816d3767e5cdd9339d14f216ba4491a531e076c602d34e71fb7",
       "markers": {
         "pagedRows": [
           72,
@@ -2680,17 +2685,17 @@
     },
     {
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "normalizedSha256": "de60770f3df757610fe89fda238c1e8da389900c0fc9658508e7d6f8946afbd1",
+      "normalizedSha256": "3d17583c266e13041e370f8e7c11ec9f6c30e0f7bd48bd2e38cd8f231770e567",
       "markers": {
         "pagedRows": [
-          121
+          143
         ],
         "tablePresentation": [
-          1575
+          1648
         ],
         "completeDirectoryCandidates": [
-          10,
-          1942
+          13,
+          2018
         ]
       }
     },
@@ -2747,7 +2752,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_statement_page.dart",
-      "normalizedSha256": "b2da1af8533fa07884aab7ebbd492e5104c23669e889aad8950a5c4e40434a42",
+      "normalizedSha256": "0ef5da0964e1f7b841468ab78b526767b733f01c24ebff031f7cb4d8e1303e4e",
       "markers": {
         "tablePresentation": [
           11,
@@ -2800,26 +2805,26 @@
     },
     {
       "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
-      "normalizedSha256": "d3e1274ecde93683e6c3ad19447f00a6640c6311024564b720f9c22a473d50b1",
+      "normalizedSha256": "582b2f7b8bbb6fdcabdec5c58a4ca8f6bc8a9bdc3d072dc36cc556aa326acde1",
       "markers": {
         "pagedRows": [
           74,
           262
         ],
         "tablePresentation": [
-          998
+          1000
         ],
         "columnFacets": [
           94,
           95,
-          1036
+          1038
         ],
         "explicitReadOwnership": [
           80
         ],
         "completeDirectoryCandidates": [
           282,
-          1089
+          1091
         ],
         "asyncJoinCandidates": [
           176
@@ -2850,7 +2855,7 @@
     },
     {
       "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
-      "normalizedSha256": "5d9ef1f8ea3a367fd069044d316e3531330d655decf866d22f66ac575b19c13f",
+      "normalizedSha256": "3a3b31482a2aa4d8a4ce6d9e8740c26db4c57f2025acdab8d2e3f0441126905f",
       "markers": {
         "pagedRows": [
           47,
@@ -2897,7 +2902,7 @@
     },
     {
       "source": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
-      "normalizedSha256": "c9541d55212d6a6dcf2ebe2ad232cd1b9b5f3edbf2da1b6d1bddd79eba34d2fa",
+      "normalizedSha256": "0c5f2d340ea6aa841ffeb258e2c12f8bf2b7ed2dbae8986aed4a7490f25e7aee",
       "markers": {
         "pagedRows": [
           44,
@@ -2998,7 +3003,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_accounting_import_dialog.dart",
-      "normalizedSha256": "bfa655abb275dab037e1c2dfe918f4e4c1beefe607f55f2e0de0610e3acf568d",
+      "normalizedSha256": "d56bd725dc1a97c91aabc3b07b5fb676df4b1444ee9b0c14e76a43e1333085d3",
       "markers": {
         "tablePresentation": [
           216,
@@ -3064,7 +3069,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
-      "normalizedSha256": "515a6f10f6aaa4482f8913d1cc2913567fe6f2d936ec4a901f743cc6ffd1011c",
+      "normalizedSha256": "2275c974ecaaab391b36885cb4c7cf281f204162851b42e8c174a79cfe3b5d57",
       "markers": {
         "pagedRows": [
           61,
@@ -3151,7 +3156,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_auxiliary_dialog.dart",
-      "normalizedSha256": "78b94a87e90a515bb62f617b9799f2beb5a2a41f11d8b6962dd2382a6de865f2",
+      "normalizedSha256": "e7fa7724f7817f782129c5909e04eb78bd874cb0195020de2a7868c7e0e4123e",
       "markers": {
         "completeResults": [
           116
@@ -3160,7 +3165,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_batch_recovery_panel.dart",
-      "normalizedSha256": "e0aeebb95276a40f47d7f5d4849d9d41ea4f97e4004cc3e3c82c059f9a894083",
+      "normalizedSha256": "eaee7e05d287fd415152531f22ee9f913146d16b11ca1c40325b63d6098a703b",
       "markers": {
         "explicitReadOwnership": [
           159,
@@ -3179,7 +3184,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_chart_dialog.dart",
-      "normalizedSha256": "d858e588c393e4b2130fa7537c1ce8edeed7320d30a8fc3d72dea68d84df20a5",
+      "normalizedSha256": "9770e0ce522329cf14f33128813aa04c095a14bbacc44e6d3c5e3e0d34a61a27",
       "markers": {
         "tablePresentation": [
           429
@@ -3191,10 +3196,10 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_chart_import_workbench.dart",
-      "normalizedSha256": "13ab09c6bf395e9c6de53ec8e55724c56287fa0362cfb2e8be3ab128869ecca0",
+      "normalizedSha256": "4ec5354e188bd14d0b02367d9b91108cad73d39480044db336c2d0c0db6207f3",
       "markers": {
         "tablePresentation": [
-          875
+          870
         ],
         "explicitReadOwnership": [
           224,
@@ -3216,7 +3221,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_document_review_command.dart",
-      "normalizedSha256": "b51370390b1c5f0c6597b6d0466016b687c7112ba65101312ad5ebcfa97ff800",
+      "normalizedSha256": "c77a8cacc96d73dfb73ba3d4e94a525cd99759071b132e05fe0b93070448df41",
       "markers": {
         "explicitReadOwnership": [
           391
@@ -3234,7 +3239,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_durable_command_dialog.dart",
-      "normalizedSha256": "6547d3f893e4cc23151d1061b73b78f5818a6e4a1705b35c51d5c500df34cd8c",
+      "normalizedSha256": "60b677b307413d4b5f8079564c311c840e5ac54fb7487777d0464f7dbb23e88a",
       "markers": {
         "explicitReadOwnership": [
           527,
@@ -3255,15 +3260,15 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_expense_analysis_dialog.dart",
-      "normalizedSha256": "ee8637b1ff5907eaeccb427b4836dedf9411be6df5c109bb92efd1c5b804bf3a",
+      "normalizedSha256": "f45ee56f2c635eae57be82a835ec9f1c3e6f1765d57a0e162da39a40b9d5e42a",
       "markers": {
         "completeResults": [
-          140
+          144
         ],
         "tablePresentation": [
-          475,
-          540,
-          911
+          505,
+          570,
+          941
         ]
       }
     },
@@ -3303,7 +3308,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_material_statement_dialog.dart",
-      "normalizedSha256": "81254a5e6095bd1401b4f0e4f1312e433e262a3b588b80c6f4b9c4f8650d6165",
+      "normalizedSha256": "31993cef7a2fa8542bf67be0b11bc0ec52d0f10ff33b8c6e498b87d065fca818",
       "markers": {
         "completeResults": [
           101
@@ -3467,7 +3472,7 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_statement_document_dialog.dart",
-      "normalizedSha256": "07fcd06f7dd7e83f3e70750a519007ba55c591d5c24e78ae184942353f0929c3",
+      "normalizedSha256": "de99e037ca6acd539f7d713a0c5157a6f516e0227b197865f2db7505669707ac",
       "markers": {
         "completeResults": [
           196,
@@ -3661,6 +3666,16 @@
       }
     },
     {
+      "source": "lib/features/notice/providers/notice_providers.dart",
+      "normalizedSha256": "64fa07c2a23e52d1e4919bbd7e392040b06f1b77f8610c7fa5e1ae1a854e9ecc",
+      "markers": {
+        "explicitReadOwnership": [
+          274,
+          280
+        ]
+      }
+    },
+    {
       "source": "lib/features/notice/providers/notice_unread_index_provider.dart",
       "normalizedSha256": "f370ffd72f78aa62d60d80d443536de1f7f8e557a909ac18c31a47212dfc124c",
       "markers": {
@@ -3676,6 +3691,17 @@
       "markers": {
         "asyncJoinCandidates": [
           111
+        ]
+      }
+    },
+    {
+      "source": "lib/features/notice/repositories/notice_repository.dart",
+      "normalizedSha256": "2f340c195f11deb46f76dec1069b4d9dc39a5616f6144d38d208bba356570339",
+      "markers": {
+        "explicitReadOwnership": [
+          593,
+          611,
+          612
         ]
       }
     },
@@ -3762,19 +3788,19 @@
     },
     {
       "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
-      "normalizedSha256": "9b5a9a461601fe0f7dfadb736a999e0dd5e8b78114e41bd4c7cfcd407f0bbe80",
+      "normalizedSha256": "ac89d7cf35d7491409729a63c694c69b8ccad34213b67d79cbcd619ce0829a88",
       "markers": {
         "pagedRows": [
           70,
           215
         ],
         "tablePresentation": [
-          569
+          570
         ],
         "completeDirectoryCandidates": [
-          238,
-          424,
-          670
+          239,
+          425,
+          671
         ]
       }
     },
@@ -3875,17 +3901,17 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_material_table.dart",
-      "normalizedSha256": "042fbc5afca3048e50009ebd2bf2c54849d7b349f9dd0cbf0a7bca3e32d64e3a",
+      "normalizedSha256": "07d19316cb8c6aaade3648d249ef12f09c6fba07eeb8623a96d656f60b05d3ef",
       "markers": {
         "tablePresentation": [
           1492,
-          3377,
-          6101,
-          6115,
-          6120,
-          6135,
-          6187,
-          6207
+          3379,
+          6150,
+          6164,
+          6169,
+          6184,
+          6236,
+          6256
         ],
         "completeDirectoryCandidates": [
           513
@@ -4224,24 +4250,27 @@
     },
     {
       "source": "lib/features/production/pages/production_report_page.dart",
-      "normalizedSha256": "25cb3f5027371c708b5823f3392b033e25091bbc1e3c22ee7a32588d017b9c48",
+      "normalizedSha256": "f79dc1aa8f4646475aa16ccb9165d7a6c6878bd5f3461dd7884bdd0d1a88ec14",
       "markers": {
         "pagedRows": [
-          88
+          89
         ],
         "tablePresentation": [
-          387,
-          519
+          388,
+          520
         ],
         "categoriesAndCounts": [
-          382
+          383
         ],
         "preparedReads": [
-          247
+          248
+        ],
+        "columnFacets": [
+          568
         ],
         "completeDirectoryCandidates": [
-          10,
-          587
+          11,
+          601
         ]
       }
     },
@@ -4288,7 +4317,7 @@
     },
     {
       "source": "lib/features/production/pages/workshop_material_reports_page.dart",
-      "normalizedSha256": "8ce86c8a7d768021031e30c9d8cfead3d1659ec7eb4d968e3008dc39ca95da43",
+      "normalizedSha256": "811143af364e71db8f43367317dba4e6956458e74c0e95b94d9f950a894520c9",
       "markers": {
         "pagedRows": [
           80,
@@ -4296,13 +4325,13 @@
         ],
         "tablePresentation": [
           13,
-          751,
-          885,
-          1134,
-          1224
+          753,
+          887,
+          1136,
+          1226
         ],
         "completeDirectoryCandidates": [
-          1355
+          1357
         ],
         "asyncJoinCandidates": [
           275
@@ -4746,20 +4775,23 @@
     },
     {
       "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
-      "normalizedSha256": "71bcd07be97135e0dcecb6f62e63b884577efead71d1176dcfac259cf1eb5ba6",
+      "normalizedSha256": "f282d7cedd97613957e8263d04a5be345dc07a67e59dc358c7254fa33ae5568c",
       "markers": {
         "pagedRows": [
-          83
+          84
         ],
         "tablePresentation": [
-          493
+          494
         ],
         "preparedReads": [
-          250
+          251
+        ],
+        "columnFacets": [
+          542
         ],
         "completeDirectoryCandidates": [
-          10,
-          563
+          11,
+          577
         ]
       }
     },
@@ -4816,22 +4848,22 @@
     },
     {
       "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
-      "normalizedSha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
+      "normalizedSha256": "0bf615908ed260e35f29292a688333fee60b11fbbef54a586482092433803312",
       "markers": {
         "pagedRows": [
           55,
           118
         ],
         "tablePresentation": [
-          410
+          411
         ],
         "categoriesAndCounts": [
-          493
+          494
         ],
         "completeDirectoryCandidates": [
-          273,
-          384,
-          477
+          274,
+          385,
+          478
         ]
       }
     },
@@ -4855,26 +4887,26 @@
     },
     {
       "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
-      "normalizedSha256": "9d066c95673a4a4e29461fa344ba0e0a29f220fb819e2a3003110dad1e4e64cf",
+      "normalizedSha256": "22da1eb2fe2bb9049e4e34a0936839282fc05b74d72f9b563f25851ae9fc2268",
       "markers": {
         "pagedRows": [
           84,
           224
         ],
         "tablePresentation": [
-          518,
-          590,
-          1098,
-          1176,
-          1225
+          520,
+          592,
+          1100,
+          1178,
+          1227
         ],
         "columnFacets": [
-          640
+          642
         ],
         "completeDirectoryCandidates": [
           288,
-          512,
-          732
+          514,
+          734
         ]
       }
     },
@@ -5181,23 +5213,27 @@
     },
     {
       "source": "lib/features/sales/pages/sales_report_page.dart",
-      "normalizedSha256": "60205e3736d76aa7ee8ae9c4ecfd3220b2e0e3de1f507ed061a1e17c0ab50875",
+      "normalizedSha256": "2f13502e66fdddd8ada01a2de7fed77f46e1555d5310dd1deaf1eb44bb97ba98",
       "markers": {
         "pagedRows": [
-          89
+          90
         ],
         "tablePresentation": [
-          535,
-          991
+          536,
+          1005
         ],
         "preparedReads": [
-          256,
-          798
+          257,
+          812
+        ],
+        "columnFacets": [
+          584,
+          1017
         ],
         "completeDirectoryCandidates": [
-          10,
-          603,
-          1017
+          11,
+          617,
+          1044
         ]
       }
     },
@@ -5413,7 +5449,7 @@
     },
     {
       "source": "lib/features/stock/counts/widgets/stock_count_candidate_picker.dart",
-      "normalizedSha256": "519fb9c948e177d7ceac4271fbf6a4877db026be5929fe9bd9d9cacccfc46ab1",
+      "normalizedSha256": "90608ef37e56d6749edac0d036d11e5fcb1bbb7f17e003bbfdb606f5ece4ac49",
       "markers": {
         "completeDirectoryCandidates": [
           107
@@ -5433,7 +5469,7 @@
     },
     {
       "source": "lib/features/stock/pages/instant_inventory_overview_page.dart",
-      "normalizedSha256": "cfc19f69785e8df1719931146073d82931ac0127bc330c0ae567daaba56aab39",
+      "normalizedSha256": "6f8bd76ebeabf2fd2fdb71d77d84fad4fa49fafd2c799783bdce363bfe84a0e9",
       "markers": {
         "completeResults": [
           259
@@ -5446,23 +5482,26 @@
     },
     {
       "source": "lib/features/stock/pages/instant_inventory_page.dart",
-      "normalizedSha256": "ed5f6ddb2dc90ddd2e9a97c5f076dc0056342a159b2ff0f13ce40a042521308b",
+      "normalizedSha256": "2634aee6318ad6727704c1769ca6fdbb9ce829fe65ac2a28114a3a986835c6a8",
       "markers": {
         "pagedRows": [
-          101,
-          362
+          102,
+          363
         ],
         "tablePresentation": [
-          10,
-          965
+          11,
+          967
+        ],
+        "columnFacets": [
+          1043
         ],
         "explicitReadOwnership": [
-          140,
-          154,
-          615
+          141,
+          155,
+          617
         ],
         "completeDirectoryCandidates": [
-          1092
+          1105
         ]
       }
     },
@@ -5558,7 +5597,7 @@
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
-      "normalizedSha256": "15b1af2ce1d07ff9419c2f461dd12370a916cb52eabec2a33548bc1755c35d46",
+      "normalizedSha256": "66c13445f33a2e3cbdc2b303355e3c5c3b4cf25a39f3ad5b30b96efd8b40689b",
       "markers": {
         "tablePresentation": [
           1135,
@@ -5599,11 +5638,11 @@
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
-      "normalizedSha256": "85233a3c10d30c6057264d408abf5ed2133118210b3f174d5a599f5b5b0a2ad0",
+      "normalizedSha256": "66a19d20e0aa2341d10b5894b8c1cab320d816729bc4551a357662e79ea5e864",
       "markers": {
         "tablePresentation": [
           143,
-          1815
+          1816
         ],
         "asyncJoinCandidates": [
           298
@@ -5612,26 +5651,29 @@
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
-      "normalizedSha256": "746fe36d927facd5e8f833ae0d0fae0227df211e3e9ff46e72ee914ef61fc015",
+      "normalizedSha256": "3a4c7986eda226403189185e95cbcae08bc4d4db86b4a0c35bef43be1d5bbfa3",
       "markers": {
         "pagedRows": [
-          85
+          86
         ],
         "tablePresentation": [
-          507
+          508
         ],
         "preparedReads": [
-          257
+          258
+        ],
+        "columnFacets": [
+          556
         ],
         "completeDirectoryCandidates": [
-          11,
-          577
+          12,
+          591
         ]
       }
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
-      "normalizedSha256": "ab08df1d67813c12962518b88fbc46740e39c405ef7f2f19f37d5526a63da6b1",
+      "normalizedSha256": "84a37be72c4600af79832c81e2dc70f953a8e837c2b63714fec086c0159e8afb",
       "markers": {
         "pagedRows": [
           90,
@@ -5692,7 +5734,7 @@
     },
     {
       "source": "lib/features/subcontract/widgets/subcontract_grid_columns.dart",
-      "normalizedSha256": "bb4422e2b0c5cd2ccd67605ac0d3adb0ea04405464869ca8f2ea8959bb776154",
+      "normalizedSha256": "65bfc2706bb3564946652a23c87a0c9bb0dc8cd6fbfc1b50d680b40a5bb64a05",
       "markers": {
         "tablePresentation": [
           2,
@@ -6076,23 +6118,23 @@
     },
     {
       "source": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
-      "normalizedSha256": "85fe6c743089ac5a907fe89bd8761055453bb396a34f54ead284d19ada655fe5",
+      "normalizedSha256": "cc27c2063a017c598678e72881c94138fb6c4232ae75979feb7ee81ccc503f52",
       "markers": {
         "tablePresentation": [
-          279,
-          1382
+          281,
+          1387
         ],
         "explicitReadOwnership": [
-          851,
-          1029,
-          1078
+          856,
+          1034,
+          1083
         ],
         "completeDirectoryCandidates": [
-          1033
+          1038
         ],
         "asyncJoinCandidates": [
-          473,
-          486
+          478,
+          491
         ]
       }
     },
@@ -6261,7 +6303,7 @@
     },
     {
       "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
-      "normalizedSha256": "47fc66085a9d2e2a6d73e6b4477225657e8d4e519f1c985024fb54f941b02257",
+      "normalizedSha256": "b865d097d6c5f8d09563de8752957975e51ed8c768f7f934e8b8457ffbf57455",
       "markers": {
         "pagedRows": [
           78,
@@ -6366,20 +6408,23 @@
     },
     {
       "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
-      "normalizedSha256": "d29ae363c15c0d59d39682e776d097f3d1cc56a12715426809378d363d7682f8",
+      "normalizedSha256": "1c20d30ff07a1d8e0d2f313342841b6a3bfccebd39472b97372c5f9f487ef91b",
       "markers": {
         "pagedRows": [
-          91
+          92
         ],
         "tablePresentation": [
-          522
+          523
         ],
         "preparedReads": [
-          259
+          260
+        ],
+        "columnFacets": [
+          574
         ],
         "completeDirectoryCandidates": [
-          10,
-          594
+          11,
+          608
         ]
       }
     },
@@ -6532,26 +6577,27 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
-      "normalizedSha256": "a08e2331f99edd8978c94ee79b4382134fee90ba44222598dde1f7adc5fa879f",
+      "normalizedSha256": "44f817d99ef27faf9676f546017682b77c709aee6ea055f97ee8963f640feadb",
       "markers": {
         "pagedRows": [
-          76,
-          402
+          77,
+          403
         ],
         "tablePresentation": [
-          577
+          571
         ],
         "columnFacets": [
-          109,
-          111
+          110,
+          112,
+          620
         ],
         "completeDirectoryCandidates": [
-          267,
-          551,
-          707
+          268,
+          545,
+          713
         ],
         "asyncJoinCandidates": [
-          128
+          129
         ]
       }
     },
@@ -6614,22 +6660,23 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
-      "normalizedSha256": "e39fc56b2a865b6b4f0cee6958f87191194b0677a79ce003e3132f939712f87f",
+      "normalizedSha256": "6ab9267c5e35bfb11deaaaccd6b0fb9fc21debf462ae364a875f1cea0a6f1d53",
       "markers": {
         "pagedRows": [
-          97,
-          487
+          98,
+          488
         ],
         "tablePresentation": [
-          786
+          777
         ],
         "columnFacets": [
-          132,
-          134
+          133,
+          135,
+          818
         ],
         "completeDirectoryCandidates": [
-          759,
-          913
+          750,
+          919
         ]
       }
     },
@@ -6752,20 +6799,23 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
-      "normalizedSha256": "79fc77856d99a79ecdfc2aae0b96a222801a19f5a11e6abc2fb6f20987277acc",
+      "normalizedSha256": "a9f9d272988947f809a1f93f19f25e7487e71f69b8eb64aa3cfa5733fdb02900",
       "markers": {
         "pagedRows": [
-          87,
-          253
+          88,
+          274
         ],
         "tablePresentation": [
-          1231
+          1252
+        ],
+        "columnFacets": [
+          1291
         ],
         "explicitReadOwnership": [
-          694
+          715
         ],
         "completeDirectoryCandidates": [
-          1368
+          1396
         ]
       }
     },
@@ -6920,13 +6970,22 @@
     },
     {
       "source": "lib/shared/business_columns/business_column_picker.dart",
-      "normalizedSha256": "9e21f91e5d4d113f860fbfc5710be508d8fc20ed3b72cf8e4524daa8913670eb",
+      "normalizedSha256": "5f6110181b537e930ed730909fd8fc628d002628ea56aef9a39329aa02385172",
       "markers": {
         "explicitReadOwnership": [
-          140
+          145
         ],
         "asyncJoinCandidates": [
-          145
+          150
+        ]
+      }
+    },
+    {
+      "source": "lib/shared/business_columns/business_columns_repository.dart",
+      "normalizedSha256": "b8f734b11eb2a21dcd79f70353cfa80b96f5b87dc89307c6d870b68661b3169a",
+      "markers": {
+        "explicitReadOwnership": [
+          19
         ]
       }
     },
@@ -7053,16 +7112,16 @@
     },
     {
       "source": "lib/shared/drafts/form_draft_mixin.dart",
-      "normalizedSha256": "801fc736a901f781e60db3e77625b9476ee8f68db1c8eb12d55c53ef5c340648",
+      "normalizedSha256": "e63b52a2f0cfd7bbf5e21f8378b9f1e4ece19956a010f8cd707bf91e4e779c5e",
       "markers": {
         "tablePresentation": [
-          630,
-          890,
-          892
+          633,
+          933,
+          935
         ],
         "explicitReadOwnership": [
-          118,
-          125
+          119,
+          126
         ]
       }
     },
@@ -7320,13 +7379,13 @@
     },
     {
       "source": "lib/shared/paging/scoped_paged_read_provider.dart",
-      "normalizedSha256": "bfbe2b6f5dd8143df50e673d9661e7b896bdc963e130ddd4d04f22e47eb483ce",
+      "normalizedSha256": "c542530500b369a5efe303baecdc616372f32a7ed63fee7393843d380dc3b7c6",
       "markers": {
         "pagedRows": [
-          46,
-          47,
-          48,
-          62
+          18,
+          19,
+          20,
+          34
         ]
       }
     },
@@ -7361,10 +7420,10 @@
     },
     {
       "source": "lib/shared/platform_tables/platform_table_picker.dart",
-      "normalizedSha256": "c6eaa03ac5ca6a4816ca5cc370141f9112fc86a34d04485a8e39aac93f546358",
+      "normalizedSha256": "5d978ebac72f4e39df6db86d73282a852e50fc2c2b0797a3560db51595f001c2",
       "markers": {
         "explicitReadOwnership": [
-          203
+          208
         ]
       }
     },
@@ -7420,7 +7479,7 @@
     },
     {
       "source": "lib/shared/providers/editable_grid_column_prefs.dart",
-      "normalizedSha256": "87ed53f9ed30a4af357943710dc21b68c4f2042bbc1a9f22dc4cccbae85ddcce",
+      "normalizedSha256": "657db6ccf35294500fd22a491961bde5281df578bf353eb26d52c992031b3885",
       "markers": {
         "tablePresentation": [
           1
@@ -7484,10 +7543,10 @@
     },
     {
       "source": "lib/shared/providers/native_facet_options.dart",
-      "normalizedSha256": "b5c9b27c03811ae70c21d726e38d628fbb4469c8670078b651c7526cdf23d726",
+      "normalizedSha256": "19f134cf6ca97bf72c571dd53ad4c37b4f382293a7aa916e682a5e054531022f",
       "markers": {
         "columnFacets": [
-          18
+          21
         ]
       }
     },
@@ -7526,7 +7585,7 @@
     },
     {
       "source": "lib/shared/report/report_total.dart",
-      "normalizedSha256": "2db0e1ac2a2132604b5750fd2198de147aa5439c670cfd8f002081d69556759d",
+      "normalizedSha256": "cb2301d185d64fa551f7e769195de1f682681b8a5c50d19b795b911807fc3b7a",
       "markers": {
         "tablePresentation": [
           258
@@ -7548,6 +7607,16 @@
       "markers": {
         "asyncJoinCandidates": [
           34
+        ]
+      }
+    },
+    {
+      "source": "lib/shared/repositories/subcontract_loss_summary_loader.dart",
+      "normalizedSha256": "697bc8a47681bb840c92aaa6f9c2c4f321c4699fc58b0e4938f78fec40d1e67d",
+      "markers": {
+        "explicitReadOwnership": [
+          18,
+          19
         ]
       }
     },
@@ -8320,22 +8389,27 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/columns/BusinessColumnController.java",
-      "normalizedSha256": "002ff6ef0a0ca8f8f3d950e3e5d5bdc0cefd1e159267cebb02c6b7b12dbe44b1",
+      "normalizedSha256": "ca5a091a25c221e0f5fd441bea696e930ffbf81ffaf2d629add8bc8e24790298",
       "markers": {
         "routes": [
           9,
           13,
           17,
-          19
+          24,
+          26
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/columns/BusinessColumnService.java",
-      "normalizedSha256": "6ecf1cbc4f324b5c5084701d6758f79af6a3827cdaa629d3625164a0dee4545b",
+      "normalizedSha256": "c4ac9dc2d02dbcd388c90ee04c9632c520b8b411c332f26617af4b4a30270e05",
       "markers": {
         "paging": [
-          57
+          64
+        ],
+        "summaryOrMetadata": [
+          26,
+          82
         ]
       }
     },
@@ -8541,26 +8615,27 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/finance/ProcurementIqcReplacementAllocationService.java",
-      "normalizedSha256": "2a2b4217403111e363ffc0b627068220188016d61e17cd281a2e2302fe7218ed",
+      "normalizedSha256": "f783247e8c437a3182444a138e715d955c0cdd810207b7a38e8d1d4f95586809",
       "markers": {
         "summaryOrMetadata": [
           42,
-          43
+          43,
+          66
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/finance/ProcurementOrderQuantityBounds.java",
-      "normalizedSha256": "a019362afadd2c8f2101129af14cdc32b8994cca883f95655f13c549078aa492",
+      "normalizedSha256": "db5dd1532b9348ad060f033f6535bc192dc08d885a0125d50211baa1e52e546c",
       "markers": {
         "paging": [
-          160,
-          228
+          165,
+          233
         ],
         "summaryOrMetadata": [
-          115,
-          129,
-          130
+          120,
+          134,
+          135
         ]
       }
     },
@@ -8745,29 +8820,34 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/platformcolumns/PlatformColumnController.java",
-      "normalizedSha256": "ce0c5ee07dcf88127c98631f9d86a98a57b09c04bf6039f765d976c94dd9ff5b",
+      "normalizedSha256": "463f3753623eda44aef35b576fd48682fc38df904324de42e8179110d18de9d9",
       "markers": {
         "routes": [
           10,
           15,
           16,
           20,
-          22,
-          24,
-          29
+          27,
+          29,
+          31,
+          36
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/platformcolumns/PlatformColumnService.java",
-      "normalizedSha256": "e75957ba87ac6c6aac61778ffebf12d69d1b9dd909872ebd583a441929c27470",
+      "normalizedSha256": "9c99c75831630eb7cef68982b6616864d4bfc44f713c10b3d73d8fba782c4d21",
       "markers": {
         "paging": [
-          91,
-          229
+          98,
+          254
         ],
         "sourceIdentity": [
-          700
+          735
+        ],
+        "summaryOrMetadata": [
+          40,
+          122
         ]
       }
     },
@@ -8799,34 +8879,35 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/readsnapshot/SummaryReadMarkerCompactor.java",
-      "normalizedSha256": "01e69f6783bb62bb39e7bbe5fe8c6a352c954136328ed9eb115ab167c366c861",
+      "normalizedSha256": "351b1b081fe604b5dbddb288869b9513ace0b2f24d16bc5cd922d586c7057270",
       "markers": {
         "summaryOrMetadata": [
-          21,
+          15,
           24,
-          29
+          27,
+          32
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/readsnapshot/VersionedSummaryPages.java",
-      "normalizedSha256": "b2383d38506c9f53e91584542928d7ce7611aa2da4302a0e0f926a3c89038142",
+      "normalizedSha256": "ce4f21be7915d9b72c9cbbf1c3c3709364b9431ece0b7953f99b49b77857f469",
       "markers": {
         "summaryOrMetadata": [
           57,
           61,
           119,
-          153,
-          170,
-          171,
+          158,
+          176,
           177,
-          180
+          183,
+          186
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/report/BusinessDocumentReadScopeInterceptor.java",
-      "normalizedSha256": "43b2ca926c2d0ed1dd2902b2cef557b2ffceaa9262d00f5a14c670118f3003b3",
+      "normalizedSha256": "6f45c6b4cdd8bbe6cdc618449a4621648693a90bb0ea297ceacd7bf0b16db8d1",
       "markers": {
         "summaryOrMetadata": [
           15,
@@ -8848,9 +8929,13 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/report/NativeFacetRoutes.java",
-      "normalizedSha256": "aaebd4a3c9cf350a461e489619dc6f9eebc047bc76546fd61d43551e53627e4a",
+      "normalizedSha256": "950d40574021e099be44410517c26fdcf727562661d4d5c4e3f0f3307e7bec28",
       "markers": {
         "summaryOrMetadata": [
+          11,
+          12,
+          13,
+          14,
           15,
           16,
           17,
@@ -8868,26 +8953,130 @@
           29,
           30,
           31,
-          32,
-          33,
           34,
-          35
+          36,
+          38,
+          40,
+          42,
+          44,
+          46,
+          48,
+          50,
+          52,
+          54,
+          56,
+          59,
+          61,
+          63,
+          65,
+          68,
+          70,
+          72,
+          74,
+          76,
+          78,
+          80,
+          82,
+          84,
+          86,
+          88,
+          90,
+          92,
+          94,
+          96,
+          98,
+          100,
+          102,
+          104,
+          107,
+          110,
+          111,
+          118,
+          119,
+          120,
+          121,
+          122,
+          123,
+          124,
+          125,
+          126,
+          127,
+          128,
+          129,
+          130,
+          131,
+          132,
+          133,
+          134,
+          135,
+          136,
+          137,
+          138,
+          141,
+          143,
+          145,
+          147,
+          149,
+          151,
+          153,
+          155,
+          157,
+          159,
+          161,
+          163,
+          166,
+          168,
+          170,
+          172,
+          175,
+          177,
+          179,
+          181,
+          183,
+          185,
+          187,
+          189,
+          191,
+          193,
+          195,
+          197,
+          199,
+          201,
+          203,
+          205,
+          207,
+          209,
+          211,
+          214,
+          217,
+          218
+        ]
+      }
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/common/report/NativeReportFacetProducer.java",
+      "normalizedSha256": "c99eccbd4ec7c946f51c6ae34540f5964256c9bad9c67fc3f5e347d70b2946b6",
+      "markers": {
+        "paging": [
+          42
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java",
-      "normalizedSha256": "46946faa858fc34f3902725eda7414643ab1584bad3434dcf05a96b16b3b9f20",
+      "normalizedSha256": "07454cd27260d75bb76f1bd114ecf31efc717b4ccc0ae203d39aa1fbb15825f6",
       "markers": {
         "summaryOrMetadata": [
           23,
-          42,
-          50,
-          51,
-          52,
-          53,
-          54,
-          61
+          41,
+          43,
+          47,
+          55,
+          56,
+          57,
+          58,
+          59,
+          66
         ]
       }
     },
@@ -9142,22 +9331,29 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/web/NativeFacetCandidates.java",
-      "normalizedSha256": "b34a0e4dec8b9e9ae189c4df2ed6f2ddbff1f238db788ee27ef00b9f66836d78",
+      "normalizedSha256": "c90ed47a193e8e72dbd0f8f0a8003913c58e04b1ec6f89782592c19d33d45059",
       "markers": {
         "paging": [
           15,
-          61,
-          64,
-          69
+          66,
+          68,
+          100,
+          105,
+          122,
+          127,
+          177
+        ],
+        "summaryOrMetadata": [
+          174
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/web/NativeFacets.java",
-      "normalizedSha256": "167563c2da70571eda64af403fb232eb78ba0a2d4ac3c0ee87551ff1bb46ebb7",
+      "normalizedSha256": "02a625bcb768bda3f71905c8fba9e2b5f456186d9ee2b97642b4f819aca73e68",
       "markers": {
         "paging": [
-          50
+          73
         ],
         "summaryOrMetadata": [
           12,
@@ -9246,10 +9442,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/config/WebMvcConfig.java",
-      "normalizedSha256": "c4b7db0377ea5c972f1f005d25a546772e7526d81b21615d291d4634c59ed8e1",
+      "normalizedSha256": "2a6742c6cff7882c1261b34f943d17d22bf44576ed9c9e3e523cb1ba20ec5c3a",
       "markers": {
         "summaryOrMetadata": [
-          77
+          79
         ]
       }
     },
@@ -11248,44 +11444,44 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicantQuery.java",
-      "normalizedSha256": "d7f05630d3b378a6300cfce90a4e4c694f229857d06489c1628b550600947eca",
+      "normalizedSha256": "729454d3728d8ceea82d1eee992565def19cd5a9e8e73588cc00564015065108",
       "markers": {
         "paging": [
-          164,
-          340,
-          374,
-          390
+          170,
+          346,
+          380,
+          399
         ],
         "summaryOrMetadata": [
-          65,
-          66,
-          67,
-          69,
-          97,
-          98,
+          71,
+          72,
+          73,
+          75,
+          103,
           104,
-          107,
-          109,
-          137,
-          235,
-          267,
-          298,
-          329,
-          363,
-          390,
-          391,
-          407,
-          408,
-          409,
-          411,
-          435,
-          437,
-          439,
-          442,
-          445,
-          456,
-          457,
-          460
+          110,
+          113,
+          115,
+          143,
+          241,
+          273,
+          304,
+          335,
+          369,
+          399,
+          400,
+          416,
+          417,
+          418,
+          420,
+          444,
+          446,
+          448,
+          451,
+          454,
+          465,
+          466,
+          469
         ]
       }
     },
@@ -11300,7 +11496,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimController.java",
-      "normalizedSha256": "87b65e4ac149c4536c18e388eeb69fae6c1594236f13a280a4aa65ad4f2ca8fe",
+      "normalizedSha256": "e266fd2092fe99e11323fb16c59b526109ae6cd8bf8745903408938bd44231b4",
       "markers": {
         "routes": [
           36,
@@ -11308,28 +11504,28 @@
           55,
           77,
           95,
-          117,
-          128,
-          135,
-          146,
-          153,
-          157,
-          171,
-          180,
-          190,
-          211,
-          217,
-          223,
-          229,
-          235,
+          126,
+          148,
+          155,
+          166,
+          173,
+          177,
+          191,
+          200,
+          210,
+          231,
+          237,
           243,
-          251,
-          258,
-          267,
-          292,
-          303,
-          307,
-          313
+          249,
+          255,
+          263,
+          271,
+          278,
+          287,
+          312,
+          323,
+          327,
+          333
         ],
         "paging": [
           4,
@@ -11337,15 +11533,19 @@
           57,
           79,
           97,
-          294
+          314
         ],
         "summaryOrMetadata": [
-          117,
-          119,
-          124,
+          118,
+          123,
+          126,
           128,
-          130,
-          131
+          132,
+          133,
+          136,
+          148,
+          150,
+          151
         ]
       }
     },
@@ -11378,7 +11578,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java",
-      "normalizedSha256": "64498f2ee669bdcd64c53629b6167c3e150cdd0a4cc75004fcf226767ba97e75",
+      "normalizedSha256": "ff7be794ba9b781a8c3f63565e9313c2b3213fd2aabd0d3ed7a4230fabc1ac31",
       "markers": {
         "paging": [
           10,
@@ -11401,28 +11601,31 @@
           341,
           347,
           353,
-          428,
-          430
+          430,
+          432,
+          434
         ],
         "summaryOrMetadata": [
-          543,
-          544,
-          564,
-          567,
+          547,
+          548,
           568,
           571,
           572,
           575,
-          606,
-          615,
-          624,
+          576,
+          579,
+          580,
+          583,
+          640,
           649,
-          654
+          658,
+          683,
+          688
         ],
         "archiveLifecycle": [
-          840,
-          862,
-          1181
+          874,
+          896,
+          1215
         ]
       }
     },
@@ -11786,25 +11989,24 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/application/FinanceAssetOpeningGroupService.java",
-      "normalizedSha256": "5cf52ae2473e5bdb668b8d3c71f22c469cca33bd4755f57c61588f91ab8b2016",
+      "normalizedSha256": "5cf29f673f659d27617b5c95e0cf9c54c73ebdbbfaf2a5e3adf9d70af1433fbb",
       "markers": {
         "paging": [
           37,
-          53,
-          261
+          270
         ],
         "summaryOrMetadata": [
           29,
-          68,
-          69,
-          82,
-          93,
-          95,
-          118,
-          166,
-          249,
-          259,
-          260
+          77,
+          78,
+          91,
+          102,
+          104,
+          127,
+          175,
+          258,
+          268,
+          269
         ]
       }
     },
@@ -11851,13 +12053,12 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/application/FinanceAssetQueryService.java",
-      "normalizedSha256": "89f62b9a1bfcae9a2c762a8c35f68aafaede58253e798b8a7510d49fcd5a8bf5",
+      "normalizedSha256": "13a7f0fd42069be30b9e982a82e432ea9ce48455779db1a9353d30051fe659dd",
       "markers": {
         "paging": [
           8,
           9,
           16,
-          54,
           116,
           123,
           143,
@@ -12339,7 +12540,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryController.java",
-      "normalizedSha256": "9602a1ad3be4228c6ed9adf4a9a3b35853c8d081f32e900e7eea1b323f652ffe",
+      "normalizedSha256": "726fd49ed0612a316f3ff991d2f6740bcb7d08ffd232d763499afb4ffdda56f6",
       "markers": {
         "routes": [
           20,
@@ -12357,7 +12558,7 @@
           71,
           73,
           76,
-          78
+          79
         ]
       }
     },
@@ -12442,7 +12643,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceAccountingImportService.java",
-      "normalizedSha256": "11676ccf804fe3118f9af5b449134aba490475953e5fa87c2ab9b7ad6820c0e7",
+      "normalizedSha256": "d2121a4a5d31a628eda56dc52f169784387f5bf4b4b3ad7a827cfe0888159a1b",
       "markers": {
         "paging": [
           47,
@@ -12576,7 +12777,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisController.java",
-      "normalizedSha256": "4cf8bb1da544c2da7a1daa2d8e2893a4d221f737b4a31955c90627d20b36cbdb",
+      "normalizedSha256": "6d6674d26878f0e543f7da2998d01bee503cc2d4281cbe41a692e8d88c6cc449",
       "markers": {
         "routes": [
           15,
@@ -12594,24 +12795,29 @@
           39,
           41,
           42,
-          44,
           49,
-          51
+          51,
+          56,
+          58
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/FinanceExpenseAnalysisService.java",
-      "normalizedSha256": "682daf63e25aec87a8d22d8a32d59a70260197eeaac0ef534bab80181ac26907",
+      "normalizedSha256": "727778544096fabd69a197bb267fd4c6bb5ff405d3aeb8b902f4689783e2cd76",
       "markers": {
         "paging": [
-          213
+          231,
+          235
         ],
         "summaryOrMetadata": [
-          50,
-          60,
+          33,
+          52,
           62,
-          78
+          64,
+          80,
+          229,
+          230
         ]
       }
     },
@@ -13099,20 +13305,20 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/payables/FinancePayableStatementAdjustmentService.java",
-      "normalizedSha256": "01c324a07faf93b405b951485389a2b6ffa0027d689e365b31d02b5ef71982ad",
+      "normalizedSha256": "7b4b13ad46194bcb4f5820e84abd1902bb61fd46d75bd287b50091810ad2ab05",
       "markers": {
         "paging": [
-          66,
-          188
+          75,
+          202
         ],
         "summaryOrMetadata": [
           30,
-          65,
-          80,
-          113,
-          142,
-          272,
-          300
+          74,
+          90,
+          127,
+          156,
+          286,
+          314
         ]
       }
     },
@@ -14122,14 +14328,21 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportContextController.java",
-      "normalizedSha256": "62981a495c9209c17aff77799735cc0f169dde0ecd54ceb1171f05e92f90e581",
+      "normalizedSha256": "1701b639ab9506f548bd059a6c3f3754562cf400e8478f82c5f701e099ff2422",
       "markers": {
         "routes": [
           16,
-          22
+          35,
+          62
         ],
         "paging": [
-          32
+          49,
+          72
+        ],
+        "summaryOrMetadata": [
+          23,
+          44,
+          45
         ]
       }
     },
@@ -14738,22 +14951,22 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementDocumentService.java",
-      "normalizedSha256": "3831d79fdcbcfa0c51dc50f725bfe879cdb2cb0fc7b7e42f66f8f706d9e56082",
+      "normalizedSha256": "29583434d9c520de1e635f4e01cdd47c87f70a1348f3f49978dbe1f4a4ee319b",
       "markers": {
         "paging": [
           50,
           227,
-          524
+          534
         ],
         "summaryOrMetadata": [
           48,
           226,
-          497,
-          509,
+          507,
           519,
-          520,
-          523,
-          533
+          529,
+          530,
+          533,
+          543
         ]
       }
     },
@@ -15393,12 +15606,12 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostSheetService.java",
-      "normalizedSha256": "a4556c736d54415aa42c93c2d19c4d59444a9664d1f49e5b4f7539ef294a05db",
+      "normalizedSha256": "63704835784afb3d8f8e1b00df98e0d896dc7a9a0547592fb42b5768766b296a",
       "markers": {
         "paging": [
           109,
-          367,
-          391
+          366,
+          390
         ],
         "summaryOrMetadata": [
           43,
@@ -15409,11 +15622,11 @@
           104,
           115,
           129,
-          373,
+          372,
+          377,
           378,
           379,
-          380,
-          666
+          665
         ]
       }
     },
@@ -15430,7 +15643,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostVersionQuery.java",
-      "normalizedSha256": "b2d5e965ff1f083c408f12b1d1acb63f4f6561243e12e7b6c93ed8c9c4000697",
+      "normalizedSha256": "a9b18ca69cdfdc2f62b25111aa4cc9c5e668fc3dd9ca14daa796afcd2ad931e8",
       "markers": {
         "summaryOrMetadata": [
           10
@@ -15734,17 +15947,17 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/goods/GoodsPeriodicBomPreparationService.java",
-      "normalizedSha256": "b9eda00b15769c76f3e3daec2109b21c6b404352117ba0012684f92ddca533a3",
+      "normalizedSha256": "501feb842fbd214f51774a9ebbb33d9d06c145d534f7398e19a1341ddfa66e7e",
       "markers": {
         "paging": [
-          63,
-          95,
-          96,
-          186
+          65,
+          97,
+          98,
+          188
         ],
         "summaryOrMetadata": [
-          93,
-          312
+          95,
+          314
         ]
       }
     },
@@ -17124,7 +17337,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/notice/NoticeController.java",
-      "normalizedSha256": "c7ef1fb8e9fb9606a83afa1ce3c153c43bab645b0ca519aa4a58a9bc2e2385c0",
+      "normalizedSha256": "3c9775372857ab8147a2639fef71d95b162bee073a91030d1c7ba8d3ec266ee9",
       "markers": {
         "routes": [
           80,
@@ -17156,18 +17369,19 @@
           301,
           320,
           330,
-          341,
-          347,
+          338,
+          349,
           355,
-          362
+          363,
+          370
         ],
         "paging": [
           163
         ],
         "summaryOrMetadata": [
           327,
-          336,
-          377
+          344,
+          385
         ]
       }
     },
@@ -17192,23 +17406,25 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/notice/NoticeService.java",
-      "normalizedSha256": "37f05a27062415522934634234b2eb9cbd08e00f03bd07cb32b7e99c92c010b1",
+      "normalizedSha256": "1ad42434da8b986b385d03b3005afb429d3cdb1846e0c7a1ee761488d81a785f",
       "markers": {
         "paging": [
           112,
-          1753
+          1765
         ],
         "summaryOrMetadata": [
-          532,
-          553,
-          749,
-          750,
-          754,
-          1679,
-          1682,
-          1874,
-          1876,
-          1934
+          171,
+          534,
+          555,
+          658,
+          761,
+          762,
+          766,
+          1691,
+          1694,
+          1886,
+          1888,
+          1946
         ]
       }
     },
@@ -18439,38 +18655,38 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisCommandService.java",
-      "normalizedSha256": "5e8a435e5b5788876cbbb753403433249bf8e18ecb6196ada7013da4c9f47b7b",
+      "normalizedSha256": "41851433039e658ae7044a0fce852e0a6b159fcb28564b79e261fdf8eee0646f",
       "markers": {
         "paging": [
           1252,
           1602,
-          2745,
-          2750,
-          3022
+          2758,
+          2763,
+          3035
         ],
         "sourceIdentity": [
           1228,
           1234,
           1581,
           1587,
-          2740,
-          2769,
-          2911
+          2753,
+          2782,
+          2924
         ],
         "summaryOrMetadata": [
           837,
-          1903,
-          1982,
-          2931
+          1916,
+          1995,
+          2944
         ],
         "archiveLifecycle": [
           1228,
           1234,
           1581,
           1587,
-          2740,
-          2769,
-          2911
+          2753,
+          2782,
+          2924
         ]
       }
     },
@@ -18704,7 +18920,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java",
-      "normalizedSha256": "b7851ccdeb36d391cdd758bb15db3c0d67f61356aeff39d3fc0ce4dbbf1a2848",
+      "normalizedSha256": "c6865bb127ec42357a16ec8e38831d4ef3104dd8f76d082d70726aa3849b8b32",
       "markers": {
         "paging": [
           12,
@@ -18714,7 +18930,7 @@
           1161,
           1214,
           1265,
-          8571
+          8644
         ],
         "sourceIdentity": [
           362,
@@ -18732,89 +18948,89 @@
           1395,
           1421,
           1422,
-          2272,
-          2280,
-          2283,
-          2293,
-          2296,
-          2307,
-          2310,
-          2313,
+          2328,
+          2336,
+          2339,
+          2349,
+          2352,
           2363,
-          2368,
-          2383,
-          2388,
-          2410,
-          2415,
-          2429,
-          2434,
-          2515,
-          2559,
-          2578,
-          2579,
-          2591,
-          2594,
-          2609,
-          2612,
-          2616,
-          2619,
+          2366,
+          2369,
+          2419,
+          2424,
+          2439,
+          2444,
+          2466,
+          2471,
+          2485,
+          2490,
+          2571,
+          2615,
           2634,
-          2637,
-          2648,
-          2651,
-          2654,
-          2724,
-          2727,
-          2765,
-          2770,
-          2848,
-          2853,
-          3242,
-          3572,
-          3577,
-          3582,
-          3583,
-          3664,
-          3665,
-          3675,
-          3676,
-          5653,
-          6040,
-          6041,
-          6126,
-          6173,
-          6174,
-          6186,
-          6187,
-          6833,
-          6836,
-          6843,
-          6844,
-          6860,
-          6863,
-          6869,
-          6871,
-          6889,
-          6894,
-          7099,
-          7135,
-          7160,
-          7176,
-          7182,
-          7185,
-          7225,
-          7303,
-          7306,
-          7455,
-          7468,
-          7478,
-          7721,
-          7968,
-          8477,
-          8480,
-          8483,
-          8957,
-          8958
+          2635,
+          2647,
+          2650,
+          2665,
+          2668,
+          2672,
+          2675,
+          2690,
+          2693,
+          2704,
+          2707,
+          2710,
+          2780,
+          2783,
+          2821,
+          2826,
+          2904,
+          2909,
+          3300,
+          3630,
+          3635,
+          3640,
+          3641,
+          3727,
+          3728,
+          3738,
+          3739,
+          5726,
+          6113,
+          6114,
+          6199,
+          6246,
+          6247,
+          6259,
+          6260,
+          6906,
+          6909,
+          6916,
+          6917,
+          6933,
+          6936,
+          6942,
+          6944,
+          6962,
+          6967,
+          7172,
+          7208,
+          7233,
+          7249,
+          7255,
+          7258,
+          7298,
+          7376,
+          7379,
+          7528,
+          7541,
+          7551,
+          7794,
+          8041,
+          8550,
+          8553,
+          8556,
+          9030,
+          9031
         ],
         "summaryOrMetadata": [
           440,
@@ -18830,13 +19046,13 @@
           1251,
           1260,
           1271,
-          7123,
-          7156,
-          7157,
-          7158,
-          8600,
-          8615,
-          9017
+          7196,
+          7229,
+          7230,
+          7231,
+          8673,
+          8688,
+          9090
         ],
         "archiveLifecycle": [
           362,
@@ -18854,84 +19070,84 @@
           1395,
           1421,
           1422,
-          2272,
-          2280,
-          2283,
-          2293,
-          2296,
-          2307,
-          2310,
-          2313,
-          2515,
-          2559,
-          2578,
-          2579,
-          2591,
-          2594,
-          2609,
-          2612,
-          2616,
-          2619,
+          2328,
+          2336,
+          2339,
+          2349,
+          2352,
+          2363,
+          2366,
+          2369,
+          2571,
+          2615,
           2634,
-          2637,
-          2648,
-          2651,
-          2654,
-          2724,
-          2727,
-          2765,
-          2770,
-          2848,
-          2853,
-          3242,
-          3572,
-          3577,
-          3582,
-          3583,
-          3664,
-          3665,
-          3675,
-          3676,
-          5653,
-          6040,
-          6041,
-          6126,
-          6173,
-          6174,
-          6186,
-          6187,
-          6833,
-          6836,
-          6843,
-          6844,
-          6860,
-          6863,
-          6869,
-          6871,
-          6889,
-          6894,
-          7099,
-          7135,
-          7160,
-          7176,
-          7182,
-          7185,
-          7225,
-          7303,
-          7306,
-          7454,
-          7455,
-          7467,
-          7468,
-          7477,
-          7478,
-          7721,
-          7968,
-          8477,
-          8480,
-          8483,
-          8957,
-          8958
+          2635,
+          2647,
+          2650,
+          2665,
+          2668,
+          2672,
+          2675,
+          2690,
+          2693,
+          2704,
+          2707,
+          2710,
+          2780,
+          2783,
+          2821,
+          2826,
+          2904,
+          2909,
+          3300,
+          3630,
+          3635,
+          3640,
+          3641,
+          3727,
+          3728,
+          3738,
+          3739,
+          5726,
+          6113,
+          6114,
+          6199,
+          6246,
+          6247,
+          6259,
+          6260,
+          6906,
+          6909,
+          6916,
+          6917,
+          6933,
+          6936,
+          6942,
+          6944,
+          6962,
+          6967,
+          7172,
+          7208,
+          7233,
+          7249,
+          7255,
+          7258,
+          7298,
+          7376,
+          7379,
+          7527,
+          7528,
+          7540,
+          7541,
+          7550,
+          7551,
+          7794,
+          8041,
+          8550,
+          8553,
+          8556,
+          9030,
+          9031
         ]
       }
     },
@@ -19076,21 +19292,21 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialPreparationBudgetReader.java",
-      "normalizedSha256": "cc8fd49afd07485e333b9194b1351eb55da25da354fd83fc4b219c0653159a28",
+      "normalizedSha256": "11999d927b0f0bf94fe6438abf30659fee9701af08d5369fdf4df25f3bcf3e78",
       "markers": {
         "sourceIdentity": [
-          120,
-          122,
-          130,
-          131,
-          136
+          124,
+          126,
+          134,
+          135,
+          140
         ],
         "archiveLifecycle": [
-          120,
-          122,
-          130,
-          131,
-          136
+          124,
+          126,
+          134,
+          135,
+          140
         ]
       }
     },
@@ -19353,40 +19569,60 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/SubcontractComponentCustodyProjection.java",
-      "normalizedSha256": "9318a77088fe0f6f2ce0a8d82a016092ba096333ea5c4e5e8fd65001e42b7aa2",
+      "normalizedSha256": "fc23d8b803fcdd76a15b94de3e22b5041c8143e49afd459cb59df7a62561a65a",
       "markers": {
         "paging": [
-          477
+          599
         ],
         "sourceIdentity": [
-          49,
-          57,
-          86,
-          94,
-          187,
-          188,
-          200,
-          293,
-          294
+          51,
+          56,
+          71,
+          76,
+          101,
+          109,
+          147,
+          155,
+          258,
+          259,
+          271,
+          392,
+          393
         ],
         "summaryOrMetadata": [
-          340,
-          384
+          449,
+          496
         ],
         "archiveLifecycle": [
           48,
           49,
+          50,
+          51,
+          53,
+          54,
+          55,
           56,
-          57,
-          85,
-          86,
-          93,
-          94,
-          187,
-          188,
-          200,
-          293,
-          294
+          68,
+          69,
+          70,
+          71,
+          73,
+          74,
+          75,
+          76,
+          100,
+          101,
+          108,
+          109,
+          146,
+          147,
+          154,
+          155,
+          258,
+          259,
+          271,
+          392,
+          393
         ]
       }
     },
@@ -20822,7 +21058,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionService.java",
-      "normalizedSha256": "e06795852fb16292f03c92f838b8d681e86fc44c55dc46908f12d160b65f7bd1",
+      "normalizedSha256": "4389f418d249fbc8e1cb382b8ff0dc95e3c228f4aca2bb6df7ae5c30020ca6c5",
       "markers": {
         "paging": [
           18,
@@ -20836,9 +21072,9 @@
           410,
           439,
           449,
-          2080,
-          2412,
-          2479
+          2079,
+          2411,
+          2478
         ],
         "summaryOrMetadata": [
           113,
@@ -20854,11 +21090,11 @@
           553,
           555,
           557,
-          636,
-          958,
-          1776,
-          1875,
-          2364
+          635,
+          957,
+          1775,
+          1874,
+          2363
         ]
       }
     },
@@ -20994,12 +21230,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java",
-      "normalizedSha256": "e37f6d391c81c4a40bcd70cd46e8ef278e5d5cb91aadefc68414b13f7366c565",
+      "normalizedSha256": "e1663929fbde40c8f2177ab365fa3f5a3ae190126b2c266ef7569074e4328714",
       "markers": {
         "routes": [
           47,
-          63,
-          81,
           104,
           128,
           147,
@@ -21027,34 +21261,35 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java",
-      "normalizedSha256": "f0ec595e509b37b7066ef8ac1dd85b068e77318a10d0ee7cb090a03a7beb86fb",
+      "normalizedSha256": "cd472601bce48e2f7cf83b852685ed1b6ddac131d552fa8b15a68de7a086affa",
       "markers": {
         "paging": [
-          118,
-          146,
-          164,
-          316,
-          428,
-          476
+          132,
+          160,
+          178,
+          330,
+          442,
+          490
         ],
         "summaryOrMetadata": [
-          136,
-          142,
-          143,
-          145,
-          158,
+          122,
+          150,
+          156,
+          157,
+          159,
           172,
-          252,
-          284,
-          302,
-          323,
-          331,
-          339,
-          372,
-          384,
-          396,
+          186,
+          266,
+          298,
+          316,
+          337,
+          345,
+          353,
+          386,
           398,
-          399
+          410,
+          412,
+          413
         ]
       }
     },
@@ -21482,19 +21717,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java",
-      "normalizedSha256": "91a5eea63ab250f139d4606916c0f59a2af974d57c4d3369fbd5712c468ff440",
+      "normalizedSha256": "b8b1b9bdc1fe33f00ed6da5d4d359a81cef4760a9cb4a1d1bfbd9e60c744a5fe",
       "markers": {
         "routes": [
           47,
-          60,
-          77,
-          94,
-          111,
-          129,
-          147,
-          166,
-          185,
-          204,
           225,
           251,
           262
@@ -21523,57 +21749,58 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
-      "normalizedSha256": "e8a2a275220384e8bc14718911a643770d9c15c277729e4b75e94edbc84124fb",
+      "normalizedSha256": "8b5d2621f608a2f23baac093ff2cfddcb022c77f373bde3be95139a27bd7a864",
       "markers": {
         "paging": [
-          138,
-          172,
-          193,
-          361,
-          437,
-          532,
-          641,
-          740,
-          855,
-          885
+          152,
+          186,
+          207,
+          375,
+          451,
+          546,
+          655,
+          754,
+          869,
+          899
         ],
         "summaryOrMetadata": [
           38,
-          161,
-          167,
-          168,
-          171,
-          187,
+          142,
+          175,
+          181,
+          182,
+          185,
           201,
-          311,
-          368,
-          376,
-          443,
-          451,
-          479,
-          486,
-          540,
-          547,
-          579,
-          587,
-          648,
-          657,
-          690,
-          698,
-          750,
-          759,
-          791,
-          809,
-          820,
-          822,
+          215,
+          325,
+          382,
+          390,
+          457,
+          465,
+          493,
+          500,
+          554,
+          561,
+          593,
+          601,
+          662,
+          671,
+          704,
+          712,
+          764,
+          773,
+          805,
           823,
-          824,
-          825,
-          826,
-          827,
-          828,
-          829,
-          830
+          834,
+          836,
+          837,
+          838,
+          839,
+          840,
+          841,
+          842,
+          843,
+          844
         ]
       }
     },
@@ -22585,12 +22812,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java",
-      "normalizedSha256": "53a5413bd0e54849a4b908c76cbcf93a32f4cbbc5589c1be23375cf92539225a",
+      "normalizedSha256": "36b9ee9fb68fdf8edfed4a16583abb64a0ca5189424408273dda50b87cf45587",
       "markers": {
         "routes": [
           45,
-          57,
-          81,
           104,
           130,
           143
@@ -22608,21 +22833,21 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/report/SalesReportService.java",
-      "normalizedSha256": "4ac01e7fe3cf57f02bcedbcbbc8996524606dc730f88ee7891c58866b28357ea",
+      "normalizedSha256": "cafd1572731a60fc524712902924826a362b9deb939b20ee5f4fe94e9d3439c3",
       "markers": {
         "paging": [
-          198,
-          225,
-          246,
-          454,
-          554,
-          626,
-          969,
-          1019
+          212,
+          239,
+          260,
+          468,
+          568,
+          640,
+          983,
+          1033
         ],
         "sourceIdentity": [
-          1010,
-          1011
+          1024,
+          1025
         ],
         "summaryOrMetadata": [
           38,
@@ -22631,73 +22856,74 @@
           74,
           119,
           135,
-          215,
-          221,
-          224,
-          240,
+          202,
+          229,
+          235,
+          238,
           254,
-          350,
-          352,
-          359,
+          268,
           364,
-          365,
           366,
-          367,
-          376,
+          373,
           378,
-          385,
-          461,
-          469,
-          508,
-          515,
-          558,
-          566,
-          631,
-          639,
-          643,
+          379,
+          380,
+          381,
+          390,
+          392,
+          399,
+          475,
+          483,
+          522,
+          529,
+          572,
+          580,
           645,
-          648,
-          649,
-          650,
-          651,
+          653,
           657,
-          680,
-          696,
-          706,
-          708,
+          659,
+          662,
+          663,
+          664,
+          665,
+          671,
+          694,
           710,
-          723,
-          727,
-          740,
-          748,
-          759,
-          767,
-          783,
-          791,
-          798,
-          808,
-          816,
-          831,
-          839,
-          846,
-          857,
-          865,
-          880,
-          888,
-          906,
-          919,
-          921,
-          922,
-          923,
-          924,
-          925,
-          926,
-          927,
-          928
+          720,
+          722,
+          724,
+          737,
+          741,
+          754,
+          762,
+          773,
+          781,
+          797,
+          805,
+          812,
+          822,
+          830,
+          845,
+          853,
+          860,
+          871,
+          879,
+          894,
+          902,
+          920,
+          933,
+          935,
+          936,
+          937,
+          938,
+          939,
+          940,
+          941,
+          942
         ],
         "archiveLifecycle": [
-          1010,
-          1011
+          1024,
+          1025
         ]
       }
     },
@@ -23463,12 +23689,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/report/StockReportController.java",
-      "normalizedSha256": "ab8a4d266d0d91f70ac0bbd83c557547777f35f037d54f856611bc53345c29be",
+      "normalizedSha256": "84dfd64d8086b692ce22ce68af1a389a7f3951db65bf7d735652749e8c80b4bc",
       "markers": {
         "routes": [
           43,
-          55,
-          78,
           102
         ],
         "summaryOrMetadata": [
@@ -23482,13 +23706,13 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java",
-      "normalizedSha256": "6b2ce305cab2a0934c75aca14f1289dbc18e1cc0085fd10b8217ef5c5c40d317",
+      "normalizedSha256": "0311c0e334ae129eb441633759a2e400ca816031ace3677b802553f4b72754a2",
       "markers": {
         "paging": [
           382,
-          661,
-          688,
-          712
+          677,
+          704,
+          728
         ],
         "summaryOrMetadata": [
           90,
@@ -23510,12 +23734,13 @@
           432,
           433,
           595,
-          678,
-          684,
-          687,
-          706,
-          720,
-          781
+          666,
+          694,
+          700,
+          703,
+          722,
+          736,
+          797
         ]
       }
     },
@@ -23652,14 +23877,12 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
-      "normalizedSha256": "090b2258084794d97e25bb7e7725fe4a2dde548c451fcbe068917811cae532f7",
+      "normalizedSha256": "c37abad867631333c8f9c049eeeba62ade84573acee3b6b83d076eec7bc5746f",
       "markers": {
         "routes": [
           28,
           34,
           54,
-          76,
-          113,
           155,
           165,
           177,
@@ -23678,7 +23901,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java",
-      "normalizedSha256": "859cfd4f89916175a4ea29ad67c8a2201f85730040658ee185982f243f92c58b",
+      "normalizedSha256": "a09e9a54596eb99d6a5a92748a0d80b677de9a17d8d6a60be104cedd024ae0bb",
       "markers": {
         "paging": [
           10,
@@ -23696,27 +23919,28 @@
           312,
           325,
           339,
-          342,
-          345,
-          359,
+          348,
+          352,
+          355,
+          363,
           381,
-          386,
-          394,
-          401,
-          416,
-          423,
-          453,
-          467,
-          523
+          382,
+          383,
+          390,
+          405,
+          412,
+          471,
+          485,
+          541
         ],
         "summaryOrMetadata": [
-          354,
-          368,
-          378,
-          383,
-          388,
-          448,
-          518
+          372,
+          437,
+          456,
+          459,
+          461,
+          463,
+          536
         ]
       }
     },
@@ -23877,14 +24101,14 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryProductionCostService.java",
-      "normalizedSha256": "d7832b844e61f0a521a10454540b68f6e25e30261a8309b24486ee2c194b744e",
+      "normalizedSha256": "fe3811c3dd650525c7e7bb1d38b015bff1db704dd2030ef53adee7923be5d178",
       "markers": {
         "paging": [
-          277,
-          289
+          284,
+          296
         ],
         "summaryOrMetadata": [
-          445
+          452
         ]
       }
     },
@@ -23918,7 +24142,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/valuation/InventoryValueLedger.java",
-      "normalizedSha256": "197773bf8bdfcd18211ecac662b384af74e08b835c0054025c052a15e364442d",
+      "normalizedSha256": "7e6225f44b872da3d5848d60ecb6cb61fa27e7df231122d4301f0cc9a8f098cd",
       "markers": {
         "paging": [
           203
@@ -23946,13 +24170,14 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/valuation/ProductionInventoryValueService.java",
-      "normalizedSha256": "db6205a15f2a0d55a5b5c558e73b2a268fe4d24f661aaf04964753c07ffcc50d",
+      "normalizedSha256": "f028723ee6793f0e9df32ba6a8e6bcb12f1c91ff0a6f7300966957e596893a20",
       "markers": {
         "paging": [
-          311
+          346
         ],
         "summaryOrMetadata": [
-          162
+          71,
+          197
         ]
       }
     },
@@ -23985,16 +24210,16 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/valuation/SubcontractOwnMaterialCostService.java",
-      "normalizedSha256": "b775714f599fe830fc81fbc9c074c202304b16d88d486a89125ab79930dc7f37",
+      "normalizedSha256": "baec36bd145bc9f5b5e1d0ff3fd9ddf89808cd0f43b168cb89602b935e0e9737",
       "markers": {
         "paging": [
           193,
           203
         ],
         "summaryOrMetadata": [
-          333,
-          348,
-          349
+          329,
+          344,
+          345
         ]
       }
     },
@@ -24658,7 +24883,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
-      "normalizedSha256": "4b6e3105f5e71a2306ace3b658659ec009b9dca42708b95f480a9d7ebeaf70fa",
+      "normalizedSha256": "58f9b0aece23ecfb295477650eb4c4a623ffaa6c1bf47d9c6cdf7b5289332d57",
       "markers": {
         "paging": [
           20,
@@ -24707,13 +24932,13 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/plan/SubcontractMaterialPlanService.java",
-      "normalizedSha256": "e9500f5dd5ac8f5d446f0fe220bc45eff893543cfbab9f84ea4454413d40756a",
+      "normalizedSha256": "e198b0a7a2b308b5b01ef05c369e8a47e4728b10d08b21ad394ef4b44801ec6b",
       "markers": {
         "paging": [
           11,
-          1106,
-          1123,
-          1143
+          1116,
+          1133,
+          1153
         ],
         "sourceIdentity": [
           717,
@@ -24723,10 +24948,10 @@
         ],
         "summaryOrMetadata": [
           306,
-          1116,
-          1155,
-          1177,
-          1178
+          1126,
+          1165,
+          1187,
+          1188
         ],
         "archiveLifecycle": [
           717,
@@ -24738,10 +24963,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthority.java",
-      "normalizedSha256": "dabca97ccec7135cf925daa24aa3f7f26e5b902bbf9eafdfaec0eb3fc795424b",
+      "normalizedSha256": "8b1c484ad2451e06ff9d7ec908d2010ba6ee8dd7c86ebf6b20abb2ba2577de82",
       "markers": {
         "summaryOrMetadata": [
-          109
+          113
         ]
       }
     },
@@ -24773,7 +24998,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReceiptService.java",
-      "normalizedSha256": "78c5b16760cae6eeb1c3035dfd7337e12e6a46e42e3600940f57b5964bae1893",
+      "normalizedSha256": "7d8d0e6b07692f8a6602fc2f1adfd7a8d3c14c97e9ba1471a97f77c4e668f94a",
       "markers": {
         "paging": [
           15,
@@ -24781,7 +25006,8 @@
           49,
           143,
           151,
-          159
+          159,
+          845
         ],
         "sourceIdentity": [
           144,
@@ -24793,15 +25019,6 @@
         "summaryOrMetadata": [
           165,
           510
-        ]
-      }
-    },
-    {
-      "source": "server/src/main/java/com/uten/imp/features/subcontract/receipt/SubcontractReturnCapacity.java",
-      "normalizedSha256": "0e9ff11e4384ad0e72dc0ff9cff1a9135330e8f1e8355d6f74c6fdd0726fff4b",
-      "markers": {
-        "summaryOrMetadata": [
-          75
         ]
       }
     },
@@ -24827,11 +25044,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportController.java",
-      "normalizedSha256": "b38cf2cfd7bc3faa00756f53c20ddf93fc21d89a57e50405185bfc5cc88cba9d",
+      "normalizedSha256": "c7e2e22d052b79fee91555fc0a5bd8ec0c65d82b978d5599c659066ae392c798",
       "markers": {
         "routes": [
           46,
-          58,
           98,
           117,
           142
@@ -24856,58 +25072,59 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
-      "normalizedSha256": "4c84166aa91db8326e8fb7fa28753a11f5ec68a719d88d8e81921acf9c6c2178",
+      "normalizedSha256": "4670bb1c43a189b74b4be34674576baae5ffeeb3549fb66949dfc6e5ad40c65f",
       "markers": {
         "paging": [
-          127,
-          151,
-          172,
-          901,
-          948,
-          1005
+          141,
+          165,
+          186,
+          915,
+          962,
+          1019
         ],
         "summaryOrMetadata": [
-          141,
-          147,
-          150,
-          166,
+          131,
+          155,
+          161,
+          164,
           180,
-          303,
-          336,
-          345,
-          416,
-          425,
-          458,
-          466,
-          522,
-          530,
-          562,
-          570,
-          620,
-          628,
-          657,
-          665,
-          713,
-          721,
-          750,
-          856,
-          858,
-          917,
-          958,
-          969,
-          971,
+          194,
+          317,
+          350,
+          359,
+          430,
+          439,
+          472,
+          480,
+          536,
+          544,
+          576,
+          584,
+          634,
+          642,
+          671,
+          679,
+          727,
+          735,
+          764,
+          870,
+          872,
+          931,
           972,
-          973,
-          974,
-          975,
-          976,
-          977,
-          978,
-          979,
-          980
+          983,
+          985,
+          986,
+          987,
+          988,
+          989,
+          990,
+          991,
+          992,
+          993,
+          994
         ],
         "archiveLifecycle": [
-          300
+          314
         ]
       }
     },
@@ -24963,7 +25180,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryController.java",
-      "normalizedSha256": "7e8f226f4883334bbed8efd2abb7bf55d26e9f012caf9460f893f70db056d277",
+      "normalizedSha256": "26f872c130fd1cc3d36a30d0ab7b7bd0ed625ab97112cab42102f223c1eadbe4",
       "markers": {
         "routes": [
           39,
@@ -24971,7 +25188,8 @@
           83,
           89,
           103,
-          109
+          109,
+          117
         ],
         "paging": [
           4,
@@ -24984,45 +25202,51 @@
           70,
           78,
           85,
-          109
+          109,
+          117
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java",
-      "normalizedSha256": "dfaedc733ec43ebabaff5eaa9392590804d3d7b7438cf867857c99f7051e07a7",
+      "normalizedSha256": "eb1e8a704ba68d40e0d691f3edab6931b72a75922ea34c57f305411c2b8a73a7",
       "markers": {
         "paging": [
           15,
-          692,
-          700,
-          707,
-          725,
-          739,
-          762,
-          914,
-          1266
+          627,
+          635,
+          642,
+          660,
+          674,
+          697,
+          868,
+          1198
         ],
         "summaryOrMetadata": [
-          716,
-          726,
-          743,
-          747,
-          749,
-          753,
-          760,
-          778,
-          788,
-          848,
-          891,
-          894,
-          910,
-          922,
-          927,
-          928,
-          929,
-          930,
-          939
+          172,
+          651,
+          661,
+          678,
+          682,
+          684,
+          688,
+          695,
+          713,
+          723,
+          783,
+          830,
+          833,
+          849,
+          854,
+          855,
+          856,
+          857,
+          864,
+          878,
+          879,
+          880,
+          889,
+          900
         ]
       }
     },
@@ -25063,7 +25287,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
-      "normalizedSha256": "749f8873fd51715d7644a1d85fbb4938362fe2cbe297e3529613d78eaf0617ad",
+      "normalizedSha256": "9f0c431fad59b37a083ca770d2b9108510d336cc7cb1899ded3b323bce15c217",
       "markers": {
         "paging": [
           9,
@@ -25072,7 +25296,7 @@
           117,
           121,
           126,
-          314
+          453
         ],
         "sourceIdentity": [
           118,
@@ -25673,59 +25897,61 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java",
-      "normalizedSha256": "9ad0aa1b502169a1cd27f28b0b203991dd21931dd67e8defaedaa332de9e464f",
+      "normalizedSha256": "78ade54d13cc353bf32b49907adb03e0a0e86f4fede4abb78654eda448cc0952",
       "markers": {
         "paging": [
           17,
-          696,
-          709,
-          753,
-          807,
-          813,
-          824,
-          1037,
-          1046,
-          1056,
-          1092,
-          1117,
-          1122,
-          1341,
-          1347,
-          1354,
-          1365,
-          1427,
-          1475,
-          1855,
-          2387,
-          2399,
-          2412,
-          3438,
-          3441
+          684,
+          697,
+          741,
+          795,
+          801,
+          812,
+          1025,
+          1034,
+          1044,
+          1080,
+          1131,
+          1136,
+          1355,
+          1361,
+          1368,
+          1379,
+          1441,
+          1491,
+          1879,
+          2431,
+          2443,
+          2456,
+          3486,
+          3489
         ],
         "summaryOrMetadata": [
-          761,
-          818,
-          844,
-          1078,
-          1098,
-          1115,
-          1120,
-          1133,
-          1313,
-          1329,
-          1437,
-          1545,
-          1649,
-          1679,
-          1713,
-          1724,
-          1737,
-          1833,
-          1844,
-          1875,
-          2433,
-          3261,
-          3273
+          749,
+          806,
+          832,
+          1066,
+          1086,
+          1114,
+          1129,
+          1134,
+          1147,
+          1327,
+          1343,
+          1451,
+          1561,
+          1665,
+          1695,
+          1729,
+          1740,
+          1753,
+          1849,
+          1861,
+          1868,
+          1899,
+          2477,
+          3309,
+          3321
         ]
       }
     },
@@ -25891,22 +26117,20 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseInboundController.java",
-      "normalizedSha256": "31452c785c78803f9d49e1bd06dd3226ead2f8df44e2ed94a4d580fd57581d62",
+      "normalizedSha256": "c4de18b3a6125ca693558eacd7555fc750a4bd1a69eda0848a9df7c69f520de0",
       "markers": {
         "routes": [
           33,
           46,
-          65,
           80,
           94,
-          117,
-          131,
-          149,
-          160,
-          172,
-          183,
-          196,
-          203
+          133,
+          151,
+          162,
+          174,
+          185,
+          198,
+          205
         ],
         "paging": [
           4,
@@ -26042,14 +26266,14 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/PeriodicMaterialCandidateReadService.java",
-      "normalizedSha256": "d1cd35cdaa03ad50958591bfc207eee80632a71d5022fd86378d7bcd3d7316c9",
+      "normalizedSha256": "36218e8fe26cabbdbec86f42d8a153ef61be69f066bf654060960861a29e0126",
       "markers": {
         "paging": [
-          41
+          42
         ],
         "summaryOrMetadata": [
-          11,
-          38
+          12,
+          39
         ]
       }
     },
@@ -26146,15 +26370,15 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/materialbin/WorkshopMaterialChoiceAdapter.java",
-      "normalizedSha256": "b1e355345240c6a36acb084a8713c7d63999a828c8647cf249559571bb5f8192",
+      "normalizedSha256": "9821f5323728cccf06aef3cc7ec895b6dfd78ee894e50b036197918243e20472",
       "markers": {
         "paging": [
-          298,
-          351,
-          554
+          300,
+          353,
+          555
         ],
         "summaryOrMetadata": [
-          421
+          422
         ]
       }
     },
@@ -26439,11 +26663,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterController.java",
-      "normalizedSha256": "65d1cc9f21b92ccd23856fe8cead3391f508ae30e9536cc795129a54f8772022",
+      "normalizedSha256": "c3df0b9905f83e6b090c570bc647ecf0e2f2b93cd9401d81be9b312a2081bdf0",
       "markers": {
         "routes": [
           32,
-          46,
           71,
           103
         ],
@@ -26454,56 +26677,56 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java",
-      "normalizedSha256": "f7d9757a1fa4df1d688d531b4d7d56c72ddbefd9c09108938002ebcf7b7c373f",
+      "normalizedSha256": "32eea9cb89de7c340946ead54d537a32dd453112823447cc782bbab446f1fe66",
       "markers": {
         "paging": [
-          304
+          313
         ],
         "sourceIdentity": [
-          206,
-          216,
-          224,
+          215,
           225,
-          234
+          233,
+          234,
+          243
         ],
         "summaryOrMetadata": [
-          122,
-          134,
-          139,
-          279,
-          300
+          129,
+          143,
+          148,
+          288,
+          309
         ],
         "archiveLifecycle": [
-          206,
-          216,
-          224,
+          215,
           225,
-          234
+          233,
+          234,
+          243
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java",
-      "normalizedSha256": "06b6d7260c601e3e0bf0d4b36a18ea89f360bc585de28509f3a9a9b60048651d",
+      "normalizedSha256": "424c9e2e16e95e99dd8c19a2c2de0e2925fef8d670f22685795e0f917166a9b3",
       "markers": {
         "paging": [
           14,
           113,
           127,
-          136,
-          383,
-          513
+          138,
+          385,
+          515
         ],
         "sourceIdentity": [
-          165,
-          169,
-          434,
-          451,
-          503,
-          507,
-          523,
-          576,
-          590
+          167,
+          171,
+          436,
+          453,
+          505,
+          509,
+          525,
+          578,
+          592
         ],
         "summaryOrMetadata": [
           19,
@@ -26514,44 +26737,43 @@
           126,
           129,
           130,
-          135,
-          140,
-          146,
-          152,
-          215,
-          219,
-          334,
+          136,
+          142,
+          148,
+          154,
+          217,
+          221,
           336,
-          337,
           338,
           339,
-          345,
-          356,
-          516,
-          517,
+          340,
+          341,
+          347,
+          358,
           518,
-          519
+          519,
+          520,
+          521
         ],
         "archiveLifecycle": [
-          165,
-          169,
-          434,
-          451,
-          503,
-          507,
-          523,
-          576,
-          590
+          167,
+          171,
+          436,
+          453,
+          505,
+          509,
+          525,
+          578,
+          592
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterController.java",
-      "normalizedSha256": "955fdcdfa9e0d836f25759b155d112927df9034ec154d1bee0e6c5d689c13a0e",
+      "normalizedSha256": "1616db28caa5455eee4967faca170043411b847d4983266df8cc13b2f2df12b4",
       "markers": {
         "routes": [
           28,
-          52,
           78,
           110
         ],
@@ -26562,41 +26784,41 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryService.java",
-      "normalizedSha256": "0f80564c5601257676ae5e57d6a1bb4e498c4399089888f837cfd849c111590b",
+      "normalizedSha256": "881c422aef1920f69defcee29f649725ce477faba625524a46b4f36e378bebdd",
       "markers": {
         "paging": [
-          221
+          227
         ],
         "summaryOrMetadata": [
-          83,
-          94,
-          101,
-          104,
-          214
+          89,
+          100,
+          107,
+          110,
+          220
         ]
       }
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterSql.java",
-      "normalizedSha256": "61cb8964603fd31d20a38c48546c53390191eb57855192f568b3e0d177a41edd",
+      "normalizedSha256": "51b2591dcb52a8966e495f15ce7dd4700fc7bf1eba34ed345a68085698a0a1f1",
       "markers": {
         "paging": [
           64,
           69,
           77,
-          142
+          144
         ],
         "sourceIdentity": [
-          255,
           256,
-          296,
-          299,
-          303,
-          357,
+          257,
+          297,
+          300,
+          304,
           358,
-          407,
-          439,
-          441
+          359,
+          408,
+          440,
+          442
         ],
         "summaryOrMetadata": [
           45,
@@ -26607,22 +26829,22 @@
           61,
           130,
           132,
-          139,
-          197,
-          298,
-          370
+          140,
+          198,
+          299,
+          371
         ],
         "archiveLifecycle": [
-          255,
           256,
-          296,
-          299,
-          303,
-          357,
+          257,
+          297,
+          300,
+          304,
           358,
-          407,
-          439,
-          441
+          359,
+          408,
+          440,
+          442
         ]
       }
     },
@@ -27090,7 +27312,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/security/ReadScopeVersionAuthority.java",
-      "normalizedSha256": "77fc2f4a848877e5ae6e8593888cd9d8ea1997def0914ae347211f2be9a568dc",
+      "normalizedSha256": "3382994a49e50d2d22741d9e3a37bcf4e3d5d20626fb80357bfaf56c7535aa4a",
       "markers": {
         "summaryOrMetadata": [
           179
@@ -27323,17 +27545,17 @@
     },
     {
       "source": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
-      "normalizedSha256": "f44fad7f872f879010717bb840f0d9fdd356b6e89543e459be4d9a3c94d9836a",
+      "normalizedSha256": "039dde524a598bd10240e74da1c9316adf69336602f2cce45cf0deab929a61b7",
       "markers": {
         "boundedReads": [
-          66,
-          69
+          67,
+          70
         ]
       }
     },
     {
       "source": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
-      "normalizedSha256": "5b50c6a9b74f3ad2b17db8ffce0914969b20f8c7630f9da8a72f9f757f18c129",
+      "normalizedSha256": "f9c1a45af6f0ce20b420525acd020d07b543a716be88c6191cc3febdfcb2c479",
       "markers": {
         "boundedReads": [
           41,
@@ -27461,42 +27683,47 @@
     },
     {
       "source": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
-      "normalizedSha256": "2b1f393b4ed4226b4c16af6cad0167081c1356cc4a39109de773bbda77d8b1fa",
+      "normalizedSha256": "24f61c83c0a696a03ee3c7f2227f3be9f414850e559273ca9be23e7218277971",
       "markers": {
         "boundedReads": [
           16,
-          49,
-          54,
-          57,
-          60,
-          84,
-          97,
+          51,
+          56,
+          59,
+          62,
+          86,
           99,
-          116,
-          122,
-          127,
-          135,
-          139,
-          155,
-          160,
-          166,
-          171,
-          191,
-          199,
-          208,
-          227,
-          231,
-          237,
-          268,
-          272,
+          101,
+          118,
+          124,
+          129,
+          137,
+          141,
+          157,
+          162,
+          168,
+          173,
+          193,
+          201,
+          210,
+          229,
+          233,
+          239,
+          262,
           276,
-          318,
-          340,
-          363,
-          376,
-          381,
-          391,
-          397
+          305,
+          315,
+          325,
+          360,
+          364,
+          368,
+          410,
+          432,
+          455,
+          468,
+          473,
+          483,
+          489
         ]
       }
     },
@@ -28734,8 +28961,8 @@
     "lib/components/data_display/paged_list_controller.dart",
     "lib/shared/paging/scoped_paged_read.dart",
     "lib/shared/paging/scoped_category_read.dart",
-    "lib/shared/paging/prepared_page_read.dart",
-    "lib/shared/paging/page_preparation_coordinator.dart",
+    "lib/shared/paging/complete_paged_snapshot.dart",
+    "lib/shared/paging/versioned_summary_read.dart",
     "lib/features/basic_data/widgets/master_server_column_filters.dart",
     "lib/shared/providers/native_facet_options.dart",
     "lib/shared/drafts/draft_workspace_sources.dart",

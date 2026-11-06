@@ -1,0 +1,10 @@
+{
+  "atUtc": "2026-11-06T18:42:49.091924+00:00",
+  "path": "server/src/test/java/com/uten/imp/businesschain/FinanceContextAndExpenseCompleteSummaryHttpPostgresTest.java",
+  "beforeSha256": "46b925ae13ce2d75721410850e8dc083b59793ee3f7a2f7e987cadd1a0b1538c",
+  "afterSha256": "cf86f89b9bd2ee39351592f8ffa24e1feac853dff9160d606a5882a796a7e88d",
+  "originalQuantitiesThresholdsAndAssertionsUnchanged": true,
+  "allGuardsEnabled": true,
+  "rootCause": "Original legal fixture requires registered public document number, approved settlement method, actual goods snapshots, one-to-one employees and disabled account status",
+  "MainApplied": true
+}

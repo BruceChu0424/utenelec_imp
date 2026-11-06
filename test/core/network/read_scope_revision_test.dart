@@ -42,9 +42,11 @@ void main() {
   late _Adapter adapter;
   late int revision;
   late AuthenticatedRequestIdentity actor;
+  late Map<String, String> privateRows;
   setUp(() {
     actor = first;
     revision = 0;
+    privateRows = {};
     adapter = _Adapter();
     dio = Dio(BaseOptions(baseUrl: 'https://scope.fixture/api'))
       ..httpClientAdapter = adapter;
@@ -59,7 +61,10 @@ void main() {
     dio.interceptors.add(
       ReadScopeRevisionInterceptor(
         currentRevision: () => revision,
-        retire: () => revision++,
+        retire: () {
+          revision++;
+          privateRows.clear();
+        },
         identity: (options) =>
             options.extra['subject'] as AuthenticatedRequestIdentity?,
         isCurrent: (options) async => options.extra['subject'] == actor,
@@ -81,23 +86,119 @@ void main() {
     );
   }
 
-  void reply(String id, String version, {int status = 200, String? domain}) =>
-      adapter.replies[id]!.complete(
-        ResponseBody.fromString(
-          jsonEncode(
-            status == 200
-                ? {'rows': <Object?>[], 'readScopeVersion': version}
-                : {'code': 'READ_SCOPE_CHANGED', 'message': '范围变更'},
-          ),
-          status,
-          headers: {
-            Headers.contentTypeHeader: ['application/json'],
-            if (domain != null) 'X-Uten-Read-Scope-Domain': [domain],
-          },
-        ),
-      );
+  void reply(
+    String id,
+    String version, {
+    int status = 200,
+    String? domain,
+    bool headerOnly = false,
+  }) => adapter.replies[id]!.complete(
+    ResponseBody.fromString(
+      jsonEncode(
+        status == 200
+            ? {
+                'rows': <Object?>[],
+                if (!headerOnly) 'readScopeVersion': version,
+              }
+            : {'code': 'READ_SCOPE_CHANGED', 'message': '范围变更'},
+      ),
+      status,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+        if (domain != null) 'X-Uten-Read-Scope-Domain': [domain],
+        if (headerOnly) 'X-Uten-Read-Scope-Version': [version],
+      },
+    ),
+  );
   Future<void> sent() async {
     await Future.wait(adapter.started.values.map((start) => start.future));
+  }
+
+  final summaryFixture =
+      jsonDecode(
+            File(
+              'contracts/read-scope-domains/complete-summary-v1.json',
+            ).readAsStringSync(),
+          )
+          as Map;
+  for (final entry
+      in (summaryFixture['cases'] as List).cast<Map<String, dynamic>>()) {
+    test(
+      'owning summary header-only proof clears private rows and refuses late data: ${entry['method']} ${entry['path']}',
+      () async {
+        final path = entry['path'] as String,
+            method = entry['method'] as String;
+        final domain = entry['headerDomain'] as String?;
+        final initial = request('summary-initial', path: path, method: method);
+        await sent();
+        reply('summary-initial', 'before', domain: domain, headerOnly: true);
+        await initial;
+        privateRows['old-private-row'] = 'before';
+        final late = request('summary-late', path: path, method: method);
+        final changed = request(
+          'summary-changed',
+          path: '/api$path',
+          method: method,
+        );
+        await sent();
+        final changedCheck = expectLater(
+          changed,
+          throwsA(
+            isA<DioException>()
+                .having((e) => e.response?.statusCode, 'status', 403)
+                .having(
+                  (e) => (e.response?.data as Map?)?['code'],
+                  'code',
+                  'READ_SCOPE_CHANGED',
+                ),
+          ),
+        );
+        reply('summary-changed', 'after', domain: domain, headerOnly: true);
+        await changedCheck;
+        expect(revision, 1);
+        expect(privateRows, isEmpty);
+        final lateCheck = expectLater(
+          late,
+          throwsA(
+            isA<DioException>().having(
+              (e) => (e.response?.data as Map?)?['code'],
+              'code',
+              'READ_SCOPE_CHANGED',
+            ),
+          ),
+        );
+        reply('summary-late', 'before', domain: domain, headerOnly: true);
+        await lateCheck;
+        expect(revision, 1);
+        expect(privateRows, isEmpty);
+        final current = request('summary-current', path: path, method: method);
+        await sent();
+        reply('summary-current', 'after', domain: domain, headerOnly: true);
+        await current;
+        expect(revision, 1);
+        expect(actor, first);
+      },
+    );
+  }
+  for (final entry
+      in (summaryFixture['unclassified'] as List)
+          .cast<Map<String, dynamic>>()) {
+    test(
+      'owning summary fallback does not classify a neighboring route or command: ${entry['method']} ${entry['path']}',
+      () async {
+        for (final version in ['before', 'after']) {
+          final pending = request(
+            'neighbor-$version',
+            path: entry['path'] as String,
+            method: entry['method'] as String,
+          );
+          await sent();
+          reply('neighbor-$version', version, headerOnly: true);
+          await pending;
+        }
+        expect(revision, 0);
+      },
+    );
   }
 
   test(

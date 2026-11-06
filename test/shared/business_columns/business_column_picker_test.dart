@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,11 +18,17 @@ class _Repository extends BusinessColumnsRepository {
   _Repository() : super(ApiClient(Dio()));
   bool fail = false;
   int creates = 0;
+  int searches = 0;
+  List<BusinessColumn>? catalog;
+  Completer<bool>? capabilityGate;
   @override
-  Future<bool> supportsArithmetic(String scope) async => true;
+  Future<bool> supportsArithmetic(String scope) async =>
+      capabilityGate?.future ?? true;
   @override
   Future<List<BusinessColumn>> search(String scope, String query) async {
+    searches++;
     if (fail) throw StateError('unavailable');
+    if (catalog != null) return catalog!;
     return const [
       BusinessColumn(id: 'fee', name: '包装费', type: 'AMOUNT', operation: 'ADD'),
       BusinessColumn(id: 'ref', name: '客户货号'),
@@ -92,6 +100,7 @@ void main() {
     ValueChanged<BusinessColumnChoice?> result, {
     bool masked = false,
     Size size = const Size(900, 800),
+    bool settle = true,
   }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -122,8 +131,69 @@ void main() {
       ),
     );
     await tester.tap(find.text('Open'));
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      await tester.pump();
+    }
   }
+
+  testWidgets(
+    'complete35000 business catalog mounts a local window and its Chinese tail is selectable without more reads',
+    (tester) async {
+      final all = List.generate(
+        35000,
+        (i) => BusinessColumn(id: 'column-$i', name: '中文目录$i'),
+      );
+      final repo = _Repository()..catalog = all;
+      BusinessColumnChoice? result;
+      await open(tester, repo, (value) => result = value);
+      final window = tester.widget<UtenAncestorRowWindow<BusinessColumn>>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenAncestorRowWindow<BusinessColumn>,
+        ),
+      );
+      expect(window.rows, hasLength(35000));
+      expect(window.controller.mountedRowCount, lessThan(64));
+      expect(find.text('中文目录34999'), findsNothing);
+      final before = repo.searches;
+      final revealed = window.controller.reveal(all.last, alignment: .5);
+      await tester.pumpAndSettle();
+      expect(await revealed, isTrue);
+      expect(find.text('中文目录34999').hitTestable(), findsOneWidget);
+      expect(window.controller.mountedRowCount, lessThan(64));
+      expect(repo.searches, before);
+      await tester.tap(find.text('中文目录34999'));
+      await tester.pumpAndSettle();
+      expect(result!.column!.id, 'column-34999');
+      expect(repo.creates, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'a failed catalog ends waiting even while the readonly capability request is still pending',
+    (tester) async {
+      final gate = Completer<bool>();
+      final repo = _Repository()
+        ..fail = true
+        ..capabilityGate = gate;
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete(true);
+      });
+      await open(tester, repo, (_) {}, settle: false);
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(gate.isCompleted, isFalse);
+      expect(find.text('读取表头失败，请重试'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect(repo.creates, 0);
+      gate.complete(true);
+      await tester.pumpAndSettle();
+      expect(find.text('读取表头失败，请重试'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'catalog suggestion reuses stored definition and compact layout fits',

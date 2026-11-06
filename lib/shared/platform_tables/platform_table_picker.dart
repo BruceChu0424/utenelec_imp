@@ -1,3 +1,4 @@
+import '../../components/layout/uten_ancestor_row_window.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
@@ -66,6 +67,10 @@ class _PlatformColumnPicker<T> extends StatefulWidget {
 }
 
 class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
+  final _systemCatalogWindow =
+      UtenAncestorRowWindowController<PlatformSystemColumn>();
+  final _definitionCatalogWindow =
+      UtenAncestorRowWindowController<PlatformColumnDefinition>();
   static const _columnLimitMessage =
       '最多能加 32 列。已经加的列还能继续显示；想重新选择时，可在表头设置中恢复默认布局。';
   final _name = TextEditingController();
@@ -593,18 +598,20 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           ColumnEditorSection(
             title: '已有表头',
             description: '隐藏的列，点一下重新显示',
-            child: Column(
-              children: [
-                for (final column in system)
-                  _ColumnOption(
-                    title: column.label,
-                    subtitle: '点击显示',
-                    icon: Icons.view_column_outlined,
-                    onTap: () {
-                      if (!_saving) Navigator.pop(context, column.key);
-                    },
-                  ),
-              ],
+            child: UtenAncestorRowWindow<PlatformSystemColumn>(
+              controller: _systemCatalogWindow,
+              rows: system,
+              estimatedRowExtent: 56,
+              expensiveRows: false,
+              deferRowMounts: false,
+              rowBuilder: (_, column, _) => _ColumnOption(
+                title: column.label,
+                subtitle: '点击显示',
+                icon: Icons.view_column_outlined,
+                onTap: () {
+                  if (!_saving) Navigator.pop(context, column.key);
+                },
+              ),
             ),
           ),
           const SizedBox(height: UtenSpacing.s16),
@@ -640,41 +647,41 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           ColumnEditorSection(
             title: '之前建过的列',
             description: '直接拿来用，不用重新建',
-            child: Column(
-              children: [
-                for (final column in results)
-                  _ColumnOption(
-                    title: column.name,
-                    subtitle: _columnPurpose(column.type),
-                    icon: _columnIcon(column.type),
-                    selected:
-                        widget.controller.layout.added.any(
-                          (c) => c.id == column.id,
-                        ) &&
-                        !widget.controller.layout.hidden.contains(column.key),
-                    onTap: () => _select(column),
-                    deleteAction: widget.controller.canDeleteColumn(column)
-                        ? IconButton(
-                            key: ValueKey(
-                              'platform-column-delete-${column.id}',
-                            ),
-                            tooltip: _text.platformColumnDeleteTitle,
-                            onPressed: _saving
-                                ? null
-                                : () => unawaited(_delete(column)),
-                            color: Theme.of(context).colorScheme.error,
-                            icon: _deletingColumnId == column.id
-                                ? const SizedBox.square(
-                                    dimension: UtenSpacing.s20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.delete_outline_rounded),
-                          )
-                        : null,
-                  ),
-              ],
+            child: UtenAncestorRowWindow<PlatformColumnDefinition>(
+              controller: _definitionCatalogWindow,
+              rows: results,
+              estimatedRowExtent: 56,
+              expensiveRows: false,
+              deferRowMounts: false,
+              rowBuilder: (_, column, _) => _ColumnOption(
+                title: column.name,
+                subtitle: _columnPurpose(column.type),
+                icon: _columnIcon(column.type),
+                selected:
+                    widget.controller.layout.added.any(
+                      (c) => c.id == column.id,
+                    ) &&
+                    !widget.controller.layout.hidden.contains(column.key),
+                onTap: () => _select(column),
+                deleteAction: widget.controller.canDeleteColumn(column)
+                    ? IconButton(
+                        key: ValueKey('platform-column-delete-${column.id}'),
+                        tooltip: _text.platformColumnDeleteTitle,
+                        onPressed: _saving
+                            ? null
+                            : () => unawaited(_delete(column)),
+                        color: Theme.of(context).colorScheme.error,
+                        icon: _deletingColumnId == column.id
+                            ? const SizedBox.square(
+                                dimension: UtenSpacing.s20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.delete_outline_rounded),
+                      )
+                    : null,
+              ),
             ),
           )
         else

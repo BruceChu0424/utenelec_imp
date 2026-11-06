@@ -1940,7 +1940,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int? _pendingScrollToEnd;
   int _scrollToEndAttempts = 0;
   bool _scrollToEndScheduled = false;
-  _MasterWindowSlot? _tailWindowSlot;
+  (int, int, _MasterWindowSlot)? _failedWindowScrollToEnd;
   final GlobalKey _revealedRowKey = GlobalKey();
   String? _pendingRevealId;
   bool _revealScheduled = false;
@@ -2027,19 +2027,54 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           widget.items.isEmpty) {
         return;
       }
+      final windowEnd = _localWindowEnd;
+      final request = _pendingScrollToEnd!;
+      final sourceRevision = _floatingBatchDataRevision;
+      final windowRead = (request, sourceRevision, windowEnd);
+      if (windowEnd != null &&
+          _localRowWindow.mountedRowCount > 0 &&
+          _failedWindowScrollToEnd != windowRead) {
+        bool current() =>
+            mounted &&
+            _pendingScrollToEnd == request &&
+            _floatingBatchDataRevision == sourceRevision &&
+            identical(_localWindowEnd, windowEnd) &&
+            !_resultOwnerRetired &&
+            _visiblePresentationActive;
+        _scrollToEndScheduled = true;
+        unawaited(
+          _localRowWindow
+              .reveal(windowEnd, alignment: 1, isCurrent: current)
+              .then((revealed) {
+                if (!mounted) return;
+                _scrollToEndScheduled = false;
+                if (current()) {
+                  if (revealed) {
+                    _pendingScrollToEnd = null;
+                  } else {
+                    // A finite geometry failure uses the existing bounded
+                    // controller fallback; it is never accepted as a reveal.
+                    _failedWindowScrollToEnd = (
+                      request,
+                      sourceRevision,
+                      windowEnd,
+                    );
+                  }
+                }
+                // A newer request/source may have arrived while this reveal
+                // owned the scheduling flag. Start its current target now.
+                if (_pendingScrollToEnd != null && _visiblePresentationActive) {
+                  _scheduleScrollToEnd();
+                  WidgetsBinding.instance.ensureVisualUpdate();
+                }
+              }),
+        );
+        return;
+      }
       final controller = _verticalScrollController;
       if (controller == null || controller.positions.length != 1) return;
       final position = controller.position;
       if (!position.hasContentDimensions) return;
-      final tail = _tailWindowSlot;
-      if (tail != null && _localRowWindow.mountedRowCount > 0) {
-        // The measured window owns terminal-row materialization and geometry.
-        // Jumping only to an estimated max extent can abandon an offscreen row.
-        final request = _pendingScrollToEnd!;
-        _scrollToEndScheduled = true;
-        unawaited(_revealWindowEnd(request, tail));
-        return;
-      }
       if (_localRowWindow.isMounting ||
           _deferredRowMounts.values.any((row) => row.isMounting)) {
         _scheduleScrollToEnd();
@@ -2068,26 +2103,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _pendingScrollToEnd = null;
       }
     });
-  }
-
-  Future<void> _revealWindowEnd(int request, _MasterWindowSlot tail) async {
-    try {
-      await _localRowWindow.reveal(
-        tail,
-        alignment: 1,
-        maxGeometryCorrections: 8,
-        isCurrent: () =>
-            mounted &&
-            _pendingScrollToEnd == request &&
-            identical(_tailWindowSlot, tail),
-      );
-    } finally {
-      if (mounted) {
-        _scrollToEndScheduled = false;
-        if (_pendingScrollToEnd == request) _pendingScrollToEnd = null;
-        _scheduleScrollToEnd();
-      }
-    }
   }
 
   // 联动表格与带悬浮留白表格共用横滚条覆盖层，与 _bodyH 双向同步。
@@ -2540,6 +2555,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   final _textSelection = UtenTableTextSelection();
   final _localRowWindow = UtenAncestorRowWindowController<_MasterWindowSlot>();
   final _localWindowSlots = <Object, _MasterWindowSlot>{};
+  _MasterWindowSlot? _localWindowEnd;
   final _deferredRowMounts = <Object, UtenDeferredRowMountController>{};
   final _deferredRowHeights = <Object, double>{};
   List<Object> _fallbackPlanIds = const [];
@@ -3614,6 +3630,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _deferredTrailingEdge = false;
       _pendingScrollToEnd = widget.scrollToEndRequest;
       _scrollToEndAttempts = 0;
+      _failedWindowScrollToEnd = null;
     } else if (oldWidget.currentPage != widget.currentPage ||
         oldWidget.paginationScope != widget.paginationScope ||
         widget.scrollToEndRequest == 0) {
@@ -5156,7 +5173,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 (bodyStyle?.height ?? 1.5) +
             UtenSpacing.s16;
     final window = windowSlots;
-    _tailWindowSlot = window == null || window.isEmpty ? null : window.last;
+    _localWindowEnd = window == null || window.isEmpty ? null : window.last;
     final stageFallbackRows =
         window == null &&
         plan.length >= UtenAncestorRowWindow.minimumStagedRows;
@@ -8394,30 +8411,19 @@ class _FilterCellState extends State<_FilterCell> {
         (widget.isCurrent?.call() ?? true);
     try {
       final query = _remoteQuery;
+      MasterFacetPage? previousBatch;
       final result = await loadCompletePagedResult<MasterFacetBucket>(
         isCurrent: current,
         idOf: (bucket) => ('facet-value', bucket.value),
         allowUnknownTotal: true,
         unknownPageCountIsHorizon: true,
-        onPage: (batch) {
-          // Preserve only the first accepted batch during a failed read. Avoid
-          // copying the growing full option set on every internal batch.
-          if (current() && batch.page == 1 && batch.totalPages > 1) {
-            _remoteBuckets = batch.items;
-            _overlay?.markNeedsBuild();
-          }
-        },
         loadPage: (page, _) async {
-          final response = await widget.loadFacetPage!(query, page);
-          return PagedResult<MasterFacetBucket>(
-            items: response.items,
-            page: response.page ?? page,
-            size: response.size ?? 100,
-            total: -1,
-            totalPages: response.hasMore
-                ? (response.page ?? page) + 1
-                : (response.page ?? page),
-          );
+          final continuation = previousBatch?.internalPageLoader;
+          final response = page > 1 && continuation != null
+              ? await continuation(page)
+              : await widget.loadFacetPage!(query, page);
+          previousBatch = response;
+          return _MasterFacetSnapshotPage(response, page);
         },
       );
       if (!current()) return;
@@ -9460,3 +9466,24 @@ class _BorrowedPrimaryTableController extends ScrollController {
 
 /// 拖拽拾起的手势来源（判负一方的 cancel 不能误撕另一方的现场）。
 enum _RowDragSource { longPress, vertical }
+
+class _MasterFacetSnapshotPage extends PagedResult<MasterFacetBucket>
+    implements PagedResultRevision {
+  _MasterFacetSnapshotPage(this.response, int requestedPage)
+    : super(
+        items: response.items,
+        page: response.page ?? requestedPage,
+        size: response.size ?? 100,
+        total: -1,
+        totalPages: response.hasMore
+            ? (response.page ?? requestedPage) + 1
+            : (response.page ?? requestedPage),
+        readScopeVersion: response.readScopeVersion,
+      );
+  final MasterFacetPage response;
+  @override
+  Object? get snapshotRevision =>
+      response.readSnapshotRevision == null && response.readDataVersion == null
+      ? null
+      : (response.readSnapshotRevision, response.readDataVersion);
+}

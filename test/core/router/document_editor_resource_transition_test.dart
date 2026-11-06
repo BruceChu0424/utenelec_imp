@@ -12,6 +12,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -19,6 +20,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/document_scope_capability_overrides.dart';
 import '../../support/owned_provider_widget_tests.dart';
 import '../../support/uten_test_actions.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 final _providerTests = OwnedProviderWidgetTests();
 
@@ -143,6 +145,7 @@ Future<GoRouter> _mount(
   final container = ProviderContainer(
     overrides: [
       apiClientProvider.overrideWithValue(api),
+      formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
       sharedPreferencesProvider.overrideWithValue(preferences),
       sessionProvider.overrideWith(_Session.new),

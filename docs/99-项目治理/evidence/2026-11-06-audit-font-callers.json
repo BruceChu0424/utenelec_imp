@@ -1,0 +1,453 @@
+{
+  "entry": "test/support/audit_screenshot_support.dart#loadAuditScreenshotFonts",
+  "native": "test/support/audit_font_asset_loader_io.dart",
+  "web": "test/support/audit_font_asset_loader_web.dart",
+  "migration": "All explicit callers keep the same unique entry; no caller opt-out or skip.",
+  "callerFiles": 111,
+  "callers": [
+    {
+      "path": "test/components/inputs/uten_dropdown_available_space_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/inputs/uten_dropdown_resize_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/inputs/uten_employee_selection_hierarchy_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/layout/uten_category_search_style_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/platform_surface_visual_review_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/table_header_visual_review_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/uten_detail_summary_card_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/uten_scroll_gutter_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/components/uten_table_text_copy_layout_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/admin_audit_log_detail_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/admin_permissions_layout_test.dart",
+      "calls": 4
+    },
+    {
+      "path": "test/features/admin/admin_sms_settings_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/admin_system_settings_retention_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/audit_center_layout_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/material_forecast_runtime_status_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/server_operations_render_test.dart",
+      "calls": 6
+    },
+    {
+      "path": "test/features/admin/server_update_popup_gate_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/widgets/admin_department_directory_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/widgets/permission_batch_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/widgets/permission_configuration_transfer_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/admin/widgets/permission_templates_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/ai_visual/ai_visual_support.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/applications/business_application_edit_and_print_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/applications/business_application_payment_recovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/approvals/approval_center_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/approvals/approval_policy_settings_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/goods_bom_add_components_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/basic_data/goods_bom_batch_maintenance_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/goods_bom_edit_mode_test.dart",
+      "calls": 6
+    },
+    {
+      "path": "test/features/basic_data/pages/category_root_create_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/basic_data/pages/client_category_page_refresh_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/pages/goods_import_preview_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/pages/goods_price_analysis_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/pages/import_review_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/pages/master_category_append_create_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/pages/warehouse_page_layout_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/basic_data/payment_style_category_segment_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/category_edit_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_batch_paste_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_bom_workspace_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_material_market_panel_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_system_identity_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/master_edit_form_layout_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/mould_picker_field_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/basic_data/widgets/uten_client_picker_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/dashboard/dashboard_visual_review_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/document_detail_loading_recovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/employee/employee_detail_account_actions_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/expense/expense_workflow_visual_stress_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_account_picker_panel_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_application_action_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_application_settings_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_batch_entry_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/finance/finance_chart_launcher_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_classification_correction_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_department_reference_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_document_command_recovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_document_party_names_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_durable_command_recovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_native_legacy_opening_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_party_snapshot_card_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_payable_statement_adjustment_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_procurement_approval_tasks_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_receipt_integration_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_report_header_query_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_selection_immediate_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/finance_statement_document_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/gl_report_line_bindings_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/finance/receipt_order_collection_panel_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/operations_workbench/procurement_order_closure_batch_workbench_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/operations_workbench/procurement_workbench_difference_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/operations_workbench/workbench_filter_loading_responsiveness_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/pages/production_daily_report_destination_layout_cases.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/production/pages/production_daily_report_detail_approve_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/production/pages/production_daily_report_manual_destination_cases.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/pages/production_daily_report_product_card_cases.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/production/pages/production_daily_report_review_v2_cases.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/pages/production_draw_request_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/pages/production_execution_batch_page_test.dart",
+      "calls": 3
+    },
+    {
+      "path": "test/features/production/pages/production_workshop_tasks_page_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/production/where_used_report_page_interaction_test.dart",
+      "calls": 3
+    },
+    {
+      "path": "test/features/production/widgets/production_daily_direct_transfer_cells_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/widgets/production_daily_product_details_card_test.dart",
+      "calls": 5
+    },
+    {
+      "path": "test/features/production/widgets/production_daily_product_details_resize_cases.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/widgets/workshop_task_material_dialog_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/production/workshop_material_reports_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/purchase/purchase_doc_detail_totals_bar_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/quality/production_fqc_submission_recovery_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/features/sales/pages/sales_doc_edit_v187_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/sales/pages/shipment_receivable_position_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/sales/sales_manager_review_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/stock/contextual_candidate_search_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/stock/instant_inventory_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/stock/stock_count_candidate_picker_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/subcontract/subcontract_decomposition_page_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/warehouse/production_draw_batch_discovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/warehouse/warehouse_arrival_weight_capture_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/warehouse/warehouse_quality_stock_in_warehouse_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/warehouse/warehouse_task_center_visual_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/features/warehouse/workshop_material_request_inline_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/goods_bom_nested_relation_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/master_data_table_view_selection_test.dart",
+      "calls": 4
+    },
+    {
+      "path": "test/server_maintenance_host_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/shared/history/scoped_record_history_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/shared/platform_tables/platform_table_recovery_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/shared/platform_tables/table_query_status_contract_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/shared/widgets/procurement_order_closure_dialog_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/shared/widgets/uten_hierarchy_detail_menu_test.dart",
+      "calls": 1
+    },
+    {
+      "path": "test/support/audit_font_asset_loader_test.dart",
+      "calls": 2
+    },
+    {
+      "path": "test/uten_split_view_test.dart",
+      "calls": 1
+    }
+  ]
+}

@@ -49,9 +49,10 @@ class _Api extends ApiClient {
         (path == ApiEndpoints.visitorApprovalAsHost
             ? 'hostReviewing'
             : 'pending');
+    final statuses = (status as String).split(',');
     return {
       'items': [
-        for (final code in (status as String).split(','))
+        for (final code in statuses)
           {
             'id': 'visitor-app-$code',
             'visitorName': '访客$code',
@@ -63,7 +64,7 @@ class _Api extends ApiClient {
       ],
       'page': 1,
       'size': 20,
-      'total': 1,
+      'total': statuses.length,
       'totalPages': 1,
     };
   }

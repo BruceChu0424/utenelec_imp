@@ -1,0 +1,343 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: ordinary subcontract list keeps exact money with local unit and masks stale Exact
+00:01 +1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR header searches are sent before paging
+00:02 +2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR header searches are sent before paging
+00:02 +3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order stages filter the server aggregate and reset pagination
+00:03 +4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order stages filter the server aggregate and reset pagination
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: {'page': 1, 'size': 20, 'financeApproval': 'IN_PROGRESS'}
+  Actual: {'page': 1, 'size': 100, 'financeApproval': 'IN_PROGRESS'}
+   Which: at location ['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:145:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 145
+The test description was:
+  order stages filter the server aggregate and reset pagination
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:03 +4 -1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: visitor home separates every terminal state from its default active requests
+00:03 +4 -1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order stages filter the server aggregate and reset pagination [E]
+  Test failed. See exception logs above.
+  The test description was: order stages filter the server aggregate and reset pagination
+  
+00:04 +4 -1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order history defaults to last three months and retains it when clearing status
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: [
+            {'page': 1, 'size': 20, 'dateFrom': '2026-10-07', 'dateTo': '2026-11-07'},
+            {'page': 2, 'size': 20, 'dateFrom': '2026-10-07', 'dateTo': '2026-11-07'}
+          ]
+  Actual: [{'page': 1, 'size': 100, 'dateFrom': '2026-10-07', 'dateTo': '2026-11-07'}]
+   Which: at location [0]['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:232:7)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 232
+The test description was:
+  order history defaults to last three months and retains it when clearing status
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:04 +4 -2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: visitor home separates every terminal state from its default active requests
+00:04 +4 -2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order history defaults to last three months and retains it when clearing status [E]
+  Test failed. See exception logs above.
+  The test description was: order history defaults to last three months and retains it when clearing status
+  
+00:04 +5 -2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: returns keeps completed states under time-gated history
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: {'page': 1, 'size': 20, 'status': 0}
+  Actual: {'page': 1, 'size': 100, 'status': 0}
+   Which: at location ['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:320:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 320
+The test description was:
+  returns keeps completed states under time-gated history
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +5 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read checkedIn without actions
+00:05 +5 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: returns keeps completed states under time-gated history [E]
+  Test failed. See exception logs above.
+  The test description was: returns keeps completed states under time-gated history
+  
+00:05 +5 -3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: material-returns keeps completed states under time-gated history
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: {'page': 1, 'size': 20, 'status': 0}
+  Actual: {'page': 1, 'size': 100, 'status': 0}
+   Which: at location ['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:320:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 320
+The test description was:
+  material-returns keeps completed states under time-gated history
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:05 +5 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read checkedIn without actions
+00:05 +5 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: material-returns keeps completed states under time-gated history [E]
+  Test failed. See exception logs above.
+  The test description was: material-returns keeps completed states under time-gated history
+  
+00:06 +5 -4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read checkedIn without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  HR can read checkedIn without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +5 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: wastes keeps completed states under time-gated history
+00:06 +5 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read checkedIn without actions [E]
+  Test failed. See exception logs above.
+  The test description was: HR can read checkedIn without actions
+  
+00:06 +5 -5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: wastes keeps completed states under time-gated history
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: {'page': 1, 'size': 20, 'status': 0}
+  Actual: {'page': 1, 'size': 100, 'status': 0}
+   Which: at location ['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:320:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 320
+The test description was:
+  wastes keeps completed states under time-gated history
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:06 +5 -6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read cancelled without actions
+00:06 +5 -6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: wastes keeps completed states under time-gated history [E]
+  Test failed. See exception logs above.
+  The test description was: wastes keeps completed states under time-gated history
+  
+00:07 +5 -6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read cancelled without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  HR can read cancelled without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +5 -7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order draft deep link still loads only unsubmitted drafts
+00:07 +5 -7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read cancelled without actions [E]
+  Test failed. See exception logs above.
+  The test description was: HR can read cancelled without actions
+  
+00:07 +5 -7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order draft deep link still loads only unsubmitted drafts
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: {'page': 1, 'size': 20, 'status': 0, 'financeApproval': 'NONE'}
+  Actual: {'page': 1, 'size': 100, 'status': 0, 'financeApproval': 'NONE'}
+   Which: at location ['size'] is <100> instead of <20>
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart:390:5)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart line 390
+The test description was:
+  order draft deep link still loads only unsubmitted drafts
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:07 +5 -8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read rejected without actions
+00:07 +5 -8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order draft deep link still loads only unsubmitted drafts [E]
+  Test failed. See exception logs above.
+  The test description was: order draft deep link still loads only unsubmitted drafts
+  
+00:08 +5 -8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read rejected without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  HR can read rejected without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:08 +5 -9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read rejected without actions [E]
+  Test failed. See exception logs above.
+  The test description was: HR can read rejected without actions
+  
+00:08 +5 -9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read checkedIn without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  host can read checkedIn without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:08 +5 -10: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read checkedIn without actions [E]
+  Test failed. See exception logs above.
+  The test description was: host can read checkedIn without actions
+  
+00:08 +5 -10: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read cancelled without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  host can read cancelled without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:09 +5 -11: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read cancelled without actions [E]
+  Test failed. See exception logs above.
+  The test description was: host can read cancelled without actions
+  
+00:09 +5 -11: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read rejected without actions
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following TestFailure was thrown running a test:
+Expected: ['checkedIn', 'rejected', 'cancelled']
+  Actual: MappedListIterable<VisitorApplication, String>:[]
+   Which: at location [0] is MappedListIterable<VisitorApplication, String>:[] which shorter than
+expected
+
+When the exception was thrown, this was the stack:
+#4      main.<anonymous closure> (file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart:281:9)
+<asynchronous suspension>
+#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1952:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided one frame from package:stack_trace)
+
+This was caught by the test expectation on the following line:
+  file:///D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart line 281
+The test description was:
+  host can read rejected without actions
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:09 +5 -12: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read rejected without actions [E]
+  Test failed. See exception logs above.
+  The test description was: host can read rejected without actions
+  
+00:10 +5 -12: Some tests failed.
+
+Failing tests:
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: material-returns keeps completed states under time-gated history
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order draft deep link still loads only unsubmitted drafts
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order history defaults to last three months and retains it when clearing status
+  D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order stages filter the server aggregate and reset pagination
+  ... and 8 more

@@ -15,6 +15,7 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+const _batchSize = 100;
 late SharedPreferences _preferences;
 
 void main() {
@@ -22,6 +23,46 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  testWidgets(
+    'one complete subcontract list consumes bounded batches and scrolling reads locally',
+    (tester) async {
+      final api = await _mount(tester, rowCount: 201);
+      await _tap(tester, '进行中');
+      expect(api.queries, [
+        for (final page in [1, 2, 3])
+          {'page': page, 'size': _batchSize, 'financeApproval': 'IN_PROGRESS'},
+      ]);
+      expect(_table(tester).items, hasLength(201));
+      expect(_table(tester).items.map((row) => row.id).toSet(), hasLength(201));
+      expect(_table(tester).currentPage, 1);
+      final completedReads = api.queries.length;
+      _table(tester).onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(_table(tester).currentPage, 1);
+      expect(api.queries, hasLength(completedReads));
+      final body = find
+          .descendant(
+            of: find.byWidgetPredicate(
+              (widget) => widget is MasterDataTableView,
+            ),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .last;
+      await tester.drag(body, const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state<ScrollableState>(body).position.pixels,
+        greaterThan(0),
+      );
+      expect(api.queries, hasLength(completedReads));
+      expect(_table(tester).items, hasLength(201));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'ordinary subcontract list keeps exact money with local unit and masks stale Exact',
     (tester) async {
@@ -129,90 +170,93 @@ void main() {
     expect(_acceptedQuery(tester, api)['status'], 1);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('order stages filter the server aggregate and reset pagination', (
-    tester,
-  ) async {
-    final api = await _mount(tester);
+  testWidgets(
+    'order stages filter the server aggregate and retain a complete result',
+    (tester) async {
+      final api = await _mount(tester);
 
-    expect(_primaryLabels(tester), ['草稿', '进行中', '历史记录']);
-    expect(find.text('等待财务审核'), findsNothing);
-    expect(find.text('财务已退回'), findsNothing);
-    expect(find.text('执行中'), findsNothing);
-    expect(find.text('已反审'), findsNothing);
-    expect(api.queries, isEmpty);
+      expect(_primaryLabels(tester), ['草稿', '进行中', '历史记录']);
+      expect(find.text('等待财务审核'), findsNothing);
+      expect(find.text('财务已退回'), findsNothing);
+      expect(find.text('执行中'), findsNothing);
+      expect(find.text('已反审'), findsNothing);
+      expect(api.queries, isEmpty);
 
-    await _tap(tester, '进行中');
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'financeApproval': 'IN_PROGRESS',
-    });
+      await _tap(tester, '进行中');
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'financeApproval': 'IN_PROGRESS',
+      });
 
-    expect(
-      find.byKey(const Key('subcontract-biz-substages-order')),
-      findsNothing,
-    );
-    _table(tester).onFilterChanged('status', 'PENDING');
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'status': 0,
-      'financeApproval': 'PENDING',
-    });
-    _table(tester).onFilterChanged('status', 'REJECTED');
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'status': 0,
-      'financeApproval': 'REJECTED',
-    });
-    _table(tester).onFilterChanged('status', 'EXECUTING');
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'status': 1,
-      'financeApproval': 'NONE',
-      'closed': false,
-    });
+      expect(
+        find.byKey(const Key('subcontract-biz-substages-order')),
+        findsNothing,
+      );
+      _table(tester).onFilterChanged('status', 'PENDING');
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'status': 0,
+        'financeApproval': 'PENDING',
+      });
+      _table(tester).onFilterChanged('status', 'REJECTED');
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'status': 0,
+        'financeApproval': 'REJECTED',
+      });
+      _table(tester).onFilterChanged('status', 'EXECUTING');
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'status': 1,
+        'financeApproval': 'NONE',
+        'closed': false,
+      });
 
-    _table(tester).onFilterChanged('status', 'REVIEW_REJECTED');
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'status': 1,
-      'financeApproval': 'REJECTED',
-    });
-    _table(tester).onFilterChanged('status', 'REVIEW_PENDING');
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'status': 1,
-      'financeApproval': 'PENDING',
-    });
+      _table(tester).onFilterChanged('status', 'REVIEW_REJECTED');
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'status': 1,
+        'financeApproval': 'REJECTED',
+      });
+      _table(tester).onFilterChanged('status', 'REVIEW_PENDING');
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'status': 1,
+        'financeApproval': 'PENDING',
+      });
 
-    _table(tester).onPageChange!(2);
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api)['page'], 2);
-    await _showHeader(tester);
-    _table(tester).onFilterChanged('status', null);
-    await tester.pumpAndSettle();
-    expect(_acceptedQuery(tester, api), {
-      'page': 1,
-      'size': 20,
-      'financeApproval': 'IN_PROGRESS',
-    });
-    await _showHeader(tester);
-    expect(find.text('清除状态筛选'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      final completedReads = api.queries.length;
+      _table(tester).onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(_table(tester).currentPage, 1);
+      expect(api.queries, hasLength(completedReads));
+      await _showHeader(tester);
+      _table(tester).onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), {
+        'page': 1,
+        'size': _batchSize,
+        'financeApproval': 'IN_PROGRESS',
+      });
+      await _showHeader(tester);
+      expect(find.text('清除状态筛选'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-    'order history defaults to last three months and retains it when clearing status',
+    'order history defaults to last month and retains it when clearing status',
     (tester) async {
       final api = await _mount(tester);
       await _tap(tester, '历史记录');
@@ -225,15 +269,14 @@ void main() {
       expect(find.text('执行中'), findsNothing);
       // 2026-10-24 起历史门默认近一个月：选中历史记录即按最近一个月查询（无状态）。
       final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
-      // The accepted first page prepares only its immediate successor. Both
-      // physical reads must carry the same history range; prefetch is not the
-      // reader's selected page.
+      // A complete empty response needs one bounded internal read. There is
+      // no adjacent-page prediction or user page-number state.
       expect(_table(tester).currentPage, 1);
       expect(api.queries, [
-        for (final page in [1, 2])
+        for (final page in [1])
           {
             'page': page,
-            'size': 20,
+            'size': _batchSize,
             'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
             'dateTo': ChinaDateTime.formatDate(defaultRange.end),
           },
@@ -244,7 +287,7 @@ void main() {
       // 历史内换状态筛选保留默认时间段（ADR-180 历史保留原时间范围）。
       expect(_acceptedQuery(tester, api), {
         'page': 1,
-        'size': 20,
+        'size': _batchSize,
         'status': 1,
         'closed': true,
         'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
@@ -260,7 +303,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(_acceptedQuery(tester, api), {
         'page': 1,
-        'size': 20,
+        'size': _batchSize,
         'status': 1,
         'closed': true,
         'dateFrom': '2026-08-01',
@@ -270,7 +313,7 @@ void main() {
       await _tap(tester, '已反审');
       expect(_acceptedQuery(tester, api), {
         'page': 1,
-        'size': 20,
+        'size': _batchSize,
         'status': -1,
         'dateFrom': '2026-08-01',
         'dateTo': '2026-08-31',
@@ -282,7 +325,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(_acceptedQuery(tester, api), {
         'page': 1,
-        'size': 20,
+        'size': _batchSize,
         'dateFrom': '2026-08-01',
         'dateTo': '2026-08-31',
       });
@@ -319,7 +362,7 @@ void main() {
         await _tap(tester, '草稿');
         expect(_acceptedQuery(tester, api), {
           'page': 1,
-          'size': 20,
+          'size': _batchSize,
           'status': 0,
         });
         await _tap(tester, '历史记录');
@@ -334,7 +377,7 @@ void main() {
         final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
         expect(_acceptedQuery(tester, api), {
           'page': 1,
-          'size': 20,
+          'size': _batchSize,
           'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
           'dateTo': ChinaDateTime.formatDate(defaultRange.end),
         });
@@ -342,7 +385,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(_acceptedQuery(tester, api), {
           'page': 1,
-          'size': 20,
+          'size': _batchSize,
           'status': 1,
           'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
           'dateTo': ChinaDateTime.formatDate(defaultRange.end),
@@ -351,18 +394,18 @@ void main() {
         await _tap(tester, '全部');
         expect(_acceptedQuery(tester, api), {
           'page': 1,
-          'size': 20,
+          'size': _batchSize,
           'status': 1,
         });
         await _tap(tester, '已反审');
         expect(_acceptedQuery(tester, api), {
           'page': 1,
-          'size': 20,
+          'size': _batchSize,
           'status': -1,
         });
         _table(tester).onFilterChanged('status', null);
         await tester.pumpAndSettle();
-        expect(_acceptedQuery(tester, api), {'page': 1, 'size': 20});
+        expect(_acceptedQuery(tester, api), {'page': 1, 'size': _batchSize});
         await _showHeader(tester);
         expect(
           tester
@@ -389,7 +432,7 @@ void main() {
     );
     expect(_acceptedQuery(tester, api), {
       'page': 1,
-      'size': 20,
+      'size': _batchSize,
       'status': 0,
       'financeApproval': 'NONE',
     });
@@ -408,12 +451,13 @@ Future<_RecordingApi> _mount(
   Widget? page,
   String query = '',
   Set<String> permissions = const {},
+  int rowCount = 0,
 }) async {
   tester.view.physicalSize = const Size(1500, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final api = _RecordingApi('/subcontract/$pathSegment');
+  final api = _RecordingApi('/subcontract/$pathSegment', rowCount: rowCount);
   final router = GoRouter(
     initialLocation: '/subcontract/$pathSegment$query',
     routes: [
@@ -461,8 +505,8 @@ MasterDataTableView<SubcontractDocListItem> _table(WidgetTester tester) =>
     );
 
 Map<String, dynamic> _acceptedQuery(WidgetTester tester, _RecordingApi api) {
-  // Drafts wrap records in FormDraftCategoryRow, while active/history rows use
-  // the DTO directly. Both expose the actual accepted reader page.
+  // Drafts wrap records in FormDraftCategoryRow; complete active/history rows
+  // use the DTO directly. Both retain logical page1 after all internal reads.
   final table = tester.widget<MasterDataTableView<dynamic>>(
     find.byWidgetPredicate((widget) => widget is MasterDataTableView),
   );
@@ -476,7 +520,7 @@ Future<void> _tap(WidgetTester tester, String label) async {
 }
 
 Future<void> _showHeader(WidgetTester tester) async {
-  // 分类筛选和翻页都会把表体回顶并收起联动页头，先展开再操作分类。
+  // 分类筛选和滚动会收起联动页头，先展开再操作分类。
   tester
       .state<NestedScrollViewState>(find.byType(NestedScrollView))
       .outerController
@@ -485,9 +529,10 @@ Future<void> _showHeader(WidgetTester tester) async {
 }
 
 class _RecordingApi extends ApiClient {
-  _RecordingApi(this.listPath) : super(Dio());
+  _RecordingApi(this.listPath, {this.rowCount = 0}) : super(Dio());
 
   final String listPath;
+  final int rowCount;
   final queries = <Map<String, dynamic>>[];
 
   @override
@@ -497,12 +542,29 @@ class _RecordingApi extends ApiClient {
   }) async {
     if (path != listPath) return {};
     queries.add(Map<String, dynamic>.from(query ?? {}));
+    final page = query?['page'] as int? ?? 1;
+    final size = query?['size'] as int? ?? _batchSize;
+    final start = (page - 1) * size;
     return {
-      'items': const <Map<String, dynamic>>[],
-      'page': query?['page'] ?? 1,
-      'size': 20,
-      'total': 40,
-      'totalPages': 2,
+      'items': [
+        for (
+          var index = start;
+          index < rowCount && index < start + size;
+          index++
+        )
+          {
+            'id': 'doc-$index',
+            'docNo': 'WB-$index',
+            'status': query?['status'] ?? 1,
+            'financeApprovalState': 'NONE',
+            'closed': query?['closed'] ?? false,
+            'billDate': '2026-11-06',
+          },
+      ],
+      'page': page,
+      'size': size,
+      'total': rowCount,
+      'totalPages': (rowCount + size - 1) ~/ size,
     };
   }
 

@@ -1,0 +1,21 @@
+Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!
+00:00 +0: loading D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart
+00:00 +0: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: one complete subcontract list consumes bounded batches and scrolling reads locally
+00:02 +1: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR header searches are sent before paging
+00:02 +2: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: ordinary subcontract list keeps exact money with local unit and masks stale Exact
+00:03 +3: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host header searches are sent before paging
+00:03 +4: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: waste weight header queries all pages in its original unit
+00:03 +5: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: visitor home separates every terminal state from its default active requests
+00:04 +6: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: visitor home separates every terminal state from its default active requests
+00:04 +7: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: order history defaults to last month and retains it when clearing status
+00:05 +8: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read checkedIn without actions
+00:05 +9: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: returns keeps completed states under time-gated history
+00:05 +10: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read cancelled without actions
+00:06 +11: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: material-returns keeps completed states under time-gated history
+00:06 +12: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: HR can read rejected without actions
+00:06 +13: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: wastes keeps completed states under time-gated history
+00:06 +14: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/subcontract/subcontract_business_categories_test.dart: wastes keeps completed states under time-gated history
+00:07 +15: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read cancelled without actions
+00:07 +16: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read cancelled without actions
+00:07 +17: D:/Projects/uten_imp_worktrees/ci-draft-exit-20261106/test/features/visitor_approval/visitor_terminal_history_visibility_test.dart: host can read rejected without actions
+00:07 +18: All tests passed!

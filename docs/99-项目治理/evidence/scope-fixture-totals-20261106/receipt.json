@@ -1,0 +1,49 @@
+{
+  "baseMain": "651bf701e73a8fb209ba0e850f32dbe6e442e6fe",
+  "sourceSha256": {
+    "test/features/subcontract/subcontract_business_categories_test.dart": "3b2ba00111902e60c2ee58698022cb561159bcedbc766ddc72db92768e3c9a7e",
+    "test/features/visitor_approval/visitor_terminal_history_visibility_test.dart": "e2458a68f50202f7c0fd9a06782fdc9c5652906e61de8b1bfb993161d65de1a2"
+  },
+  "originalTwoWholes": {
+    "pass": 5,
+    "fail": 12
+  },
+  "finalTwoWholes": {
+    "pass": 18,
+    "fail": 0,
+    "skip": 0,
+    "newFullReadCase": 1
+  },
+  "strictFatalInfos": {
+    "exit": 0,
+    "issues": 0
+  },
+  "productionChanges": [],
+  "completeReadEvidence": {
+    "rows": 201,
+    "physicalPages": [
+      1,
+      2,
+      3
+    ],
+    "batchSize": 100,
+    "logicalPage": 1,
+    "postLoadCompatibilityRequestDelta": 0,
+    "actualVerticalDragRequestDelta": 0,
+    "retainedRowsAfterDrag": 201
+  },
+  "visitorHistoryFixture": "Three returned terminal rows now declare total3, preserving checkedIn/rejected/cancelled visibility and no-action checks",
+  "preservedAssertions": [
+    "all subcontract stage/status mappings and date range retention",
+    "exact amount and weight source/precision assertions",
+    "draft deep-link and creation permission checks",
+    "visitor HR/host terminal visibility without batch or row mutations"
+  ],
+  "evidenceSha256": {
+    "original-two.log": "d68044a04adc69e17e3f2d44420e2b4c27e4fd5df40e662cdd66d518e3063807",
+    "original-two.jsonl": "0c9704b71e635a35c644d53ea5e6d66f6d540fec7bcf10e92ddcd933a7f03347",
+    "current-two.log": "27eec0f38dfe9f5eaf3fa6c831119262a4b7b12051c72fc5d2fbc368eeff91b4",
+    "current-two.jsonl": "45150d6233dd0da8a7c7662a7c7cd205da6474c1c250d221ed1677c81c0bdd2c",
+    "strict.log": "234853e44f3c00b418fc6df2a100888d0503cde14e9eca8767f7717b31ced0aa"
+  }
+}

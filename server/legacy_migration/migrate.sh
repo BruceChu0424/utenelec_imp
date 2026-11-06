@@ -80,6 +80,113 @@ EXPECTED_FLYWAY_MIGRATION_COUNT=""
 EXPECTED_FLYWAY_HEAD=""
 MAPPING_VERSION=""
 
+# Version semantics are generated from the same reviewed pure contract as the
+# signed inventory tools. TSV is data on fd3, never Python/shell program text.
+flyway_contract() {
+  python3 -I - "$@" <<'PY'
+from __future__ import annotations
+# BEGIN GENERATED FLYWAY VERSION CONTRACT
+# Source: deploy/contracts/flyway_version_contract.py
+# SHA-256: 93a6b6905c618a662c956dfddd1213731f939f954dbde6ed42b03db294e58fde
+_FLYWAY_SEMANTIC_RE = __import__("re").compile(r"[0-9]+(?:[._][0-9]+)*")
+_FLYWAY_SCRIPT_RE = __import__("re").compile(
+    r"V(?P<version>[0-9]+(?:[._][0-9]+)*)__"
+    r"(?P<description>[^\x00-\x1f\x7f-\x9f/\\]{1,200})\.sql"
+)
+
+
+def _flyway_semantic_key(value: object) -> tuple[int, ...]:
+    if type(value) is not str or len(value) > 50 or not _FLYWAY_SEMANTIC_RE.fullmatch(value):
+        raise ValueError("Flyway version must contain bounded ASCII integer components")
+    parts = tuple(int(part) for part in value.replace("_", ".").split("."))
+    while len(parts) > 1 and parts[-1] == 0:
+        parts = parts[:-1]
+    return parts
+
+
+def _flyway_version_key(value: object) -> tuple[int, ...]:
+    parts = _flyway_semantic_key(value)
+    if parts <= (0,) or value != ".".join(str(part) for part in parts):
+        raise ValueError("Flyway version is not a canonical positive dotted identity")
+    return parts
+
+
+def _flyway_script_parts(filename: object) -> tuple[tuple[int, ...], str, str]:
+    if type(filename) is not str or len(filename.encode("utf-8")) > 255:
+        raise ValueError("Flyway script must be a bounded exact basename")
+    match = _FLYWAY_SCRIPT_RE.fullmatch(filename)
+    if match is None:
+        raise ValueError("Flyway script basename is not canonical")
+    token = match.group("version")
+    if "." in token and "_" in token:
+        raise ValueError("Flyway script version mixes component separators")
+    key = _flyway_version_key(token.replace("_", "."))
+    raw_description = match.group("description")
+    return key, raw_description, raw_description.replace("_", " ")
+
+
+def _flyway_head_identity(version: object) -> int | str:
+    key = _flyway_version_key(version)
+    return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_head_key(value: object) -> tuple[int, ...]:
+    if type(value) is int and value > 0 and len(str(value)) <= 50:
+        return (value,)
+    if type(value) is str and "." in value:
+        return _flyway_version_key(value)
+    raise ValueError("Flyway database head must be an integer or canonical dotted string")
+
+_FLYWAY_CONTRACT_ERROR = ValueError
+# END GENERATED FLYWAY VERSION CONTRACT
+import os
+import re
+import sys
+
+def _caller_inventory_summary():
+    with os.fdopen(3, encoding="utf-8", closefd=False) as stream:
+        raw = stream.read()
+    lines = raw.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines:
+        raise ValueError("Flyway checksum inventory is empty")
+    previous = None
+    scripts = set()
+    for line in lines:
+        fields = line.removesuffix("\r").split("\t")
+        if len(fields) != 3:
+            raise ValueError("Flyway checksum inventory must have exactly three fields")
+        version, script, checksum = fields
+        key = _flyway_version_key(version)
+        script_key, _, _ = _flyway_script_parts(script)
+        if script_key != key:
+            raise ValueError("Flyway checksum inventory script/version binding differs")
+        if not re.fullmatch(r"-?[0-9]+", checksum) or not -(2**31) <= int(checksum) < 2**31:
+            raise ValueError("Flyway checksum inventory CRC is invalid")
+        if previous is not None and key <= previous or script in scripts:
+            raise ValueError("Flyway checksum inventory is duplicated or not in semantic order")
+        previous = key
+        scripts.add(script)
+    print(f"{len(lines)}\t{_flyway_head_identity(version)}")
+
+try:
+    mode, *arguments = sys.argv[1:]
+    if mode == "version" and len(arguments) == 1:
+        _flyway_version_key(arguments[0])
+        print(arguments[0])
+    elif mode == "summary" and not arguments:
+        _caller_inventory_summary()
+    elif mode == "at-least" and len(arguments) == 2:
+        print("true" if _flyway_version_key(arguments[0]) >= _flyway_version_key(arguments[1]) else "false")
+    else:
+        raise ValueError("unknown Flyway contract operation")
+except (OSError, ValueError) as error:
+    print(f"Flyway identity rejected: {error}", file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
 usage () {
     cat <<EOF
 用法：
@@ -626,7 +733,7 @@ preflight () {
         "SELECT COUNT(*),
                 COUNT(*) FILTER (WHERE success),
                 COUNT(DISTINCT version),
-                COALESCE(MAX(version::integer), 0)
+                COALESCE((SELECT latest.version FROM flyway_schema_history latest WHERE latest.version IS NOT NULL ORDER BY string_to_array(latest.version, '.')::numeric[] DESC LIMIT 1), '0')
          FROM flyway_schema_history
          WHERE version IS NOT NULL")
     if [ "$flyway_state" != \
@@ -634,14 +741,19 @@ preflight () {
         echo "✗ 目标库 Flyway 数量、成功状态、唯一版本或 head 与当前候选不一致；已拒绝迁移。" >&2
         exit 69
     fi
-    if ! cmp -s \
-        <(tail -n +2 "$FLYWAY_CHECKSUM_MANIFEST") \
-        <("$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
-            -v ON_ERROR_STOP=1 -AtF $'\t' -c \
-            "SELECT version::integer, script, checksum
-             FROM flyway_schema_history
-             WHERE version IS NOT NULL
-             ORDER BY version::integer"); then
+    local live_flyway_rows live_flyway_summary
+    live_flyway_rows=$("$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 -AtF $'\t' -c \
+        "SELECT version, script, checksum
+         FROM flyway_schema_history
+         WHERE version IS NOT NULL
+         ORDER BY string_to_array(version, '.')::numeric[]")
+    if ! live_flyway_summary=$(flyway_contract summary 3<<<"$live_flyway_rows"); then
+        echo "✗ 目标 Flyway history 版本、脚本或 checksum 格式不合法；已拒绝迁移。" >&2
+        exit 69
+    fi
+    if [ "$live_flyway_summary" != "$EXPECTED_FLYWAY_MIGRATION_COUNT"$'\t'"$EXPECTED_FLYWAY_HEAD" ] \
+       || ! cmp -s <(tail -n +2 "$FLYWAY_CHECKSUM_MANIFEST") <(printf '%s\n' "$live_flyway_rows"); then
         echo "✗ 目标库逐行 Flyway history 与当前候选 checksum manifest 不一致；已拒绝迁移。" >&2
         exit 69
     fi

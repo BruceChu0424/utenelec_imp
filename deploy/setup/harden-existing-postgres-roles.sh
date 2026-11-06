@@ -50,7 +50,7 @@ For any non-empty database, a separately reviewed change approval is mandatory:
     --confirm 'HARDEN uten_imp ON 16/main'
 
 Options:
-  --expected-flyway-version NUMBER  Required exact restored/live Flyway version
+  --expected-flyway-version VERSION Required exact restored/live Flyway version
   --expected-release-version TAG    Exact signed release version containing the Flyway inventory
   --trusted-release-manifest PATH   Root-controlled signed release manifest
   --trusted-release-signature PATH  Root-controlled detached OpenSSH signature
@@ -75,6 +75,123 @@ EOF
 die() {
   printf 'ROLE_HARDENING_REFUSED: %s\n' "$*" >&2
   exit 1
+}
+
+# Version semantics are generated from the same reviewed pure contract as the
+# signed inventory tools. TSV is data on fd3, never Python/shell program text.
+flyway_contract() {
+  /usr/bin/python3 -I - "$@" <<'PY'
+from __future__ import annotations
+# BEGIN GENERATED FLYWAY VERSION CONTRACT
+# Source: deploy/contracts/flyway_version_contract.py
+# SHA-256: 93a6b6905c618a662c956dfddd1213731f939f954dbde6ed42b03db294e58fde
+_FLYWAY_SEMANTIC_RE = __import__("re").compile(r"[0-9]+(?:[._][0-9]+)*")
+_FLYWAY_SCRIPT_RE = __import__("re").compile(
+    r"V(?P<version>[0-9]+(?:[._][0-9]+)*)__"
+    r"(?P<description>[^\x00-\x1f\x7f-\x9f/\\]{1,200})\.sql"
+)
+
+
+def _flyway_semantic_key(value: object) -> tuple[int, ...]:
+    if type(value) is not str or len(value) > 50 or not _FLYWAY_SEMANTIC_RE.fullmatch(value):
+        raise ValueError("Flyway version must contain bounded ASCII integer components")
+    parts = tuple(int(part) for part in value.replace("_", ".").split("."))
+    while len(parts) > 1 and parts[-1] == 0:
+        parts = parts[:-1]
+    return parts
+
+
+def _flyway_version_key(value: object) -> tuple[int, ...]:
+    parts = _flyway_semantic_key(value)
+    if parts <= (0,) or value != ".".join(str(part) for part in parts):
+        raise ValueError("Flyway version is not a canonical positive dotted identity")
+    return parts
+
+
+def _flyway_script_parts(filename: object) -> tuple[tuple[int, ...], str, str]:
+    if type(filename) is not str or len(filename.encode("utf-8")) > 255:
+        raise ValueError("Flyway script must be a bounded exact basename")
+    match = _FLYWAY_SCRIPT_RE.fullmatch(filename)
+    if match is None:
+        raise ValueError("Flyway script basename is not canonical")
+    token = match.group("version")
+    if "." in token and "_" in token:
+        raise ValueError("Flyway script version mixes component separators")
+    key = _flyway_version_key(token.replace("_", "."))
+    raw_description = match.group("description")
+    return key, raw_description, raw_description.replace("_", " ")
+
+
+def _flyway_head_identity(version: object) -> int | str:
+    key = _flyway_version_key(version)
+    return key[0] if len(key) == 1 else str(version)
+
+
+def _flyway_head_key(value: object) -> tuple[int, ...]:
+    if type(value) is int and value > 0 and len(str(value)) <= 50:
+        return (value,)
+    if type(value) is str and "." in value:
+        return _flyway_version_key(value)
+    raise ValueError("Flyway database head must be an integer or canonical dotted string")
+
+_FLYWAY_CONTRACT_ERROR = ValueError
+# END GENERATED FLYWAY VERSION CONTRACT
+import os
+import re
+import sys
+
+def _caller_inventory_summary():
+    with os.fdopen(3, encoding="utf-8", closefd=False) as stream:
+        raw = stream.read()
+    lines = raw.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not lines:
+        raise ValueError("Flyway checksum inventory is empty")
+    previous = None
+    scripts = set()
+    for line in lines:
+        fields = line.removesuffix("\r").split("\t")
+        if len(fields) != 3:
+            raise ValueError("Flyway checksum inventory must have exactly three fields")
+        version, script, checksum = fields
+        key = _flyway_version_key(version)
+        script_key, _, _ = _flyway_script_parts(script)
+        if script_key != key:
+            raise ValueError("Flyway checksum inventory script/version binding differs")
+        if not re.fullmatch(r"-?[0-9]+", checksum) or not -(2**31) <= int(checksum) < 2**31:
+            raise ValueError("Flyway checksum inventory CRC is invalid")
+        if previous is not None and key <= previous or script in scripts:
+            raise ValueError("Flyway checksum inventory is duplicated or not in semantic order")
+        previous = key
+        scripts.add(script)
+    print(f"{len(lines)}\t{_flyway_head_identity(version)}")
+
+try:
+    mode, *arguments = sys.argv[1:]
+    if mode == "version" and len(arguments) == 1:
+        _flyway_version_key(arguments[0])
+        print(arguments[0])
+    elif mode == "summary" and not arguments:
+        _caller_inventory_summary()
+    elif mode == "at-least" and len(arguments) == 2:
+        print("true" if _flyway_version_key(arguments[0]) >= _flyway_version_key(arguments[1]) else "false")
+    else:
+        raise ValueError("unknown Flyway contract operation")
+except (OSError, ValueError) as error:
+    print(f"Flyway identity rejected: {error}", file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
+flyway_at_least() {
+  local comparison
+  comparison="$(flyway_contract at-least "$1" "$2")" || die 'Flyway version comparison failed closed'
+  case "$comparison" in
+    true) return 0 ;;
+    false) return 1 ;;
+    *) die 'Flyway version comparison returned an invalid result' ;;
+  esac
 }
 
 secure_root_file() {
@@ -178,8 +295,8 @@ done
 [[ ! -L "${BASH_SOURCE[0]}" ]] || die 'refusing to execute hardener through a symlink'
 readonly SCRIPT_FILE="$(realpath -e -- "${BASH_SOURCE[0]}")"
 secure_root_file "$SCRIPT_FILE" 'role hardener installer' 2097152 >/dev/null
-[[ "$expected_flyway_version" =~ ^[1-9][0-9]*$ ]] \
-  || die '--expected-flyway-version must be a positive integer without a leading zero'
+flyway_contract version "$expected_flyway_version" >/dev/null \
+  || die '--expected-flyway-version must be one canonical positive dotted Flyway version'
 [[ "$expected_release_version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
   || die '--expected-release-version must be one canonical signed release tag'
 [[ -n "$trusted_release_manifest" && -n "$trusted_release_signature" ]] \
@@ -351,13 +468,13 @@ verify_cluster_login_surface 'preflight'
   || die 'flyway_schema_history is missing'
 [[ "$(psql_admin 'SELECT count(*) FROM flyway_schema_history WHERE success IS DISTINCT FROM true;')" == 0 ]] \
   || die 'Flyway history contains a failed or indeterminate row'
-invalid_successful_history_count="$(psql_admin "SELECT count(*) FROM flyway_schema_history WHERE success AND (version IS NULL OR version !~ '^[1-9][0-9]*$' OR checksum IS NULL OR type IS DISTINCT FROM 'SQL');")"
+invalid_successful_history_count="$(psql_admin "SELECT count(*) FROM flyway_schema_history WHERE success AND (version IS NULL OR checksum IS NULL OR type IS DISTINCT FROM 'SQL');")"
 [[ "$invalid_successful_history_count" == 0 ]] \
   || die 'Flyway history contains a successful repeatable/non-SQL row, a null version/checksum, or a non-canonical version'
 duplicate_successful_history_count="$(psql_admin "SELECT count(*) FROM (SELECT version FROM flyway_schema_history WHERE success GROUP BY version HAVING count(*) <> 1 UNION ALL SELECT script FROM flyway_schema_history WHERE success GROUP BY script HAVING count(*) <> 1) AS duplicates;")"
 [[ "$duplicate_successful_history_count" == 0 ]] \
   || die 'Flyway history contains a duplicate successful version or script'
-live_flyway_version="$(psql_admin "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1;")"
+live_flyway_version="$(psql_admin "SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY string_to_array(version, '.')::numeric[] DESC LIMIT 1;")"
 [[ "$live_flyway_version" == "$expected_flyway_version" ]] \
   || die "live Flyway version is $live_flyway_version, expected $expected_flyway_version"
 successful_migration_count="$(psql_admin 'SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL;')"
@@ -372,26 +489,7 @@ if ! trusted_manifest_rows_data="$(/usr/bin/python3 -I "$trusted_release_guard" 
   --expected-version "$expected_release_version")"; then
   die 'release guard rejected the signature, claimed signing key, manifest, or Flyway inventory'
 fi
-if ! manifest_summary="$(LC_ALL=C awk -F '\t' '
-  NF != 3 { exit 10 }
-  $1 !~ /^[1-9][0-9]*$/ { exit 11 }
-  $2 !~ /^V[0-9]+__[A-Za-z0-9_]+[.]sql$/ { exit 12 }
-  $3 !~ /^-?[0-9]+$/ || $3 < -2147483648 || $3 > 2147483647 { exit 13 }
-  {
-    file_version = $2
-    sub(/^V/, "", file_version)
-    sub(/__.*/, "", file_version)
-    if ((file_version + 0) != ($1 + 0)) exit 14
-    if (seen_version[$1]++ || seen_file[$2]++) exit 15
-    if (count > 0 && ($1 + 0) <= previous_version) exit 16
-    previous_version = ($1 + 0)
-    count++
-  }
-  END {
-    if (count < 1) exit 17
-    printf "%d\t%d\n", count, previous_version
-  }
-' <<<"$trusted_manifest_rows_data")"; then
+if ! manifest_summary="$(flyway_contract summary 3<<<"$trusted_manifest_rows_data")"; then
   die 'release guard emitted a non-canonical Flyway checksum inventory'
 fi
 IFS=$'\t' read -r trusted_manifest_count trusted_manifest_max_version <<<"$manifest_summary"
@@ -402,39 +500,41 @@ IFS=$'\t' read -r trusted_manifest_count trusted_manifest_max_version <<<"$manif
 [[ "$successful_history_count" == "$trusted_manifest_count" ]] \
   || die "Flyway history contains an unenumerated successful row (total=$successful_history_count, signed=$trusted_manifest_count)"
 expected_migration_count="$trusted_manifest_count"
-live_flyway_rows="$(psql_admin "SELECT version || E'\\t' || script || E'\\t' || checksum::text FROM flyway_schema_history WHERE success AND version IS NOT NULL AND checksum IS NOT NULL ORDER BY version::integer;")"
-[[ "$live_flyway_rows" == "$trusted_manifest_rows_data" ]] \
+live_flyway_rows="$(psql_admin "SELECT version || E'\\t' || script || E'\\t' || checksum::text FROM flyway_schema_history WHERE success AND version IS NOT NULL AND checksum IS NOT NULL ORDER BY string_to_array(version, '.')::numeric[];")"
+live_manifest_summary="$(flyway_contract summary 3<<<"$live_flyway_rows")" \
+  || die 'live Flyway version/script/checksum inventory is not canonical'
+[[ "$live_manifest_summary" == "$manifest_summary" && "$live_flyway_rows" == "$trusted_manifest_rows_data" ]] \
   || die 'live Flyway version/script/checksum rows differ from the authenticated release manifest'
-unset live_flyway_rows trusted_manifest_rows_data manifest_summary
+unset live_flyway_rows trusted_manifest_rows_data manifest_summary live_manifest_summary
 
 required_business_tables=(goods sales_orders stock_movements ar_ap_ledger gl_entries)
-if (( expected_flyway_version >= 240 )); then
+if flyway_at_least "$expected_flyway_version" 240; then
   required_business_tables+=(attachments)
 fi
-if (( expected_flyway_version >= 251 )); then
+if flyway_at_least "$expected_flyway_version" 251; then
   required_business_tables+=(goods_import_batches goods_import_creations)
 fi
-if (( expected_flyway_version >= 275 )); then
+if flyway_at_least "$expected_flyway_version" 275; then
   required_business_tables+=(system_master_category_registry)
 fi
-if (( expected_flyway_version >= 279 )); then
+if flyway_at_least "$expected_flyway_version" 279; then
   required_business_tables+=(
     business_identifier_namespaces
     business_identifier_reservations
     business_identifier_conflicts
   )
 fi
-if (( expected_flyway_version >= 285 )); then
+if flyway_at_least "$expected_flyway_version" 285; then
   required_business_tables+=(client_default_settlement_migration_issues)
 fi
-if (( expected_flyway_version >= 288 )); then
+if flyway_at_least "$expected_flyway_version" 288; then
   required_business_tables+=(production_material_analysis_borrows)
 fi
 for table_name in "${required_business_tables[@]}"; do
   [[ "$(psql_admin "SELECT to_regclass('public.$table_name') IS NOT NULL;")" == t ]] \
     || die "required business table is missing: $table_name"
 done
-if (( expected_flyway_version >= 289 )); then
+if flyway_at_least "$expected_flyway_version" 289; then
   borrow_trigger_count="$(psql_admin "SELECT count(*) FROM pg_trigger WHERE tgrelid='production_material_analysis_borrows'::regclass AND NOT tgisinternal AND tgname IN ('trg_guard_production_material_analysis_borrow_mutation','trg_set_updated_at_production_material_analysis_borrows','trg_validate_pma_borrow_endpoint','trg_audit_production_material_analysis_borrows');")"
   [[ "$borrow_trigger_count" == 4 ]] \
     || die 'V289 production material-analysis borrow guards/audit are incomplete'

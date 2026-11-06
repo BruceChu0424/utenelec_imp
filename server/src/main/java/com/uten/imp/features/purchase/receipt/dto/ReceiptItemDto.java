@@ -11,6 +11,7 @@ import java.util.UUID;
 @Getter
 
 public class ReceiptItemDto extends com.uten.imp.common.finance.ProcurementSourceOrderDifferenceResponse {
+    @lombok.Setter private String replacementIntent;
     @lombok.Setter private String giftReplacementIntent;
     @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
     @lombok.Setter private BigDecimal giftReturnedQty = BigDecimal.ZERO;

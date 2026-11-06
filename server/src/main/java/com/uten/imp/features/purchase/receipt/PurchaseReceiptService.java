@@ -941,6 +941,7 @@ public class PurchaseReceiptService {
                 orderRef == null ? null : orderRef.id(),
                 orderRef == null ? null : orderRef.billNo(),
                 it.getSourceDocNo(), it.getRemark());
+        dto.setReplacementIntent(it.getReplacementIntent());
         dto.setGiftReplacementIntent(it.getGiftReplacementIntent());
         dto.setQuantitySemantics(it.getQuantitySemantics());
         dto.setGiftReturnedQty(it.getGiftReturnedQty());
@@ -992,6 +993,7 @@ public class PurchaseReceiptService {
                 null, it.getReturnedQty(), it.getGiftQty(), it.getWeight(),
                 it.getOrderItemId(), it.getOrderId(), it.getOrderBillNo(),
                 it.getSourceDocNo(), it.getRemark());
+        dto.setReplacementIntent(it.getReplacementIntent());
         dto.setGiftReplacementIntent(it.getGiftReplacementIntent());
         dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftReturnedQty(it.getGiftReturnedQty());
         it.copySourceOrderDifferenceTo(dto);

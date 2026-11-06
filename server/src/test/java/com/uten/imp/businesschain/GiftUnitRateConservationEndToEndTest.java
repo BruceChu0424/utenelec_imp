@@ -77,8 +77,33 @@ class GiftUnitRateConservationEndToEndTest {
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         assertThat(((com.uten.imp.features.purchase.ret.dto.ReturnDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReturn",returned,returnCommand)).getId()).isEqualTo(returnDraft.getId());
         String originalReturnPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_return_items WHERE return_id=?",String.class,returned);
+        UUID inheritedReturnItem=returnDraft.getItems().getFirst().getId();
+        String inheritedReturnQuantity=quantityFacts("purchase_return_items",inheritedReturnItem);
+        String originalReturn=documentFacts("purchase_returns","purchase_return_items","return_id",returned);
+        String originalSourceReceipt=documentFacts("purchase_receipts","purchase_receipt_items","receipt_id",received);
+        Runnable assertReturnDraftUnposted=()->{
+            assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
+            assertThat(ap(received)).isEqualByComparingTo("10");assertThat(ap(returned)).isZero();assertThat(closed(f)).isTrue();
+            assertDraftUnposted(returnDraft.getId());
+            assertThat(documentFacts("purchase_returns","purchase_return_items","return_id",returned)).isEqualTo(originalReturn);
+            assertThat(documentFacts("purchase_receipts","purchase_receipt_items","receipt_id",received)).isEqualTo(originalSourceReceipt);
+        };
+        var returnEdit=returnRequest(f,source,"0","1");var returnLine=returnEdit.getItems().getFirst();returnLine.setId(inheritedReturnItem);
         try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
-            returns.update(returnDraft.getId(),returnRequest(f,source,"0","1"));
+            // An ambient precision choice cannot re-adopt an unchanged quantity intent.
+            var same=returns.update(returnDraft.getId(),returnEdit);
+            assertThat(same.getItems().getFirst().getId()).isEqualTo(inheritedReturnItem);
+            assertThat(quantityFacts("purchase_return_items",inheritedReturnItem)).isEqualTo(inheritedReturnQuantity);
+            assertReturnDraftUnposted.run();
+            // Only actual draft operand edits create new quantity adoptions.
+            returnLine.setGiftQty(new BigDecimal("0.75"));
+            var reduced=returns.update(returnDraft.getId(),returnEdit);UUID reducedItem=reduced.getItems().getFirst().getId();
+            assertThat(reducedItem).isNotEqualTo(inheritedReturnItem);assertNewQuantityAdoption("purchase_return_items",reducedItem);
+            assertThat(reduced.getItems().getFirst().getGiftQty()).isEqualByComparingTo("0.75");assertReturnDraftUnposted.run();
+            returnLine.setId(reducedItem);returnLine.setGiftQty(BigDecimal.ONE);
+            var restored=returns.update(returnDraft.getId(),returnEdit);
+            assertThat(restored.getItems().getFirst().getId()).isNotEqualTo(reducedItem);assertNewQuantityAdoption("purchase_return_items",restored.getItems().getFirst().getId());
+            assertThat(restored.getItems().getFirst().getGiftQty()).isEqualByComparingTo("1");assertReturnDraftUnposted.run();
         }
         assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_return_items WHERE return_id=?",UUID.class,returnDraft.getId())).isNull();
         assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM purchase_return_items WHERE return_id=?",String.class,returnDraft.getId())).isEqualTo("12");
@@ -116,8 +141,37 @@ class GiftUnitRateConservationEndToEndTest {
         var replay=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)FrozenUnapprovalInputs.unapprove(db,unapproval,"purchaseReceipt",untouched,command);
         assertThat(replay.getId()).isEqualTo(draft.getId());assertThat(stock(fresh)).isZero();
         String originalReceiptPolicy=db.queryForObject("SELECT quantity_precision_policy::text FROM purchase_receipt_items WHERE receipt_id=?",String.class,untouched);
+        UUID inheritedReceiptItem=draft.getItems().getFirst().getId();
+        String inheritedReceiptQuantity=quantityFacts("purchase_receipt_items",inheritedReceiptItem);
+        String originalReceipt=documentFacts("purchase_receipts","purchase_receipt_items","receipt_id",untouched);
+        Runnable assertReceiptDraftUnposted=()->{
+            assertThat(stock(fresh)).isZero();assertThat(value(fresh)).isZero();assertThat(ap(untouched)).isZero();assertThat(closed(fresh)).isFalse();
+            assertDraftUnposted(draft.getId());
+            assertThat(documentFacts("purchase_receipts","purchase_receipt_items","receipt_id",untouched)).isEqualTo(originalReceipt);
+        };
+        // A same-intent edit must round-trip both actual source classifications,
+        // including raw null; omitting them is a different quantity/source intent.
+        var inheritedReceipt=receipts.detail(draft.getId()).getItems().getFirst();
+        assertThat(inheritedReceipt.getId()).isEqualTo(inheritedReceiptItem);
+        var storedIntents=db.queryForMap("SELECT replacement_intent,gift_replacement_intent FROM purchase_receipt_items WHERE id=?",inheritedReceiptItem);
+        assertThat(inheritedReceipt.getReplacementIntent()).isEqualTo(storedIntents.get("replacement_intent"));
+        assertThat(inheritedReceipt.getGiftReplacementIntent()).isEqualTo(storedIntents.get("gift_replacement_intent"));
+        var receiptEdit=receiptRequest(fresh,"1","1");var receiptLine=receiptEdit.getItems().getFirst();receiptLine.setId(inheritedReceiptItem);
+        receiptLine.setReplacementIntent(inheritedReceipt.getReplacementIntent());
+        receiptLine.setGiftReplacementIntent(inheritedReceipt.getGiftReplacementIntent());
         try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("quantity.to-base",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(12,"HALF_UP")))){
-            receipts.update(draft.getId(),receiptRequest(fresh,"1","1"));
+            var same=receipts.update(draft.getId(),receiptEdit);
+            assertThat(same.getItems().getFirst().getId()).isEqualTo(inheritedReceiptItem);
+            assertThat(quantityFacts("purchase_receipt_items",inheritedReceiptItem)).isEqualTo(inheritedReceiptQuantity);
+            assertReceiptDraftUnposted.run();
+            receiptLine.setQty(new BigDecimal("0.75"));
+            var reduced=receipts.update(draft.getId(),receiptEdit);UUID reducedItem=reduced.getItems().getFirst().getId();
+            assertThat(reducedItem).isNotEqualTo(inheritedReceiptItem);assertNewQuantityAdoption("purchase_receipt_items",reducedItem);
+            assertThat(reduced.getItems().getFirst().getQty()).isEqualByComparingTo("0.75");assertReceiptDraftUnposted.run();
+            receiptLine.setId(reducedItem);receiptLine.setQty(BigDecimal.ONE);
+            var restored=receipts.update(draft.getId(),receiptEdit);
+            assertThat(restored.getItems().getFirst().getId()).isNotEqualTo(reducedItem);assertNewQuantityAdoption("purchase_receipt_items",restored.getItems().getFirst().getId());
+            assertThat(restored.getItems().getFirst().getQty()).isEqualByComparingTo("1");assertReceiptDraftUnposted.run();
         }
         assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM purchase_receipt_items WHERE receipt_id=?",UUID.class,draft.getId())).isNull();
         assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM purchase_receipt_items WHERE receipt_id=?",String.class,draft.getId())).isEqualTo("12");
@@ -169,6 +223,23 @@ class GiftUnitRateConservationEndToEndTest {
         assertThat(number("SELECT gift_returned_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();checks.assertAll();
     }
 
+    private String quantityFacts(String table,UUID item){
+        return db.queryForObject("SELECT jsonb_build_array(id,qty,gift_qty,unit_id,unit_rate,charged_base_qty,gift_base_qty,quantity_adoption_version,quantity_precision_policy,to_jsonb(line)->'quantity_source_proof',to_jsonb(line)->'replacement_intent',to_jsonb(line)->'gift_replacement_intent',unapproval_source_item_id)::text FROM "+table+" line WHERE id=?",String.class,item);
+    }
+    private String documentFacts(String headers,String items,String parent,UUID document){
+        return db.queryForObject("SELECT jsonb_build_object('header',to_jsonb(header),'items',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.line_no,line.id) FROM "+items+" line WHERE line."+parent+"=header.id))::text FROM "+headers+" header WHERE header.id=?",String.class,document);
+    }
+    private void assertNewQuantityAdoption(String table,UUID item){
+        assertThat(db.queryForObject("SELECT quantity_adoption_version::int FROM "+table+" WHERE id=?",Integer.class,item)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT quantity_precision_policy->'choices'->'quantity.to-base'->>'scale' FROM "+table+" WHERE id=?",String.class,item)).isEqualTo("12");
+        assertThat(db.queryForObject("SELECT unapproval_source_item_id FROM "+table+" WHERE id=?",UUID.class,item)).isNull();
+    }
+    private void assertDraftUnposted(UUID draft){
+        assertThat(ap(draft)).isZero();
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",draft)).isZero();
+        assertThat(number("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",draft)).isZero();
+        assertThat(number("SELECT count(*) FROM ar_ap_ledger WHERE source_doc_id=? AND status=1",draft)).isZero();
+    }
     private boolean closed(F f){return db.queryForObject("SELECT is_closed FROM purchase_orders WHERE id=?",Boolean.class,f.order());}
 
     private void evidence(F f,UUID received,UUID returned,String action,Map<String,String> expected){

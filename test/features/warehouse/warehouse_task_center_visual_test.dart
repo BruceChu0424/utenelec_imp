@@ -33,8 +33,7 @@ import '../../support/uten_test_actions.dart';
 
 const _output = String.fromEnvironment(
   'WAREHOUSE_VISUAL_OUTPUT',
-  defaultValue:
-      'C:/Users/bruce/.codex/visualizations/2026/10/12/01a12e35-126f-7991-9146-6cdf303b2e51',
+  defaultValue: 'build/warehouse-task-center-visual',
 );
 
 class _EmptyApi extends ApiClient {

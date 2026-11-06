@@ -139,6 +139,25 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/$domain/summaries') {
+      final input = Map<String, dynamic>.from(body! as Map);
+      final filter = Map<String, dynamic>.from(input['filter'] as Map);
+      final page = input['page'] as int, size = input['size'] as int;
+      expect(size, 100);
+      final items = filter['disabledOnly'] == true || filter['stubOnly'] == true
+          ? <Map<String, dynamic>>[]
+          : rows;
+      return {
+        'items': items.skip((page - 1) * size).take(size).toList(),
+        'page': page,
+        'size': size,
+        'total': items.length,
+        'totalPages': (items.length / size).ceil(),
+        'readScopeVersion': 'a' * 64,
+        'readSnapshotRevision': 'b' * 64,
+        'readDataVersion': 'c' * 64,
+      };
+    }
     writePaths.add(path);
     final values = Map<String, dynamic>.from(body as Map);
     writes.add(values);

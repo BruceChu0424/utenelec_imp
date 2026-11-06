@@ -41,8 +41,19 @@ void main() {
     await tester.tap(_related);
     await tester.pumpAndSettle();
     expect(exportContext.stillCurrent!(), isFalse);
-    expect(_ids(tester), ['a', 'b', 'r']);
-    expect(find.text('相关'), findsOneWidget);
+    expect(_ids(tester), [
+      'a',
+      'b',
+      'r',
+      for (var i = 0; i < 200; i++) 'tail-$i',
+    ]);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('row:r')),
+        matching: find.text('相关'),
+      ),
+      findsOneWidget,
+    );
     final facets = api.requests.lastWhere(
       (r) => r.path.endsWith('/goods/facets'),
     );
@@ -57,17 +68,17 @@ void main() {
     final relatedReads = api.requests.where(
       (request) =>
           request.path == api.listPath &&
-          request.queryParameters['keyword'] == '螺丝' &&
-          request.queryParameters['includeRelated'] == true &&
-          request.queryParameters['categoryId'] == null,
+          _readParameters(request)['keyword'] == '螺丝' &&
+          _readParameters(request)['includeRelated'] == true &&
+          _readParameters(request)['categoryId'] == null,
     );
-    expect(relatedReads.map((request) => request.queryParameters['page']), [
+    expect(relatedReads.map((request) => _readParameters(request)['page']), [
       1,
       2,
       3,
     ]);
     expect(
-      relatedReads.every((request) => request.queryParameters['size'] == 100),
+      relatedReads.every((request) => _readParameters(request)['size'] == 100),
       isTrue,
     );
     final readsBeforeScroll = api.requests
@@ -89,17 +100,22 @@ void main() {
       api.requests.where((r) => r.path == api.listPath),
       hasLength(readsBeforeScroll),
     );
-    expect(_ids(tester), ['a', 'b', 'r']);
+    expect(_ids(tester), [
+      'a',
+      'b',
+      'r',
+      for (var i = 0; i < 200; i++) 'tail-$i',
+    ]);
     await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters['categoryId'], 'cat-b');
-    expect(api.lastList.queryParameters['includeRelated'], isTrue);
+    expect(_readParameters(api.lastList)['categoryId'], 'cat-b');
+    expect(_readParameters(api.lastList)['includeRelated'], isTrue);
     expect(
       api.requests.any(
         (request) =>
-            request.path == '/master/goods' &&
-            request.queryParameters['categoryId'] == 'cat-b' &&
-            request.queryParameters['page'] == 1,
+            request.path == api.listPath &&
+            _readParameters(request)['categoryId'] == 'cat-b' &&
+            _readParameters(request)['page'] == 1,
       ),
       isTrue,
       reason: '分类切换从当前条件的首批重新完整读取',
@@ -108,15 +124,20 @@ void main() {
     expect(_tree(tester).selectedIds, {'cat-b'});
     await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters, isNot(contains('categoryId')));
-    expect(_ids(tester), ['a', 'b', 'r']);
+    expect(_readParameters(api.lastList), isNot(contains('categoryId')));
+    expect(_ids(tester), [
+      'a',
+      'b',
+      'r',
+      for (var i = 0; i < 200; i++) 'tail-$i',
+    ]);
     await _search(tester, '');
     expect(_related.hitTestable(), findsNothing);
     expect(tester.widget<CheckboxListTile>(_related).value, isFalse);
-    expect(api.lastList.queryParameters['categoryId'], 'cat-a');
+    expect(_readParameters(api.lastList)['categoryId'], 'cat-a');
     await _search(tester, '螺丝');
     expect(tester.widget<CheckboxListTile>(_related).value, isFalse);
-    expect(api.lastList.queryParameters, isNot(contains('includeRelated')));
+    expect(_readParameters(api.lastList), isNot(contains('includeRelated')));
     expect(tester.takeException(), isNull);
   });
 
@@ -172,17 +193,23 @@ void main() {
     expect(selected, isEmpty);
     expect(find.byKey(const Key('goods-picker-sheet')), findsOneWidget);
     expect(find.byKey(const ValueKey('goods-picker-item-r')), findsOneWidget);
-    expect(find.text('相关结果'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('goods-picker-item-r')),
+        matching: find.text('相关结果'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters['categoryId'], 'cat-b');
-    expect(api.lastList.queryParameters['categoryRootIds'], [
+    expect(_readParameters(api.lastList)['categoryId'], 'cat-b');
+    expect(_readParameters(api.lastList)['categoryRootIds'], [
       'cat-a',
       'cat-b',
       'cat-c',
     ]);
-    expect(api.lastList.queryParameters['excludeDisabled'], isTrue);
-    expect(api.lastList.queryParameters['excludeStub'], isTrue);
+    expect(_readParameters(api.lastList)['excludeDisabled'], isTrue);
+    expect(_readParameters(api.lastList)['excludeStub'], isTrue);
     final location = api.requests.lastWhere(
       (r) => r.path.endsWith('search-category-ids'),
     );
@@ -201,14 +228,14 @@ void main() {
     await tester.tap(find.text('打开选择器'));
     await tester.pumpAndSettle();
     await _search(tester, '自定义');
-    expect(api.lastList.queryParameters['categoryRootIds'], ['cat-a']);
+    expect(_readParameters(api.lastList)['categoryRootIds'], ['cat-a']);
     expect(find.byKey(const ValueKey('goods-picker-item-c')), findsNothing);
     await selectFilterSegment(tester, '全部可选货品');
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters, isNot(contains('categoryRootIds')));
+    expect(_readParameters(api.lastList), isNot(contains('categoryRootIds')));
     expect(find.byKey(const ValueKey('goods-picker-item-c')), findsOneWidget);
-    expect(api.lastList.queryParameters['excludeDisabled'], isTrue);
-    expect(api.lastList.queryParameters['excludeStub'], isTrue);
+    expect(_readParameters(api.lastList)['excludeDisabled'], isTrue);
+    expect(_readParameters(api.lastList)['excludeStub'], isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -238,7 +265,7 @@ void main() {
     expect(api.requests.where((r) => r.path == api.listPath), isEmpty);
     await selectFilterSegment(tester, '全部可选货品');
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters, isNot(contains('categoryRootIds')));
+    expect(_readParameters(api.lastList), isNot(contains('categoryRootIds')));
     expect(find.byKey(const ValueKey('goods-picker-item-c')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -251,15 +278,15 @@ void main() {
       await tester.tap(find.text('打开选择器'));
       await tester.pumpAndSettle();
       await _search(tester, '4*50');
-      expect(api.lastList.queryParameters['categoryRootIds'], ['cat-a']);
+      expect(_readParameters(api.lastList)['categoryRootIds'], ['cat-a']);
       expect(_uncategorizedTile, findsNothing);
 
       await selectFilterSegment(tester, '全部可选货品');
       await tester.pumpAndSettle();
-      expect(api.lastList.queryParameters, isNot(contains('categoryRootIds')));
-      expect(api.lastList.queryParameters, isNot(contains('categoryId')));
-      expect(api.lastList.queryParameters['excludeDisabled'], isTrue);
-      expect(api.lastList.queryParameters['excludeStub'], isTrue);
+      expect(_readParameters(api.lastList), isNot(contains('categoryRootIds')));
+      expect(_readParameters(api.lastList), isNot(contains('categoryId')));
+      expect(_readParameters(api.lastList)['excludeDisabled'], isTrue);
+      expect(_readParameters(api.lastList)['excludeStub'], isTrue);
       expect(_uncategorizedTile, findsOneWidget);
       final location = api.requests.lastWhere(
         (r) => r.path.endsWith('search-category-ids'),
@@ -314,8 +341,8 @@ void main() {
     api.leakUncategorized = true;
     await tester.tap(find.text('原材料'));
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters['categoryId'], 'cat-a');
-    expect(api.lastList.queryParameters['categoryRootIds'], [
+    expect(_readParameters(api.lastList)['categoryId'], 'cat-a');
+    expect(_readParameters(api.lastList)['categoryRootIds'], [
       'cat-a',
       'cat-b',
       'cat-c',
@@ -338,7 +365,7 @@ void main() {
     await _search(tester, '4*50');
     await selectFilterSegment(tester, '全部可选货品');
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters, isNot(contains('categoryRootIds')));
+    expect(_readParameters(api.lastList), isNot(contains('categoryRootIds')));
     expect(_uncategorizedTile, findsNothing);
     expect(
       find.byKey(const ValueKey('goods-picker-item-unknown')),
@@ -362,7 +389,7 @@ void main() {
     final oldScopeConfirm = _confirmBar(tester).onConfirm!;
     await selectFilterSegment(tester, '当前组件范围');
     await tester.pumpAndSettle();
-    expect(api.lastList.queryParameters['categoryRootIds'], ['cat-a']);
+    expect(_readParameters(api.lastList)['categoryRootIds'], ['cat-a']);
     expect(_uncategorizedTile, findsNothing);
     await selectFilterSegment(tester, '全部可选货品');
     await tester.pumpAndSettle();
@@ -410,7 +437,7 @@ void main() {
       if (dedicated) {
         expect(api.requests, isEmpty);
       } else {
-        expect(api.lastList.queryParameters['categoryRootIds'], [
+        expect(_readParameters(api.lastList)['categoryRootIds'], [
           'cat-a',
           'cat-b',
           'cat-c',
@@ -655,7 +682,7 @@ Future<void> _finishHeldReads(WidgetTester tester, _GoodsApi api) async {
         Response(
           requestOptions: request,
           statusCode: 200,
-          data: _page([], (request.queryParameters['page'] as int?) ?? 1),
+          data: _page([], (_readParameters(request)['page'] as int?) ?? 1),
         ),
       );
     }
@@ -681,8 +708,9 @@ class _GoodsApi {
   bool emptyTree = false;
   bool failTree = false;
   bool businessReferences = false;
-  String get listPath =>
-      businessReferences ? '/business-references/goods' : '/master/goods';
+  String get listPath => businessReferences
+      ? '/business-references/goods/summaries'
+      : '/master/goods/summaries';
   String get treePath => businessReferences
       ? '/business-references/goods/categories'
       : '/master/material-categories/tree';
@@ -701,10 +729,17 @@ class _GoodsApi {
   void _request(RequestOptions r, RequestInterceptorHandler h) {
     requests.add(r);
     if (businessReferences) {
-      expect(r.path, isNot('/master/goods'));
+      expect(r.path.startsWith('/master/goods'), isFalse);
       expect(r.path, isNot('/master/material-categories/tree'));
     }
-    final q = r.queryParameters;
+    final q = _readParameters(r);
+    if (r.path.endsWith('/summaries')) {
+      expect(q['size'], 100);
+      expect(
+        r.queryParameters['readSnapshotRevision'],
+        q['page'] == 1 ? isNull : 'b' * 64,
+      );
+    }
     Object data = <String, dynamic>{};
     if (r.path == treePath) {
       if (failTree) {
@@ -776,6 +811,19 @@ class _GoodsApi {
       if (unknownCategory && roots == null) {
         rows.add(_row('unknown', '未知分类货品', 'unknown-category'));
       }
+      if (q['disabledOnly'] == true || q['stubOnly'] == true) {
+        rows = [];
+      }
+      if (q['keyword'] == '螺丝' &&
+          q['includeRelated'] == true &&
+          q['disabledOnly'] != true &&
+          q['stubOnly'] != true &&
+          q['categoryId'] == null) {
+        rows.addAll([
+          for (var i = 0; i < 200; i++)
+            _row('tail-$i', '相关尾批$i', 'cat-a', related: true),
+        ]);
+      }
       data = _page(rows, (q['page'] as int?) ?? 1);
     }
     h.resolve(Response(requestOptions: r, statusCode: 200, data: data));
@@ -817,11 +865,22 @@ Map<String, dynamic> _uncategorizedRow() => {
   'autoCreated': false,
 };
 Map<String, dynamic> _page(List<Map<String, dynamic>> rows, int page) => {
-  // A real server clamp exercises all three continuations without inventing
-  // missing rows or repeating the first page as a continuation.
-  'items': rows.skip(page - 1).take(1).toList(),
+  // First and continuation batches use the real 100-row summary contract.
+  'items': rows.skip((page - 1) * 100).take(100).toList(),
   'page': page,
-  'size': 1,
+  'size': 100,
   'total': rows.length,
-  'totalPages': rows.length,
+  'totalPages': (rows.length / 100).ceil(),
+  'readScopeVersion': 'a' * 64,
+  'readSnapshotRevision': 'b' * 64,
+  'readDataVersion': 'c' * 64,
 };
+
+/// Inspect actual transport without rewriting RequestOptions or hiding POSTs.
+Map<String, dynamic> _readParameters(RequestOptions request) {
+  if (!request.path.endsWith('/summaries')) return request.queryParameters;
+  expect(request.method, 'POST');
+  final body = Map<String, dynamic>.from(request.data as Map);
+  final filter = Map<String, dynamic>.from(body['filter'] as Map);
+  return {...filter, ...body..remove('filter')};
+}

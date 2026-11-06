@@ -70,7 +70,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     """).setParameter("batch",row[0]).getSingleResult()))
                 throw conflict("独立子件已有实收到原共享路径；请先处理收货、领用及其归属后再撤回父批次");
             if(plan!=null) {
-                Object[] state=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT status,is_deleted FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans WHERE id=:id FOR UPDATE").setParameter("id",plan)).getFirst();
+                Object[] state=NativeQueryResults.objectArrayRows(em.createNativeQuery(("SELECT status,is_deleted FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans") + " production_plans WHERE id=:id FOR UPDATE")).setParameter("id",plan)).getFirst();
                 if(!Boolean.TRUE.equals(state[1])&&((Number)state[0]).intValue()==1) {
                     if(!access.hasAuthority("production_plan:reverse"))throw forbidden("撤回已审核共享计划需要生产计划红冲权限");
                     for(UUID pack:NativeQueryResults.typedRows(em.createNativeQuery("SELECT id FROM production_planning_packages WHERE plan_id=:plan AND status='CONFIRMED' AND NOT is_deleted ORDER BY id").setParameter("plan",plan),UUID.class))
@@ -895,9 +895,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         List<UUID> planIds=requests.stream().map(request->request.batch().plan()).filter(Objects::nonNull).distinct().toList();
         Map<UUID,BigDecimal> existingOutputs=new HashMap<>();
         if(!planIds.isEmpty())for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT plan_id,COUNT(*),MIN(qty) FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) production_plan_items
+                SELECT plan_id,COUNT(*),MIN(qty) FROM %1$s production_plan_items
                 WHERE plan_id IN(:plans) AND NOT is_deleted GROUP BY plan_id
-                """).setParameter("plans",planIds))) {
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))).setParameter("plans",planIds))) {
             if(((Number)row[1]).intValue()!=1)throw conflict("共享生产计划必须且只能包含一条有效明细");
             existingOutputs.put((UUID)row[0],decimal(row[2]));
         }
@@ -1046,7 +1046,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                         SELECT 1 FROM production_material_analysis_items anchor
                         JOIN production_material_analysis_plan_links link ON link.analysis_item_id=anchor.id
                           AND link.allocation_status IN('SUBMITTED','APPROVED')
-                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=link.plan_id AND plan.status IN(0,1)
+                        JOIN %1$s plan ON plan.id=link.plan_id AND plan.status IN(0,1)
                           AND NOT plan.is_deleted AND NOT plan.is_canceled
                         WHERE anchor.parent_analysis_material_id=parent.id AND NOT anchor.is_deleted
                           AND anchor.source_type<>'AGGREGATE_MAKE')
@@ -1054,7 +1054,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                   ON child.analysis_item_id=parent.analysis_item_id AND child.parent_node_key=parent.node_key
                   AND child.active AND child.node_role='BOM_COMPONENT' AND NOT parent.invalid AND NOT parent.frozen
             )
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"));
     private static final String EXACT_BOM_DESCENDANTS_SQL = """
                 WITH RECURSIVE selected_batches AS MATERIALIZED (
                     SELECT id,action_id,anchor_analysis_item_id,configuration_snapshot FROM preplan_aggregate_batches WHERE id IN(:batches)

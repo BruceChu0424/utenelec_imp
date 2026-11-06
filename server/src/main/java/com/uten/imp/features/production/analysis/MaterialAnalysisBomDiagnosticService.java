@@ -113,12 +113,12 @@ public class MaterialAnalysisBomDiagnosticService {
         if (!salesIds.isEmpty()) {
             for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                     SELECT i.id,i.goods_id
-                    FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id=i.order_id
+                    FROM %1$s i JOIN %2$s o ON o.id=i.order_id
                     JOIN goods g ON g.id=i.goods_id AND g.is_deleted=FALSE
                     WHERE i.id IN (:ids) AND i.is_deleted=FALSE AND o.is_deleted=FALSE
                       AND o.status=1 AND o.finance_confirmed=TRUE
                       AND COALESCE(o.is_stopped,FALSE)=FALSE AND o.is_closed=FALSE
-                    """).setParameter("ids", salesIds))) salesGoods.put((UUID) row[0], (UUID) row[1]);
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"))).setParameter("ids", salesIds))) salesGoods.put((UUID) row[0], (UUID) row[1]);
             if (salesGoods.size() != salesIds.size()) {
                 throw new ApiException(ErrorCode.CONFLICT, "销售需求已变化，请重新加载后检查");
             }

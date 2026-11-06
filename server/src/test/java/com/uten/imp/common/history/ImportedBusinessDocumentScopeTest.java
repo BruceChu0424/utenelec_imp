@@ -80,8 +80,38 @@ class ImportedBusinessDocumentScopeTest {
         when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
         when(cb.isTrue(imported)).thenReturn(marker);when(cb.or(marker,old)).thenReturn(both);
         assertSame(both,ImportedBusinessDocumentScope.lifecycle(root,cb,old));
-        Predicate nativeOnly=mock(Predicate.class);when(cb.isFalse(imported)).thenReturn(nativeOnly);
-        assertSame(nativeOnly,ImportedBusinessDocumentScope.nativeOnly(root,cb));
+        Predicate nativeOnly=mock(Predicate.class), legacyKeyAbsent=mock(Predicate.class), indexed=mock(Predicate.class);
+        when(cb.isFalse(imported)).thenReturn(nativeOnly);
+        when(cb.isNull(root.get("legacyId"))).thenReturn(legacyKeyAbsent);
+        // CriteriaBuilder also has a two-Expression overload; the source
+        // composes a Predicate[] so bind this stub to that actual contract.
+        when(cb.and(new Predicate[]{legacyKeyAbsent,nativeOnly})).thenReturn(indexed);
+        assertSame(indexed,ImportedBusinessDocumentScope.nativeOnly(root,cb));
+        verify(cb).isFalse(imported); // The graph authority is retained behind the indexed key.
+    }
+
+    @Test void nativeSqlUsesTypedKeysAndKeepsInheritedProvenanceAuthority() {
+        String stock=ImportedBusinessDocumentScope.nativeTable("stock_documents");
+        assertTrue(stock.contains("archive_origin.legacy_id IS NULL"));
+        assertFalse(stock.contains("legacy_import_run_id"));
+        assertTrue(stock.contains("NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))"));
+        String receipt=ImportedBusinessDocumentScope.nativeTable("purchase_receipts");
+        assertTrue(receipt.contains("archive_origin.legacy_import_run_id IS NULL"));
+        String source=ImportedBusinessDocumentScope.nativeTable("plan_order_item_links");
+        assertFalse(source.contains("archive_origin.legacy_id"));
+        assertTrue(source.contains("NOT fn_imported_business_document_row"));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeTable("goods"));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeTable("stock_documents UNION SELECT"));
+    }
+
+    @Test @SuppressWarnings("unchecked") void masterLegacyKeysRemainUsableAsMasterIdentities() {
+        Root<Goods> root=mock(Root.class);CriteriaBuilder cb=mock(CriteriaBuilder.class);
+        doReturn(Goods.class).when(root).getJavaType();
+        Expression<Boolean> imported=mock(Expression.class);Predicate authority=mock(Predicate.class);
+        when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
+        when(cb.isFalse(imported)).thenReturn(authority);
+        assertSame(authority,ImportedBusinessDocumentScope.nativeOnly(root,cb));
+        verify(root,never()).get("legacyId");
     }
 
     @Test void legacyMutationFailsBeforeAnyPersistenceAndMasterRemainsMutable() {

@@ -6,6 +6,7 @@ using System.Runtime.ExceptionServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using Uten.Legacy.Core;
 
 namespace Uten.Legacy.Desktop.Shared
@@ -27,7 +28,35 @@ namespace Uten.Legacy.Desktop.Shared
     public static class CompletePagedSnapshot
     {
         public const int MaximumRows = 100000;
-        public const long MaximumTextBytes = 64L * 1024 * 1024;
+        public const long MaximumTextBytes = CompleteSummaryResponse.MaximumTextBytes;
+        public static async Task<SnapshotPage<T>> ReadCompleteStreamAsync<T>(CompleteSummaryResponse response,
+            Func<string, SnapshotPage<T>> parse, Func<T, string> identity, Func<bool> isCurrent, CancellationToken token)
+        {
+            if (response == null || response.Pages == null || response.Pages.Count == 0 || response.ErrorCode != null) throw Changed();
+            SnapshotPage<T> first = null;
+            var rows = await ReadAsync<T>((page, size, ct) =>
+            {
+                StrongCurrent(isCurrent, ct);
+                if (page > response.Pages.Count) throw Changed();
+                var batch = parse(response.Pages[page - 1]);
+                if (first == null) first = batch;
+                StrongBatch(batch, page, first);
+                return Task.FromResult(batch);
+            }, identity, isCurrent, token, maximumRows: Int32.MaxValue).ConfigureAwait(false);
+            if (response.Pages.Count != Math.Max(1, first.TotalPages)) throw Changed();
+            var final = new JavaScriptSerializer { MaxJsonLength = 8388608, RecursionLimit = 64 }
+                .DeserializeObject(response.CompletionJson) as Dictionary<string, object>;
+            object value;
+            if (final == null || !final.TryGetValue("type", out value) || !Equals(value, "complete")
+                || !final.TryGetValue("total", out value) || !(value is int || value is long) || Convert.ToInt64(value) != first.Total
+                || !final.TryGetValue("readScopeVersion", out value) || !Equals(value, first.ReadScopeVersion)
+                || !final.TryGetValue("readDataVersion", out value) || !Equals(value, first.ReadDataVersion)
+                || !final.TryGetValue("readSnapshotRevision", out value) || !Equals(value, first.ReadSnapshotRevision)) throw Changed();
+            StrongCurrent(isCurrent, token);
+            return new SnapshotPage<T> { Items = rows, Page = 1, Size = first.Size, Total = first.Total,
+                TotalPages = first.TotalPages, ReadScopeVersion = first.ReadScopeVersion,
+                ReadDataVersion = first.ReadDataVersion, ReadSnapshotRevision = first.ReadSnapshotRevision };
+        }
         public static async Task<IReadOnlyList<T>> ReadAsync<T>(
             Func<int, int, CancellationToken, Task<SnapshotPage<T>>> read,
             Func<T, string> identity, Func<bool> isCurrent, CancellationToken cancellationToken,

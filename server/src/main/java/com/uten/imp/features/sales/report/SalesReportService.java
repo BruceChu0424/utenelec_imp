@@ -1021,11 +1021,11 @@ public class SalesReportService {
                            THEN i.amount_original
                                * (i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) / i.qty
                            ELSE 0 END) AS pending_amt
-                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id
+                FROM %1$s i
+                JOIN %2$s o ON o.id = i.order_id
                 WHERE COALESCE(i.is_deleted,false)=false
                   AND COALESCE(o.is_deleted,false)=false
-                """ + ownerPredicate
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")) + ownerPredicate
                 + (clientId == null ? "" : " AND o.client_id = :clientId") + " " + """
                 GROUP BY i.goods_id, i.color_id, o.client_id, o.currency_id
                 HAVING SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) > 0

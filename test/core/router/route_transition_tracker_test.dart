@@ -77,4 +77,50 @@ void main() {
     await tester.pump();
     expect(runs, 1);
   });
+
+  testWidgets(
+    'hidden retained route cannot impose its paused transition on reads',
+    (tester) async {
+      final enabled = ValueNotifier(true);
+      addTearDown(enabled.dispose);
+      final route = MaterialPageRoute<void>(builder: (_) => const SizedBox());
+      await tester.pumpWidget(
+        ValueListenableBuilder<bool>(
+          valueListenable: enabled,
+          builder: (_, value, _) => TickerMode(
+            enabled: value,
+            child: Builder(
+              builder: (context) =>
+                  const TrackedPageTransitionsBuilder(
+                    _Plain(),
+                  ).buildTransitions<void>(
+                    route,
+                    context,
+                    _StuckAnimation(),
+                    kAlwaysDismissedAnimation,
+                    const SizedBox(),
+                  ),
+            ),
+          ),
+        ),
+      );
+      expect(RouteTransitionTracker.instance.isIdle, isFalse);
+      enabled.value = false;
+      await tester.pump();
+      expect(RouteTransitionTracker.instance.isIdle, isTrue);
+      var runs = 0;
+      whenRouteTransitionsSettled(() => runs++);
+      await tester.pump();
+      expect(
+        runs,
+        1,
+        reason: 'a hidden route must not force the one-second fallback',
+      );
+      enabled.value = true;
+      await tester.pump();
+      expect(RouteTransitionTracker.instance.isIdle, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      expect(RouteTransitionTracker.instance.isIdle, isTrue);
+    },
+  );
 }

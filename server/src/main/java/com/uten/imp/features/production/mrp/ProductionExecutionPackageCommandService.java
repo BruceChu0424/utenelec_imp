@@ -703,10 +703,10 @@ public class ProductionExecutionPackageCommandService {
                 em.createNativeQuery("""
                                 SELECT link.id, link.plan_item_id,
                                        link.order_item_id, link.allocated_qty
-                                FROM (SELECT * FROM plan_order_item_links archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('plan_order_item_links',to_jsonb(archive_origin))) link
-                                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) order_item
+                                FROM %1$s link
+                                JOIN %2$s order_item
                                   ON order_item.id = link.order_item_id
-                                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_order
+                                JOIN %3$s sales_order
                                   ON sales_order.id = order_item.order_id
                                 WHERE link.plan_item_id IN (:planItemIds)
                                   AND link.is_deleted = FALSE
@@ -723,7 +723,7 @@ public class ProductionExecutionPackageCommandService {
                                          order_item.id,
                                          link.id
                                 FOR UPDATE OF link
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("plan_order_item_links"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                         .setParameter("planItemIds", planItemIds));
 
         Map<UUID, List<SalesLinkSlice>> linksByPlanItem =
@@ -1190,14 +1190,14 @@ public class ProductionExecutionPackageCommandService {
                                        item.color_id, item.unit_id,
                                        item.qty * COALESCE(
                                            item.unit_rate, 1)
-                                FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                FROM %1$s item
                                 JOIN subplan_links link
                                   ON link.subplan_id = item.plan_id
                                  AND link.plan_id = :planId
                                  AND link.planning_package_id = :packageId
                                  AND link.source = 'EXECUTION_V1'
                                  AND link.is_deleted = FALSE
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) child
+                                JOIN %2$s child
                                   ON child.id = item.plan_id
                                  AND child.is_deleted = FALSE
                                  AND child.status <> -1
@@ -1207,7 +1207,7 @@ public class ProductionExecutionPackageCommandService {
                                          item.color_id NULLS FIRST,
                                          item.id
                                 FOR UPDATE OF item
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                         .setParameter(
                                 "planId", planningPackage.getPlanId())
                         .setParameter(
@@ -1392,7 +1392,7 @@ public class ProductionExecutionPackageCommandService {
                                        h.document_no,
                                        COUNT(i.id)
                                 FROM production_planning_package_documents h
-                                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) i
+                                LEFT JOIN %1$s i
                                   ON i.doc_id = h.document_id
                                  AND i.is_deleted = FALSE
                                 WHERE h.package_id = :packageId
@@ -1402,7 +1402,7 @@ public class ProductionExecutionPackageCommandService {
                                          h.document_id, h.document_no,
                                          h.created_at
                                 ORDER BY h.created_at, h.document_id
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                         .setParameter(
                                 "packageId", planningPackage.getId()));
         for (Object[] row : drawRows) {
@@ -1470,10 +1470,10 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT plan.id, plan.bill_no,
                                        COUNT(item.id), plan.workshop_name
                                 FROM production_planning_package_documents doc
-                                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                                JOIN %1$s plan
                                   ON plan.id = doc.document_id
                                  AND plan.is_deleted = FALSE
-                                LEFT JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                LEFT JOIN %2$s item
                                   ON item.plan_id = plan.id
                                  AND item.is_deleted = FALSE
                                 WHERE doc.package_id = :packageId
@@ -1481,7 +1481,7 @@ public class ProductionExecutionPackageCommandService {
                                 GROUP BY plan.id, plan.bill_no,
                                          plan.workshop_name, doc.created_at
                                 ORDER BY doc.created_at, plan.id
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items")))
                         .setParameter("packageId", packageId));
         return rows.stream()
                 .map(row -> new GenerateSubplansRequest.Created(
@@ -1517,13 +1517,13 @@ public class ProductionExecutionPackageCommandService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT r.bill_no, COUNT(i.id)
-                                FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r
-                                LEFT JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) i
+                                FROM %1$s r
+                                LEFT JOIN %2$s i
                                   ON i.request_id = r.id
                                  AND i.is_deleted = FALSE
                                 WHERE r.id = :id
                                 GROUP BY r.id, r.bill_no
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_request_items")))
                         .setParameter(
                                 "id",
                                 planningPackage.getPurchaseRequestId()));
@@ -1543,10 +1543,10 @@ public class ProductionExecutionPackageCommandService {
                                        application.bill_no,
                                        COUNT(item.id)
                                 FROM production_planning_package_documents doc
-                                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                                JOIN %1$s application
                                   ON application.id = doc.document_id
                                  AND application.is_deleted = FALSE
-                                LEFT JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) item
+                                LEFT JOIN %2$s item
                                   ON item.application_id = application.id
                                  AND item.is_deleted = FALSE
                                 WHERE doc.package_id = :packageId
@@ -1557,7 +1557,7 @@ public class ProductionExecutionPackageCommandService {
                                          doc.created_at
                                 ORDER BY doc.created_at, application.id
                                 LIMIT 1
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_application_items")))
                         .setParameter(
                                 "packageId", planningPackage.getId()));
         if (rows.isEmpty()) {
@@ -1606,10 +1606,10 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT bill_no, delivery_date, status,
                                        is_deleted, is_canceled, is_stopped,
                                        material_analysis_id
-                                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                                FROM %1$s production_plans
                                 WHERE id = :id
                                 FOR UPDATE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                         .setParameter("id", planId));
         if (rows.isEmpty() || Boolean.TRUE.equals(rows.getFirst()[3])) {
             throw new ApiException(
@@ -1652,7 +1652,7 @@ public class ProductionExecutionPackageCommandService {
                                 SELECT
                                   EXISTS (
                                     SELECT 1
-                                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                                    FROM %1$s item
                                     WHERE item.plan_id = :planId
                                       AND item.is_deleted = FALSE
                                       AND (
@@ -1663,7 +1663,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM mrp_generations link
-                                    JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) request
+                                    JOIN %2$s request
                                       ON request.id = link.request_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE
@@ -1673,7 +1673,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM plan_draw_links link
-                                    JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw
+                                    JOIN %3$s draw
                                       ON draw.id = link.draw_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE
@@ -1684,7 +1684,7 @@ public class ProductionExecutionPackageCommandService {
                                   EXISTS (
                                     SELECT 1
                                     FROM subplan_links link
-                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) subplan
+                                    JOIN %4$s subplan
                                       ON subplan.id = link.subplan_id
                                     WHERE link.plan_id = :planId
                                       AND link.is_deleted = FALSE
@@ -1702,7 +1702,7 @@ public class ProductionExecutionPackageCommandService {
                                       AND package.status = 'CONFIRMED'
                                       AND package.is_deleted = FALSE
                                   )
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                         .setParameter("planId", planId)
                         .setParameter(
                                 "currentPackageId", currentPackageId));

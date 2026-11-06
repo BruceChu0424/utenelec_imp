@@ -120,9 +120,9 @@ public class ProductionDrawDiscoveryBatchService {
         Set<UUID> planIds=new HashSet<>(discoveryPlans.values());
         if(!request.docIds().isEmpty())planIds.addAll(NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT plan.id FROM plan_draw_links link
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=link.plan_id AND NOT plan.is_deleted
+                JOIN %1$s plan ON plan.id=link.plan_id AND NOT plan.is_deleted
                 WHERE link.draw_id IN(:ids) AND NOT link.is_deleted
-                """).setParameter("ids",request.docIds()),UUID.class));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("ids",request.docIds()),UUID.class));
         // Freeze the union before any child command acquires inventory/plan locks or writes.
         var guard=locks.acquire(()->{
             List<FulfillmentMutationLockPlan> parts=new ArrayList<>();
@@ -142,9 +142,9 @@ public class ProductionDrawDiscoveryBatchService {
         Set<UUID> documentIds=new HashSet<>(request.docIds());
         if (request.itemIds() != null) {
             Number selected = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*) FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items
+                    SELECT COUNT(*) FROM %1$s stock_document_items
                     WHERE id IN(:items) AND doc_id IN(:documents) AND NOT is_deleted
-                    """).setParameter("items", request.itemIds()).setParameter("documents", request.docIds()).getSingleResult();
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("items", request.itemIds()).setParameter("documents", request.docIds()).getSingleResult();
             if (selected.longValue() != request.itemIds().size()) throw validation("所选领料明细不属于本次已有领料单，请刷新后重新选择");
         }
         List<StockDocIssueBatchRequest.ItemWeight> weights=new ArrayList<>(request.weights());
@@ -177,9 +177,9 @@ public class ProductionDrawDiscoveryBatchService {
                         SELECT DISTINCT item.id FROM production_material_discovery_lines line
                         JOIN production_planning_package_document_items mapping
                           ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW'
-                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                        JOIN %1$s item ON item.id=mapping.document_item_id AND NOT item.is_deleted
                         WHERE line.request_id IN(:requests)
-                        """).setParameter("requests", request.discoveries().stream().map(Discovery::requestId).toList()), UUID.class));
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("requests", request.discoveries().stream().map(Discovery::requestId).toList()), UUID.class));
             }
             command.setItemIds(selectedItems.stream().sorted(Comparator.comparing(UUID::toString)).toList());
         }
@@ -187,10 +187,10 @@ public class ProductionDrawDiscoveryBatchService {
         // Freeze success only when every authorized remainder was actually issued.
         // A nested replay must never turn a still-unissued line into a successful batch.
         var remaining=em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
+                SELECT EXISTS(SELECT 1 FROM %1$s item
                     WHERE item.doc_id IN(:ids) AND NOT item.is_deleted
                       AND fn_production_draw_item_requested_qty(item.id)>COALESCE(item.issued_qty,0)
-                """+(command.getItemIds()==null?"":" AND item.id IN(:items)")+")")
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))+(command.getItemIds()==null?"":" AND item.id IN(:items)")+")")
                 .setParameter("ids",command.getDocIds());
         if(command.getItemIds()!=null)remaining.setParameter("items",command.getItemIds());
         if(Boolean.TRUE.equals(remaining.getSingleResult()))
@@ -307,12 +307,12 @@ public class ProductionDrawDiscoveryBatchService {
                 FROM production_material_discovery_lines line
                 JOIN production_planning_package_document_items mapping
                   ON mapping.demand_id=line.demand_id AND mapping.document_type='DRAW'
-                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                JOIN %1$s item ON item.id=mapping.document_item_id AND NOT item.is_deleted
                   AND item.goods_id=line.goods_id AND item.color_id IS NOT DISTINCT FROM line.color_id
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=item.doc_id AND NOT document.is_deleted
+                JOIN %2$s document ON document.id=item.doc_id AND NOT document.is_deleted
                   AND document.warehouse_id=line.warehouse_id
                 WHERE line.request_id=:request
-                """).setParameter("request",command.requestId()))) {
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"))).setParameter("request",command.requestId()))) {
             itemsByPlace.computeIfAbsent(place((UUID)row[0],(UUID)row[1],(UUID)row[2]),ignored->new ArrayList<>()).add((UUID)row[3]);
         }
         List<StockDocIssueBatchRequest.ItemWeight> mapped=new ArrayList<>();

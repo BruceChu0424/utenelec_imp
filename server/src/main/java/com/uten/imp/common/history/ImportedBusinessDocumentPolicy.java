@@ -25,7 +25,7 @@ public final class ImportedBusinessDocumentPolicy {
         return record;
     }
 
-    private static boolean businessRecord(Class<?> type) {
+    static boolean businessRecord(Class<?> type) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             var table = current.getAnnotation(jakarta.persistence.Table.class);
             if (table == null) continue;

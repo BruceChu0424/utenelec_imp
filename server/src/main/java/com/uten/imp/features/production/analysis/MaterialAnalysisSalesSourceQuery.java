@@ -28,8 +28,8 @@ final class MaterialAnalysisSalesSourceQuery {
         }
         if (billNoFilter) predicate += " AND COALESCE(o.bill_no, '') = :orderBillNo\n";
         return """
-                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
-                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i ON i.order_id = o.id
+                FROM %1$s o
+                JOIN %2$s i ON i.order_id = o.id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -37,8 +37,8 @@ final class MaterialAnalysisSalesSourceQuery {
                 LEFT JOIN LATERAL (
                     -- Public surplus does not occupy the private sales source (V588).
                     SELECT SUM(CASE WHEN link.id IS NOT NULL THEN link.submitted_qty ELSE pi.qty END) AS qty
-                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) pi
-                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = pi.plan_id
+                    FROM %3$s pi
+                    JOIN %4$s p ON p.id = pi.plan_id
                     LEFT JOIN production_material_analysis_plan_links link
                       ON link.plan_id = p.id AND link.analysis_id = p.material_analysis_id
                      AND link.analysis_item_id = p.material_analysis_item_id
@@ -47,6 +47,6 @@ final class MaterialAnalysisSalesSourceQuery {
                       AND p.status = 0 AND p.is_canceled = FALSE
                 ) draft ON TRUE
                 WHERE
-                """ + predicate;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")) + predicate;
     }
 }

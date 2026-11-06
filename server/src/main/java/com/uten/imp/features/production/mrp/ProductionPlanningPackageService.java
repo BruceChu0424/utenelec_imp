@@ -281,19 +281,19 @@ public class ProductionPlanningPackageService {
             List<Object[]> rows = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                                     SELECT status, is_deleted
-                                    FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock_documents
+                                    FROM %1$s stock_documents
                                     WHERE id = :id AND doc_type = 'DRAW'
                                     FOR UPDATE
-                                    """)
+                                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")))
                             .setParameter("id", id));
             @SuppressWarnings("unchecked")
             List<Object> issueRows = em.createNativeQuery("""
                             SELECT issued_qty
-                            FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items
+                            FROM %1$s stock_document_items
                             WHERE doc_id = :id
                             ORDER BY id
                             FOR UPDATE
-                            """)
+                            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                     .setParameter("id", id)
                     .getResultList();
             BigDecimal issuedQty = issueRows.stream()
@@ -361,10 +361,10 @@ public class ProductionPlanningPackageService {
             List<Object[]> rows = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                                     SELECT status, is_deleted
-                                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                                    FROM %1$s production_plans
                                     WHERE id = :id
                                     FOR UPDATE
-                                    """)
+                                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                             .setParameter("id", id));
             if (rows.isEmpty()) {
                 throw new ApiException(ErrorCode.CONFLICT, "计划包子计划不存在");
@@ -374,11 +374,11 @@ public class ProductionPlanningPackageService {
             List<Object[]> itemRows = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                                     SELECT fqty, iqty
-                                    FROM (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) production_plan_items
+                                    FROM %1$s production_plan_items
                                     WHERE plan_id = :id AND is_deleted = FALSE
                                     ORDER BY id
                                     FOR UPDATE
-                                    """)
+                                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items")))
                             .setParameter("id", id));
             BigDecimal finishedQty = itemRows.stream()
                     .map(item -> decimal(item[0]))
@@ -442,21 +442,21 @@ public class ProductionPlanningPackageService {
                         SELECT
                             (SELECT COUNT(*)
                              FROM plan_draw_links l
-                             JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) d ON d.id = l.draw_id
+                             JOIN %1$s d ON d.id = l.draw_id
                              WHERE l.plan_id = :id
                                AND l.is_deleted = FALSE
                                AND d.is_deleted = FALSE
                                AND d.status <> -1)
                           + (SELECT COUNT(*)
                              FROM mrp_generations g
-                             JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r ON r.id = g.request_id
+                             JOIN %2$s r ON r.id = g.request_id
                              WHERE g.plan_id = :id
                                AND g.is_deleted = FALSE
                                AND r.is_deleted = FALSE
                                AND r.status <> -1)
                           + (SELECT COUNT(*)
                              FROM subplan_links l
-                             JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) p ON p.id = l.subplan_id
+                             JOIN %3$s p ON p.id = l.subplan_id
                              WHERE l.plan_id = :id
                                AND l.is_deleted = FALSE
                                AND p.is_deleted = FALSE
@@ -466,7 +466,7 @@ public class ProductionPlanningPackageService {
                              WHERE package.plan_id = :id
                                AND package.is_deleted = FALSE
                                AND package.status = 'CONFIRMED')
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                 .setParameter("id", subplanId)
                 .getSingleResult();
         return ((Number) count).longValue() > 0;
@@ -475,7 +475,7 @@ public class ProductionPlanningPackageService {
     /** 该计划是否由自底向上 orchestrator 自动创建（auto_generated）。级联回退仅作用于此类子计划。 */
     private boolean isAutoGeneratedPlan(UUID planId) {
         Object value = em.createNativeQuery(
-                        "SELECT COALESCE(auto_generated, FALSE) FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans WHERE id = :id")
+                        ("SELECT COALESCE(auto_generated, FALSE) FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans") + " production_plans WHERE id = :id"))
                 .setParameter("id", planId).getSingleResult();
         return Boolean.TRUE.equals(value);
     }
@@ -609,10 +609,10 @@ public class ProductionPlanningPackageService {
                                 SELECT bill_no, delivery_date, status,
                                        is_deleted, is_canceled, is_stopped,
                                        material_analysis_id
-                                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                                FROM %1$s production_plans
                                 WHERE id = :id
                                 FOR UPDATE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                         .setParameter("id", planId));
         if (rows.isEmpty() || Boolean.TRUE.equals(rows.getFirst()[3])) {
             throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");

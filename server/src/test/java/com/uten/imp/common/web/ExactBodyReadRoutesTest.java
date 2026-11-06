@@ -5,6 +5,16 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ExactBodyReadRoutesTest {
+    @org.junit.jupiter.api.Test void flatCompleteReadRoutesDoNotAuthorizeAdjacentCommands() {
+        for(String path:java.util.List.of("/api/master/colors/summaries","/api/master/units/summaries",
+                "/api/master/currencies/summaries","/api/master/accounts/summaries",
+                "/api/master/reference-methods/settlement-admin/summaries")) {
+            assertThat(ExactBodyReadRoutes.matches("POST",path)).isTrue();
+            for(String suffix:java.util.List.of("/save","/export","/","-all"))
+                assertThat(ExactBodyReadRoutes.matches("POST",path+suffix)).isFalse();
+            assertThat(ExactBodyReadRoutes.matches("PUT",path)).isFalse();
+        }
+    }
     @Test void salesDeliveryPreviewIsOnlyTheExactReadPost() {
         String preview="/api/sales/orders/delivery-preview";
         assertThat(ExactBodyReadRoutes.matches("POST",preview)).isTrue();

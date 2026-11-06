@@ -25,18 +25,31 @@ final _categorySequenceProvider = FutureProvider.autoDispose
       ref.onDispose(() => disposed = true);
       final rows = await activity.runRead(
         () => !disposed && boundary == ref.read(sensitiveReadBoundaryProvider),
-        () => loadCompletePagedSnapshot(
-          loadPage: (page, size) => repository.list(
-            categoryId,
-            page: page,
-            size: size,
-            sort: 'code',
-            order: 'asc',
-          ),
-          idOf: (row) => row.id,
-          isCurrent: () =>
-              !disposed && boundary == ref.read(sensitiveReadBoundaryProvider),
-        ),
+        () async {
+          final gateway = repository is GoodsSummaryReadGateway
+              ? repository as GoodsSummaryReadGateway
+              : null;
+          if (gateway?.supportsCompleteGoodsSummaries == true) {
+            return (await gateway!.completeList(
+              categoryId,
+              sort: 'code',
+              order: 'asc',
+            )).items;
+          }
+          return loadCompletePagedSnapshot(
+            loadPage: (page, size) => repository.list(
+              categoryId,
+              page: page,
+              size: size,
+              sort: 'code',
+              order: 'asc',
+            ),
+            idOf: (row) => row.id,
+            isCurrent: () =>
+                !disposed &&
+                boundary == ref.read(sensitiveReadBoundaryProvider),
+          );
+        },
       );
       return GoodsDetailSequence(rows.map((row) => row.id), label: '当前分类');
     });

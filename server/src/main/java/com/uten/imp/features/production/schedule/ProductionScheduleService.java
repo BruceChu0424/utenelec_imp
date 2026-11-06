@@ -208,13 +208,13 @@ public class ProductionScheduleService {
     /** 主表与主档 JOIN(不含分析投影 LATERAL)。计数路径只用这一段。 */
     private static String pendingFromJoins() {
         return """
-                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id
+                FROM %1$s i
+                JOIN %2$s o ON o.id = i.order_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
-                """;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"));
     }
 
     /**
@@ -386,11 +386,11 @@ public class ProductionScheduleService {
     public List<ScheduleOrderLine> orderLines(UUID orderId) {
         Object n = em.createNativeQuery(
                 """
-                SELECT COUNT(*) FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) sales_orders
+                SELECT COUNT(*) FROM %1$s sales_orders
                 WHERE id=:id AND status=1 AND is_deleted=false
                   AND is_closed=false AND is_stopped=false
                   AND finance_confirmed=true
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                 .setParameter("id", orderId).getSingleResult();
         if (((Number) n).intValue() == 0) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核且已通过财务确认的销售订货单可带入计划明细");
@@ -406,8 +406,8 @@ public class ProductionScheduleService {
                        bom.color_id, bom.color_name, bom.effective_qty,
                        bom.consumption_basis, bom.basis_output_qty, bom.need_qty,
                        bom.onhand, bom.self_made, bom.periodic
-                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id
+                FROM %2$s i
+                JOIN %3$s o ON o.id = i.order_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -446,7 +446,7 @@ public class ProductionScheduleService {
                 WHERE i.order_id = :orderId AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                 ORDER BY i.line_no NULLS LAST, i.id, bom.code, bom.bom_item_id
-                """.formatted(PENDING_TOTAL_DEMAND_SQL))
+                """.formatted(PENDING_TOTAL_DEMAND_SQL, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                 .setParameter("orderId", orderId).getResultList();
         Map<UUID, Object[]> lines = new LinkedHashMap<>();
         Map<UUID, List<ScheduleOrderLine.BomComponent>> components = new LinkedHashMap<>();
@@ -521,11 +521,11 @@ public class ProductionScheduleService {
             // 历史日均完工 = 近 180 天报工量 / 报工天数（ DISTINCT bill_date ）
             Object avg = em.createNativeQuery("""
                     SELECT SUM(i.qty) / NULLIF(COUNT(DISTINCT i.bill_date),0)
-                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) i
-                    JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) d ON d.id = i.report_id
+                    FROM %1$s i
+                    JOIN %2$s d ON d.id = i.report_id
                     WHERE i.goods_id = :g AND d.status = 1 AND i.is_deleted = false
                       AND i.bill_date >= CAST(:historyStart AS date)
-                    """)
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_reports")))
                     .setParameter("g", goodsId)
                     .setParameter("historyStart", today.minusDays(180))
                     .getSingleResult();

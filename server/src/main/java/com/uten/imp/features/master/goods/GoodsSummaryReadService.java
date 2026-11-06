@@ -35,4 +35,10 @@ public final class GoodsSummaryReadService {
         return new VersionedSummaryPages.Snapshot<>(new Payload(value.items(), value.page(), value.size(), value.total(), value.totalPages()),
                 snapshot.readScopeVersion(), snapshot.readSnapshotRevision(), snapshot.readDataVersion());
     }
+    public void stream(GoodsSearchRequest query, String revision, jakarta.servlet.http.HttpServletResponse response)
+            throws java.io.IOException {
+        MasterSummaryReadSupport.Query<com.uten.imp.features.master.goods.dto.GoodsQueryFilter> request = query == null
+                ? null : new MasterSummaryReadSupport.Query<>(query.filter(), query.requestedPage(), query.requestedSize(), query.sort(), query.order());
+        summaries.stream(DATA_DOMAIN, "master_goods", "goods:view", request, revision, goods::list, response);
+    }
 }

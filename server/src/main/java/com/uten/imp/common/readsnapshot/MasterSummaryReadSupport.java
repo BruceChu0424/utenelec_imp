@@ -7,6 +7,10 @@ import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.web.*;
 import com.uten.imp.security.CurrentAuthorityGuard;
 import org.springframework.stereotype.Service;
+import jakarta.persistence.EntityManager;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,12 +35,90 @@ public final class MasterSummaryReadSupport {
 
     private final VersionedSummaryPages summaries;
     private final ObjectMapper identityJson;
+    private final ObjectMapper json;
+    private final EntityManager entityManager;
 
     public MasterSummaryReadSupport(VersionedSummaryPages summaries, ObjectMapper json) {
+        this(summaries, json, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MasterSummaryReadSupport(VersionedSummaryPages summaries, ObjectMapper json, EntityManager entityManager) {
         this.summaries = summaries;
+        this.json = json;
+        this.entityManager = entityManager;
         // Query identity must distinguish original finite monetary values without
         // an intermediate binary float; the owning service still receives F itself.
         identityJson = json.copy().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+    }
+
+    public <F, T> void stream(String domain, String authorizationDomain, String permission,
+            Query<F> query, String revision, PageLoader<F, T> loader, HttpServletResponse response) throws IOException {
+        streamAuthorized(domain, authorizationDomain, "master", query, revision,
+                () -> CurrentAuthorityGuard.requireAll(permission), loader, response);
+    }
+
+    /** A single response, one counted cursor and one RR data snapshot. Page
+     * frames are provisional until the final committed authorization/data fence. */
+    public <F, T> void streamAuthorized(String domain, String authorizationDomain, String readContract,
+            Query<F> query, String revision, Runnable authorize, PageLoader<F, T> loader,
+            HttpServletResponse response) throws IOException {
+        if (query == null || query.filter() == null || query.requestedPage() != 1
+                || query.requestedSize() != READ_BATCH_SIZE) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "完整资料摘要须从首批开始，保留固定内部批量");
+        }
+        if (entityManager == null) throw new IllegalStateException("Complete master reads require their shared entity manager");
+        var request = new VersionedSummaryPages.Request(domain, authorizationDomain, identity(domain, readContract, query),
+                "all", 1, READ_BATCH_SIZE, READ_BATCH_SIZE, revision);
+        response.setContentType("application/x-ndjson");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("X-Accel-Buffering", "no");
+        try {
+            var accepted = summaries.readWithProof(request, authorize, (proof, checkpoint) -> {
+                response.setHeader("X-Uten-Read-Scope-Version", proof.readScopeVersion());
+                try (var cursor = BoundedMasterReadSource.open(entityManager, checkpoint, ignored -> { })) {
+                    long seen = 0, expected = -1;
+                    for (int page = 1; ; page++) {
+                        checkpoint.run();
+                        var value = payload(loader.load(query.filter(), page, READ_BATCH_SIZE, query.sort(), query.order()), page, READ_BATCH_SIZE);
+                        if (expected < 0) expected = value.total();
+                        else if (expected != value.total()) throw incomplete();
+                        seen = Math.addExact(seen, value.items().size());
+                        if (seen > expected || value.items().isEmpty() && seen < expected) throw incomplete();
+                        writeFrame(response, Map.of("type", "page", "value", proof.snapshot(value)));
+                        cursor.clearBatch();
+                        if (seen == expected) return expected;
+                        if (page == Integer.MAX_VALUE) throw incomplete();
+                    }
+                }
+            });
+            writeFrame(response, Map.of("type", "complete", "total", accepted.value(),
+                    "readScopeVersion", accepted.readScopeVersion(),
+                    "readSnapshotRevision", accepted.readSnapshotRevision(), "readDataVersion", accepted.readDataVersion()));
+        } catch (UncheckedIOException disconnected) {
+            throw disconnected.getCause();
+        } catch (RuntimeException failure) {
+            ErrorCode code = failure instanceof ApiException api ? api.getCode()
+                    : failure instanceof org.springframework.security.access.AccessDeniedException ? ErrorCode.FORBIDDEN
+                    : failure instanceof org.springframework.transaction.TransactionTimedOutException
+                        || failure instanceof java.util.concurrent.CancellationException ? ErrorCode.PRIMARY_UNAVAILABLE : ErrorCode.INTERNAL;
+            if (code == ErrorCode.INTERNAL)
+                org.slf4j.LoggerFactory.getLogger(MasterSummaryReadSupport.class).error("Complete master summary read failed for {}", domain, failure);
+            String message = failure instanceof ApiException api ? api.getMessage() : code.getDefaultMessage();
+            try { writeFrame(response, Map.of("type", "error", "code", code.name(), "message", message)); }
+            catch (UncheckedIOException disconnected) { throw disconnected.getCause(); }
+        }
+    }
+
+    private void writeFrame(HttpServletResponse response, Object frame) {
+        try {
+            byte[] encoded = json.writeValueAsBytes(frame);
+            var output = response.getOutputStream();
+            output.write(encoded);
+            output.write('\n');
+            response.flushBuffer();
+        } catch (IOException disconnected) { throw new UncheckedIOException(disconnected); }
     }
 
     public <F, T> VersionedSummaryPages.Snapshot<Payload<T>> read(String domain, String authorizationDomain,

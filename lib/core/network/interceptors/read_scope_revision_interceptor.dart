@@ -156,16 +156,21 @@ class ReadScopeRevisionInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final body = err.response?.data;
-    final options = err.requestOptions;
-    if (body is Map &&
-        body['code'] == 'READ_SCOPE_CHANGED' &&
-        options.extra[_handledKey] != true &&
+    if (body is Map && body['code'] == 'READ_SCOPE_CHANGED') {
+      await observeScopeRejection(err.requestOptions);
+    }
+    handler.next(err);
+  }
+
+  /// A streamed refusal may arrive after successful HTTP headers. Apply the
+  /// same frozen-request guard as an ordinary HTTP READ_SCOPE_CHANGED error.
+  Future<void> observeScopeRejection(RequestOptions options) async {
+    if (options.extra[_handledKey] != true &&
         await isCurrent(options) &&
         options.extra[_revisionKey] == currentRevision()) {
       options.extra[_handledKey] = true;
       retire();
     }
-    handler.next(err);
   }
 
   static DioException _changed(

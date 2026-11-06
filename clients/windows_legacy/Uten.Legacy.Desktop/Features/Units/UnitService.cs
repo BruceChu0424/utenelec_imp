@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -13,6 +14,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         public static UnitPageResult ParsePage(string json)
         {
             var value = UnitJson.Object(UnitJson.Parse(json));
+            if (UnitJson.Text(value, "type") == "page") value = UnitJson.Object(value["value"]);
             object rows;
             if (!value.TryGetValue("items", out rows)) throw new FormatException("单位分页响应缺少资料行。");
             return new UnitPageResult { Items = UnitJson.Records(rows),
@@ -69,6 +71,28 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
             return ReadAsync(query.ToRelativePath(), UnitReadContract.ParsePage, cancellationToken);
+        }
+        public async Task<UnitReadSnapshot<Uten.Legacy.Desktop.Shared.SnapshotPage<UnitRecord>>> CompleteAsync(UnitQuery query,
+            Func<bool> current, CancellationToken token)
+        {
+            if (query == null) throw new ArgumentNullException(nameof(query));
+            var owner = new UnitReadOwner(session);
+            var exact = query.Filters.Where(entry => !entry.Value.IsNull).ToDictionary(entry => entry.Key, entry => entry.Value.Value);
+            var nulls = query.Filters.Where(entry => entry.Value.IsNull).Select(entry => entry.Key).ToArray();
+            var response = await session.ReadCompleteUnitSummariesAsync(query.Keyword, exact, nulls, token).ConfigureAwait(false);
+            RequireCurrent(owner);
+            var value = await Task.Run(() => Uten.Legacy.Desktop.Shared.CompletePagedSnapshot.ReadCompleteStreamAsync(response, json =>
+            {
+                var page = UnitReadContract.ParsePage(json);
+                var raw = UnitJson.Object(UnitJson.Parse(json));
+                if (UnitJson.Text(raw, "type") == "page") raw = UnitJson.Object(raw["value"]);
+                return new Uten.Legacy.Desktop.Shared.SnapshotPage<UnitRecord> { Items = page.Items, Page = page.Page,
+                    Size = page.Size, Total = page.TotalElements, TotalPages = page.TotalPages,
+                    ReadScopeVersion = UnitJson.Text(raw, "readScopeVersion"), ReadDataVersion = UnitJson.Text(raw, "readDataVersion"),
+                    ReadSnapshotRevision = UnitJson.Text(raw, "readSnapshotRevision") };
+            }, item => item.Id, () => current() && owner.IsCurrent(session), token), token).ConfigureAwait(false);
+            RequireCurrent(owner);
+            return new UnitReadSnapshot<Uten.Legacy.Desktop.Shared.SnapshotPage<UnitRecord>>(value, owner, "/master/units/summaries?complete=true");
         }
         public Task<UnitReadSnapshot<UnitFacetSet>> FacetsAsync(CancellationToken cancellationToken)
         {

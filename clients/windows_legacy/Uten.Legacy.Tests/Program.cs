@@ -19,6 +19,13 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--complete-summary-stream-contracts")
+                {
+                    Uten.Legacy.Core.Tests.ManagedHttp11Checks.Run();
+                    int streams = CompleteSummaryTransportChecks.Run();
+                    Console.WriteLine("PASS complete master NDJSON transport; assertions=" + streams + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--session-lifecycle-contracts")
                 {
                     var sessionChecks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "CoreContractChecks");

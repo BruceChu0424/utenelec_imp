@@ -143,7 +143,8 @@ public class SupplierService {
         var spec = supplierSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId), plan, sort, null, true);
         // Internal workshops are organizational units, never external supplier references.
         spec = spec.and((root, query, cb) -> cb.isFalse(root.get("internalWorkshop")));
-        var result = repo.findAll(spec, Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort));
+        var result = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.page(repo, em, Supplier.class, spec,
+                Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort), filter);
         return new PageResponse<>(result.getContent().stream().map(s ->
                 new com.uten.imp.features.master.reference.PartyReference(s.getId(), s.getCode(),
                         s.getName() == null || s.getName().isBlank() ? s.getDescription() : s.getName(),

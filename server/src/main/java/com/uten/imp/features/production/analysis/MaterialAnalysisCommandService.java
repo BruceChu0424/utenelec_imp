@@ -1320,19 +1320,19 @@ public class MaterialAnalysisCommandService {
         String sql = """
                 SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
                        link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
-                FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                FROM %1$s plan
                 JOIN production_material_analysis_plan_links link
                   ON link.plan_id = plan.id
                  AND link.analysis_id = plan.material_analysis_id
                  AND link.analysis_item_id = plan.material_analysis_item_id
                  AND link.allocation_status IN ('SUBMITTED', 'APPROVED')
-                JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                JOIN %2$s item
                   ON item.plan_id = plan.id AND item.is_deleted = FALSE
                 WHERE plan.material_analysis_id = :analysisId
                   AND plan.material_analysis_item_id = :analysisLineId
                   AND fn_material_analysis_plan_growable(plan.id)
                   AND fn_plan_accepts_overproduction_allowance(plan.id, :allowedRate)
-                """
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"))
                 + (approveNow ? "" : "  AND plan.status = 0\n")
                 + (departmentId == null ? "" : """
                   AND plan.department_id = :departmentId
@@ -1743,13 +1743,13 @@ public class MaterialAnalysisCommandService {
                 JOIN LATERAL (
                     SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
                            link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
-                    FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                    FROM %1$s plan
                     JOIN production_material_analysis_plan_links link
                       ON link.plan_id = plan.id
                      AND link.analysis_id = plan.material_analysis_id
                      AND link.analysis_item_id = plan.material_analysis_item_id
                      AND link.allocation_status IN ('SUBMITTED', 'APPROVED')
-                    JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item
+                    JOIN %2$s item
                       ON item.plan_id = plan.id AND item.is_deleted = FALSE
                     WHERE plan.material_analysis_id = :analysisId
                       AND plan.material_analysis_item_id = requested.analysis_line_id
@@ -1762,7 +1762,7 @@ public class MaterialAnalysisCommandService {
                               WHERE segment.plan_id = plan.id AND NOT segment.is_deleted
                                 AND segment.status NOT IN ('CANCELLED', 'REVERSED')
                                 AND segment.workshop_department_id IS DISTINCT FROM requested.department_id)))
-                """ + (approveNow ? "" : " AND plan.status = 0\n") + """
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items")) + (approveNow ? "" : " AND plan.status = 0\n") + """
                     ORDER BY link.created_at DESC, plan.id DESC
                     LIMIT 1
                 ) candidate ON TRUE
@@ -2982,9 +2982,9 @@ public class MaterialAnalysisCommandService {
 
     private GeneratedPlan generatedPlan(UUID planId) {
         Object[] plan = one(em.createNativeQuery("""
-                SELECT id, bill_no, status FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) production_plans
+                SELECT id, bill_no, status FROM %1$s production_plans
                 WHERE id = :id AND is_deleted = FALSE
-                """).setParameter("id", planId), "之前操作生成的生产计划已不存在，请联系管理员核对");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("id", planId), "之前操作生成的生产计划已不存在，请联系管理员核对");
         UUID draftId = scalarUuid("""
                 SELECT id FROM production_planning_drafts
                 WHERE plan_id = :id ORDER BY planned_at DESC, id DESC LIMIT 1
@@ -3011,10 +3011,10 @@ public class MaterialAnalysisCommandService {
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT doc.document_id, stock.bill_no
                 FROM production_planning_package_documents doc
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock ON stock.id = doc.document_id
+                JOIN %1$s stock ON stock.id = doc.document_id
                 WHERE doc.package_id = :id AND doc.document_type = 'DRAW'
                 ORDER BY doc.created_at, doc.id
-                """).setParameter("id", packageId).getResultList();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"))).setParameter("id", packageId).getResultList();
         List<GeneratedDraw> result = new ArrayList<>();
         for (Object[] row : rows) {
             result.add(new GeneratedDraw((UUID) row[0], Objects.toString(row[1], null)));
@@ -3153,9 +3153,9 @@ public class MaterialAnalysisCommandService {
     private void cancelMakeDemand(
             UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty) {
         if(Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=batch.plan_id
+                SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch JOIN %1$s plan ON plan.id=batch.plan_id
                     WHERE batch.action_id=:action AND plan.status IN(0,1) AND NOT plan.is_deleted AND NOT plan.is_canceled)
-                """).setParameter("action",actionId).getSingleResult()))throw conflict("共享制造已有正式计划，请先按整个共享计划处理其报工、库存及来源依赖");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("action",actionId).getSingleResult()))throw conflict("共享制造已有正式计划，请先按整个共享计划处理其报工、库存及来源依赖");
         Object[] item = one(em.createNativeQuery("""
                 SELECT requested_qty, submitted_qty, approved_qty, source_type
                 FROM production_material_analysis_items

@@ -173,11 +173,11 @@ public class SalesOrderFinanceConfirmService {
                 ? "" : " AND COALESCE(o.bill_no, '') = :bill_no\n";
         var countQuery = em.createNativeQuery("""
                 SELECT COUNT(*)
-                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
+                FROM %1$s o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")) + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
         if (!normalizedKeyword.isEmpty()) {
             countQuery.setParameter("keyword", normalizedKeyword);
         }
@@ -191,7 +191,7 @@ public class SalesOrderFinanceConfirmService {
                 SELECT o.id, o.bill_no, o.bill_date,
                        COALESCE(c.name, ''), COALESCE(e.full_name, ''),
                        o.deliver_date,
-                       (SELECT COUNT(*) FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
+                       (SELECT COUNT(*) FROM %1$s i
                         WHERE i.order_id = o.id AND i.is_deleted = FALSE),
                        o.total_original, COALESCE(cur.code, ''), COALESCE(cur.name, ''),
                        COALESCE(o.shipment_policy, ''),
@@ -213,13 +213,13 @@ public class SalesOrderFinanceConfirmService {
                           WHERE revision.order_id = o.id
                             AND revision.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0))),
                        o.finance_review_revision,
-                       """ + CLIENT_CREDIT_SQL + """
+                       """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items")) + CLIENT_CREDIT_SQL + """
                        , o.currency_id
                        , source_quote.id, source_quote.bill_no,
                        COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at,
                        o.finance_confirmed
-                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
-                LEFT JOIN (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_quotes',to_jsonb(archive_origin))) source_quote ON source_quote.id = o.source_quote_id
+                FROM %1$s o
+                LEFT JOIN %2$s source_quote ON source_quote.id = o.source_quote_id
                      AND source_quote.is_deleted = FALSE
                      AND source_quote.finance_confirmed_at IS NOT NULL
                 LEFT JOIN employees quote_confirmer ON quote_confirmer.id = source_quote.finance_confirmed_by
@@ -227,7 +227,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                """ + confirmationPoolFilter(confirmed) + String.join("\n", rejectedFilter, changesFilter,
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_quotes")) + confirmationPoolFilter(confirmed) + String.join("\n", rejectedFilter, changesFilter,
                         keywordFilter, billNoFilter, pendingOrderBy(sort, order, !normalizedKeyword.isEmpty()),
                         "LIMIT :lim OFFSET :off"));
         if (!normalizedKeyword.isEmpty()) {
@@ -341,11 +341,11 @@ public class SalesOrderFinanceConfirmService {
                 + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
         var query = NativeFacets.query(em, "billNo", """
                         SELECT COALESCE(o.bill_no, ''), COUNT(*)
-                        FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
+                        FROM %1$s o
                         LEFT JOIN clients c ON c.id = o.client_id
                         LEFT JOIN employees e ON e.id = o.seller_id
                         WHERE o.status = 1 AND o.is_deleted = FALSE
-                        """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")) + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter
                         + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
         if (!normalizedKeyword.isEmpty()) {
@@ -373,12 +373,12 @@ public class SalesOrderFinanceConfirmService {
         String changesFilter = changesOnly == null ? ""
                 : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
         Number n = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
+                SELECT COUNT(*) FROM %1$s o
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                   AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')
                  AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
-                """ + changesFilter).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")) + changesFilter).getSingleResult();
         return Map.of("count", n.longValue());
     }
 

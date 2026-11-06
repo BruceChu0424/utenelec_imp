@@ -57,9 +57,9 @@ public class ProductionPlanResourceGuard {
         @SuppressWarnings("unchecked")
         List<Object> rows = em.createNativeQuery("""
                         SELECT plan.maker_id
-                        FROM (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                        FROM %1$s plan
                         WHERE plan.id = :planId AND plan.is_deleted = FALSE
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                 .setParameter("planId", planId)
                 .getResultList();
         if (rows.isEmpty()) {

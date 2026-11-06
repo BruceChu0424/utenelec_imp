@@ -185,7 +185,7 @@ public class AggregateMissingDeepAliasRepair {
                     EXISTS(SELECT 1 FROM production_material_analysis_items child
                         JOIN production_material_analysis_plan_links link ON link.analysis_item_id=child.id
                           AND link.allocation_status IN('SUBMITTED','APPROVED')
-                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=link.plan_id AND plan.status IN(0,1)
+                        JOIN %1$s plan ON plan.id=link.plan_id AND plan.status IN(0,1)
                           AND NOT plan.is_deleted AND NOT plan.is_canceled
                         WHERE child.parent_analysis_material_id=material.id AND NOT child.is_deleted
                           AND child.source_type<>'AGGREGATE_MAKE'),material.depth,item.line_priority,item.delivery_date,
@@ -193,7 +193,7 @@ public class AggregateMissingDeepAliasRepair {
                 FROM production_material_analysis_materials material
                 JOIN production_material_analysis_items item ON item.id=material.analysis_item_id
                 WHERE material.analysis_id=:analysis AND material.active
-                """).setParameter("analysis",analysisId))) {
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("analysis",analysisId))) {
             Material value=new Material((UUID)row[0],(UUID)row[1],(String)row[2],(String)row[3],(String)row[4],(UUID)row[5],
                     (String)row[6],number(row[7]),number(row[8]),(String)row[9],number(row[10]),Boolean.TRUE.equals(row[11]),
                     (UUID)row[12],(UUID)row[13],(UUID)row[14],number(row[15]),number(row[16]),number(row[17]),number(row[18]),

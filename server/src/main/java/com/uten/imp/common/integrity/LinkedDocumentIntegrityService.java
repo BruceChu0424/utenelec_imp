@@ -123,14 +123,14 @@ public class LinkedDocumentIntegrityService {
                                ri.unit_rate,
                                ri.qty, COALESCE(ri.ordered_qty, 0), r.status,
                                COALESCE(r.is_stopped, FALSE)
-                        FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) ri
-                        JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r ON r.id = ri.request_id
+                        FROM %1$s ri
+                        JOIN %2$s r ON r.id = ri.request_id
                         WHERE ri.id IN (:ids)
                           AND COALESCE(ri.is_deleted, FALSE) = FALSE
                           AND COALESCE(r.is_deleted, FALSE) = FALSE
                         ORDER BY ri.id
                         FOR UPDATE OF ri, r
-                        """);
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_request_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests")));
         validateUpstreamAllocations(lines, rows);
     }
 
@@ -144,12 +144,12 @@ public class LinkedDocumentIntegrityService {
     public void lockPurchaseRequestItemsForReversal(Collection<UUID> sourceItemIds) {
         lockIds(sourceItemIds, """
                 SELECT ri.id
-                FROM (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) ri
-                JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) r ON r.id = ri.request_id
+                FROM %1$s ri
+                JOIN %2$s r ON r.id = ri.request_id
                 WHERE ri.id IN (:ids)
                 ORDER BY ri.id
                 FOR UPDATE OF ri, r
-                """, "采购来源申请明细不存在");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_request_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests")), "采购来源申请明细不存在");
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -157,12 +157,12 @@ public class LinkedDocumentIntegrityService {
             Collection<UUID> sourceItemIds) {
         lockIds(sourceItemIds, """
                 SELECT ai.id
-                FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) ai
-                JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) a ON a.id = ai.application_id
+                FROM %1$s ai
+                JOIN %2$s a ON a.id = ai.application_id
                 WHERE ai.id IN (:ids)
                 ORDER BY ai.id
                 FOR UPDATE OF ai, a
-                """, "委外来源申请明细不存在");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_application_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications")), "委外来源申请明细不存在");
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -179,14 +179,14 @@ public class LinkedDocumentIntegrityService {
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
                                ri.unit_id, ri.unit_rate,
                                ri.order_item_id, r.status
-                        FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) ri
-                        JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) r ON r.id = ri.receipt_id
+                        FROM %1$s ri
+                        JOIN %2$s r ON r.id = ri.receipt_id
                         WHERE ri.id IN (:ids)
                           AND COALESCE(ri.is_deleted, FALSE) = FALSE
                           AND COALESCE(r.is_deleted, FALSE) = FALSE
                         ORDER BY ri.id
                         FOR UPDATE OF ri, r
-                        """);
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts")));
         for (LinkedLine line : lines) {
             if (line.sourceItemId() == null) {
                 continue;
@@ -219,14 +219,14 @@ public class LinkedDocumentIntegrityService {
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
                                ri.unit_id, ri.unit_rate,
                                ri.order_item_id, r.status
-                        FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) ri
-                        JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) r ON r.id = ri.receipt_id
+                        FROM %1$s ri
+                        JOIN %2$s r ON r.id = ri.receipt_id
                         WHERE ri.id IN (:ids)
                           AND COALESCE(ri.is_deleted, FALSE) = FALSE
                           AND COALESCE(r.is_deleted, FALSE) = FALSE
                         ORDER BY ri.id
                         FOR UPDATE OF ri, r
-                        """);
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts")));
         for (LinkedLine line : lines) {
             if (line.sourceItemId() == null) {
                 continue;
@@ -273,14 +273,14 @@ public class LinkedDocumentIntegrityService {
                                ii.unit_id, ii.unit_rate,
                                ii.order_item_id, ii.parent_goods_id,
                                ii.parent_color_id, i.status
-                        FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) ii
-                        JOIN (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) i ON i.id = ii.issue_id
+                        FROM %1$s ii
+                        JOIN %2$s i ON i.id = ii.issue_id
                         WHERE ii.id IN (:ids)
                           AND COALESCE(ii.is_deleted, FALSE) = FALSE
                           AND COALESCE(i.is_deleted, FALSE) = FALSE
                         ORDER BY ii.id
                         FOR UPDATE OF ii, i
-                        """);
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues")));
         for (LinkedLine line : lines) {
             Object[] source = requireSource(
                     issueRows, line.sourceItemId(), "委外材料来源发料明细不存在或已删除");
@@ -336,14 +336,14 @@ public class LinkedDocumentIntegrityService {
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
                        oi.unit_id, oi.unit_rate,
                        o.status, COALESCE(o.is_stopped, FALSE)
-                FROM (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) oi
-                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) o ON o.id = oi.order_id
+                FROM %1$s oi
+                JOIN %2$s o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids)
                   AND COALESCE(oi.is_deleted, FALSE) = FALSE
                   AND COALESCE(o.is_deleted, FALSE) = FALSE
                 ORDER BY oi.id
                 FOR UPDATE OF oi, o
-                """);
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders")));
         for (LinkedLine line : lines) {
             UUID id = sourceId.apply(line);
             if (id == null) {
@@ -388,14 +388,14 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> rows = lockRows(lines, sourceId, """
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
                        oi.unit_id, oi.unit_rate, o.status
-                FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) oi
-                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) o ON o.id = oi.order_id
+                FROM %1$s oi
+                JOIN %2$s o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids)
                   AND COALESCE(oi.is_deleted, FALSE) = FALSE
                   AND COALESCE(o.is_deleted, FALSE) = FALSE
                 ORDER BY oi.id
                 FOR UPDATE OF oi, o
-                """);
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")));
         for (LinkedLine line : lines) {
             UUID id = sourceId.apply(line);
             if (id == null) {

@@ -114,12 +114,12 @@ public class AnalysisLinkedSalesOrderService {
                 JOIN production_material_analyses analysis
                   ON analysis.id = analysis_item.analysis_id
                  AND analysis.is_deleted = FALSE
-                JOIN (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_item
+                JOIN %1$s sales_item
                   ON sales_item.id = analysis_item.sales_order_item_id
                 WHERE analysis_item.analysis_id = :analysisId
                   AND analysis_item.is_deleted = FALSE
                   AND sales_item.order_id = :orderId
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items")))
                 .setParameter("analysisId", analysisId)
                 .setParameter("orderId", orderId)
                 .getSingleResult();
@@ -141,13 +141,13 @@ public class AnalysisLinkedSalesOrderService {
                 SELECT o.bill_no, o.bill_date, o.deliver_date, o.client_id, c.name,
                        seller.full_name, o.status, COALESCE(o.finance_confirmed, FALSE),
                        COALESCE(o.is_closed, FALSE), COALESCE(o.is_stopped, FALSE)
-                FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o
+                FROM %1$s o
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees seller
                        ON seller.id = o.seller_id
                        OR (o.seller_id IS NULL AND seller.legacy_id = o.seller_legacy_id)
                 WHERE o.id = :orderId AND o.is_deleted = FALSE
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                 .setParameter("orderId", orderId)
                 .getResultList();
         if (rs.isEmpty()) {
@@ -177,15 +177,14 @@ public class AnalysisLinkedSalesOrderService {
                            WHERE analysis_item.analysis_id = :analysisId
                              AND analysis_item.sales_order_item_id = i.id
                              AND analysis_item.is_deleted = FALSE) AS in_analysis
-                FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) i
-                JOIN (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id
+                FROM %3$s i
+                JOIN %4$s o ON o.id = i.order_id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :orderId AND i.is_deleted = FALSE
                 ORDER BY i.line_no NULLS LAST, g.code, i.id
-                """.formatted(SalesOrderChainSql.outstandingSql("i"),
-                        SalesOrderChainSql.unplannedQtySql("i")))
+                """.formatted(SalesOrderChainSql.outstandingSql("i"), SalesOrderChainSql.unplannedQtySql("i"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                 .setParameter("analysisId", analysisId)
                 .setParameter("orderId", orderId)
                 .getResultList();

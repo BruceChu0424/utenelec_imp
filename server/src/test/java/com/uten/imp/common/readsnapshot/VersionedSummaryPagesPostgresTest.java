@@ -88,6 +88,34 @@ class VersionedSummaryPagesPostgresTest {
         assertThat(tail.readSnapshotRevision()).isEqualTo(first.readSnapshotRevision());assertThat(tail.readDataVersion()).isEqualTo(first.readDataVersion());
         assertThatThrownBy(()->page(2,999,first.readSnapshotRevision())).isInstanceOf(ApiException.class);
     }
+
+    @Test void completeStreamProofIsCapturedInsideItsRrAndTheFinalFreshFenceRejectsAConcurrentCommit() {
+        db.update("INSERT INTO summary_protocol_fixture VALUES(1,'old')");
+        AtomicBoolean emitted=new AtomicBoolean();
+        changed(()->pages.readWithProof(request(1,100,null),()->{},(proof,checkpoint)->{
+            checkpoint.run();
+            assertThat(db.queryForObject("SHOW transaction_isolation",String.class)).isEqualTo("repeatable read");
+            assertThat(proof.readSnapshotRevision()).hasSize(64);
+            var first=db.queryForList("SELECT id,value FROM summary_protocol_fixture ORDER BY id");
+            emitted.set(first.size()==1);
+            try(Connection other=source.getConnection()){update(other,"INSERT INTO summary_protocol_fixture VALUES(2,'new')");}
+            catch(SQLException failure){throw new RuntimeException(failure);}
+            assertThat(db.queryForList("SELECT id,value FROM summary_protocol_fixture ORDER BY id")).hasSize(1);
+            checkpoint.run();
+            return first.size();
+        }));
+        assertThat(emitted).isTrue();
+    }
+
+    @Test void completeStreamRetainsAnOuterTransactionsShorterOriginalBudgetAcrossAllBatches() {
+        var outer=new TransactionTemplate(manager);outer.setTimeout(2);
+        assertThatThrownBy(()->outer.execute(status->pages.readWithProof(request(1,100,null),()->{},(proof,checkpoint)->{
+            try { Thread.sleep(2100); }
+            catch(InterruptedException interrupted) { Thread.currentThread().interrupt();throw new RuntimeException(interrupted); }
+            checkpoint.run();
+            return 0;
+        }))).isInstanceOf(org.springframework.transaction.TransactionTimedOutException.class);
+    }
     @Test void sameCountValueChangeRejectsTheOldSnapshotAndNeverPublishesAPrefix() {
         db.update("INSERT INTO summary_protocol_fixture VALUES(1,'before'),(2,'tail')");var first=page(1,1,null);
         db.update("UPDATE summary_protocol_fixture SET value='after' WHERE id=1");changed(()->page(2,1,first.readSnapshotRevision()));

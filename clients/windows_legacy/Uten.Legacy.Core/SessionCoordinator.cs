@@ -256,6 +256,11 @@ namespace Uten.Legacy.Core
 
         private async Task<string> ReadJsonAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null, bool automatic = false)
         {
+            return (await ReadReplyAsync(method, relativePath, body, cancellationToken, requiredPermission, automatic).ConfigureAwait(false)).Text;
+        }
+
+        private async Task<Reply> ReadReplyAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null, bool automatic = false, bool completeSummary = false)
+        {
             Scope scope;
             ReadRequest reader;
             lock (gate)
@@ -272,14 +277,14 @@ namespace Uten.Legacy.Core
                     // A reader's retirement/close must not cancel a shared credential refresh.
                     var owned = await EnsureAccessAsync(scope, false, null, cancellationToken, automatic).ConfigureAwait(false);
                     RequireReader(scope, reader);
-                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic).ConfigureAwait(false);
+                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary).ConfigureAwait(false);
                     RequireReader(scope, reader);
                     var failure = ErrorFrom(response, false);
                     if (failure != null && failure.StatusCode == 401 && failure.HasResponseCode && failure.Code == "UNAUTHORIZED")
                     {
                         owned = await EnsureAccessAsync(scope, true, owned, cancellationToken, automatic).ConfigureAwait(false);
                         RequireReader(scope, reader);
-                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic).ConfigureAwait(false);
+                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true, automatic: automatic, completeSummary: completeSummary).ConfigureAwait(false);
                         RequireReader(scope, reader);
                         failure = ErrorFrom(response, false);
                     }
@@ -292,7 +297,7 @@ namespace Uten.Legacy.Core
                     }
                     ObserveReadReply(scope, reader, scope.Endpoint.Resolve(relativePath).AbsolutePath, response);
                     RequireReader(scope, reader);
-                    return response.Text;
+                    return response;
                 }
                 catch (OperationCanceledException) { RequireReader(scope, reader); throw; }
             }
@@ -543,7 +548,7 @@ namespace Uten.Legacy.Core
         }
 
         private async Task<Reply> SendAsync(Scope scope, HttpMethod method, string path, object body, string bearer,
-            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false, bool automatic = false)
+            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false, bool automatic = false, bool completeSummary = false)
         {
             RequireScope(scope);
             cancellationToken.ThrowIfCancellationRequested();
@@ -552,8 +557,17 @@ namespace Uten.Legacy.Core
             var submitted = false;
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Cancellation))
             using (var request = new HttpRequestMessage(method, uri))
+            using (var summary = completeSummary ? new CompleteSummaryStream(configuration.MaxResponseBytes, timeout.Token) : null)
             {
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(completeSummary ? "application/x-ndjson" : "application/json"));
+                HttpResponseSink summarySink = null;
+                if (completeSummary)
+                {
+                    if (!idempotentRead || method != HttpMethod.Post || mutationPermit != null || rawBodyJson != null)
+                        throw new InvalidOperationException("Complete summaries are read-only POSTs.");
+                    summarySink = HttpResponseSink.CompleteSummary(summary, configuration.MaxResponseBytes, uri.AbsolutePath, uri.Query);
+                    request.Properties[HttpResponseSink.RequestProperty] = summarySink;
+                }
                 if (bearer != null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
                 if (automatic) request.Headers.Add("X-Uten-Automatic", "1");
                 timeout.CancelAfter(SessionWatchContract.ForRequest(request, configuration.RequestTimeout));
@@ -579,6 +593,28 @@ namespace Uten.Legacy.Core
                         if (response.RequestMessage?.RequestUri != null && response.RequestMessage.RequestUri != uri)
                             throw new ApiException("REDIRECT_BLOCKED", "接口响应离开了当前请求地址。", status, write);
                         var readScopeHeaders = ReadScopeHeaders.Capture(response);
+                        if (completeSummary && status >= 200 && status < 300)
+                        {
+                            if (status != 200 || response.Content == null
+                                || !String.Equals(response.Content.Headers.ContentType?.MediaType, "application/x-ndjson", StringComparison.OrdinalIgnoreCase)
+                                || response.Content.Headers.ContentRange != null || response.Content.Headers.ContentEncoding.Any())
+                                throw new ApiException("INCOMPLETE_READ_PROTOCOL", "服务端未返回完整资料流，请更新服务端后重试。");
+                            if (!summarySink.Completed)
+                            {
+                                using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                                {
+                                    var buffer = new byte[8192]; int count;
+                                    while ((count = await input.ReadAsync(buffer, 0, buffer.Length, timeout.Token).ConfigureAwait(false)) != 0)
+                                        summary.Write(buffer, 0, count);
+                                }
+                                summarySink.Complete(summary.Length);
+                            }
+                            var complete = summary.Finish();
+                            if (complete.ErrorCode != null)
+                                return new Reply(complete.ErrorCode == "READ_SCOPE_CHANGED" || complete.ErrorCode == "FORBIDDEN" ? 403 : 503,
+                                    complete.CompletionJson, readScopeHeaders);
+                            return new Reply(status, complete.CompletionJson, readScopeHeaders, complete);
+                        }
                         if (response.Content == null) return new Reply(status, "", readScopeHeaders);
                         if (response.Content.Headers.ContentLength > configuration.MaxResponseBytes)
                             throw new ApiException("RESPONSE_TOO_LARGE", "服务器返回的内容超出读取上限。", status, write);
@@ -765,8 +801,9 @@ namespace Uten.Legacy.Core
             internal readonly int Status;
             internal readonly string Text;
             internal readonly ReadScopeHeaders ReadScope;
-            internal Reply(int status, string text, ReadScopeHeaders readScope)
-            { Status = status; Text = text; ReadScope = readScope; }
+            internal readonly CompleteSummaryResponse CompleteSummary;
+            internal Reply(int status, string text, ReadScopeHeaders readScope, CompleteSummaryResponse completeSummary = null)
+            { Status = status; Text = text; ReadScope = readScope; CompleteSummary = completeSummary; }
         }
     }
 }

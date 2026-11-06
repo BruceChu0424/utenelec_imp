@@ -94,7 +94,7 @@ server:
   # 透明解压；低于 64KB 的响应不值得压。
   compression:
     enabled: true
-    mime-types: application/json
+    mime-types: application/json,application/x-ndjson
     min-response-size: 64KB
   servlet:
     encoding:

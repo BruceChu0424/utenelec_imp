@@ -482,16 +482,16 @@ public class ProcurementFinanceApprovalService {
                        submitter.full_name AS submitted_by_name,
                        c.submitted_at,
                        (SELECT count(*)
-                        FROM (SELECT * FROM procurement_order_qty_change_logs archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('procurement_order_qty_change_logs',to_jsonb(archive_origin))) change_log
+                        FROM %1$s change_log
                         WHERE change_log.case_id = c.id) AS change_count,
                        COALESCE(c.finance_exchange_rate,
                            CAST(c.submission_snapshot ->> 'exchangeRate' AS numeric)) AS exchange_rate,
                        jsonb_array_length(c.submission_snapshot -> 'items') AS line_count,
-                       -- 2026-10-10 口径修复：货品摘要与超收/损耗% 必须与审核详情同源
+                       -- 2026-10-10 口径修复：货品摘要与超收/损耗%% 必须与审核详情同源
                        -- (loadReviewLines 读 COALESCE(display_snapshot, submission_snapshot))。
                        -- 提交快照 items 只有哈希链商业事实——goodsName 从未写入，
                        -- allowedLossPct 只存在于委外展示快照(V691 触发器从明细实表冻结)；
-                       -- 此前读提交快照导致委外损耗%在列表恒为空→「不允许」，详情页却是 10%。
+                       -- 此前读提交快照导致委外损耗%%在列表恒为空→「不允许」，详情页却是 10%%。
                        (SELECT elem ->> 'goodsName'
                           FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items')
                                WITH ORDINALITY AS t(elem, ord)
@@ -507,10 +507,10 @@ public class ProcurementFinanceApprovalService {
                           FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_min_subcontract,
                        (SELECT max((elem ->> 'allowedLossPct')::numeric)
                           FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_max_subcontract
-                FROM (SELECT * FROM procurement_order_approval_cases archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('procurement_order_approval_cases',to_jsonb(archive_origin))) c
-                LEFT JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) po
+                FROM %2$s c
+                LEFT JOIN %3$s po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
-                LEFT JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) so
+                LEFT JOIN %4$s so
                   ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                 LEFT JOIN suppliers supplier
                   ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
@@ -520,7 +520,7 @@ public class ProcurementFinanceApprovalService {
                   ON submitter.id = c.submitted_by_employee_id
                 LEFT JOIN currencies currency
                   ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
-                WHERE """ + queueStatusFilter(normalizedStatus) + filters.sql() + ordering + """
+                WHERE """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_qty_change_logs"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + queueStatusFilter(normalizedStatus) + filters.sql() + ordering + """
                 LIMIT ? OFFSET ?
                 """,
                 (rs, rowNum) -> {
@@ -635,9 +635,7 @@ public class ProcurementFinanceApprovalService {
         return "EXISTS (SELECT 1 FROM " + table + " correction_order WHERE correction_order.id=c.order_id"
                 + " AND correction_order.status=0 AND NOT COALESCE(correction_order.is_deleted,false)"
                 + " AND NOT COALESCE(correction_order.is_closed,false) AND correction_order.termination_case_id IS NULL"
-                + " AND NULLIF(to_jsonb(correction_order)->>'legacy_id','') IS NULL"
-                + " AND NULLIF(to_jsonb(correction_order)->>'legacy_import_run_id','') IS NULL"
-                + " AND NOT fn_imported_business_document_row('" + table + "',to_jsonb(correction_order)))";
+                + " AND " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate(table,"correction_order") + ")";
     }
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
@@ -679,16 +677,16 @@ public class ProcurementFinanceApprovalService {
                 normalizeOrderType(orderType), normalizeKeyword(keyword), null);
         List<Map<String, Object>> buckets = jdbc.query("""
                         SELECT c.bill_no_snapshot, COUNT(*)
-                        FROM (SELECT * FROM procurement_order_approval_cases archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('procurement_order_approval_cases',to_jsonb(archive_origin))) c
-                        LEFT JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) po
+                        FROM %1$s c
+                        LEFT JOIN %2$s po
                           ON c.order_type = 'PURCHASE' AND po.id = c.order_id
-                        LEFT JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) so
+                        LEFT JOIN %3$s so
                           ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                         LEFT JOIN suppliers supplier
                           ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                         LEFT JOIN employees submitter
                           ON submitter.id = c.submitted_by_employee_id
-                        WHERE """ + queueStatusFilter(status) + filters.sql() + """
+                        WHERE """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + queueStatusFilter(status) + filters.sql() + """
                         GROUP BY c.bill_no_snapshot
                         ORDER BY 1
                         LIMIT 500
@@ -726,16 +724,16 @@ public class ProcurementFinanceApprovalService {
         TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
-                FROM (SELECT * FROM procurement_order_approval_cases archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('procurement_order_approval_cases',to_jsonb(archive_origin))) c
-                LEFT JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) po
+                FROM %1$s c
+                LEFT JOIN %2$s po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
-                LEFT JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) so
+                LEFT JOIN %3$s so
                   ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                 LEFT JOIN suppliers supplier
                   ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
-                WHERE """ + queueStatusFilter(status) + filters.sql(),
+                WHERE """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + queueStatusFilter(status) + filters.sql(),
                 Long.class,
                 filters.args().toArray());
         return count == null ? 0 : count;
@@ -754,8 +752,8 @@ public class ProcurementFinanceApprovalService {
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("""
                 SELECT order_type, COUNT(*)
-                FROM (SELECT * FROM procurement_order_approval_cases archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('procurement_order_approval_cases',to_jsonb(archive_origin))) c
-                WHERE """ + queueStatusFilter(status) + " GROUP BY order_type", rs -> {
+                FROM %1$s c
+                WHERE """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("procurement_order_approval_cases")) + queueStatusFilter(status) + " GROUP BY order_type", rs -> {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;

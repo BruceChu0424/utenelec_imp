@@ -121,9 +121,9 @@ final class MaterialPreparationBudgetReader {
                     item.id plan_item_id,link.submitted_qty*COALESCE(item.unit_rate,1) private_qty,
                     plan.is_stopped OR plan.is_closed AS ended
                   FROM production_material_analysis_plan_links link
-                  JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=link.plan_id
+                  JOIN %1$s plan ON plan.id=link.plan_id
                     AND plan.status IN(0,1) AND NOT plan.is_deleted AND NOT plan.is_canceled
-                  JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) item ON item.plan_id=plan.id AND NOT item.is_deleted
+                  JOIN %2$s item ON item.plan_id=plan.id AND NOT item.is_deleted
                   JOIN production_material_analysis_items origin ON origin.id=link.analysis_item_id
                     AND NOT origin.is_deleted
                   LEFT JOIN production_material_analysis_materials parent ON parent.id=origin.parent_analysis_material_id
@@ -131,13 +131,13 @@ final class MaterialPreparationBudgetReader {
                     AND origin.source_type<>'AGGREGATE_MAKE'
                 ), progress AS (
                   SELECT source.*,
-                    COALESCE((SELECT SUM(output.base_qty) FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) output
-                      JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=output.doc_id AND document.status=1
+                    COALESCE((SELECT SUM(output.base_qty) FROM %3$s output
+                      JOIN %4$s document ON document.id=output.doc_id AND document.status=1
                         AND NOT document.is_deleted AND document.doc_type='FINISHED_IN'
                       WHERE output.upstream_item_id=source.plan_item_id AND NOT output.is_deleted
                         AND NOT fn_finished_in_is_public_output(output.id)),0) received,
                     CASE WHEN source.ended THEN COALESCE((SELECT SUM(output.qty*COALESCE(output.unit_rate,1))
-                      FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) output JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) document
+                      FROM %5$s output JOIN %6$s document
                         ON document.id=output.report_id AND document.status=1 AND NOT document.is_deleted
                       WHERE output.plan_item_id=source.plan_item_id AND NOT output.is_deleted
                         AND NOT fn_daily_report_is_public_output(output.id)),0) ELSE source.private_qty END produced
@@ -150,7 +150,7 @@ final class MaterialPreparationBudgetReader {
                     OR (progress.parent_analysis_material_id IS NULL AND material.analysis_item_id=progress.source_id
                       AND material.node_role='ROOT_SUPPLY'))
                 GROUP BY material.id
-                """).setParameter("analysis", analysisId))) result.put((UUID) row[0], nonnegative((BigDecimal) row[1]));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_reports"))).setParameter("analysis", analysisId))) result.put((UUID) row[0], nonnegative((BigDecimal) row[1]));
         return Map.copyOf(result);
     }
 

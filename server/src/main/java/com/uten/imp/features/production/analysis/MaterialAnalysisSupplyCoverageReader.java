@@ -191,10 +191,10 @@ final class MaterialAnalysisSupplyCoverageReader {
                          AND EXISTS (
                              SELECT 1
                              FROM preplan_supply_action_allocations allocation
-                             JOIN (SELECT * FROM purchase_request_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_request_items',to_jsonb(archive_origin))) request_item
+                             JOIN %1$s request_item
                                ON request_item.id = allocation.external_item_id
                               AND request_item.is_deleted = FALSE
-                             JOIN (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_requests',to_jsonb(archive_origin))) request
+                             JOIN %2$s request
                                ON request.id = request_item.request_id
                               AND request.id = action.external_document_id
                               AND request.is_deleted = FALSE
@@ -217,8 +217,8 @@ final class MaterialAnalysisSupplyCoverageReader {
                                                 THEN inspection.warehouse_stocked_base_qty
                                                 ELSE 0
                                             END)
-                                            FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
-                                            JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
+                                            FROM %3$s receipt_item
+                                            JOIN %4$s receipt
                                               ON receipt.id = receipt_item.receipt_id
                                              AND receipt.status = 1
                                              AND receipt.is_deleted = FALSE
@@ -230,10 +230,10 @@ final class MaterialAnalysisSupplyCoverageReader {
                                         ),0) - COALESCE(item.returned_qty,0)
                                             * COALESCE(item.unit_rate,1), 0)))
                                 FROM purchase_order_item_sources src
-                                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) item
+                                JOIN %5$s item
                                   ON item.id = src.order_item_id
                                  AND item.is_deleted = FALSE
-                                JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) purchase_order
+                                JOIN %6$s purchase_order
                                   ON purchase_order.id = item.order_id
                                  AND purchase_order.status = 1
                                  AND purchase_order.is_deleted = FALSE
@@ -247,10 +247,10 @@ final class MaterialAnalysisSupplyCoverageReader {
                          AND EXISTS (
                              SELECT 1
                              FROM preplan_supply_action_allocations allocation
-                             JOIN (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) application_item
+                             JOIN %7$s application_item
                                ON application_item.id = allocation.external_item_id
                               AND application_item.is_deleted = FALSE
-                             JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                             JOIN %8$s application
                                ON application.id = application_item.application_id
                               AND application.id = action.external_document_id
                               AND application.is_deleted = FALSE
@@ -272,8 +272,8 @@ final class MaterialAnalysisSupplyCoverageReader {
                                                 THEN inspection.warehouse_stocked_base_qty
                                                 ELSE 0
                                             END)
-                                            FROM (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) receipt_item
-                                            JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
+                                            FROM %9$s receipt_item
+                                            JOIN %10$s receipt
                                               ON receipt.id = receipt_item.receipt_id
                                              AND receipt.status = 1
                                              AND receipt.is_deleted = FALSE
@@ -285,10 +285,10 @@ final class MaterialAnalysisSupplyCoverageReader {
                                         ),0) - COALESCE(item.returned_qty,0)
                                             * COALESCE(item.unit_rate,1), 0)))
                                 FROM subcontract_order_item_sources src
-                                JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item
+                                JOIN %11$s item
                                   ON item.id = src.order_item_id
                                  AND item.is_deleted = FALSE
-                                JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) subcontract_order
+                                JOIN %12$s subcontract_order
                                   ON subcontract_order.id = item.order_id
                                  AND subcontract_order.status = 1
                                  AND subcontract_order.is_deleted = FALSE
@@ -306,7 +306,7 @@ final class MaterialAnalysisSupplyCoverageReader {
                   AND action.route = :route
                   AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
                 GROUP BY action.action_group_key
-                """;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_request_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_requests"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_application_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders"));
 
     private static final String MAKE_SQL = """
                 WITH active_actions AS (
@@ -328,12 +328,12 @@ final class MaterialAnalysisSupplyCoverageReader {
                                    SELECT SUM(GREATEST(
                                        plan_item.qty - COALESCE(plan_item.iqty,0), 0))
                                    FROM production_material_analysis_plan_links analysis_link
-                                   JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                                   JOIN %1$s plan
                                      ON plan.id = analysis_link.plan_id
                                     AND plan.status = 1
                                     AND plan.is_deleted = FALSE
                                     AND plan.is_canceled = FALSE
-                                   JOIN (SELECT * FROM production_plan_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plan_items',to_jsonb(archive_origin))) plan_item
+                                   JOIN %2$s plan_item
                                      ON plan_item.plan_id = plan.id
                                     AND plan_item.is_deleted = FALSE
                                    WHERE analysis_link.analysis_item_id = child.id
@@ -349,7 +349,7 @@ final class MaterialAnalysisSupplyCoverageReader {
                 SELECT action_group_key, COALESCE(SUM(LEAST(requested_qty, open_qty)),0)
                 FROM child_open
                 GROUP BY action_group_key
-                """;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"));
 
     private static final String PURCHASE_JOIN = """
                   JOIN preplan_supply_action_allocations allocation
@@ -357,12 +357,12 @@ final class MaterialAnalysisSupplyCoverageReader {
                    AND allocation.external_item_id IS NOT NULL
                   JOIN purchase_order_item_sources src
                     ON src.request_item_id = allocation.external_item_id
-                  JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) order_item
+                  JOIN %1$s order_item
                     ON order_item.id = src.order_item_id
                    AND order_item.is_deleted = FALSE
-                  JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) po ON po.id = order_item.order_id
+                  JOIN %2$s po ON po.id = order_item.order_id
                    AND po.status = 1 AND po.is_deleted = FALSE
-                                  """;
+                                  """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"));
 
     private static final String SUBCONTRACT_JOIN = """
                   JOIN preplan_supply_action_allocations allocation
@@ -370,12 +370,12 @@ final class MaterialAnalysisSupplyCoverageReader {
                    AND allocation.external_item_id IS NOT NULL
                   JOIN subcontract_order_item_sources src
                     ON src.application_item_id = allocation.external_item_id
-                  JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) order_item
+                  JOIN %1$s order_item
                     ON order_item.id = src.order_item_id
                    AND order_item.is_deleted = FALSE
-                  JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) po ON po.id = order_item.order_id
+                  JOIN %2$s po ON po.id = order_item.order_id
                    AND po.status = 1 AND po.is_deleted = FALSE
-                                  """;
+                                  """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders"));
 
     private static final String REPLACEMENT_SQL = """
                 WITH selected_sources AS (

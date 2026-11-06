@@ -5,8 +5,8 @@ import '../../../support/table_cell_geometry.dart';
 // 2026-09-11 用户截图反馈：同一张表里「生产车间/负责人/状态」有下拉小箭头，
 // 「类型」「货品」没有。2026-09-22 桶表改成只读的 MasterDataTableView 后
 // (ADR-102 §十一)，「类型」列随之退役，文本列(物料名称 / 编号 / 颜色 / 单位 /
-// 供应方式)与进度列都按单元格文本分桶——本测钉住：文本列有筛选箭头、数量列
-// 没有；货品按货品名分桶(同名货品合并成一桶)且能收敛行；编号逐行分桶。
+// 供应方式)与进度列都按单元格文本分桶。当前数量列使用精确值数值条件；文本
+// 列按原值分桶，货品同名合并成一桶、编号逐行分桶，筛选均能收敛行。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,21 +29,41 @@ void main() {
     await _pump(tester);
     await _openWorkshopBucket(tester);
 
-    // 文本列有筛选箭头；用当前本地化的真实数量列验证数量没有关键词/桶。
+    // 文本列按原值分桶，数量列使用精确值数值条件。
     final quantityLabel = AppLocalizations.of(
       tester.element(_bucketTable()),
     ).materialRequired;
     expect(_filterArrowOf('物料名称'), findsOneWidget);
     expect(_filterArrowOf('编号'), findsOneWidget);
     expect(_headerColumn(quantityLabel), findsOneWidget);
-    expect(_filterArrowOf(quantityLabel), findsNothing);
+    expect(_filterArrowOf(quantityLabel), findsOneWidget);
+    final table = tester.widget<MasterDataTableView<dynamic>>(_bucketTable());
+    final quantityColumn = table.columns.firstWhere(
+      (column) => column.key == 'requiredQty',
+    );
+    expect(quantityColumn.type, 'number');
+    expect(quantityColumn.info, contains('原始来源需求'));
+
+    // Exercise the private row's exact numeric projection through its real UI,
+    // rather than widening its contravariant callback to Object/dynamic.
+    await tester.tap(_headerText(quantityLabel).hitTestable());
+    await tester.pumpAndSettle();
+    final quantityInput = find.byKey(const Key('uten-column-keyword-input'));
+    await tester.enterText(quantityInput, '>9');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.text('甲产品'), findsNWidgets(2));
+    expect(find.text('乙子件'), findsOneWidget);
+    await tester.tap(_headerText(quantityLabel).hitTestable());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('所有').last);
+    await tester.pumpAndSettle();
 
     // 三行：甲产品 / 乙子件 / 甲产品。
     expect(find.text('甲产品'), findsNWidgets(2));
     expect(find.text('乙子件'), findsOneWidget);
 
     // 编号筛选(逐行一桶)：选「P-beta」后只剩乙子件。
-    final table = tester.widget<MasterDataTableView<Object?>>(_bucketTable());
     expect(
       table.facets['goodsCode']!.map((bucket) => (bucket.value, bucket.count)),
       unorderedEquals([('P-alpha', 1), ('P-beta', 1), ('P-gamma', 1)]),

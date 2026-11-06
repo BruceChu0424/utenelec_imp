@@ -4,17 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'audit_font_asset_loader_io.dart'
+    if (dart.library.js_interop) 'audit_font_asset_loader_web.dart';
 
-Future<void> loadAuditScreenshotFonts(WidgetTester tester) =>
-    tester.runAsync(() async {
-      final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
-      for (final family in ['NotoSansSC', 'Roboto']) {
-        await (FontLoader(family)..addFont(Future.value(fontData))).load();
-      }
-      await (FontLoader(
-        'MaterialIcons',
-      )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
-    });
+Future<void> loadAuditScreenshotFonts(WidgetTester tester) {
+  enableAuditFontMetrics();
+  return tester.runAsync(() async {
+    final fontData = await loadAuditFontAsset(
+      'assets/fonts/NotoSansSCFull.ttf',
+    );
+    for (final family in ['NotoSansSC', 'Roboto']) {
+      await (FontLoader(family)..addFont(Future.value(fontData))).load();
+    }
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(loadAuditFontAsset('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+}
 
 /// Optional local fixture fallback; never bundled into the application.
 ///

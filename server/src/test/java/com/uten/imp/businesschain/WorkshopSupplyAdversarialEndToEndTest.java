@@ -110,10 +110,12 @@ class WorkshopSupplyAdversarialEndToEndTest {
         transferTo(c,first[2],"10");
         drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,first[2])));
         transferTo(c,second[2],"90");
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         confirmRoute(first[0],first[1],"CONTINUOUS");
         qty("10",issued(first[2]));
         qty("90",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.lineSide(),c.child()));
+        drainPriorValueWork(c);
         confirmRoute(second[0],second[1],"CONTINUOUS");
         qty("90",issued(second[2]));
         qty("0",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.lineSide(),c.child()));
@@ -126,6 +128,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
         UUID a=transferTo(c,first[2],"10");
         drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,first[2])));
         UUID b=transferTo(c,second[2],"90");
+        // Both commands start from the same fully committed physical/cost
+        // phase. No worker is inserted inside either concurrent route action.
+        drainPriorValueWork(c);
         var notices=beans.getBean(com.uten.imp.features.notice.ChainNoticeService.class);
         assertEquals(Boolean.TRUE,org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 notices,"workshopArrivalCanBenefit",first[1],"DIRECT_REPORT",List.of(a)));
@@ -243,8 +248,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var outbound=new StockDocSaveRequest();outbound.setDocType("OTHER_OUT");outbound.setWarehouseId(destination);outbound.setBillDate(BusinessTime.today());
         var line=new StockDocItemLine();line.setGoodsId(raw);line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);outbound.setItems(List.of(line));
         // 10件99元池上发1件：库存价值累计切片除不尽，按本次明确精度出库（V1025 无隐含默认位数）。
-        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
-                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"HALF_UP")))){
+        var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"HALF_UP")));
+        try(selected){
             stock.approve(stock.create(outbound).getId());
         }
         var before=db.queryForMap("SELECT node.id,node.quantity_basis,node.basis_value_local FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",destination,raw);
@@ -294,6 +300,12 @@ class WorkshopSupplyAdversarialEndToEndTest {
         finally {org.springframework.security.core.context.SecurityContextHolder.setContext(operator);}
     }
 
+    private void drainPriorValueWork(Case c) {
+        InventoryValueWorkTestSupport.drainProductionPhase(
+                beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,
+                List.of(c.parent(),c.child()),List.of(c.segment(),c.childSegment()),c.leaf(),c.workshop());
+    }
+
     @Test
     void anEntireReturnedEarlierBatchCanRetireWithoutErasingItsReceiptHistory() {
         proveReturnedSourceReleaseAndRestoration(true);
@@ -306,6 +318,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         UUID firstReport=transferTo(c,target[2],"5");
         drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,target[2])));
         UUID secondReport=transferTo(c,target[2],"5");
+        drainPriorValueWork(c);
         if(!incremental)confirmRoute(target[0],target[1],"CONTINUOUS");
         var slices=db.queryForList("""
                 SELECT allocation.id,allocation.stock_reservation_id,report.report_id
@@ -330,6 +343,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
                 +" matched_lots=2\n"+String.join("\n",plan));
         assertTrue(plan.stream().noneMatch(line->line.contains("WindowAgg")),"来源余额不得对全部历史做窗口聚合");
         var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         segments.start(target[0],target[1],new SegmentTransitionRequest(version(target[1]),"adv-source-return-start"));
         UUID originalIssue=db.queryForObject("SELECT stock_posting_id FROM production_workshop_direct_source_events WHERE source_allocation_id=? AND event_type='ISSUE'",UUID.class,a);
@@ -338,6 +352,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
                 target[1],"adv-source-return-"+target[1],"精确来源退料",
                 List.of(new com.uten.imp.features.stock.allocation.dto.ProductionMaterialReturnRequest.Item(source.issuePostingId(),new BigDecimal("5"))))).getFirst();
         fixture.loginAs(c.world().superAdminUserId());
+        drainPriorValueWork(c);
         stock.confirmProductionMaterialReturn(returned.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(c.leaf(),"adv-source-normal-"+target[1]));
         UUID returnDocument=returned.documentId();
         assertEquals(c.leaf(),db.queryForObject("SELECT warehouse_id FROM stock_documents WHERE id=?",UUID.class,returnDocument));
@@ -348,6 +363,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         // Retire the remaining unfulfilled source commitment before early final.
         // Keep its identity and already converted10; no other source can replace it.
         db.update("UPDATE production_material_supply_pegs SET released_qty=allocated_qty-consumed_qty,status='DONE',lock_version=lock_version+1 WHERE demand_id=?",target[2]);
+        drainPriorValueWork(c);
         fixture.loginAs(c.workerUser());
         UUID finalReport=reportParentFinal(c,"5");
         fixture.loginAs(c.world().superAdminUserId());

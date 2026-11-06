@@ -1,0 +1,57 @@
+{
+  "schema": "uten-complete-summary-stream-v1",
+  "description": "Shared Dart/C# cases. JSON numbers inside page.value retain their original lexical text.",
+  "cases": [
+    {
+      "name": "exact_one_row",
+      "frames": [
+        {
+          "type": "page",
+          "value": {
+            "items": [
+              {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "code": "G-001",
+                "name": "货品原文",
+                "stockQtyDisplayText": "90071992547409.123456789012345678900",
+                "priceDisplayText": "12.3400",
+                "writable": false
+              }
+            ],
+            "page": 1,
+            "size": 100,
+            "total": 1,
+            "totalPages": 1,
+            "readScopeVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "readSnapshotRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "readDataVersion": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        },
+        {
+          "type": "complete",
+          "readScopeVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "readSnapshotRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "readDataVersion": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "total": 1
+        }
+      ],
+      "expected": "success"
+    },
+    {
+      "name": "incomplete_empty_stream",
+      "frames": [],
+      "expected": "INCOMPLETE_READ_PROTOCOL"
+    },
+    {
+      "name": "explicit_version_change",
+      "frames": [
+        {
+          "type": "error",
+          "code": "SNAPSHOT_CHANGED",
+          "message": "数据已变化，请重新读取完整摘要"
+        }
+      ],
+      "expected": "SNAPSHOT_CHANGED"
+    }
+  ]
+}

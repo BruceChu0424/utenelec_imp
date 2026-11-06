@@ -73,9 +73,17 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.concurrency.verify-nested-footprint=false"})
 @org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 class WorkshopDirectTransferBatchEndToEndTest {
+    // The real stock slices and actual BOM ratio each require their own explicit choice.
+    private static java.util.Map<String, com.uten.imp.common.finance.BusinessPrecisionContext.Choice> scenarioChoices() {
+        return java.util.Map.of(
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP"),
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5, "HALF_UP"));
+    }
+
 
     @Test
-    void failureOnSecondTransferRollsBackTheAlreadyPostedFirstPieceAndCanRetry() {
+    void failureOnSecondTransferRollsBackTheAlreadyPostedFirstPieceAndCanRetry() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         var prepared=ControlledDailyReportInputs.prepare(beans,db,3,"direct-rollback-"+UUID.randomUUID());
         UUID secondItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? ORDER BY line_no,id OFFSET 1 LIMIT 1",UUID.class,prepared.reportId());
         String probe="test_direct_failure_"+UUID.randomUUID().toString().replace("-","");
@@ -100,6 +108,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
             db.execute(db.queryForObject("SELECT format('DROP FUNCTION %I()', CAST(? AS text))", String.class, probe));
         }
         prepared.command().get();prepared.verify().run();
+            }
     }
 
     /**
@@ -165,7 +174,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     @Test
-    void fullDirectTransferPromotesParentReadyAndAutoIssuesWithoutAnyDrawRequest() {
+    void fullDirectTransferPromotesParentReadyAndAutoIssuesWithoutAnyDrawRequest() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-full", false);
         // V599：先确认齐套路线——未确认路线时直送到料的自动提升同样被抑制。
         fixture.loginAs(c.workerUser());
@@ -191,6 +201,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 new SegmentTransitionRequest(version(c.segment()), "dt-full-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status());
         assertTrue(started.materialIssued());
+            }
     }
 
     /**
@@ -201,7 +212,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 2026-09-22 实测：一行直送审核 490 条语句、约 2.0 秒 JDBC + 0.4 秒提交。
      */
     @Test
-    void oneDirectTransferApproveStaysInsideItsStatementBudget() {
+    void oneDirectTransferApproveStaysInsideItsStatementBudget() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-budget", false);
         fixture.loginAs(c.workerUser());
         confirmRoute(c.plan(), c.segment(), "FULL_KIT");
@@ -228,6 +240,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         // 顺带确认省下来的不是靠少做事：父件照样提升、领料单照样自动出库。
         assertEquals("READY", status(c.segment()));
         assertAutoIssued(drawOf(c.segment()), "100");
+            }
     }
 
     /**
@@ -236,7 +249,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 改前 11 块审核实测 37 秒，大头在库函数里随块数平方增长，见 ADR-127 §8。
      */
     @Test
-    void threeReceiverApproveStaysInsideItsStatementBudget() {
+    void threeReceiverApproveStaysInsideItsStatementBudget() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         var helper = new AggregateMaterialDirectTransferEndToEndTest();
         beans.autowireBean(helper);
         helper.before();
@@ -316,6 +330,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 JOIN production_daily_report_items item ON item.id = inspection.source_report_item_id
                 WHERE item.report_id = ? AND inspection.inspection_kind = 'WORKSHOP_SELF' AND inspection.status = 'RESOLVED'
                 """, Integer.class, reportId), "班组自检仍是一块一条(成本覆盖、返工闭环、红冲取消都按报工行认检验)");
+            }
     }
 
     /**
@@ -324,7 +339,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 都拿不到 APPROVE——与审核写路径同一口径，不会再出现按钮亮着、点了才报没有权限。
      */
     @Test
-    void directTransferDraftOffersApproveOnlyToHoldersOfTheDirectTransferCode() {
+    void directTransferDraftOffersApproveOnlyToHoldersOfTheDirectTransferCode() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-actions", false);
         fixture.loginAs(c.workerUser());
         confirmRoute(c.plan(), c.segment(), "FULL_KIT");
@@ -370,6 +386,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
         fixture.loginAs(c.workerUser());
         reports.approve(reportId, DailyReportApproveRequests.freshKey());
         assertEquals(List.of(), reports.detail(reportId).getAllowedActions(), "已审核后不再下发审核动作");
+            }
     }
 
     /**
@@ -382,6 +399,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
      */
     @Test
     void oneDirectTransferApproveKeepsTriggerCallsInsideBudget() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-trigger-budget", false);
         fixture.loginAs(c.workerUser());
         confirmRoute(c.plan(), c.segment(), "FULL_KIT");
@@ -423,14 +441,27 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 "the measured approval changes only the warehouse-task authorization source");
         assertEquals(0L, profile.calls().getOrDefault("fn_capture_permission_record_history", 0L),
                 "V990 must reject non-authorization audit rows before calling permanent permission history");
+        // These guards postdate the last V942 partition of this fixed write
+        // graph. Each has its own measured row-event ceiling; all other
+        // callbacks retain450. No name-prefix or percentage allowance.
+        var additionalCaps=additionalTriggerCaps();
+        long additionalCalls=0;
+        for(var entry:additionalCaps.entrySet()) {
+            long calls=profile.calls().getOrDefault(entry.getKey(),0L);
+            assertTrue(calls<=entry.getValue(),entry.getKey()+" duplicated row events: "+calls);
+            additionalCalls+=calls;
+        }
+        long provenanceObservers=newProvenanceObserverCalls(profile.transactionId());
         long originalCalls = profile.triggerCalls() - archive - physicalMeasurement - reservationMeasurement
-                - nativeScopeObservers - scopeEventGuards;
+                - nativeScopeObservers - scopeEventGuards - additionalCalls - provenanceObservers;
         System.out.println("APPROVE-TRIGGER-BUDGET raw=" + profile.triggerCalls() + " original=" + originalCalls
                 + " archive=" + archive + " physicalMeasurement=" + physicalMeasurement
                 + " reservationMeasurement=" + reservationMeasurement
-                + " nativeScopeObservers=" + nativeScopeObservers + " scopeEventGuards=" + scopeEventGuards);
+                + " nativeScopeObservers=" + nativeScopeObservers + " scopeEventGuards=" + scopeEventGuards
+                + " additionalGuards="+additionalCalls+" provenanceObservers="+provenanceObservers);
         assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET + 59 + (2 + 2 + 1) + (2 + 2)
-                        + NATIVE_SCOPE_OBSERVER_CALLS_BUDGET + 1,
+                        + NATIVE_SCOPE_OBSERVER_CALLS_BUDGET + 1
+                        + additionalCaps.values().stream().mapToLong(Long::longValue).sum() + 3,
                 "raw trigger calls retain the original budget plus only the separately bounded new guard events");
         assertTrue(originalCalls <= APPROVE_TRIGGER_CALLS_BUDGET,
                 "一行直送审核原有触发器函数被调了 " + originalCalls + " 次，超出预算 "
@@ -439,6 +470,69 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 "track_functions 只在被测事务里打开，不能漏到后面的用例");
         assertEquals("READY", status(c.segment()));
         assertAutoIssued(drawOf(c.segment()), "100");
+            }
+    }
+
+    private static java.util.Map<String,Long> additionalTriggerCaps() {
+        return java.util.Map.ofEntries(
+                // V949: the two real physical movement inserts.
+                java.util.Map.entry("fn_upsert_stock_monthly_summary",2L),
+                // V993: two storage-position claim lifecycle events.
+                java.util.Map.entry("fn_check_stock_claim_storage_total",2L),
+                java.util.Map.entry("fn_stock_claim_storage_lifecycle",1L),
+                java.util.Map.entry("fn_guard_business_numeric_input_evidence",1L), // V1024
+                // V1025: this unchanged one-input, one-line direct-approval graph.
+                java.util.Map.entry("fn_guard_inventory_value_precision",23L),
+                java.util.Map.entry("fn_guard_inventory_value_owned",14L),
+                java.util.Map.entry("fn_inventory_value_check_new_dependency",9L),
+                java.util.Map.entry("fn_check_inventory_value_precision_source",8L),
+                java.util.Map.entry("fn_guard_inventory_value_edge_amount",7L),
+                java.util.Map.entry("fn_inventory_value_capture_business_refresh_precision",7L),
+                java.util.Map.entry("fn_inventory_value_capture_event_root",4L),
+                java.util.Map.entry("fn_inventory_value_capture_transfer_projection",2L),
+                java.util.Map.entry("fn_guard_inventory_source_derived_numeric",1L),
+                java.util.Map.entry("fn_guard_inventory_value_cost_snapshot",1L),
+                java.util.Map.entry("fn_inventory_value_validate_production_target",1L),
+                java.util.Map.entry("fn_validate_material_return_quantity_adoption",2L), // V1033
+                java.util.Map.entry("fn_capture_goods_bom_material_cost_adoption",1L), // V1034
+                java.util.Map.entry("fn_capture_goods_bom_periodic_quantity_adoption",1L),
+                java.util.Map.entry("fn_guard_shipment_actual_quantity",6L), // V1035
+                java.util.Map.entry("fn_guard_sales_delivery_processing_reservation",4L), // V1051
+                java.util.Map.entry("fn_guard_sales_delivery_movement",2L),
+                java.util.Map.entry("fn_check_sales_delivery_order_claim",4L)); // V1056
+    }
+
+    private long newProvenanceObserverCalls(long transactionId) {
+        String action=Long.toString(transactionId);
+        assertEquals(1L,db.queryForObject("SELECT count(*) FROM business_numeric_input_evidence WHERE source_action_id=?",Long.class,action).longValue());
+        assertEquals(1L,db.queryForObject("SELECT count(*) FROM goods_bom_material_cost_adoptions WHERE source_action_id=?",Long.class,action).longValue());
+        assertEquals(1L,db.queryForObject("""
+                SELECT count(*) FROM goods_bom_material_cost_adoptions adoption
+                JOIN business_numeric_input_evidence evidence ON evidence.id=adoption.numeric_evidence_id
+                WHERE adoption.source_action_id=? AND evidence.source_action_id=adoption.source_action_id
+                  AND evidence.actor_id=adoption.actor_id
+                """,Long.class,action).longValue());
+        long audits=db.queryForObject("""
+                SELECT count(*) FROM audit_log log WHERE lower(log.action)='insert' AND (
+                 log.target_type='business_numeric_input_evidence' AND log.target_id IN
+                  (SELECT id::text FROM business_numeric_input_evidence WHERE source_action_id=?)
+                 OR log.target_type='goods_bom_material_cost_adoptions' AND log.target_id IN
+                  (SELECT id::text FROM goods_bom_material_cost_adoptions WHERE source_action_id=?))
+                """,Long.class,action,action).longValue();
+        assertEquals(2L,audits,"The same action retains both private provenance audit metadata rows");
+        assertEquals("origin",db.queryForObject("SHOW session_replication_role",String.class));
+        for(var pair:List.of(new String[]{"business_numeric_input_evidence","fn_audit()"},
+                new String[]{"goods_bom_material_cost_adoptions","fn_audit()"},
+                new String[]{"goods_bom_material_cost_adoptions","fn_capture_goods_code_use()"})) {
+            assertEquals(1L,db.queryForObject("""
+                    SELECT count(*) FROM pg_trigger WHERE tgrelid=CAST(? AS regclass)
+                     AND tgfoid=CAST(? AS regprocedure) AND (tgtype::int&4)<>0
+                     AND NOT tgisinternal AND tgqual IS NULL AND tgenabled IN('A','O')
+                    """,Long.class,"public."+pair[0],"public."+pair[1]).longValue());
+        }
+        // Exactly two new immutable rows: their two audits plus the adoption's
+        // one unconditional goods-code observer. They are not old business work.
+        return audits+1;
     }
 
     /**
@@ -447,7 +541,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
      * 每个探针都在自己的事务里做完就回滚，不留任何痕迹。
      */
     @Test
-    void narrowedTriggersStillRejectRelevantChangesAndSkipIrrelevantOnes() {
+    void narrowedTriggersStillRejectRelevantChangesAndSkipIrrelevantOnes() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-trigger-gates", false);
         fixture.loginAs(c.workerUser());
         confirmRoute(c.plan(), c.segment(), "FULL_KIT");
@@ -575,6 +670,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 "fn_check_stock_value_exact_bounds", "fn_check_stock_value_node_lifecycle",
                 "fn_check_stock_value_cost_distribution", "fn_check_consumption_return",
                 "fn_check_stock_value_node_revision", "fn_guard_stock_value_exact_identity"));
+            }
     }
 
     /** 在一笔回滚事务里执行更新并立即跑完全部延迟校验，返回这些函数在本事务里被调用的次数。 */
@@ -642,12 +738,14 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     @Test
-    void partialDirectTransferSplitsAnAutoIssuedBatchWithoutDrawRequest() {
+    void partialDirectTransferSplitsAnAutoIssuedBatchWithoutDrawRequest() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-partial", false);
         // V599：分批链先确认分批路线，根段不再被自动提升。
         fixture.loginAs(c.workerUser());
         confirmRoute(c.plan(), c.segment(), "BATCH");
         transfer(c, "40");
+        drainValueWork(c);
         assertEquals("WAITING", status(c.segment()), "未全齐时父件继续等待物料");
         fixture.loginAs(c.workerUser());
         var preview = batches.preview(new ProductionExecutionBatch.PreviewRequest(
@@ -676,10 +774,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
                         "SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",
                         BigDecimal.class, c.lineSide(), c.child()),
                 BigDecimal.ZERO, BigDecimal::compareTo));
+            }
     }
 
     @Test
-    void mixedChainOnlyWarehousePartNeedsDrawRequest() {
+    void mixedChainOnlyWarehousePartNeedsDrawRequest() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-mixed", true);
         // V599：先确认齐套路线，直送+仓库混合链的自动提升才放行。
         fixture.loginAs(c.workerUser());
@@ -725,10 +825,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
         var started = segments.start(c.plan(), c.segment(),
                 new SegmentTransitionRequest(version(c.segment()), "dt-mixed-start-" + c.segment()));
         assertEquals("IN_PROGRESS", started.status());
+            }
     }
 
     @Test
-    void defaultContinuousRouteIsEffectiveAuditedChangeableAndStillRequiresPhysicalStart() {
+    void defaultContinuousRouteIsEffectiveAuditedChangeableAndStillRequiresPhysicalStart() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-default-route", false);
         assertEquals("CONTINUOUS", db.queryForObject("SELECT start_route FROM production_execution_segments WHERE id=?",
                 String.class, c.segment()));
@@ -752,10 +854,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
         assertEquals("IN_PROGRESS", started.status());
         qty("40", db.queryForObject("SELECT COALESCE(sum(qty_base),0) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
                 BigDecimal.class, parentDemand(c)));
+            }
     }
 
     @Test
-    void actualSurplusDirectTransferPreservesDemandRemainderAndApprovalIsIdempotent() {
+    void actualSurplusDirectTransferPreservesDemandRemainderAndApprovalIsIdempotent() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-actual-split", false);
         approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
         fixture.loginAs(c.workerUser());
@@ -847,6 +951,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 """, UUID.class, surplus.getId(), demandWarehouse.getId());
         assertEquals(2, db.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",
                 Integer.class, inbound), "一张入库单两行: 需求份 + 实际超产");
+        drainValueWork(c);
         fixture.confirmFinishedInboundFully(inbound);
         BigDecimal reserved = db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",
                 BigDecimal.class, inbound);
@@ -857,10 +962,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 BigDecimal.class, target));
         qty("100", db.queryForObject("SELECT planned_qty FROM production_execution_segments WHERE id=?",
                 BigDecimal.class, c.childSegment()));
+            }
     }
 
     @Test
-    void actualSurplusCannotTurnCrossWorkshopTransferIntoPublicWarehouseOutput() {
+    void actualSurplusCannotTurnCrossWorkshopTransferIntoPublicWarehouseOutput() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-actual-cross", false);
         approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
         fixture.loginAs(c.world().superAdminUserId());
@@ -885,10 +992,12 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 Integer.class, target));
         qty("0", db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=(SELECT source_plan_item_id FROM production_execution_segments WHERE id=?)",
                 BigDecimal.class, c.childSegment()));
+            }
     }
 
     @Test
-    void actualSurplusCannotTurnUnrelatedSameGoodsTransferIntoPublicWarehouseOutput() {
+    void actualSurplusCannotTurnUnrelatedSameGoodsTransferIntoPublicWarehouseOutput() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         Case c = create("dt-actual-unrelated", false);
         approveOverproductionRate(c.childSegment(), c.world().superAdminUserId(), "0.30");
         fixture.loginAs(c.world().superAdminUserId());
@@ -919,6 +1028,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 Integer.class, target));
         qty("0", db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=(SELECT source_plan_item_id FROM production_execution_segments WHERE id=?)",
                 BigDecimal.class, c.childSegment()));
+            }
     }
 
     // 「线边仓公共库存被无谱系任务占用→重核提升→自动投入资格拒绝」的构造依赖
@@ -929,7 +1039,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
     // ===================== 夹具 =====================
 
     @Test
-    void shortCountOfMixedLotFillsDemandShareBeforeActualSurplusInPlanProgress() {
+    void shortCountOfMixedLotFillsDemandShareBeforeActualSurplusInPlanProgress() throws Exception {
+        try (var precision = com.uten.imp.common.finance.BusinessPrecisionContext.use(scenarioChoices())) {
         for (boolean nested : List.of(false, true)) {
             String tag = nested ? "dt-progress-child" : "dt-progress-root";
             var world = fixture.seedWorld(tag);
@@ -1020,6 +1131,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 qty("30", root.inboundQty()); qty("30", root.plannedInboundQty()); qty("0", root.actualSurplusInboundQty());
             }
         }
+            }
     }
 
     private record Case(
@@ -1140,6 +1252,16 @@ class WorkshopDirectTransferBatchEndToEndTest {
     /** 子件报工选「转下一道工序」，把产出直送给父件对本子件的需求。 */
     private void transfer(Case c, String quantity) {
         reports.approve(createTransferDraft(c, quantity, parentDemand(c)), DailyReportApproveRequests.freshKey());
+    }
+
+    private void drainValueWork(Case c) {
+        var goods=new java.util.LinkedHashSet<>(List.of(c.parent(),c.child()));
+        goods.addAll(db.queryForList("""
+                SELECT DISTINCT goods_id FROM production_material_demands
+                WHERE execution_segment_id IN (?,?) AND NOT is_deleted
+                """,UUID.class,c.segment(),c.childSegment()));
+        InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),
+                db,List.copyOf(goods));
     }
 
     private UUID createTransferDraft(Case c, String quantity, UUID targetDemand) {

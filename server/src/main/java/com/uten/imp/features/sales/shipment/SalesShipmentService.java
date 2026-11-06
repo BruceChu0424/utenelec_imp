@@ -2591,7 +2591,7 @@ public class SalesShipmentService {
     private void validateShippable(SalesShipmentItem it) {
         Object[] r = (Object[]) em.createNativeQuery(
                 "SELECT qty, shipped_qty, returned_qty, flag_qty, reserved_qty, chain_status"
-                        + " FROM (SELECT * FROM sales_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_order_items',to_jsonb(archive_origin))) sales_order_items WHERE id = :id")
+                        + (" FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items") + " sales_order_items WHERE id = :id"))
                 .setParameter("id", it.getOrderItemId())
                 .getSingleResult();
         BigDecimal qty = toBd(r[0]);

@@ -164,14 +164,14 @@ final class WarehouseInboundTaskCenterSql {
                 SELECT 'PURCHASE'::text AS order_type, r.id AS receipt_id, i.order_item_id,
                        i.qty, CASE WHEN i.quantity_semantics = 'CHARGED_PLUS_GIFT_V1'
                                   THEN COALESCE(i.gift_qty,0) ELSE 0 END AS gift_qty
-                FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) r JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) i ON i.receipt_id=r.id
+                FROM %1$s r JOIN %2$s i ON i.receipt_id=r.id
                 WHERE r.status=0 AND r.legacy_id IS NULL AND NOT r.is_deleted AND NOT i.is_deleted
                 UNION ALL
                 SELECT 'SUBCONTRACT', r.id, i.order_item_id, i.qty, 0::numeric
-                FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) r JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) i ON i.receipt_id=r.id
+                FROM %3$s r JOIN %4$s i ON i.receipt_id=r.id
                 WHERE r.status=0 AND r.legacy_id IS NULL AND NOT r.is_deleted AND NOT i.is_deleted
             )
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items"));
 
     private static String expectations(WarehouseTaskScope scope) {
         String receivable = ProcurementArrivalControlService.taskCenterReceivableQuantity();
@@ -433,7 +433,7 @@ final class WarehouseInboundTaskCenterSql {
                            jsonb_build_object('key',item.id,'itemId',item.id,'lineNo',item.line_no,
                                'goodsCode',goods.code,'goodsName',goods.name,'specification',goods.spec,
                                'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight) AS line_data
-                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) item
+                    FROM %1$s item
                     JOIN v_production_report_items_pending_registration pending ON pending.report_item_id=item.id
                     JOIN goods ON goods.id=item.goods_id
                     LEFT JOIN colors color ON color.id=COALESCE(item.color_id,goods.color_id)
@@ -450,14 +450,14 @@ final class WarehouseInboundTaskCenterSql {
                                'goodsCode',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                                'goodsName',COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),'specification',goods.spec,
                                'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight)
-                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=item.doc_id
+                    FROM %2$s item JOIN %3$s document ON document.id=item.doc_id
                     LEFT JOIN goods ON goods.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id
                     LEFT JOIN warehouses warehouse ON warehouse.id=COALESCE(item.warehouse_id,document.warehouse_id)
                     WHERE task.task_stage='FINAL_COUNT' AND item.doc_id=task.document_id AND NOT item.is_deleted
                       AND (item.source_daily_report_item_id IS NOT NULL OR item.execution_segment_id IS NOT NULL)
                 ) physical WHERE TRUE
-                """ + scope(scope,"physical.warehouse_ids");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")) + scope(scope,"physical.warehouse_ids");
     }
 
     private static String finishedRegistrations(WarehouseTaskScope scope) {
@@ -502,11 +502,11 @@ final class WarehouseInboundTaskCenterSql {
                            'weight',selected_source.weight) AS line_data
                 FROM production_finished_arrival_registrations registration
                 JOIN production_finished_arrival_registration_items selected_item ON selected_item.registration_id=registration.id
-                JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) selected_source ON selected_source.id=selected_item.source_report_item_id
+                JOIN %1$s selected_source ON selected_source.id=selected_item.source_report_item_id
                 LEFT JOIN goods selected_goods ON selected_goods.id=selected_source.goods_id
                 LEFT JOIN colors selected_color ON selected_color.id=COALESCE(selected_source.color_id,selected_goods.color_id)
                 LEFT JOIN units selected_unit ON selected_unit.id=COALESCE(selected_source.unit_id,selected_goods.unit_id)
-                JOIN (SELECT * FROM production_daily_reports archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_reports',to_jsonb(archive_origin))) report ON report.id=registration.source_report_id AND NOT report.is_deleted
+                JOIN %2$s report ON report.id=registration.source_report_id AND NOT report.is_deleted
                 LEFT JOIN production_finished_arrival_registration_reversals reversal
                   ON reversal.registration_id=registration.id
                 LEFT JOIN LATERAL (
@@ -522,14 +522,14 @@ final class WarehouseInboundTaskCenterSql {
                            string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
                            array_agg(DISTINCT goods.code) AS goods_codes, array_agg(DISTINCT goods.name) AS goods_names
                     FROM production_finished_arrival_registration_items item
-                    JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) report_item ON report_item.id=item.source_report_item_id
+                    JOIN %1$s report_item ON report_item.id=item.source_report_item_id
                     LEFT JOIN goods ON goods.id=report_item.goods_id
                     LEFT JOIN production_fqc_inspections inspection
                       ON inspection.source_report_item_id=item.source_report_item_id AND inspection.status<>'CANCELLED'
                     WHERE item.registration_id=registration.id AND item.id=selected_item.id
                 ) facts
                 WHERE TRUE
-                """ + scope(scope,"ARRAY[registration.warehouse_id]");
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_reports")) + scope(scope,"ARRAY[registration.warehouse_id]");
     }
 
     private static String stockDocuments(Access access, WarehouseTaskScope scope) {
@@ -575,7 +575,7 @@ final class WarehouseInboundTaskCenterSql {
                        document.created_at AS sort_time,
                        concat_ws(' ',document.bill_no,document.source_doc_no,warehouse.name,physical.goods_text) AS search_text,
                        physical.goods_codes, physical.goods_names, physical.line_data
-                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
+                FROM %3$s document
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 LEFT JOIN employees maker ON maker.id=document.maker_id
                 LEFT JOIN employees worker ON worker.id=document.worker_id
@@ -589,14 +589,14 @@ final class WarehouseInboundTaskCenterSql {
                                'goodsCode',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                                'goodsName',COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),'specification',goods.spec,
                                'colorName',color.name,'unitName',unit.name,'quantity',item.qty,'weight',item.weight) AS line_data
-                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item LEFT JOIN goods ON goods.id=item.goods_id
+                    FROM %4$s item LEFT JOIN goods ON goods.id=item.goods_id
                     LEFT JOIN colors color ON color.id=item.color_id LEFT JOIN units unit ON unit.id=item.unit_id
                     LEFT JOIN warehouses line_warehouse ON line_warehouse.id=COALESCE(item.warehouse_id,document.warehouse_id)
                     WHERE item.doc_id=document.id AND NOT item.is_deleted
                 ) physical ON TRUE
                 WHERE document.doc_type IN('FINISHED_IN','OTHER_IN','WDRAW') AND NOT document.is_deleted
                   AND (%s %s)
-                """.formatted(access.stockOwnerPredicate(),pool)
+                """.formatted(access.stockOwnerPredicate(), pool, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))
                 + (access.productionPool() ? " AND NOT EXISTS(SELECT 1 FROM final_count_tasks task WHERE task.document_id=document.id)" : "")
                 + scoped;
     }

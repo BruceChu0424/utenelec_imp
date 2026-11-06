@@ -18,6 +18,24 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 /** One origin contract for business lists; master records and physical stock are not documents. */
 public final class ImportedBusinessDocumentScope {
     public enum Origin { CURRENT, LEGACY, ALL }
+    // Server-owned physical source contracts, verified against the migrated schema.
+    // A direct legacy key is a cheap necessary condition; the authoritative graph
+    // check remains mandatory for provenance-only and inherited imports.
+    private static final Set<String> NATIVE_TABLES = Set.of(
+            "plan_order_item_links", "procurement_order_approval_cases", "procurement_order_qty_change_logs",
+            "production_daily_report_items", "production_daily_reports", "production_plan_items", "production_plans",
+            "purchase_order_items", "purchase_orders", "purchase_receipt_items", "purchase_receipts",
+            "purchase_request_items", "purchase_requests", "sales_order_items", "sales_orders", "sales_quotes",
+            "sales_shipment_items", "sales_shipments", "stock_document_items", "stock_documents",
+            "subcontract_application_items", "subcontract_applications", "subcontract_material_issue_items",
+            "subcontract_material_issues", "subcontract_order_items", "subcontract_orders",
+            "subcontract_receipt_items", "subcontract_receipts", "subcontract_return_items", "subcontract_returns",
+            "subcontract_waste_items", "subcontract_wastes");
+    private static final Set<String> WITHOUT_LEGACY_KEY = Set.of(
+            "plan_order_item_links", "procurement_order_approval_cases", "procurement_order_qty_change_logs");
+    private static final Set<String> WITH_IMPORT_RUN = Set.of(
+            "purchase_receipt_items", "purchase_receipts", "subcontract_orders",
+            "subcontract_receipt_items", "subcontract_receipts");
     private static final Set<String> LIFECYCLE_FILTERS = Set.of(
             "status", "sourceStatus", "closed", "stopped", "financeApproval", "financeStatus", "lifecycle",
             "issueStatus", "standaloneDrafts", "productionReturnRequests", "financeConfirmed", "financeRejected");
@@ -45,7 +63,41 @@ public final class ImportedBusinessDocumentScope {
     public static Predicate predicate(Root<?> root,CriteriaBuilder cb,Origin origin) {
         if (origin == Origin.ALL) return cb.conjunction();
         var imported = imported(root, cb);
-        return origin == Origin.LEGACY ? cb.isTrue(imported) : cb.isFalse(imported);
+        if (origin == Origin.LEGACY) return cb.isTrue(imported);
+        // Master legacy keys are identities, not imported business provenance.
+        if (!ImportedBusinessDocumentPolicy.businessRecord(root.getJavaType())) return cb.isFalse(imported);
+        var conditions = new java.util.ArrayList<Predicate>();
+        for (Class<?> type = root.getJavaType(); type != null; type = type.getSuperclass()) {
+            for (var field : type.getDeclaredFields()) {
+                var column = field.getAnnotation(jakarta.persistence.Column.class);
+                if (column != null && ("legacy_id".equals(column.name())
+                        && Number.class.isAssignableFrom(field.getType())
+                        || "legacy_import_run_id".equals(column.name()) && field.getType() == java.util.UUID.class)) {
+                    conditions.add(cb.isNull(root.get(field.getName())));
+                }
+            }
+        }
+        var authority = cb.isFalse(imported);
+        if (conditions.isEmpty()) return authority;
+        conditions.add(authority);
+        return cb.and(conditions.toArray(Predicate[]::new));
+    }
+
+    /** Same native-only source as the original JSON prefilter, with usable legacy
+     * indexes and one shared SQL owner. This is neither an origin cache nor a
+     * replacement for the inherited-source authority. */
+    public static String nativeTable(String table) {
+        return "(SELECT * FROM " + table + " archive_origin WHERE " + nativePredicate(table,"archive_origin") + ")";
+    }
+
+    /** Correlated/materialized sources use the same predicate after their exact
+     * relationship has been selected; their existing query scope stays intact. */
+    public static String nativePredicate(String table,String alias) {
+        if (!NATIVE_TABLES.contains(table)) throw new IllegalArgumentException("Unsupported native business source");
+        if (!alias.matches("[a-zA-Z_][a-zA-Z0-9_]*")) throw new IllegalArgumentException("Invalid internal SQL alias");
+        String direct = WITHOUT_LEGACY_KEY.contains(table) ? "" : alias+".legacy_id IS NULL AND ";
+        if (WITH_IMPORT_RUN.contains(table)) direct += alias+".legacy_import_run_id IS NULL AND ";
+        return direct+"NOT fn_imported_business_document_row('"+table+"',to_jsonb("+alias+"))";
     }
 
     /** Action queues and source selectors never inherit a caller's historical-list scope. */

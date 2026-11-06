@@ -15,52 +15,63 @@ class _Api extends ApiClient {
   final calls =
       <({String path, Map<String, dynamic> body, String? revision})>[];
   int active = 0, peak = 0;
+  int internalPages = 0;
   @override
-  Future<Map<String, dynamic>> post(
+  Future<T> postSummaryStream<T>(
     String path, {
-    Object? body,
-    Map<String, dynamic>? query,
-    Map<String, dynamic>? headers,
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
   }) async {
-    final json = Map<String, dynamic>.from(body! as Map);
-    final page = json['page'] as int, size = json['size'] as int;
-    calls.add((
-      path: path,
-      body: json,
-      revision: query?['readSnapshotRevision'] as String?,
-    ));
+    final json = Map<String, dynamic>.from(body as Map);
+    final size = json['size'] as int;
+    calls.add((path: path, body: json, revision: null));
     active++;
     if (active > peak) {
       peak = active;
     }
-    try {
-      await Future<void>.delayed(Duration.zero);
-      return <String, dynamic>{
-        'items': <Map<String, dynamic>>[
-          for (var i = (page - 1) * size; i < page * size && i < 601; i++)
-            <String, dynamic>{
-              'id': 'record-$i',
-              'code': 'CODE-$i',
-              'name': '中文原文$i',
-              'categoryId': 'category-A',
-              'status': '使用',
-              'mobile': 'only-original-projection',
-              'writable': false,
-              'stockQtyDisplayText': '90071992547409.1234567890123456789',
-            },
-        ],
-        'page': page,
-        'size': size,
+    Stream<Map<String, dynamic>> frames() async* {
+      for (var page = 1; page <= 7; page++) {
+        internalPages++;
+        yield {'type': 'page', 'value': summaryPage(page, size)};
+      }
+      yield {
+        'type': 'complete',
         'total': 601,
-        'totalPages': 7,
         'readScopeVersion': 'a' * 64,
         'readSnapshotRevision': 'b' * 64,
         'readDataVersion': 'c' * 64,
       };
+    }
+
+    try {
+      return await consume(frames());
     } finally {
       active--;
     }
   }
+
+  Map<String, dynamic> summaryPage(int page, int size) => <String, dynamic>{
+    'items': <Map<String, dynamic>>[
+      for (var i = (page - 1) * size; i < page * size && i < 601; i++)
+        <String, dynamic>{
+          'id': 'record-$i',
+          'code': 'CODE-$i',
+          'name': '中文原文$i',
+          'categoryId': 'category-A',
+          'status': '使用',
+          'mobile': 'only-original-projection',
+          'writable': false,
+          'stockQtyDisplayText': '90071992547409.1234567890123456789',
+        },
+    ],
+    'page': page,
+    'size': size,
+    'total': 601,
+    'totalPages': 7,
+    'readScopeVersion': 'a' * 64,
+    'readSnapshotRevision': 'b' * 64,
+    'readDataVersion': 'c' * 64,
+  };
 }
 
 Future<void> _check<T>(
@@ -72,14 +83,14 @@ Future<void> _check<T>(
   final result = await pending;
   expect(result.items, hasLength(601));
   expect(idOf(result.items.last), 'record-600');
-  expect(api.calls, hasLength(7));
+  expect(api.calls, hasLength(1));
+  expect(api.internalPages, 7);
   expect(
     api.calls.every((c) => c.path == path && c.body['size'] == 100),
     isTrue,
   );
   expect(api.calls.first.revision, isNull);
-  expect(api.calls.skip(1).every((c) => c.revision == 'b' * 64), isTrue);
-  expect(api.peak, 4);
+  expect(api.peak, 1);
 }
 
 void main() {
@@ -197,13 +208,18 @@ void main() {
     },
   );
   test(
-    'all7 exact POST reads never become business writes or authorize neighbors',
+    'exact summary POST reads never become business writes or authorize neighbors',
     () {
       for (final base in [
         '/master/clients',
         '/master/suppliers',
         '/master/moulds',
         '/master/goods',
+        '/master/colors',
+        '/master/units',
+        '/master/currencies',
+        '/master/accounts',
+        '/master/reference-methods/settlement-admin',
         '/business-references/clients',
         '/business-references/suppliers',
         '/business-references/goods',

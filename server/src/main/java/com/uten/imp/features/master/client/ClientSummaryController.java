@@ -20,7 +20,7 @@ public class ClientSummaryController {
     public ClientSummaryController(ClientService clients, MasterSummaryReadSupport summaries) {
         this.clients = clients; this.summaries = summaries;
     }
-    @PostMapping("/summaries")
+    @PostMapping(value = "/summaries", params = "!complete")
     @PreAuthorize("hasAuthority('client:view')")
     public VersionedSummaryPages.Snapshot<MasterSummaryReadSupport.Payload<ClientListItem>> read(
             @Valid @RequestBody Request body,
@@ -31,5 +31,14 @@ public class ClientSummaryController {
         var snapshot = summaries.read("client-master-list", "client", "client:view", query, readSnapshotRevision, clients::list);
         response.setHeader("X-Uten-Read-Scope-Version", snapshot.readScopeVersion());
         return snapshot;
+    }
+    @PostMapping(value = "/summaries", params = "complete=true", produces = "application/x-ndjson")
+    @PreAuthorize("hasAuthority('client:view')")
+    public void complete(@Valid @RequestBody Request body,
+            @RequestParam(required = false) String readSnapshotRevision,
+            HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
+        AuditRequestContext.markControlledRead(request);
+        var query = new MasterSummaryReadSupport.Query<>(body.filter(), body.page(), body.size(), body.sort(), body.order());
+        summaries.stream("client-master-list", "client", "client:view", query, readSnapshotRevision, clients::list, response);
     }
 }

@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../audit/device_audit_store.dart';
+import '../diagnostics/diagnostic_log.dart';
 import '../security/secure_storage.dart';
 import 'server_config.dart';
 import 'company_tls.dart';
@@ -35,11 +36,13 @@ import 'responsive_json_decoder.dart';
 import 'responsive_json_transformer.dart';
 import 'streaming_download_adapter.dart';
 import 'streaming_download_contract.dart';
+import 'summary_stream_contract.dart';
 import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
 import 'interceptors/page_read_priority_interceptor.dart';
 import '../diagnostics/diagnostic_request_interceptor.dart';
 import '../../shared/paging/paged_read_intent.dart';
+import '../../shared/paging/complete_summary_stream.dart';
 
 const _clientPackageSendTimeout = Duration(minutes: 30);
 const _clientPackageReceiveTimeout = Duration(minutes: 5);
@@ -425,6 +428,125 @@ class ApiClient {
       return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
+    }
+  });
+
+  /// One authenticated summary read, owned until its final frame and EOF.
+  /// The consumer retains the shared complete-result validator; exposing the
+  /// response stream outside this read would prematurely release cancellation
+  /// and application-update guards at response headers.
+  Future<T> postSummaryStream<T>(
+    String path, {
+    required Object body,
+    required Future<T> Function(Stream<Map<String, dynamic>>) consume,
+  }) => _read((readCancellation) async {
+    if (!isSummaryStreamPath(path)) {
+      throw const FormatException('Invalid complete summary path');
+    }
+    final cancellation = readCancellation ?? CancelToken();
+    final clock = Stopwatch()..start();
+    var completed = false;
+    RequestOptions? streamedRequest;
+    final transformer = _dio.transformer;
+    final decoder = transformer is ResponsiveJsonTransformer
+        ? transformer.decoder
+        : ResponsiveJsonDecoder();
+    try {
+      final response = await _dio.post<dynamic>(
+        path,
+        data: body,
+        queryParameters: const {'complete': true},
+        cancelToken: cancellation,
+        options: Options(
+          responseType: ResponseType.stream,
+          followRedirects: false,
+          headers: const {'Accept': summaryStreamContentType},
+          extra: const {
+            summaryStreamRequestKey: true,
+            safeRequestRetryDisabledKey: true,
+          },
+        ),
+      );
+      final stream = response.data;
+      streamedRequest = response.requestOptions;
+      final contentType = response.headers
+          .value(Headers.contentTypeHeader)
+          ?.split(';')
+          .first
+          .trim()
+          .toLowerCase();
+      if (stream is! ResponseBody || contentType != summaryStreamContentType) {
+        throw ApiException(
+          'INCOMPLETE_READ_PROTOCOL',
+          '服务端尚未提供完整列表传输，请更新服务端后重试',
+        );
+      }
+      // Fetch returns headers before its body. Keep the existing receive
+      // timeout active while waiting for each actual network chunk as well.
+      final timeout = response.requestOptions.receiveTimeout;
+      final bytes = timeout == null || timeout <= Duration.zero
+          ? stream.stream
+          : stream.stream.timeout(
+              timeout,
+              onTimeout: (sink) {
+                sink.addError(
+                  DioException.receiveTimeout(
+                    timeout: timeout,
+                    requestOptions: response.requestOptions,
+                  ),
+                );
+                sink.close();
+                cancellation.cancel('Summary stream receive timeout');
+              },
+            );
+      final headerScope = response.headers.value('X-Uten-Read-Scope-Version');
+      final result = await consume(
+        decodeSummaryFrames(
+          bytes,
+          isCurrent: () => !cancellation.isCancelled,
+          decode: (frame) => decoder.decodeBytes(
+            frame,
+            isCurrent: () => !cancellation.isCancelled,
+          ),
+        ).map((frame) {
+          final value = frame['type'] == 'page' ? frame['value'] : frame;
+          if (headerScope != null &&
+              (frame['type'] == 'page' || frame['type'] == 'complete') &&
+              value is Map &&
+              value['readScopeVersion'] != headerScope) {
+            throw ApiException(
+              'READ_SCOPE_CHANGED',
+              '数据访问范围已变化，请重新读取',
+              httpStatus: 403,
+            );
+          }
+          return frame;
+        }),
+      );
+      completed = true;
+      return result;
+    } on DioException catch (error) {
+      throw _convert(error);
+    } on ApiException catch (error) {
+      if (error.code == 'READ_SCOPE_CHANGED' && streamedRequest != null) {
+        for (final observer
+            in _dio.interceptors.whereType<ReadScopeRevisionInterceptor>()) {
+          await observer.observeScopeRejection(streamedRequest);
+        }
+      }
+      rethrow;
+    } finally {
+      AppDiagnostics.record(
+        completed ? 'summary.read.complete' : 'summary.read.failed',
+        level: completed ? 'info' : 'warning',
+        fields: {
+          'method': 'POST',
+          'path': path,
+          'durationMs': clock.elapsedMilliseconds,
+        },
+      );
+      cancellation.cancel('Complete summary reader closed');
+      if (transformer is! ResponsiveJsonTransformer) decoder.dispose();
     }
   });
 

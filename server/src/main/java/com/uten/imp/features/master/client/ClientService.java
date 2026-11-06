@@ -159,7 +159,8 @@ public class ClientService {
         Sort sort = Sort.by("code").and(Sort.by("id"));
         var spec = clientSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId),
                 clientAccessPolicy.evaluate(), plan, sort, true);
-        var result = repo.findAll(spec, Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort));
+        var result = com.uten.imp.common.readsnapshot.BoundedMasterReadSource.page(repo, em, Client.class, spec,
+                Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort), filter);
         return new PageResponse<>(result.getContent().stream().map(c ->
                 new com.uten.imp.features.master.reference.PartyReference(c.getId(), c.getCode(),
                         c.getName() == null || c.getName().isBlank() ? c.getFullName() : c.getName(),

@@ -79,14 +79,14 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 SELECT i.id, src.request_item_id,
                                        src.alloc_qty * COALESCE(i.unit_rate, 1),
                                        i.deliver_date
-                                FROM (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) i
+                                FROM %1$s i
                                 JOIN purchase_order_item_sources src
                                   ON src.order_item_id = i.id
                                 WHERE i.order_id = :orderId
                                   AND i.is_deleted = FALSE
                                 ORDER BY src.request_item_id, i.id, src.line_no
                                 FOR UPDATE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items")))
                         .setParameter("orderId", orderId));
 
         for (Object[] orderItemSource : orderItemSources) {
@@ -241,7 +241,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                        target.consumed_qty,
                                        source.released_qty
                                 FROM production_material_peg_transfers t
-                                JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) oi
+                                JOIN %1$s oi
                                   ON oi.id = t.order_item_id
                                 JOIN production_material_supply_pegs source
                                   ON source.id = t.from_peg_id
@@ -253,7 +253,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                   AND t.status = 'EFFECTIVE'
                                 ORDER BY t.demand_id, t.id
                                 FOR UPDATE OF t, source, target, d
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items")))
                         .setParameter("orderId", orderId));
 
         for (Object[] transfer : transfers) {
@@ -324,10 +324,10 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         List<UUID> warehouses = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT warehouse_id
-                                FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) purchase_receipts
+                                FROM %1$s purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts")))
                         .setParameter("receiptId", receiptId),
                 UUID.class);
         if (warehouses.isEmpty() || warehouses.getFirst() == null) {
@@ -350,7 +350,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         lockReceiptMaterialDimensions(receiptId, warehouseId);
         em.createNativeQuery("""
                         SELECT d.id
-                        FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
+                        FROM %1$s receipt_item
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type = 'PURCHASE_ORDER_ITEM'
                          AND peg.supply_item_id =
@@ -371,7 +371,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                           AND receipt_item.is_deleted = FALSE
                         ORDER BY d.id, peg.id
                         FOR UPDATE OF d, peg, package
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items")))
                 .setParameter("receiptId", receiptId)
                 .setParameter("warehouseId", warehouseId)
                 .getResultList();
@@ -428,12 +428,12 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         List<UUID> receipts = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT id
-                                FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) purchase_receipts
+                                FROM %1$s purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
                                   AND status = 1
                                 FOR UPDATE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts")))
                         .setParameter("receiptId", receiptId),
                 UUID.class);
         if (receipts.isEmpty()) {
@@ -455,7 +455,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 SELECT receipt_item.id,
                                        receipt_item.order_item_id,
                                        fn_procurement_received_in_warehouse('PURCHASE',receipt_item.id,:warehouseId) AS qualified_base_qty
-                                FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
+                                FROM %1$s receipt_item
                                 LEFT JOIN procurement_inspection_items inspection
                                   ON inspection.receipt_type = 'PURCHASE'
                                  AND inspection.receipt_item_id = receipt_item.id
@@ -473,7 +473,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 ORDER BY receipt_item.order_item_id,
                                          receipt_item.id
                                 FOR UPDATE OF receipt_item
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items")))
                         .setParameter("receiptId", receiptId).setParameter("warehouseId",warehouseId));
 
         Map<ReceiptPackage, DrawHandle> draws = new HashMap<>();
@@ -514,7 +514,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                       ON package.id = d.package_id
                                      AND package.is_deleted = FALSE
                                      AND package.status = 'CONFIRMED'
-                                    JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan
+                                    JOIN %1$s plan
                                       ON plan.id = d.plan_id
                                     WHERE p.supply_type = 'PURCHASE_ORDER_ITEM'
                                       AND p.supply_item_id = :orderItemId
@@ -525,7 +525,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                       AND d.warehouse_id = :warehouseId
                                     ORDER BY d.need_date NULLS LAST, d.id, p.id
                                     FOR UPDATE OF p, d, package
-                                    """)
+                                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                             .setParameter("orderItemId", orderItemId)
                             .setParameter("warehouseId", warehouseId));
             Map<UUID, StockGoodsSnapshot> goodsSnapshots =
@@ -679,15 +679,15 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                   ON p.id = a.order_peg_id
                                 JOIN stock_reservations r
                                   ON r.id = a.reservation_id
-                                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) draw
+                                JOIN %2$s draw
                                   ON draw.id = a.draw_id
-                                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
+                                JOIN %3$s item
                                   ON item.id = a.draw_item_id
                                 WHERE a.receipt_id = :receiptId
                                   AND a.status = 'EFFECTIVE'
                                 ORDER BY a.demand_id, a.id
                                 %s
-                                """.formatted(lock?"FOR UPDATE OF a, d, p, r, draw, item":""))
+                                """.formatted(lock?"FOR UPDATE OF a, d, p, r, draw, item":"", com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                         .setParameter("receiptId", receiptId));
 
     }
@@ -860,10 +860,10 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             ledger.authorizeDraftDrawCleanup(drawId);
             Number activeItems = (Number) em.createNativeQuery("""
                             SELECT COUNT(*)
-                            FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items
+                            FROM %1$s stock_document_items
                             WHERE doc_id = :drawId
                               AND is_deleted = FALSE
-                            """)
+                            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                     .setParameter("drawId", drawId)
                     .getSingleResult();
             if (activeItems.longValue() > 0) {
@@ -908,7 +908,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 WITH receipt_segments AS (
                                     SELECT DISTINCT
                                            demand.execution_segment_id
-                                    FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
+                                    FROM %1$s receipt_item
                                     JOIN production_material_supply_pegs peg
                                       ON peg.supply_type =
                                              'PURCHASE_ORDER_ITEM'
@@ -927,7 +927,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 dimensions AS (
                                     SELECT receipt_item.goods_id,
                                            receipt_item.color_id
-                                    FROM (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) receipt_item
+                                    FROM %1$s receipt_item
                                     WHERE receipt_item.receipt_id = :receiptId
                                       AND receipt_item.is_deleted = FALSE
                                     UNION ALL
@@ -945,7 +945,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 FROM dimensions
                                 ORDER BY goods_id,
                                          color_id NULLS FIRST
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items")))
                         .setParameter("receiptId", receiptId)
                         .setParameter("warehouseId", warehouseId));
         stockAllocation.lockMaterialDimensions(rows.stream()
@@ -1117,9 +1117,9 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             StockGoodsSnapshot goodsSnapshot) {
         Number maxLine = (Number) em.createNativeQuery("""
                         SELECT COALESCE(MAX(line_no), 0)
-                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items
+                        FROM %1$s stock_document_items
                         WHERE doc_id = :drawId
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                 .setParameter("drawId", draw.id())
                 .getSingleResult();
         StockDocumentItem item = new StockDocumentItem();

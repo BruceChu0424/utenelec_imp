@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import 'flat_master_summary_gateway.dart';
+import 'master_summary_read.dart';
 import '../models/account_node.dart';
 import '../models/master_facet.dart';
 import '../../../shared/report/account_statement_column_query.dart';
@@ -89,10 +91,27 @@ abstract interface class AccountRepository {
   Future<void> delete(String id);
 }
 
-class DioAccountRepository implements AccountRepository {
+class DioAccountRepository
+    implements AccountRepository, FlatMasterSummaryGateway<AccountListItem> {
   DioAccountRepository(this.api, {this.dictPath = AccountEndpoints.dict});
   final ApiClient api;
   final String dictPath;
+
+  @override
+  Future<PagedResult<AccountListItem>> completeList({
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => readCompleteMasterSummary<AccountListItem>(
+    api,
+    path: '${AccountEndpoints.base}/summaries',
+    filter: masterSummaryFilter(keyword: keyword, filters: filters),
+    sort: sort,
+    order: order,
+    decode: AccountListItem.fromJson,
+    idOf: (row) => row.id,
+  );
 
   @override
   Future<PagedResult<AccountListItem>> list({

@@ -211,23 +211,23 @@ public class PreplanFutureSupplyTransferService {
                 SELECT expected_date,bill_no,header_id,doc_route FROM (
                     SELECT COALESCE(item.deliver_date,header.deliver_date) expected_date,header.bill_no,header.id header_id,'PURCHASE' doc_route
                     FROM purchase_order_item_sources link
-                    JOIN (SELECT * FROM purchase_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_order_items',to_jsonb(archive_origin))) item ON item.id=link.order_item_id AND NOT item.is_deleted
-                    JOIN (SELECT * FROM purchase_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_orders',to_jsonb(archive_origin))) header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
+                    JOIN %1$s item ON item.id=link.order_item_id AND NOT item.is_deleted
+                    JOIN %2$s header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='BUY' AND link.request_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('PURCHASE',item.id,link.request_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('PURCHASE',item.id,link.request_item_id)>0)
                     UNION ALL
                     SELECT COALESCE(item.deliver_date,header.deliver_date),header.bill_no,header.id,'SUBCONTRACT'
                     FROM subcontract_order_item_sources link
-                    JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_order_items',to_jsonb(archive_origin))) item ON item.id=link.order_item_id AND NOT item.is_deleted
-                    JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_orders',to_jsonb(archive_origin))) header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
+                    JOIN %3$s item ON item.id=link.order_item_id AND NOT item.is_deleted
+                    JOIN %4$s header ON header.id=item.order_id AND header.status=1 AND NOT header.is_deleted
                     WHERE action.route='SUBCONTRACT' AND link.application_item_id=allocation.external_item_id
                       AND ((NOT header.is_closed AND fn_procurement_order_source_remaining_qty('SUBCONTRACT',item.id,link.application_item_id)>0)
                            OR fn_procurement_order_source_pending_qty('SUBCONTRACT',item.id,link.application_item_id)>0)
                 ) dates ORDER BY expected_date NULLS LAST LIMIT 1
             ) eta ON TRUE
             WHERE action.operation_type='SUPPLY' AND action.status<>'CANCELLED' AND action.route IN('BUY','SUBCONTRACT')
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders"));
     private static final String STATE_SQL="""
             SELECT state.id,state.source_allocation_id,state.source_analysis_id,state.source_material_id,source_item.source_ref,
                    state.target_analysis_id,state.target_material_id,target_item.source_ref,action.route,

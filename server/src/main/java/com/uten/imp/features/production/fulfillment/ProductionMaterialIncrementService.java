@@ -187,17 +187,17 @@ public class ProductionMaterialIncrementService {
         if(!current.canCancel()||current.rowVersion()!=request.expectedVersion())throw conflict("补料仍有实际领用、结耗、待退料或下游供给，请先按领退料反向链处理");
         List<UUID> documents=NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT document.id FROM production_planning_package_document_items mapping
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id AND document.doc_type='DRAW' AND NOT document.is_deleted
+                JOIN %1$s document ON document.id=mapping.document_id AND document.doc_type='DRAW' AND NOT document.is_deleted
                 WHERE mapping.demand_id=:demand AND mapping.document_type='DRAW' ORDER BY document.id
-                """).setParameter("demand",current.authorizedDemandId()),UUID.class);
-        if(!documents.isEmpty())em.createNativeQuery("SELECT id FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock_documents WHERE id IN(:ids) ORDER BY id FOR UPDATE").setParameter("ids",documents).getResultList();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"))).setParameter("demand",current.authorizedDemandId()),UUID.class);
+        if(!documents.isEmpty())em.createNativeQuery(("SELECT id FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents") + " stock_documents WHERE id IN(:ids) ORDER BY id FOR UPDATE")).setParameter("ids",documents).getResultList();
         List<Object[]> instructions=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,GREATEST(fn_production_draw_item_effective_qty(item.id)-COALESCE(item.issued_qty,0),0)
                 FROM production_planning_package_document_items mapping
-                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.id=mapping.document_item_id AND NOT item.is_deleted
-                JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=item.doc_id AND document.doc_type='DRAW' AND document.status IN(0,1) AND NOT document.is_deleted
+                JOIN %1$s item ON item.id=mapping.document_item_id AND NOT item.is_deleted
+                JOIN %2$s document ON document.id=item.doc_id AND document.doc_type='DRAW' AND document.status IN(0,1) AND NOT document.is_deleted
                 WHERE mapping.demand_id=:demand AND mapping.document_type='DRAW' ORDER BY item.id FOR UPDATE OF item
-                """).setParameter("demand",current.authorizedDemandId()));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"))).setParameter("demand",current.authorizedDemandId()));
         footprint.verifyUnchanged();
         allocation.releaseByDemands(List.of(current.authorizedDemandId()),reason);
         ObjectNode quantities=mapper.createObjectNode();instructions.stream().filter(row->decimal(row[1]).signum()>0).forEach(row->quantities.put(row[0].toString(),decimal(row[1])));
@@ -221,12 +221,12 @@ public class ProductionMaterialIncrementService {
                         AND target.material_requirement_mode='DEMANDED' AND plan.status=1 AND NOT plan.is_deleted
                         AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
                         AND package.status='CONFIRMED' AND NOT package.is_deleted),proof.id,COALESCE(proof.source_execution_segment_id,target.id)
-                FROM production_execution_segments target JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=target.plan_id
+                FROM production_execution_segments target JOIN %1$s plan ON plan.id=target.plan_id
                 JOIN production_planning_packages package ON package.id=target.package_id
                 LEFT JOIN production_actual_output_supplement_proofs proof ON proof.supplement_execution_segment_id=target.id
                     AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversed WHERE reversed.proof_id=proof.id)
                 WHERE target.id=:id
-                """+(lock?" FOR UPDATE OF target":"")).setParameter("id",id));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))+(lock?" FOR UPDATE OF target":"")).setParameter("id",id));
         if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();
         return new Segment((UUID)r[0],(UUID)r[1],(String)r[2],(String)r[3],(UUID)r[4],(UUID)r[5],(UUID)r[6],decimal(r[7]),Boolean.TRUE.equals(r[8]),(UUID)r[9],(UUID)r[10]);
     }

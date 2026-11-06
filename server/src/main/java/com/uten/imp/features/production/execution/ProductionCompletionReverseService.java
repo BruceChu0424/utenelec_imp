@@ -174,10 +174,10 @@ public class ProductionCompletionReverseService
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, doc_type, status, is_deleted
-                                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock_documents
+                                FROM %1$s stock_documents
                                 WHERE id = :documentId
                                 FOR UPDATE
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")))
                         .setParameter("documentId", documentId));
         if (rows.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "成品入库单不存在");
@@ -201,13 +201,13 @@ public class ProductionCompletionReverseService
         TreeSet<UUID> ids = new TreeSet<>(NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                                 SELECT DISTINCT execution_segment_id
-                                FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) stock_document_items
+                                FROM %1$s stock_document_items
                                 WHERE doc_id = :documentId
                                   AND bill_type = 'FINISHED_IN'
                                   AND execution_segment_id IS NOT NULL
                                   AND is_deleted = FALSE
                                 ORDER BY execution_segment_id
-                                """)
+                                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                         .setParameter("documentId", documentId),
                 UUID.class));
         return List.copyOf(ids);
@@ -282,7 +282,7 @@ public class ProductionCompletionReverseService
     private void validateExactLines(UUID documentId, LockedSegment segment) {
         Number invalid = (Number) em.createNativeQuery("""
                         SELECT COUNT(*)
-                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
+                        FROM %1$s item
                         WHERE item.doc_id = :documentId
                           AND item.execution_segment_id = :segmentId
                           AND (
@@ -297,7 +297,7 @@ public class ProductionCompletionReverseService
                               OR COALESCE(item.unit_rate, 1)
                                    IS DISTINCT FROM :unitRate
                           )
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")))
                 .setParameter("documentId", documentId)
                 .setParameter("segmentId", segment.id())
                 .setParameter("planItemId", segment.sourcePlanItemId())
@@ -330,8 +330,8 @@ public class ProductionCompletionReverseService
     private BigDecimal approvedInbound(UUID segmentId) {
         Object value = em.createNativeQuery("""
                         SELECT COALESCE(SUM(item.qty), 0)
-                        FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
-                        JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
+                        FROM %1$s item
+                        JOIN %2$s document
                           ON document.id = item.doc_id
                         WHERE item.execution_segment_id = :segmentId
                           AND item.bill_type = 'FINISHED_IN'
@@ -339,7 +339,7 @@ public class ProductionCompletionReverseService
                           AND document.doc_type = 'FINISHED_IN'
                           AND document.status = 1
                           AND document.is_deleted = FALSE
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents")))
                 .setParameter("segmentId", segmentId)
                 .getSingleResult();
         return decimal(value);

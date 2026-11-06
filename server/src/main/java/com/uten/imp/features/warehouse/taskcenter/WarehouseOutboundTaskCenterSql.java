@@ -253,8 +253,8 @@ final class WarehouseOutboundTaskCenterSql {
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                        COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
-                FROM (SELECT * FROM sales_shipments archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipments',to_jsonb(archive_origin))) s
-                LEFT JOIN (SELECT * FROM sales_shipment_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_shipment_items',to_jsonb(archive_origin))) item ON item.shipment_id=s.id AND NOT item.is_deleted
+                FROM %1$s s
+                LEFT JOIN %2$s item ON item.shipment_id=s.id AND NOT item.is_deleted
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -263,7 +263,7 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN employees worker ON worker.id=s.sender_id
                 LEFT JOIN employees maker ON maker.id=s.maker_id
                 WHERE NOT s.is_deleted AND s.finance_audit=1 AND
-                """ + scopePredicate;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_shipments"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_shipment_items")) + scopePredicate;
     }
 
     private static String subcontract(WarehouseTaskScope scope, Access access) {
@@ -294,14 +294,14 @@ final class WarehouseOutboundTaskCenterSql {
                        COALESCE(item.id::text,'empty'),item.id,item.line_no,
                        COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
                        COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight
-                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
+                FROM %1$s issue
                 LEFT JOIN LATERAL (
                   SELECT COUNT(plan_item.id)::int AS plan_line_count
-                  FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item
+                  FROM %2$s item
                   LEFT JOIN subcontract_material_plan_items plan_item ON plan_item.id=item.plan_item_id
                   WHERE item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
                 ) lines ON TRUE
-                LEFT JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item ON item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
+                LEFT JOIN %2$s item ON item.issue_id=issue.id AND (NOT item.is_deleted OR issue.is_deleted)
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -311,7 +311,7 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN warehouses warehouse ON warehouse.id=issue.warehouse_id
                 LEFT JOIN employees worker ON worker.id=issue.maker_id
                 WHERE
-                """ + readable + " AND " + scopePredicate;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items")) + readable + " AND " + scopePredicate;
     }
 
     private static String stock(String docType, String source, String owners, WarehouseTaskScope scope) {
@@ -355,8 +355,8 @@ final class WarehouseOutboundTaskCenterSql {
                 + "COALESCE(item.id::text,'empty'),item.id,item.line_no,COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),"
                 + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name,unit.name,item.qty,item.weight\n"
                 + """
-                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) d
-                LEFT JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item ON item.doc_id=d.id AND NOT item.is_deleted
+                FROM %1$s d
+                LEFT JOIN %2$s item ON item.doc_id=d.id AND NOT item.is_deleted
                 LEFT JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN colors color ON color.id=item.color_id
                 LEFT JOIN units unit ON unit.id=item.unit_id
@@ -376,7 +376,7 @@ final class WarehouseOutboundTaskCenterSql {
                   WHERE mapping.document_id=d.id
                 ) discovery ON TRUE
                 WHERE NOT d.is_deleted AND
-                """ + "d.doc_type='" + docType + "' AND (" + owners + ") AND " + scopePredicate + " " + requested;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")) + "d.doc_type='" + docType + "' AND (" + owners + ") AND " + scopePredicate + " " + requested;
     }
 
     private static String discovery(WarehouseTaskScope scope) {
@@ -405,7 +405,7 @@ final class WarehouseOutboundTaskCenterSql {
                        material.specification,material.color_name,material.unit_name,material.quantity,NULL::numeric
                 FROM production_material_discovery_requests request
                 JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=segment.plan_id
+                JOIN %1$s plan ON plan.id=segment.plan_id
                 LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 LEFT JOIN employees worker ON worker.id=segment.responsible_employee_id
                 LEFT JOIN LATERAL (
@@ -437,14 +437,14 @@ final class WarehouseOutboundTaskCenterSql {
                   SELECT 1 FROM production_material_discovery_lines linked
                   JOIN production_planning_package_document_items mapping
                     ON mapping.demand_id=linked.demand_id AND mapping.document_type='DRAW'
-                  JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=mapping.document_id
+                  JOIN %2$s document ON document.id=mapping.document_id
                     AND document.doc_type='DRAW' AND NOT document.is_deleted
-                  JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) document_item ON document_item.id=mapping.document_item_id
+                  JOIN %3$s document_item ON document_item.id=mapping.document_item_id
                     AND document_item.doc_id=document.id AND NOT document_item.is_deleted
                   WHERE linked.request_id=request.id
                     AND (material.item_id IS NULL OR linked.id=material.item_id)
                     AND fn_is_production_linked_stock_document(document.id)
                     AND (fn_production_draw_requested(document.id) OR document.status=-1)
-                """ + visibleDocumentScope + ") AND " + scopePredicate;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items")) + visibleDocumentScope + ") AND " + scopePredicate;
     }
 }

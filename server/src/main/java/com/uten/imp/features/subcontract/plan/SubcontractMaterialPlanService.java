@@ -714,18 +714,18 @@ public class SubcontractMaterialPlanService {
         }
         List<Object[]> drafts = rows("""
                 SELECT issue.id, issue.bill_no, issue.created_by, issue.updated_by,
-                       EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) dropped
+                       EXISTS (SELECT 1 FROM %1$s dropped
                                WHERE dropped.issue_id = issue.id AND dropped.warehouse_dropped_at IS NOT NULL
                                  AND dropped.order_item_id IN (:items))
-                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
+                FROM %2$s issue
                 WHERE issue.status = 0 AND NOT issue.is_deleted
                   AND EXISTS (
-                      SELECT 1 FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item
+                      SELECT 1 FROM %1$s item
                       WHERE item.issue_id = issue.id AND NOT item.is_deleted
                         AND item.plan_item_id IS NOT NULL AND item.order_item_id IN (:items))
                 ORDER BY issue.id
                 FOR UPDATE
-                """, Map.of("items", items));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues")), Map.of("items", items));
         if (drafts.isEmpty()) {
             return new WithdrawResult(List.of(), 0);
         }
@@ -739,10 +739,10 @@ public class SubcontractMaterialPlanService {
             List<Object[]> lines = rows("""
                     SELECT item.id, item.plan_item_id, item.order_item_id, item.qty, item.requested_qty,
                            item.goods_id, item.color_id
-                    FROM (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item
+                    FROM %1$s item
                     WHERE item.issue_id = :issueId AND NOT item.is_deleted
                     ORDER BY item.id
-                    """, Map.of("issueId", issueId));
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items")), Map.of("issueId", issueId));
             List<Object[]> withdrawn = lines.stream()
                     .filter(line -> line[1] != null && selected.contains((UUID) line[2])).toList();
             if (withdrawn.isEmpty()) {

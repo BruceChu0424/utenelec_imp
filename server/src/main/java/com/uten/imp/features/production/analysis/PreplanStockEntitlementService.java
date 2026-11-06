@@ -579,10 +579,10 @@ public class PreplanStockEntitlementService {
             UUID delegation=uuid(row[0]),analysis=uuid(row[1]),target=uuid(row[3]),reservation=uuid(row[4]);
             if(Boolean.TRUE.equals(em.createNativeQuery("""
                     SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials material
-                        JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.material_analysis_item_id=material.analysis_item_id AND NOT plan.is_deleted
+                        JOIN %1$s plan ON plan.material_analysis_item_id=material.analysis_item_id AND NOT plan.is_deleted
                         JOIN production_planning_packages package ON package.plan_id=plan.id AND package.status='CONFIRMED' AND NOT package.is_deleted
                         WHERE material.id=:target)
-                    """).setParameter("target",target).getSingleResult()))throw conflict("共享接收计划仍有效，请先撤回实际领料并取消接收计划包后再红冲来源入库");
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("target",target).getSingleResult()))throw conflict("共享接收计划仍有效，请先撤回实际领料并取消接收计划包后再红冲来源入库");
             var lots=NativeQueryResults.typedRows(em.createNativeQuery("""
                             WITH RECURSIVE descendants(id) AS (
                                 SELECT id FROM preplan_stock_entitlement_events WHERE event_group_id=:delegation AND event_type='MAKE_DELEGATE_IN'

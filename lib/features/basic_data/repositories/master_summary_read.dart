@@ -3,6 +3,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/paged_read_intent.dart';
+import '../../../shared/paging/complete_summary_stream.dart';
 import '../../../shared/paging/versioned_summary_read.dart';
 import '../models/master_facet.dart';
 import '../models/master_search_context.dart';
@@ -54,26 +55,32 @@ Future<PagedResult<T>> readCompleteMasterSummary<T>(
     isCurrent: () => parent?.call() ?? true,
   );
   final captured = Map<String, dynamic>.unmodifiable(filter);
-  return owner.run(() async {
-    final result = await readVersionedSummarySnapshot<T>(
-      isCurrent: () => owner.isCurrent,
-      maxConcurrentPages: 4,
-      decode: decode,
-      idOf: idOf,
-      loadPage: (page, size, revision) => api.post(
-        path,
-        query: {'readSnapshotRevision': ?revision},
-        body: {
-          'filter': captured,
-          'page': page,
-          'size': size,
-          if (sort?.isNotEmpty == true) 'sort': sort,
-          if (order?.isNotEmpty == true) 'order': order,
-        },
-      ),
-    );
-    return result.page;
-  });
+  return owner.run(
+    () => api.postSummaryStream<PagedResult<T>>(
+      path,
+      body: {
+        'filter': captured,
+        'page': 1,
+        'size': 100,
+        if (sort?.isNotEmpty == true) 'sort': sort,
+        if (order?.isNotEmpty == true) 'order': order,
+      },
+      consume: (frames) async {
+        final stream = CompleteSummaryStream(frames);
+        try {
+          final result = await readVersionedSummarySnapshot<T>(
+            isCurrent: () => owner.isCurrent,
+            decode: decode,
+            idOf: idOf,
+            loadPage: stream.page,
+          );
+          return result.page;
+        } finally {
+          await stream.close();
+        }
+      },
+    ),
+  );
 }
 
 /// Navigation metadata has an authorization proof, not a data-snapshot claim.

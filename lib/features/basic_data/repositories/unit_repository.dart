@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'flat_master_summary_gateway.dart';
+import 'master_summary_read.dart';
 import '../models/master_facet.dart';
 import '../models/unit_node.dart';
 
@@ -38,9 +40,26 @@ abstract interface class UnitRepository {
   Future<void> delete(String id);
 }
 
-class DioUnitRepository implements UnitRepository {
+class DioUnitRepository
+    implements UnitRepository, FlatMasterSummaryGateway<UnitListItem> {
   DioUnitRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<PagedResult<UnitListItem>> completeList({
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => readCompleteMasterSummary<UnitListItem>(
+    api,
+    path: '${ApiEndpoints.units}/summaries',
+    filter: masterSummaryFilter(keyword: keyword, filters: filters),
+    sort: sort,
+    order: order,
+    decode: UnitListItem.fromJson,
+    idOf: (row) => row.id,
+  );
 
   @override
   Future<PagedResult<UnitListItem>> list({

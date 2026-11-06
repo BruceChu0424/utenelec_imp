@@ -171,12 +171,12 @@ public class ProductionExecutionBatchService {
                 || source.workshopId()==null || !source.active()) throw conflict("仅有效物料分析来源的等待物料任务可以分批领料");
         Number activity=(Number)em.createNativeQuery("""
                 SELECT (SELECT count(*) FROM production_planning_package_documents WHERE execution_segment_id=:id)
-                    +(SELECT count(*) FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) production_daily_report_items WHERE execution_segment_id=:id)
+                    +(SELECT count(*) FROM %1$s production_daily_report_items WHERE execution_segment_id=:id)
                     +(SELECT count(*) FROM production_material_demands demand
                        JOIN production_material_supply_pegs peg ON peg.demand_id=demand.id WHERE demand.execution_segment_id=:id)
                     +(SELECT count(*) FROM production_material_demands demand
                        JOIN stock_reservations reservation ON reservation.demand_id=demand.id WHERE demand.execution_segment_id=:id)
-                """).setParameter("id",id).getSingleResult();
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"))).setParameter("id",id).getSingleResult();
         if (activity.longValue()!=0) throw conflict("该任务已有正式采购或委外供给绑定、物料预留或领用记录，须先核对来源，不能直接拆批");
         return loadSplitFacts(source);
     }
@@ -465,11 +465,11 @@ public class ProductionExecutionBatchService {
                     (plan.status=1 AND package.status='CONFIRMED' AND NOT package.is_deleted AND NOT plan.is_deleted),
                     COALESCE(s.split_root_segment_id,s.id),s.split_start_qty,s.auto_promote_when_ready,
                     s.material_requirement_mode='ZERO_MATERIAL'
-                FROM production_execution_segments s JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id=s.plan_id
+                FROM production_execution_segments s JOIN %1$s plan ON plan.id=s.plan_id
                 JOIN production_planning_packages package ON package.id=s.package_id JOIN goods ON goods.id=s.product_goods_id
                 LEFT JOIN units unit ON unit.id=s.product_unit_id
                 WHERE s.id=:id AND NOT s.is_deleted
-                """,Map.of("id",id));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")),Map.of("id",id));
         if(found.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"车间任务不存在");
         Object[] r=found.getFirst();return new Source(uuid(r[0]),uuid(r[1]),uuid(r[2]),uuid(r[3]),str(r[4]),((Number)r[5]).longValue(),decimal(r[6]),str(r[7]),
                 uuid(r[8]),uuid(r[9]),uuid(r[10]),uuid(r[11]),uuid(r[12]),uuid(r[13]),str(r[14]),str(r[15]),str(r[16]),str(r[17]),str(r[18]),

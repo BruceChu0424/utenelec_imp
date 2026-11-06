@@ -311,25 +311,15 @@ namespace Uten.Legacy.Desktop.Features.Goods
             listBusy = true; UpdateListState(); status.Text = "正在读取货品，列表保留上次结果…";
             try
             {
-                GoodsPage first = null;
-                var result = await CompletePagedSnapshot.ReadAsync<GoodsRecord>(async (batch, size, ct) =>
-                {
-                    var response = await service.SummariesAsync(categoryId, keyword, batch, size,
-                        first == null ? null : first.ReadSnapshotRevision, ct).ConfigureAwait(false);
-                    if (first == null) first = response;
-                    return new SnapshotPage<GoodsRecord> { Items = response.Items, Page = response.Page,
-                        Size = response.Size, Total = response.Total, TotalPages = response.TotalPages,
-                        ReadScopeVersion = response.ReadScopeVersion, ReadDataVersion = response.ReadDataVersion,
-                        ReadSnapshotRevision = response.ReadSnapshotRevision };
-                }, item => Guid.Parse(item.Id).ToString("D"),
+                var complete = await service.CompleteAsync(categoryId, keyword,
                     () => !token.IsCancellationRequested && generation == listGeneration
                         && ownerGeneration == session.Generation && ownerReadRevision == session.ReadScopeRevision,
-                    token, maximumRows: Int32.MaxValue, maximumConcurrentBatches: 4);
+                    token);
                 if (token.IsCancellationRequested || generation != listGeneration || ownerGeneration != session.Generation || ownerReadRevision != session.ReadScopeRevision || !IsLoaded) return;
-                rows.ItemsSource = result;
-                pageText.Text = "共 " + first.Total + " 项";
+                rows.ItemsSource = complete.Items;
+                pageText.Text = "共 " + complete.Total + " 项";
                 shownScope.Text = categoryCaption + (string.IsNullOrWhiteSpace(keyword) ? "" : " · 搜索：“" + keyword.Trim() + "”");
-                status.Text = result.Count == 0 ? "当前范围没有货品。" : "";
+                status.Text = complete.Items.Count == 0 ? "当前范围没有货品。" : "";
             }
             catch (OperationCanceledException)
             {

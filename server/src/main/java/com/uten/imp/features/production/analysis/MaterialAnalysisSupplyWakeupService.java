@@ -116,17 +116,17 @@ public class MaterialAnalysisSupplyWakeupService {
                         WHERE inspection.status = 'RESOLVED' AND (
                             (inspection.receipt_type = 'PURCHASE'
                              AND inspection.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
-                             AND EXISTS (SELECT 1 FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
+                             AND EXISTS (SELECT 1 FROM %1$s receipt
                                  WHERE receipt.id = inspection.receipt_id
                                    AND receipt.status = 1 AND receipt.is_deleted = FALSE))
                             OR
                             (inspection.receipt_type = 'SUBCONTRACT'
                              AND inspection.receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[]))
-                             AND EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
+                             AND EXISTS (SELECT 1 FROM %2$s receipt
                                  WHERE receipt.id = inspection.receipt_id
                                    AND receipt.status = 1 AND receipt.is_deleted = FALSE))
                         )
-                    """)
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts")))
                     .setParameter("purchaseReceiptIds", uuidParameter(purchase))
                     .setParameter("subcontractReceiptIds", uuidParameter(subcontract)));
     }
@@ -171,13 +171,13 @@ public class MaterialAnalysisSupplyWakeupService {
                     WHERE (
                         (inspection.receipt_type = 'PURCHASE'
                          AND inspection.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
-                         AND EXISTS (SELECT 1 FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
+                         AND EXISTS (SELECT 1 FROM %1$s receipt
                              WHERE receipt.id = inspection.receipt_id
                                AND receipt.status = 1 AND receipt.is_deleted = FALSE))
                         OR
                         (inspection.receipt_type = 'SUBCONTRACT'
                          AND inspection.receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[]))
-                         AND EXISTS (SELECT 1 FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
+                         AND EXISTS (SELECT 1 FROM %2$s receipt
                              WHERE receipt.id = inspection.receipt_id
                                AND receipt.status = 1 AND receipt.is_deleted = FALSE))
                     )
@@ -185,7 +185,7 @@ public class MaterialAnalysisSupplyWakeupService {
                          OR (inspection.id IN (:inspectionItemIds)
                              AND inspection.status = 'PARTIAL'
                              AND inspection.warehouse_stocked_base_qty > 0))
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts")))
                 .setParameter("purchaseReceiptIds", uuidParameter(purchaseReceiptIds))
                 .setParameter("subcontractReceiptIds", uuidParameter(subcontractReceiptIds))
                 .setParameter("inspectionItemIds", List.copyOf(inspectionItemIds)));
@@ -259,7 +259,7 @@ public class MaterialAnalysisSupplyWakeupService {
                         UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
                         WHERE stock.inspection_item_id=inspection.id
                     ) actual
-                    JOIN (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
+                    JOIN %1$s receipt
                       ON receipt.id = inspection.receipt_id
                      AND receipt.is_deleted = FALSE
                     WHERE inspection.receipt_type = 'PURCHASE'
@@ -268,8 +268,8 @@ public class MaterialAnalysisSupplyWakeupService {
                       AND inspection.status = 'REVERSED'
                     UNION
                     SELECT receipt.warehouse_id, item.goods_id, item.color_id
-                    FROM (SELECT * FROM purchase_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipts',to_jsonb(archive_origin))) receipt
-                    JOIN (SELECT * FROM purchase_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('purchase_receipt_items',to_jsonb(archive_origin))) item
+                    FROM %1$s receipt
+                    JOIN %2$s item
                       ON item.receipt_id = receipt.id
                      AND item.is_deleted = FALSE
                     WHERE receipt.id = :sourceDocumentId
@@ -280,7 +280,7 @@ public class MaterialAnalysisSupplyWakeupService {
                           SELECT 1 FROM procurement_inspection_items inspection
                           WHERE inspection.receipt_type = 'PURCHASE'
                             AND inspection.receipt_id = receipt.id)
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("purchase_receipt_items")))
                 .setParameter("sourceDocumentId", receiptId));
     }
 
@@ -294,7 +294,7 @@ public class MaterialAnalysisSupplyWakeupService {
                         UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
                         WHERE stock.inspection_item_id=inspection.id
                     ) actual
-                    JOIN (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
+                    JOIN %1$s receipt
                       ON receipt.id = inspection.receipt_id
                      AND receipt.is_deleted = FALSE
                     WHERE inspection.receipt_type = 'SUBCONTRACT'
@@ -303,8 +303,8 @@ public class MaterialAnalysisSupplyWakeupService {
                       AND inspection.status = 'REVERSED'
                     UNION
                     SELECT receipt.warehouse_id, item.goods_id, item.color_id
-                    FROM (SELECT * FROM subcontract_receipts archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipts',to_jsonb(archive_origin))) receipt
-                    JOIN (SELECT * FROM subcontract_receipt_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_receipt_items',to_jsonb(archive_origin))) item
+                    FROM %1$s receipt
+                    JOIN %2$s item
                       ON item.receipt_id = receipt.id
                      AND item.is_deleted = FALSE
                     WHERE receipt.id = :sourceDocumentId
@@ -315,7 +315,7 @@ public class MaterialAnalysisSupplyWakeupService {
                           SELECT 1 FROM procurement_inspection_items inspection
                           WHERE inspection.receipt_type = 'SUBCONTRACT'
                             AND inspection.receipt_id = receipt.id)
-                """)
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipts"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_receipt_items")))
                 .setParameter("sourceDocumentId", receiptId));
     }
 
@@ -330,8 +330,8 @@ public class MaterialAnalysisSupplyWakeupService {
         return analysisTargets(candidateQuery("""
                     SELECT DISTINCT document.warehouse_id,
                            item.goods_id, item.color_id
-                    FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
-                    JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
+                    FROM %1$s document
+                    JOIN %2$s item
                       ON item.doc_id = document.id
                      AND item.is_deleted = FALSE
                     -- 线边仓(车间直送)的完工入库不进公共可用量，不唤醒任何分析(V595)。
@@ -344,7 +344,7 @@ public class MaterialAnalysisSupplyWakeupService {
                       AND document.is_deleted = FALSE
                       AND document.warehouse_id IS NOT NULL
                       AND item.goods_id IS NOT NULL
-                """).setParameter("sourceDocumentIds", stockDocumentIds.stream().distinct().sorted().toList())
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("sourceDocumentIds", stockDocumentIds.stream().distinct().sorted().toList())
                 .setParameter("requiredStatus", requiredStatus));
     }
 
@@ -464,8 +464,8 @@ public class MaterialAnalysisSupplyWakeupService {
                 SELECT document.warehouse_id, item.goods_id, item.color_id,
                        SUM(COALESCE(item.base_qty, item.qty * COALESCE(item.unit_rate, 1))),
                        goods.name, goods.code, COALESCE(color.name, '')
-                FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document
-                JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item
+                FROM %1$s document
+                JOIN %2$s item
                   ON item.doc_id = document.id
                  AND item.is_deleted = FALSE
                 JOIN goods ON goods.id = item.goods_id
@@ -482,7 +482,7 @@ public class MaterialAnalysisSupplyWakeupService {
                 GROUP BY document.warehouse_id, item.goods_id, item.color_id,
                          goods.name, goods.code, color.name
                 ORDER BY goods.name, goods.code
-                """).setParameter("documentIds",
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"))).setParameter("documentIds",
                 stockDocumentIds.stream().distinct().sorted().toList()).setParameter("status", status));
     }
 

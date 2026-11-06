@@ -1367,15 +1367,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 .map(SourceRef::applicationItemId).distinct().sorted().toList();
         List<?> lockedSources = em.createNativeQuery("""
                         SELECT source.id
-                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) source
-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                        FROM %1$s source
+                        JOIN %2$s application
                           ON application.id = source.application_id
                         WHERE source.id IN (:sourceIds)
                           AND source.is_deleted = FALSE
                           AND application.is_deleted = FALSE
                         ORDER BY source.id
                         FOR UPDATE OF source, application
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_application_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications")))
                 .setParameter("sourceIds", sourceIds)
                 .getResultList();
         if (lockedSources.size() != sourceIds.size()) {
@@ -1392,15 +1392,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                                source.unit_id,
                                COALESCE(source.unit_rate, 1),
                                application.status
-                        FROM (SELECT * FROM subcontract_application_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_application_items',to_jsonb(archive_origin))) source
-                        JOIN (SELECT * FROM subcontract_applications archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_applications',to_jsonb(archive_origin))) application
+                        FROM %1$s source
+                        JOIN %2$s application
                           ON application.id = source.application_id
                         WHERE source.id IN (:sourceIds)
                           AND source.is_deleted = FALSE
                           AND application.is_deleted = FALSE
                         ORDER BY source.id
                         FOR UPDATE OF source, application
-                        """)
+                        """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_application_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications")))
                         .setParameter("sourceIds", sourceIds));
         if (rows.size() != sourceIds.size()) {
             throw new ApiException(ErrorCode.CONFLICT, "委外申请来源已变化，请刷新后重试");

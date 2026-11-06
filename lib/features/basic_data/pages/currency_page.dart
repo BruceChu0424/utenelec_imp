@@ -1,3 +1,4 @@
+import '../repositories/flat_master_summary_gateway.dart';
 import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -261,6 +262,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
+        fetchComplete: completeFlatMasterList<CurrencyListItem>(
+          repository,
+          keyword: keyword,
+          filters: filters,
+          sort: sort,
+          order: order,
+        ),
+        idOf: (row) => row.id,
         fetchPage: (target) => repository.list(
           page: target,
           keyword: keyword,

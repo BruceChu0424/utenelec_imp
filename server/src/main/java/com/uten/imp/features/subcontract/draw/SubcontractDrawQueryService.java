@@ -566,8 +566,8 @@ public class SubcontractDrawQueryService {
                 SELECT issue.id, issue.bill_no, issue.warehouse_id, warehouse.name, COUNT(item.id),
                        issue.created_at, creator_employee.full_name,
                 """ + SubcontractMaterialPlanService.DRAFT_EDITED_BY_WAREHOUSE + """
-                FROM (SELECT * FROM subcontract_material_issues archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issues',to_jsonb(archive_origin))) issue
-                JOIN (SELECT * FROM subcontract_material_issue_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('subcontract_material_issue_items',to_jsonb(archive_origin))) item ON item.issue_id = issue.id
+                FROM %1$s issue
+                JOIN %2$s item ON item.issue_id = issue.id
                  AND NOT item.is_deleted AND item.plan_item_id IS NOT NULL
                  AND item.order_item_id = :draftItemId
                 LEFT JOIN warehouses warehouse ON warehouse.id = issue.warehouse_id
@@ -577,7 +577,7 @@ public class SubcontractDrawQueryService {
                 GROUP BY issue.id, issue.bill_no, issue.warehouse_id, warehouse.name,
                          issue.created_at, creator_employee.full_name, issue.created_by, issue.updated_by
                 ORDER BY issue.created_at, issue.bill_no
-                """);
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items")));
         query.setParameter("draftItemId", orderItemId);
         List<DrawPendingDraft> drafts = new ArrayList<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {

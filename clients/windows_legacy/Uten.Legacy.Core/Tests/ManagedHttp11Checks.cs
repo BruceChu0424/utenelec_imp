@@ -21,6 +21,30 @@ namespace Uten.Legacy.Core.Tests
             RedirectsAndInvalidProtocolAreRejected();
             InvalidRequestsNeverReachTheStream();
             CancellationAndResponseBodyHandoff();
+            CompleteMasterSummarySink();
+        }
+        private static void CompleteMasterSummarySink()
+        {
+            string page = "{\"type\":\"page\",\"value\":{\"items\":[{\"name\":\"" + new string('x', 400) + "\",\"price\":900719925474099312345.2300}]}}\n";
+            string body = String.Concat(System.Linq.Enumerable.Repeat(page, 30)) + "{\"type\":\"complete\",\"total\":30}\n";
+            var bytes = Encoding.UTF8.GetBytes(body);
+            using (var request = Request(HttpMethod.Post, "https://api.example.test/api/master/goods/summaries?complete=true"))
+            using (var parsed = new CompleteSummaryStream(1024, CancellationToken.None))
+            using (var stream = new FixtureStream(Concat(Ascii("HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: " + bytes.Length + "\r\n\r\n"), bytes), 13))
+            {
+                request.Content = new StringContent("{\"filter\":{},\"page\":1,\"size\":100}", Encoding.UTF8, "application/json");
+                var sink = HttpResponseSink.CompleteSummary(parsed, 1024, request.RequestUri.AbsolutePath, request.RequestUri.Query);
+                request.Properties[HttpResponseSink.RequestProperty] = sink;
+                using (var response = ManagedHttp11.SendAndReceive(stream, request, sink.MaximumBytes, CancellationToken.None, responseSink: sink))
+                {
+                    True(sink.Completed && bytes.Length > 1024, "complete HTTP body streams beyond one bounded frame");
+                    Equal(0L, response.Content.Headers.ContentLength.Value, "managed codec does not buffer complete summary body");
+                    var value = parsed.Finish();
+                    Equal(30, value.Pages.Count, "all streamed frames survive the same HTTP codec");
+                    True(value.Pages[29].Contains("900719925474099312345.2300"), "native frame retains exact original number token");
+                }
+                Throws<ArgumentException>(() => HttpResponseSink.CompleteSummary(parsed, 1024, "/api/master/goods", "?complete=true"));
+            }
         }
 
 #if MANAGED_HTTP11_STANDALONE

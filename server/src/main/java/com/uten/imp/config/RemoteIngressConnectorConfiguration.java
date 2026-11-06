@@ -55,7 +55,7 @@ public class RemoteIngressConnectorConfiguration {
                 // Additional connectors do not inherit the primary connector's
                 // compression customization. JSON lists must not cross the WAN raw.
                 protocol.setCompression("on");
-                protocol.setCompressibleMimeType("application/json");
+                protocol.setCompressibleMimeType("application/json,application/x-ndjson");
                 protocol.setCompressionMinSize(4096);
             }
             factory.addAdditionalConnectors(remote);

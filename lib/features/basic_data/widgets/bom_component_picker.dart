@@ -62,6 +62,29 @@ class _RemovalSource extends UtenGoodsPickerDataSource {
   @override
   bool get supportsRelatedSearch => true;
   @override
+  Future<PagedResult<GoodsListItem>> Function()? completeReader({
+    String? categoryId,
+    String? keyword,
+    Set<String> categoryRootIds = const {},
+    bool includeRelated = false,
+  }) {
+    final gateway = goods is GoodsSummaryReadGateway
+        ? goods as GoodsSummaryReadGateway
+        : null;
+    if (gateway?.supportsCompleteGoodsSummaries != true) return null;
+    final roots = Set<String>.unmodifiable(categoryRootIds);
+    return () => gateway!.completeList(
+      categoryId,
+      keyword: keyword,
+      categoryRootIds: roots,
+      includeRelated: includeRelated,
+      excludeStub: true,
+      sort: 'code',
+      order: 'asc',
+    );
+  }
+
+  @override
   Future<List<ProductCategoryNode>> tree() => categories.tree();
   @override
   Future<PagedResult<GoodsListItem>> list(

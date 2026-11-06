@@ -64,3 +64,5 @@ services/material_forecast/runtime-locks/*.lock text eol=lf
 *.woff2 binary
 *.pdf binary
 *.zip binary
+# Evidence receipts bind these exact Windows log bytes across checkouts.
+/clients/windows_legacy/progress/evidence/complete-master-stream-20261106-files/*.log binary

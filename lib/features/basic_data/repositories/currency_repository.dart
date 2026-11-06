@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'flat_master_summary_gateway.dart';
+import 'master_summary_read.dart';
 import '../models/currency_node.dart';
 import '../models/master_facet.dart';
 
@@ -34,9 +36,26 @@ abstract interface class CurrencyRepository {
   Future<void> delete(String id);
 }
 
-class DioCurrencyRepository implements CurrencyRepository {
+class DioCurrencyRepository
+    implements CurrencyRepository, FlatMasterSummaryGateway<CurrencyListItem> {
   DioCurrencyRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<PagedResult<CurrencyListItem>> completeList({
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => readCompleteMasterSummary<CurrencyListItem>(
+    api,
+    path: '${ApiEndpoints.currencies}/summaries',
+    filter: masterSummaryFilter(keyword: keyword, filters: filters),
+    sort: sort,
+    order: order,
+    decode: CurrencyListItem.fromJson,
+    idOf: (row) => row.id,
+  );
 
   @override
   Future<PagedResult<CurrencyListItem>> list({

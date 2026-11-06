@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'flat_master_summary_gateway.dart';
+import 'master_summary_read.dart';
 import '../models/master_facet.dart';
 import '../models/reference_method_option.dart';
 import '../models/settlement_method_admin.dart';
@@ -92,8 +94,29 @@ class ReferenceMethodRepository {
   }
 }
 
+class DioReferenceMethodRepository extends ReferenceMethodRepository
+    implements FlatMasterSummaryGateway<SettlementMethodAdminItem> {
+  DioReferenceMethodRepository(super.api);
+
+  @override
+  Future<PagedResult<SettlementMethodAdminItem>> completeList({
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => readCompleteMasterSummary<SettlementMethodAdminItem>(
+    api,
+    path: '${ApiEndpoints.settlementMethodsAdmin}/summaries',
+    filter: masterSummaryFilter(keyword: keyword, filters: filters),
+    sort: sort,
+    order: order,
+    decode: SettlementMethodAdminItem.fromJson,
+    idOf: (row) => row.id,
+  );
+}
+
 final referenceMethodRepositoryProvider = Provider<ReferenceMethodRepository>(
-  (ref) => ReferenceMethodRepository(ref.watch(apiClientProvider)),
+  (ref) => DioReferenceMethodRepository(ref.watch(apiClientProvider)),
 );
 
 final settlementMethodOptionsProvider =

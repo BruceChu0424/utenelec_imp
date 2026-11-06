@@ -352,6 +352,12 @@ abstract class UtenGoodsPickerDataSource {
   /// Dedicated inventory/report sources keep their own API and permission scope.
   /// Sources opting in also implement both option-aware search methods below.
   bool get supportsRelatedSearch => false;
+  Future<PagedResult<GoodsListItem>> Function()? completeReader({
+    String? categoryId,
+    String? keyword,
+    Set<String> categoryRootIds = const {},
+    bool includeRelated = false,
+  }) => null;
   Future<List<ProductCategoryNode>> tree();
   Future<PagedResult<GoodsListItem>> list(
     String categoryId, {
@@ -965,30 +971,41 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     String? keyword,
     bool searching = false,
   }) {
-    if (widget.dataSource != null) return null;
     final repository = ref.read(businessGoodsReferenceRepositoryProvider);
     final gateway = repository is GoodsSummaryReadGateway
         ? repository as GoodsSummaryReadGateway
         : null;
-    if (gateway?.supportsCompleteGoodsSummaries != true) return null;
     final filters = Map<String, String?>.unmodifiable(_columnFilters);
     final roots = Set<String>.unmodifiable(
       searching && !_searchesAllSelectableGoods ? _scopeRootIds : <String>{},
     );
     final allowed = Set<String>.unmodifiable(_searchAllowedCategoryIds);
     final all = _searchesAllSelectableGoods, related = _includeRelated;
+    final source = widget.dataSource;
+    final custom = source?.completeReader(
+      categoryId: category,
+      keyword: keyword,
+      categoryRootIds: roots,
+      includeRelated: searching && related,
+    );
+    if (source != null && custom == null ||
+        source == null && gateway?.supportsCompleteGoodsSummaries != true) {
+      return null;
+    }
     return () async {
-      final result = await gateway!.completeList(
-        category,
-        keyword: keyword,
-        filters: filters,
-        sort: _goodsPickerSort,
-        order: _goodsPickerOrder,
-        categoryRootIds: roots,
-        includeRelated: searching && related,
-        excludeDisabled: true,
-        excludeStub: true,
-      );
+      final result = custom != null
+          ? await custom()
+          : await gateway!.completeList(
+              category,
+              keyword: keyword,
+              filters: filters,
+              sort: _goodsPickerSort,
+              order: _goodsPickerOrder,
+              categoryRootIds: roots,
+              includeRelated: searching && related,
+              excludeDisabled: true,
+              excludeStub: true,
+            );
       if (searching &&
           result.items.any(
             (row) => row.categoryId == null

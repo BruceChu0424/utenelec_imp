@@ -59,7 +59,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                    facts.shortage_qty, goods.id, goods.code, goods.name, color.name, unit.name,
                    facts.color_id, facts.unit_id
             FROM production_execution_segments segment
-            JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
+            JOIN %1$s plan ON plan.id = segment.plan_id AND NOT plan.is_deleted
              AND plan.material_analysis_id IS NOT NULL AND plan.material_analysis_item_id IS NOT NULL
             CROSS JOIN LATERAL fn_execution_segment_material_facts(segment.id) facts
             JOIN production_material_demands demand ON demand.id = facts.demand_id
@@ -77,7 +77,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
             WHERE segment.id IN (:ids) AND NOT segment.is_deleted
               AND facts.state IN ('SHORT', 'SHORT_MAKE') AND facts.shortage_qty > 0
             ORDER BY segment.id, goods.name, goods.code, facts.demand_id, material.id
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"));
 
     /** 显示用的分析快照复用多久。 */
     static final long DISPLAY_CACHE_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
@@ -288,13 +288,13 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                        urge.gap_kind_count, urge.gap_summary
                 FROM production_planning_urges urge
                 JOIN production_execution_segments segment ON segment.id = urge.execution_segment_id
-                JOIN (SELECT * FROM production_plans archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin))) plan ON plan.id = segment.plan_id
+                JOIN %1$s plan ON plan.id = segment.plan_id
                 LEFT JOIN goods ON goods.id = segment.product_goods_id
                 LEFT JOIN departments department ON department.id = segment.workshop_department_id
                 WHERE urge.material_analysis_id = :analysisId AND urge.status = 'OPEN'
                   AND NOT segment.is_deleted
                 ORDER BY urge.last_urged_at DESC, urge.id
-                """).setParameter("analysisId", analysisId));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("analysisId", analysisId));
         if (rows.isEmpty()) return List.of();
         Map<UUID, Set<UUID>> linesBySegment = shortMaterialLines(
                 rows.stream().map(row -> (UUID) row[1]).toList());

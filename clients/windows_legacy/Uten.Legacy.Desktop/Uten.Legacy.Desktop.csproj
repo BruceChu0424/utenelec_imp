@@ -21,6 +21,7 @@
     <Reference Include="System.Web.Extensions"/><Reference Include="System.Xaml"/>
     <Reference Include="System.Net.Http" Condition="'$(Configuration)' == 'Debug'"/>
     <Reference Include="WindowsBase"/><Reference Include="PresentationCore"/><Reference Include="PresentationFramework"/>
+    <EmbeddedResource Include="..\..\..\contracts\complete-summary-stream-v1.json" Condition="'$(Configuration)' == 'Debug'"><LogicalName>Uten.CompleteSummaryStreamFixture.json</LogicalName></EmbeddedResource>
     <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator></ApplicationDefinition>
     <Page Include="MainWindow.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Page Include="Themes\Uten.xaml"><Generator>MSBuild:Compile</Generator></Page>

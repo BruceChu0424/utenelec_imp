@@ -212,17 +212,17 @@ public class WarehouseInboundTaskCenterQueryService {
                     SELECT item.id,item.line_no AS "lineNo",item.goods_code_snapshot AS "goodsCode",
                            item.goods_name_snapshot AS "goodsName",color.name AS "colorName",unit.name AS "unitName",
                            item.qty AS quantity,item.weight,item.place,item.count_qty AS "countedQty"
-                    FROM (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) item LEFT JOIN colors color ON color.id=item.color_id
+                    FROM %1$s item LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id
                     WHERE item.doc_id=:id AND NOT item.is_deleted ORDER BY item.line_no,item.id
-                    """;
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"));
             case "FINISHED_REGISTRATION" -> """
                     SELECT item.id,item.registration_id AS "registrationId",item.source_report_item_id AS "sourceReportItemId",
                            source.output_lot_id AS "lotId",goods.code AS "goodsCode",goods.name AS "goodsName",
                            color.name AS "colorName",unit.name AS "unitName",source.qty AS quantity,item.place_snapshot AS place,
                            lineage.document_nos AS "stockDocumentNos",lineage.document_ids AS "stockDocumentIds"
                     FROM production_finished_arrival_registration_items item
-                    JOIN (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) source ON source.id=item.source_report_item_id
+                    JOIN %1$s source ON source.id=item.source_report_item_id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     LEFT JOIN units unit ON unit.id=goods.unit_id
                     LEFT JOIN LATERAL (
@@ -230,21 +230,21 @@ public class WarehouseInboundTaskCenterQueryService {
                                string_agg(DISTINCT document.id::text,',') AS document_ids
                         FROM production_fqc_inspection_sheet_items sheet_item
                         JOIN production_fqc_release_commands release ON release.inspection_id=sheet_item.inspection_id
-                        JOIN (SELECT * FROM stock_document_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_document_items',to_jsonb(archive_origin))) released_item ON released_item.id=release.stock_document_item_id
-                        JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document ON document.id=released_item.doc_id AND NOT document.is_deleted
+                        JOIN %2$s released_item ON released_item.id=release.stock_document_item_id
+                        JOIN %3$s document ON document.id=released_item.doc_id AND NOT document.is_deleted
                         WHERE sheet_item.registration_id=item.registration_id
                           AND release.source_report_item_id=item.source_report_item_id
                     ) lineage ON TRUE
                     WHERE item.registration_id=:id ORDER BY item.id
-                    """;
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"));
             case "FINISHED_REGISTER" -> """
                     SELECT source.id,source.output_lot_id AS "lotId",goods.code AS "goodsCode",goods.name AS "goodsName",
                            color.name AS "colorName",source.qty AS quantity
-                    FROM (SELECT * FROM production_daily_report_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('production_daily_report_items',to_jsonb(archive_origin))) source
+                    FROM %1$s source
                     JOIN v_production_report_items_pending_registration pending ON pending.report_item_id=source.id
                     LEFT JOIN goods ON goods.id=source.goods_id LEFT JOIN colors color ON color.id=source.color_id
                     WHERE source.report_id=:id ORDER BY source.id
-                    """;
+                    """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"));
             case "EXPECTATION" -> """
                     SELECT item.id,goods.code AS "goodsCode",goods.name AS "goodsName",color.name AS "colorName",
                            unit.name AS "unitName",item.ordered_qty AS "orderedQty",item.accepted_qty AS "acceptedQty",

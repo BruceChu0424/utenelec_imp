@@ -80,6 +80,11 @@ public class VersionedSummaryPages {
         }
     }
     private record Stamp(String authorization, String revision, String dataVersion) { }
+    public record ReadProof(String readScopeVersion, String readSnapshotRevision, String readDataVersion) {
+        public <T> Snapshot<T> snapshot(T value) {
+            return new Snapshot<>(value, readScopeVersion, readSnapshotRevision, readDataVersion);
+        }
+    }
     private final JdbcTemplate jdbc;
     private final ReadScopeVersionAuthority authorization;
     private final SecurityContextCurrentUser current;
@@ -123,6 +128,18 @@ public class VersionedSummaryPages {
 
     /** Task candidate readers retain the original fresh-task audience in both RR phases. */
     public <T> Snapshot<T> read(Request request, Runnable authorize, Supplier<T> reader, boolean businessTasks) {
+        return readStamped(request, authorize, (proof, checkpoint) -> reader.get(), businessTasks);
+    }
+
+    /** A complete stream reuses one RR stamp across its bounded batches. The
+     * caller may publish completion only after this method's fresh final fence. */
+    public <T> Snapshot<T> readWithProof(Request request, Runnable authorize,
+            BiFunction<ReadProof, Runnable, T> reader) {
+        return readStamped(request, authorize, reader, false);
+    }
+
+    private <T> Snapshot<T> readStamped(Request request, Runnable authorize,
+            BiFunction<ReadProof, Runnable, T> reader, boolean businessTasks) {
         validate(request);
         long deadline=deadline();
         AuthUser subject=current.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
@@ -131,7 +148,10 @@ public class VersionedSummaryPages {
             Stamp stamp=stamp(request,subject,businessTasks);
             if(request.expectedReadSnapshotRevision()!=null && !request.expectedReadSnapshotRevision().equals(stamp.revision()))
                 throw changed();
-            T value=reader.get();
+            T value=reader.apply(new ReadProof(stamp.authorization(), stamp.revision(), stamp.dataVersion()), () -> {
+                remaining(deadline);
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Complete summary read interrupted");
+            });
             return new Snapshot<>(value,stamp.authorization(),stamp.revision(),stamp.dataVersion());
         }));
         remaining(deadline);

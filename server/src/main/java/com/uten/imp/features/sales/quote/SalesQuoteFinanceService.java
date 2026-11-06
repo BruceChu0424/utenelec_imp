@@ -177,7 +177,7 @@ public class SalesQuoteFinanceService {
             return Map.of("pending", 0L);
         }
         Number n = (Number) em.createNativeQuery(
-                "SELECT COUNT(*) FROM (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('sales_quotes',to_jsonb(archive_origin))) o WHERE o.is_deleted = FALSE AND o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')")
+                ("SELECT COUNT(*) FROM " + com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_quotes") + " o WHERE o.is_deleted = FALSE AND o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')"))
                 .getSingleResult();
         return Map.of("pending", n.longValue());
     }

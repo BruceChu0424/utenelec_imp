@@ -20,7 +20,7 @@ public class SupplierSummaryController {
     public SupplierSummaryController(SupplierService suppliers, MasterSummaryReadSupport summaries) {
         this.suppliers = suppliers; this.summaries = summaries;
     }
-    @PostMapping("/summaries")
+    @PostMapping(value = "/summaries", params = "!complete")
     @PreAuthorize("hasAuthority('supplier:view')")
     public VersionedSummaryPages.Snapshot<MasterSummaryReadSupport.Payload<SupplierListItem>> read(
             @Valid @RequestBody Request body,
@@ -31,5 +31,14 @@ public class SupplierSummaryController {
         var snapshot = summaries.read("supplier-master-list", "supplier", "supplier:view", query, readSnapshotRevision, suppliers::list);
         response.setHeader("X-Uten-Read-Scope-Version", snapshot.readScopeVersion());
         return snapshot;
+    }
+    @PostMapping(value = "/summaries", params = "complete=true", produces = "application/x-ndjson")
+    @PreAuthorize("hasAuthority('supplier:view')")
+    public void complete(@Valid @RequestBody Request body,
+            @RequestParam(required = false) String readSnapshotRevision,
+            HttpServletRequest request, HttpServletResponse response) throws java.io.IOException {
+        AuditRequestContext.markControlledRead(request);
+        var query = new MasterSummaryReadSupport.Query<>(body.filter(), body.page(), body.size(), body.sort(), body.order());
+        summaries.stream("supplier-master-list", "supplier", "supplier:view", query, readSnapshotRevision, suppliers::list, response);
     }
 }

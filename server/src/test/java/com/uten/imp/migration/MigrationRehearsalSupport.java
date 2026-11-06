@@ -35,6 +35,10 @@ public final class MigrationRehearsalSupport {
 
     private static final Pattern VERSIONED_MIGRATION =
             Pattern.compile("^V([0-9]+(?:[._][0-9]+)*)__.*\\.sql$");
+    private static final Set<String> LEGACY_INTEGER_SCRIPTS = Set.of(
+            "V01__enable_pgcrypto.sql", "V02__departments_positions.sql", "V03__employees.sql",
+            "V04__auth_rbac.sql", "V05__audit.sql", "V06__seed_rbac.sql", "V07__seed_org.sql",
+            "V08__seed_admin.sql", "V09__audit_redact_password.sql");
     private static final MigrationCatalog MIGRATION_CATALOG;
 
     static {
@@ -55,9 +59,19 @@ public final class MigrationRehearsalSupport {
             throw new IllegalArgumentException("Not a versioned Flyway script: " + filename);
         }
         String token = matcher.group(1);
-        var value = org.flywaydb.core.api.MigrationVersion.fromVersion(token);
-        return token.matches("[0-9]+")
-                ? org.flywaydb.core.api.MigrationVersion.fromVersion(value.getMajor().toString()) : value;
+        String canonical = token.replace('_', '.');
+        if (LEGACY_INTEGER_SCRIPTS.contains(filename)) {
+            canonical = new java.math.BigInteger(token).toString();
+        } else if (token.length() > 50 || (token.contains("_") && token.contains("."))
+                || !canonical.matches("(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))*")
+                || (canonical.contains(".") && canonical.endsWith(".0"))) {
+            throw new IllegalArgumentException("Not a canonical Flyway script identity: " + filename);
+        }
+        var value = org.flywaydb.core.api.MigrationVersion.fromVersion(canonical);
+        if (value.compareTo(org.flywaydb.core.api.MigrationVersion.fromVersion("0")) <= 0) {
+            throw new IllegalArgumentException("Migration version is not positive: " + filename);
+        }
+        return value;
     }
 
     record MigrationCatalog(java.util.List<org.flywaydb.core.api.MigrationVersion> versions) {
@@ -139,7 +153,7 @@ public final class MigrationRehearsalSupport {
 
     static Snapshot snapshot(Connection connection) throws SQLException {
         return new Snapshot(
-                com.uten.imp.testsupport.FixtureNumbers.integer(latestSuccessfulVersion(connection)),
+                org.flywaydb.core.api.MigrationVersion.fromVersion(latestSuccessfulVersion(connection)),
                 tableRows(connection),
                 scalarText(connection, """
                         SELECT count(*) || '|' ||
@@ -240,7 +254,8 @@ public final class MigrationRehearsalSupport {
             Snapshot before, Snapshot after, String table, long oldCount, Long newCount) {
         // V608 registers exactly one BX namespace and its two prefix ownership rows.
         // A later migration or any other quantity difference remains a failure.
-        return before.schemaVersion() < 608 && after.schemaVersion() >= 608
+        var boundary = org.flywaydb.core.api.MigrationVersion.fromVersion("608");
+        return before.schemaVersion().compareTo(boundary) < 0 && after.schemaVersion().compareTo(boundary) >= 0
                 && Set.of("business_identifier_namespaces", "business_prefix_reservations",
                         "business_prefix_reservation_members").contains(table)
                 && newCount != null && newCount == oldCount + 1;
@@ -379,13 +394,31 @@ public final class MigrationRehearsalSupport {
     }
 
     public static String latestSuccessfulVersion(Connection connection) throws SQLException {
-        return scalarText(connection, """
-                SELECT version
-                FROM flyway_schema_history
-                WHERE success
-                ORDER BY installed_rank DESC
-                LIMIT 1
-                """);
+        org.flywaydb.core.api.MigrationVersion head = null;
+        Set<org.flywaydb.core.api.MigrationVersion> seen = new java.util.HashSet<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT version, script FROM flyway_schema_history WHERE success")) {
+            while (rows.next()) {
+                String rawVersion = rows.getString(1);
+                String script = rows.getString(2);
+                var version = migrationVersionForScript(script);
+                if (!seen.add(version)) {
+                    throw new IllegalStateException("Duplicate semantic Flyway version: " + script);
+                }
+                String originalToken = VERSIONED_MIGRATION.matcher(script).replaceFirst("$1");
+                if (!version.getVersion().equals(rawVersion)
+                        && !(LEGACY_INTEGER_SCRIPTS.contains(script) && originalToken.equals(rawVersion))) {
+                    throw new IllegalStateException("History version does not match its exact script: " + script);
+                }
+                if (head == null || version.compareTo(head) > 0) {
+                    head = version;
+                }
+            }
+        }
+        if (head == null) {
+            throw new IllegalStateException("No successful Flyway migration exists");
+        }
+        return head.getVersion();
     }
 
     static long scalarLong(Connection connection, String sql) throws SQLException {
@@ -484,7 +517,7 @@ public final class MigrationRehearsalSupport {
     }
 
     record Snapshot(
-            int schemaVersion,
+            org.flywaydb.core.api.MigrationVersion schemaVersion,
             Map<String, Long> tableRows,
             String userIdentity,
             Map<String, Long> scopeRows,

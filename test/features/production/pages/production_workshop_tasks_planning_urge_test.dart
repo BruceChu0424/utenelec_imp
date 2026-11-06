@@ -17,6 +17,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/widgets/workshop_task_material_table.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 /// 可变的服务端替身：列表按 [urged] / [ordered] 返回当前事实，催计划按 [urgeReply] 回。
@@ -222,6 +223,7 @@ Future<ProviderContainer> _pump(
           Perm.productionExecutionView,
           if (canStart) Perm.productionExecutionStart,
         }),
+        productionWorkshopTreeProvider.overrideWith((ref) async => []),
         productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
           server.repository(),
         ),

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -15,6 +14,7 @@ import 'package:uten_imp/features/production/widgets/where_used_material_picker.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../../support/uten_test_actions.dart';
 
 const _base = '/production/reports/where-used';
 const _sheetKey = Key('goods-picker-sheet');
@@ -400,8 +400,7 @@ void main() {
           ],
         ),
       );
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.text('最新结果'), findsOneWidget);
       pending['MAT-0']!.complete(
         _page(
@@ -410,8 +409,7 @@ void main() {
           ],
         ),
       );
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.text('旧响应'), findsNothing);
       await tester.tap(_row('same'));
       await tester.pump();
@@ -490,7 +488,7 @@ void main() {
   );
 
   testWidgets(
-    'keeps API error messages and paging retains earlier rows until confirmation',
+    'keeps API errors and publishes a complete retry before explicit confirmation',
     (tester) async {
       var call = 0;
       final nextPage = Completer<Map<String, dynamic>>();
@@ -499,9 +497,17 @@ void main() {
         if (call == 1) throw ApiException('NETWORK', '网络暂时不可用');
         if (query['page'] == 2) return nextPage.future;
         return _page(
-          items: [_item(id: 'first', code: 'MAT-1', name: '首屏物料')],
+          items: [
+            _item(id: 'first', code: 'MAT-1', name: '首屏物料'),
+            for (var index = 1; index < 50; index++)
+              _item(
+                id: 'filler-$index',
+                code: 'MAT-F$index',
+                name: '内部批物料 $index',
+              ),
+          ],
           totalPages: 2,
-          total: 2,
+          total: 51,
         );
       });
       GoodsListItem? selected;
@@ -510,31 +516,45 @@ void main() {
       await _search(tester, 'MAT');
       await tester.pumpAndSettle();
       expect(find.text('网络暂时不可用'), findsWidgets);
-      await tester.tap(find.text('重试').last);
-      await tester.pumpAndSettle();
       final list = find.byKey(const Key('goods-picker-paged-list'));
       final originalElement = tester.element(list);
-      final pointer = TestPointer(1, PointerDeviceKind.mouse);
-      await tester.sendEventToBinding(
-        pointer.hover(tester.getCenter(find.text('首屏物料'))),
-      );
-      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 100)));
-      await tester.pump();
-      await tester.pump();
+      await tester.tap(find.text('重试').last);
+      for (var frame = 0; frame < 200 && api.queries.length < 3; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
       expect(api.queries.map((query) => query['page']), [1, 1, 2]);
-      expect(find.text('首屏物料'), findsOneWidget);
+      expect(api.queries.every((query) => query['size'] == 50), isTrue);
+      expect(nextPage.isCompleted, isFalse);
+      expect(find.text('首屏物料'), findsNothing);
+      expect(
+        tester.widget<MasterDataTableView<GoodsListItem>>(list).items,
+        isEmpty,
+      );
       expect(tester.element(list), same(originalElement));
       nextPage.complete(
         _page(
           items: [_item(id: 'second', code: 'MAT-2', name: '续页物料')],
           page: 2,
           totalPages: 2,
-          total: 2,
+          total: 51,
         ),
       );
       await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<GoodsListItem>>(list);
+      expect(table.items, hasLength(51));
+      expect(table.totalPages, 1);
       expect(find.text('首屏物料'), findsOneWidget);
+      final controller = utenTestTableBodyController(tester, list);
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
       expect(find.text('续页物料'), findsOneWidget);
+      controller.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(
+        api.queries,
+        hasLength(3),
+        reason: 'Complete local scrolling performs no extra read',
+      );
       await tester.tap(_row('first'));
       await tester.pump();
       expect(selected, isNull);

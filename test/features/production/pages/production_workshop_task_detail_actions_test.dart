@@ -1,6 +1,8 @@
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -344,16 +346,11 @@ Finder _action(String action, String segmentId) =>
     find.byKey(ValueKey('workshop-detail-$action-$segmentId'));
 
 void _expectVisibleTaskRefresh(_DetailServer server, String currentStatus) {
-  expect(server.taskQueries, hasLength(4));
-  for (final status in ['PREPARING', 'IN_PROGRESS', 'REPORT_INSPECTION']) {
-    final queries = server.taskQueries
-        .where((query) => query['status'] == status)
-        .toList();
-    expect(queries, hasLength(status == currentStatus ? 2 : 1));
-    for (final query in queries) {
-      expect(query['page'], 1);
-      expect(query['size'], 50);
-    }
+  expect(server.taskQueries, hasLength(2));
+  for (final query in server.taskQueries) {
+    expect(query['status'], currentStatus);
+    expect(query['page'], 1);
+    expect(query['size'], 100);
   }
 }
 
@@ -532,7 +529,7 @@ class _DetailServer {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) async {
-          if (request.path == '/production/daily-reports' &&
+          if (request.path == '/production/daily-reports/draft-claims/query' &&
               draftGate != null) {
             await draftGate!.future;
           }
@@ -543,6 +540,37 @@ class _DetailServer {
             data = productionDrawRequestFixture();
             final lines = (data as Map<String, dynamic>)['lines'] as List;
             (lines.first as Map<String, dynamic>)['demandId'] = 'demand-a';
+          } else if (request.path ==
+              '/production/daily-reports/draft-claims/query') {
+            final body = request.data as Map;
+            expect(
+              body['executionSegmentIds'],
+              tasks.map((task) => task['segmentId']).toList(),
+            );
+            expect(body['page'], 1);
+            expect(body['size'], 100);
+            data = _page([
+              if (claimedQty > 0)
+                {
+                  'id': 'draft-1',
+                  'billNo': 'SR-DRAFT-1',
+                  'status': 0,
+                  'closed': false,
+                  'canceled': false,
+                  'rowVersion': '1',
+                  'draftClaimsVersion': 1,
+                  'draftClaimsFingerprint': sha256
+                      .convert(utf8.encode('draft-1:$claimedQty'))
+                      .toString(),
+                  'draftClaims': [
+                    {
+                      'executionSegmentId': 'a',
+                      'qty': claimedQty.toString(),
+                      'actualSurplus': false,
+                    },
+                  ],
+                },
+            ]);
           } else if (request.method == 'POST') {
             writes.add(request);
             data = <String, dynamic>{};

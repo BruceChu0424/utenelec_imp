@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'finance_requirement_test_ui.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -67,9 +68,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.saves, hasLength(1));
       expect(
-        tester
-            .widget<TextButton>(find.widgetWithText(TextButton, '关闭'))
-            .onPressed,
+        tester.widget<UtenCloseButton>(find.byType(UtenCloseButton)).onPressed,
         isNull,
       );
       expect(

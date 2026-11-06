@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -252,9 +253,7 @@ void main() {
       await t.pump(const Duration(milliseconds: 650));
       await t.pumpAndSettle();
       final close = Future<void>.sync(
-        t
-            .widget<UtenButton>(find.widgetWithText(UtenButton, '关闭').last)
-            .onPressed!,
+        t.widget<UtenCloseButton>(find.byType(UtenCloseButton).last).onPressed!,
       );
       await t.pumpAndSettle();
       await t.tap(find.widgetWithText(FilledButton, '保存草稿'));

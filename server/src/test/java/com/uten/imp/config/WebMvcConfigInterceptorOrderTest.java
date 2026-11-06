@@ -73,6 +73,7 @@ class WebMvcConfigInterceptorOrderTest {
                 "/api/expense-claims/**", "/api/platform-columns/expense_claim/**", "/api/platform-columns/expense_claim_item/**",
                 "/api/finance/asset-opening-groups/summaries", "/api/finance/accounting-imports/summaries",
                 "/api/finance/auxiliary-imports/summaries", "/api/finance/chart/imports/summaries",
+                "/api/finance/expense-analysis/note-imports/summaries",
                 "/api/finance/payable-statement-adjustments", "/api/finance/statement-documents/reviews/*/summary",
                 "/api/finance/statement-documents/reviews/*/original-table");
         org.mockito.Mockito.verify(masterRegistration).addPathPatterns("/api/master/**");

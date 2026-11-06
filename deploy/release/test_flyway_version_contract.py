@@ -59,6 +59,20 @@ class FlywayVersionContractTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CONTRACT._flyway_head_key(value)
 
+    def test_only_the_nine_exact_published_scripts_accept_their_original_history_spelling(self):
+        self.assertEqual(9,len(FIXTURES["legacyHistory"]))
+        self.assertEqual({item["file"] for item in FIXTURES["legacyHistory"]},set(CONTRACT._FLYWAY_LEGACY_INTEGER_SCRIPTS))
+        for item in FIXTURES["legacyHistory"]:
+            with self.subTest(script=item["file"]):
+                expected=CONTRACT._flyway_version_key(item["canonical"])
+                self.assertEqual(expected,CONTRACT._flyway_history_version_key(item["raw"],item["file"]))
+                self.assertEqual(expected,CONTRACT._flyway_history_version_key(item["canonical"],item["file"]))
+                self.assertEqual(item["canonical"],CONTRACT._flyway_wire_version(item["raw"],item["file"]))
+                with self.assertRaises(ValueError): CONTRACT._flyway_version_key(item["raw"])
+                with self.assertRaises(ValueError): CONTRACT._flyway_history_version_key("0"+item["raw"],item["file"])
+        for raw,script in (("01","V01__forged.sql"),("01","V02__departments_positions.sql"),("001","V01__enable_pgcrypto.sql"),("999_1","V999_1__first_decimal.sql")):
+            with self.subTest(raw=raw,script=script),self.assertRaises(ValueError): CONTRACT._flyway_history_version_key(raw,script)
+
 
 if __name__ == "__main__":
     unittest.main()

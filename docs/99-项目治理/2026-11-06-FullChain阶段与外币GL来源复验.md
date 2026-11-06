@@ -24,7 +24,10 @@ FullChain 测试配置关闭库存成本自动 polling，但旧串行驱动在�
 | 第一版公共阶段驱动，原完整 158 | **154 通过、4 失败，0 skip/abort，exit 1**。剩余是品质整数文本、两个直接/并发成本阶段及摘要选择；原失败日志保留。 |
 | v2 重点 5 案 | **5/5，0 skip/abort，native 0**，431.308 秒；品质完整登记/处置/撤回、AR 发货、final-report 重估及两组 prefix 双方向真实并发。 |
 | 最终阶段驱动 + FX 身份定位，原重点 6 案 | **6/6，0 skip/abort，native 0**，559.038 秒；新增外币原完整同案，包含其原回传/反审后半段。 |
+| 最终阶段驱动 + Stock/FQC 已验证生产组合，原完整 158 | **158/158，0 failure/skip/abort，native 0**，2,772.737 秒；V1095/1034 份 SQL，未混入另行验证的 V1099。 |
+| 同组合 StockDraw 原完整 11 | **11/11，0 failure/skip/abort，native 0**，698.764 秒；原 first/replay 采样起止及 479 预算不变，raw480−arrival3−measurement6=471，first 单 commit、replay4。 |
+| 同组合外部调用方完整类 | **MoneyConservation9 + FinishedInboundCostFootprint3，联合12/12、native0**，617.427 秒；shipment.create 仍41/41/41，IQC双方向各152，历史实际耗用、跨仓、撤回及同成本家族原断言通过。 |
 
-最终整体 158 与同一审核提交的远端完整 CI 仍需自然完成，不能由上述不同来源的分范围结果合并宣称全项目通过。
+这些原生结果具有各自明确源码和运行范围；同一审核提交的远端完整 CI 仍需自然完成，不能将本地分范围结果合并宣称全项目通过。
 
-证据保留在 `D:/Projects/uten_imp_worktrees/ci-stock-batch-20261106/build/ci-stock-batch-20261106/`：`closure-diagnostic/` 为原失败及真实 worker 前后态；`world-driver/` 为原完整 158 的第一版阶段驱动；`world-v2/` 为重点 5；`fx-diagnostic/entries.json` 为匿名原单实际 GL 元数据；`world-final/` 为最终源码与重点 6 的原生结果。各次源码副本、旧失败及实际编译日志保留，所选源码 `javac -Werror` 通过。
+证据保留在 `D:/Projects/uten_imp_worktrees/ci-stock-batch-20261106/build/ci-stock-batch-20261106/`：`closure-diagnostic/` 为原失败及真实 worker 前后态；`world-driver/` 为原完整 158 的第一版阶段驱动；`world-v2/` 为重点 5；`fx-diagnostic/entries.json` 为匿名原单实际 GL 元数据；`world-final/` 为最终源码与重点 6；`world-final-whole/` 为最终完整 158；`stock-world-combined/` 为新组合原 11；`helper-callers/` 为外部调用方联合 12。各次源码副本、旧失败及实际编译日志保留，所选源码 `javac -Werror` 通过。

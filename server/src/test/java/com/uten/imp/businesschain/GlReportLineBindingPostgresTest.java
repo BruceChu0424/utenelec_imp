@@ -3,6 +3,7 @@ package com.uten.imp.businesschain;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.gl.GlReportLineBindingService;
 import com.uten.imp.features.finance.gl.GlReportService;
+import com.uten.imp.features.finance.gl.FinanceControlledJournalService;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +16,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,8 +27,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * overhaul-gap-03 真库验收: 总账附表/经营损益表的人工行取已审核工资单、折旧行取固定资产折旧事实,
- * 行与科目/部门的绑定来自配置表; 未配置的行明确标注, 科目改名不影响取数。
+ * 真库验收: 原表行按配置的科目/部门读取可证明的会计来源；人事审核不冒充已入账工资成本。
+ * 折旧/摊销使用与总账对齐的不可变过账事实，同名科目与原表人员/渠道分组分别保留身份。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -49,7 +51,11 @@ class GlReportLineBindingPostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired GlReportService reports;
     @Autowired GlReportLineBindingService bindings;
+    @Autowired com.uten.imp.features.finance.gl.FinanceExpenseAnalysisService analysis;
+    @Autowired FinanceControlledJournalService journals;
+    @Autowired TransactionTemplate transactions;
     FullChainEndToEndTest fixture;
+    private UUID assetPreparer;
 
     @BeforeEach
     void setup() {
@@ -63,73 +69,58 @@ class GlReportLineBindingPostgresTest {
     }
 
     @Test
-    void laborAndDepreciationRowsEqualThePayrollAndDepreciationFacts() {
-        FullChainEndToEndTest.World w = fixture.seedWorld("gl-lines");
+    void bindingsReadPostedAssetFactsAndPayrollApprovalDoesNotInventPostedCost() {
+        var w=fixture.seedWorld("gl-lines");
+        assetPreparer=fixture.seedWorld("gl-lines-preparer").superAdminUserId();
         fixture.loginAs(w.superAdminUserId());
-        String token = UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
-        UUID depreciationStyle = style("GL-DEP-" + token, "设备折旧费用" + token, "EXPENSE");
-        UUID accumulatedStyle = style("GL-ACC-" + token, "累计折旧" + token, "ACCOUNT");
-        postDepreciation(depreciationStyle, accumulatedStyle, token, new BigDecimal("100.0000"));
-        postAmortization(depreciationStyle, accumulatedStyle, new BigDecimal("20.0000"));
-        approvedPayroll(w, new BigDecimal("1000.0000"));
+        String token=UUID.randomUUID().toString().substring(0,8).toUpperCase(java.util.Locale.ROOT);
+        UUID depreciationStyle=style("GL-DEP-"+token,"设备折旧费用"+token,"EXPENSE");
+        UUID amortizationStyle=style("GL-AMORT-"+token,"待摊摊销费用"+token,"EXPENSE");
+        UUID accumulatedStyle=style("GL-ACC-"+token,"累计折旧"+token,"ACCOUNT");
+        postDepreciation(depreciationStyle,accumulatedStyle,token,new BigDecimal("100.0000"));
+        postAmortization(amortizationStyle,accumulatedStyle,new BigDecimal("20.0000"));
+        approvedPayroll(w,new BigDecimal("1000.0000"));
+        bindings.replace("LABOR_DIRECT",List.of());
+        bindings.replace("OP_DEPRECIATION_EQUIPMENT",List.of());
+        var unbound=operating();
+        assertThat(byKey(unbound,"LABOR_DIRECT")).containsEntry("item","直接人员工资");
+        assertThat(byKey(unbound,"LABOR_DIRECT").get("m"+MONTH)).isNull();
+        assertThat(byKey(unbound,"LABOR_DIRECT").get("__basis")).isEqualTo("待配置取数或确认无业务");
+        assertThat(byKey(unbound,"OP_DEPRECIATION_EQUIPMENT").get("m"+MONTH)).isNull();
+        bindings.replace("LABOR_DIRECT",List.of(w.departmentId()));
+        bindings.replace("OP_DEPRECIATION_EQUIPMENT",List.of(depreciationStyle));
+        bindings.replace("MFG_DEPRECIATION",List.of(depreciationStyle));
+        bindings.replace("ADM_OFFICE_AMORT",List.of(amortizationStyle));
+        var pl=operating();
+        // Approval is not the native payroll accrual's immutable GL/source evidence.
+        assertThat(byKey(pl,"LABOR_DIRECT").get("m"+MONTH)).isNull();
+        assertThat(byKey(pl,"LABOR_DIRECT").get("__pending")).isEqualTo(true);
+        assertThat((BigDecimal)byKey(pl,"OP_DEPRECIATION_EQUIPMENT").get("m"+MONTH)).isEqualByComparingTo("100");
+        assertThat(byKey(pl,"OP_LABOR_TOTAL")).containsEntry("sub","工费合计");
+        assertThat(byKey(pl,"OP_LABOR_TOTAL").get("m"+MONTH)).isNull();
+        assertThat(byKey(pl,"OP_ADMIN_TOTAL")).containsEntry("sub","一般管理费合计");
+        assertThat(byKey(pl,"OP_ADMIN_TOTAL").get("m"+MONTH)).isNull();
+        var manufacturing=reports.manufacturingExpense(YEAR);
+        assertThat((BigDecimal)byKey(manufacturing,"MFG_DEPRECIATION").get("m"+MONTH)).isEqualByComparingTo("100");
+        assertThat((BigDecimal)byKey(manufacturing,"MFG_DEPRECIATION").get("m1")).isZero();
+        assertThat((BigDecimal)byKey(reports.adminExpense(YEAR),"ADM_OFFICE_AMORT").get("m"+MONTH)).isEqualByComparingTo("20");
+        assertThat(byKey(manufacturing,"LABOR_INDIRECT").get("m"+MONTH)).isNull();
+        // A deliberately confirmed empty component is known zero, never a guessed absent fact.
+        bindings.replace("OP_MEAL",List.of(),true);
+        assertThat((BigDecimal)byKey(operating(),"OP_MEAL").get("m"+MONTH)).isZero();
+        UUID later=style("GL-DEP2-"+token,"后改的折旧科目"+token,"EXPENSE");
+        jdbc.update("UPDATE finance_asset_books SET expense_style_id=? WHERE expense_style_id=?",later,depreciationStyle);
+        jdbc.update("UPDATE payment_styles SET name=? WHERE id=?","改名后的设备折旧"+token,depreciationStyle);
+        assertThat((BigDecimal)byKey(operating(),"OP_DEPRECIATION_EQUIPMENT").get("m"+MONTH)).isEqualByComparingTo("100");
+        assertThat(bindings.list().stream().filter(line->line.lineKey().equals("OP_DEPRECIATION_EQUIPMENT")).findFirst().orElseThrow().targets())
+                .extracting(GlReportLineBindingService.Target::id).containsExactly(depreciationStyle);
+    }
 
-        // 未绑定前: 行金额为空并明确标注, 不再显示空白。
-        Map<String, Object> unboundLabor = opRow(reports.operatingPl(YEAR, MONTH), "直接人员工资");
-        assertThat(unboundLabor.get("amount")).isNull();
-        assertThat(unboundLabor.get("basis")).isEqualTo("未配置部门");
-        assertThat(opRow(reports.operatingPl(YEAR, MONTH), "设备折旧费").get("basis")).isEqualTo("未配置科目");
-
-        bindings.replace("LABOR_DIRECT", List.of(w.departmentId()));
-        bindings.replace("OP_DEPRECIATION_EQUIPMENT", List.of(depreciationStyle));
-        bindings.replace("MFG_DEPRECIATION", List.of(depreciationStyle));
-
-        ReportTableResponse pl = reports.operatingPl(YEAR, MONTH);
-        assertThat((BigDecimal) opRow(pl, "直接人员工资").get("amount")).isEqualByComparingTo("1000");
-        assertThat((BigDecimal) opRow(pl, "设备折旧费").get("amount")).as("固定资产折旧 100 + 长期待摊摊销 20")
-                .isEqualByComparingTo("120");
-        assertThat((String) opRow(pl, "设备折旧费").get("basis")).contains("设备折旧费用" + token);
-        assertThat(subtotal(pl, "工费合计").get("amount")).as("其余人工/福利行未配置，部分已知不能伪报完整小计").isNull();
-        assertThat(subtotal(pl, "管理费合计").get("amount")).as("其余管理费未配置，部分已知不能伪报完整小计").isNull();
-
-        ReportTableResponse manufacturing = reports.manufacturingExpense(YEAR);
-        assertThat((BigDecimal) pivotRow(manufacturing, "直接人工").get("m" + MONTH)).isEqualByComparingTo("1000");
-        assertThat((BigDecimal) pivotRow(manufacturing, "资产折旧").get("m" + MONTH)).isEqualByComparingTo("120");
-        assertThat((BigDecimal) pivotRow(manufacturing, "资产折旧").get("m1")).as("已配置但当月没有发生额记 0, 不是空")
-                .isEqualByComparingTo("0");
-        assertThat(pivotRow(manufacturing, "间接人工").get("m" + MONTH)).as("未配置的行留空").isNull();
-        assertThat(pivotRow(manufacturing, "间接人工").get("basis")).isEqualTo("未配置部门");
-
-        // Configure every remaining component through the owning binding service. These
-        // distinct departments/styles have no facts, so their amounts are genuinely known 0.
-        UUID emptyDepartment = UUID.randomUUID();
-        jdbc.update("INSERT INTO departments(id,code,name,level) VALUES(?,?,?,'一级部门')",
-                emptyDepartment, "GL-ZERO-" + token, "无工资发生部门" + token);
-        bindings.replace("LABOR_INDIRECT", List.of(emptyDepartment));
-        for (var binding : bindings.list()) {
-            if (binding.lineKey().startsWith("OP_") && binding.targets().isEmpty()) {
-                UUID emptyStyle = style("GL-Z-" + UUID.randomUUID().toString().substring(0, 8),
-                        "无费用发生科目" + binding.lineKey() + token, "EXPENSE");
-                bindings.replace(binding.lineKey(), List.of(emptyStyle));
-            }
-        }
-        ReportTableResponse complete = reports.operatingPl(YEAR, MONTH);
-        assertThat((BigDecimal) opRow(complete, "间接人员工资").get("amount")).isEqualByComparingTo("0");
-        assertThat((BigDecimal) subtotal(complete, "工费合计").get("amount")).as("工费合计包含工资单应发")
-                .isEqualByComparingTo("1000");
-        assertThat((BigDecimal) subtotal(complete, "管理费合计").get("amount")).as("管理费合计包含折旧与摊销")
-                .isEqualByComparingTo("120");
-
-        // 过账后账簿改了折旧费用科目, 历史折旧仍按过账时冻结的科目归行, 与总账发生额一致。
-        UUID laterStyle = style("GL-DEP2-" + token, "后改的折旧科目" + token, "EXPENSE");
-        jdbc.update("UPDATE finance_asset_books SET expense_style_id=? WHERE expense_style_id=?", laterStyle, depreciationStyle);
-        assertThat((BigDecimal) opRow(reports.operatingPl(YEAR, MONTH), "设备折旧费").get("amount"))
-                .isEqualByComparingTo("120");
-
-        // 科目改名后照样取数(按科目主键绑定, 不再按名字猜)。
-        jdbc.update("UPDATE payment_styles SET name=? WHERE id=?", "改名后的设备折旧" + token, depreciationStyle);
-        ReportTableResponse renamed = reports.operatingPl(YEAR, MONTH);
-        assertThat((BigDecimal) opRow(renamed, "设备折旧费").get("amount")).isEqualByComparingTo("120");
-        assertThat((String) opRow(renamed, "设备折旧费").get("basis")).contains("改名后的设备折旧" + token);
+    private ReportTableResponse operating() {
+        return reports.operatingPlPage(YEAR,MONTH,1,500);
+    }
+    private static Map<String,Object> byKey(ReportTableResponse report,String key) {
+        return report.rows().stream().filter(row->key.equals(row.get("__lineKey"))).findFirst().orElseThrow();
     }
 
     @Test
@@ -192,12 +183,32 @@ class GlReportLineBindingPostgresTest {
         post(first, "5.0000", java.time.LocalDate.of(YEAR, MONTH, 15));
         post(second, "7.0000", java.time.LocalDate.of(YEAR, MONTH, 2));
 
-        ReportTableResponse sales = reports.salesExpense(YEAR);
-        Map<String, Object> firstRow = opRow(sales, name + " (GL-SF-A-" + token + ")");
-        Map<String, Object> secondRow = opRow(sales, name + " (GL-SF-B-" + token + ")");
-        assertThat((BigDecimal) firstRow.get("m" + MONTH)).isEqualByComparingTo("15");
-        assertThat((BigDecimal) secondRow.get("m" + MONTH)).isEqualByComparingTo("7");
-        assertThat((BigDecimal) firstRow.get("m1")).as("已配置科目当月无发生额记 0").isEqualByComparingTo("0");
+        var sources=analysis.entries(PERIOD,1,100,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        var matching=sources.rows().stream().filter(row->name.equals(row.get("styleName"))).toList();
+        assertThat(matching).hasSize(3);
+        for(var expected:List.of(new Object[]{first,"GL-SF-A-"+token,"15"},new Object[]{second,"GL-SF-B-"+token,"7"})) {
+            BigDecimal sum=matching.stream().filter(row->expected[1].equals(row.get("styleCode")))
+                    .map(row->(BigDecimal)row.get("amount")).reduce(BigDecimal.ZERO,BigDecimal::add);
+            assertThat(sum).isEqualByComparingTo(expected[2].toString());
+        }
+        // The original sales sheet groups actual employees/channels and fee classes.
+        // Its presentation must not invent rows grouped by the expense account label.
+        var before=reports.salesExpense(YEAR);
+        assertThat(before.rows()).noneMatch(row->name.equals(row.get("item")));
+        UUID firstGroup=UUID.randomUUID(),secondGroup=UUID.randomUUID();
+        analysis.saveGroup(new com.uten.imp.features.finance.gl.FinanceExpenseAnalysisContracts.GroupInput(firstGroup,PERIOD,-1,"渠道A"+token,null,"DOMESTIC","0",true,true,"测试原表渠道A核对",1));
+        analysis.saveGroup(new com.uten.imp.features.finance.gl.FinanceExpenseAnalysisContracts.GroupInput(secondGroup,PERIOD,-1,"渠道B"+token,null,"FOREIGN","0",true,true,"测试原表渠道B核对",2));
+        for(var row:matching) {
+            UUID id=UUID.fromString(row.get("entryId").toString());
+            var source=analysis.entry(id);
+            UUID group=("GL-SF-A-"+token).equals(row.get("styleCode"))?firstGroup:secondGroup;
+            analysis.assign(new com.uten.imp.features.finance.gl.FinanceExpenseAnalysisContracts.AssignmentInput(id,source.get("sourceFingerprint").toString(),-1,
+                    List.of(new com.uten.imp.features.finance.gl.FinanceExpenseAnalysisContracts.Allocation(group,"FREIGHT",null,((BigDecimal)row.get("amount")).toPlainString())),"测试原表费用分录完整核对"));
+        }
+        var sales=reports.salesExpense(YEAR);
+        assertThat((BigDecimal)byKey(sales,firstGroup.toString()).get("FREIGHT")).isEqualByComparingTo("15");
+        assertThat((BigDecimal)byKey(sales,secondGroup.toString()).get("FREIGHT")).isEqualByComparingTo("7");
+        assertThat((BigDecimal)byKey(sales,"SALES_TOTAL_"+MONTH).get("expenseTotal")).isEqualByComparingTo("22");
 
         Map<String, Object> profitRow = opRow(reports.profitAnnual(YEAR), "销售费用");
         assertThat((BigDecimal) profitRow.get("m" + MONTH)).as("利润表销售费用 = 两个同名科目合计")
@@ -340,13 +351,15 @@ class GlReportLineBindingPostgresTest {
                 INSERT INTO finance_asset_posting_lines(id,run_id,object_type,fixed_asset_id,asset_book_id,sequence,period,
                     opening_balance,amount,accumulated_amount,closing_balance,expense_style_id,accumulated_style_id,
                     calculation_snapshot,status,line_kind)
-                VALUES(?,?,'FIXED_ASSET',?,?,1,?,1200,?,?,1200-?,?,?,'{}'::jsonb,'POSTED','NORMAL')
+                VALUES(?,?,'FIXED_ASSET',?,?,1,?,1200,?,?,1200-?,?,?,'{}'::jsonb,'INCLUDED','NORMAL')
                 """, line, run, asset, book, PERIOD, amount, amount, amount, expenseStyle, accumulatedStyle);
+        UUID voucher = assetGl(run, amount, expenseStyle, accumulatedStyle, "FA_DEP");
         jdbc.update("""
                 INSERT INTO fa_depreciation_log(asset_id,period,amount,asset_book_id,posting_run_id,posting_line_id,
-                    sequence,opening_balance,accumulated_amount,closing_balance,entry_kind,status,calculation_snapshot)
-                VALUES(?,?,?,?,?,?,1,1200,?,1200-?,'NORMAL','ACTIVE','{}'::jsonb)
-                """, asset, PERIOD, amount, book, run, line, amount, amount);
+                    sequence,opening_balance,accumulated_amount,closing_balance,entry_kind,status,calculation_snapshot,voucher_id)
+                VALUES(?,?,?,?,?,?,1,1200,?,1200-?,'NORMAL','ACTIVE','{}'::jsonb,?)
+                """, asset, PERIOD, amount, book, run, line, amount, amount, voucher);
+        finishAssetRun(line, run, voucher);
     }
 
     /** 一笔已过账的长期待摊正常摊销(公司账簿), 过账明细冻结摊销费用科目。 */
@@ -381,14 +394,35 @@ class GlReportLineBindingPostgresTest {
                 INSERT INTO finance_asset_posting_lines(id,run_id,object_type,deferred_expense_id,schedule_version_id,
                     schedule_line_id,sequence,period,opening_balance,amount,accumulated_amount,closing_balance,
                     expense_style_id,cost_style_id,calculation_snapshot,status,line_kind)
-                VALUES(?,?,'DEFERRED_EXPENSE',?,?,?,1,?,1200,?,?,1200-?,?,?,'{}'::jsonb,'POSTED','NORMAL')
+                VALUES(?,?,'DEFERRED_EXPENSE',?,?,?,1,?,1200,?,?,1200-?,?,?,'{}'::jsonb,'INCLUDED','NORMAL')
                 """, line, run, deferred, version, scheduleLine, PERIOD, amount, amount, amount, expenseStyle, accountStyle);
+        UUID voucher = assetGl(run, amount, expenseStyle, accountStyle, "DA_AMT");
         jdbc.update("""
                 INSERT INTO da_amortization_log(deferred_id,period,amount,schedule_version_id,schedule_line_id,
                     posting_run_id,posting_line_id,sequence,opening_balance,accumulated_amount,closing_balance,
-                    entry_kind,status,calculation_snapshot)
-                VALUES(?,?,?,?,?,?,?,1,1200,?,1200-?,'NORMAL','ACTIVE','{}'::jsonb)
-                """, deferred, PERIOD, amount, version, scheduleLine, run, line, amount, amount);
+                    entry_kind,status,calculation_snapshot,voucher_id)
+                VALUES(?,?,?,?,?,?,?,1,1200,?,1200-?,'NORMAL','ACTIVE','{}'::jsonb,?)
+                """, deferred, PERIOD, amount, version, scheduleLine, run, line, amount, amount, voucher);
+        finishAssetRun(line, run, voucher);
+    }
+
+    private UUID assetGl(UUID run, BigDecimal amount, UUID expense, UUID account, String type) {
+        UUID actor = beans.getBean(com.uten.imp.security.SecurityContextCurrentUser.class).requireId();
+        assertThat(actor).isNotEqualTo(assetPreparer);
+        return transactions.execute(status -> journals.post("GL-ASSET-" + run,
+                java.time.LocalDate.of(YEAR, MONTH, 30), type, run, "POSTING_RUN", "报表过账来源验收",
+                List.of(new FinanceControlledJournalService.Entry(expense, 1, amount, "费用来源"),
+                        new FinanceControlledJournalService.Entry(account, -1, amount, "对方来源")), actor)
+                .voucherId());
+    }
+
+    private void finishAssetRun(UUID line, UUID run, UUID voucher) {
+        UUID poster=beans.getBean(com.uten.imp.security.SecurityContextCurrentUser.class).requireId();
+        assertThat(poster).isNotEqualTo(assetPreparer);
+        // The production posting service inserts the immutable ledger fact with its
+        // voucher reference already present, then finalizes the line and run.
+        jdbc.update("UPDATE finance_asset_posting_lines SET voucher_id=?,status='POSTED' WHERE id=? AND status='INCLUDED'",voucher,line);
+        jdbc.update("UPDATE finance_asset_posting_runs SET voucher_id=?,status='POSTED',submitted_at=now(),submitted_by=?,approved_at=now(),approved_by=?,posted_at=now(),posted_by=? WHERE id=?",voucher,assetPreparer,poster,poster,run);
     }
 
     /** 一张已审核的部门工资单(应发 gross)。 */

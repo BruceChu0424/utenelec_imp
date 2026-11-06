@@ -792,11 +792,7 @@ class _FinanceDurableCommandDialogState
     if (_sent != null && formDraftHasUnknownSubmission) {
       setState(() => _busy = true);
       try {
-        await UtenBusyOverlay.run(
-          context,
-          title: '正在保留原请求',
-          action: saveFormDraftNow,
-        );
+        if (!await saveFormDraftBeforeExit(title: '正在保留原请求')) return;
         if (mounted && formDraftIdentityIsCurrent) Navigator.pop(context);
       } catch (error) {
         if (mounted) setState(() => _error = describeFormSaveError(error));

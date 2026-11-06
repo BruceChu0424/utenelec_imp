@@ -694,11 +694,7 @@ class _ChartImportState extends ConsumerState<FinanceChartImportWorkbench>
     if (_pending != null || _upload != null && _previewId == null) {
       setState(() => _busy = true);
       try {
-        await UtenBusyOverlay.run(
-          context,
-          title: '正在保留原导入资料',
-          action: saveFormDraftNow,
-        );
+        if (!await saveFormDraftBeforeExit(title: '正在保留原导入资料')) return;
         if (mounted) {
           Navigator.pop(context, _changed);
         }

@@ -496,8 +496,18 @@ class _FinanceDocumentReviewCommandState
   Future<void> _close() async {
     if (_busy || _menu) return;
     if (_intent != null) {
-      await saveFormDraftNow();
-      if (mounted) Navigator.pop(context);
+      try {
+        if (await saveFormDraftBeforeExit() && mounted) Navigator.pop(context);
+      } catch (error) {
+        if (mounted && formDraftIdentityIsCurrent) {
+          setState(
+            () => _error = describeSubmitError(
+              error,
+              fallback: '原请求尚未保存，请保留当前窗口',
+            ),
+          );
+        }
+      }
     } else if (await confirmFormDraftExit() && mounted) {
       Navigator.pop(context);
     }

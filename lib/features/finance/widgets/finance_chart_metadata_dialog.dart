@@ -391,7 +391,7 @@ class _ChartMetadataDialogState extends ConsumerState<_ChartMetadataDialog>
     if (_busy || _recoveryMenuOpen) return;
     if (_sent != null) {
       try {
-        await saveFormDraftNow();
+        if (!await saveFormDraftBeforeExit()) return;
         if (mounted && formDraftIdentityIsCurrent) {
           Navigator.pop(context, false);
         }

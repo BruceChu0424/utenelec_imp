@@ -798,7 +798,7 @@ class _SettingsEditorState extends ConsumerState<_SettingsEditor>
     if (_busy || _recoveryMenuOpen || _confirming) return;
     if (_sent != null) {
       try {
-        await saveFormDraftNow();
+        if (!await saveFormDraftBeforeExit()) return;
         if (mounted && formDraftIdentityIsCurrent) Navigator.pop(context);
       } catch (error) {
         if (mounted) context.appApiError(error, fallback: '原设置请求尚未保存，请保留当前窗口');

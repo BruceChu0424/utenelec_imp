@@ -112,6 +112,10 @@ class _WorkshopRequestPickerSource extends UtenGoodsPickerDataSource {
       size: result.size,
       total: result.total,
       totalPages: result.totalPages,
+      totals: result.totals,
+      facets: result.facets,
+      facetNullCounts: result.facetNullCounts,
+      readScopeVersion: result.readScopeVersion,
     );
   }
 
@@ -256,6 +260,7 @@ class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
       final workshop = widget.workshopId;
       final result = await readScopedPage<WmMaterialOption>(
         page,
+        idOf: (material) => material.key,
         query: [repository, workshop, keyword, boundary],
         currentQuery: () => [
           ref.read(workshopMaterialRepositoryProvider),

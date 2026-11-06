@@ -3,6 +3,8 @@
 // 批量新增 21 台; 勾选多行改容量一格批量生效 (看到的勾选 = 提交的内容);
 // 上线准备按克输入、异常单重二次确认、与货品资料单重差 20% 标黄;
 // "勾选行用货品资料单重填入"只填空着的行并标黄。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,18 +12,22 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/formatters/exact_number_text.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_setup_page.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_machines_tab.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_prep_tab.dart';
+import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_summary_table.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/paging/versioned_summary_read.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'workshop_material_test_support.dart';
@@ -33,11 +39,40 @@ class _StubSession extends SessionNotifier {
 
 class _SetupRepository extends FakeWorkshopMaterialRepository {
   int preparationReads = 0;
+  int legacyPreparationReads = 0;
+  Completer<List<WmPreparationRow>>? delayedProduct;
 
   @override
   Future<WmPreparation> preparation(String workshopId) {
-    preparationReads++;
+    legacyPreparationReads++;
     return super.preparation(workshopId);
+  }
+
+  @override
+  Future<VersionedSummarySnapshot<Map<String, dynamic>>> preparationSummaries(
+    String workshopId, {
+    required bool Function() isCurrent,
+  }) {
+    preparationReads++;
+    return super.preparationSummaries(workshopId, isCurrent: isCurrent);
+  }
+
+  @override
+  Future<List<WmPreparationRow>> preparationProduct(
+    String workshopId,
+    String productId, {
+    required VersionedSummarySnapshot<Map<String, dynamic>> summary,
+    required bool Function() isCurrent,
+  }) async {
+    final rows = await super.preparationProduct(
+      workshopId,
+      productId,
+      summary: summary,
+      isCurrent: isCurrent,
+    );
+    final delayed = delayedProduct;
+    delayedProduct = null;
+    return delayed?.future ?? rows;
   }
 }
 
@@ -82,6 +117,7 @@ Future<ProviderContainer> _pumpSetupPage(
     ),
   );
   await tester.pumpAndSettle();
+  if (repo is _SetupRepository) expect(repo.legacyPreparationReads, 0);
   return container;
 }
 
@@ -164,6 +200,21 @@ Future<void> _openTab(WidgetTester tester, String label) async {
     ),
   );
   await tester.pumpAndSettle();
+  if (label == '上线准备') {
+    final summary = tester.widget<WmProductSummaryTable>(
+      find.byType(WmProductSummaryTable),
+    );
+    for (final row in summary.items) {
+      final open = find.byKey(
+        ValueKey('wm-summary-open-${row['productGoodsId']}'),
+      );
+      await tester.ensureVisible(open);
+      await tester.pumpAndSettle();
+      expect(open.hitTestable(), findsOneWidget);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+    }
+  }
 }
 
 /// 行首勾选框 (表头全选是三态框, 这里只取行上的)。
@@ -174,6 +225,129 @@ TextEditingController _controller(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(Key(key))).controller!;
 
 void main() {
+  testWidgets('201项完整准备摘要滚动零读取，明确打开才取得整个产品组', (tester) async {
+    final repo = _repo();
+    final sources = [
+      for (var index = 0; index < 201; index++)
+        WmPreparationRow(
+          productGoodsId: 'large-$index',
+          productCode: 'L-$index',
+          productName: '大清单产品$index',
+          bomItemId: 'bom-$index',
+          materialGoodsId: 'pp',
+          unitWeightGrams: 1,
+          status: 'WEIGHED',
+        ),
+      const WmPreparationRow(
+        productGoodsId: 'large-200',
+        productCode: 'L-200',
+        productName: '大清单产品200',
+        bomItemId: 'bom-extra-200',
+        materialGoodsId: 'pe',
+        materialName: 'PE 颗粒',
+        unitWeightGrams: 2,
+        status: 'WEIGHED',
+      ),
+    ];
+    repo.preparationByWorkshop = {'w1': WmPreparation(rows: sources)};
+    repo.materialsByWorkshop = {
+      'w1': [
+        wmTestPp,
+        const WmMaterialOption(
+          goodsId: 'pe',
+          goodsName: 'PE 颗粒',
+          unitName: 'g',
+        ),
+      ],
+    };
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(initialTab: 'prep'),
+      repo: repo,
+      size: const Size(1600, 1000),
+    );
+    final summary = find.byType(WmProductSummaryTable);
+    final tableFinder = find.descendant(
+      of: summary,
+      matching: find.byType(MasterDataTableView<Map<String, dynamic>>),
+    );
+    MasterDataTableView<Map<String, dynamic>> table() =>
+        tester.widget(tableFinder);
+    expect(table().items, hasLength(201));
+    expect(repo.preparationReads, 1);
+    expect(repo.preparationProductReads, isEmpty);
+    expect(repo.preparationCatalogReads, isEmpty);
+    expect(find.byKey(const Key('wm-prep-grid')), findsNothing);
+    final items = table().items, columns = table().columns;
+    final open = find.byKey(const ValueKey('wm-summary-open-large-200'));
+    await tester.dragUntilVisible(open, tableFinder, const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(open.hitTestable(), findsOneWidget);
+    expect(table().items, same(items));
+    expect(table().columns, same(columns));
+    expect(repo.preparationSummaryReads, ['w1']);
+    expect(repo.preparationProductReads, isEmpty);
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    final grid = tester.widget<UtenEditableGrid<WmPrepRow>>(
+      find.byKey(const Key('wm-prep-grid')),
+    );
+    expect(grid.controller.rows, hasLength(2));
+    expect(grid.controller.rows.first.source, same(sources[200]));
+    expect(grid.controller.rows.last.source, same(sources.last));
+    expect(repo.preparationProductReads.map((read) => read.product), [
+      'large-200',
+    ]);
+    expect(repo.preparationCatalogReads, ['w1']);
+    expect(repo.preparationSaves, isEmpty);
+    expect(repo.legacyPreparationReads, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('准备明细迟到且撤权再授不能重置新编辑输入或继续旧目录读取', (tester) async {
+    final grants = StateProvider<Set<String>>(
+      (_) => {Perm.workshopMaterialSetup, Perm.goodsView},
+    );
+    final delayed = Completer<List<WmPreparationRow>>();
+    final repo = _repo()..delayedProduct = delayed;
+    final container = await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(initialTab: 'prep'),
+      repo: repo,
+      livePermissions: grants,
+      size: const Size(1600, 1000),
+    );
+    await tester.tap(find.byKey(const ValueKey('wm-summary-open-P1')));
+    for (
+      var frame = 0;
+      frame < 30 && repo.preparationProductReads.isEmpty;
+      frame++
+    ) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(repo.preparationProductReads, hasLength(1));
+    container.read(grants.notifier).state = {Perm.workshopMaterialSetup};
+    await tester.pumpAndSettle();
+    expect(find.byType(WmPrepTab), findsNothing);
+    expect(repo.preparationCatalogReads, isEmpty);
+    container.read(grants.notifier).state = {
+      Perm.workshopMaterialSetup,
+      Perm.goodsView,
+    };
+    await tester.pumpAndSettle();
+    await _openTab(tester, '上线准备');
+    final controller = _controller(tester, 'wm-prep-grams-P1');
+    controller.text = '12.3400';
+    delayed.complete([repo.preparationByWorkshop['w1']!.rows.first]);
+    await tester.pumpAndSettle();
+    expect(_controller(tester, 'wm-prep-grams-P1'), same(controller));
+    expect(controller.text, '12.3400');
+    expect(repo.preparationProductReads, hasLength(4));
+    expect(repo.preparationCatalogReads, ['w1']);
+    expect(repo.preparationSaves, isEmpty);
+    expect(repo.legacyPreparationReads, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('仅设置权限只有机台页签，隐藏上线准备且不读取产品资料; 不再有车间开启页签', (tester) async {
     final repo = _repo();
     await _pumpSetupPage(
@@ -363,7 +537,25 @@ void main() {
       expect(grams.exactListenableOf!(row), same(row.grams));
       row.grams.text = '1.23456789';
       expect(grams.exactValueOf!(row), '1.23456789');
-      expect(reference.exactValueOf!(row), '12.0');
+      // An immutable double has no contractual trailing-zero scale: Web gives
+      // 12, VM gives 12.0. Preserve its exact numeric value without rounding.
+      expect(exactNumberDisplay(reference.exactValueOf!(row)), '12');
+      final precise = WmPrepRow(
+        const WmPreparationRow(
+          productGoodsId: 'precise',
+          goodsWeightGrams: 0.123456789012345,
+        ),
+      );
+      final missing = WmPrepRow(
+        const WmPreparationRow(productGoodsId: 'missing'),
+      );
+      addTearDown(precise.dispose);
+      addTearDown(missing.dispose);
+      expect(
+        exactNumberDisplay(reference.exactValueOf!(precise)),
+        '0.123456789012345',
+      );
+      expect(reference.exactValueOf!(missing), isNull);
       row.grams.clear();
       expect(grams.exactValueOf!(row), isEmpty);
       expect(row.source.unitWeightGrams, isNull);
@@ -475,7 +667,7 @@ void main() {
     expect(emptyWeight.controller!.text, isEmpty);
     expect(emptyWeight.decoration?.hintText, '单个重量 (克)');
     expect(emptyWeight.decoration?.suffixText, 'g');
-    expect(find.text('常做的 3 个产品, 已选料 1 个, 已填单重 1 个'), findsOneWidget);
+    expect(find.text('常做的 3 个产品, 已选料 2 个, 已填单重 1 个'), findsOneWidget);
     // P2 单重 5 克, 货品资料 8 克, 差 37.5% → 标黄。
     expect(find.byKey(const Key('wm-prep-flag-P2')), findsOneWidget);
     expect(find.byKey(const Key('wm-prep-flag-P1')), findsNothing);

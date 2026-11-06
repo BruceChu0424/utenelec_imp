@@ -12,12 +12,14 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_source_warehouse_option.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/paging/versioned_summary_read.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -56,6 +58,11 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   Map<String, WmCount> countById = const {};
   Map<String, List<WmMachine>> machinesByWorkshop = const {};
   Map<String, WmPreparation> preparationByWorkshop = const {};
+  int preparationVersion = 1;
+  final preparationSummaryReads = <String>[];
+  final preparationProductReads =
+      <({String workshop, String product, String revision})>[];
+  final preparationCatalogReads = <String>[];
   Map<String, WmRequisition> requisitionById = const {};
 
   // ------------------------------------------------------------ 可注入的失败
@@ -434,6 +441,104 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   @override
   Future<WmPreparation> preparation(String workshopId) async =>
       preparationByWorkshop[workshopId] ?? const WmPreparation(rows: []);
+
+  VersionedSummarySnapshot<T> _preparationSnapshot<T>(
+    String workshopId,
+    String kind,
+    List<T> rows,
+  ) => VersionedSummarySnapshot(
+    page: PagedResult(
+      items: freezePagedRows(rows),
+      page: 1,
+      size: rows.length,
+      total: rows.length,
+      totalPages: rows.isEmpty ? 0 : 1,
+      readScopeVersion: 'fixture:$workshopId:$kind:authority',
+    ),
+    revision: 'fixture:$workshopId:$kind:$preparationVersion',
+    readScopeVersion: 'fixture:$workshopId:$kind:authority',
+    dataVersion: 'preparation-data-$preparationVersion',
+    metadata: const {'windowAsOf': '2026-11-06T00:00:00Z'},
+  );
+
+  @override
+  Future<VersionedSummarySnapshot<Map<String, dynamic>>> preparationSummaries(
+    String workshopId, {
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) throw const UiWorkCancelled();
+    preparationSummaryReads.add(workshopId);
+    final products = <String, Map<String, dynamic>>{};
+    for (final row
+        in preparationByWorkshop[workshopId]?.rows ??
+            const <WmPreparationRow>[]) {
+      products.putIfAbsent(
+        row.productGoodsId,
+        () => {
+          'productGoodsId': row.productGoodsId,
+          'productCode': row.productCode,
+          'productName': row.productName,
+          'productSpec': row.productSpec,
+          'legacyMaterial': row.legacyMaterial,
+          'recentRuns': row.recentRuns,
+          'status': row.status,
+        },
+      );
+    }
+    return _preparationSnapshot(
+      workshopId,
+      'preparation',
+      products.values.toList(),
+    );
+  }
+
+  @override
+  Future<List<WmPreparationRow>> preparationProduct(
+    String workshopId,
+    String productId, {
+    required VersionedSummarySnapshot<Map<String, dynamic>> summary,
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) throw const UiWorkCancelled();
+    final expected = _preparationSnapshot<Map<String, dynamic>>(
+      workshopId,
+      'preparation',
+      const [],
+    );
+    if (summary.revision != expected.revision ||
+        summary.readScopeVersion != expected.readScopeVersion ||
+        summary.dataVersion != expected.dataVersion ||
+        summary.metadata['windowAsOf'] != expected.metadata['windowAsOf']) {
+      throw ApiException('SNAPSHOT_CHANGED', '准备明细读取凭据已变化');
+    }
+    preparationProductReads.add((
+      workshop: workshopId,
+      product: productId,
+      revision: summary.revision,
+    ));
+    final rows = [
+      for (final row
+          in preparationByWorkshop[workshopId]?.rows ??
+              const <WmPreparationRow>[])
+        if (row.productGoodsId == productId) row,
+    ];
+    if (rows.isEmpty) throw ApiException('INCOMPLETE_READ', '产品准备明细不完整');
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<VersionedSummarySnapshot<WmMaterialOption>> preparationMaterialCatalog(
+    String workshopId, {
+    required bool Function() isCurrent,
+  }) async {
+    if (!isCurrent()) throw const UiWorkCancelled();
+    preparationCatalogReads.add(workshopId);
+    final rows = materialsByWorkshop.containsKey(workshopId)
+        ? materialsByWorkshop[workshopId]!
+        : preparationByWorkshop[workshopId]?.materials ??
+              const <WmMaterialOption>[];
+    return _preparationSnapshot(workshopId, 'material-options', rows);
+  }
 
   @override
   Future<List<String>> savePreparation(

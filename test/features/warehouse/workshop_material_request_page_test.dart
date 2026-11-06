@@ -10,6 +10,8 @@ import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_request_dialog.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart';
@@ -65,7 +67,7 @@ class _RequestRepo extends FakeWorkshopMaterialRepository {
     int page = 1,
     int size = 50,
   }) async {
-    expect(workshopId, 'w1');
+    expectSync(workshopId, 'w1');
     calls.add((keyword: keyword, page: page, goodsIds: goodsIds));
     if (pagedResponse != null) return pagedResponse!(page);
     if (keyword == '失败搜索') throw ApiException('FORBIDDEN', '申请范围已变化');
@@ -126,6 +128,108 @@ Future<void> _search(WidgetTester tester, String keyword) async {
 }
 
 void main() {
+  for (final multi in [false, true]) {
+    for (final defect in ['duplicate identity', 'scope drift']) {
+      testWidgets(
+        'complete workshop candidates reject $defect (multi=$multi)',
+        (tester) async {
+          var defective = true;
+          final repo = _RequestRepo()
+            ..pagedResponse = (page) async => PagedResult(
+              items: [
+                page == 1 || (defective && defect == 'duplicate identity')
+                    ? _raw
+                    : _later,
+              ],
+              page: page,
+              size: 1,
+              total: 2,
+              totalPages: 2,
+              readScopeVersion:
+                  defective && defect == 'scope drift' && page == 2
+                  ? 'request-v2'
+                  : 'request-v1',
+            );
+          final selected = <List<WmMaterialOption>>[];
+          await pumpWorkshopMaterialPage(
+            tester,
+            multi
+                ? Consumer(
+                    builder: (context, ref, _) => Scaffold(
+                      body: TextButton(
+                        onPressed: () async => selected.add(
+                          await showWorkshopRequestMaterialPickerMulti(
+                            context,
+                            ref,
+                            workshopId: 'w1',
+                            workshopName: '注塑车间',
+                          ),
+                        ),
+                        child: const Text('打开物料'),
+                      ),
+                    ),
+                  )
+                : _pickerButton((value) => selected.add([?value])),
+            repo: repo,
+          );
+          await tester.tap(find.text('打开物料'));
+          await tester.pumpAndSettle();
+          if (multi) {
+            final tree = find.byType(UtenCategoryTreeView<ProductCategoryNode>);
+            if (!tester.any(tree)) {
+              await tester.tap(find.byIcon(Icons.account_tree_rounded));
+              await tester.pumpAndSettle();
+            }
+            await tester.tap(
+              find.descendant(of: tree, matching: find.text('物料')),
+            );
+            await tester.pumpAndSettle();
+          }
+          MasterDataTableView<dynamic> table() => tester.widget(
+            find.byWidgetPredicate(
+              (widget) => widget is MasterDataTableView<dynamic>,
+            ),
+          );
+          expect(table().items, isEmpty);
+          expect(table().error, isNotNull);
+          final confirm = find.byKey(
+            Key(
+              multi
+                  ? 'goods-picker-multi-confirm'
+                  : 'wm-request-material-confirm',
+            ),
+          );
+          expect(tester.widget<UtenButton>(confirm).onPressed, isNull);
+          expect(selected, isEmpty);
+          defective = false;
+          table().onRetry!();
+          await tester.pumpAndSettle();
+          expect(
+            table().items,
+            hasLength(2),
+            reason: 'retry error=${table().error}; calls=${repo.calls}',
+          );
+          expect(table().error, isNull);
+          await tester.tap(
+            find.byKey(
+              ValueKey(
+                multi
+                    ? 'goods-picker-item-raw|white'
+                    : 'wm-request-material-raw|white',
+              ),
+            ),
+          );
+          await tester.pump();
+          await tester.tap(confirm);
+          await tester.pumpAndSettle();
+          expect(selected.single.single, same(_raw));
+          expect(repo.strictReads, 0);
+          expect(repo.submits, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
   testWidgets('没有整批材料配置也能搜索首次原料，按其克单位直接申请', (tester) async {
     final repo = _RequestRepo();
     await pumpWorkshopMaterialPage(
@@ -370,26 +474,41 @@ void main() {
     );
   });
 
-  for (final paging in ['append', 'jump', 'failure']) {
-    testWidgets('申请物料暂选随分页候选窗口校验：$paging', (tester) async {
-      final nextPage = Completer<PagedResult<WmMaterialOption>>();
-      final repo = _RequestRepo()
-        ..pagedResponse = (page) async => page == 2
-            ? nextPage.future
-            : PagedResult(
-                items: [
-                  _raw,
-                  for (var index = 1; index < 30; index++)
-                    WmMaterialOption(
-                      goodsId: 'first-$index',
-                      goodsName: '候选原料 $index',
-                    ),
-                ],
-                page: 1,
-                size: 30,
-                total: 31,
-                totalPages: 2,
-              );
+  for (final scenario in ['refresh', 'scope change', 'forbidden']) {
+    testWidgets('申请物料完整候选维护原暂选与读取退休：$scenario', (tester) async {
+      final repo = _RequestRepo();
+      Completer<PagedResult<WmMaterialOption>>? held;
+      PagedResult<WmMaterialOption> response(int page) => PagedResult(
+        items: page == 1
+            ? [
+                _raw,
+                for (var index = 1; index < 30; index++)
+                  WmMaterialOption(
+                    goodsId: 'first-$index',
+                    goodsName: '候选原料 $index',
+                  ),
+              ]
+            : [_later],
+        page: page,
+        size: 30,
+        total: 31,
+        totalPages: 2,
+        readScopeVersion: 'request-v1',
+      );
+      repo.pagedResponse = (page) async {
+        if (repo.calls.last.keyword == '新搜索') {
+          return const PagedResult(
+            items: [_later],
+            page: 1,
+            size: 30,
+            total: 1,
+            totalPages: 1,
+            readScopeVersion: 'request-new-query',
+          );
+        }
+        if (page == 2 && held != null) return held.future;
+        return response(page);
+      };
       final results = <WmMaterialOption?>[];
       await pumpWorkshopMaterialPage(
         tester,
@@ -398,69 +517,106 @@ void main() {
       );
       await tester.tap(find.text('打开物料'));
       await tester.pumpAndSettle();
+      final tableFinder = find.byType(MasterDataTableView<WmMaterialOption>);
+      MasterDataTableView<WmMaterialOption> table() =>
+          tester.widget(tableFinder);
+      expect(table().items, hasLength(31));
+      expect(repo.calls.map((call) => call.page), [1, 2]);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       await tester.tap(
         find.byKey(const ValueKey('wm-request-material-raw|white')),
       );
       await tester.pumpAndSettle();
-      final rows = tester
-          .widget<MasterDataTableView<WmMaterialOption>>(
-            find.byType(MasterDataTableView<WmMaterialOption>),
-          )
-          .rowsController!;
-      if (paging == 'jump') {
-        rows.goToPage(2);
-      } else {
-        unawaited(rows.loadNextPage());
+      final previousRows = table().items;
+      final beforeRefresh = repo.calls.length;
+      held = Completer<PagedResult<WmMaterialOption>>();
+      table().onRetry!();
+      for (
+        var frame = 0;
+        frame < 30 && repo.calls.length < beforeRefresh + 2;
+        frame++
+      ) {
+        await tester.pump(const Duration(milliseconds: 16));
       }
-      await tester.pump();
-      expect(repo.calls.last.page, 2);
+      expect(repo.calls.skip(beforeRefresh).map((call) => call.page), [1, 2]);
+      expect(table().items, same(previousRows));
+      final confirm = find.byKey(const Key('wm-request-material-confirm'));
       expect(
         tester
-            .widget<UtenButton>(
-              find.byKey(const Key('wm-request-material-confirm')),
-            )
-            .onPressed,
-        isNull,
+            .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+            .selectedCount,
+        1,
       );
+      expect(tester.widget<UtenButton>(confirm).onPressed, isNull);
       expect(results, isEmpty);
-      if (paging == 'failure') {
-        nextPage.completeError(ApiException('FORBIDDEN', '候选范围已变化'));
-      } else {
-        nextPage.complete(
-          const PagedResult(
-            items: [_later],
-            page: 2,
-            size: 30,
-            total: 31,
-            totalPages: 2,
-          ),
-        );
-      }
-      await tester.pumpAndSettle();
-      final bar = tester.widget<UtenPickerConfirmBar>(
-        find.byType(UtenPickerConfirmBar),
-      );
-      if (paging == 'append') {
-        expect(
-          rows.items.map((row) => row.key),
-          containsAll(['raw|white', 'later|']),
-        );
-        expect(bar.selectedCount, 1);
-        await tester.tap(find.byKey(const Key('wm-request-material-confirm')));
-        await tester.pumpAndSettle();
-        expect(results.single?.key, _raw.key);
-      } else {
-        expect(bar.selectedCount, 0);
+      if (scenario == 'scope change') {
+        await _search(tester, '新搜索');
+        expect(table().items, [_later]);
         expect(
           tester
-              .widget<UtenButton>(
-                find.byKey(const Key('wm-request-material-confirm')),
-              )
-              .onPressed,
-          isNull,
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          0,
         );
+        await tester.tap(
+          find.byKey(const ValueKey('wm-request-material-later|')),
+        );
+        await tester.pump();
+        held.complete(response(2));
+        held = null;
+        await tester.pumpAndSettle();
+        expect(table().items, [_later]);
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(results.single, same(_later));
+      } else if (scenario == 'forbidden') {
+        held.completeError(ApiException('FORBIDDEN', '候选范围已变化'));
+        held = null;
+        await tester.pumpAndSettle();
+        expect(table().items, isEmpty);
+        expect(
+          tester
+              .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
+              .selectedCount,
+          0,
+        );
+        expect(tester.widget<UtenButton>(confirm).onPressed, isNull);
         expect(results, isEmpty);
+      } else {
+        held.complete(response(2));
+        held = null;
+        await tester.pumpAndSettle();
+        expect(table().items, hasLength(31));
+        final reads = repo.calls.length;
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('wm-request-material-later|')),
+          tableFinder,
+          const Offset(0, -350),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find
+              .byKey(const ValueKey('wm-request-material-later|'))
+              .hitTestable(),
+          findsOneWidget,
+        );
+        await tester.dragUntilVisible(
+          find.byKey(const ValueKey('wm-request-material-raw|white')),
+          tableFinder,
+          const Offset(0, 350),
+        );
+        await tester.pumpAndSettle();
+        expect(repo.calls, hasLength(reads));
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(results.single, same(_raw));
       }
+      expect(repo.strictReads, 0);
+      expect(repo.submits, isEmpty);
+      expect(tester.takeException(), isNull);
     });
   }
 

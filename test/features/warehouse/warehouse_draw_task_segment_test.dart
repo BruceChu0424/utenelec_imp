@@ -24,6 +24,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
@@ -98,6 +99,10 @@ class _FakeRepository extends ProductionDrawTaskRepository {
     String? drawBillNo,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
+    readContexts.add((
+      page: page,
+      current: PagedReadIntent.currentRead ?? () => true,
+    ));
     requests.add((page: page, sort: sort, ascending: ascending));
     scopes.add(scope);
     return _page(page, size);
@@ -105,17 +110,28 @@ class _FakeRepository extends ProductionDrawTaskRepository {
 
   /// 每次列表请求的页码与排序(表头排序用例断言服务端排序参数)。
   final requests = <({int page, String? sort, bool ascending})>[];
+  final readContexts = <({int page, bool Function() current})>[];
 
   /// 每次列表请求带的仓库范围(ADR-115)。
   final scopes = <WarehouseTaskScope>[];
 
-  PagedResult<WarehouseDrawTask> _page(int page, int size) => PagedResult(
-    items: pages[page] ?? const [],
-    page: page,
-    size: size,
-    total: total,
-    totalPages: pages.isEmpty ? 1 : pages.length,
-  );
+  PagedResult<WarehouseDrawTask> _page(int page, int size) {
+    final keys = pages.keys.toList()..sort();
+    final rows = [for (final key in keys) ...pages[key]!];
+    final fixtureBatch = pages.values.fold(
+      1,
+      (largest, batch) => batch.length > largest ? batch.length : largest,
+    );
+    final boundedSize = size < fixtureBatch ? size : fixtureBatch;
+    return PagedResult(
+      items: rows.skip((page - 1) * boundedSize).take(boundedSize).toList(),
+      page: page,
+      size: boundedSize,
+      total: rows.length,
+      totalPages: (rows.length + boundedSize - 1) ~/ boundedSize,
+      readScopeVersion: 'draw-tasks-fixture-v1',
+    );
+  }
 
   @override
   Future<WarehouseDrawBatchIssueResult> issueFullBatch({
@@ -305,7 +321,53 @@ Finder _batchButton() => find.byKey(const Key('warehouse-draw-batch-issue'));
 /// 表头三态全选在第 0 个，数据行勾选框按行序其后。
 Finder _rowCheckbox(int rowIndex) => find.byType(Checkbox).at(rowIndex + 1);
 
+List<int> _currentReadPages(_FakeRepository repo) => [
+  for (final read in repo.readContexts)
+    if (read.current()) read.page,
+];
+
 void main() {
+  testWidgets(
+    'complete draw task reads reject duplicate source task identities',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..pages[1] = [for (var i = 0; i < 20; i++) _task('identity-$i')]
+        ..pages[2] = [
+          _task('identity-0'),
+          for (var i = 21; i < 40; i++) _task('identity-$i'),
+        ]
+        ..pages[3] = [_task('identity-40')];
+      await _pump(tester, repo, _issuer);
+      MasterDataTableView<WarehouseDrawTask> table() =>
+          tester.widget(find.byType(MasterDataTableView<WarehouseDrawTask>));
+      expect(table().items, isEmpty);
+      expect(table().error, isNotNull);
+      expect(repo.batchDocIds, isNull);
+      repo.pages[2] = [for (var i = 20; i < 40; i++) _task('identity-$i')];
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(41));
+      expect(table().items.map((item) => item.taskId).toSet(), hasLength(41));
+      expect(repo.requests.map((request) => request.page), [1, 2, 1, 2, 3]);
+      final reads = repo.requests.length;
+      final tableFinder = find.byKey(const Key('warehouse-draw-task-table'));
+      await tester.dragUntilVisible(
+        find.text('货品identity-40'),
+        tableFinder,
+        const Offset(0, -350),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('货品identity-40').hitTestable(), findsOneWidget);
+      await tester.dragUntilVisible(
+        find.text('货品identity-0'),
+        tableFinder,
+        const Offset(0, 350),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.requests, hasLength(reads));
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final navigation in ['go', 'platform']) {
     testWidgets('$navigation return releases batch draw navigation', (
       tester,
@@ -775,7 +837,17 @@ void main() {
     expect(_batchButton(), findsNothing);
 
     await _pump(tester, repo, _issuer);
+    final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+      find.byKey(const Key('warehouse-draw-task-table')),
+    );
+    expect(table.batchActionsBuilder, isNotNull);
+    // A new permission owner must revalidate the retired private snapshot.
+    final reads = repo.requests.length;
+    table.onRetry!();
+    await tester.pumpAndSettle();
+    expect(repo.requests, hasLength(reads + 1));
     expect(_batchButton(), findsOneWidget);
+    expect(repo.batchKeys, isEmpty);
   });
 
   testWidgets(
@@ -800,29 +872,33 @@ void main() {
     },
   );
 
-  testWidgets('known material selection survives cross-page batch navigation', (
-    tester,
-  ) async {
-    final repo = _FakeRepository()
-      ..captureBatchRoute = true
-      ..pages[1] = [_discoveryTask('known')]
-      ..pages[2] = [_task('normal')];
-    await _pump(tester, repo, _approverIssuer);
-    await tester.tap(_rowCheckbox(0));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-    await tester.pumpAndSettle();
-    await tester.tap(_rowCheckbox(0));
-    await tester.pumpAndSettle();
-    await tester.tap(_batchButton());
-    await tester.pumpAndSettle();
-    expect(repo.openedBatchRoute!.queryParameters['documentIds'], 'normal');
-    expect(
-      repo.openedBatchRoute!.queryParameters['discoveryRequestIds'],
-      'known',
-    );
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'known and normal material selection shares the complete batch scope',
+    (tester) async {
+      final repo = _FakeRepository()
+        ..captureBatchRoute = true
+        ..pages[1] = [_discoveryTask('known')]
+        ..pages[2] = [_task('normal')];
+      await _pump(tester, repo, _approverIssuer);
+      expect(_currentReadPages(repo), [1, 2]);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      await tester.tap(_rowCheckbox(0));
+      await tester.pumpAndSettle();
+      await tester.tap(_rowCheckbox(1));
+      await tester.pumpAndSettle();
+      await tester.tap(_batchButton());
+      await tester.pumpAndSettle();
+      expect(repo.openedBatchRoute!.queryParameters['documentIds'], 'normal');
+      expect(
+        repo.openedBatchRoute!.queryParameters['discoveryRequestIds'],
+        'known',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('opening one known material uses the same batch review page', (
     tester,
@@ -931,7 +1007,7 @@ void main() {
   );
 
   testWidgets(
-    'cross-page selection sends every selected id with the shared remark and reports replay',
+    'complete selection sends every selected id with the shared remark and reports replay',
     (tester) async {
       final repo = _FakeRepository()
         ..pages[1] = [_task('a'), _task('b')]
@@ -945,12 +1021,13 @@ void main() {
         );
       await _pump(tester, repo, _approverIssuer);
 
-      // 第 1 页表头全选，翻到第 2 页再勾一张：三张跨页保留。
+      // 完整接收两批的三张单据后，在同一结果中全选。
+      expect(_currentReadPages(repo), [1, 2]);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       await tester.tap(find.byType(Checkbox).first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
-      await tester.pumpAndSettle();
-      await tester.tap(_rowCheckbox(0));
       await tester.pumpAndSettle();
       expect(find.text('已选 3 项'), findsOneWidget);
 

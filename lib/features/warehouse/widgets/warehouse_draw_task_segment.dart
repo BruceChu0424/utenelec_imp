@@ -225,6 +225,7 @@ class _WarehouseDrawTaskSegmentState
 
       final result = await readScopedPage(
         page,
+        idOf: _idOf,
         slot: '_load',
         query: [
           pageRepository,

@@ -13,7 +13,7 @@ public record BusinessDocumentReadScopeInterceptor(ReadScopeVersionAuthority aut
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
         String path=SecurityRequestPath.withinApplication(request);
         boolean summaryRead="GET".equals(request.getMethod())&&path.matches(
-                "^/api/finance/(?:(?:asset-opening-groups|accounting-imports|auxiliary-imports)/summaries|chart/imports/summaries|payable-statement-adjustments|statement-documents/reviews/[0-9a-fA-F-]{36}/(?:summary|original-table))$");
+                "^/api/finance/(?:(?:asset-opening-groups|accounting-imports|auxiliary-imports)/summaries|chart/imports/summaries|expense-analysis/note-imports/summaries|payable-statement-adjustments|statement-documents/reviews/[0-9a-fA-F-]{36}/(?:summary|original-table))$");
         if(summaryRead){ReadScopePublication.capture(request,authority,users,"finance");return true;}
         boolean fieldRead=path.matches("^/api/platform-columns/expense_claim(?:_item)?/(?:definitions|values/[0-9a-fA-F-]{36}/history)$") && "GET".equals(request.getMethod())
                 || path.matches("^/api/platform-columns/expense_claim(?:_item)?/values:batch$") && "POST".equals(request.getMethod());

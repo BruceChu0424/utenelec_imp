@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.*;
         "uten.crypto.pgp-master-key=periodic-http-fixture-pgp-0123456789-test-only",
         "uten.crypto.hmac-key=periodic-http-fixture-hmac-test-only",
         "uten.bootstrap.admin-login=periodic-http-bootstrap","uten.bootstrap.admin-password=PeriodicBootstrap-1!"})
-class PeriodicCompleteSummaryHttpPostgresTest {
+class PeriodicCompleteSummaryHttpPostgresTest extends CompleteSummaryHttpPostgresSupport {
     private static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     private static Path directory;
     @DynamicPropertySource static void database(DynamicPropertyRegistry props) throws Exception {
@@ -41,28 +41,26 @@ class PeriodicCompleteSummaryHttpPostgresTest {
         FixtureDatabaseProperties.bindSameRole(props,PG::getJdbcUrl,PG::getUsername,PG::getPassword);
         props.add("uten.storage.local-dir",()->directory.toString());
     }
-    @LocalServerPort int port;
-    @Autowired ObjectMapper json;
-    @Autowired JdbcTemplate db;
-    @Autowired PasswordEncoder passwords;
-    @Autowired AutowireCapableBeanFactory beans;
-    private final HttpClient http=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
-    @AfterEach void clear(){SecurityContextHolder.clearContext();}
-
     @Test void thirtyFiveThousandProductsAndAllCatalogTailsCrossRealHttpWithBoundedBatchesAndStableOwner() throws Exception {
         var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);
         String tag=UUID.randomUUID().toString().substring(0,8);var world=fixture.seedWorld("summary-http-"+tag);
         fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","summary-http-"+tag);
         UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId");UUID kilogram=UUID.randomUUID();
-        db.update("INSERT INTO units(id,legacy_id,code,name,status) VALUES(?,? ,?,'千克','使用')",kilogram,900_000_000+new Random().nextInt(90_000_000),"SUMMARY-KG-"+tag);
+        db.update("INSERT INTO units(id,legacy_id,code,name,status) VALUES(?,? ,?,'千克','使用')",kilogram,900_000_000+java.util.concurrent.ThreadLocalRandom.current().nextInt(90_000_000),"SUMMARY-KG-"+tag);
         db.update("INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,mass_unit_code,provenance) VALUES(?,'MASS','KG','MANUAL_GOVERNANCE')",kilogram);
-        db.update("""
-                INSERT INTO goods(id,code,name,source_type,status,unit_id,price,code_sequence,owning_workshop_department_id,m_weight,m_weight_unit_id)
-                SELECT gen_random_uuid(),?||lpad(n::text,5,'0'),'完整产品'||n,'自制','使用',?,100,
-                       (SELECT COALESCE(max(code_sequence),0) FROM goods)+n,?,0.012,?
-                FROM generate_series(1,35000) n
-                ""","SUMMARY-P-"+tag+"-",world.unitId(),workshop,kilogram);
+        long sequenceBase=db.queryForObject("SELECT COALESCE(max(code_sequence),0) FROM goods",Long.class);
+        // Fixture setup keeps every real code-reservation trigger and its original statement timeout.
+        // Global n/code/sequence/35000 facts stay identical; only bounded inserts replace one35000-row statement.
+        for(int first=1;first<=35000;first+=500) {
+            int last=Math.min(first+499,35000);
+            db.update("""
+                    INSERT INTO goods(id,code,name,source_type,status,unit_id,price,code_sequence,owning_workshop_department_id,m_weight,m_weight_unit_id)
+                    SELECT gen_random_uuid(),?||lpad(n::text,5,'0'),'完整产品'||n,'自制','使用',?,100,
+                           ?+n,?,0.012,?
+                    FROM generate_series(?,?) n
+                    ""","SUMMARY-P-"+tag+"-",world.unitId(),sequenceBase,workshop,kilogram,first,last);
+        }
         db.update("""
                 INSERT INTO goods(id,code,name,source_type,status,unit_id,price,code_sequence,issue_method,periodic_cost_basis)
                 SELECT gen_random_uuid(),?||lpad(n::text,5,'0'),'完整颗粒'||n,'采购','使用',?,10,
@@ -126,15 +124,20 @@ class PeriodicCompleteSummaryHttpPostgresTest {
         request("GET",base,null,token,401);
         System.out.println("periodic-complete-real-http products=35000 batches="+batches+" bytes="+bytes+" injectedRttMs=40 firstMs="+firstElapsed+" productsMs="+productsElapsed+" scenarioMs="+(System.nanoTime()-start)/1_000_000+" candidates="+candidateTotal+" literalTail=true financeReadRoutes=4");
     }
-    private static String encode(String text){return URLEncoder.encode(text,StandardCharsets.UTF_8);}
-    private JsonNode body(HttpResponse<byte[]> response) throws Exception {return json.readTree(response.body());}
-    private HttpResponse<byte[]> request(String method,String path,byte[] body,String token,int status) throws Exception {
-        var request=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+path)).timeout(Duration.ofSeconds(15));
-        if(token!=null)request.header("Authorization","Bearer "+token);
-        if(body!=null)request.header("Content-Type","application/json");
-        request.method(method,body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofByteArray(body));
-        HttpResponse<byte[]> response=http.send(request.build(),HttpResponse.BodyHandlers.ofByteArray());
-        assertThat(response.statusCode()).as("%s %s",method,path.replaceAll("readSnapshotRevision=[^&]+","readSnapshotRevision=<opaque>")) .isEqualTo(status);
-        return response;
+
+    private String plasticContextBusinessFacts(String prefix) {
+        return db.queryForObject("""
+                SELECT md5(concat_ws('|',
+                  (SELECT string_agg(to_jsonb(bin)::text,'|' ORDER BY bin.id) FROM warehouses bin WHERE bin.code LIKE ?),
+                  (SELECT string_agg(to_jsonb(period)::text,'|' ORDER BY period.id) FROM workshop_material_periods period JOIN warehouses bin ON bin.id=period.bin_warehouse_id WHERE bin.code LIKE ?),
+                  (SELECT string_agg(to_jsonb(line)::text,'|' ORDER BY line.id) FROM workshop_material_period_lines line JOIN workshop_material_periods period ON period.id=line.period_id JOIN warehouses bin ON bin.id=period.bin_warehouse_id WHERE bin.code LIKE ?),
+                  (SELECT string_agg(to_jsonb(closed)::text,'|' ORDER BY closed.id) FROM workshop_material_period_closes closed JOIN workshop_material_periods period ON period.id=closed.period_id JOIN warehouses bin ON bin.id=period.bin_warehouse_id WHERE bin.code LIKE ?)))
+                """,String.class,prefix+"%",prefix+"%",prefix+"%",prefix+"%");
     }
+
+
+
+
+
+
 }

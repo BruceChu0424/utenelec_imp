@@ -39,6 +39,13 @@ public class FinanceExpenseAnalysisController {
     @PostMapping("/labor") @PreAuthorize("hasAuthority('finance_report:view') and hasAuthority('finance:view:all') and hasAuthority('payment_style:edit')")
     public Map<String,Object> labor(@RequestBody LaborSplitInput input){return service.saveLabor(input);}
     @GetMapping("/note-imports") public Map<String,Object> recentImports(@RequestParam String period){return Map.of("items",service.recentNoteImports(period));}
+    @GetMapping("/note-imports/summaries")
+    public com.uten.imp.common.readsnapshot.VersionedSummaryPages.Page<Map<String,Object>> noteImportSummaries(
+            @RequestParam String period,@RequestParam(defaultValue="all") String scope,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="100") int size,
+            @RequestParam(required=false) String readSnapshotRevision) {
+        return service.noteImportSummaries(period,scope,page,size,readSnapshotRevision);
+    }
     @GetMapping("/note-imports/{id}") public NoteImportPreview imported(@PathVariable UUID id){var result=service.importedNotes(id);
         detailViewAudit.record("view_finance_note_import_detail","finance_expense_note_imports",id,result.sourceName(),null,"费用备注导入批次");return result;}
     @PostMapping(value="/notes/import-preview",consumes="multipart/form-data")

@@ -1,3 +1,4 @@
+import '../../support/pump_until.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -18,6 +19,9 @@ import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
@@ -63,6 +67,332 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets(
+    'plastic context1001 keeps the Chinese tail and reuses selected dates during header work',
+    (tester) async {
+      final api = _HeaderApi()..plasticCount = 1001;
+      await _pump(tester, 'cost', separatePrefs: true, suppliedApi: api);
+      UtenDropdownField field() => tester.widget<UtenDropdownField>(
+        find.byKey(const Key('finance-report-bin')),
+      );
+      expect(field().items, hasLength(1001));
+      expect(field().items.last.value, 'bin-1000');
+      expect(field().items.last.label, 'B1000 优腾中文料仓1000末尾');
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2]);
+      expect(
+        api.plasticRequests.every((query) => query['size'] == 1000),
+        isTrue,
+      );
+      final first = api.plasticRequests.first;
+      expect(first['dateFrom'], isNotNull);
+      expect(first['dateTo'], isNotNull);
+      expect(api.plasticRequests.last['readSnapshotRevision'], 'a' * 64);
+      await tester.tap(find.byKey(const Key('finance-report-bin')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-dropdown-search-input')),
+        '中文料仓1000末尾',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('B1000 优腾中文料仓1000末尾'), findsOneWidget);
+      await tester.tap(find.text('B1000 优腾中文料仓1000末尾'));
+      await tester.pumpAndSettle();
+      expect(field().value, 'bin-1000');
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSearchSubmitted!('正常中文条件');
+      await tester.pumpAndSettle();
+      await _scrollWithoutReads(tester, api);
+      expect(api.plasticRequests, hasLength(2));
+      final export = await _visibleExport(tester);
+      expect(export.queryParams, containsPair('binWarehouseId', 'bin-1000'));
+      expect(export.queryParams, containsPair('dateFrom', first['dateFrom']));
+      expect(export.queryParams, containsPair('dateTo', first['dateTo']));
+      // A real explicit refresh must read fresh facts, not a permanent cache.
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      final refresh = Future<void>.sync(table.onRetry!);
+      await tester.pumpAndSettle();
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
+      final owner = tester.state<NestedScrollViewState>(
+        find.descendant(
+          of: find.byType(FinanceReportTablePage),
+          matching: find.byType(NestedScrollView),
+        ),
+      );
+      owner.innerController.jumpTo(0);
+      owner.outerController.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(field().items, hasLength(1001));
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
+      expect(find.byKey(const Key('finance-report-context-retry')), findsNothing);
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'plastic same-scope in-flight refreshes share one complete read then explicit refresh is fresh',
+    (tester) async {
+      final gate = Completer<Map<String, dynamic>>();
+      final api = _HeaderApi()
+        ..plasticCount = 1001
+        ..plasticTail = gate;
+      await _pump(
+        tester,
+        'cost',
+        separatePrefs: true,
+        suppliedApi: api,
+        settle: false,
+      );
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2]);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      final repeats = [
+        for (var i = 0; i < 3; i++) Future<void>.sync(table.onRetry!),
+      ];
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2]);
+      gate.complete(api.plasticPage(api.plasticRequests.last));
+      await tester.pumpAndSettle();
+      await Future.wait(repeats);
+      await tester.pumpAndSettle();
+      final field = tester.widget<UtenDropdownField>(
+        find.byKey(const Key('finance-report-bin')),
+      );
+      expect(field.items, hasLength(1001));
+      expect(field.items.last.value, 'bin-1000');
+      final refresh = Future<void>.sync(
+        tester
+            .widget<MasterDataTableView<Map<String, dynamic>>>(
+              find.byType(MasterDataTableView<Map<String, dynamic>>),
+            )
+            .onRetry!,
+      );
+      await tester.pumpAndSettle();
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'plastic empty accepted scope avoids ordinary repeat reads but explicit refresh reads again',
+    (tester) async {
+      final api = _HeaderApi()..plasticCount = 0;
+      await _pump(tester, 'cost', separatePrefs: true, suppliedApi: api);
+      final toolbar = tester.widget<UtenFilterToolbar<int>>(
+        find.byType(UtenFilterToolbar<int>),
+      );
+      for (final keyword in ['中文一', '中文二', '']) {
+        toolbar.onSearchSubmitted!(keyword);
+        await tester.pumpAndSettle();
+      }
+      expect(api.plasticRequests.map((query) => query['page']), [1]);
+      expect(
+        tester
+            .widget<UtenDropdownField>(
+              find.byKey(const Key('finance-report-bin')),
+            )
+            .items,
+        isEmpty,
+      );
+      final refresh = Future<void>.sync(
+        tester
+            .widget<MasterDataTableView<Map<String, dynamic>>>(
+              find.byType(MasterDataTableView<Map<String, dynamic>>),
+            )
+            .onRetry!,
+      );
+      await tester.pumpAndSettle();
+      await refresh;
+      await tester.pumpAndSettle();
+      expect(api.plasticRequests.map((query) => query['page']), [1, 1]);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'plastic date owner changes retire a held old tail without publishing its prefix',
+    (tester) async {
+      final gate = Completer<Map<String, dynamic>>();
+      final api = _HeaderApi()
+        ..plasticCount = 1001
+        ..plasticTail = gate
+        ..plasticLabelsByDate = true;
+      await _pump(
+        tester,
+        'cost',
+        separatePrefs: true,
+        suppliedApi: api,
+        settle: false,
+      );
+      expect(api.plasticRequests, hasLength(2));
+      final oldTail = Map<String, dynamic>.of(api.plasticRequests.last);
+      expect(
+        tester
+            .widget<UtenDropdownField>(
+              find.byKey(const Key('finance-report-bin')),
+            )
+            .items,
+        isEmpty,
+      );
+      final date = tester.widget<FinanceDateRangeFilter>(
+        find.byType(FinanceDateRangeFilter),
+      );
+      final change = Future<void>.sync(
+        () => date.onChanged(DateTime(2025, 2), DateTime(2025, 2, 28)),
+      );
+      await tester.pumpAndSettle();
+      await change;
+      expect(api.plasticRequests, hasLength(4));
+      expect(
+        api.plasticRequests
+            .skip(2)
+            .every(
+              (query) =>
+                  query['dateFrom'] == '2025-02-01' &&
+                  query['dateTo'] == '2025-02-28',
+            ),
+        isTrue,
+      );
+      UtenDropdownField field() => tester.widget<UtenDropdownField>(
+        find.byKey(const Key('finance-report-bin')),
+      );
+      await _awaitCompletePlasticContext(tester);
+      expect(field().items, hasLength(1001));
+      expect(
+        field().items.every((item) => item.value!.startsWith('new-bin-')),
+        isTrue,
+      );
+      gate.complete(api.plasticPage(oldTail));
+      await tester.pumpAndSettle();
+      expect(field().items, hasLength(1001));
+      expect(
+        field().items.every((item) => item.label.contains('新日期中文料仓')),
+        isTrue,
+      );
+      expect(
+        field().items.any((item) => item.label.contains('旧日期中文料仓')),
+        isFalse,
+      );
+      expect(api.plasticRequests, hasLength(4));
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'successful-write revision retires the same-date held plastic owner before a fresh retry',
+    (tester) async {
+      final gate = Completer<Map<String, dynamic>>();
+      final api = _HeaderApi()
+        ..plasticCount = 1001
+        ..plasticTail = gate
+        ..plasticLabelsByVersion = true;
+      await _pump(
+        tester,
+        'cost',
+        separatePrefs: true,
+        suppliedApi: api,
+        settle: false,
+      );
+      expect(api.plasticRequests, hasLength(2));
+      final oldTail = Map<String, dynamic>.of(api.plasticRequests.last);
+      final oldResponse = api.plasticPage(oldTail);
+      final environment = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceReportTablePage)),
+      );
+      // Existing middleware's monotonic successful-write notification; no new
+      // UI-owned epoch and no replay of a business command is introduced.
+      api.plasticDataRound = 1;
+      environment.read(dataWriteRevisionProvider.notifier).state++;
+      final pending = Future<void>.sync(
+        tester
+            .widget<MasterDataTableView<Map<String, dynamic>>>(
+              find.byType(MasterDataTableView<Map<String, dynamic>>),
+            )
+            .onRetry!,
+      );
+      await tester.pumpAndSettle();
+      await pending;
+      expect(api.plasticRequests, hasLength(4));
+      expect(
+        api.plasticRequests.every(
+          (query) =>
+              query['dateFrom'] == oldTail['dateFrom'] &&
+              query['dateTo'] == oldTail['dateTo'],
+        ),
+        isTrue,
+      );
+      UtenDropdownField field() => tester.widget<UtenDropdownField>(
+        find.byKey(const Key('finance-report-bin')),
+      );
+      await _awaitCompletePlasticContext(tester);
+      expect(field().items, hasLength(1001));
+      expect(
+        field().items.every((item) => item.value!.startsWith('new-write-bin-')),
+        isTrue,
+      );
+      expect(api.plasticRequests.last['readSnapshotRevision'], 'd' * 64);
+      gate.complete(oldResponse);
+      await tester.pumpAndSettle();
+      expect(
+        field().items.every((item) => item.label.contains('写后中文料仓')),
+        isTrue,
+      );
+      expect(
+        field().items.any((item) => item.label.contains('写前中文料仓')),
+        isFalse,
+      );
+      expect(api.plasticRequests, hasLength(4));
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'plastic tail error publishes no prefix and explicit retry reaches the complete tail',
+    (tester) async {
+      final api = _HeaderApi()
+        ..plasticCount = 1001
+        ..plasticTailFailures = 1;
+      await _pump(tester, 'cost', separatePrefs: true, suppliedApi: api);
+      UtenDropdownField field() => tester.widget<UtenDropdownField>(
+        find.byKey(const Key('finance-report-bin')),
+      );
+      expect(field().items, isEmpty);
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2]);
+      expect(
+        find.byKey(const Key('finance-report-context-retry')),
+        findsOneWidget,
+      );
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.byKey(const Key('finance-report-context-retry')));
+      await tester.pumpAndSettle();
+      expect(field().items, hasLength(1001));
+      expect(field().items.last.value, 'bin-1000');
+      expect(api.plasticRequests.map((query) => query['page']), [1, 2, 1, 2]);
+      expect(
+        find.byKey(const Key('finance-report-context-retry')),
+        findsNothing,
+      );
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(api.postRequests, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'clicking an initial full-report text suggestion also commits Search',
     (tester) async {
@@ -757,12 +1087,14 @@ Future<_HeaderApi> _pump(
   bool separatePrefs = false,
   bool selectContext = true,
   GlobalKey? capture,
+  _HeaderApi? suppliedApi,
+  bool settle = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  final api = _HeaderApi()..serverTotals = serverTotals;
+  final api = (suppliedApi ?? _HeaderApi())..serverTotals = serverTotals;
   if (capture != null) await loadAuditScreenshotFonts(tester);
   await tester.pumpWidget(
     ProviderScope(
@@ -795,7 +1127,13 @@ Future<_HeaderApi> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 30 && api.plasticRequests.length < 2; frame++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
   if (card == 'recon' && selectContext) await _selectStatementContext(tester);
   return api;
 }
@@ -871,6 +1209,53 @@ class _HeaderApi extends ApiClient {
   _HeaderApi() : super(Dio());
   final requests = <(String, Map<String, dynamic>)>[];
   final candidateRequests = <Map<String, dynamic>>[];
+  final plasticRequests = <Map<String, dynamic>>[];
+  final postRequests = <String>[];
+  int plasticCount = 1, plasticTailFailures = 0, plasticDataRound = 0;
+  bool plasticLabelsByDate = false, plasticLabelsByVersion = false;
+  String? firstPlasticScope;
+  Completer<Map<String, dynamic>>? plasticTail;
+
+  Map<String, dynamic> plasticPage(Map<String, dynamic> query) {
+    final page = query['page'] as int, size = query['size'] as int;
+    final scope = '${query['dateFrom']}/${query['dateTo']}';
+    firstPlasticScope ??= scope;
+    final initial = scope == firstPlasticScope, start = (page - 1) * size;
+    final prefix = plasticLabelsByVersion
+        ? (plasticDataRound == 0 ? '写前中文料仓' : '写后中文料仓')
+        : plasticLabelsByDate
+        ? (initial ? '旧日期中文料仓' : '新日期中文料仓')
+        : '优腾中文料仓';
+    final idPrefix = plasticLabelsByVersion
+        ? (plasticDataRound == 0 ? 'old-write-bin-' : 'new-write-bin-')
+        : plasticLabelsByDate
+        ? (initial ? 'old-bin-' : 'new-bin-')
+        : 'bin-';
+    return {
+      'items': [
+        for (var i = start; i < start + size && i < plasticCount; i++)
+          {
+            'id': plasticCount == 1 ? 'bin-id' : '$idPrefix$i',
+            'code': plasticCount == 1
+                ? 'B001'
+                : 'B${i.toString().padLeft(4, '0')}',
+            'name': plasticCount == 1
+                ? '匿名内料仓'
+                : '$prefix$i${i == plasticCount - 1 ? '末尾' : ''}',
+          },
+      ],
+      'page': page,
+      'size': size,
+      'total': plasticCount,
+      'totalPages': (plasticCount + size - 1) ~/ size,
+      'scope': 'all',
+      'readScopeVersion': 'scope-1',
+      'readDataVersion': (plasticDataRound == 0 ? 'c' : 'e') * 64,
+      'readSnapshotRevision':
+          (plasticDataRound == 0 ? (initial ? 'a' : 'b') : 'd') * 64,
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> postForm(
     String path, {
@@ -909,13 +1294,17 @@ class _HeaderApi extends ApiClient {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
-  }) async => {
-    'items': <Map<String, dynamic>>[],
-    'page': 1,
-    'size': 100,
-    'total': 0,
-    'totalPages': 1,
-  };
+  }) async {
+    postRequests.add(path);
+    return {
+      'items': <Map<String, dynamic>>[],
+      'page': 1,
+      'size': 100,
+      'total': 0,
+      'totalPages': 1,
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -932,12 +1321,35 @@ class _HeaderApi extends ApiClient {
           };
     }
     if (!path.startsWith('/finance/reports/')) return {};
+    if (path == '/finance/reports/context/plastic-bins/summaries') {
+      final values = Map<String, dynamic>.of(query ?? {});
+      plasticRequests.add(values);
+      final response = plasticPage(values);
+      expectSync(values['size'], 1000);
+      expectSync(values['dateFrom'], isNotNull);
+      expectSync(values['dateTo'], isNotNull);
+      final page = values['page'] as int;
+      expectSync(
+        values['readSnapshotRevision'],
+        page == 1 ? isNull : response['readSnapshotRevision'],
+      );
+      if (page == 2 && plasticTailFailures > 0) {
+        plasticTailFailures--;
+        throw ApiException('TEMPORARY', '料仓尾批读取失败', httpStatus: 503);
+      }
+      if (page == 2 &&
+          plasticTail != null &&
+          !plasticTail!.isCompleted &&
+          plasticDataRound == 0 &&
+          '${values['dateFrom']}/${values['dateTo']}' == firstPlasticScope) {
+        return plasticTail!.future;
+      }
+      return response;
+    }
     if (path == '/finance/reports/context/plastic-bins') {
-      return {
-        'items': [
-          {'id': 'bin-id', 'code': 'B001', 'name': '匿名内料仓'},
-        ],
-      };
+      throw StateError(
+        'Live plastic caller must use the complete summary protocol',
+      );
     }
     final parameters = Map<String, dynamic>.of(query ?? {});
     requests.add((path, parameters));
@@ -1170,3 +1582,23 @@ class _HeaderApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async => {};
 }
+
+Future<void> _awaitCompletePlasticContext(WidgetTester tester) => pumpUntil(
+  tester,
+  () {
+    if (find
+        .byKey(const Key('finance-report-context-retry'))
+        .evaluate()
+        .isNotEmpty) {
+      throw TestFailure(
+        'The current complete context read reached its real failure outcome.',
+      );
+    }
+    final fields = tester.widgetList<UtenDropdownField>(
+      find.byKey(const Key('finance-report-bin')),
+    );
+    return fields.length == 1 && fields.single.items.length == 1001;
+  },
+  reason:
+      'The current context must publish all1001 rows after its responsive projection completes.',
+);

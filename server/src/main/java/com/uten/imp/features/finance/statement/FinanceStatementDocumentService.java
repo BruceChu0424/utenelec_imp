@@ -230,7 +230,17 @@ public class FinanceStatementDocumentService {
 
     @Transactional(readOnly=true)
     public Map<String,Object> review(UUID id){
-        read();var row=new LinkedHashMap<>(reviewRow(id,false));var original=decode(row.remove("snapshot_cipher"),new TypeReference<Map<String,Object>>(){});
+        read();
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()){
+            // The same immutable reader serves the original table and every
+            // read-only source/choice consumer. Reauthorize and bind current
+            // confirmation metadata on every hit; never cache authority.
+            var row=new LinkedHashMap<>(reviewSummaryRow(id));
+            row.put("original",originalSnapshot(id,row));row.put("confirmationMetadata",confirmations(row));return row;
+        }
+        // Command response construction must retain the original write path:
+        // a read-cache admission limit cannot roll back a business mutation.
+        var row=new LinkedHashMap<>(reviewRow(id,false));var original=decode(row.remove("snapshot_cipher"),new TypeReference<Map<String,Object>>(){});
         row.remove("counterpart_file_provider");row.remove("counterpart_file_key");row.remove("counterpart_file_version");row.put("original",original);row.put("confirmationMetadata",confirmations(row));return row;
     }
 

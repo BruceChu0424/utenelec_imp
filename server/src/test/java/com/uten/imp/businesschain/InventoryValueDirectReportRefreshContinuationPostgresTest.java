@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","spring.flyway.target=1071",
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
+        "uten.production.readiness-reconcile.enabled=false","uten.read-summary.compaction-enabled=false","uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class InventoryValueDirectReportRefreshContinuationPostgresTest {

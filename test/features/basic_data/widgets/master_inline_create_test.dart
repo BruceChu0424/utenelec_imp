@@ -429,7 +429,7 @@ void main() {
     },
   );
   testWidgets(
-    'typing in appended editors pauses automatic adjacent-page loading',
+    'typing in appended editors keeps local scrolling without page requests',
     (tester) async {
       for (final legacy in [false, true]) {
         final calls = <int>[];
@@ -452,6 +452,14 @@ void main() {
             matching: find.byType(Scrollable),
           ),
         );
+        await tester.pumpAndSettle();
+        expect(
+          find
+              .byKey(ValueKey('inline-create-activate-$key-name'))
+              .hitTestable(),
+          findsOneWidget,
+        );
+        expect(calls, isEmpty, reason: 'scrolling before editing is local too');
         await _activateCreation(tester, key, 'name');
         await tester.enterText(input, 'New after the last loaded page');
         await tester.pumpAndSettle();

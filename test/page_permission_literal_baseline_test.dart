@@ -930,13 +930,10 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.customerPrepaymentView': 2, 'Perm.financeViewAll': 2},
   ),
-  // Preparation is read-only: the native provider owner and route gate remain
-  // in force. These are the exact GET grants of SalesQuoteFinanceController and
-  // FinanceProcurementArrivalExceptionController, never their decision grants.
-  'lib/features/finance/pages/finance_quote_review_list_page.dart': (
-    legacyCount: 0,
-    tokens: {'Perm.salesQuoteFinanceView': 1},
-  ),
+  // The quote-only speculative preparation guard was retired with the
+  // unselected-read chain; no empty allowance remains. Quote route/server
+  // read gates and allowedActions are unchanged. The retained arrival GET
+  // grant below is never its financial decision grant.
   'lib/features/warehouse/pages/finance_arrival_exception_pages.dart': (
     legacyCount: 0,
     tokens: {'Perm.financeOrderApprovalView': 1},
@@ -1151,7 +1148,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      348, // Prior 325 + 23 net exact finance recovery references above;
+      347, // Prior348 minus the retired quote-only preparation reference;
       // the global 835 cap and wrong-token/copied-file rejection stay fixed.
     );
   });

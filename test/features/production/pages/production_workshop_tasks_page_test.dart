@@ -1271,15 +1271,35 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    // 分类默认不选；两条有界预热已在途，点击采用同一Future。
-    expect(repository.calls, 2);
+    // 未选分类不得预热；只有用户真实选择的查询拥有读取。
+    expect(repository.calls, 0);
+    expect(repository.requests, isEmpty);
 
-    await tester.tap(find.text('开工准备'));
+    await selectFilterSegment(tester, '开工准备');
     await tester.pump();
-    expect(repository.calls, 2);
+    expect(repository.calls, 1);
+    expect(repository.requests.single['status'], 'PREPARING');
     await selectFilterSegment(tester, '生产中');
     await tester.pump();
     expect(repository.calls, 2);
+    expect(repository.requests.map((query) => query['status']), [
+      'PREPARING',
+      'IN_PROGRESS',
+    ]);
+    expect(
+      repository.requests.every(
+        (query) =>
+            query['page'] == 1 &&
+            query['size'] == 100 &&
+            query['keyword'] == '' &&
+            query['workshopDepartmentId'] == null &&
+            query['preparationFilter'] == null &&
+            query['routeFilter'] == null &&
+            query['dateFrom'] == null &&
+            query['dateTo'] == null,
+      ),
+      isTrue,
+    );
 
     repository.second.complete(_pageWithProduct('新筛选结果'));
     await tester.pump(const Duration(milliseconds: 1));
@@ -1291,6 +1311,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('新筛选结果'), findsOneWidget);
     expect(find.text('迟到旧结果'), findsNothing);
+    expect(repository.calls, 2);
+    expect(tester.takeException(), isNull);
     // 排空页面的筛选去抖计时器，避免「Timer is still pending」假红。
     await tester.pump(const Duration(seconds: 1));
   });
@@ -1366,93 +1388,103 @@ void main() {
     },
   );
 
-  testWidgets(
-    'history segment defaults to last three months and 全部 goes unbounded',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final router = _router();
-      addTearDown(router.dispose);
-      final repository = _RecordingWorkshopRepository();
+  testWidgets('history segment defaults to last month and 全部 goes unbounded', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final repository = _RecordingWorkshopRepository();
 
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            emptyServerReportDraftsFixture(),
-            emptyMasterDictionaryFixture(),
-            sharedPreferencesProvider.overrideWithValue(_preferences),
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.productionExecutionView,
-            }),
-            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-              repository,
-            ),
-          ],
-          child: MaterialApp.router(
-            routerConfig: router,
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            locale: const Locale('zh'),
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          emptyServerReportDraftsFixture(),
+          emptyMasterDictionaryFixture(),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            repository,
           ),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
         ),
-      );
-      await tester.pumpAndSettle();
-      expect(repository.calls.map((call) => call.status).toSet(), {
-        'PREPARING',
-        'IN_PROGRESS',
-        'REPORT_INSPECTION',
-      });
-      List<({String? status, String? dateFrom, String? dateTo})>
-      historyCalls() =>
-          repository.calls.where((call) => call.status == 'COMPLETED').toList();
-      expect(historyCalls(), isEmpty);
+      ),
+    );
+    await tester.pumpAndSettle();
+    // 分类未选不请求其它活动首批；徽章是独立权威汇总。
+    expect(repository.calls, isEmpty);
+    expect(repository.batchQueries, isEmpty);
+    List<({String? status, String? dateFrom, String? dateTo})> historyCalls() =>
+        repository.calls.where((call) => call.status == 'COMPLETED').toList();
+    expect(historyCalls(), isEmpty);
 
-      // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近一个月直接加载；
-      // 时间胶囊仍可切「全部」或具体时间段。
-      await tester.tap(find.text('历史任务'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
-      expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
-      final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
-      expect(historyCalls(), hasLength(1));
-      expect(historyCalls().single.status, 'COMPLETED');
-      expect(
-        historyCalls().single.dateFrom,
-        ChinaDateTime.formatDate(defaultRange.start),
-      );
-      expect(
-        historyCalls().single.dateTo,
-        ChinaDateTime.formatDate(defaultRange.end),
-      );
+    // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近一个月直接加载；
+    // 时间胶囊仍可切「全部」或具体时间段。
+    await tester.tap(find.text('历史任务'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
+    expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
+    final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
+    expect(historyCalls(), hasLength(1));
+    expect(historyCalls().single.status, 'COMPLETED');
+    expect(
+      historyCalls().single.dateFrom,
+      ChinaDateTime.formatDate(defaultRange.start),
+    );
+    expect(
+      historyCalls().single.dateTo,
+      ChinaDateTime.formatDate(defaultRange.end),
+    );
 
-      // 「全部」不再默认选中：点它切为不限时间，全量重查（不带日期）。
-      await selectFilterSegment(tester, '全部');
-      await tester.pumpAndSettle();
-      expect(historyCalls(), hasLength(2));
-      expect(historyCalls().last.status, 'COMPLETED');
-      expect(historyCalls().last.dateFrom, isNull);
-      expect(historyCalls().last.dateTo, isNull);
-      expect(find.text('已取消'), findsOneWidget);
-      expect(find.text('已撤回'), findsOneWidget);
-      expect(find.text('已红冲'), findsNothing);
+    // 「全部」不再默认选中：点它切为不限时间，全量重查（不带日期）。
+    await selectFilterSegment(tester, '全部');
+    await tester.pumpAndSettle();
+    expect(historyCalls(), hasLength(2));
+    expect(historyCalls().last.status, 'COMPLETED');
+    expect(historyCalls().last.dateFrom, isNull);
+    expect(historyCalls().last.dateTo, isNull);
+    expect(find.text('已取消'), findsOneWidget);
+    expect(find.text('已撤回'), findsOneWidget);
+    expect(find.text('已红冲'), findsNothing);
 
-      // 切回活动分类：时间门控行消失，请求不带日期。
-      await selectFilterSegment(tester, '生产中');
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('workshop-history-time')), findsNothing);
-      expect(
-        repository.calls.any(
-          (call) =>
-              call.status == 'IN_PROGRESS' &&
-              call.dateFrom == null &&
-              call.dateTo == null,
-        ),
-        isTrue,
-      );
-      expect(find.text('产品 A'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    // 切回活动分类：时间门控行消失，请求不带日期。
+    await selectFilterSegment(tester, '生产中');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workshop-history-time')), findsNothing);
+    expect(
+      repository.calls.any(
+        (call) =>
+            call.status == 'IN_PROGRESS' &&
+            call.dateFrom == null &&
+            call.dateTo == null,
+      ),
+      isTrue,
+    );
+    expect(find.text('产品 A'), findsOneWidget);
+    expect(repository.calls.map((call) => call.status), [
+      'COMPLETED',
+      'COMPLETED',
+      'IN_PROGRESS',
+    ]);
+    expect(
+      repository.batchQueries.every(
+        (query) =>
+            query['page'] == 1 &&
+            query['size'] == 100 &&
+            query['workshopDepartmentId'] == null,
+      ),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 /// 2026-09-20 用户口径（终版，勿再改回）：等待物料的「下一步」列=生产路线下拉，
@@ -3310,7 +3342,7 @@ PagedResult<ProductionExecutionWorkbenchSegment> _pageWithProduct(
     ),
   ],
   page: 1,
-  size: 50,
+  size: 100,
   total: 1,
   totalPages: 1,
 );
@@ -3325,6 +3357,7 @@ class _DelayedWorkshopRepository
   final Completer<PagedResult<ProductionExecutionWorkbenchSegment>> second =
       Completer();
   int calls = 0;
+  final requests = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
@@ -3343,6 +3376,17 @@ class _DelayedWorkshopRepository
     String? order,
   }) {
     calls++;
+    requests.add({
+      'page': page,
+      'size': size,
+      'keyword': keyword,
+      'status': status,
+      'workshopDepartmentId': workshopDepartmentId,
+      'preparationFilter': preparationFilter,
+      'routeFilter': routeFilter,
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    });
     return calls == 1 ? first.future : second.future;
   }
 
@@ -3415,6 +3459,7 @@ class _RecordingWorkshopRepository
     : super(ApiClient(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'))));
 
   final List<({String? status, String? dateFrom, String? dateTo})> calls = [];
+  final batchQueries = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
@@ -3433,6 +3478,11 @@ class _RecordingWorkshopRepository
     String? order,
   }) async {
     calls.add((status: status, dateFrom: dateFrom, dateTo: dateTo));
+    batchQueries.add({
+      'page': page,
+      'size': size,
+      'workshopDepartmentId': workshopDepartmentId,
+    });
     // 单号 facets 走假实现；页面单独 try/catch，不参与断言。
     final items = status == 'COMPLETED'
         ? [
@@ -3451,7 +3501,7 @@ class _RecordingWorkshopRepository
     return PagedResult(
       items: items,
       page: 1,
-      size: 50,
+      size: size,
       total: items.length,
       totalPages: 1,
     );

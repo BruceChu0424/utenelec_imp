@@ -570,22 +570,18 @@ class _OriginalState extends ConsumerState<_Original>
         // Frozen original rows may be subtotal lines without business IDs.
         // Their immutable document identity plus ordinal keeps duplicate
         // display values distinct without modifying any original row fields.
-        final keys = Map<Map<String, dynamic>, String>.identity();
         final budget = UiWorkBudget(isCurrent: current);
         for (var index = 0; index < report.rows.length; index++) {
-          keys[report.rows[index]] =
+          _rowKeys[report.rows[index]] =
               '${widget.id}/${source['document_sha256']}/$index';
           await budget.checkpoint();
         }
-        return (source, report, keys);
+        return (source, report);
       });
       if (current()) {
         setState(() {
           _source = values.$1;
           _data = values.$2;
-          for (final entry in values.$3.entries) {
-            _rowKeys[entry.key] = entry.value;
-          }
         });
       }
     } catch (e) {

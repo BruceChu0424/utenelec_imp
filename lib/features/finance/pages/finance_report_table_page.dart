@@ -1,3 +1,6 @@
+import '../../../core/network/data_write_revision.dart';
+import '../../../shared/paging/versioned_summary_read.dart';
+import '../../../shared/paging/read_view_activity.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
@@ -95,8 +98,8 @@ class FinanceReportTablePage extends ConsumerStatefulWidget {
       _FinanceReportTablePageState();
 }
 
-class _FinanceReportTablePageState
-    extends ConsumerState<FinanceReportTablePage> {
+class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
+    with ReadViewActivityMixin<FinanceReportTablePage> {
   FinanceReportCard get _card => financeReportCardById(widget.cardId);
   int _variantIndex = 0;
   DateTime _from = defaultReportFrom();
@@ -109,6 +112,25 @@ class _FinanceReportTablePageState
   String? _materialContextId, _materialContextName, _materialPartyRole;
   List<Map<String, dynamic>> _currencies = [], _bins = [];
   int _contextGeneration = 0;
+  Object? _acceptedBinContextQuery;
+  Object? _pendingBinContextQuery;
+
+  Object get _binContextQuery => [
+    ref.read(apiClientProvider),
+    ref.read(exportContextEpochProvider),
+    ref.read(dataWriteRevisionProvider),
+    _exportReport,
+    _fmt(_queryFrom),
+    _fmt(_queryTo),
+  ];
+  bool get _binsCurrent =>
+      samePagedReadQuery(_acceptedBinContextQuery, _binContextQuery);
+
+  @override
+  Future<void> onReadViewResumed() async {
+    if (_exportReport == 'cost/plastic' && !_binsCurrent) await _loadContexts();
+  }
+
   String? _contextError;
   bool _loadingContexts = false;
   final int _size = 50;
@@ -175,6 +197,8 @@ class _FinanceReportTablePageState
         _materialContextId = _materialContextName = _materialPartyRole = null;
         _currencies = [];
         _bins = [];
+        _acceptedBinContextQuery = null;
+        _pendingBinContextQuery = null;
         ++_contextGeneration;
         _loadingContexts = false;
         _contextError = null;
@@ -217,6 +241,8 @@ class _FinanceReportTablePageState
     _materialContextId = _materialContextName = _materialPartyRole = null;
     _currencies = [];
     _bins = [];
+    _acceptedBinContextQuery = null;
+    _pendingBinContextQuery = null;
     ++_contextGeneration;
     _loadingContexts = false;
     _contextError = null;
@@ -336,6 +362,14 @@ class _FinanceReportTablePageState
         _exportReport != 'cost/plastic') {
       return;
     }
+    final plastic = _exportReport == 'cost/plastic';
+    final contextQuery = plastic ? _binContextQuery : null;
+    if (plastic &&
+        (_binsCurrent && _contextError == null ||
+            _loadingContexts &&
+                samePagedReadQuery(_pendingBinContextQuery, contextQuery))) {
+      return;
+    }
     final generation = ++_contextGeneration;
     final api = ref.read(apiClientProvider);
     final epoch = ref.read(exportContextEpochProvider);
@@ -348,23 +382,39 @@ class _FinanceReportTablePageState
         identical(api, ref.read(apiClientProvider)) &&
         endpoint == _exportReport &&
         from == _fmt(_queryFrom) &&
-        to == _fmt(_queryTo);
+        to == _fmt(_queryTo) &&
+        (!plastic || samePagedReadQuery(contextQuery, _binContextQuery));
     setState(() {
       _loadingContexts = true;
       _contextError = null;
+      if (plastic) _pendingBinContextQuery = contextQuery;
     });
     try {
       if (_exportReport == 'cost/plastic') {
-        final result = await api.get(
-          '/finance/reports/context/plastic-bins',
-          query: {'dateFrom': from, 'dateTo': to},
+        final bins = await readViewActivity.runRead(
+          current,
+          () => readCompleteVersionedSummaries<Map<String, dynamic>>(
+            isCurrent: current,
+            batchSize: 1000,
+            loadPage: (page, size, revision) => api.get(
+              '/finance/reports/context/plastic-bins/summaries',
+              query: {
+                'dateFrom': from,
+                'dateTo': to,
+                'page': page,
+                'size': size,
+                'readSnapshotRevision': ?revision,
+              },
+            ),
+            decode: Map<String, dynamic>.unmodifiable,
+            idOf: (row) => row['id'],
+          ),
+          slot: 'plastic-contexts',
         );
         if (!current()) return;
         setState(() {
-          _bins = [
-            for (final row in result['items'] as List? ?? [])
-              if (row is Map) Map<String, dynamic>.from(row),
-          ];
+          _bins = bins;
+          _acceptedBinContextQuery = contextQuery;
           if (!_bins.any((r) => r['id'] == _binId)) _binId = null;
         });
       } else if (_partyStatement || _auxiliaryReport) {
@@ -374,10 +424,17 @@ class _FinanceReportTablePageState
         if (!current()) return;
         setState(() => _currencies = result);
       }
-    } catch (_) {
-      if (current()) setState(() => _contextError = '读取往来/币别或料仓范围失败，请重试');
+    } catch (error) {
+      if (current() && !isRetiredViewRead(error)) {
+        setState(() => _contextError = '读取往来/币别或料仓范围失败，请重试');
+      }
     } finally {
-      if (current()) setState(() => _loadingContexts = false);
+      if (mounted && generation == _contextGeneration) {
+        setState(() {
+          _loadingContexts = false;
+          if (plastic) _pendingBinContextQuery = null;
+        });
+      }
     }
   }
 
@@ -536,11 +593,24 @@ class _FinanceReportTablePageState
       ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  Future<void> _load({bool background = false}) async {
+  Future<void> _load({
+    bool background = false,
+    bool refreshContexts = false,
+  }) async {
     if (!mounted) return;
+    // A completed context is reused for local query presentation, while an
+    // explicit refresh/write-return revalidates it. An already pending same
+    // context remains one logical read even under repeated refresh actions.
+    if (_exportReport == 'cost/plastic' && (background || refreshContexts)) {
+      _acceptedBinContextQuery = null;
+    }
     if ((_partyStatement || _auxiliaryReport) && _currencies.isEmpty ||
-        _exportReport == 'cost/plastic' && _bins.isEmpty) {
-      if (!_loadingContexts) _loadContexts();
+        _exportReport == 'cost/plastic' && !_binsCurrent) {
+      if (!_loadingContexts ||
+          _exportReport == 'cost/plastic' &&
+              !samePagedReadQuery(_pendingBinContextQuery, _binContextQuery)) {
+        _loadContexts();
+      }
     }
     if (_partyStatement && (_partyId == null || _currencyId == null) ||
         _materialStatement && _materialContextId == null) {
@@ -750,6 +820,8 @@ class _FinanceReportTablePageState
       _materialContextId = _materialContextName = _materialPartyRole = null;
       _currencies = [];
       _bins = [];
+      _acceptedBinContextQuery = null;
+      _pendingBinContextQuery = null;
       _contextError = null;
       _loadingContexts = false;
       ++_contextGeneration;
@@ -835,7 +907,7 @@ class _FinanceReportTablePageState
           .read(currentPermissionsProvider)
           .contains(Perm.paymentStyleEdit),
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openChart() async {
@@ -845,7 +917,7 @@ class _FinanceReportTablePageState
           .read(currentPermissionsProvider)
           .contains(Perm.paymentStyleEdit),
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openInventoryCostPosting() async {
@@ -854,12 +926,12 @@ class _FinanceReportTablePageState
       from: _from,
       to: _to,
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openAccountingImport() async {
     final changed = await showFinanceAccountingImportDialog(context);
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _pickStatementParty() async {
@@ -913,7 +985,7 @@ class _FinanceReportTablePageState
       dateFrom: _fmt(_queryFrom),
       dateTo: _fmt(_queryTo),
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openExpenseInput(
@@ -928,7 +1000,7 @@ class _FinanceReportTablePageState
       entryId: row?['__entryId']?.toString(),
       groupId: row?['__groupId']?.toString(),
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openReportRow(Map<String, dynamic> row) async {
@@ -1150,7 +1222,7 @@ class _FinanceReportTablePageState
       kind: kind,
       scope: scope,
     );
-    if (changed && mounted) _load();
+    if (changed && mounted) _load(refreshContexts: true);
   }
 
   Future<void> _openAssetOpeningGroup() async {
@@ -1222,7 +1294,7 @@ class _FinanceReportTablePageState
         await _load();
       },
     );
-    if (changed && current()) _load();
+    if (changed && current()) _load(refreshContexts: true);
   }
 
   Future<void> _pickMaterialContext() async {
@@ -1463,6 +1535,7 @@ class _FinanceReportTablePageState
                 ),
               if (_contextError != null)
                 UtenButton(
+                  key: const Key('finance-report-context-retry'),
                   onPressed: _loadContexts,
                   child: Text(_contextError!),
                 ),
@@ -1655,6 +1728,8 @@ class _FinanceReportTablePageState
                       _statementReviewId = null;
                       _binId = null;
                       _bins = [];
+                      _acceptedBinContextQuery = null;
+                      _pendingBinContextQuery = null;
                       ++_contextGeneration;
                       _loadingContexts = false;
                     });
@@ -1878,7 +1953,7 @@ class _FinanceReportTablePageState
                   title: _variant.label,
                   subtitle: _partyStatement || _materialStatement
                       ? null
-                      : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}(最多前 2000 行)',
+                      : '日期 ${_fmt(_queryFrom)} ~ ${_fmt(_queryTo)}（全部筛选结果）',
                   loader: _printLoader,
                   exportEndpoint: '/finance/reports/export',
                   exportPermission: Perm.financeReportExport,
@@ -1918,7 +1993,8 @@ class _FinanceReportTablePageState
             refreshedPages: _reportPages.refreshedPages,
             paginationRevision: _reportPages.paginationRevision,
             error: _acceptedQueryCurrent ? _reportPages.error : _error,
-            onRetry: () => _load(background: _data != null),
+            onRetry: () =>
+                _load(background: _data != null, refreshContexts: true),
             emptyMessage: _isCustomerPrepaymentEvents
                 ? '所选日期和客户暂无客户预收流水'
                 : _materialStatement && _materialContextId == null

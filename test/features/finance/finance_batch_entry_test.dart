@@ -678,6 +678,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('按出货单收款').first);
       await tester.pumpAndSettle();
+      for (final ledger in ['shared-ar', 'second-ar', 'opening-ar']) {
+        expect(find.byKey(ValueKey('ar-ap-select-$ledger')), findsOneWidget);
+      }
       await _chooseShipmentBatch(tester, 'shared-ar', '400');
       await tester.tap(find.text('按出货单收款').first);
       await tester.pumpAndSettle();
@@ -1892,7 +1895,7 @@ class _Api extends ApiClient {
               'salesOrderNos': ['XD-B'],
             },
         ],
-        'total': 2,
+        'total': independentSource ? 3 : 2,
         'page': 1,
         'size': 50,
         'totalPages': 1,

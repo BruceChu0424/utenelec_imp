@@ -59,7 +59,16 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
     public Map<String,Object> choices(Context context,int page,int size){return choices(context,page,size,1);}
     @Transactional(readOnly=true)
     public Map<String,Object> choices(Context context,int page,int size,int adjustmentPage){
-        read();var original=original(context);var targets=new ArrayList<Map<String,Object>>();int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        return choiceParts(context,page,size,adjustmentPage,null);
+    }
+    /** Legacy callers receive both axes. A versioned transport reads only its
+     * explicitly requested axis, without repeating the other first page. */
+    private Map<String,Object> choiceParts(Context context,int page,int size,int adjustmentPage,String part){
+        read();var original=original(context);int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        var result=new LinkedHashMap<String,Object>();
+        result.put("original",Map.of("reviewId",original.reviewId(),"documentSha256",original.documentSha256(),"periodAmountOriginal",original.periodAmount().toPlainString(),"dateFrom",original.dateFrom(),"dateTo",original.dateTo()));
+        if(!"adjustments".equals(part)){
+        var targets=new ArrayList<Map<String,Object>>();
         String sourceJson=encode(original.sources().stream().map(source->Map.of("kind",source.sourceType(),"id",source.sourceId())).toList());
         String scope=" FROM ar_ap_ledger ledger JOIN jsonb_to_recordset(?::jsonb) AS source(kind text,id uuid) ON source.kind=ledger.source_doc_type AND source.id=ledger.source_doc_id WHERE ledger.direction='AP' AND ledger.status=1 AND NOT ledger.is_deleted AND ledger.supplier_id=? AND ledger.currency_id=?";
         long total=db.queryForObject("SELECT count(*)"+scope,Long.class,sourceJson,original.partyId(),original.currencyId());
@@ -72,13 +81,18 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
                 item.put("balanceOriginal",money(row,"amount_balance_original").toPlainString());item.put("balanceLocal",money(row,"amount_balance").toPlainString());
                 item.put("fingerprint",targetFingerprint(row));targets.add(item);
         }
+        result.put("targets",targets);result.put("page",p);result.put("totalPages",(total+s-1)/s);result.put("total",total);result.put("size",s);
+        }
         var accounts=db.queryForList("SELECT style.id,code.code,code.name,style.category FROM finance_chart_code_styles mapping JOIN finance_chart_codes code ON code.code=mapping.code JOIN payment_styles style ON style.id=mapping.style_id WHERE code.classification='PROFIT' AND style.category IN('INCOME','EXPENSE') AND style.status='使用' AND NOT style.is_deleted ORDER BY code.sort_order,code.code,style.id");
-        var result=new LinkedHashMap<String,Object>();
-        result.put("original",Map.of("reviewId",original.reviewId(),"documentSha256",original.documentSha256(),"periodAmountOriginal",original.periodAmount().toPlainString(),"dateFrom",original.dateFrom(),"dateTo",original.dateTo()));
-        result.put("targets",targets);result.put("accounts",accounts);result.put("page",p);result.put("totalPages",(total+s-1)/s);result.put("total",total);
+        result.put("accounts",accounts);
         result.put("currency",db.queryForMap("SELECT code,name FROM currencies WHERE id=?",original.currencyId()));
-        int ap=Math.max(1,adjustmentPage);long adjustmentCount=db.queryForObject("SELECT count(*) FROM finance_payable_statement_adjustments WHERE statement_review_id=? AND source_fingerprint=?",Long.class,original.reviewId(),original.sourceFingerprint());
-        result.put("adjustments",adjustmentRows(context,ap));result.put("adjustmentPage",ap);result.put("adjustmentPages",(adjustmentCount+49)/50);result.put("adjustmentTotal",adjustmentCount);result.put("adjustmentSize",50);result.put("size",s);return result;
+        if(!"targets".equals(part)){
+            int ap=Math.max(1,adjustmentPage);long adjustmentCount=db.queryForObject("SELECT count(*) FROM finance_payable_statement_adjustments WHERE statement_review_id=? AND source_fingerprint=?",Long.class,original.reviewId(),original.sourceFingerprint());
+            result.put("adjustments",adjustmentRows(context,ap));result.put("adjustmentPage",ap);result.put("adjustmentPages",(adjustmentCount+49)/50);result.put("adjustmentTotal",adjustmentCount);result.put("adjustmentSize",50);
+        }
+        // Legacy shape retains size even though the adjustments transport has
+        // its own independent, unchanged fifty-row network batch.
+        result.put("size",s);return result;
     }
     @Override @Transactional(readOnly=true)
     public Preview preview(Context context,List<Line> lines){read();return previewOf(plan(context,lines,false,null));}
@@ -297,7 +311,7 @@ public class FinancePayableStatementAdjustmentService implements FinancePayableS
         var request=new com.uten.imp.common.readsnapshot.VersionedSummaryPages.Request("finance-payable-statement-choices","finance",
                 Map.of("statementReviewId",context.statementReviewId(),"sourceFingerprint",context.expectedSourceFingerprint(),"part",part),
                 "all",selectedPage,selectedSize,100,revision);
-        var snapshot=summaryPages.read(request,this::read,()->choices(context,page,size,adjustmentPage));
+        var snapshot=summaryPages.read(request,this::read,()->choiceParts(context,page,size,adjustmentPage,part));
         var result=new LinkedHashMap<String,Object>(snapshot.value());
         result.put("scope","all");result.put("readScopeVersion",snapshot.readScopeVersion());
         result.put("readSnapshotRevision",snapshot.readSnapshotRevision());

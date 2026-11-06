@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -379,16 +380,70 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final expectedSources = scenario.$2 == 'inbound'
-          ? ['ALL', 'PURCHASE', 'SUBCONTRACT', 'FINISHED', 'OTHER', 'RETURN']
-          : ['ALL', 'SALES', 'SUBCONTRACT', 'DRAW', 'OTHER', 'FINISHED'];
       expect(
         gateway.calls.map((call) => call.source),
-        unorderedEquals(expectedSources),
+        ['ALL'],
         reason:
-            'The visible ALL page and every authorized first-page preload are fetched once.',
+            'Only the selected complete ALL query is read; no unselected source is predicted.',
       );
-      expect(gateway.calls.every((call) => call.page == 1), isTrue);
+      expect(
+        gateway.calls.every((call) => call.page == 1 && call.scope.isAll),
+        isTrue,
+      );
+      final expectedRows = scenario.$2 == 'inbound' ? _inbound : _outbound;
+      final tableFinder = find.byType(
+        MasterDataTableView<WarehouseTaskCenterRecord>,
+      );
+      final table = tester
+          .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(tableFinder);
+      expect(
+        table.items.map(
+          (row) => (
+            row.rowKey,
+            row.sourceType,
+            row.recordType,
+            row.status,
+            row.line?.quantityText,
+            row.line?.unitName,
+          ),
+        ),
+        expectedRows.map(
+          (row) => (
+            row.rowKey,
+            row.sourceType,
+            row.recordType,
+            row.status,
+            row.line?.quantityText,
+            row.line?.unitName,
+          ),
+        ),
+      );
+      expect(
+        table.items.map((row) => row.rowKey).toSet(),
+        hasLength(expectedRows.length),
+      );
+      expect(table.totalPages, 1);
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
+      final scrollables = tester
+          .stateList<ScrollableState>(
+            find.descendant(of: tableFinder, matching: find.byType(Scrollable)),
+          )
+          .where(
+            (state) =>
+                state.position.axis == Axis.vertical &&
+                state.position.hasContentDimensions,
+          )
+          .toList();
+      for (final state in scrollables) {
+        state.position.jumpTo(state.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        state.position.jumpTo(0);
+        await tester.pumpAndSettle();
+      }
+      expect(gateway.calls.map((call) => call.source), ['ALL']);
       expect(find.text('委外损耗'), findsNothing);
       expect(find.textContaining('金额'), findsNothing);
       expect(

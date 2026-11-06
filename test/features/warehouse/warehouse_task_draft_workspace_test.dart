@@ -1015,7 +1015,7 @@ void main() {
     FormDraftCatalog.workshopMaterialCloseRetry,
   ]) {
     testWidgets(
-      '${descriptor.title} local input is reachable from its warehouse draft entry',
+      '${descriptor.title} bare period input is retained without inventing a standalone source',
       (tester) async {
         final spec = descriptor.spec(route: descriptor.route);
         final local = FormDraft(
@@ -1037,15 +1037,25 @@ void main() {
             Perm.workshopMaterialCount,
           },
         );
-        expect(scope.read(formDraftsPageCountProvider('warehouse')), 1);
+        // A bare descriptor has neither period nor count identity. It cannot
+        // borrow another task or masquerade as a new standalone editor.
+        expect(isTaskFormDraft(local), isTrue);
+        expect(
+          workshopMaterialPeriodTaskDraftsFor([local], 'period-task'),
+          isEmpty,
+        );
+        expect(scope.read(formDraftsPageCountProvider('warehouse')), 0);
         expect(scope.read(formDraftsPageCountProvider('warehouse-master')), 0);
+        expect(scope.read(formDraftsProvider).single.toJson(), local.toJson());
         await tester.tap(find.text('仓库草稿'));
         await tester.pumpAndSettle();
         final table = tester.widget<MasterDataTableView<DraftWorkspaceRow>>(
           find.byType(MasterDataTableView<DraftWorkspaceRow>),
         );
-        expect(table.items.single.local?.id, local.id);
-        expect(table.items.single.location, local.resumeLocation);
+        expect(table.items, isEmpty);
+        expect(scope.read(formDraftsProvider).single.toJson(), local.toJson());
+        expect(find.byType(WorkshopMaterialCountPage), findsNothing);
+        expect(find.byType(WmCloseRetryRecoveryPage), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );

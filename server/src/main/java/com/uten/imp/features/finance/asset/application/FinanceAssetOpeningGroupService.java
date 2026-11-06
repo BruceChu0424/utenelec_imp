@@ -50,8 +50,17 @@ public class FinanceAssetOpeningGroupService {
     public Map<String,Object> voucher(String voucherNo){
         auth.require(FinanceAssetAuthorization.EDIT);CurrentAuthorityGuard.requireAll("finance_report:view");FinanceCompanyReportAccess.require(companyAccess);
         if(voucherNo==null||voucherNo.isBlank()||voucherNo.length()>100)throw invalid("请输入完整的原期初凭证号");
-        var rows=db.queryForList("SELECT id,voucher_no AS \"voucherNo\",voucher_date AS \"voucherDate\" FROM gl_vouchers WHERE voucher_no=? AND status=1 AND NOT is_deleted ORDER BY id LIMIT 10",voucherNo.trim());
-        for(var v:rows)v.put("entries",db.queryForList("SELECT e.id,e.style_id AS \"styleId\",COALESCE(chart.code,s.code) AS code,COALESCE(chart.name,s.name) AS name,e.direction,e.amount::text AS amount,claim.group_id AS \"claimedGroupId\" FROM gl_entries e LEFT JOIN payment_styles s ON s.id=e.style_id LEFT JOIN finance_chart_code_styles mapped ON mapped.style_id=s.id LEFT JOIN finance_chart_codes chart ON chart.code=mapped.code LEFT JOIN finance_asset_opening_entry_claims claim ON claim.entry_id=e.id WHERE e.voucher_id=? AND NOT e.is_deleted ORDER BY e.line_no,e.id",v.get("id")));
+        var rows=db.queryForList("SELECT id,voucher_no AS \"voucherNo\",voucher_date AS \"voucherDate\" FROM gl_vouchers WHERE voucher_no=? AND status=1 AND NOT is_deleted ORDER BY id",voucherNo.trim());
+        // A voucher number is unique only together with source_type. Read
+        // every exact-number identity and retain every original entry/claim.
+        var entriesByVoucher=new LinkedHashMap<UUID,List<Map<String,Object>>>();
+        for(var v:rows){var entries=new ArrayList<Map<String,Object>>();entriesByVoucher.put((UUID)v.get("id"),entries);v.put("entries",entries);}
+        var ids=new ArrayList<>(entriesByVoucher.keySet());
+        for(int offset=0;offset<ids.size();offset+=500){
+            var batch=ids.subList(offset,Math.min(ids.size(),offset+500));
+            var entries=db.queryForList("SELECT e.voucher_id AS \"__voucherId\",e.id,e.style_id AS \"styleId\",COALESCE(chart.code,s.code) AS code,COALESCE(chart.name,s.name) AS name,e.direction,e.amount::text AS amount,claim.group_id AS \"claimedGroupId\" FROM gl_entries e LEFT JOIN payment_styles s ON s.id=e.style_id LEFT JOIN finance_chart_code_styles mapped ON mapped.style_id=s.id LEFT JOIN finance_chart_codes chart ON chart.code=mapped.code LEFT JOIN finance_asset_opening_entry_claims claim ON claim.entry_id=e.id WHERE e.voucher_id IN("+String.join(",",Collections.nCopies(batch.size(),"?"))+") AND NOT e.is_deleted ORDER BY e.voucher_id,e.line_no,e.id",batch.toArray());
+            for(var entry:entries){UUID owner=(UUID)entry.remove("__voucherId");Objects.requireNonNull(entriesByVoucher.get(owner),"Entry voucher was not part of the exact authorized lookup").add(entry);}
+        }
         return Map.of("items",rows);
     }
     @Transactional

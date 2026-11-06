@@ -210,9 +210,12 @@ void main() {
     );
     expect(
       api.taskQueries.where((query) => query['source'] == 'ALL'),
-      hasLength(1),
+      isEmpty,
+      reason:
+          'The unselected ALL source must not be fetched before or after returning.',
     );
-    expect(api.listRequests, 3);
+    expect(api.taskQueries, hasLength(2));
+    expect(api.listRequests, 2);
     expect(find.text('仓库任务中心'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

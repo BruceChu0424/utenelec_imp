@@ -51,6 +51,7 @@ class ReadScopePublicationTest {
                 java.util.Map.entry("/api/finance/accounting-imports/summaries","finance"),
                 java.util.Map.entry("/api/finance/auxiliary-imports/summaries","finance"),
                 java.util.Map.entry("/api/finance/chart/imports/summaries","finance"),
+                java.util.Map.entry("/api/finance/expense-analysis/note-imports/summaries","finance"),
                 java.util.Map.entry("/api/finance/payable-statement-adjustments","finance"),
                 java.util.Map.entry("/api/finance/statement-documents/reviews/00000000-0000-4000-8000-000000000001/summary","finance"),
                 java.util.Map.entry("/api/finance/statement-documents/reviews/00000000-0000-4000-8000-000000000001/original-table","finance"));

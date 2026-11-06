@@ -51,7 +51,7 @@ public class FinanceAssetQueryService {
                   AND NOT EXISTS(SELECT 1 FROM fixed_assets a WHERE a.opening_voucher_id=v.id
                     AND a.lifecycle_status<>'REVERSED' AND NOT a.is_deleted)
                 ORDER BY v.id
-                """).setParameter("number",voucherNo.trim()).setMaxResults(2).getResultList();
+                """).setParameter("number",voucherNo.trim()).getResultList();
         return rows.stream().map(r->new OpeningVoucher(NativeValueConverters.uuid(r[0]),r[1].toString(),NativeValueConverters.toLocalDate(r[2]))).toList();
     }
 

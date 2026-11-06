@@ -22,6 +22,7 @@ import 'package:uten_imp/features/basic_data/models/reference_method_option.dart
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/uten_test_actions.dart';
+import '../../support/versioned_summary_test_response.dart';
 
 void main() {
   testWidgets(
@@ -194,6 +195,43 @@ class _OrderApi extends ApiClient {
     },
     {'id': 's2', 'code': 'GY002', 'name': '宁海塑胶', 'status': '使用'},
   ];
+  static const _pickerSuppliers = <Map<String, dynamic>>[
+    {
+      'id': 's1',
+      'name': '洪武五金',
+      'description': '洪武五金制品厂',
+      'place': '宁波',
+      'linkman': '王经理',
+      'mobile': '13800000000',
+      'categoryId': 'cat1',
+    },
+    {
+      'id': 's2',
+      'name': '宁海塑胶',
+      'description': '宁海塑胶有限公司',
+      'place': '宁海',
+      'categoryId': 'cat1',
+    },
+  ];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    expectSync(path, '${ApiEndpoints.businessReferenceSuppliers}/summaries');
+    final request = Map<String, dynamic>.from(body! as Map);
+    expectSync(request['size'], lessThanOrEqualTo(100));
+    expectSync((request['filter'] as Map)['selectableOnly'], isTrue);
+    return versionedSummaryTestResponse(
+      _pickerSuppliers,
+      request,
+      revision: 'a' * 64,
+      dataVersion: 'b' * 64,
+    );
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -232,35 +270,6 @@ class _OrderApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.businessReferenceSuppliers) {
-      expectSync(query!['size'], lessThanOrEqualTo(100));
-      expectSync(query['selectableOnly'], isTrue);
-      // 供应商分页（面板 selectableOnly 口径）：仅启用供应商。
-      return const {
-        'items': <Map<String, dynamic>>[
-          {
-            'id': 's1',
-            'name': '洪武五金',
-            'description': '洪武五金制品厂',
-            'place': '宁波',
-            'linkman': '王经理',
-            'mobile': '13800000000',
-            'categoryId': 'cat1',
-          },
-          {
-            'id': 's2',
-            'name': '宁海塑胶',
-            'description': '宁海塑胶有限公司',
-            'place': '宁海',
-            'categoryId': 'cat1',
-          },
-        ],
-        'page': 1,
-        'size': 20,
-        'total': 2,
-        'totalPages': 1,
-      };
-    }
     return const {
       'items': <Map<String, dynamic>>[],
       'page': 1,

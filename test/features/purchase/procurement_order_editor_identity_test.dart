@@ -24,6 +24,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/versioned_summary_test_response.dart';
 
 final _reader = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'a'),
@@ -465,25 +466,6 @@ class _Api extends ApiClient {
             ))
           : detailGate!.future;
     }
-    if (replacementDraft &&
-        (path == '/master/suppliers' ||
-            path == '/business-references/suppliers')) {
-      return {
-        'items': [
-          {
-            'id': 'new-supplier',
-            'code': 'SUP-NEW',
-            'name': '新供应商',
-            'status': '使用',
-            'categoryId': 'supplier-category',
-          },
-        ],
-        'page': 1,
-        'size': 20,
-        'total': 1,
-        'totalPages': 1,
-      };
-    }
     return {};
   }
 
@@ -547,6 +529,27 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
+    if (path == '${ApiEndpoints.suppliers}/summaries' ||
+        path == '${ApiEndpoints.businessReferenceSuppliers}/summaries') {
+      expect(replacementDraft, isTrue);
+      final request = Map<String, dynamic>.from(body! as Map);
+      expect(request['size'], 100);
+      expect((request['filter'] as Map)['selectableOnly'], isTrue);
+      return versionedSummaryTestResponse(
+        [
+          {
+            'id': 'new-supplier',
+            'code': 'SUP-NEW',
+            'name': '新供应商',
+            'status': '使用',
+            'categoryId': 'supplier-category',
+          },
+        ],
+        request,
+        revision: 'a' * 64,
+        dataVersion: 'b' * 64,
+      );
+    }
     writes.add(path);
     return _detail();
   }

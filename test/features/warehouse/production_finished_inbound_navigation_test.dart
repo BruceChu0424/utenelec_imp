@@ -63,10 +63,10 @@ void main() {
 
       expect(api.taskRequestCount, 1);
       expect(
-        api.preparationQueries.map((query) => query['source']),
-        unorderedEquals(['OTHER', 'RETURN', 'ALL']),
+        api.preparationQueries,
+        isEmpty,
         reason:
-            'Authorized source preloads are separate from the one visible FINISHED read.',
+            'The complete current FINISHED scope does not speculate other business sources.',
       );
       // ADR-184：分段红数来自徽章汇总(挂载已固定), 不再单发 /count。
       expect(api.countRequestCount, 0);
@@ -135,6 +135,12 @@ void main() {
 
       api.completeBlockedTaskRequest(total: 99);
       await tester.pumpAndSettle();
+      expect(
+        api.taskRequestCount,
+        4,
+        reason:
+            'The retired valid 99-row scope must not fetch continuation batches.',
+      );
       expect(find.text('共 99 条'), findsNothing);
       expect(find.text('共 2 条'), findsOneWidget);
 
@@ -436,9 +442,9 @@ class _TrackingFinishedInboundApi extends ApiClient {
       throw StateError('Unexpected request: $path');
     }
     if (query?['source'] != 'FINISHED') {
-      expect(query?['source'], isIn(['OTHER', 'RETURN', 'ALL']));
-      expect(query?['page'], 1);
-      expect(query?['view'], 'ACTIVE');
+      expectSync(query?['source'], isIn(['OTHER', 'RETURN', 'ALL']));
+      expectSync(query?['page'], 1);
+      expectSync(query?['view'], 'ACTIVE');
       preparationQueries.add(Map<String, dynamic>.of(query!));
       return query['source'] == 'ALL'
           ? _taskPayload()
@@ -456,8 +462,8 @@ class _TrackingFinishedInboundApi extends ApiClient {
     return _taskPayload();
   }
 
-  Map<String, dynamic> _taskPayload({int total = 2}) => {
-    'items': [
+  Map<String, dynamic> _taskPayload({int total = 2}) {
+    final rows = <Map<String, dynamic>>[
       {
         'rowKey': _registerRowKey,
         'id': _arrivalTaskId,
@@ -495,11 +501,28 @@ class _TrackingFinishedInboundApi extends ApiClient {
           'pendingQty': 1000,
         },
       },
-    ],
-    'page': 1,
-    'size': 40,
-    'total': total,
-    'totalPages': 1,
-    'facets': const <String, dynamic>{},
-  };
+    ];
+    for (var index = 2; index < total; index++) {
+      final id = '30000000-0000-4000-8000-${index.toString().padLeft(12, '0')}';
+      rows.add({
+        ...rows.first,
+        'rowKey': 'FINISHED:FINISHED_REGISTER:$id',
+        'id': id,
+        'targetId': id,
+        'billNo': 'SJ-LATE-$index',
+        'actionData': {
+          'reportId': id,
+          'canRegisterBeforeInspection': allowPreStock,
+        },
+      });
+    }
+    return {
+      'items': rows.take(total).take(40).toList(),
+      'page': 1,
+      'size': 40,
+      'total': total,
+      'totalPages': (total + 39) ~/ 40,
+      'facets': const <String, dynamic>{},
+    };
+  }
 }

@@ -4,7 +4,7 @@
 
 ## W7-BIZ-051 · lib/features/expense/pages/expense_approval_detail_page.dart
 
-模块 `expense`；964 行；SHA256 `1367a96548623fd03b84d35a612359cb84eb09fa931c0faf40015f952a08b447`。
+模块 `expense`；964 行；SHA256 `c52dcffcc4d68eef1dca102cb98118bf7b4c528f586bcc58911a9f5d17bfe0f0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

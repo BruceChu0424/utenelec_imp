@@ -1,4 +1,3 @@
-import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,9 +9,15 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/formatters/china_number_format.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/measurement/weight_prefs.dart';
+import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../models/instant_inventory_summary.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+
+// Coverage is a statistical completeness indicator with the existing one-place
+// presentation. Raw warehouse quantities/weights remain their recorded facts.
+String _weightCoverageText(double coverage) =>
+    '${formatMeasurementValue(coverage * 100, scale: 1)}%';
 
 /// 独立总览页正文。所有指标沿用同一筛选范围的服务端合计。
 class InstantInventoryOverviewContent extends ConsumerWidget {
@@ -199,9 +204,7 @@ class _OverviewMetrics extends StatelessWidget {
           ),
           _MetricCard(
             label: '重量覆盖率',
-            value: coverage == null
-                ? '暂无覆盖率'
-                : '${formatChinaNumber(coverage * 100, decimalDigits: 1)}%',
+            value: coverage == null ? '暂无覆盖率' : _weightCoverageText(coverage),
             description: '非零库存项中，已知重量的占比',
             icon: Icons.monitor_weight_outlined,
             compact: compactMetrics,
@@ -656,8 +659,7 @@ class _WeightCoverage extends StatelessWidget {
               minHeight: UtenSpacing.s12,
               borderRadius: UtenRadius.pillAll,
               semanticsLabel: '重量数据覆盖率',
-              semanticsValue:
-                  '${(coverage * 100).toExactString(minimumFractionDigits: 1)}%',
+              semanticsValue: _weightCoverageText(coverage),
             ),
             const SizedBox(height: UtenSpacing.s16),
           ],

@@ -16,7 +16,7 @@ D:\Projects\uten_imp_worktrees\finance-main-integration-20261105
 
 前端当前首三项和导入的分轮调用方专项已过，但还有最后一个加强双击用例未跑、两个 mounted 分析提示，以及当前全部源码的完整 VM、browser17、fresh标准 Web/Windows 和实际界面验收。必须做真实五类钱流、独立审批/反审/修改再审、科目恢复、首次应付丢回包硬重启、原件双确认到首次AP、材料KG维护、资产/待摊一期计提和三张GL实际 XLSX/PDF。mock HTTP、打开页面或旧53张读图不能代替这些。所有业务写入只在匿名 task-owned PostgreSQL/loopback，不连接公司库。
 
-两组旧长回归可能还在自然跑：Source158 PID27256、Ledger124 PID1616，日志分别在本树 build\finance-main-integration-backend\group-v1-source\tests.log 与 group-v1-ledger\tests.log；Python launcher结束后会写 process-exit.json。不要取消它们来隐藏失败；它们读的是不可变 candidate-v1，不能作为当前源码验收。先读最终 summary、旧失败分类与各代理交接。旧代理已停止全部编辑/新启动工作，新对话自行按文件分工，统一编译与资源窗口，避免多个重编译/冷迁移耗尽内存。
+交接18:00时Source158已于17:53自然结束：918 found、888pass、22方法fail、2skip、0abort、1containerfail，另6项因类初始化没开始；原PID27256不存在。Ledger124 PID1616仍自然跑。日志分别在本树 build\finance-main-integration-backend\group-v1-source\tests.log 与 group-v1-ledger\tests.log，结束后有 process-exit.json。不要取消仍跑的组来隐藏失败，也不要向可能复用的旧PID发送信号；这些组读的是不可变 candidate-v1，不能作为当前源码验收。先读最终 summary、旧失败分类与各代理交接。旧代理已停止全部编辑/新启动工作，新对话自行按文件分工，统一编译与资源窗口，避免多个重编译/冷迁移耗尽内存。
 
 实际主工作树、原审查树、当前代码、build证据、原文件与未完成内容全部保留，不 reset/clean 或覆盖。不混用不同项目输出的 Java classpath，不改业务 guard/锁/timeout/精度或伪造已审状态凑测试。大数据压力的当前100/10000与历史500k仍未完成；新装置目前仅静态，旧失败/claim长暂停坑在交接中有记录，不得假称已测量。持续推进，不逐项停下让我确认。
 

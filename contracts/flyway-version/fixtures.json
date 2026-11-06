@@ -1,12 +1,144 @@
 {
   "contractVersion": 1,
-  "canonicalOrder": ["0.1", "1", "1.0.1", "1.2", "1.2.0.1", "2", "999", "999.1", "999.2", "999.10", "999.11", "1000", "20261105123456789012345678901234567890"],
-  "semanticAliases": [["999_1", "999.1"], ["0007.000", "7"], ["1.2.0", "1.2"]],
-  "invalidCanonical": ["", "0", "00", "01", "1.0", "1.00", "999.01", "999.1.0", "1_2", "1..2", "1.", ".1", "1e3", "-1", "+1", " 1", "1\n", "١", true, false, null, 1, 1.5],
-  "scripts": [
-    {"file": "V999_1__first_decimal.sql", "version": "999.1", "rawDescription": "first_decimal", "flywayDescription": "first decimal"},
-    {"file": "V999.10__tenth_delta.sql", "version": "999.10", "rawDescription": "tenth_delta", "flywayDescription": "tenth delta"},
-    {"file": "V1000__integer.sql", "version": "1000", "rawDescription": "integer", "flywayDescription": "integer"}
+  "canonicalOrder": [
+    "0.1",
+    "1",
+    "1.0.1",
+    "1.2",
+    "1.2.0.1",
+    "2",
+    "999",
+    "999.1",
+    "999.2",
+    "999.10",
+    "999.11",
+    "1000",
+    "20261105123456789012345678901234567890"
   ],
-  "invalidScripts": ["V0999_1__alias.sql", "V999_1_0__alias.sql", "V999_1.2__mixed.sql", "V1e3__exponent.sql", "V1____.sql/evil", "../V1__outside.sql", "V1__folder/file.sql", "V1__folder\\file.sql", "V1__line\nbreak.sql"]
+  "semanticAliases": [
+    [
+      "999_1",
+      "999.1"
+    ],
+    [
+      "0007.000",
+      "7"
+    ],
+    [
+      "1.2.0",
+      "1.2"
+    ]
+  ],
+  "invalidCanonical": [
+    "",
+    "0",
+    "00",
+    "01",
+    "1.0",
+    "1.00",
+    "999.01",
+    "999.1.0",
+    "1_2",
+    "1..2",
+    "1.",
+    ".1",
+    "1e3",
+    "-1",
+    "+1",
+    " 1",
+    "1\n",
+    "١",
+    true,
+    false,
+    null,
+    1,
+    1.5
+  ],
+  "scripts": [
+    {
+      "file": "V01__enable_pgcrypto.sql",
+      "version": "1",
+      "rawDescription": "enable_pgcrypto",
+      "flywayDescription": "enable pgcrypto"
+    },
+    {
+      "file": "V999_1__first_decimal.sql",
+      "version": "999.1",
+      "rawDescription": "first_decimal",
+      "flywayDescription": "first decimal"
+    },
+    {
+      "file": "V999.10__tenth_delta.sql",
+      "version": "999.10",
+      "rawDescription": "tenth_delta",
+      "flywayDescription": "tenth delta"
+    },
+    {
+      "file": "V1000__integer.sql",
+      "version": "1000",
+      "rawDescription": "integer",
+      "flywayDescription": "integer"
+    }
+  ],
+  "invalidScripts": [
+    "V0999_1__alias.sql",
+    "V999_1_0__alias.sql",
+    "V999_1.2__mixed.sql",
+    "V1e3__exponent.sql",
+    "V1____.sql/evil",
+    "../V1__outside.sql",
+    "V1__folder/file.sql",
+    "V1__folder\\file.sql",
+    "V1__line\nbreak.sql",
+    "V01__forged.sql",
+    "V001__enable_pgcrypto.sql",
+    "V0999_1__alias.sql"
+  ],
+  "legacyHistory": [
+    {
+      "raw": "01",
+      "canonical": "1",
+      "file": "V01__enable_pgcrypto.sql"
+    },
+    {
+      "raw": "02",
+      "canonical": "2",
+      "file": "V02__departments_positions.sql"
+    },
+    {
+      "raw": "03",
+      "canonical": "3",
+      "file": "V03__employees.sql"
+    },
+    {
+      "raw": "04",
+      "canonical": "4",
+      "file": "V04__auth_rbac.sql"
+    },
+    {
+      "raw": "05",
+      "canonical": "5",
+      "file": "V05__audit.sql"
+    },
+    {
+      "raw": "06",
+      "canonical": "6",
+      "file": "V06__seed_rbac.sql"
+    },
+    {
+      "raw": "07",
+      "canonical": "7",
+      "file": "V07__seed_org.sql"
+    },
+    {
+      "raw": "08",
+      "canonical": "8",
+      "file": "V08__seed_admin.sql"
+    },
+    {
+      "raw": "09",
+      "canonical": "9",
+      "file": "V09__audit_redact_password.sql"
+    }
+  ]
 }

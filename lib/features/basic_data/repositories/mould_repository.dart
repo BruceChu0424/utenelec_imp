@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'master_summary_read.dart';
 import '../models/master_facet.dart';
 import '../models/mould_node.dart';
 
@@ -57,9 +58,48 @@ abstract interface class MouldRepository {
   Future<void> delete(String id);
 }
 
-class DioMouldRepository implements MouldRepository {
+abstract interface class MouldSummaryReadGateway {
+  bool get supportsCompleteMouldSummaries;
+  Future<PagedResult<MouldListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  });
+}
+
+class DioMouldRepository implements MouldRepository, MouldSummaryReadGateway {
   DioMouldRepository(this.api);
   final ApiClient api;
+  @override
+  bool get supportsCompleteMouldSummaries => true;
+  @override
+  Future<PagedResult<MouldListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) {
+    if (!supportsCompleteMouldSummaries) {
+      throw StateError('Unsupported mould summary source');
+    }
+    return readCompleteMasterSummary<MouldListItem>(
+      api,
+      path: '${ApiEndpoints.moulds}/summaries',
+      filter: masterSummaryFilter(
+        categoryId: categoryId,
+        keyword: keyword,
+        filters: filters,
+        flags: {},
+      ),
+      sort: sort,
+      order: order,
+      decode: MouldListItem.fromJson,
+      idOf: (row) => row.id,
+    );
+  }
 
   @override
   Future<PagedResult<MouldListItem>> list(

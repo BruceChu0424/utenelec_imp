@@ -960,6 +960,47 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     };
   }
 
+  Future<PagedResult<GoodsListItem>> Function()? _completeSummaryReader(
+    String? category, {
+    String? keyword,
+    bool searching = false,
+  }) {
+    if (widget.dataSource != null) return null;
+    final repository = ref.read(businessGoodsReferenceRepositoryProvider);
+    final gateway = repository is GoodsSummaryReadGateway
+        ? repository as GoodsSummaryReadGateway
+        : null;
+    if (gateway?.supportsCompleteGoodsSummaries != true) return null;
+    final filters = Map<String, String?>.unmodifiable(_columnFilters);
+    final roots = Set<String>.unmodifiable(
+      searching && !_searchesAllSelectableGoods ? _scopeRootIds : <String>{},
+    );
+    final allowed = Set<String>.unmodifiable(_searchAllowedCategoryIds);
+    final all = _searchesAllSelectableGoods, related = _includeRelated;
+    return () async {
+      final result = await gateway!.completeList(
+        category,
+        keyword: keyword,
+        filters: filters,
+        sort: _goodsPickerSort,
+        order: _goodsPickerOrder,
+        categoryRootIds: roots,
+        includeRelated: searching && related,
+        excludeDisabled: true,
+        excludeStub: true,
+      );
+      if (searching &&
+          result.items.any(
+            (row) => row.categoryId == null
+                ? !all
+                : !allowed.contains(row.categoryId),
+          )) {
+        throw StateError('goods search returned an item outside picker scope');
+      }
+      return result;
+    };
+  }
+
   Future<Set<String>> _searchCategoryIds(String query) {
     final source = widget.dataSource;
     if (source != null) {
@@ -1039,6 +1080,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         useCache: useCache,
         isCurrent: () => _canRead,
         fetchPage: _categoryReader(categoryId, keyword: keyword),
+        fetchComplete: _completeSummaryReader(categoryId, keyword: keyword),
       );
       if (!mounted ||
           !_canRead ||
@@ -1125,6 +1167,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         useCache: useCache,
         isCurrent: () => _canRead,
         fetchPage: _searchReader(query),
+        fetchComplete: _completeSummaryReader(
+          _searchCategoryId,
+          keyword: query,
+          searching: true,
+        ),
       );
       if (!mounted ||
           !_canRead ||

@@ -53,6 +53,8 @@ class UtenMasterPickerSpec<TItem> {
     required this.loadCategoryPage,
     required this.search,
     required this.searchContext,
+    this.loadCompleteCategory,
+    this.searchComplete,
     required this.idOf,
     required this.categoryIdOf,
     required this.labelOf,
@@ -62,6 +64,9 @@ class UtenMasterPickerSpec<TItem> {
     this.quickCreate,
   });
 
+  final Future<PagedResult<TItem>> Function(String categoryId, String? keyword)?
+  loadCompleteCategory;
+  final Future<PagedResult<TItem>> Function(String query)? searchComplete;
   final String title;
 
   /// 面向人的实体名(客户/供应商)，拼进提示文案。
@@ -367,6 +372,9 @@ class _MasterPickerSheetState<TItem>
         isCurrent: () => _currentReader,
         fetchPage: (target) =>
             spec.loadCategoryPage(categoryId, target, keyword),
+        fetchComplete: spec.loadCompleteCategory == null
+            ? null
+            : () => spec.loadCompleteCategory!(categoryId, keyword),
       );
       if (!_currentReader || requestVersion != _requestVersion) return;
       if (!_acceptScope(r.readScopeVersion)) return;
@@ -498,6 +506,9 @@ class _MasterPickerSheetState<TItem>
         useCache: useCache,
         isCurrent: () => _currentReader,
         fetchPage: (target) => spec.search(query, target),
+        fetchComplete: spec.searchComplete == null
+            ? null
+            : () => spec.searchComplete!(query),
       );
       if (_stale(requestVersion, query, requestedPage)) return;
       if (!_acceptScope(result.readScopeVersion)) return;

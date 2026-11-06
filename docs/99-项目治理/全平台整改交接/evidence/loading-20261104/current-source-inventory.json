@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "1e9118917894ebabb15b2fbca9819eda879f946e",
+  "baselineCommit": "e157c9757208ec28ccf493bb3a65c15953214e49",
   "interpretation": "Lexical discovery only. A marker is neither a defect nor proof of completed caller, role, scale or UI acceptance. Module reviews and executable receipts are required.",
   "runtimeAcceptance": false,
   "normalization": "UTF-8 without BOM; CRLF/CR normalized to LF",
@@ -9,7 +9,7 @@
     "applications": 3,
     "approvals": 3,
     "auth": 1,
-    "basic_data": 57,
+    "basic_data": 58,
     "client_update": 3,
     "company_files": 5,
     "dashboard": 3,
@@ -1245,10 +1245,13 @@
     },
     {
       "source": "lib/features/basic_data/pages/mould_category_page.dart",
-      "normalizedSha256": "0e15129d516e442b1ff2069066a02bedfadd2203c1597c0138ca34916871a073",
+      "normalizedSha256": "a9d48e4221be9473b76713232985e747f1953e8801fdfd43aabe055046de6753",
       "markers": {
         "tablePresentation": [
           12
+        ],
+        "explicitReadOwnership": [
+          193
         ]
       }
     },
@@ -1277,19 +1280,23 @@
     },
     {
       "source": "lib/features/basic_data/pages/product_category_page.dart",
-      "normalizedSha256": "0a323b6a8807be217cd126a412e24cb62af7002ccf0b9eb8914131cd37efa48d",
+      "normalizedSha256": "5e150e35c72224fc2d263a1a5506371fda4ec8f362275d928b987d448848ee37",
       "markers": {
+        "completeResults": [
+          893
+        ],
         "columnFacets": [
-          762
+          782
         ],
         "explicitReadOwnership": [
-          1264
+          872,
+          1307
         ],
         "completeDirectoryCandidates": [
-          1163
+          1206
         ],
         "asyncJoinCandidates": [
-          852
+          909
         ]
       }
     },
@@ -1319,7 +1326,7 @@
     },
     {
       "source": "lib/features/basic_data/pages/supplier_category_page.dart",
-      "normalizedSha256": "c00fdde785c45d7f63fd69078d17c587bb8ed73edb291df1c2c85018031d602b",
+      "normalizedSha256": "edd213bf7d59c93489fe2fcb1e85fdca3c80c6052be2248d9aa89fe5ec9c9707",
       "markers": {
         "tablePresentation": [
           6
@@ -1401,6 +1408,23 @@
         "explicitReadOwnership": [
           183,
           222
+        ]
+      }
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_summary_read.dart",
+      "normalizedSha256": "4339b5d5ba013178c3db5a93b7d6086159d3dfbfa776e878bea9de1dce8d8df1",
+      "markers": {
+        "explicitReadOwnership": [
+          52,
+          53,
+          89,
+          92
+        ],
+        "completeDirectoryCandidates": [
+          100,
+          108,
+          113
         ]
       }
     },
@@ -1764,38 +1788,39 @@
     },
     {
       "source": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
-      "normalizedSha256": "b6f599a3daab128690c81be726bc21f08c9c1ec02826edeb92bede40dfcf0f50",
+      "normalizedSha256": "ed87a72264f61d4928a968f4df997823d60c545d58d4bd42c6cfb62b5a44ff3a",
       "markers": {
         "pagedRows": [
-          390
+          397
         ],
         "tablePresentation": [
-          10,
-          1807
+          11,
+          1884
         ],
         "preparedReads": [
-          1311
+          1329
         ],
         "columnFacets": [
-          186,
-          266,
-          1885,
-          1886,
-          1888
+          188,
+          273,
+          1962,
+          1963,
+          1965
         ],
         "explicitReadOwnership": [
-          395,
-          396,
-          397,
-          398,
-          1506
+          402,
+          403,
+          404,
+          405,
+          1431,
+          1583
         ],
         "completeDirectoryCandidates": [
-          1928
+          2005
         ],
         "asyncJoinCandidates": [
-          770,
-          1206
+          783,
+          1221
         ]
       }
     },
@@ -1844,20 +1869,20 @@
     },
     {
       "source": "lib/features/basic_data/widgets/mould_picker_field.dart",
-      "normalizedSha256": "71b9c3f517a93f1bbc81b0041b64c09fec2e47b8028ee7ad1caa6143f9eb2530",
+      "normalizedSha256": "39eac657402a01e58683695522bc1605fbaea0b0421e9d0d38759e4ac1f94d80",
       "markers": {
         "pagedRows": [
           333,
-          477
+          480
         ],
         "tablePresentation": [
-          644
+          654
         ],
         "completeDirectoryCandidates": [
           373,
           444,
-          505,
-          720
+          515,
+          730
         ]
       }
     },
@@ -1872,65 +1897,65 @@
     },
     {
       "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
-      "normalizedSha256": "906958b8ac1d461c5eb10accd253dc5e972c697d1f23041139310e5abb1fbcfa",
+      "normalizedSha256": "a8ef99d7bae611fde54a587e6b04de60e05686acc42afe225227dc496ac5688c",
       "markers": {
         "pagedRows": [
           537,
-          1034,
-          1120
+          1075,
+          1162
         ],
         "tablePresentation": [
-          1423,
-          1482,
-          1771
+          1470,
+          1529,
+          1818
         ],
         "columnFacets": [
-          1880
+          1927
         ],
         "explicitReadOwnership": [
-          1140,
-          1218,
-          1222,
-          1296,
-          1306,
-          1324
+          1187,
+          1265,
+          1269,
+          1343,
+          1353,
+          1371
         ],
         "completeDirectoryCandidates": [
-          1106,
-          1882
+          1148,
+          1929
         ]
       }
     },
     {
       "source": "lib/features/basic_data/widgets/uten_master_picker.dart",
-      "normalizedSha256": "579afcbb7423e171d8428836aefa04fe8db6671e4cbfe9f12d4b112afcc7d3d3",
+      "normalizedSha256": "7f4cd4b7a1eec25d685db446b35872e2ba843f00ee8f515512c20610e12bc60e",
       "markers": {
         "pagedRows": [
-          148,
-          361,
-          493
+          153,
+          366,
+          501
         ],
         "tablePresentation": [
-          732,
-          755
+          743,
+          766
         ],
         "explicitReadOwnership": [
-          430,
-          433,
-          437,
-          587
+          438,
+          441,
+          445,
+          598
         ],
         "completeDirectoryCandidates": [
           18,
-          181,
-          281,
-          347,
-          386,
-          426,
-          429,
-          460,
-          543,
-          775
+          186,
+          286,
+          352,
+          394,
+          434,
+          437,
+          468,
+          554,
+          786
         ]
       }
     },
@@ -5392,37 +5417,37 @@
     },
     {
       "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
-      "normalizedSha256": "a08970e6a19c3f0cd1ac8795cb5068c534fc82e8c96243687d0eb2cb9ff8e672",
+      "normalizedSha256": "e8c8506c55480e887d9816700a9f0fd8e12fa50fb8fbf5fdb8866161eef0f213",
       "markers": {
         "pagedRows": [
           74,
           248
         ],
         "tablePresentation": [
-          766,
-          1010
+          788,
+          1032
         ],
         "completeDirectoryCandidates": [
-          949
+          971
         ],
         "asyncJoinCandidates": [
-          385
+          386
         ]
       }
     },
     {
       "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
-      "normalizedSha256": "88d8974c243b4741ced7db3491e9dc22dd6acfdd7a254a0567e04b3242d2c184",
+      "normalizedSha256": "6eb1b87f44bbce3c0927ee99d4a8dcd44e8d5034587d4e17730db54d9e02b926",
       "markers": {
         "pagedRows": [
           78,
           400
         ],
         "tablePresentation": [
-          997
+          998
         ],
         "completeDirectoryCandidates": [
-          1049
+          1050
         ]
       }
     },
@@ -6056,18 +6081,18 @@
     },
     {
       "source": "lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart",
-      "normalizedSha256": "003e32cbda894dd45bd7d3703b6e34ef7023856e837647de6bef4642a6f626f0",
+      "normalizedSha256": "d330e9492e41447d576753418feffafd9f8007d469bec5f7abb5baea1c14d46c",
       "markers": {
         "pagedRows": [
-          195,
-          257
+          199,
+          261
         ],
         "tablePresentation": [
-          375
+          380
         ],
         "completeDirectoryCandidates": [
           114,
-          420
+          425
         ]
       }
     },
@@ -6643,18 +6668,18 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
-      "normalizedSha256": "0c2cc406540fd84e1825495bda676d87228cfa6d410ef1458edca7f0aae31b9b",
+      "normalizedSha256": "339405829f17e756cc08baa9b9c8ec00fcc8f9b2dced63cb9b07fc2f769767da",
       "markers": {
         "pagedRows": [
           94,
           226
         ],
         "tablePresentation": [
-          600
+          601
         ],
         "completeDirectoryCandidates": [
-          326,
-          668
+          327,
+          669
         ]
       }
     },
@@ -7252,57 +7277,61 @@
     },
     {
       "source": "lib/shared/models/paged_result.dart",
-      "normalizedSha256": "cd3d950cc0da4c27b072e6f2ad90891f78c4e28d6a5c95be55ef08cc2de0d8e1",
+      "normalizedSha256": "cbc9f3c859cc5327f804422d4637d51ae5644a24f0a97b84b91ac98eab6f557b",
       "markers": {
         "completeResults": [
-          18,
-          77,
-          108
+          26,
+          85,
+          116
         ],
         "completeDirectoryCandidates": [
           1,
-          35,
-          46,
-          68,
-          74,
+          43,
+          54,
+          76,
           82,
-          95,
-          106,
-          112,
-          166,
-          202
+          90,
+          103,
+          114,
+          120,
+          174,
+          210
         ]
       }
     },
     {
       "source": "lib/shared/paging/complete_paged_snapshot.dart",
-      "normalizedSha256": "30700fe5dd660c41aaabee86555f5882d05335804327e3d7d6620e0dbf25dbd9",
+      "normalizedSha256": "4b055d644f3907d3ed039d9606e3d69162ff9a82cda6306bbcbdcfcdf14f017d",
       "markers": {
         "completeResults": [
           11,
-          124,
-          139,
-          146,
-          158
+          155,
+          173,
+          180,
+          192
         ],
         "explicitReadOwnership": [
-          29,
-          30,
-          31,
-          45,
-          170,
-          171,
-          172,
-          188
+          42,
+          43,
+          44,
+          70,
+          204,
+          205,
+          206,
+          222,
+          381
         ],
         "completeDirectoryCandidates": [
-          52,
-          54,
-          58,
-          59,
-          61,
-          74,
-          127
+          78,
+          80,
+          84,
+          85,
+          87,
+          100,
+          158,
+          322,
+          330,
+          340
         ]
       }
     },
@@ -7354,20 +7383,22 @@
     },
     {
       "source": "lib/shared/paging/scoped_paged_read.dart",
-      "normalizedSha256": "25c034a4df15550129b4183eba4c1a6ea4993fae05824d7a3c8874fe509c34c5",
+      "normalizedSha256": "65e9867313a9a5d9854d12194f505ffdeb1c474a5f0190ec1a335a85fd83267d",
       "markers": {
         "pagedRows": [
           98,
           99
         ],
         "completeResults": [
-          168
+          175
         ],
         "preparedReads": [
-          135
+          136
         ],
         "explicitReadOwnership": [
-          159
+          160,
+          170,
+          173
         ],
         "completeDirectoryCandidates": [
           34,
@@ -7391,30 +7422,30 @@
     },
     {
       "source": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
-      "normalizedSha256": "9436f37f1835fbf1250f9cef2ee5360249d42b035451bec0ca2fa994f7a81f87",
+      "normalizedSha256": "cbf2f35e1a106c0bfe9bf280c14d4e56a414642dee82c645cd454fc3692049bb",
       "markers": {
         "pagedRows": [
           18,
           87,
-          167
+          169
         ],
         "preparedReads": [
-          97,
-          126,
-          127
+          98,
+          128,
+          129
         ]
       }
     },
     {
       "source": "lib/shared/paging/versioned_summary_read.dart",
-      "normalizedSha256": "aa82a0a789fe205bb0b09f3bff8c2ab07f0e8365601132ee476cda97b22a25cb",
+      "normalizedSha256": "77c2c8e095c824c47172ba18c9177660598293ddb680d49fcd58c0c5b2f1cd11",
       "markers": {
         "completeResults": [
-          84
+          94
         ],
         "completeDirectoryCandidates": [
-          13,
-          96
+          16,
+          108
         ]
       }
     },
@@ -8878,6 +8909,16 @@
       }
     },
     {
+      "source": "server/src/main/java/com/uten/imp/common/readsnapshot/MasterSummaryReadSupport.java",
+      "normalizedSha256": "5e8562695175a1597d2937a9fcb2d71223f7a1c797b18432d2cef424e5a0ed84",
+      "markers": {
+        "paging": [
+          29,
+          83
+        ]
+      }
+    },
+    {
       "source": "server/src/main/java/com/uten/imp/common/readsnapshot/SummaryReadMarkerCompactor.java",
       "normalizedSha256": "351b1b081fe604b5dbddb288869b9513ace0b2f24d16bc5cd922d586c7057270",
       "markers": {
@@ -9310,10 +9351,10 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/common/web/GoodsSearchReadRoutes.java",
-      "normalizedSha256": "52c8032b9a562ceb3be36bd77c985022bac77ca8208bceca1055ba0f80a6d0e4",
+      "normalizedSha256": "0197f59f708094413b32434d1419f7b32f31414b4deb973cc3ca994850b52fd6",
       "markers": {
         "summaryOrMetadata": [
-          9
+          10
         ]
       }
     },
@@ -15336,6 +15377,16 @@
       }
     },
     {
+      "source": "server/src/main/java/com/uten/imp/features/master/client/ClientSummaryController.java",
+      "normalizedSha256": "642b49ce82c8dfb442884a32b930891ad27ffa61339b9d533b26836e5b9b77ec",
+      "markers": {
+        "routes": [
+          15,
+          23
+        ]
+      }
+    },
+    {
       "source": "server/src/main/java/com/uten/imp/features/master/client/dto/ClientSaveRequest.java",
       "normalizedSha256": "7c1b712c4c9b2de38a5482083989392e7ac9adfb6cb7a2e1295463fd92b3ec37",
       "markers": {
@@ -16018,6 +16069,16 @@
           1689,
           1690,
           1711
+        ]
+      }
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/goods/GoodsSummaryController.java",
+      "normalizedSha256": "2e3a2f2d4b3233feee776a0bb7d22723bb1fc46eb3d59412e1e7134638e3f0b4",
+      "markers": {
+        "routes": [
+          14,
+          20
         ]
       }
     },
@@ -16719,6 +16780,16 @@
       }
     },
     {
+      "source": "server/src/main/java/com/uten/imp/features/master/mould/MouldSummaryController.java",
+      "normalizedSha256": "57590201e49848178d238865119ad47ab5373e0aacc53e3a934d7389f41b73ba",
+      "markers": {
+        "routes": [
+          15,
+          23
+        ]
+      }
+    },
+    {
       "source": "server/src/main/java/com/uten/imp/features/master/mouldcategory/MouldCategoryController.java",
       "normalizedSha256": "589197f89de8a08a209c54d0a9830311da9dfe4db176ac26dc43ac4f0cd5b837",
       "markers": {
@@ -16869,6 +16940,22 @@
           204,
           240,
           246
+        ]
+      }
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterSummaryController.java",
+      "normalizedSha256": "99ab79f93b9eff276fc1fcce716a4f4b98bed413036b1d0be255bbe29f33bd08",
+      "markers": {
+        "routes": [
+          19,
+          32,
+          43,
+          54
+        ],
+        "paging": [
+          5,
+          65
         ]
       }
     },
@@ -17026,6 +17113,16 @@
           651,
           660,
           669
+        ]
+      }
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/supplier/SupplierSummaryController.java",
+      "normalizedSha256": "8d4d06366f35df2b086f911ea2586886a3bdcac64274e79fc6c93c0b6eac1332",
+      "markers": {
+        "routes": [
+          15,
+          23
         ]
       }
     },
@@ -28096,8 +28193,21 @@
       }
     },
     {
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+      "normalizedSha256": "111d6db836a85239c0e828113eef87d4b463062d29e2904867fa0e5af104344d",
+      "markers": {
+        "boundedReads": [
+          109,
+          151
+        ],
+        "historyAndDrafts": [
+          163
+        ]
+      }
+    },
+    {
       "source": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
-      "normalizedSha256": "3f51227e80ca22fb9c057ed348505a0d271f2945c46b23714882e3436be5fc04",
+      "normalizedSha256": "1672f08815ca54d553422086abb779ed0f66ef1a70089edd3dec383f57960a61",
       "markers": {
         "boundedReads": [
           43,
@@ -28116,12 +28226,14 @@
           299,
           308,
           315,
-          324,
           326,
-          340,
-          359,
-          366,
-          396
+          328,
+          336,
+          346,
+          374,
+          381,
+          405,
+          415
         ]
       }
     },
@@ -28602,10 +28714,24 @@
     },
     {
       "source": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshot.cs",
-      "normalizedSha256": "08deddd166e4a39ec0ad56ac428693821419f3db06c435b2b72d15c1d9a54d6e",
+      "normalizedSha256": "a316c430c1065354070bd93ea9de9f92a42591d5e380356fc5dd50a944900261",
       "markers": {
         "boundedReads": [
-          22
+          27
+        ]
+      }
+    },
+    {
+      "source": "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CompletePagedSnapshotChecks.cs",
+      "normalizedSha256": "307ed64c61979581484c8918aeff3424e9f2486c31f33cf39982390fa0b0baad",
+      "markers": {
+        "boundedReads": [
+          10,
+          20,
+          43,
+          56,
+          83,
+          111
         ]
       }
     },
@@ -28674,42 +28800,42 @@
     },
     {
       "source": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
-      "normalizedSha256": "2830734c2fa194dd1681838f631bdb91e388716698bdcb382596387473a17b34",
+      "normalizedSha256": "f273797947399b989f0105b99ce9dbe6d16c2bbfe74e79ec1d9999c24effa5b2",
       "markers": {
         "boundedReads": [
           146,
-          258,
-          953
+          281,
+          993
         ],
         "historyAndDrafts": [
           141,
-          442,
-          443,
-          472,
-          488,
-          489,
-          491,
-          513,
-          519,
-          520,
-          526,
-          770,
-          774,
-          815,
-          830,
-          835,
-          836,
-          840,
-          842,
-          843,
-          844,
-          853,
+          481,
+          482,
+          511,
+          527,
+          528,
+          530,
+          552,
+          558,
+          559,
+          565,
+          810,
+          814,
+          855,
+          870,
+          875,
           876,
-          888,
-          890,
-          891,
+          880,
+          882,
+          883,
+          884,
+          893,
           916,
-          922
+          928,
+          930,
+          931,
+          956,
+          962
         ]
       }
     },

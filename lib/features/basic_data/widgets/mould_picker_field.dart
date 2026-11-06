@@ -466,6 +466,9 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
     });
     try {
       final repo = ref.read(mouldRepositoryProvider);
+      final gateway = repo is MouldSummaryReadGateway
+          ? repo as MouldSummaryReadGateway
+          : null;
       final category = _categoryId;
       final filters = Map<String, String?>.unmodifiable(_filters);
       Object pagingQuery() => [
@@ -480,6 +483,13 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
         currentQuery: pagingQuery,
         useCache: useCache,
         isCurrent: () => _canRead,
+        fetchComplete: gateway?.supportsCompleteMouldSummaries == true
+            ? () => gateway!.completeList(
+                category,
+                keyword: query,
+                filters: filters,
+              )
+            : null,
         fetchPage: (target) => category == null
             ? repo.listGlobal(
                 keyword: query,

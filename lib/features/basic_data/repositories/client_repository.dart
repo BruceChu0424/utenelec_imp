@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'master_summary_read.dart';
 import '../models/client_access_models.dart';
 import '../models/client_node.dart';
 import '../models/master_facet.dart';
@@ -91,7 +92,21 @@ abstract interface class ClientRepository {
   Future<void> delete(String id);
 }
 
-class DioClientRepository implements ClientRepository {
+abstract interface class ClientSummaryReadGateway {
+  bool get supportsCompleteClientSummaries;
+  Future<PagedResult<ClientListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  });
+}
+
+class DioClientRepository
+    implements ClientRepository, ClientSummaryReadGateway {
   DioClientRepository(
     this.api, {
     this.queryBasePath = ApiEndpoints.clients,
@@ -99,6 +114,42 @@ class DioClientRepository implements ClientRepository {
     ClientListItem Function(Map<String, dynamic>)? decodeListItem,
   }) : _decodeListItem = decodeListItem ?? ClientListItem.fromJson;
   final ApiClient api;
+  @override
+  bool get supportsCompleteClientSummaries =>
+      queryBasePath == ApiEndpoints.clients ||
+      queryBasePath == ApiEndpoints.businessReferenceClients;
+  @override
+  Future<PagedResult<ClientListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  }) {
+    if (!supportsCompleteClientSummaries) {
+      throw StateError('Unsupported client summary source');
+    }
+    return readCompleteMasterSummary<ClientListItem>(
+      api,
+      path: '$queryBasePath/summaries',
+      filter: masterSummaryFilter(
+        categoryId: categoryId,
+        keyword: keyword,
+        filters: filters,
+        flags: {
+          'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+          'selectableOnly': selectableOnly,
+        },
+      ),
+      sort: sort,
+      order: order,
+      decode: _decodeListItem,
+      idOf: (row) => row.id,
+    );
+  }
+
   final String queryBasePath;
   final bool selectionFlagsInBody;
   final ClientListItem Function(Map<String, dynamic>) _decodeListItem;

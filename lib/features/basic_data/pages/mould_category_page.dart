@@ -34,6 +34,7 @@ import '../models/product_category_node.dart';
 import '../models/goods_node.dart' show goodsQtyText;
 import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_deletion_safety.dart';
@@ -185,6 +186,20 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     bool Function() isCurrent,
   ) async {
     final repository = ref.read(mouldRepositoryProvider);
+    final gateway = repository is MouldSummaryReadGateway
+        ? repository as MouldSummaryReadGateway
+        : null;
+    if (gateway?.supportsCompleteMouldSummaries == true) {
+      final result = await PagedReadIntent.scopedRead(
+        isCurrent,
+        () => gateway!.completeList(null, keyword: q),
+      );
+      if (!isCurrent()) return null;
+      return result.items
+          .map((row) => row.categoryId)
+          .whereType<String>()
+          .toSet();
+    }
     return collectPagedHierarchyCategoryIds<MouldListItem>(
       loadPage: (page) => repository.search(q, page: page, size: 100),
       categoryIdOf: (item) => item.categoryId,
@@ -370,6 +385,12 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     final perms = ref.read(currentPermissionsProvider);
     final canCreate = perms.contains(Perm.mouldCreate);
     final moulds = ref.watch(mouldRepositoryProvider);
+    final gateway = moulds is MouldSummaryReadGateway
+        ? moulds as MouldSummaryReadGateway
+        : null;
+    final summaries = gateway?.supportsCompleteMouldSummaries == true
+        ? gateway
+        : null;
     return MasterEntityPaneConfig<MouldListItem, MouldDetail>(
       noun: '模具', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
@@ -464,6 +485,15 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
               q.categoryId!,
               page: q.page,
               size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
+      loadComplete: summaries == null
+          ? null
+          : (q) => summaries.completeList(
+              q.categoryId,
               keyword: q.keyword,
               filters: q.filters,
               sort: q.sort,

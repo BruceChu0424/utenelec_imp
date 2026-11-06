@@ -1,0 +1,312 @@
+{
+  "atUtc": "2026-11-06T21:05:20.623655+00:00",
+  "root": "D:\\Projects\\uten_imp",
+  "head": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "executionPath": "build/loading-validation/final-main-complete-original19-million-20261106-execution.json",
+  "executionSha256": "24a4ef6e156e7f0357c8d10a66e763f565e507c10a9e89a0b1d780dbcf01e2c5",
+  "actualJsonlPath": "build/loading-validation/final-main-complete-original19-million-20261106.jsonl",
+  "actualJsonlSha256": "aa4805f90aaed2caa2764b2ea1f63b1dd32653114eef192b25f6c083941e2b5c",
+  "actualExitCode": 0,
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceRemoved": [],
+  "metadataDrift": [],
+  "externalResourceDrift": [],
+  "businessCases": [
+    {
+      "id": 3,
+      "name": "a new request ticket retains same-owner accepted rows while pending or offline, but 403 and owner ABA retire them",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 3,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 23267
+      },
+      "errors": []
+    },
+    {
+      "id": 4,
+      "name": "complete 10000-row summary growth uses bounded batches and yields before publication",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 4,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 23515
+      },
+      "errors": []
+    },
+    {
+      "id": 5,
+      "name": "complete 100000-row summary growth uses bounded batches and yields before publication",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 5,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 24895
+      },
+      "errors": []
+    },
+    {
+      "id": 6,
+      "name": "complete 1000000-row summary growth uses bounded batches and yields before publication",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 6,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44126
+      },
+      "errors": []
+    },
+    {
+      "id": 7,
+      "name": "all bounded batches form one local page and a sized loader receives 100 throughout",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 7,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44132
+      },
+      "errors": []
+    },
+    {
+      "id": 8,
+      "name": "a Base reader safely merges a Child page and retains its typed metadata",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 8,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44138
+      },
+      "errors": []
+    },
+    {
+      "id": 9,
+      "name": "a real Base response may start with a narrow Child list and later contain another Child subtype",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 9,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44144
+      },
+      "errors": []
+    },
+    {
+      "id": 10,
+      "name": "typed snapshot rebuild contains every row while first response counts and permissions remain authoritative",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 10,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44152
+      },
+      "errors": []
+    },
+    {
+      "id": 11,
+      "name": "equal collection revision proofs compare by frozen value rather than object identity",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 11,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44160
+      },
+      "errors": []
+    },
+    {
+      "id": 12,
+      "name": "total drift rejects a complete snapshot instead of publishing an incomplete result",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 12,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44164
+      },
+      "errors": []
+    },
+    {
+      "id": 13,
+      "name": "version drift rejects a complete snapshot instead of publishing an incomplete result",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 13,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44168
+      },
+      "errors": []
+    },
+    {
+      "id": 14,
+      "name": "identity drift rejects a complete snapshot instead of publishing an incomplete result",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 14,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44172
+      },
+      "errors": []
+    },
+    {
+      "id": 15,
+      "name": "empty drift rejects a complete snapshot instead of publishing an incomplete result",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 15,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44175
+      },
+      "errors": []
+    },
+    {
+      "id": 16,
+      "name": "unknown totals use a real fixed page count and derive an exact total only after completion",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 16,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44178
+      },
+      "errors": []
+    },
+    {
+      "id": 17,
+      "name": "an explicit hasMore horizon is not mistaken for a fixed unknown totalPages",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 17,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44182
+      },
+      "errors": []
+    },
+    {
+      "id": 18,
+      "name": "same query reuse shares its complete flight but an explicit completed refresh reads again",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 18,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44186
+      },
+      "errors": []
+    },
+    {
+      "id": 19,
+      "name": "a required fresh read cannot join a pre-write same-query flight or publish its old reply",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 19,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44190
+      },
+      "errors": []
+    },
+    {
+      "id": 20,
+      "name": "read proof changes retire old rows and every business projection while ordinary local scrolling does no reads",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 20,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44196
+      },
+      "errors": []
+    },
+    {
+      "id": 21,
+      "name": "controller silent refresh publishes only one complete replacement and retains accepted data on failure",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 21,
+        "result": "success",
+        "skipped": false,
+        "hidden": false,
+        "type": "testDone",
+        "time": 44210
+      },
+      "errors": []
+    }
+  ],
+  "businessCaseCount": 19,
+  "businessPassed": 19,
+  "businessFailures": 0,
+  "businessSkipped": 0,
+  "hiddenLoaderCases": [
+    {
+      "id": 1,
+      "name": "loading D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "suitePath": "D:/Projects/uten_imp/test/shared/paging/complete_paged_read_test.dart",
+      "done": {
+        "testID": 1,
+        "result": "success",
+        "skipped": false,
+        "hidden": true,
+        "type": "testDone",
+        "time": 23205
+      },
+      "errors": []
+    }
+  ],
+  "hiddenLoaderCount": 1,
+  "hiddenLoadersNotCountedAsBusinessCases": true,
+  "nonProtocolOutputRetained": [
+    {
+      "line": 1,
+      "text": "Flutter assets will be downloaded from https://storage.flutter-io.cn. Make sure you trust this source!"
+    }
+  ],
+  "scope": "Actual whole original complete19 including million on true Main; no broad37/MFT310/material158 or company/UAT acceptance inferred."
+}

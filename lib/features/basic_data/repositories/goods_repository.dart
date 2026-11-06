@@ -8,8 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/paging/paged_read_intent.dart';
-import '../../../shared/paging/versioned_summary_read.dart';
+import 'master_summary_read.dart';
 import '../models/goods_node.dart';
 import '../models/master_facet.dart';
 
@@ -176,6 +175,7 @@ abstract interface class GoodsSummaryReadGateway {
     bool disabledOnly = false,
     bool stubOnly = false,
     bool includeRelated = false,
+    Set<String> categoryRootIds = const {},
   });
 }
 
@@ -218,7 +218,8 @@ class DioGoodsRepository
 
   @override
   bool get supportsCompleteGoodsSummaries =>
-      queryBasePath == ApiEndpoints.goods;
+      queryBasePath == ApiEndpoints.goods ||
+      queryBasePath == ApiEndpoints.businessReferenceGoods;
 
   @override
   Future<PagedResult<GoodsListItem>> completeList(
@@ -232,14 +233,11 @@ class DioGoodsRepository
     bool disabledOnly = false,
     bool stubOnly = false,
     bool includeRelated = false,
+    Set<String> categoryRootIds = const {},
   }) async {
     if (!supportsCompleteGoodsSummaries) {
       throw StateError('This goods reference does not expose master summaries');
     }
-    final parent = PagedReadIntent.currentRead;
-    final owner = await api.captureRequestScope(
-      isCurrent: () => parent?.call() ?? true,
-    );
     final query = <String, dynamic>{
       'categoryId': ?categoryId,
       if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
@@ -253,20 +251,19 @@ class DioGoodsRepository
         'includeRelated': true,
       ...goodsFilterQueryParams(filters),
     };
-    return owner.run(() async {
-      final snapshot = await readVersionedSummarySnapshot<GoodsListItem>(
-        isCurrent: () => owner.isCurrent,
-        maxConcurrentPages: 4,
-        idOf: (row) => row.id,
-        decode: GoodsListItem.fromJson,
-        loadPage: (page, size, revision) => api.post(
-          '${ApiEndpoints.goods}/summaries',
-          body: goodsSearchReadBody({...query, 'page': page, 'size': size}),
-          query: {'readSnapshotRevision': ?revision},
-        ),
-      );
-      return snapshot.page;
-    });
+    if (categoryRootIds.isNotEmpty) {
+      query['categoryRootIds'] = goodsSearchCategoryRoots(categoryRootIds);
+    }
+    final body = goodsSearchReadBody(query);
+    return readCompleteMasterSummary<GoodsListItem>(
+      api,
+      path: '$queryBasePath/summaries',
+      filter: Map<String, dynamic>.from(body['filter'] as Map),
+      sort: sort,
+      order: order,
+      decode: GoodsListItem.fromJson,
+      idOf: (row) => row.id,
+    );
   }
 
   @override

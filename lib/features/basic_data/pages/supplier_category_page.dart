@@ -23,6 +23,7 @@ import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_category_repository.dart';
 import '../repositories/supplier_repository.dart';
+import '../repositories/master_summary_read.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
@@ -157,6 +158,13 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     bool Function() isCurrent,
   ) async {
     final repository = ref.read(supplierRepositoryProvider);
+    if (repository is SupplierSummaryReadGateway) {
+      final ids = await readCompleteMasterSearchCategories(
+        loadPage: (page) => repository.searchContext(q, page: page),
+        isCurrent: isCurrent,
+      );
+      return ids.whereType<String>().toSet();
+    }
     return collectPagedHierarchyCategoryIds<SupplierListItem>(
       loadPage: (page) => repository.search(q, page: page, size: 100),
       categoryIdOf: (item) => item.categoryId,
@@ -226,6 +234,12 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     final canCreate = perms.contains(Perm.supplierCreate);
     final canChangeStatus = perms.contains(Perm.supplierStatus);
     final suppliers = ref.watch(supplierRepositoryProvider);
+    final gateway = suppliers is SupplierSummaryReadGateway
+        ? suppliers as SupplierSummaryReadGateway
+        : null;
+    final summaries = gateway?.supportsCompleteSupplierSummaries == true
+        ? gateway
+        : null;
     return MasterEntityPaneConfig<SupplierListItem, SupplierDetail>(
       noun: '供应商', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
@@ -376,6 +390,15 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
               q.categoryId!,
               page: q.page,
               size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
+      loadComplete: summaries == null
+          ? null
+          : (q) => summaries.completeList(
+              q.categoryId,
               keyword: q.keyword,
               filters: q.filters,
               sort: q.sort,

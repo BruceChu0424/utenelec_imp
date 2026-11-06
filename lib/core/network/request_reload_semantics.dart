@@ -48,6 +48,12 @@ bool isSearchReadPost(String path) =>
 /// Match only these pure reads; neighboring goods commands remain mutations.
 bool isGoodsSearchRead(String path) => const {
   '/master/goods/summaries',
+  '/master/clients/summaries',
+  '/master/suppliers/summaries',
+  '/master/moulds/summaries',
+  '/business-references/clients/summaries',
+  '/business-references/suppliers/summaries',
+  '/business-references/goods/summaries',
   '/master/goods/search',
   '/master/goods/search-category-ids',
   '/master/goods/facets',

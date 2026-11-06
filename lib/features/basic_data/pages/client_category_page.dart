@@ -32,6 +32,7 @@ import '../models/product_category_node.dart';
 import '../models/reference_method_option.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
+import '../repositories/master_summary_read.dart';
 import '../repositories/reference_method_repository.dart';
 import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_edit_dialog.dart';
@@ -165,6 +166,13 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     bool Function() isCurrent,
   ) async {
     final repository = ref.read(clientRepositoryProvider);
+    if (repository is ClientSummaryReadGateway) {
+      final ids = await readCompleteMasterSearchCategories(
+        loadPage: (page) => repository.searchContext(q, page: page),
+        isCurrent: isCurrent,
+      );
+      return ids.whereType<String>().toSet();
+    }
     return collectPagedHierarchyCategoryIds<ClientListItem>(
       loadPage: (page) => repository.search(q, page: page, size: 100),
       categoryIdOf: (item) => item.categoryId,
@@ -248,6 +256,12 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     final canCreate = perms.contains(Perm.clientCreate);
     final canChangeStatus = perms.contains(Perm.clientStatus);
     final clients = ref.watch(clientRepositoryProvider);
+    final gateway = clients is ClientSummaryReadGateway
+        ? clients as ClientSummaryReadGateway
+        : null;
+    final summaries = gateway?.supportsCompleteClientSummaries == true
+        ? gateway
+        : null;
     return MasterEntityPaneConfig<ClientListItem, ClientDetail>(
       noun: '客户', // TODO(l10n): 补 arb
       inlineCreation: (pane) => MasterInlineCreateConfig(
@@ -431,6 +445,15 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
               q.categoryId!,
               page: q.page,
               size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
+      loadComplete: summaries == null
+          ? null
+          : (q) => summaries.completeList(
+              q.categoryId,
               keyword: q.keyword,
               filters: q.filters,
               sort: q.sort,

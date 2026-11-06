@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/client_node.dart';
 import '../repositories/business_reference_repository.dart';
+import '../repositories/client_repository.dart';
 import 'master_data_table_view.dart';
 import 'uten_master_picker.dart';
 
@@ -23,6 +24,12 @@ Future<ClientListItem?> showUtenClientPicker(
   bool excludeLegacyFinanceStub = true,
 }) {
   final clients = ref.read(businessClientReferenceRepositoryProvider);
+  final gateway = clients is ClientSummaryReadGateway
+      ? clients as ClientSummaryReadGateway
+      : null;
+  final summaries = gateway?.supportsCompleteClientSummaries == true
+      ? gateway
+      : null;
   return showUtenMasterPicker<ClientListItem>(
     context,
     UtenMasterPickerSpec<ClientListItem>(
@@ -44,6 +51,22 @@ Future<ClientListItem?> showUtenClientPicker(
         selectableOnly: selectableOnly,
         excludeLegacyFinanceStub: excludeLegacyFinanceStub,
       ),
+      loadCompleteCategory: summaries == null
+          ? null
+          : (categoryId, keyword) => summaries.completeList(
+              categoryId,
+              keyword: keyword,
+              selectableOnly: selectableOnly,
+              excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+            ),
+      searchComplete: summaries == null
+          ? null
+          : (query) => summaries.completeList(
+              null,
+              keyword: query,
+              selectableOnly: selectableOnly,
+              excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+            ),
       searchContext: (query, page) => clients.searchContext(
         query,
         page: page,

@@ -1,0 +1,662 @@
+{
+  "atUtc": "2026-11-06T21:07:07.980518+00:00",
+  "canonicalReceipt": "build/loading-validation/main-final-current-source-canonical7-closeout-20261106/receipt.json",
+  "canonicalReceiptSha256": "4ef1a511b4475d8de6b3d7c07a5320990211d6f989394743d3a0ab77beaa376d",
+  "actualExitCode": 0,
+  "exactSevenActualExitCodes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "headBefore": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "headAfter": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "sourceDrift": [],
+  "sourceAdded": [],
+  "sourceRemoved": [],
+  "indexBefore": "2c255a02107399052740cb2a582eab0f79fa9e7c2200909c9831c55ecbe60365",
+  "indexAfter": "2c255a02107399052740cb2a582eab0f79fa9e7c2200909c9831c55ecbe60365",
+  "protectedTaskCount": 372,
+  "protectedCoreDrift": [],
+  "allPriorIncludingNewThreeNotesExactPrefix": true,
+  "allPriorEvidenceSubset": true,
+  "allPriorHistoryRawPrefix": true,
+  "derivedFilesExamined": 105,
+  "derivedChangedCount": 12,
+  "runtimeAcceptanceInferred": false,
+  "rows": [
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/00-\u603b\u5b9e\u65bd\u8ba1\u5212\u4e0e\u4ea4\u63a5\u5165\u53e3.md",
+      "beforeSha256": "7d4e2af868d3c79e63d450fc4ef9b46a5a3fb0f40852a1c6064325e28b795f5d",
+      "afterSha256": "7d4e2af868d3c79e63d450fc4ef9b46a5a3fb0f40852a1c6064325e28b795f5d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/01-\u9010\u9879\u8fdb\u5ea6\u6e05\u5355.md",
+      "beforeSha256": "d0d8281e690d92b365da2cfb7aad5d046966a194b7a9d7a4c5b9ee2ebabc3b1a",
+      "afterSha256": "d0d8281e690d92b365da2cfb7aad5d046966a194b7a9d7a4c5b9ee2ebabc3b1a",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/02-\u4e1a\u52a1\u6d41\u7a0b\u8fc1\u79fb\u4e0e\u9a8c\u6536\u77e9\u9635.md",
+      "beforeSha256": "0d305ce0ef21d2a7054df24be8d242d4afc05575af5c31980571fd68174678e8",
+      "afterSha256": "0d305ce0ef21d2a7054df24be8d242d4afc05575af5c31980571fd68174678e8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/03-\u5b89\u88c5\u66f4\u65b0\u4e0e\u53cc\u67b6\u6784\u9a8c\u8bc1\u4ea4\u63a5.md",
+      "beforeSha256": "fcfeca253573b924a6b6bba1d83495f6e46e8499b14816228beeb2c0720ebb8a",
+      "afterSha256": "fcfeca253573b924a6b6bba1d83495f6e46e8499b14816228beeb2c0720ebb8a",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/04-\u5f53\u524d\u63a5\u624b\u8bb0\u5f55.md",
+      "beforeSha256": "8a5d416cf5dda0c3ca529f2482d3ae81b2d0adc0fa33789bce6daeb0152ee927",
+      "afterSha256": "8a5d416cf5dda0c3ca529f2482d3ae81b2d0adc0fa33789bce6daeb0152ee927",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/05-\u9a8c\u8bc1\u53f0\u8d26.md",
+      "beforeSha256": "9add4cb733bb9b484b751282517e94951d8d14e3cc68b2fbe4614c567ebff24f",
+      "afterSha256": "9add4cb733bb9b484b751282517e94951d8d14e3cc68b2fbe4614c567ebff24f",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/06-\u4e1a\u52a1\u9875\u9762\u6765\u6e90\u6e05\u5355.md",
+      "beforeSha256": "02d3a24fcb80caf05a31f5d15ca3d9b9dad878165e6ef0b886a33d4f0776596e",
+      "afterSha256": "02d3a24fcb80caf05a31f5d15ca3d9b9dad878165e6ef0b886a33d4f0776596e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/07-\u53d8\u66f4\u4e0e\u5b8c\u6210\u8bb0\u5f55.md",
+      "beforeSha256": "1cfd92cf048345a95b84e43c615174953d9f7febfec6d314a521f5184d9e195f",
+      "afterSha256": "46c8a1be8b665b9dbc71b10def17da472d351a5416baa5c55431cd09c7973734",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/08-\u5355\u4f4d\u4e3b\u6863\u5b8c\u6574\u8fc1\u79fb\u5408\u540c.md",
+      "beforeSha256": "dd0bdd1eecfa55abba020e85c9bfae409b322eb1500aa9c812ef66a0607d7701",
+      "afterSha256": "dd0bdd1eecfa55abba020e85c9bfae409b322eb1500aa9c812ef66a0607d7701",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/09-\u672c\u673a\u8349\u7a3f\u4e0e\u5355\u4f4d\u9996\u6279\u5199\u5165\u63a5\u7eed.md",
+      "beforeSha256": "3f338a5507f3e649364349661e8cf254ce097b8fbff1e7af0d0dd8f6cd67efda",
+      "afterSha256": "3f338a5507f3e649364349661e8cf254ce097b8fbff1e7af0d0dd8f6cd67efda",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/10-\u65b0\u4efb\u52a1\u63a5\u7eed\u63d0\u793a\u8bcd.md",
+      "beforeSha256": "31d12dbe82dc429e01d6eb8db5ee3e0ccc2772296ff6130f136e20884a560656",
+      "afterSha256": "31d12dbe82dc429e01d6eb8db5ee3e0ccc2772296ff6130f136e20884a560656",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/11-\u4e1a\u52a1\u4e0e\u5b89\u88c5\u94fe\u8def\u589e\u91cf\u9636\u6bb5.md",
+      "beforeSha256": "d23725bdeadb9f2c50fa8be1e9b35c9c156e037a196f7fca39ab6c27f1b30150",
+      "afterSha256": "d23725bdeadb9f2c50fa8be1e9b35c9c156e037a196f7fca39ab6c27f1b30150",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/12-\u8f6f\u4ef6\u4e0b\u8f7d\u8bc6\u522b\u4e0e\u72ec\u7acb\u6279\u91cf\u53d1\u5e03.md",
+      "beforeSha256": "640177466d05b9dd4213f82dde31701fed69fe059439fe2209edc6875f0a22be",
+      "afterSha256": "640177466d05b9dd4213f82dde31701fed69fe059439fe2209edc6875f0a22be",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/14-\u6388\u6743\u672c\u5730\u4e3b\u94fe\u6574\u5408\u8bb0\u5f55.md",
+      "beforeSha256": "e514b85c247f87f859441196ab41699aa619cb6981cf12573a60ab860e36885d",
+      "afterSha256": "e514b85c247f87f859441196ab41699aa619cb6981cf12573a60ab860e36885d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/15-\u590d\u6570\u9875\u9762\u6765\u6e90\u8865\u6f0f\u4e0e\u6743\u9650\u8303\u56f4\u589e\u91cf.md",
+      "beforeSha256": "41245ec811f621380993203b78de1f293f105f6e6a5c51b166cfcbd43ba1d71c",
+      "afterSha256": "41245ec811f621380993203b78de1f293f105f6e6a5c51b166cfcbd43ba1d71c",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/\u5168\u5e73\u53f0\u6574\u6539\u4ea4\u63a5/evidence/loading-20261104/current-source-inventory.json",
+      "beforeSha256": "f72cb677a87eb732d219ba647440d0f795c5ffcf5a78911bd9d879a0ee7cd7e5",
+      "afterSha256": "0f8c4bad1f539d912cad4032c5c45fe9f56ec3d0b4370b993bf97e2b875a27a4",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/admin.md",
+      "beforeSha256": "30577103429f54775b9d56d088c7fbd1fe4501ec660ab213530b6567ffb71635",
+      "afterSha256": "30577103429f54775b9d56d088c7fbd1fe4501ec660ab213530b6567ffb71635",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/applications.md",
+      "beforeSha256": "6890f1ce669bda655f2be3fcbed054ad2549deabfb2011913151bd47b5dade4c",
+      "afterSha256": "6890f1ce669bda655f2be3fcbed054ad2549deabfb2011913151bd47b5dade4c",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/approvals.md",
+      "beforeSha256": "2c0a662657287783839279e6a4ec3e717c518f6097f7f7fcc071fed167399882",
+      "afterSha256": "2c0a662657287783839279e6a4ec3e717c518f6097f7f7fcc071fed167399882",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/auth.md",
+      "beforeSha256": "a4f5b5968be29579ef35011c222b74d0eb116ce8a64258f796b8dc3b3155c2ec",
+      "afterSha256": "a4f5b5968be29579ef35011c222b74d0eb116ce8a64258f796b8dc3b3155c2ec",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/basic_data.md",
+      "beforeSha256": "1e0f36e95538c0e2f168079b2bbecd61f31ec4a994a50e0e7502fbce77c97930",
+      "afterSha256": "249d6dd548c81bec9e1dc430ad364cec093fc280f2a9d26b6e26b71090d2bf0e",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/client_update.md",
+      "beforeSha256": "3957695ef002058c18a1ee6e34c330239cc5a0c6573de0d96b7a04da4c9066ab",
+      "afterSha256": "3957695ef002058c18a1ee6e34c330239cc5a0c6573de0d96b7a04da4c9066ab",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/company_files.md",
+      "beforeSha256": "747ceecf8e970d6868ddb4f2b0bf74117db5ced5dcc3ffdfc5412280e68e624d",
+      "afterSha256": "747ceecf8e970d6868ddb4f2b0bf74117db5ced5dcc3ffdfc5412280e68e624d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/dashboard.md",
+      "beforeSha256": "1b0c4e7dc62f331df4646088a991f73d9af12b015afc89e054b23d25a0613673",
+      "afterSha256": "1b0c4e7dc62f331df4646088a991f73d9af12b015afc89e054b23d25a0613673",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/department.md",
+      "beforeSha256": "d028a9fb330570481ba43bfc59611230c9f2e5314a86baf2d3f0976bc88fe95f",
+      "afterSha256": "d028a9fb330570481ba43bfc59611230c9f2e5314a86baf2d3f0976bc88fe95f",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/disaster_recovery.md",
+      "beforeSha256": "4395cebaef1ad07e688562e6ec05ce93e3be0a46c5b76c985afced0f3fcd8bdc",
+      "afterSha256": "4395cebaef1ad07e688562e6ec05ce93e3be0a46c5b76c985afced0f3fcd8bdc",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/employee.md",
+      "beforeSha256": "001f026f6302bcaf5049efce9aa99987b50f21504c4279aedec7a923533d02ec",
+      "afterSha256": "001f026f6302bcaf5049efce9aa99987b50f21504c4279aedec7a923533d02ec",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/expense.md",
+      "beforeSha256": "40c4e0bdd17480d5ed9c2efffc29de94da9b376d9b4661fed1fb0f7e86a07cfe",
+      "afterSha256": "40c4e0bdd17480d5ed9c2efffc29de94da9b376d9b4661fed1fb0f7e86a07cfe",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/finance.md",
+      "beforeSha256": "e7ff169aae25fb4c4206154c2cb48b1d6128d397920a544b43f9ab4e9bb0991e",
+      "afterSha256": "53a28a1cf0f7f388898aaf53482eb52adc138d28ad19581fd1d2a1936ae8fd9a",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/hr_profile.md",
+      "beforeSha256": "acb3eafff205845d4ff55b6a954bf0b5925ea7212fbf25ce6e0f912e447159bf",
+      "afterSha256": "acb3eafff205845d4ff55b6a954bf0b5925ea7212fbf25ce6e0f912e447159bf",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/hr_task.md",
+      "beforeSha256": "8fb48c555fcf6ac1d1f1b0fe9f9c18611b869069a1ab2b9ee53806ce42e66c0b",
+      "afterSha256": "8fb48c555fcf6ac1d1f1b0fe9f9c18611b869069a1ab2b9ee53806ce42e66c0b",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/notice.md",
+      "beforeSha256": "bb064ff212c8f8cc5834c887aac4e4020ad926f97c1d08cd2d7fbd2d88bd1c3e",
+      "afterSha256": "bb064ff212c8f8cc5834c887aac4e4020ad926f97c1d08cd2d7fbd2d88bd1c3e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/operations_workbench.md",
+      "beforeSha256": "066fbecd21ee7bab492f5cd0dabe6983b15536458f7ffb042ac7e0da8ece21ae",
+      "afterSha256": "066fbecd21ee7bab492f5cd0dabe6983b15536458f7ffb042ac7e0da8ece21ae",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/payroll.md",
+      "beforeSha256": "248e04d166a1b902c86ebecf52bd1167735c5e07505a0ccd27fa11f525dccf7b",
+      "afterSha256": "248e04d166a1b902c86ebecf52bd1167735c5e07505a0ccd27fa11f525dccf7b",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/procurement_iqc_rejection.md",
+      "beforeSha256": "68310a8bf97bce1bd02566fd91aee79a581a86192165b33d4a461b4207ece2ab",
+      "afterSha256": "68310a8bf97bce1bd02566fd91aee79a581a86192165b33d4a461b4207ece2ab",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/production.md",
+      "beforeSha256": "0cc425c0fe5bc63684d83aa9e74fdbd91b436909225ab395cc33783c29101155",
+      "afterSha256": "b7d5d9154b32192f272a514ec81341678d3711321be91df037702cfd4898b991",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/profile.md",
+      "beforeSha256": "8601249423acf25f9f5534f13455c51559ac1dcc1cc9e19bb1485a3217ca1ba8",
+      "afterSha256": "8601249423acf25f9f5534f13455c51559ac1dcc1cc9e19bb1485a3217ca1ba8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/purchase.md",
+      "beforeSha256": "be5246d87169059317d13e6eb44a8fe0441fcf3268dfc8248ba7ffe84d9114d0",
+      "afterSha256": "be5246d87169059317d13e6eb44a8fe0441fcf3268dfc8248ba7ffe84d9114d0",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/quality.md",
+      "beforeSha256": "714565dddee24fbd41d44a44469f64b4c594813708f84339275cd3b30a2caf8a",
+      "afterSha256": "714565dddee24fbd41d44a44469f64b4c594813708f84339275cd3b30a2caf8a",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/rd_task.md",
+      "beforeSha256": "9edf972e9787f94bf8787f0c3a25cf9ea04b0df04d5c4e7c2bb4981787019b5f",
+      "afterSha256": "9edf972e9787f94bf8787f0c3a25cf9ea04b0df04d5c4e7c2bb4981787019b5f",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/sales.md",
+      "beforeSha256": "b9d2081ab943eea9d0e968c62b5ce017be7c0e916463c382a575ffe459f9579c",
+      "afterSha256": "b8acca42971e65c124c2296e483d37ee13315e5bb077c5add05a5a8de10fca2b",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/security.md",
+      "beforeSha256": "f804a1b3ee2607f98af7eaf3525057354c868c0bdd9b45f14425b97ea8d269a1",
+      "afterSha256": "f804a1b3ee2607f98af7eaf3525057354c868c0bdd9b45f14425b97ea8d269a1",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/settings.md",
+      "beforeSha256": "c40f96aafbb9cab4cfc2e7ff80ad4dc823a1c4474f1c0dc64ba9e527969fd083",
+      "afterSha256": "c40f96aafbb9cab4cfc2e7ff80ad4dc823a1c4474f1c0dc64ba9e527969fd083",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/shell.md",
+      "beforeSha256": "9ad9301a4d0baacfd3c1304b5d2f99b724ace39a2f380519a2d27531aee18672",
+      "afterSha256": "9ad9301a4d0baacfd3c1304b5d2f99b724ace39a2f380519a2d27531aee18672",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/stock.md",
+      "beforeSha256": "9cddfa8ebc136577590f2d8092cc16eb6581024c4898bdaeab128a7f13483a7f",
+      "afterSha256": "252a031b6e17f338c693295f0c202edb9263a01c1a776106cabbd6e784b56471",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/subcontract.md",
+      "beforeSha256": "a44d695f7269efc53fe5e1af08f5c45abbfb265ade8e98ab02641fd5c75ae333",
+      "afterSha256": "a44d695f7269efc53fe5e1af08f5c45abbfb265ade8e98ab02641fd5c75ae333",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/suggestion.md",
+      "beforeSha256": "14db8526681f56b1cd6086cc470f790aab80d2178e0aa5230d75b820c47a4110",
+      "afterSha256": "14db8526681f56b1cd6086cc470f790aab80d2178e0aa5230d75b820c47a4110",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/visitor.md",
+      "beforeSha256": "009879fee50451fc2a6a1ad2aaf517b2b2c9faee0996c25f385959281a72ce25",
+      "afterSha256": "009879fee50451fc2a6a1ad2aaf517b2b2c9faee0996c25f385959281a72ce25",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/visitor_approval.md",
+      "beforeSha256": "9410180dfc8e940c2949e394b022d93c236a9cab08030f6938074830daf70baf",
+      "afterSha256": "9410180dfc8e940c2949e394b022d93c236a9cab08030f6938074830daf70baf",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/warehouse.md",
+      "beforeSha256": "716baa0dada4007eda4c38350637970dcef7ef744e746a338fd1fd5a35f1c1d8",
+      "afterSha256": "0643c255b309645932d9ee7e642fc372bcac3ab0629dccf50ad076e56f7f9c78",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/webinquiry.md",
+      "beforeSha256": "cdf5568e2a9ca9f01bd51f0adf3623fdbb301bddab88627339c2c4e58e6d4a9d",
+      "afterSha256": "cdf5568e2a9ca9f01bd51f0adf3623fdbb301bddab88627339c2c4e58e6d4a9d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/pages/website_management.md",
+      "beforeSha256": "a4d38f73ce4f391d185a8e8599fec28bf5d8e16db3f6ff80d3b87573123d65fc",
+      "afterSha256": "a4d38f73ce4f391d185a8e8599fec28bf5d8e16db3f6ff80d3b87573123d65fc",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/ARCH.md",
+      "beforeSha256": "6390e5de0b51dad9e7c5ea918dfe227c0d9e30138d89f6de0668a5e8eabc7102",
+      "afterSha256": "6390e5de0b51dad9e7c5ea918dfe227c0d9e30138d89f6de0668a5e8eabc7102",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BACKUP.md",
+      "beforeSha256": "e17575159a3571daeba6041df8bd662d5bce371efbbed4fe7544f91bfd2a732f",
+      "afterSha256": "e17575159a3571daeba6041df8bd662d5bce371efbbed4fe7544f91bfd2a732f",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-admin.md",
+      "beforeSha256": "00fd98a668b9d6c6d9da77f0406d5cb8e8f5b9edb67c307a6a1c2e189e16d9d6",
+      "afterSha256": "00fd98a668b9d6c6d9da77f0406d5cb8e8f5b9edb67c307a6a1c2e189e16d9d6",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-applications.md",
+      "beforeSha256": "c4633a6ccf455e8240853eb81403ecc4bd552d0d6ac67aea156d2275eb40b4b6",
+      "afterSha256": "c4633a6ccf455e8240853eb81403ecc4bd552d0d6ac67aea156d2275eb40b4b6",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-approvals.md",
+      "beforeSha256": "7bada745a47ea1841ef348994dd0d728f12955f1b94f99516ff1426e1cc98b3b",
+      "afterSha256": "7bada745a47ea1841ef348994dd0d728f12955f1b94f99516ff1426e1cc98b3b",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-auth.md",
+      "beforeSha256": "9afa8de2a2a62ce615e564cb545ee0ba69e9e35a82761c030b271dad5b0f839e",
+      "afterSha256": "9afa8de2a2a62ce615e564cb545ee0ba69e9e35a82761c030b271dad5b0f839e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-basic_data.md",
+      "beforeSha256": "1e11cc1b30f78f9b2963d4ce126200d3e3bb143bc8ba3321f3b024b0ecc386c2",
+      "afterSha256": "83968dfd24d385889bf6b96f7f7e3313228fef29175c182a7320c0da81da68f9",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-client_update.md",
+      "beforeSha256": "9b79df93fb78ff068b97c09096e122f5147c35b39edab6521d492bdb9c91695a",
+      "afterSha256": "9b79df93fb78ff068b97c09096e122f5147c35b39edab6521d492bdb9c91695a",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-company_files.md",
+      "beforeSha256": "276aa914abadbab4b49f467eae2fb17ace35fe47c1d995dfcc400376bfd5952d",
+      "afterSha256": "276aa914abadbab4b49f467eae2fb17ace35fe47c1d995dfcc400376bfd5952d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-dashboard.md",
+      "beforeSha256": "484e44912501d18536b2f0b4ef5b081bab8a75e49e48946ca0a61fe0b809d3c7",
+      "afterSha256": "484e44912501d18536b2f0b4ef5b081bab8a75e49e48946ca0a61fe0b809d3c7",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-department.md",
+      "beforeSha256": "f376bddd7f02aa88309d012aa7d6868d664330fd941c30b3542de3a334040dff",
+      "afterSha256": "f376bddd7f02aa88309d012aa7d6868d664330fd941c30b3542de3a334040dff",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-disaster_recovery.md",
+      "beforeSha256": "bc63398b686e1ee5c6efd7034643f8ff77f1c0869355951f2c29c8e0e9e26e65",
+      "afterSha256": "bc63398b686e1ee5c6efd7034643f8ff77f1c0869355951f2c29c8e0e9e26e65",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-employee.md",
+      "beforeSha256": "72facd0a520cb752f8871edb9d885d48902efb0eb915e7c11db4487bde2dbff8",
+      "afterSha256": "72facd0a520cb752f8871edb9d885d48902efb0eb915e7c11db4487bde2dbff8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-expense.md",
+      "beforeSha256": "6ffe1c77f636739eb8ba6a674cde1a0aa8b88620e0e6a50eced9338a85f57768",
+      "afterSha256": "6ffe1c77f636739eb8ba6a674cde1a0aa8b88620e0e6a50eced9338a85f57768",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-finance.md",
+      "beforeSha256": "52ed178d1fb96e03062b45cba4b2dfb618ef8b3f87a83fc1d6e27689710c081d",
+      "afterSha256": "52ed178d1fb96e03062b45cba4b2dfb618ef8b3f87a83fc1d6e27689710c081d",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-hr_profile.md",
+      "beforeSha256": "3e91ef75c073146b74d1dbac82dd8f8b0a69c0c4fa4d889e93def0602943ff15",
+      "afterSha256": "3e91ef75c073146b74d1dbac82dd8f8b0a69c0c4fa4d889e93def0602943ff15",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-hr_task.md",
+      "beforeSha256": "c40247e0467d20f43c39febdacb70b438eb3ccb0a0f37c412655347bf89476f5",
+      "afterSha256": "c40247e0467d20f43c39febdacb70b438eb3ccb0a0f37c412655347bf89476f5",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-notice.md",
+      "beforeSha256": "a4c1c311fb36bfcdf913f33eacf95c1859b63b3f448275758e42f88044b93824",
+      "afterSha256": "a4c1c311fb36bfcdf913f33eacf95c1859b63b3f448275758e42f88044b93824",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-operations_workbench.md",
+      "beforeSha256": "7b084c9bf89bb31906f84b0934426e85712a26235b3cad0516db220164cfcef2",
+      "afterSha256": "7b084c9bf89bb31906f84b0934426e85712a26235b3cad0516db220164cfcef2",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-payroll.md",
+      "beforeSha256": "af2d9b32da4a562c5b8f424fb9bd87252a5732a1cd6b1c1dea5141e9831feda8",
+      "afterSha256": "af2d9b32da4a562c5b8f424fb9bd87252a5732a1cd6b1c1dea5141e9831feda8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-procurement_iqc_rejection.md",
+      "beforeSha256": "020b794809ec9461a5a8a7288c7d871630e42ff889347ed1da97d67507ccd5e8",
+      "afterSha256": "020b794809ec9461a5a8a7288c7d871630e42ff889347ed1da97d67507ccd5e8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-production.md",
+      "beforeSha256": "ba7b2878e1b850dce27ae085e48982c197d86398ead37002b37029270a0be795",
+      "afterSha256": "ba7b2878e1b850dce27ae085e48982c197d86398ead37002b37029270a0be795",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-profile.md",
+      "beforeSha256": "2114c4e81e36f83dde34c383bcfe6adb7f9cb6dabb2be053f2aeba01aa0058b1",
+      "afterSha256": "2114c4e81e36f83dde34c383bcfe6adb7f9cb6dabb2be053f2aeba01aa0058b1",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-purchase.md",
+      "beforeSha256": "13db0a866416c8deed861f1443affc70844e777998b2ae78f588e5567eebfedf",
+      "afterSha256": "13db0a866416c8deed861f1443affc70844e777998b2ae78f588e5567eebfedf",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-quality.md",
+      "beforeSha256": "998828f4ae65b6c33e317455c192757c676a3bab642bf1fe7ec433039d273df5",
+      "afterSha256": "998828f4ae65b6c33e317455c192757c676a3bab642bf1fe7ec433039d273df5",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-rd_task.md",
+      "beforeSha256": "00e45fad49a9a5e639fb5f520902f9b82859f8979abe8fbb64aa0cb19f179188",
+      "afterSha256": "00e45fad49a9a5e639fb5f520902f9b82859f8979abe8fbb64aa0cb19f179188",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-sales.md",
+      "beforeSha256": "8bc48f46691e8dfd6e8be47eb7fc8a4d1f3c07330c4e46ef9996d2fea594a348",
+      "afterSha256": "8bc48f46691e8dfd6e8be47eb7fc8a4d1f3c07330c4e46ef9996d2fea594a348",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-security.md",
+      "beforeSha256": "d06a6091124d382668f1aad0c903166ce09181721a6b15e0e79e71192ac216a1",
+      "afterSha256": "d06a6091124d382668f1aad0c903166ce09181721a6b15e0e79e71192ac216a1",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-settings.md",
+      "beforeSha256": "8ac42a2127a6f8da627d775a03a9a2859911827c9ef2faeff73d4e026694a64e",
+      "afterSha256": "8ac42a2127a6f8da627d775a03a9a2859911827c9ef2faeff73d4e026694a64e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-shell.md",
+      "beforeSha256": "bd6645ccd9aab277f625d989b97a582c478941d5558caa818814db0bf06f41bf",
+      "afterSha256": "bd6645ccd9aab277f625d989b97a582c478941d5558caa818814db0bf06f41bf",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-stock.md",
+      "beforeSha256": "8a4ebcf073672fb535b221eca5b97ecd60465c173bd25d031ea1d34a833f1bd2",
+      "afterSha256": "8a4ebcf073672fb535b221eca5b97ecd60465c173bd25d031ea1d34a833f1bd2",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-subcontract.md",
+      "beforeSha256": "20ccff221d19cd89b66e9d13ab071b6cdda73597e43dcc778111c31bc9ae5c20",
+      "afterSha256": "20ccff221d19cd89b66e9d13ab071b6cdda73597e43dcc778111c31bc9ae5c20",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-suggestion.md",
+      "beforeSha256": "0ff913e4cd8de3b0afcf421e0afd268db8249824ad6bf7f40c00b67028d959b8",
+      "afterSha256": "0ff913e4cd8de3b0afcf421e0afd268db8249824ad6bf7f40c00b67028d959b8",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-visitor.md",
+      "beforeSha256": "cfeaf8d421652c0c58336d9fc090efc4bd96c672684d2aad22ee6fab3b5bb61c",
+      "afterSha256": "cfeaf8d421652c0c58336d9fc090efc4bd96c672684d2aad22ee6fab3b5bb61c",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-visitor_approval.md",
+      "beforeSha256": "90002b740fe791aa91d070c96c00eb8160b22ae5856fbe315fc267790eaec521",
+      "afterSha256": "90002b740fe791aa91d070c96c00eb8160b22ae5856fbe315fc267790eaec521",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-warehouse.md",
+      "beforeSha256": "ac2764168df475f606030bb2ed0ce3d2ef6c2d6c8017a28ad2ea9112a5f7764e",
+      "afterSha256": "ac2764168df475f606030bb2ed0ce3d2ef6c2d6c8017a28ad2ea9112a5f7764e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-webinquiry.md",
+      "beforeSha256": "dd5a9815cf088cd691865f3a5c02fcbdc60763a8660edfeecfbf2f74112d5fc5",
+      "afterSha256": "dd5a9815cf088cd691865f3a5c02fcbdc60763a8660edfeecfbf2f74112d5fc5",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/BIZ-website_management.md",
+      "beforeSha256": "76df726476454080d83c4215b81f9c43d8cbb83c2ee38603043d5fdc676fa546",
+      "afterSha256": "76df726476454080d83c4215b81f9c43d8cbb83c2ee38603043d5fdc676fa546",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/CORE.md",
+      "beforeSha256": "f3e36bde60bb57c6f4a4a3d256aea329c23b5d1312f92bfad491a5f98580dec7",
+      "afterSha256": "30ac62ec5394a204d15208d0e42ba8f524657f123befadd1660255d8e30f1b20",
+      "changed": true
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/DIST.md",
+      "beforeSha256": "50a5b3745dc63ad7f0fa9bf6da9abae1827ad901507b5b2d7d2353494ae8137a",
+      "afterSha256": "50a5b3745dc63ad7f0fa9bf6da9abae1827ad901507b5b2d7d2353494ae8137a",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/ENV.md",
+      "beforeSha256": "d9b1f7fcdfb3c769e7ab235b2cb6fb7be71a2426da50e107122c02bb23f71b9f",
+      "afterSha256": "d9b1f7fcdfb3c769e7ab235b2cb6fb7be71a2426da50e107122c02bb23f71b9f",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/FLOW.md",
+      "beforeSha256": "e2305969f5eca503f3b3819b99d6cae60d4381f4691d4f71de2e8e9dd37ec311",
+      "afterSha256": "e2305969f5eca503f3b3819b99d6cae60d4381f4691d4f71de2e8e9dd37ec311",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/GOV.md",
+      "beforeSha256": "2bb37a368d18115bf57c3ace7ba8b756f4b28f795489b2911ef2dd0abac66695",
+      "afterSha256": "2bb37a368d18115bf57c3ace7ba8b756f4b28f795489b2911ef2dd0abac66695",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/HANDOFF.md",
+      "beforeSha256": "ca4d1d3062dfe399f2732bbadccf27576bb4282d948e8edb4fdfbc4d74b33958",
+      "afterSha256": "ca4d1d3062dfe399f2732bbadccf27576bb4282d948e8edb4fdfbc4d74b33958",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/INS.md",
+      "beforeSha256": "6d24f043c1bcd5ebcd2acb55bd02acf574ddaedef6876565784468c69cbab4f4",
+      "afterSha256": "6d24f043c1bcd5ebcd2acb55bd02acf574ddaedef6876565784468c69cbab4f4",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/PKG.md",
+      "beforeSha256": "baca866f658580c9ad584881492cc76f2d83e567679115619bdfbd57c4819054",
+      "afterSha256": "baca866f658580c9ad584881492cc76f2d83e567679115619bdfbd57c4819054",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/REG.md",
+      "beforeSha256": "aad24659958fdb47ecd4286be514f64ebab903eb8bda3dc3266928541e7a007e",
+      "afterSha256": "aad24659958fdb47ecd4286be514f64ebab903eb8bda3dc3266928541e7a007e",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/SHELL.md",
+      "beforeSha256": "c47d88c5a45cd4a534118cd16c32a0a4cc8887adb8b0345c760d71199cc2c0f1",
+      "afterSha256": "c47d88c5a45cd4a534118cd16c32a0a4cc8887adb8b0345c760d71199cc2c0f1",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/UI.md",
+      "beforeSha256": "c5112616aacbdef7b428a3702cffbee8ddf6385dd0ed6df8976a5267f25e787b",
+      "afterSha256": "c5112616aacbdef7b428a3702cffbee8ddf6385dd0ed6df8976a5267f25e787b",
+      "changed": false
+    },
+    {
+      "path": "docs/99-\u9879\u76ee\u6cbb\u7406/Win7\u517c\u5bb9\u7248/tasks/UPD.md",
+      "beforeSha256": "a1648ab2767a49d5de4cfe286768ca0ca3d6f0d3c642da46babb794e52624c61",
+      "afterSha256": "a1648ab2767a49d5de4cfe286768ca0ca3d6f0d3c642da46babb794e52624c61",
+      "changed": false
+    },
+    {
+      "path": "clients/windows_legacy/progress/business-inventory.json",
+      "beforeSha256": "685d4e16bf73b485c816a87e24e08d903fbb8f1525fd9852a4ae769dcbfb6ae2",
+      "afterSha256": "640ae98981c47a285df5526678d4c705e0e7f12b2022e25acf3d7b0d7f549b46",
+      "changed": true
+    },
+    {
+      "path": "clients/windows_legacy/progress/work-items.json",
+      "beforeSha256": "dc28ce6df0d2b88c79748c757cb11a4aa744e3bf9d459e4b1f030ed769628d9d",
+      "afterSha256": "07a084f2cfbcc746936008bba2d7f8530809c36d6eb502e111f290ba7bd49900",
+      "changed": true
+    },
+    {
+      "path": "clients/windows_legacy/progress/history.jsonl",
+      "beforeSha256": "b03a303caed184dea6d03f0093dab849f9cc88f539bf39c26c5f3a42be2e710c",
+      "afterSha256": "b03a303caed184dea6d03f0093dab849f9cc88f539bf39c26c5f3a42be2e710c",
+      "changed": false
+    }
+  ]
+}

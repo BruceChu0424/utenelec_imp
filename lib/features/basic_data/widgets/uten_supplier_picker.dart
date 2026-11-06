@@ -12,6 +12,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/supplier_node.dart';
 import '../repositories/business_reference_repository.dart';
+import '../repositories/supplier_repository.dart';
 import 'supplier_quick_create_sheet.dart';
 import 'master_data_table_view.dart';
 import 'uten_master_picker.dart';
@@ -25,6 +26,12 @@ Future<SupplierListItem?> showUtenSupplierPicker(
   bool allowQuickCreate = true,
 }) {
   final suppliers = ref.read(businessSupplierReferenceRepositoryProvider);
+  final gateway = suppliers is SupplierSummaryReadGateway
+      ? suppliers as SupplierSummaryReadGateway
+      : null;
+  final summaries = gateway?.supportsCompleteSupplierSummaries == true
+      ? gateway
+      : null;
   final canAdd =
       allowQuickCreate &&
       ref.read(currentPermissionsProvider).contains(Perm.supplierCreate);
@@ -47,6 +54,20 @@ Future<SupplierListItem?> showUtenSupplierPicker(
         size: 100,
         selectableOnly: selectableOnly,
       ),
+      loadCompleteCategory: summaries == null
+          ? null
+          : (categoryId, keyword) => summaries.completeList(
+              categoryId,
+              keyword: keyword,
+              selectableOnly: selectableOnly,
+            ),
+      searchComplete: summaries == null
+          ? null
+          : (query) => summaries.completeList(
+              null,
+              keyword: query,
+              selectableOnly: selectableOnly,
+            ),
       searchContext: (query, page) => suppliers.searchContext(
         query,
         page: page,

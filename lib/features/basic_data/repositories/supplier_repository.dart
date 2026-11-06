@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import 'master_summary_read.dart';
 import '../models/master_facet.dart';
 import '../models/supplier_node.dart';
 import '../models/master_search_context.dart';
@@ -70,7 +71,20 @@ abstract interface class SupplierRepository {
   Future<void> delete(String id);
 }
 
-class DioSupplierRepository implements SupplierRepository {
+abstract interface class SupplierSummaryReadGateway {
+  bool get supportsCompleteSupplierSummaries;
+  Future<PagedResult<SupplierListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool selectableOnly = false,
+  });
+}
+
+class DioSupplierRepository
+    implements SupplierRepository, SupplierSummaryReadGateway {
   DioSupplierRepository(
     this.api, {
     this.queryBasePath = ApiEndpoints.suppliers,
@@ -78,6 +92,38 @@ class DioSupplierRepository implements SupplierRepository {
     SupplierListItem Function(Map<String, dynamic>)? decodeListItem,
   }) : _decodeListItem = decodeListItem ?? SupplierListItem.fromJson;
   final ApiClient api;
+  @override
+  bool get supportsCompleteSupplierSummaries =>
+      queryBasePath == ApiEndpoints.suppliers ||
+      queryBasePath == ApiEndpoints.businessReferenceSuppliers;
+  @override
+  Future<PagedResult<SupplierListItem>> completeList(
+    String? categoryId, {
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool selectableOnly = false,
+  }) {
+    if (!supportsCompleteSupplierSummaries) {
+      throw StateError('Unsupported supplier summary source');
+    }
+    return readCompleteMasterSummary<SupplierListItem>(
+      api,
+      path: '$queryBasePath/summaries',
+      filter: masterSummaryFilter(
+        categoryId: categoryId,
+        keyword: keyword,
+        filters: filters,
+        flags: {'selectableOnly': selectableOnly},
+      ),
+      sort: sort,
+      order: order,
+      decode: _decodeListItem,
+      idOf: (row) => row.id,
+    );
+  }
+
   final String queryBasePath;
   final bool selectionFlagsInBody;
   final SupplierListItem Function(Map<String, dynamic>) _decodeListItem;

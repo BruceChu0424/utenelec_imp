@@ -1,0 +1,52 @@
+{
+  "completedAtUtc": "2026-11-06T21:12:11.977161+00:00",
+  "finalSourceHead": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "canonical7ActualExitCodes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "canonical7ReceiptSha256": "4ef1a511b4475d8de6b3d7c07a5320990211d6f989394743d3a0ab77beaa376d",
+  "all372CoreFieldsAndNewThreeNotesHistoryPreserved": true,
+  "baseline114AllExpectedRawShaVerified": true,
+  "baseline114OriginalsWritten": false,
+  "completeOriginal19BusinessPassed": 19,
+  "hiddenLoaderSeparate": 1,
+  "archive": {
+    "actualExitCode": 0,
+    "completedAtUtc": "2026-11-06T21:10:34.616404+00:00",
+    "explicitSourceFiles": 2736,
+    "candidateRawStage": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\build\\loading-validation\\main-final-evidence-annex-20261106",
+    "candidateArchive": "D:\\Projects\\uten_imp_worktrees\\platform-loading-integration-20261105\\docs\\99-\u9879\u76ee\u6cbb\u7406\\\u5168\u5e73\u53f0\u6574\u6539\u4ea4\u63a5\\evidence\\loading-20261104\\final-local-closeout-20261106T211023135719Z.zip",
+    "mainArchive": "D:\\Projects\\uten_imp\\docs\\99-\u9879\u76ee\u6cbb\u7406\\\u5168\u5e73\u53f0\u6574\u6539\u4ea4\u63a5\\evidence\\loading-20261104\\final-local-closeout-20261106T211023135719Z.zip",
+    "mainIndex": "D:\\Projects\\uten_imp\\docs\\99-\u9879\u76ee\u6cbb\u7406\\\u5168\u5e73\u53f0\u6574\u6539\u4ea4\u63a5\\evidence\\loading-20261104\\final-local-closeout-20261106T211023135719Z-index.json",
+    "archiveSha256": "8404405d76e53ff04aa8211acb3c18653c206973e4a40ea438f792411c0c4945",
+    "archiveBytes": 47974349,
+    "memberCount": 2740,
+    "crcVerified": true,
+    "allMemberShasVerified": true,
+    "allMainRawSourceCopiesExact": true,
+    "rawPrivateOriginalsRetainedUnmodified": true,
+    "noSourceCommitPushPackageDeployment": true
+  },
+  "wideGatesNotExecuted": [
+    "original37",
+    "MFT310",
+    "material158"
+  ],
+  "allPlatformAcceptanceClaimed": false,
+  "flutterWindowsThisRoundClaimed": false,
+  "win7FullErpOrTargetPcAccepted": false,
+  "companyUatOrDeploymentClaimed": false,
+  "newProductCodeOrTestsAddedByMaterialCloseout": false,
+  "sourceCommittedPushedOrFormallyPackagedByThisAgent": false,
+  "currentMainHead": "e157c9757208ec28ccf493bb3a65c15953214e49",
+  "currentWorktreeCount": 84,
+  "currentStashCount": 56,
+  "currentStashSha256": "64511f01073e3b62dc2c56e2b663cfe416dc07774c74ec876b9673b36b91d50c",
+  "readOnlyGitInventoryRetained": "build/loading-validation/final-material-closeout-20261106/git-state-final.json"
+}

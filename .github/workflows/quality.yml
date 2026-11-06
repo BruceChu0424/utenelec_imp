@@ -403,7 +403,7 @@ jobs:
         run: node --test web/update_check.test.cjs web/maintenance.test.cjs
       - name: Bind the complete browser cohort to the same source plan
         run: python3 .github/scripts/flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8 --history .github/test-timings/flutter.json
-      - name: Verify all six browser files with native machine evidence
+      - name: Verify the complete browser cohort with native machine evidence
         run: |
           worker=test/.uten-ci-codec-worker.js
           test ! -e "$worker"

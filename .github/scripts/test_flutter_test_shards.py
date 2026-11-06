@@ -1,5 +1,6 @@
 """Offline protocol corruption and whole-file execution boundary regressions."""
 import copy
+import base64
 from contextlib import redirect_stderr
 import io
 import json
@@ -524,6 +525,22 @@ class FlutterWorkflowTests(unittest.TestCase):
     def job(self, name):
         return re.search(r"(?ms)^  " + re.escape(name) + r":\n.*?(?=^  [a-z][a-z0-9-]*:|\Z)", self.source).group()
 
+    def test_browser_contract_reaches_the_required_environment_as_exact_shared_bytes(self):
+        prefix = "--dart-define=SUBCONTRACT_RECEIPT_CONTRACT_BASE64="
+        values = [value[len(prefix):] for value in runner.BROWSER_OPTIONS if value.startswith(prefix)]
+        self.assertEqual(1, len(values))
+        self.assertEqual((runner.ROOT / runner.BROWSER_CONTRACT).read_bytes(),
+                         base64.b64decode(values[0], validate=True))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaises(FileNotFoundError):
+                runner.subcontract_browser_contract_define(root)
+            fixture = root / runner.BROWSER_CONTRACT
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text('{"schemaVersion":1,"vectors":[]}', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "shared subcontract browser contract"):
+                runner.subcontract_browser_contract_define(root)
+
     def test_complete_vm_inventory_has_eight_non_fail_fast_partitions_and_four_workers(self):
         plan, shards = self.job("frontend-plan"), self.job("frontend-shards")
         self.assertIn("flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8", plan)
@@ -555,7 +572,8 @@ class FlutterWorkflowTests(unittest.TestCase):
             self.assertIn(path, browser)
         self.assertEqual(("test/shared/drafts/form_draft_storage_browser_test.dart", "test/shared/drafts/form_draft_history_browser_test.dart",
                           "test/device_audit_receipt_storage_web_test.dart", "test/features/production/models/material_quantity_apportionment_test.dart",
-                          "test/attachments/attachment_media_preview_browser_test.dart", "test/core/web_update_bridge_browser_test.dart"), runner.BROWSER_FILES)
+                          "test/attachments/attachment_media_preview_browser_test.dart", "test/core/web_update_bridge_browser_test.dart",
+                          "test/features/warehouse/subcontract_actual_receipt_browser_test.dart"), runner.BROWSER_FILES)
         self.assertIn("flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json", browser)
         self.assertIn("name: flutter-test-results-browser", browser)
         self.assertIn("path: build/flutter-ci-reports/", browser)

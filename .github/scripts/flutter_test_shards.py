@@ -10,6 +10,7 @@ provide execution evidence; Dart source is never used to guess a test count.
 from __future__ import annotations
 
 import argparse
+import base64
 from collections import Counter
 import hashlib
 import json
@@ -34,8 +35,21 @@ COMMAND_OPTIONS = ("test", "--no-pub", "--reporter", "expanded", "--no-fail-fast
 REPORT_ROOT = "build/flutter-ci-reports"
 WORKER_PATH = "test/.uten-ci-codec-worker.js"
 WORKER_SOURCE = "web/uten_data_codec_worker.js"
+BROWSER_CONTRACT = "contracts/subcontract-actual-receipt/v1.json"
+
+
+def subcontract_browser_contract_define(root=ROOT):
+    content = (Path(root) / BROWSER_CONTRACT).read_bytes()
+    contract = json.loads(content.decode("utf-8-sig"))
+    if (not isinstance(contract, dict) or contract.get("schemaVersion") != 1
+            or not isinstance(contract.get("vectors"), list) or not contract["vectors"]):
+        raise ValueError("invalid shared subcontract browser contract")
+    return "--dart-define=SUBCONTRACT_RECEIPT_CONTRACT_BASE64=" + base64.b64encode(content).decode("ascii")
+
+
 BROWSER_OPTIONS = (*COMMAND_OPTIONS, "--platform", "chrome",
-                   "--dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js")
+                   "--dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js",
+                   subcontract_browser_contract_define())
 BROWSER_FILES = (
     "test/shared/drafts/form_draft_storage_browser_test.dart",
     "test/shared/drafts/form_draft_history_browser_test.dart",
@@ -43,6 +57,7 @@ BROWSER_FILES = (
     "test/features/production/models/material_quantity_apportionment_test.dart",
     "test/attachments/attachment_media_preview_browser_test.dart",
     "test/core/web_update_bridge_browser_test.dart",
+    "test/features/warehouse/subcontract_actual_receipt_browser_test.dart",
 )
 # The pinned SDK loader emits no LoadSuite at all for this library selector.
 # This is platform metadata, not a parser/count of test declarations. Unknown

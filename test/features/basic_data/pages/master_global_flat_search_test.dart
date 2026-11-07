@@ -1,4 +1,5 @@
-import '../../../support/versioned_summary_test_response.dart';
+import '../../../support/pump_until.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -113,18 +114,19 @@ void main() {
                         parameters['categoryId'] as String? ?? 'cat-a',
                       ),
                     ];
-              data = request.path.endsWith('/summaries')
-                  ? masterSummaryTestResponse(complete, request)
-                  : {
-                      'items': complete
-                          .skip((page - 1) * size)
-                          .take(size)
-                          .toList(),
-                      'page': page,
-                      'size': size,
-                      'total': complete.length,
-                      'totalPages': (complete.length + size - 1) ~/ size,
-                    };
+              if (request.path.endsWith('/summaries')) {
+                handler.resolve(
+                  masterSummaryStreamTestInterceptResponse(complete, request),
+                );
+                return;
+              }
+              data = {
+                'items': complete.skip((page - 1) * size).take(size).toList(),
+                'page': page,
+                'size': size,
+                'total': complete.length,
+                'totalPages': (complete.length + size - 1) ~/ size,
+              };
             }
             handler.resolve(
               Response<dynamic>(
@@ -171,14 +173,14 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       if (kind == 'mould') {
         expect(find.text('分类A'), findsNothing);
         await tester.tap(find.byTooltip('展开全部模具'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
       }
       await tester.tap(find.text('分类A'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_rowIds(tester), ['category-a']);
       final categoryReads = requests
           .where((r) => r.path == '/master/$kind-categories/cat-a')
@@ -193,7 +195,7 @@ void main() {
       await tester.enterText(search, '共同名称');
       await tester.testTextInput.receiveAction(TextInputAction.search);
       await tester.pump(const Duration(milliseconds: 450));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final completeIds = [
         'exact-b',
         'near-a',
@@ -210,7 +212,7 @@ void main() {
       expect(facetRead.queryParameters.containsKey('categoryId'), isFalse);
       expect(facetRead.queryParameters.containsKey('keyword'), isFalse);
       globalTable.onFilterChanged('name', '跨分类选项');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('新增子分类'), findsNothing);
       expect(
         requests
@@ -230,7 +232,7 @@ void main() {
           .singleWhere((list) => list.scrollDirection == Axis.vertical)
           .controller!;
       bodyScroll.jumpTo(bodyScroll.position.maxScrollExtent);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.scrollUntilVisible(
         find.text('其他共同名称'),
         700,
@@ -242,11 +244,11 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_rowIds(tester), completeIds);
       expect(find.text('其他共同名称').hitTestable(), findsOneWidget);
       bodyScroll.jumpTo(bodyScroll.position.minScrollExtent);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(requests.length, readsBeforeScroll);
       final query = requests.lastWhere(
         (r) =>
@@ -265,7 +267,7 @@ void main() {
         '共同名称',
       );
       await tester.tap(find.text('分类B'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_rowIds(tester), ['category-b']);
       final scoped = requests.lastWhere(
         (r) =>
@@ -283,12 +285,12 @@ void main() {
         '共同名称',
       );
       await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_rowIds(tester), completeIds);
       expect(find.text('搜索范围：全部分类'), findsOneWidget);
       await tester.enterText(search, '');
       await tester.pump(const Duration(milliseconds: 450));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_rowIds(tester), ['category-a']);
       expect(tester.element(search), same(searchElement));
       expect(tester.takeException(), isNull);

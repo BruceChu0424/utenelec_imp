@@ -83,6 +83,21 @@ ResponseBody masterSummaryStreamTestResponse(
   },
 );
 
+/// Dio interceptor fixtures must carry the stream headers themselves because
+/// handler.resolve bypasses the adapter's ResponseBody-to-Response conversion.
+Response<dynamic> masterSummaryStreamTestInterceptResponse(
+  List<Map<String, dynamic>> items,
+  RequestOptions request,
+) {
+  final body = masterSummaryStreamTestResponse(items, request);
+  return Response<dynamic>(
+    requestOptions: request,
+    statusCode: body.statusCode,
+    headers: Headers.fromMap(body.headers),
+    data: body,
+  );
+}
+
 class MasterSummaryStreamTestAdapter implements HttpClientAdapter {
   MasterSummaryStreamTestAdapter(this.rows);
 

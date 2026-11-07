@@ -1,4 +1,5 @@
-import '../../../support/versioned_summary_test_response.dart';
+import '../../../support/pump_until.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
@@ -83,13 +84,13 @@ void main() {
                 .firstWhere((entry) => entry.label.contains('编辑'))
                 .onTap,
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await opening;
         } else {
           await tester.tap(
             find.byTooltip(kind == 'payment-style' ? '新增最外层类别' : '新增最外层分类'),
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
         }
         await tester.enterText(
           _nameField(payment: kind == 'payment-style'),
@@ -117,7 +118,7 @@ void main() {
         } else {
           fixture.releaseCreate();
         }
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('正在${editing ? '保存' : '创建'}$noun'), findsNothing);
         expect(find.byType(CategoryEditDialog), findsNothing);
         expect(editing ? fixture.updates.length : fixture.creates.length, 1);
@@ -142,7 +143,7 @@ void main() {
       await tester.tap(
         find.byTooltip(kind == 'payment-style' ? '新增最外层类别' : '新增最外层分类'),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.enterText(
         _nameField(payment: kind == 'payment-style'),
         '保留原提交',
@@ -165,13 +166,13 @@ void main() {
       await tester.pump();
       container.read(_fixtureServer.notifier).state =
           'http://localhost:8080/api';
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('新增分类'), findsNothing);
       await _query(tester, '保留新范围查询');
       container.read(appNotificationProvider.notifier).clear();
       final reads = fixture.reads.length;
       fixture.releaseCreate();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_searchText(tester), '保留新范围查询');
       expect(fixture.reads.length, reads);
       expect(fixture.creates, hasLength(1));
@@ -215,7 +216,7 @@ void main() {
             await tester.pump(const Duration(milliseconds: 10));
           }
           fixture.releaseDelete(preview: true);
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
         }
         await tester.tap(find.text('删除').last);
         await tester.pump();
@@ -228,13 +229,13 @@ void main() {
           await tester.pump(const Duration(milliseconds: 10));
         }
         container.read(readScopeRevisionProvider.notifier).state++;
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('正在删除分类…'), findsNothing);
         await _query(tester, '新范围查询');
         container.read(appNotificationProvider.notifier).clear();
         final reads = fixture.reads.length;
         fixture.releaseDelete(fail: fail);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await pending;
         expect(_searchText(tester), '新范围查询');
         expect(fixture.reads.length, reads);
@@ -272,7 +273,7 @@ void main() {
         }
         expect(fixture.heldDeletes.length, 1);
         fixture.releaseDelete(preview: true);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
       }
       expect(find.text('删除分类'), findsOneWidget);
       await tester.tap(find.text('删除').last);
@@ -288,7 +289,7 @@ void main() {
       await tester.pump();
       expect(find.text('正在删除分类…'), findsOneWidget);
       fixture.releaseDelete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await pending;
       expect(find.text('正在删除分类…'), findsNothing);
       expect(fixture.deleteCount, 1);
@@ -332,7 +333,7 @@ void main() {
       await tester.tap(
         find.descendant(of: field, matching: find.byType(TextField)),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(_searchText(tester), reads);
       expect(tester.takeException(), isNull);
       if (capture) {
@@ -381,10 +382,10 @@ void main() {
       await _revealExistingChild(tester);
       final beforeChild = tester.getTopLeft(find.text('既有子分类'));
       await tester.tap(find.text('既有子分类'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _query(tester, '不匹配查询');
       await tester.tap(find.byTooltip('新增最外层分类'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(
         tester
             .widget<CategoryEditDialog>(find.byType(CategoryEditDialog))
@@ -405,7 +406,7 @@ void main() {
       );
       await tester.enterText(_nameField(), '新最外层分类');
       await tester.tap(find.text('创建'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
 
       expect(fixture.creates, hasLength(1));
       expect(fixture.creates.single['parentId'], isNull);
@@ -429,7 +430,7 @@ void main() {
       }
       // 详情菜单继续使用选中分类的真实UUID。
       await tester.tap(find.byKey(const ValueKey('hierarchy-detail-menu')));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final menu = find
           .ancestor(of: find.text('复制名称'), matching: find.byType(Material))
           .first;
@@ -448,7 +449,7 @@ void main() {
         await saveAuditScreenshot(tester, captureKey, '$kind-category-menu');
       }
       await tester.tap(find.text('新增子分类').last);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(
         tester
             .widget<CategoryEditDialog>(find.byType(CategoryEditDialog))
@@ -457,7 +458,7 @@ void main() {
         _createdId,
       );
       await tester.tap(find.text('取消').last);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       debugDisableShadows = oldShadows;
     });
 
@@ -517,7 +518,7 @@ void main() {
       greaterThanOrEqualTo(tester.getTopRight(search).dx),
     );
     await tester.tap(action);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(
       tester
           .widget<CategoryEditDialog>(find.byType(CategoryEditDialog))
@@ -526,7 +527,7 @@ void main() {
     );
     await tester.enterText(_nameField(), '新最外层分类');
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(fixture.creates.single['parentId'], isNull);
     expect(find.text('新最外层分类'), findsWidgets);
     expect(tester.takeException(), isNull);
@@ -537,23 +538,23 @@ void main() {
     await _pump(tester, fixture);
     await _query(tester, '保留此查询');
     await tester.tap(find.byTooltip('新增最外层分类'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.text('取消').last);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_searchText(tester), '保留此查询');
     expect(fixture.creates, isEmpty);
 
     fixture.failCreate = true;
     await tester.tap(find.byTooltip('新增最外层分类'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.enterText(_nameField(), '新最外层分类');
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(find.byType(CategoryEditDialog), findsOneWidget);
     expect(_searchText(tester), '保留此查询');
     fixture.failCreate = false;
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_searchText(tester), isEmpty);
     expect(fixture.reads, contains('${fixture.categories}/$_createdId'));
   });
@@ -568,9 +569,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.enterText(_nameField(), '新最外层分类');
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     fixture.releaseSearch();
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_searchText(tester), isEmpty);
     expect(find.text('新最外层分类'), findsWidgets);
     expect(
@@ -600,11 +601,11 @@ void main() {
     addTearDown(router.dispose);
     await _pump(tester, fixture, router: router);
     await tester.tap(find.byTooltip('新增最外层分类'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.text('取消').last);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.byTooltip('返回'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(find.text('基础资料入口'), findsOneWidget);
   });
 
@@ -613,7 +614,7 @@ void main() {
       final fixture = _CategoryApi('payment-style');
       await _pump(tester, fixture);
       await selectFilterSegment(tester, category.label);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _revealExistingChild(tester);
       await tester.tap(
         find.descendant(
@@ -621,10 +622,10 @@ void main() {
           matching: find.text('既有子分类'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await _query(tester, '不匹配类别');
       await tester.tap(find.byTooltip('新增最外层类别'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(
         tester
             .widget<UtenLocationField>(find.byType(UtenLocationField))
@@ -639,7 +640,7 @@ void main() {
       );
       await tester.enterText(_nameField(payment: true), '新最外层分类');
       await tester.tap(find.text('创建'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(fixture.creates.single['parentId'], isNull);
       expect(fixture.creates.single['category'], category.value);
       expect(_searchText(tester), isEmpty);
@@ -662,23 +663,23 @@ void main() {
     await _pump(tester, fixture);
     await _query(tester, '保留收付款查询');
     await tester.tap(find.byTooltip('新增最外层类别'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.text('取消').last);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_searchText(tester), '保留收付款查询');
     expect(fixture.creates, isEmpty);
 
     fixture.failCreate = true;
     await tester.tap(find.byTooltip('新增最外层类别'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.enterText(_nameField(payment: true), '新最外层分类');
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_nameField(payment: true), findsOneWidget);
     expect(_searchText(tester), '保留收付款查询');
     fixture.failCreate = false;
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(_searchText(tester), isEmpty);
     expect(fixture.reads, contains('${fixture.categories}/$_createdId'));
     expect(tester.takeException(), isNull);
@@ -688,18 +689,18 @@ void main() {
     final fixture = _CategoryApi('payment-style', empty: true);
     await _pump(tester, fixture, size: const Size(390, 900), textScale: 1.8);
     await tester.tap(find.text('选择类别'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.byTooltip('新增最外层类别'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.enterText(_nameField(payment: true), '新最外层分类');
     await tester.ensureVisible(find.text('创建'));
     await tester.tap(find.text('创建'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(fixture.creates.single['parentId'], isNull);
     expect(_searchText(tester), isEmpty);
     expect(find.text('新最外层分类'), findsWidgets);
     await tester.tap(find.byTooltip('返回内容'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(find.text('新最外层分类'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -731,7 +732,7 @@ Future<void> _query(WidgetTester tester, String text) async {
     text,
   );
   await tester.pump(const Duration(milliseconds: 350));
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
 }
 
 Future<void> _pump(
@@ -816,11 +817,11 @@ Future<void> _pump(
           : RepaintBoundary(key: captureKey, child: app),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   final virtualRoot = find.byTooltip('展开全部模具');
   if (virtualRoot.evaluate().isNotEmpty) {
     await tester.tap(virtualRoot);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
   }
 }
 
@@ -828,12 +829,12 @@ Future<void> _revealExistingChild(WidgetTester tester) async {
   final virtualRoot = find.byTooltip('展开全部模具');
   if (virtualRoot.evaluate().isNotEmpty) {
     await tester.tap(virtualRoot);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
   }
   final businessRoot = find.byTooltip('展开真实业务根');
   if (businessRoot.evaluate().isNotEmpty) {
     await tester.tap(businessRoot);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
   }
 }
 
@@ -978,9 +979,11 @@ class _CategoryApi {
         heldSearch.add((request, handler));
         return;
       }
-      data = path.endsWith('/summaries')
-          ? masterSummaryTestResponse([], request)
-          : _emptyPage;
+      if (path.endsWith('/summaries')) {
+        handler.resolve(masterSummaryStreamTestInterceptResponse([], request));
+        return;
+      }
+      data = _emptyPage;
     }
     handler.resolve(
       Response(requestOptions: request, statusCode: 200, data: data),
@@ -1044,14 +1047,16 @@ class _CategoryApi {
 
   void releaseSearch() {
     for (final (request, handler) in heldSearch) {
+      if (request.path.endsWith('/summaries')) {
+        handler.resolve(masterSummaryStreamTestInterceptResponse([], request));
+        continue;
+      }
       handler.resolve(
         Response(
           requestOptions: request,
           statusCode: 200,
           data: request.path.endsWith('/search-context')
               ? _emptySearchContext(request)
-              : request.path.endsWith('/summaries')
-              ? masterSummaryTestResponse([], request)
               : _emptyPage,
         ),
       );

@@ -1,4 +1,5 @@
-import '../../../support/versioned_summary_test_response.dart';
+import '../../../support/pump_until.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -53,13 +54,13 @@ void main() {
       ),
     );
     await tester.tap(find.text('候选'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(api.started, isTrue);
     epoch.advance();
     await tester.pump();
     epoch.advance();
     api.pending.complete();
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(results, isEmpty);
     expect(rejected, isStateError);
     expect(tester.takeException(), isNull);
@@ -91,6 +92,12 @@ void main() {
               }
             }
             final rows = data._rows(query);
+            if (request.path.endsWith('/summaries')) {
+              handler.resolve(
+                masterSummaryStreamTestInterceptResponse(rows, request),
+              );
+              return;
+            }
             final page = query['page'] as int? ?? 1;
             final size = query['size'] as int? ?? 100;
             handler.resolve(
@@ -231,7 +238,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('添加组件'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       MasterDataTableView<GoodsListItem> table() =>
           tester.widget(find.byKey(const Key('goods-picker-paged-list')));
       expect(table().columns.map((column) => column.key), [
@@ -256,9 +263,9 @@ void main() {
       );
       expect(table().serverColumnSearch, isTrue);
       table().onFilterChanged('search.series', '5m');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       table().onFilterChanged('search.name', '开关');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(table().items.map((item) => item.id).toSet(), {'black', 'white'});
       expect(table().items.map((item) => item.colorName).toSet(), {'黑色', '白色'});
       expect(table().items.map((item) => item.colorId).toSet(), {
@@ -274,7 +281,7 @@ void main() {
       expect(api.locations.last['search.series'], '5m');
       expect(api.locations.last['search.name'], '开关');
       await selectFilterSegment(tester, '全部可选货品');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(table().items.map((item) => item.id).toSet(), {
         'black',
         'white',
@@ -284,7 +291,7 @@ void main() {
       expect(api.reads.last['search.series'], '5m');
       expect(api.reads.last['search.name'], '开关');
       await selectFilterSegment(tester, '当前组件范围');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(table().items.map((item) => item.id).toSet(), {'black', 'white'});
       expect(api.reads.last['categoryRootIds'], ['material']);
       await tester.tapAt(
@@ -302,7 +309,7 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(selected.map((item) => item.id).toSet(), {'black', 'white'});
       expect(selected.map((item) => item.unitId).toSet(), {'unit-piece'});
     },
@@ -334,7 +341,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('候选'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(results.every((goods) => goods.categoryId == 'material'), isTrue);
       expect(results.map((goods) => goods.id), isNot(contains('outside')));
       expect(api.reads.single['categoryRootIds'], ['material']);
@@ -368,8 +375,7 @@ class _Categories implements ProductCategoryRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _ColumnApi extends ApiClient {
-  _ColumnApi() : super(Dio());
+class _ColumnApi extends MasterSummaryStreamTestApi {
   final reads = <Map<String, dynamic>>[];
   final locations = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _rows(Map<String, dynamic> query) =>
@@ -420,25 +426,17 @@ class _ColumnApi extends ApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? query,
-    Map<String, dynamic>? headers,
-  }) async {
+  FutureOr<List<Map<String, dynamic>>> masterSummaryRows(
+    RequestOptions request,
+  ) {
+    final path = request.path;
     if (path != '/business-references/goods/summaries' &&
         path != '/master/goods/summaries') {
       throw StateError('Unexpected business command in goods-column fixture');
     }
-    final request = RequestOptions(
-      path: path,
-      method: 'POST',
-      data: body,
-      queryParameters: query,
-    );
     final parameters = masterSummaryTestParameters(request);
     reads.add(parameters);
-    return masterSummaryTestResponse(_rows(parameters), request);
+    return _rows(parameters);
   }
 
   @override
@@ -479,15 +477,12 @@ class _HeldColumnApi extends _ColumnApi {
   final pending = Completer<void>();
   bool started = false;
   @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? query,
-    Map<String, dynamic>? headers,
-  }) async {
+  Future<List<Map<String, dynamic>>> masterSummaryRows(
+    RequestOptions request,
+  ) async {
     started = true;
     await pending.future;
-    return super.post(path, body: body, query: query, headers: headers);
+    return super.masterSummaryRows(request);
   }
 
   @override

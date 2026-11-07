@@ -1,3 +1,4 @@
+import '../../../support/pump_until.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -26,7 +27,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
-import '../../../support/versioned_summary_test_response.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -105,7 +106,7 @@ void main() {
           'children': <Object>[],
         },
       ]);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.categoryReads.length, greaterThan(readsBefore));
       expect(find.textContaining('B账号分类'), findsWidgets);
       expect(find.textContaining('当前分类'), findsNothing);
@@ -142,7 +143,7 @@ void main() {
           expect(search, findsOneWidget);
           await tester.enterText(search, '许可');
           await tester.pump(const Duration(milliseconds: 350));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           final queries = api.reads.where(
             (read) =>
                 read.path == '/master/${scenario.kind}' ||
@@ -166,7 +167,7 @@ void main() {
             isTrue,
           );
           _openFirst(tester, scenario.kind);
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           expect(
             api.reads.any(
               (read) =>
@@ -207,13 +208,13 @@ void main() {
       await tester.pump();
       expect(api.categoryReads, hasLength(1));
       container.read(_grants.notifier).state = {Perm.goodsView};
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('许可货品'), findsWidgets);
       container.read(_grants.notifier).state = {
         Perm.goodsView,
         Perm.materialCategoryView,
       };
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('当前分类'), findsWidgets);
       oldTree.complete([
         {
@@ -223,11 +224,11 @@ void main() {
           'children': <Object>[],
         },
       ]);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('过期分类'), findsNothing);
       expect(find.text('当前分类'), findsWidgets);
       container.read(_grants.notifier).state = {Perm.goodsView};
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenCategoryTreeView), findsNothing);
       expect(find.text('许可货品'), findsWidgets);
       expect(api.writes, isEmpty);
@@ -308,7 +309,7 @@ Future<void> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
 }
 
 void _openFirst(WidgetTester tester, String kind) {
@@ -336,8 +337,7 @@ void _openFirst(WidgetTester tester, String kind) {
   }
 }
 
-class _ReadApi extends ApiClient {
-  _ReadApi() : super(Dio());
+class _ReadApi extends MasterSummaryStreamTestApi {
   final reads =
       <
         ({String path, Map<String, dynamic> query, Map<String, dynamic> body})
@@ -407,38 +407,40 @@ class _ReadApi extends ApiClient {
   }
 
   @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions options) {
+    final path = options.path;
+    final request = Map<String, dynamic>.from(options.data as Map);
+    reads.add((
+      path: path,
+      query: Map.of(options.queryParameters),
+      body: request,
+    ));
+    final scenario = _cases.singleWhere(
+      (item) => path == '/master/${item.kind}/summaries',
+    );
+    expect(request['size'], 100);
+    return [
+      {
+        'id': '${scenario.kind}-1',
+        'code': 'READ-001',
+        'name': scenario.label,
+        'status': '使用',
+        'categoryId': 'visible-row-category',
+        'categoryName': '本行分类',
+        'sourceType': '自制',
+        'version': 1,
+        'writable': false,
+      },
+    ];
+  }
+
+  @override
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/summaries')) {
-      final request = Map<String, dynamic>.from(body! as Map);
-      reads.add((path: path, query: Map.of(query ?? {}), body: request));
-      final scenario = _cases.singleWhere(
-        (item) => path == '/master/${item.kind}/summaries',
-      );
-      expect(request['size'], 100);
-      return versionedSummaryTestResponse(
-        [
-          {
-            'id': '${scenario.kind}-1',
-            'code': 'READ-001',
-            'name': scenario.label,
-            'status': '使用',
-            'categoryId': 'visible-row-category',
-            'categoryName': '本行分类',
-            'sourceType': '自制',
-            'version': 1,
-            'writable': false,
-          },
-        ],
-        request,
-        revision: 'a' * 64,
-        dataVersion: 'b' * 64,
-      );
-    }
     if (path.endsWith('/search')) {
       reads.add((
         path: path,

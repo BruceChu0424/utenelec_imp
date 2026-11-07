@@ -58,6 +58,31 @@ class _FaultyAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  test(
+    'interceptor streams retain MIME, authority, complete marker and EOF',
+    () async {
+      final rows = [
+        for (var i = 0; i < 201; i++) {'id': 'client-$i'},
+      ];
+      final requests = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'https://fixture.invalid/api'));
+      addTearDown(() => dio.close(force: true));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            handler.resolve(
+              masterSummaryStreamTestInterceptResponse(rows, request),
+            );
+          },
+        ),
+      );
+      expect(await _read(ApiClient(dio)), rows);
+      expect(requests, hasLength(1));
+      expect(requests.single.queryParameters, {'complete': true});
+    },
+  );
+
   test('real Dio summary keeps all 201 rows over one HTTP response', () async {
     final rows = [
       for (var i = 0; i < 201; i++)

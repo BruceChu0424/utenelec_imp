@@ -1,4 +1,5 @@
-import '../../../support/versioned_summary_test_response.dart';
+import '../../../support/pump_until.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -79,10 +80,15 @@ void main() {
               };
             }
             if (request.path.endsWith('/summaries')) {
-              data = masterSummaryTestResponse(
-                List<Map<String, dynamic>>.from((data as Map)['items'] as List),
-                request,
+              handler.resolve(
+                masterSummaryStreamTestInterceptResponse(
+                  List<Map<String, dynamic>>.from(
+                    (data as Map)['items'] as List,
+                  ),
+                  request,
+                ),
               );
+              return;
             }
             handler.resolve(
               Response(requestOptions: request, statusCode: 200, data: data),
@@ -110,9 +116,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('验收供应商分类'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final table = tester.widget<MasterDataTableView<SupplierListItem>>(
         find.byType(MasterDataTableView<SupplierListItem>),
       );
@@ -129,13 +135,13 @@ void main() {
       expect(find.text('Local UAT Net30'), findsOneWidget);
       await tester.ensureVisible(find.text('损耗率(%)'));
       await tester.tap(find.text('损耗率(%)'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.enterText(
         find.byKey(const Key('uten-column-keyword-input')),
         '5..10',
       );
       await tester.testTextInput.receiveAction(TextInputAction.search);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(reads.last['search.lossRate'], '5..10');
       expect(reads.last['categoryId'], 'category');
       tester
@@ -143,7 +149,7 @@ void main() {
             find.byType(MasterDataTableView<SupplierListItem>),
           )
           .onSortChange!('lossRate', false);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(reads.last['sort'], 'lossRate');
       expect(reads.last['order'], 'desc');
       expect(reads.last['page'], 1);

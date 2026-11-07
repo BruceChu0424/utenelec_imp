@@ -1505,7 +1505,7 @@ public class MaterialAnalysisCommandService {
         if (!Objects.equals(header.warehouseId(), request.warehouseId())) {
             throw conflict("目标仓库与分析当前仓库不一致，请刷新后重试");
         }
-        MaterialAnalysisIssuePreviewOverlay overlay = MaterialAnalysisIssuePreviewOverlay.create();
+        MaterialAnalysisIssuePreviewOverlay overlay = MaterialAnalysisIssuePreviewOverlay.forReadPreview(analysisId);
         // 真实下达入口先按实况刷新一次(库存可能在上次刷新后被仓库命令改过)；预览同口径先投影
         // 「不含本批」的实况，锚点跟涨/跟落的基线、新锚点配额与可排产都以它为准。
         analysisService.projectIssuePreviewBase(analysisId, overlay);

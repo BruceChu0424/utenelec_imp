@@ -3,6 +3,7 @@ package com.uten.imp.features.production.analysis;
 import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
@@ -3655,10 +3656,24 @@ public class MaterialAnalysisService {
     private List<FormalMaterialCoverage> formalMaterialCoverage(
             UUID analysisId, UUID warehouseId) {
         // A MAKE child plan's picked inputs cover the original tree until its
-        // output is finished. Subcontract draws are covered per child by
-        // subcontractChildCoverage (ADR-143 §4.5), not through plan demands.
+        // output is finished. Resolve provenance once per approved plan/item
+        // in this analysis before joining its many demands and reservations.
+        // Subcontract draws are covered per child by subcontractChildCoverage.
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH %s
+                WITH %1$s,
+                plan_candidates AS MATERIALIZED (
+                    SELECT plan.* FROM production_plans plan
+                    WHERE plan.material_analysis_id=:analysisId
+                      AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                ), scoped_plans AS MATERIALIZED (
+                    SELECT archive_origin.* FROM plan_candidates archive_origin WHERE %2$s
+                ), plan_item_candidates AS MATERIALIZED (
+                    SELECT item.* FROM production_plan_items item
+                    JOIN scoped_plans plan ON plan.id=item.plan_id
+                    WHERE item.is_deleted=FALSE
+                ), scoped_plan_items AS MATERIALIZED (
+                    SELECT archive_origin.* FROM plan_item_candidates archive_origin WHERE %3$s
+                )
                 SELECT demand.id, material.analysis_item_id, material.node_key,
                        SUM(GREATEST(reservation.qty-reservation.released_qty,0))::numeric,
                        CASE WHEN source.source_type IN ('MAKE_COMPONENT','AGGREGATE_MAKE')
@@ -3668,13 +3683,10 @@ public class MaterialAnalysisService {
                            * COALESCE(segment.product_unit_rate,plan_item.unit_rate,1)
                          ELSE NULL END
                 FROM production_material_demands demand
-                JOIN %2$s plan ON plan.id=demand.plan_id
-                  AND plan.material_analysis_id=:analysisId
-                  AND plan.status=1 AND plan.is_deleted=FALSE AND plan.is_canceled=FALSE
+                JOIN scoped_plans plan ON plan.id=demand.plan_id
                 JOIN production_material_analysis_items source
                   ON source.id=plan.material_analysis_item_id AND source.is_deleted=FALSE
-                JOIN %3$s plan_item ON plan_item.plan_id=plan.id
-                  AND plan_item.is_deleted=FALSE
+                JOIN scoped_plan_items plan_item ON plan_item.plan_id=plan.id
                   AND (demand.source_plan_item_id IS NULL OR plan_item.id=demand.source_plan_item_id)
                 LEFT JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
                 LEFT JOIN LATERAL (
@@ -3701,7 +3713,12 @@ public class MaterialAnalysisService {
                          source.id,source.source_type,segment.id,segment.planned_qty,segment.product_unit_rate,
                          plan_item.qty,plan_item.iqty,plan_item.unit_rate,finished.qty
                 ORDER BY demand.id,material.path,material.node_key
-                """.formatted(SAME_MAIN_WAREHOUSES_CTE, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"))).setParameter("analysisId", analysisId)
+                """.formatted(SAME_MAIN_WAREHOUSES_CTE,
+                        ImportedBusinessDocumentScope.nativePredicate("production_plans", "archive_origin"),
+                        ImportedBusinessDocumentScope.nativePredicate("production_plan_items", "archive_origin"),
+                        ImportedBusinessDocumentScope.nativeTable("stock_document_items"),
+                        ImportedBusinessDocumentScope.nativeTable("stock_documents")))
+                .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
         List<FormalMaterialCoverage> result=new ArrayList<>(rows.stream().map(row -> new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),
                 decimal(row[3]),row[4]==null ? null : decimal(row[4]))).toList());
@@ -5721,7 +5738,7 @@ public class MaterialAnalysisService {
     void addIssuePreviewSeeds(UUID analysisId, List<IssuePreviewSeed> seeds, boolean approveNow,
             MaterialAnalysisIssuePreviewOverlay overlay) {
         if (seeds.isEmpty()) return;
-        Map<UUID, SourceLine> sources = loadSourceLines(analysisId, false).stream()
+        Map<UUID, SourceLine> sources = previewBaseSources(analysisId, overlay).stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         // 分析行 → 其锚点父物料行的两种键: 计划产出(父节点键)与计划批次(顶层供给行按来源汇总)。
         Map<UUID, String[]> anchorParents = new HashMap<>();
@@ -6216,7 +6233,12 @@ public class MaterialAnalysisService {
     /** [overlay] 非空时(下达预览, ADR-116)把本批计划与锚点配额、齐套重算结果叠到库内来源行上。 */
     private List<SourceLine> loadSourceLines(
             UUID analysisId, boolean lockSales, MaterialAnalysisIssuePreviewOverlay overlay) {
-        return loadSourceLines(analysisId,lockSales,overlay,null);
+        if (lockSales || overlay.isNone()) return loadSourceLines(analysisId, lockSales, overlay, null);
+        return projectSourceLines(previewBaseSources(analysisId, overlay), overlay);
+    }
+
+    private List<SourceLine> previewBaseSources(UUID analysisId, MaterialAnalysisIssuePreviewOverlay overlay) {
+        return overlay.sourceSnapshot(analysisId, () -> loadSourceLines(analysisId, false));
     }
 
     /** Selected-plan admission reads its complete ancestor chain, not every sibling plan. */
@@ -6352,6 +6374,11 @@ public class MaterialAnalysisService {
         if(selectedItemIds!=null)sourceQuery.setParameter("selectedItemIds",selectedItemIds);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(sourceQuery);
         List<SourceLine> sources = rows.stream().map(SourceLine::from).toList();
+        return projectSourceLines(sources, overlay);
+    }
+
+    private static List<SourceLine> projectSourceLines(List<SourceLine> sources,
+                                                       MaterialAnalysisIssuePreviewOverlay overlay) {
         if (overlay.isNone()) return sources;
         return sources.stream().map(source -> {
             MaterialAnalysisIssuePreviewOverlay.SourceDelta delta = overlay.source(source.analysisItemId());

@@ -47,7 +47,7 @@ public class AggregateMaterialOrderPreviewService {
         access.requireWritable(header.makerId(),"只能从本人负责的物料分析核对汇总下单",analysisService.scopeForAnalysis());
         analysisService.requireCurrent(header,request.version(),request.fingerprint());
         if(!Objects.equals(header.warehouseId(),request.warehouseId()))throw conflict("分析仓库已变化，请刷新后重新核对");
-        MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.create();
+        MaterialAnalysisIssuePreviewOverlay overlay=MaterialAnalysisIssuePreviewOverlay.forReadPreview(analysisId);
         analysisService.projectIssuePreviewBase(analysisId,overlay);
         return resolve(analysisId,request,analysisService.issuePreviewView(analysisId,overlay,Map.of()));
     }

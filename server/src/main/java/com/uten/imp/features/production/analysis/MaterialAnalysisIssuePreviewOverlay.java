@@ -6,9 +6,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 import com.uten.imp.application.port.PreplanAnalysisPegPort.PreviewPlanTransfer;
 import com.uten.imp.application.port.PreplanAnalysisPegPort.PreviewPublicReservation;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisService.*;
 
 /**
@@ -29,7 +32,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisService.
 final class MaterialAnalysisIssuePreviewOverlay {
 
     /** 真实命令与 GET 详情: 不叠加任何差异。 */
-    static final MaterialAnalysisIssuePreviewOverlay NONE = new MaterialAnalysisIssuePreviewOverlay(true);
+    static final MaterialAnalysisIssuePreviewOverlay NONE = new MaterialAnalysisIssuePreviewOverlay(true, null);
 
     /** 来源行(分析行)的数量差; 齐套列为 null 表示沿用库内值。 */
     record SourceDelta(BigDecimal requested, BigDecimal submitted, BigDecimal approved, BigDecimal surplus,
@@ -63,6 +66,8 @@ final class MaterialAnalysisIssuePreviewOverlay {
     }
 
     private final boolean frozen;
+    private final UUID sourceSnapshotAnalysisId;
+    private List<SourceLine> sourceSnapshot;
     private final Map<UUID, SourceDelta> sources = new HashMap<>();
     private final Map<UUID,BigDecimal> rootPublicAdoption=new HashMap<>();
     void addRootPublicAdoption(UUID sourceId,BigDecimal baseQty) {
@@ -101,12 +106,33 @@ final class MaterialAnalysisIssuePreviewOverlay {
     private Map<String, NodeSnapshot> nodes = Map.of();
     private Map<UUID, RootSnapshot> roots = Map.of();
 
-    private MaterialAnalysisIssuePreviewOverlay(boolean frozen) {
+    private MaterialAnalysisIssuePreviewOverlay(boolean frozen, UUID sourceSnapshotAnalysisId) {
         this.frozen = frozen;
+        this.sourceSnapshotAnalysisId = sourceSnapshotAnalysisId;
     }
 
     static MaterialAnalysisIssuePreviewOverlay create() {
-        return new MaterialAnalysisIssuePreviewOverlay(false);
+        return new MaterialAnalysisIssuePreviewOverlay(false, null);
+    }
+
+    /** One repeatable-read request owns the unmodified source rows. Each projection applies its own current deltas. */
+    static MaterialAnalysisIssuePreviewOverlay forReadPreview(UUID analysisId) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                || !Integer.valueOf(java.sql.Connection.TRANSACTION_REPEATABLE_READ).equals(
+                        TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
+            return create();
+        }
+        return new MaterialAnalysisIssuePreviewOverlay(false, Objects.requireNonNull(analysisId));
+    }
+
+    List<SourceLine> sourceSnapshot(UUID analysisId, Supplier<List<SourceLine>> reader) {
+        if (sourceSnapshotAnalysisId == null) return reader.get();
+        if (!sourceSnapshotAnalysisId.equals(analysisId)) {
+            throw new IllegalStateException("Issue preview source snapshot belongs to a different analysis");
+        }
+        if (sourceSnapshot == null) sourceSnapshot = List.copyOf(reader.get());
+        return sourceSnapshot;
     }
 
     boolean isNone() {

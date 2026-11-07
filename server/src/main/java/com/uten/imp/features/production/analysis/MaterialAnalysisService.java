@@ -4928,7 +4928,11 @@ public class MaterialAnalysisService {
                 .filter(row -> row.depth() > 0)
                 .map(MaterialRow::analysisItemId)
                 .collect(Collectors.toSet());
-        if (rootSupply != null) productIdsWithMaterialChildren.addAll(rootSupply.rootProductsWithBom(analysisId));
+        // A union cannot change any mapped product once its child fact is
+        // already present in this complete read frame. Unknown roots still query.
+        if (rootSupply != null && !productIdsWithMaterialChildren.containsAll(sourcesById.keySet())) {
+            productIdsWithMaterialChildren.addAll(rootSupply.rootProductsWithBom(analysisId));
+        }
         Map<UUID, List<BorrowRef>> borrowRefs = activeBorrowRefsByMaterial(analysisId);
         Map<UUID, CrossProjection> crossProjections =
                 crossReallocationProjections(analysisId);

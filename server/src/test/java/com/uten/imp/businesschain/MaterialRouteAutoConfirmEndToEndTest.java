@@ -93,6 +93,8 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertEquals("委外",sourceType(subcontract));
         assertTrue(view.flatMaterials().stream().noneMatch(row->buyChild.equals(row.goodsId())),
                 "采购根在本轮确认后就不展开制造备料");
+        assertTrue(view.products().stream().filter(product->buy.equals(product.goodsId())).findFirst().orElseThrow().hasProductionMaterialChildren(),
+                "The unexpanded purchase root still needs its authoritative BOM existence query");
         MaterialView subcontractMaterial=byGoods(view,w.goodsC());
         assertEquals(0,new BigDecimal("100").compareTo(subcontractMaterial.requiredQty()));
         assertEquals("DESIGN",subcontractMaterial.usageBasis());
@@ -106,6 +108,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
                 w.warehouseId(),"manual-external-refresh",sources));
         assertEquals("BUY",rootByGoods(refreshed,buy).sourceConfirmed(),"已确认路线不会被档案后续变化替换");
         assertEquals("MAKE",rootByGoods(refreshed,buy).sourceSuggestion(),"刷新只更新档案建议");
+        assertTrue(refreshed.products().stream().filter(product->buy.equals(product.goodsId())).findFirst().orElseThrow().hasProductionMaterialChildren());
         assertEquals("SUBCONTRACT",rootByGoods(refreshed,subcontract).sourceConfirmed());
         assertEquals(0,refreshed.autoConfirmedRouteCount());
     }
@@ -150,6 +153,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertNull(rootByGoods(view,goods).sourceConfirmed());
         assertEquals(0,view.autoConfirmedRouteCount());
         assertFalse(view.products().getFirst().canSchedule());
+        assertFalse(view.products().getFirst().hasProductionMaterialChildren(),"Unknown is not proof that a BOM exists");
         assertEquals("",sourceType(goods),"没有档案或BOM依据时不擅自补写为自制");
     }
 

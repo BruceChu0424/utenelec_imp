@@ -47,7 +47,8 @@ class BusinessGeneratedNumericCatalogPostgresTest {
     WHERE relation.relnamespace='public'::regnamespace AND relation.relname=? AND NOT trigger.tgisinternal ORDER BY trigger.tgname
     """,table));
    var result=Map.of("generated",generated,"remainingTypmods",typmods,"triggers",definitions);
-   var output=Path.of("../tmp/finance-research/business-generated-numeric-current.json");Files.createDirectories(output.getParent());
+   var output=Path.of(System.getProperty("uten.build.directory","target"),"business-generated-numeric-current.json");
+   Files.createDirectories(output.getParent());
    Files.writeString(output,new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(result));
    assertThat(db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND is_generated='ALWAYS'",Integer.class)).isGreaterThanOrEqualTo(generated.size());
   }

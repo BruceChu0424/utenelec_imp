@@ -303,7 +303,9 @@ class ProcurementFirstPayablePostgresTest {
       'edges',(SELECT jsonb_agg(to_jsonb(edge)ORDER BY edge.id)FROM stock_value_edges edge JOIN stock_value_nodes child ON child.id=edge.child_node_id WHERE child.pool_id IN(SELECT id FROM pools)),
       'transfers',(SELECT jsonb_agg(to_jsonb(transfer)ORDER BY transfer.id)FROM stock_value_position_transfers transfer JOIN stock_value_nodes child ON child.id=transfer.target_node_id WHERE child.pool_id IN(SELECT id FROM pools)))::text
     """,String.class,w.goodsE(),w.warehouseId(),receipt,receipt);
-   java.nio.file.Path target=java.nio.file.Path.of("..","tmp","finance-party","subcontract-firstap-withdrawal-anonymous.json");java.nio.file.Files.writeString(target,state);
+   var target=java.nio.file.Path.of(System.getProperty("uten.build.directory","target"),"subcontract-firstap-withdrawal-anonymous.json");
+   java.nio.file.Files.createDirectories(target.getParent());
+   java.nio.file.Files.writeString(target,state);
   }catch(Exception diagnostic){failure.addSuppressed(diagnostic);}
  }
  private void prepare(String code,String role,String category,UUID base){UUID style=db.queryForObject("SELECT system_posting_style_id(?)",UUID.class,role);if(style==null){style=style(category.equals("ASSET")?"ACCOUNT":"LIABILITY");db.update("UPDATE system_posting_style_roles SET style_id=? WHERE role_key=?",style,role);}

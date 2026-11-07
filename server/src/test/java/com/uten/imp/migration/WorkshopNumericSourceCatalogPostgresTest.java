@@ -38,7 +38,9 @@ class WorkshopNumericSourceCatalogPostgresTest {
     """);
    assertFalse(columns.isEmpty());assertFalse(triggers.isEmpty());assertFalse(constraints.isEmpty());
    String schemaVersion=db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class);
-   var target=Path.of("..","tmp","finance-applications","wm-generated-catalog-current-v"+schemaVersion+".json");Files.createDirectories(target.getParent());
+   var target=Path.of(System.getProperty("uten.build.directory","target"),
+           "wm-generated-catalog-current-v"+schemaVersion+".json");
+   Files.createDirectories(target.getParent());
    new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(target.toFile(),Map.of("version",1,"schemaVersion",schemaVersion,"columns",columns,"triggers",triggers,"constraints",constraints));
   }
  }

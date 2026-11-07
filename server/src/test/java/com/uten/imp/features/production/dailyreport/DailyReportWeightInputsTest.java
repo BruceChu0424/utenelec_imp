@@ -59,6 +59,50 @@ class DailyReportWeightInputsTest {
         assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, basis));
     }
 
+    @Test void manualWeightIsLocalToTheReportAndSupportsEitherQuantityOrWeighing() {
+        var line = weighed("0.125", "4.25", "10.625");
+        line.setUnitRate(new BigDecimal("20"));
+        line.setUnitWeightSource("MANUAL");
+        assertDoesNotThrow(() -> DailyReportWeightInputs.validate(line, new BigDecimal("0.126")));
+        assertFalse(DailyReportWeightInputs.usesMasterBasis(line));
+        line.setWeightEntryMode("QUANTITY");
+        assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, null));
+        line.setWeight(null);
+        assertDoesNotThrow(() -> DailyReportWeightInputs.validate(line, null));
+        assertNull(line.getWeight());
+    }
+
+    @Test void quantityAndMeasuredMassDeriveKgPerBaseUnitWithoutLosingAnyInput() {
+        var line = weighed("0.125", "4.25", "10.625");
+        line.setWeightEntryMode("UNIT");
+        line.setUnitWeightSource("DERIVED");
+        line.setUnitRate(new BigDecimal("20"));
+        assertDoesNotThrow(() -> DailyReportWeightInputs.validate(line, null));
+        assertEquals(new BigDecimal("10.625"), line.getWeight());
+        line.setUnitWeightKgExact(new BigDecimal("0.13"));
+        assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, null));
+        line.setUnitWeightKgExact(new BigDecimal("0.125"));
+        line.setWeight(null);
+        assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, null));
+    }
+
+    @Test void recurringUnitWeightNeedsItsOwnExplicitPrecisionChoice() {
+        var line = weighed("0.33333333", "3", "1");
+        line.setWeightEntryMode("UNIT");
+        line.setUnitWeightSource("DERIVED");
+        assertThrows(BusinessPrecisionRequiredException.class, () -> DailyReportWeightInputs.validate(line, null));
+        line.setWeightUnitScale(8);
+        line.setWeightUnitRounding("DOWN");
+        assertDoesNotThrow(() -> DailyReportWeightInputs.validate(line, null));
+        line.setWeightQuantityScale(4);
+        line.setWeightQuantityRounding("DOWN");
+        assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, null));
+        line.setWeightQuantityScale(null);
+        line.setWeightQuantityRounding(null);
+        line.setUnitWeightSource("MANUAL");
+        assertThrows(ApiException.class, () -> DailyReportWeightInputs.validate(line, null));
+    }
+
     @Test void onlyTheSameCompleteSavedSplitCanReuseItsFrozenFactorOnADraftEdit() {
         var input = weighed("0.125", "4", "0.5");
         input.setGoodsId(UUID.randomUUID());

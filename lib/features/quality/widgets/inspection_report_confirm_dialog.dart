@@ -1,38 +1,15 @@
 // 检验报告「提交报告」的总结确认弹窗（2026-09-05）。
 //
-// 仿计划部「下达采购/委外」的 MaterialSupplySubmitConfirmDialog 文案结构：
-// 合计行（品种数 + 合格/不合格合计）→ 分项行（IQC 明细 / FQC 任务）→
-// 结论原因（含不合格时必填）→ 可滚动明细清单 → 取消 / 确认提交报告。
-// 只做最后一步确认，不承载任何业务校验（校验在页面与服务器）。
+// 明细在办理页核对。确认只展示合计、提交后果和结论原因。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
-
-/// 总结弹窗的一行明细（展示用）：货品标签 + 合格量 + 不合格量。
-class InspectionReportConfirmLine {
-  const InspectionReportConfirmLine({
-    required this.label,
-    required this.passText,
-    required this.failText,
-    this.dim,
-  });
-
-  final String label;
-
-  /// 合格数量展示文本（空串 = 不适用，如 FQC 全部合格行）。
-  final String passText;
-
-  /// 不合格数量展示文本。
-  final String failText;
-
-  /// 数量单位后缀（如「个」）；null = 不显示单位。
-  final String? dim;
-}
 
 /// 返回结论原因文本（可为空串）= 确认提交；null = 取消。
 Future<String?> showInspectionReportConfirmDialog(
@@ -40,9 +17,8 @@ Future<String?> showInspectionReportConfirmDialog(
   required int lineCount,
   required String passTotalText,
   required String failTotalText,
-  required List<InspectionReportConfirmLine> lines,
+  required bool requireReason,
   int fqcTaskCount = 0,
-  bool requireReason = false,
   bool atomicReport = false,
   String initialReason = '',
   ValueChanged<String>? onReasonChanged,
@@ -54,7 +30,6 @@ Future<String?> showInspectionReportConfirmDialog(
       lineCount: lineCount,
       passTotalText: passTotalText,
       failTotalText: failTotalText,
-      lines: lines,
       fqcTaskCount: fqcTaskCount,
       requireReason: requireReason,
       atomicReport: atomicReport,
@@ -69,7 +44,6 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
     required this.lineCount,
     required this.passTotalText,
     required this.failTotalText,
-    required this.lines,
     required this.fqcTaskCount,
     required this.requireReason,
     required this.atomicReport,
@@ -80,7 +54,6 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
   final int lineCount;
   final String passTotalText;
   final String failTotalText;
-  final List<InspectionReportConfirmLine> lines;
   final int fqcTaskCount;
   final bool requireReason;
   final bool atomicReport;
@@ -112,12 +85,7 @@ class _InspectionReportConfirmDialogState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final hasFail =
-        widget.requireReason ||
-        widget.lines.any(
-          (line) => (double.tryParse(line.failText.trim()) ?? 0) > 0,
-        );
+    final hasFail = widget.requireReason;
     return UtenAlertDialog(
       title: const Text('确认提交检验报告'),
       content: SizedBox(
@@ -128,36 +96,42 @@ class _InspectionReportConfirmDialogState
           children: [
             const UtenReviewerResponsibilityNotice(
               actionLabel: '提交检验报告',
-              description:
-                  '系统将记录检验员、结论数量与时间；已上架的合格部分自动点收入库，'
-                  '其余合格部分转仓库待入库，不合格部分记质量事实与待处理台账。',
+              description: '系统将记录检验员、结论数量与时间。',
             ),
             const SizedBox(height: UtenSpacing.s12),
-            if (widget.atomicReport) ...[
-              const Text(
-                '本次勾选行一起提交；任一行失败，本次新增决定全部回滚。已登记的原决定不重复执行。',
-                key: Key('inspection-report-atomic-notice'),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-            Text(
-              '共 ${widget.lineCount} 行明细'
-              '${widget.fqcTaskCount > 0 ? '、${widget.fqcTaskCount} 项自制产成品任务全部合格' : ''}，'
-              '合格 ${widget.passTotalText}、不合格 ${widget.failTotalText}。',
+            UtenConfirmationSummary(
               key: const Key('inspection-report-confirm-total'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              facts: [
+                if (widget.lineCount > 0) ...[
+                  UtenConfirmationFact(
+                    label: '共',
+                    value: '${widget.lineCount} 行明细',
+                  ),
+                  UtenConfirmationFact(
+                    label: '合格',
+                    value: widget.passTotalText,
+                  ),
+                  UtenConfirmationFact(
+                    label: '不合格',
+                    value: widget.failTotalText,
+                  ),
+                ],
+                if (widget.fqcTaskCount > 0)
+                  UtenConfirmationFact(
+                    label: '自制产成品任务',
+                    value: '${widget.fqcTaskCount} 项全部合格',
+                  ),
+              ],
+              consequences: [
+                '已上架的合格部分自动点收入库，其余合格部分交仓库入库。',
+                if (hasFail) '不合格部分登记质量事实和待处理台账，不生成入库任务。',
+              ],
             ),
-            if (hasFail) ...[
+            if (widget.atomicReport) ...[
               const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '本批含不合格数量：提交后不合格部分仅记质量事实与待处理台账，'
-                '不会生成仓库入库任务。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                ),
+              const UtenConfirmationSummary(
+                key: Key('inspection-report-atomic-notice'),
+                consequences: ['所选行一起提交。任一行失败，新决定全部回滚。已登记的原决定沿用已有结果。'],
               ),
             ],
             const SizedBox(height: UtenSpacing.s12),
@@ -178,51 +152,6 @@ class _InspectionReportConfirmDialogState
                 info: hasFail
                     ? '请说明不合格原因，便于后续退货、返工或其它处置。'
                     : '可补充检验依据或需要仓库注意的事项。',
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 260),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: widget.lines.length,
-                itemBuilder: (context, index) {
-                  final line = widget.lines[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(line.label, style: theme.textTheme.bodySmall),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Wrap(
-                          spacing: UtenSpacing.s8,
-                          runSpacing: UtenSpacing.s4,
-                          children: [
-                            Text(
-                              line.passText.isEmpty
-                                  ? '全部合格'
-                                  : '合格 ${line.passText}'
-                                        '${line.dim == null ? '' : ' ${line.dim}'}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                              ),
-                            ),
-                            if (line.failText.isNotEmpty &&
-                                line.failText.trim() != '0')
-                              Text(
-                                '不合格 ${line.failText}'
-                                '${line.dim == null ? '' : ' ${line.dim}'}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.error,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
               ),
             ),
           ],

@@ -37,6 +37,18 @@ Finder _reportReasonField(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
 );
 
+void _expectReportTotals(String pass, String fail) {
+  final summary = find.byKey(const Key('inspection-report-confirm-total'));
+  expect(
+    find.descendant(of: summary, matching: find.text('合格 $pass')),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: summary, matching: find.text('不合格 $fail')),
+    findsOneWidget,
+  );
+}
+
 void main() {
   testWidgets('workbench quality badge shows a positive pending count', (
     tester,
@@ -426,7 +438,7 @@ void main() {
       '24',
     );
     await _submitReport(tester);
-    expect(find.textContaining('合格 24 个、不合格 24 个'), findsOneWidget);
+    _expectReportTotals('24 个', '24 个');
     await tester.enterText(_reportReasonField('结论原因(必填)'), '外观不良');
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
@@ -457,7 +469,7 @@ void main() {
       find.byKey(const Key('inspection-report-confirm-total')),
       findsOneWidget,
     );
-    expect(find.textContaining('合格 5 个、不合格 0 个'), findsOneWidget);
+    _expectReportTotals('5 个', '0 个');
     final reason = _reportReasonField('结论原因(选填)');
     expect(reason, findsOneWidget);
     expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(选填)');
@@ -496,7 +508,7 @@ void main() {
     expect(reason, findsOneWidget);
     expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(必填)');
     expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
-    expect(find.textContaining('合格 0 个、不合格 5 个'), findsOneWidget);
+    _expectReportTotals('0 个', '5 个');
 
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pump();

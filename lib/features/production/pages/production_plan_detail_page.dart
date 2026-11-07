@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/widgets/imported_document_status_badge.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -379,16 +380,22 @@ class _ProductionPlanDetailPageState
   }
 
   Future<void> _approve() async {
-    const confirm =
-        '审核即下达执行：有子层级时按当前物料齐套情况生成执行段——未齐套的段为「物料不齐套 · 备料中」'
-        '（零预留、暂无领料单，子料到仓验收合格后自动齐套并生成领料单）；'
-        '无下层物料时按直接自制下达，不生成生产领料单。审核与执行下达会一起完成，'
-        '任何一步没成功，本次操作整体不生效（不会只做一半）。确认继续？';
     await _doAction(
-      confirm,
       (repo) => repo.approve(widget.id),
       '已审核',
-      reviewerResponsibility: true,
+      approvalSummary: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(
+            label: '计划单',
+            value: _detail?.billNo ?? widget.id,
+          ),
+        ],
+        consequences: const [
+          '审核与下达同时生效，任一步失败则整单不生效。',
+          '缺料工单先备料，齐套后才预留物料并生成领料单。',
+          '无下层物料的工单直接下达，跳过领料。',
+        ],
+      ),
       afterSuccess: _showLatestPlanningResultAfterApproval,
     );
   }
@@ -399,30 +406,30 @@ class _ProductionPlanDetailPageState
       return;
     }
     await _doAction(
-      documentUnapprovalConfirmation,
       (repo) => repo.reverse(widget.id),
       '已反审，进入草稿',
+      confirm: documentUnapprovalConfirmation,
     );
   }
 
   Future<void> _doAction(
-    String confirm,
     Future<Object?> Function(ProductionPlanRepository) fn,
     String ok, {
-    bool reviewerResponsibility = false,
+    String? confirm,
+    UtenConfirmationSummary? approvalSummary,
     Future<void> Function(ProductionPlanRepository)? afterSuccess,
   }) async {
     if (_commandBusy) {
       context.appWarning('已有生产计划操作正在处理，请稍候', force: true);
       return;
     }
-    final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+    final c = approvalSummary != null
+        ? await showUtenReviewerConfirmDialog(context, summary: approvalSummary)
         : await showDialog<bool>(
             context: context,
             builder: (ctx) => UtenAlertDialog(
               title: const Text('确认'),
-              content: Text(confirm),
+              content: Text(confirm!),
               actionsAlignment: MainAxisAlignment.center,
               actions: [
                 TextButton(

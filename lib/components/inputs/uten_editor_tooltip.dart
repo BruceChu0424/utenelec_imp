@@ -22,7 +22,7 @@ class _UtenEditorTooltipState extends State<UtenEditorTooltip> {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: widget.message,
+    message: widget.message ?? '',
     child: KeyedSubtree(key: _contentKey, child: widget.child),
   );
 }

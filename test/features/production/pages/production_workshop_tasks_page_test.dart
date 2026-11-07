@@ -36,6 +36,7 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/pages/production_material_discovery_request_page.dart';
 import 'package:uten_imp/features/production/models/production_execution_workbench.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_overproduction_rate_repository.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
@@ -1486,6 +1487,114 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  for (final (platform, size) in [
+    (TargetPlatform.windows, const Size(1600, 1000)),
+    (TargetPlatform.android, const Size(390, 850)),
+  ]) {
+    testWidgets('workshop categories have uniform data rows on $platform', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      final repository = _repository(
+        itemsByStatus: (status) => [
+          {
+            ..._task('segment-a', '产品 A', switch (status) {
+              'PREPARING' => 'READY',
+              'COMPLETED' => 'COMPLETED',
+              _ => 'IN_PROGRESS',
+            }),
+            'allowedOverproductionRate': 0.1,
+          },
+          {
+            ..._task(
+              'segment-b',
+              '产品 B',
+              switch (status) {
+                'PREPARING' => 'WAITING',
+                'COMPLETED' => 'COMPLETED',
+                _ => 'IN_PROGRESS',
+              },
+              kitShort: true,
+              issued: false,
+              canReport: false,
+              routeChangeable: status == 'PREPARING',
+              canConfirmRoute: status == 'PREPARING',
+              materials: _threeKindsOneDirectShort,
+            ),
+            'overproductionPolicyApplies': false,
+          },
+          {
+            ..._task(
+              'segment-c',
+              '产品 C',
+              switch (status) {
+                'PREPARING' => 'WAITING',
+                'COMPLETED' => 'COMPLETED',
+                _ => 'IN_PROGRESS',
+              },
+              kitShort: true,
+              issued: false,
+              canReport: false,
+              materials: _threeKindsOneDirectShort,
+            ),
+            'allowedOverproductionRate': 0.2,
+          },
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            emptyServerReportDraftsFixture(),
+            emptyMasterDictionaryFixture(),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionExecutionStart,
+              Perm.productionDailyReportCreate,
+              productionOverproductionRateRequestPermission,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              repository,
+            ),
+          ],
+          child: MaterialApp.router(
+            theme: buildLightTheme().copyWith(platform: platform),
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final label in ['开工准备', '生产中', '报工送检', '历史任务']) {
+        await selectFilterSegment(tester, label);
+        await tester.pumpAndSettle();
+        if (label == '开工准备') {
+          expect(
+            find.byKey(const ValueKey('workshop-leading-lock-segment-b')),
+            findsOneWidget,
+          );
+        }
+        final heights = [
+          for (final suffix in ['a', 'b', 'c'])
+            tester.getSize(find.byKey(ValueKey('row:segment-$suffix'))).height,
+        ];
+        for (final height in heights.skip(1)) {
+          expect(
+            height,
+            closeTo(heights.first, 0.5),
+            reason: '$label $heights',
+          );
+        }
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
 }
 
 /// 2026-09-20 用户口径（终版，勿再改回）：等待物料的「下一步」列=生产路线下拉，
@@ -2321,6 +2430,11 @@ void routeConfirmationTests() {
       final workOrder = tableCellFrame(find.text('工单号'));
       final nextStepBefore = tester.getRect(nextStep);
       final workOrderBefore = tester.getRect(workOrder);
+      expect(nextStepBefore.width, lessThan(200));
+      expect(
+        tester.getSize(tableCellFrame(find.text('允许超产比例'))).width,
+        lessThan(175),
+      );
       final grip = find.byWidgetPredicate(
         (widget) => widget is UtenColumnResizeHandle && widget.label == '下一步',
       );
@@ -3008,6 +3122,7 @@ ProductionExecutionWorkbenchRepository _repository({
   bool cCanRecheck = true,
   bool aCanBatchReport = true,
   String? aStatus,
+  List<Map<String, dynamic>> Function(String? status)? itemsByStatus,
   void Function(PagedResult<ProductionExecutionWorkbenchSegment>)? capturePage,
 }) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -3032,72 +3147,77 @@ ProductionExecutionWorkbenchRepository _repository({
           );
           return;
         }
+        final customItems = request.path == '/production/workshop-tasks'
+            ? itemsByStatus?.call(request.queryParameters['status'] as String?)
+            : null;
         final data = switch (request.path) {
           '/production/workshop-tasks' => {
-            'items': [
-              {
-                ..._task(
-                  'segment-a',
-                  '产品 A',
-                  aStatus ??
-                      (request.queryParameters['status'] == 'IN_PROGRESS'
-                          ? 'IN_PROGRESS'
-                          : 'READY'),
-                  issued: readyIssued,
-                  materialActivity: materialActivity,
-                  unregisteredMaterial: unregisteredMaterial,
-                  startRoute: aStartRouteNull ? null : aStartRoute,
-                  continuousSupply: aContinuousSupply,
-                  canConfirmRoute: aStartRouteNull,
-                  zeroMaterial: aZeroMaterial,
-                  routeChangeable: aRouteChangeable,
-                  canBatchReport: aCanBatchReport,
-                ),
-                'drawRequested': drawRequested,
-                'canRequestDraw': !readyIssued && !drawRequested,
-                'hasSharedMaterialActivity': sharedMaterial,
-                ...aDiscovery,
-                if (fullyReceived) ...{
-                  'plannedQty': 10000,
-                  'reportedQty': 10000,
-                  'remainingReportQty': 0,
-                  'inboundQty': 10000,
-                  'canReport': false,
-                  'canBatchReport': false,
-                },
-              },
-              _task(
-                'segment-b',
-                '产品 B',
-                'IN_PROGRESS',
-                workshopId: mixedWorkshops ? 'workshop-2' : 'workshop-1',
-                workshopName: mixedWorkshops ? '装配二车间' : '装配一车间',
-              ),
-              if (withWaitingRow)
-                _task(
-                  'segment-c',
-                  '产品 C',
-                  cStatus,
-                  kitShort: true,
-                  issued: false,
-                  canSplitBatch: canSplitBatch || rowCanSplitBatch,
-                  canReport: false,
-                  canBatchReport: false,
-                  startRoute: startRoute,
-                  canConfirmRoute: canConfirmRoute,
-                  routeChangeable: routeChangeable,
-                  continuousSupply: rowContinuousSupply,
-                  legacySuggestedStartRoute: cLegacySuggestedStartRoute,
-                  suggestedStartRouteSource: cSuggestedStartRouteSource,
-                  canRecheck: cCanRecheck,
-                  canStart: cCanStart,
-                  canRequestDraw: cCanRequestDraw,
-                  materials: cMaterials,
-                ),
-            ],
+            'items':
+                customItems ??
+                [
+                  {
+                    ..._task(
+                      'segment-a',
+                      '产品 A',
+                      aStatus ??
+                          (request.queryParameters['status'] == 'IN_PROGRESS'
+                              ? 'IN_PROGRESS'
+                              : 'READY'),
+                      issued: readyIssued,
+                      materialActivity: materialActivity,
+                      unregisteredMaterial: unregisteredMaterial,
+                      startRoute: aStartRouteNull ? null : aStartRoute,
+                      continuousSupply: aContinuousSupply,
+                      canConfirmRoute: aStartRouteNull,
+                      zeroMaterial: aZeroMaterial,
+                      routeChangeable: aRouteChangeable,
+                      canBatchReport: aCanBatchReport,
+                    ),
+                    'drawRequested': drawRequested,
+                    'canRequestDraw': !readyIssued && !drawRequested,
+                    'hasSharedMaterialActivity': sharedMaterial,
+                    ...aDiscovery,
+                    if (fullyReceived) ...{
+                      'plannedQty': 10000,
+                      'reportedQty': 10000,
+                      'remainingReportQty': 0,
+                      'inboundQty': 10000,
+                      'canReport': false,
+                      'canBatchReport': false,
+                    },
+                  },
+                  _task(
+                    'segment-b',
+                    '产品 B',
+                    'IN_PROGRESS',
+                    workshopId: mixedWorkshops ? 'workshop-2' : 'workshop-1',
+                    workshopName: mixedWorkshops ? '装配二车间' : '装配一车间',
+                  ),
+                  if (withWaitingRow)
+                    _task(
+                      'segment-c',
+                      '产品 C',
+                      cStatus,
+                      kitShort: true,
+                      issued: false,
+                      canSplitBatch: canSplitBatch || rowCanSplitBatch,
+                      canReport: false,
+                      canBatchReport: false,
+                      startRoute: startRoute,
+                      canConfirmRoute: canConfirmRoute,
+                      routeChangeable: routeChangeable,
+                      continuousSupply: rowContinuousSupply,
+                      legacySuggestedStartRoute: cLegacySuggestedStartRoute,
+                      suggestedStartRouteSource: cSuggestedStartRouteSource,
+                      canRecheck: cCanRecheck,
+                      canStart: cCanStart,
+                      canRequestDraw: cCanRequestDraw,
+                      materials: cMaterials,
+                    ),
+                ],
             'page': 1,
             'size': 50,
-            'total': withWaitingRow ? 3 : 2,
+            'total': customItems?.length ?? (withWaitingRow ? 3 : 2),
             'totalPages': 1,
           },
           '/production/workshop-tasks/count' => {'count': 2},

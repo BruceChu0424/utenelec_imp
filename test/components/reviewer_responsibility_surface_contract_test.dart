@@ -63,7 +63,8 @@ void main() {
       'lib/features/production/pages/production_daily_report_detail_page.dart':
           ['showUtenReviewerConfirmDialog('],
       'lib/features/production/pages/production_plan_detail_page.dart': [
-        'reviewerResponsibility: true',
+        'approvalSummary: UtenConfirmationSummary(',
+        'showUtenReviewerConfirmDialog(context, summary: approvalSummary)',
       ],
       'lib/features/production/pages/production_plan_list_page.dart': [
         "actionLabel: '批量审核'",

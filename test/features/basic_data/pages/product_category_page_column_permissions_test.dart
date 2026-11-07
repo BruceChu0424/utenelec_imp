@@ -43,14 +43,17 @@ const _newColumnKey = Key('platform-column-new');
 const _createColumnKey = Key('platform-column-create');
 const _columnNameKey = Key('platform-column-name');
 
-// Exercise the goods table's authority, never the first global match or the
-// frozen/flowing copies before their scroll-driven visibility has settled.
-Finder _goodsColumns() => find
-    .descendant(
-      of: find.byType(MasterDataTableView<GoodsListItem>),
-      matching: find.byKey(_addColumnKey),
-    )
-    .hitTestable();
+// The goods table's action lives at the end of its scrolling header.
+Finder _goodsColumns() => find.descendant(
+  of: find.byType(MasterDataTableView<GoodsListItem>),
+  matching: find.byKey(_addColumnKey),
+);
+
+Future<Finder> _revealGoodsColumns(WidgetTester tester) async {
+  await tester.ensureVisible(_goodsColumns());
+  await tester.pumpAndSettle();
+  return _goodsColumns().hitTestable();
+}
 
 Finder _goodsColumnTooltip(String message) => find.descendant(
   of: find.byType(MasterDataTableView<GoodsListItem>),
@@ -231,8 +234,9 @@ void main() {
   testWidgets('只有查看权限也能添加本人关联列，不能新建共享文字数字或计算列', (tester) async {
     final repository = _FakePlatformTableRepository()..personalAllowed = true;
     await _pumpPage(tester, repository, {Perm.goodsView, Perm.mouldView});
-    expect(tester.widget<IconButton>(_goodsColumns()).tooltip, '添加列');
-    await _tap(tester, _goodsColumns());
+    final columnAction = await _revealGoodsColumns(tester);
+    expect(tester.widget<IconButton>(columnAction).tooltip, '添加列');
+    await _tap(tester, columnAction);
     await _tap(tester, find.byKey(_newColumnKey));
     await tester.enterText(find.byKey(_columnNameKey), '个人模具厂家');
     await tester.pumpAndSettle();
@@ -257,7 +261,10 @@ void main() {
     await cell.controller.reload();
     await tester.pumpAndSettle();
     expect(find.text('厂家甲'), findsNothing);
-    expect(tester.widget<IconButton>(_goodsColumns()).tooltip, '显示列');
+    expect(
+      tester.widget<IconButton>(await _revealGoodsColumns(tester)).tooltip,
+      '显示列',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -268,7 +275,7 @@ void main() {
       Perm.goodsEdit,
       Perm.mouldView,
     });
-    await _tap(tester, _goodsColumns());
+    await _tap(tester, await _revealGoodsColumns(tester));
     await _tap(tester, find.byKey(_newColumnKey));
     await tester.enterText(find.byKey(_columnNameKey), '我的模具厂家');
     await tester.pumpAndSettle();
@@ -331,7 +338,8 @@ void main() {
         Perm.goodsEdit,
       });
 
-      final button = tester.widget<IconButton>(_goodsColumns());
+      final columnAction = await _revealGoodsColumns(tester);
+      final button = tester.widget<IconButton>(columnAction);
       final table = tester.widget<MasterDataTableView<GoodsListItem>>(
         find.byType(MasterDataTableView<GoodsListItem>),
       );
@@ -349,7 +357,7 @@ void main() {
       expect((button.icon as Icon).icon, Icons.add_rounded);
       expect(_goodsColumnTooltip('显示列'), findsNothing);
 
-      await _tap(tester, _goodsColumns());
+      await _tap(tester, columnAction);
       expect(find.text('添加列'), findsOneWidget);
       expect(repository.searchScopes, contains('master_goods'));
       await _tap(tester, find.byKey(_newColumnKey));
@@ -383,11 +391,12 @@ void main() {
       final repository = _FakePlatformTableRepository();
       await _pumpPage(tester, repository, permissionCase.$2);
 
-      final button = tester.widget<IconButton>(_goodsColumns());
+      final columnAction = await _revealGoodsColumns(tester);
+      final button = tester.widget<IconButton>(columnAction);
       expect(button.tooltip, '显示列');
       expect((button.icon as Icon).icon, Icons.view_column_outlined);
       expect(_goodsColumnTooltip('添加列'), findsNothing);
-      await _tap(tester, _goodsColumns());
+      await _tap(tester, columnAction);
 
       expect(find.text('显示列'), findsOneWidget);
       expect(find.byKey(_newColumnKey), findsNothing);
@@ -410,7 +419,7 @@ void main() {
         {Perm.goodsView, Perm.goodsEdit},
         identity: const AuthenticatedScope(userId: 'column-editor', epoch: 1),
       );
-      await _tap(tester, _goodsColumns());
+      await _tap(tester, await _revealGoodsColumns(tester));
       await _tap(tester, find.byKey(_newColumnKey));
       await tester.enterText(find.byKey(_columnNameKey), '待创建说明');
       await tester.pumpAndSettle();
@@ -436,6 +445,7 @@ void main() {
       expect(repository.used, isEmpty);
 
       await _tap(tester, find.text('取消'));
+      await _revealGoodsColumns(tester);
       expect(_goodsColumnTooltip('显示列').hitTestable(), findsOneWidget);
       expect(_goodsColumnTooltip('添加列'), findsNothing);
       expect(tester.takeException(), isNull);

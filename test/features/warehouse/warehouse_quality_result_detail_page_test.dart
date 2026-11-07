@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
+import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -862,6 +863,14 @@ void main() {
       final confirmDialog = find.byKey(
         const Key('warehouse-inbound-allocation-confirm-dialog'),
       );
+      final summary = tester.widget<UtenConfirmationSummary>(
+        find.descendant(
+          of: confirmDialog,
+          matching: find.byType(UtenConfirmationSummary),
+        ),
+      );
+      expect(summary.facts.first.value, startsWith('3 条放行明细'));
+      expect(summary.consequences.single, contains('增加可用库存'));
       expect(
         find.descendant(of: confirmDialog, matching: find.text('本次 5 件')),
         findsOneWidget,

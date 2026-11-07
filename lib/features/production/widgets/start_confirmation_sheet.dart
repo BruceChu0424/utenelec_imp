@@ -888,14 +888,15 @@ class _StartConfirmationSheetState extends ConsumerState<StartConfirmationSheet>
     EditableGridColumn(
       key: 'route',
       label: '生产路线',
-      width: 170,
+      width: 132,
       required: true,
       headerInfo:
           '齐套生产 = 全部物料到齐并领齐后开工；持续生产 = 每种物料共同支持一部分'
           '产量即可开工，后续到料在同一工单继续领。分批生产请在任务列表的「下一步」'
           '里选。已经选过路线的工单这里只显示。',
-      frozenTextOf: (row) => _routeText(row),
-      filterValueOf: (row) => _routeText(row),
+      textOf: _routeText,
+      filterValueOf: _routeText,
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => _routeCell(row),
     ),

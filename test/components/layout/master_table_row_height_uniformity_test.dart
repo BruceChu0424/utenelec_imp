@@ -17,8 +17,63 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_hints.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  testWidgets(
+    'selection badges and alternate icons retain checkbox row height',
+    (tester) async {
+      Set<String> selected = {};
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+          home: Scaffold(
+            body: MasterDataTableView<int>(
+              columns: [
+                MasterColumnDef(
+                  key: 'value',
+                  label: '名称',
+                  width: 120,
+                  value: (row) => '第 $row 行',
+                ),
+              ],
+              items: const [1, 2, 3],
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              selectable: true,
+              rowKeyOf: (row) => '$row',
+              idOf: (row) => row == 3 ? null : '$row',
+              selectedIds: selected,
+              onSelectedIdsChanged: (ids) => selected = ids,
+              leadingOverlayBuilder: (_, row) => row == 2
+                  ? const Tooltip(
+                      message: '尚不能办理',
+                      child: Icon(Icons.lock_rounded, size: 12),
+                    )
+                  : null,
+              unselectableLeadingBuilder: (_, _) =>
+                  const Icon(Icons.lock_outline, size: 20),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Finder row(int index) => find.byKey(ValueKey('row:$index'));
+      final ordinaryHeight = tester.getSize(row(1)).height;
+      expect(tester.getSize(row(2)).height, ordinaryHeight);
+      expect(tester.getSize(row(3)).height, ordinaryHeight);
+      final checkbox = find.descendant(
+        of: row(2),
+        matching: find.byType(Checkbox),
+      );
+      await tester.tap(checkbox);
+      expect(selected, {'2'});
+    },
+  );
+
   testWidgets('read-table cell widgets stay within single-line text height', (
     tester,
   ) async {

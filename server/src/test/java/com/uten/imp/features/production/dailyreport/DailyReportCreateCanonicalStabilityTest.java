@@ -12,6 +12,31 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DailyReportCreateCanonicalStabilityTest {
+    @Test void reportLocalWeightSourceAndUnitPrecisionAreOriginalRequestFacts() {
+        var request = new DailyReportSaveRequest();
+        request.setBillDate(LocalDate.of(2026, 11, 7));
+        var line = new DailyReportItemLine();
+        line.setGoodsId(UUID.randomUUID());
+        line.setQty(BigDecimal.TEN);
+        line.setWeightEntryMode("QUANTITY");
+        line.setUnitWeightKgExact(new BigDecimal("0.125"));
+        request.setItems(List.of(line));
+        String masterHash = ProductionDailyReportService.createRequestHash(request);
+        line.setUnitWeightSource("MASTER");
+        assertEquals(masterHash, ProductionDailyReportService.createRequestHash(request));
+        line.setUnitWeightSource("MANUAL");
+        assertNotEquals(masterHash, ProductionDailyReportService.createRequestHash(request));
+
+        line.setWeightEntryMode("UNIT");
+        line.setUnitWeightSource("DERIVED");
+        line.setWeight(BigDecimal.ONE);
+        line.setWeightUnitScale(8);
+        line.setWeightUnitRounding("DOWN");
+        String unitHash = ProductionDailyReportService.createFullPayloadHash(request);
+        line.setWeightUnitRounding("HALF_UP");
+        assertNotEquals(unitHash, ProductionDailyReportService.createFullPayloadHash(request));
+    }
+
     @Test void overLimitReasonIsPartOfTheOriginalCommandButAbsentForUnchangedLegacyInput() {
         var request=new DailyReportSaveRequest();request.setBillDate(LocalDate.of(2026,10,7));
         var line=new DailyReportItemLine();line.setGoodsId(UUID.randomUUID());line.setQty(new BigDecimal("1200"));request.setItems(List.of(line));

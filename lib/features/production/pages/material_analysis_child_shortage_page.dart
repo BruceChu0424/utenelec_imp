@@ -375,7 +375,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
         MasterColumnDef(
           key: 'allowedOverproductionRate',
           label: '允许超产比例',
-          width: 152,
+          width: 96,
           info: shared['allowedOverproductionRate']!.info,
           value: (row) => !_host._tableIssueTarget(row.group!).viaWorkshop
               ? '—'
@@ -384,6 +384,15 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                       materialLineId: row.material!.materialLineId,
                     )
                     .text,
+          measureWidthOf: (context, row, scaler) =>
+              !_host._tableIssueTarget(row.group!).viaWorkshop
+              ? 0
+              : ProductionOverproductionRateField.contentWidthOf(
+                  context,
+                  '${_host._overproductionPercentController(materialLineId: row.material!.materialLineId).text}%',
+                  scaler,
+                ),
+          measureWidthScope: 'material-shortage-overproduction-rate',
           cellBuilder: (_, row) =>
               !_host._tableIssueTarget(row.group!).viaWorkshop
               ? const Text('—')

@@ -669,29 +669,6 @@ class _QualityBatchApprovalPageState
               ),
         fqcTaskCount: fqcSelected.length,
         requireReason: hasFail,
-        lines: [
-          for (final row in iqcRows)
-            InspectionReportConfirmLine(
-              label: [
-                row.item.goodsName,
-                row.item.goodsCode,
-                row.item.colorName,
-              ].where((text) => text?.isNotEmpty == true).join(' · '),
-              passText: _fmt(double.tryParse(row.pass.text.trim()) ?? 0),
-              failText: _fmt(double.tryParse(row.fail.text.trim()) ?? 0),
-              dim: inspectionQuantityUnit(context, row.item),
-            ),
-          for (final inspection in fqcSelected)
-            InspectionReportConfirmLine(
-              label: [
-                '自制产成品 ${inspection.reportNo ?? inspection.id}',
-                if (inspection.lot?.splitText?.isNotEmpty == true)
-                  inspection.lot!.splitText!,
-              ].join(' · '),
-              passText: '',
-              failText: '0',
-            ),
-        ],
       );
       if (reason != null) await requestScope.verify();
     } on ApiException catch (error) {

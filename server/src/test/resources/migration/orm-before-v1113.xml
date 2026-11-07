@@ -7,6 +7,9 @@
       <transient name="unitWeightKg"/>
       <transient name="weightQuantityScale"/>
       <transient name="weightQuantityRounding"/>
+      <transient name="unitWeightSource"/>
+      <transient name="weightUnitScale"/>
+      <transient name="weightUnitRounding"/>
     </attributes>
   </entity>
 </entity-mappings>

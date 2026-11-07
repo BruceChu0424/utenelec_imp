@@ -2225,6 +2225,9 @@ public class ProductionDailyReportService {
             if (line.getUnitWeightKgExact() != null) addCanonical(parts, path + ".unitWeightKgExact", line.getUnitWeightKgExact());
             if (line.getWeightQuantityScale() != null) addCanonical(parts, path + ".weightQuantityScale", line.getWeightQuantityScale());
             if (line.getWeightQuantityRounding() != null) addCanonical(parts, path + ".weightQuantityRounding", line.getWeightQuantityRounding());
+            if (!DailyReportWeightInputs.usesMasterBasis(line)) addCanonical(parts, path + ".unitWeightSource", line.getUnitWeightSource());
+            if (line.getWeightUnitScale() != null) addCanonical(parts, path + ".weightUnitScale", line.getWeightUnitScale());
+            if (line.getWeightUnitRounding() != null) addCanonical(parts, path + ".weightUnitRounding", line.getWeightUnitRounding());
             if (line.getWeightSourceReportItemId() != null) addCanonical(parts, path + ".weightSourceReportItemId", line.getWeightSourceReportItemId());
             addCanonical(parts, path + ".clientName", line.getClientName());
             addCanonical(parts, path + ".sourceDocNo", line.getSourceDocNo());
@@ -2747,7 +2750,8 @@ public class ProductionDailyReportService {
         lines.stream().filter(Objects::nonNull).forEach(ProductionDailyReportService::requireValidDefect);
         var measurements = lines.stream().filter(Objects::nonNull).filter(DailyReportWeightInputs::supplied).toList();
         for (DailyReportItemLine line : measurements) {
-            if (line.getWeight() != null || "WEIGHT".equals(line.getWeightEntryMode())) {
+            if (line.getWeight() != null || "WEIGHT".equals(line.getWeightEntryMode())
+                    || "UNIT".equals(line.getWeightEntryMode())) {
                 DailyReportWeightInputs.requireMeasuredKg(line.getWeight());
             }
             if (line.getPlanItemId() == null && line.getExecutionSegmentId() == null) {
@@ -2803,6 +2807,9 @@ public class ProductionDailyReportService {
             it.setUnitWeightKg(l.getUnitWeightKgExact());
             it.setWeightQuantityScale(l.getWeightQuantityScale());
             it.setWeightQuantityRounding(l.getWeightQuantityRounding());
+            it.setUnitWeightSource(l.getUnitWeightSource());
+            it.setWeightUnitScale(l.getWeightUnitScale());
+            it.setWeightUnitRounding(l.getWeightUnitRounding());
             it.setClientName(l.getClientName());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
@@ -2820,7 +2827,8 @@ public class ProductionDailyReportService {
 
     private void validateWeightInputs(List<DailyReportItemLine> measurements, List<ProductionDailyReportItem> previous) {
         if (measurements.isEmpty()) return;
-        var goodsIds = measurements.stream().map(DailyReportItemLine::getGoodsId).distinct().toList();
+        var goodsIds = measurements.stream().filter(DailyReportWeightInputs::usesMasterBasis)
+                .map(DailyReportItemLine::getGoodsId).distinct().toList();
         var factors = DailyReportWeightInputs.load(em, goodsIds);
         var frozen = new DailyReportWeightInputs.FrozenDraftInputs(previous);
         for (DailyReportItemLine line : measurements) {
@@ -2829,7 +2837,9 @@ public class ProductionDailyReportService {
                 throw new ApiException(ErrorCode.CONFLICT, "原称重明细已变化，请重新打开这张生产日报核对");
             }
             BigDecimal current = factors.get(line.getGoodsId());
-            if (!DailyReportWeightInputs.sameDecimal(current, line.getUnitWeightKgExact()) && frozen.canReuse(line)) {
+            if (DailyReportWeightInputs.usesMasterBasis(line)
+                    && !DailyReportWeightInputs.sameDecimal(current, line.getUnitWeightKgExact())
+                    && frozen.canReuse(line)) {
                 current = line.getUnitWeightKgExact();
             }
             DailyReportWeightInputs.validate(line, current);
@@ -2936,6 +2946,7 @@ public class ProductionDailyReportService {
                 it.getOrderDate(), it.getBoxes(), it.getPerBoxQty(), it.getWeight(),
                 it.getWeightEntryMode(), com.uten.imp.common.util.DecimalText.of(it.getUnitWeightKg()),
                 it.getWeightQuantityScale(), it.getWeightQuantityRounding(),
+                it.getUnitWeightSource(), it.getWeightUnitScale(), it.getWeightUnitRounding(),
                 it.getClientName(), it.getSourceDocNo(), it.getRemark(), it.isFinal(),
                 it.getDestination(), it.getDirectTransferDemandId(),
                 directTransferLabels.get(it.getId()), it.getOutputRouteReason(),

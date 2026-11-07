@@ -20,6 +20,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -48,6 +49,7 @@ import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -446,6 +448,7 @@ class _ProductionDailyReportDetailPageState
       requireCurrentIntent: false,
     );
     late final DailyReportApprovalIntent intent;
+    late final UtenConfirmationSummary summary;
     if (reviewed.supportsMaterialReview &&
         _materialReview!.rows.any(
           (row) =>
@@ -461,14 +464,10 @@ class _ProductionDailyReportDetailPageState
     }
     try {
       // All confirmation semantics come from this one detail, before opening the dialog.
+      summary = _approvalSummary(reviewed);
       intent = DailyReportApprovalIntent.review(
         reviewed,
-        '请核对本次实际产量与产出去向：\n${_routeLines(reviewed)}'
-        '转给上层工单的部分交下工序；送入仓库的部分生成仓库到货登记任务，'
-        '仓库登记成品仓与库位并送品质部检查。'
-        '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？'
-        '${reviewed.supportsMaterialReview ? _materialConfirmation() : ''}'
-        '${reviewed.supportsLegacyApproval ? '\n此服务器使用旧版审核，暂不核对所见版本。' : ''}',
+        summary.plainText,
         materialReview: _materialReview,
         materialActions: Map.of(_materialActions),
       );
@@ -489,7 +488,7 @@ class _ProductionDailyReportDetailPageState
       if (!mounted || !isCurrent()) return;
       confirmed = await showUtenReviewerConfirmDialog(
         context,
-        message: intent.confirmation,
+        summary: summary,
       );
       if (confirmed) await requestScope.verify();
     } on ApiException catch (error) {
@@ -509,13 +508,108 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  String _materialConfirmation() {
-    final lines = _materialReview!.rows;
-    if (lines.isEmpty) return '';
-    return '\n\n用料与余料处理：\n${[for (final row in lines.take(6)) '${row.materialExecutionSegmentCode ?? '来源工单'} · ${row.goodsName ?? row.goodsCode ?? '物料'}：'
-          '本次实际用料 ${row.usageQty} ${row.unitName ?? ''}，'
-          '预计已领余料 ${row.remainingIssuedQty}，未领直送料 ${row.undrawnDirectQty}，'
-          '${row.requiresDecision ? _materialActions[row.demandId]!.label : '留在车间'}', if (lines.length > 6) '另有 ${lines.length - 6} 项，按页面已核对的处理方式登记。'].join('\n')}\n审核先登记本次实际用料，再生成退料申请；仓库收料后完成退仓。';
+  UtenConfirmationSummary _approvalSummary(
+    ProductionDailyReportDetail reviewed,
+  ) {
+    final direct = <ProductionDailyReportItem>[];
+    final warehouse = <ProductionDailyReportItem>[];
+    final overLimit = <ProductionDailyReportItem>[];
+    final actualSurplus = <ProductionDailyReportItem>[];
+    for (final item in reviewed.items) {
+      // A report item is one physical share; batch totals repeat on split rows.
+      (item.isDirectTransfer ? direct : warehouse).add(item);
+      if (item.actualSurplus) actualSurplus.add(item);
+      if (item.overLimit) overLimit.add(item);
+    }
+    var used = 0;
+    var returned = 0;
+    var kept = 0;
+    if (reviewed.supportsMaterialReview) {
+      for (final row in _materialReview!.rows) {
+        if (productionExactQuantityUnits(row.usageQty)! > BigInt.zero) used++;
+        if (!row.hasBalance) continue;
+        if (row.requiresDecision &&
+            _materialActions[row.demandId] ==
+                DailyReportMaterialAction.returnToWarehouse) {
+          returned++;
+        } else {
+          kept++;
+        }
+      }
+    }
+    return UtenConfirmationSummary(
+      facts: [
+        UtenConfirmationFact(
+          label: '日报',
+          value: reviewed.billNo ?? reviewed.id,
+        ),
+        if (reviewed.items.isNotEmpty)
+          UtenConfirmationFact(
+            label: '实际产量',
+            value: _approvalQuantities(reviewed.items),
+          ),
+        if (direct.isNotEmpty)
+          UtenConfirmationFact(
+            label: '直送上层工单',
+            value: _approvalQuantities(direct),
+          ),
+        if (warehouse.isNotEmpty)
+          UtenConfirmationFact(
+            label: '送入仓库',
+            value: _approvalQuantities(warehouse),
+          ),
+        if (actualSurplus.isNotEmpty)
+          UtenConfirmationFact(
+            label: '其中实际超产',
+            value: _approvalQuantities(actualSurplus),
+          ),
+        if (overLimit.isNotEmpty)
+          UtenConfirmationFact(
+            label: '其中超限待处置',
+            value: _approvalQuantities(overLimit),
+          ),
+        if (used > 0) UtenConfirmationFact(label: '本次实际用料', value: '$used 项'),
+        if (returned > 0)
+          UtenConfirmationFact(label: '余料退回仓库', value: '$returned 项'),
+        if (kept > 0) UtenConfirmationFact(label: '余料留在车间', value: '$kept 项'),
+      ],
+      consequences: [
+        if (direct.isNotEmpty) '直送产出经班组自检后交接上层工单。',
+        if (warehouse.any((item) => item.executionSegmentId != null))
+          '送仓产出先登记成品仓和库位并送检，合格且实收后才增加可用库存。',
+        if (warehouse.any((item) => item.executionSegmentId == null))
+          '历史无执行段产出按单据留存的入库规则办理。',
+        if (overLimit.isNotEmpty) '超限产出仍须按处置流程办理。',
+        if (returned > 0) '先登记实际用料，再发起退料申请，仓库收料后完成退仓。',
+        if (reviewed.supportsLegacyApproval) '此服务器使用旧版审核，暂不核对所见版本。',
+      ],
+    );
+  }
+
+  String _approvalQuantities(List<ProductionDailyReportItem> items) {
+    if (items.length == 1) {
+      final item = items.single;
+      return productionQuantityWithUnit(item.qtyText, item.unitName) ?? '数量未留存';
+    }
+    final known = <ExactMeasuredAmount>[];
+    var unverifiedUnits = 0;
+    for (final item in items) {
+      if (item.unitId?.trim().isNotEmpty != true) {
+        unverifiedUnits++;
+        continue;
+      }
+      known.add(
+        ExactMeasuredAmount(
+          value: item.qtyText,
+          unitId: item.unitId,
+          unitName: item.unitName,
+        ),
+      );
+    }
+    return [
+      if (known.isNotEmpty) exactMeasurementTotalsText(known),
+      if (unverifiedUnits > 0) '$unverifiedUnits 项单位待核对，数量见明细',
+    ].join(' · ');
   }
 
   Future<bool> _clearApprovalRecord(StoredDailyReportApproval record) async {
@@ -930,8 +1024,16 @@ class _ProductionDailyReportDetailPageState
       context: context,
       builder: (context) => UtenAlertDialog(
         title: const Text('按原内容重试审核'),
-        content: Text(
-          '${record.intent.confirmation}\n\n将重试保存的原审核；日报已经变化时会拒绝，请重新核对。',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: UtenSpacing.s8,
+          children: [
+            Text(record.intent.confirmation),
+            const UtenConfirmationSummary(
+              consequences: ['将按原内容重试审核。日报变化后须重新核对。'],
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -958,18 +1060,6 @@ class _ProductionDailyReportDetailPageState
         if (mounted) context.appWarning(error.message);
       }
     }
-  }
-
-  /// 审核确认里逐批列出去向(直送给哪个工单多少；送入仓库多少及其中实际超产)，最多列 6 批。
-  /// 摘要由服务端按实物交接批拼好(ADR-148)，页面直接显示。
-  String _routeLines(ProductionDailyReportDetail reviewed) {
-    final batches = reviewed.outputBatches;
-    const limit = 6;
-    final lines = [
-      for (final batch in batches.take(limit)) '· ${batch.summary}',
-      if (batches.length > limit) '· 等共 ${batches.length} 批，详见明细表',
-    ];
-    return lines.isEmpty ? '' : '${lines.join('\n')}\n';
   }
 
   Future<void> _reverse() async {
@@ -1523,16 +1613,19 @@ class _ProductionDailyReportDetailPageState
                 label: '实称总重量',
                 width: 150,
                 type: 'number',
-                info: '本条明细保存的实称重量。产出拆分时显示本明细分摊的重量。',
-                value: (it) =>
-                    formatWeightValue(it.weightText, display: WeightDisplay.kg),
+                info: '实称重量按明细记录，产出拆分时显示该明细分摊值。≈ 为按申报量和单重换算的参考重量。',
+                value: (it) => formatWeightValue(
+                  it.weightText ?? it.referenceWeightKg,
+                  display: WeightDisplay.kg,
+                  estimated: it.weightText == null,
+                ),
               ),
               MasterColumnDef(
                 key: 'unitWeight',
                 label: '单重',
                 width: 132,
                 type: 'number',
-                info: '本张日报保存的货品基础单位单重。旧单缺少记录时显示未知。',
+                info: '本行保存的基本单位单重。来源可为货品资料、手填或按申报量和实称总重量换算。',
                 value: (it) => it.unitWeightKgExact == null
                     ? '未知'
                     : formatUnitWeight(it.unitWeightKgExact),

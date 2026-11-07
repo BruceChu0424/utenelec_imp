@@ -3,6 +3,8 @@ import '../../../shared/formatters/exact_decimal.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
 
 /// The API stores a ratio (0.1); production forms display a percentage (10).
 /// Keep the same decimal precision and range as the planning approval ledger.
@@ -98,6 +100,20 @@ class SystemPrefilledRates {
 }
 
 class ProductionOverproductionRateField extends StatelessWidget {
+  /// The displayed percentage and compact input padding, before cell padding.
+  static double contentWidthOf(
+    BuildContext context,
+    String displayText,
+    TextScaler textScaler,
+  ) =>
+      utenTableCellTextWidth(
+        displayText,
+        style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+        textScaler: textScaler,
+        textDirection: Directionality.of(context),
+      ) +
+      UtenEditableGridCellSpec.contentPadding.horizontal;
+
   const ProductionOverproductionRateField({
     super.key,
     required this.controller,

@@ -49,6 +49,7 @@ import '../models/warehouse_form_draft_codec.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -987,13 +988,13 @@ class _InboundArrivalRegistrationPageState
       (section) => section.allocations.any((item) => item.isCrossWarehouse),
     );
     // ADR-144：采购明细在最多可收以内照常处理；本次全是委外时不提这句。
-    final overReceiptRule =
-        submitLines.any(
-          (line) =>
-              line.prefill.orderType == ProcurementInboundOrderType.purchase,
-        )
-        ? '采购明细在最多可收(订货量加允许超收)以内照常处理，超过最多可收的部分才转财务；'
-        : '';
+    final includesPurchase = submitLines.any(
+      (line) => line.prefill.orderType == ProcurementInboundOrderType.purchase,
+    );
+    final warehouseCount = submitLines
+        .map((line) => line.warehouseId)
+        .toSet()
+        .length;
     final confirmed = await showWarehouseInboundAllocationConfirmDialog(
       context,
       title: '${route.label}($receiptCount 张收货单)',
@@ -1002,23 +1003,33 @@ class _InboundArrivalRegistrationPageState
           ? (hasCrossWarehouse ? '确认跨仓登记并先入库' : '确认登记并先入库')
           : (hasCrossWarehouse ? '确认跨仓登记送检' : '确认登记送检'),
       sections: projectedSections,
-      // 有未勾选行时先说清去向，防「取消勾选=静默不登记」。
-      description:
-          (stockInFirst
-              ? '系统按「订货单 x 入库仓库」分组建单，一次登记到货、送品质部待检，'
-                    '并把每行实物按库位号上架(先入库后质检)：品质部到库位检验，合格后系统自动按上架位置转正入库，'
-                    '不合格由仓库从库位取出登记退回；'
-                    '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
-                    '$overReceiptRule'
-                    '实到超批准量的单自动隔离并通知财务审核组，隔离单不上架、不入库、不生成应付，也不影响其余单。'
-              : '系统按「订货单 x 入库仓库」分组建单，一次登记到货并直送品质部待检(IQC)：'
-                    '检验合格后转仓库待入库，仓库确认实物与库位后库存才增加；'
-                    '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
-                    '$overReceiptRule'
-                    '实到超批准量的单自动隔离并通知财务审核组，不入库、不生成应付，也不影响其余单。') +
-          (excludedCount > 0
-              ? '另有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记送检。'
-              : ''),
+      summary: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(
+            label: '本次登记',
+            value: '${submitLines.length} 行 · $warehouseCount 个仓库',
+          ),
+          UtenConfirmationFact(
+            label: '到货实物量',
+            value: exactMeasurementTotalsText(
+              submitLines.map(
+                (line) => ExactMeasuredAmount(
+                  value: line.physicalQtyText,
+                  unitId: line.item.unitId,
+                  unitName: line.item.unitName,
+                ),
+              ),
+            ),
+          ),
+        ],
+        consequences: [
+          stockInFirst ? '按库位上架送检，合格自动转正入库，不合格从库位退回。' : '先送检，合格后由仓库确认实物和库位再入库。',
+          if (hasCrossWarehouse) '跨仓去向仅作预计，按实际仓入公共库存，不绑定原计划。',
+          if (includesPurchase) '采购到货不超过订货量加允许超收量时照常登记。',
+          '超批准量的单隔离转财务，不上架、不入库、不生成应付。其余照常办理。',
+          if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记送检。',
+        ],
+      ),
     );
     requestScope.checkCurrent();
     if (!confirmed || !mounted) return;

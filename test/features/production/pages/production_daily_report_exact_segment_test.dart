@@ -52,6 +52,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/widgets/business_precision_dialog.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
@@ -2137,14 +2138,17 @@ void main() {
     expect(dxOf(mainHeader('颜色')), lessThan(dxOf(mainHeader('超限原因'))));
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
 
-    // 必填列锁定：「完工申报量」的隐藏入口置灰（必填项不允许从界面消失；
-    // 必填表头带红 * 后缀，用包含匹配）。
-    await rightClick(find.textContaining('完工申报量'));
+    // 货品必须选择，不能隐藏。申报量可以由重量和单重换算。
+    await rightClick(mainHeader('货品名称 *'));
     final hideInk = find.ancestor(
       of: find.text('隐藏此列'),
       matching: find.byType(InkWell),
     );
     expect((hideInk.evaluate().single.widget as InkWell).onTap, isNull);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    await rightClick(mainHeader('完工申报量'));
+    expect((hideInk.evaluate().single.widget as InkWell).onTap, isNotNull);
     await tester.tapAt(const Offset(5, 5));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);

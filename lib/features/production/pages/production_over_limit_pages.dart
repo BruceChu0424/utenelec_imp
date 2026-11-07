@@ -8,6 +8,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -504,9 +505,24 @@ class _OverLimitDetailState
     final accepted = action == 'ACCEPT_PUBLIC';
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
-      message: accepted
-          ? '接收本批超限 ${_quantity(detail.overLimitQty)} ${detail.unitName ?? ''} 为公共产出，之后仍须按原品质和实收流程办理。原需求和有效比例不变。'
-          : '本批超限 ${_quantity(detail.overLimitQty)} ${detail.unitName ?? ''} 继续待处理。${action == 'RETURN_FOR_REVIEW' ? '通知申报方核实；实际数量不变，修正仍走原单反向流程。' : '记录继续待处理的原因，不增加可用库存。'}',
+      summary: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(
+            label: '本批超限',
+            value: '${_quantity(detail.overLimitQty)} ${detail.unitName ?? ''}'
+                .trim(),
+          ),
+        ],
+        consequences: [
+          if (accepted) ...[
+            '转为公共产出，仍须通过品质检验和实收。',
+            '继续沿用原需求与有效比例。',
+          ] else if (action == 'RETURN_FOR_REVIEW')
+            '通知申报方核实。数量修正走原单反向流程，当前仍待处理。'
+          else
+            '记录待处理原因，可用库存维持当前数量。',
+        ],
+      ),
     );
     if (confirmed != true ||
         !mounted ||

@@ -11,6 +11,8 @@
 对应实现：`lib/components/feedback/uten_reviewer_responsibility_notice.dart`。普通审核确认优先调用
 `showUtenReviewerConfirmDialog`，责任提示始终位于业务影响说明上方。
 
+使用 `UtenConfirmationSummary` 列出核对所需的数量、计数和关键后果。它用主题错误色和粗体突出数值与后果，明细留在原业务表。对审核意图需要本地存档的入口，可将同一摘要的 `plainText` 作为原确认内容保存。
+
 ## 二、身份与审计边界
 
 - 姓名、工号只从当前 `sessionProvider.user` 读取，用于让点击者在确认前辨认自己的责任身份。

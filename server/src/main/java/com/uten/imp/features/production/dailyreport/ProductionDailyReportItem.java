@@ -162,6 +162,12 @@ public class ProductionDailyReportItem extends BaseEntity {
     private Integer weightQuantityScale;
     @Column(name = "weight_quantity_rounding")
     private String weightQuantityRounding;
+    @Column(name = "unit_weight_source")
+    private String unitWeightSource;
+    @Column(name = "weight_unit_scale")
+    private Integer weightUnitScale;
+    @Column(name = "weight_unit_rounding")
+    private String weightUnitRounding;
 
     /** Client 客户名冗余。 */
     @Column(name = "client_name")

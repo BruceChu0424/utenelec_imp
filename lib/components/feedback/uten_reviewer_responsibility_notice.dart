@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/session_provider.dart';
 import '../inputs/uten_field_hint_icon.dart';
+import 'uten_confirmation_summary.dart';
 import 'uten_dialog.dart';
 
 /// 审核动作前的责任提示。
@@ -134,12 +135,14 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
 /// 统一审核确认框：责任人红色提示始终位于业务影响说明上方。
 Future<bool> showUtenReviewerConfirmDialog(
   BuildContext context, {
-  required String message,
+  String? message,
+  UtenConfirmationSummary? summary,
   String title = '确认审核',
   String confirmLabel = '确认审核',
   String actionLabel = '审核',
   String? responsibilityDescription,
 }) async {
+  assert(message != null || summary != null);
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => UtenAlertDialog(
@@ -156,7 +159,11 @@ Future<bool> showUtenReviewerConfirmDialog(
               description: responsibilityDescription,
             ),
             const SizedBox(height: UtenSpacing.s12),
-            Text(message),
+            ?summary,
+            if (message != null && message.isNotEmpty) ...[
+              if (summary != null) const SizedBox(height: UtenSpacing.s8),
+              Text(message),
+            ],
           ],
         ),
       ),

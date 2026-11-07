@@ -244,7 +244,7 @@ void main() {
       await tester.enterText(find.byType(TextFormField), '已核对本批原始数量');
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('接收本批超限 $quantity 件'), findsOneWidget);
+      expect(find.text('本批超限 $quantity 件'), findsOneWidget);
       expect(repo.decisions, 0);
       expect(tester.takeException(), isNull);
     });

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
@@ -352,7 +353,9 @@ void _registerSharedConfirmationPrecision(String quantity) {
                   accepted = await showWarehouseInboundAllocationConfirmDialog(
                     context,
                     title: '确认原始实收',
-                    description: '核对本次实收与来源',
+                    summary: const UtenConfirmationSummary(
+                      consequences: ['核对本次实收与来源'],
+                    ),
                     actionLabel: '登记实收',
                     sections: [
                       for (final source in ['采购登记', '委外登记', 'IQC合格品'])

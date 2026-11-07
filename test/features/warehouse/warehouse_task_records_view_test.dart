@@ -1379,7 +1379,7 @@ void main() {
           warehouseTaskCommandTargets(selected),
           hasLength(selectedLots.length),
         );
-        await tester.tap(find.text('批量登记（先质检后入库）'));
+        await tester.tap(find.text('先质检后入库'));
         await tester.pumpAndSettle();
         expect(harness.opened.single.queryParameters['reportIds'], 'report-a');
         expect(
@@ -1497,9 +1497,9 @@ void main() {
       );
       _table(tester).onSelectedIdsChanged!({row.rowKey});
       await tester.pumpAndSettle();
-      expect(find.text('批量登记（先入库后质检）'), findsNothing);
-      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
-      await tester.tap(find.text('批量登记（先质检后入库）'));
+      expect(find.text('先入库后质检'), findsNothing);
+      expect(find.text('先质检后入库'), findsOneWidget);
+      await tester.tap(find.text('先质检后入库'));
       await tester.pumpAndSettle();
       expect(harness.opened.single.queryParameters['preStock'], '0');
       expect(tester.takeException(), isNull);
@@ -1547,9 +1547,7 @@ void main() {
             selected.map((row) => row.rowKey).toSet(),
           );
           await tester.pumpAndSettle();
-          await tester.tap(
-            find.text('批量登记（${preStock ? '先入库后质检' : '先质检后入库'}）'),
-          );
+          await tester.tap(find.text(preStock ? '先入库后质检' : '先质检后入库'));
           await tester.pumpAndSettle();
           expect(
             harness.opened.single.queryParameters['expectationIds'],
@@ -1605,9 +1603,9 @@ void main() {
           rows.map((row) => row.rowKey).toSet(),
         );
         await tester.pumpAndSettle();
-        expect(find.text('批量登记（先入库后质检）'), findsOneWidget);
-        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
-        await tester.tap(find.text('批量登记（先入库后质检）'));
+        expect(find.text('先入库后质检'), findsOneWidget);
+        expect(find.text('先质检后入库'), findsOneWidget);
+        await tester.tap(find.text('先入库后质检'));
         await tester.pumpAndSettle();
         expect(harness.opened.last.queryParameters['preStock'], '1');
         if (action == 'FINISHED_REGISTER') {
@@ -1660,7 +1658,7 @@ void main() {
         final oldButton = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('批量登记（先入库后质检）'),
+                of: find.text('先入库后质检'),
                 matching: find.byType(UtenButton),
               ),
             )
@@ -1669,8 +1667,8 @@ void main() {
           rows.map((row) => row.rowKey).toSet(),
         );
         await tester.pumpAndSettle();
-        expect(find.text('批量登记（先入库后质检）'), findsNothing);
-        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+        expect(find.text('先入库后质检'), findsNothing);
+        expect(find.text('先质检后入库'), findsOneWidget);
         oldButton(); // A stale callback must recheck the entire new selection.
         await tester.pumpAndSettle();
         expect(harness.opened, isEmpty);
@@ -1730,7 +1728,7 @@ void main() {
         final oldButton = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('批量登记（先入库后质检）'),
+                of: find.text('先入库后质检'),
                 matching: find.byType(UtenButton),
               ),
             )

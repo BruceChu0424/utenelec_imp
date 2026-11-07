@@ -48,6 +48,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -403,21 +404,22 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
     if (!stillCurrent()) return;
     final store = ref.read(formDraftsProvider.notifier);
     final owner = store.ownerKey;
-    final message =
-        '将$verb选中的 ${ids.length} 张生产计划草稿；其它类别不会处理。'
-        '${approve ? '' : '删除后无法恢复。'}';
+    final confirmation = UtenConfirmationSummary(
+      facts: [UtenConfirmationFact(label: '选中的生产计划', value: '${ids.length} 张')],
+      consequences: [approve ? '审核选中的草稿，其他状态的单据跳过。' : '仅删除草稿，删除后无法恢复。'],
+    );
     final confirmed = approve
         ? await showUtenReviewerConfirmDialog(
             context,
             title: '批量审核生产计划',
-            message: message,
+            summary: confirmation,
             confirmLabel: '确认批量审核',
             actionLabel: '批量审核',
           )
         : await UtenDialog.show(
             context,
             title: '批量删除生产计划',
-            content: Text(message),
+            content: confirmation,
             confirmLabel: '确认批量删除',
             danger: true,
           );

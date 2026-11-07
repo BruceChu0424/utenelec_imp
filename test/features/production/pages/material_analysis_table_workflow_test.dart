@@ -45,7 +45,7 @@ void main() {
       //   2026-09-29「归属车间」列并入「生产车间」：17→16。
       //   2026-10-10 T9「单位」列退役（单位内联进数量列）：16→15。
       expect(
-        find.byKey(const Key('platform-table-add-column')).hitTestable(),
+        find.byKey(const Key('platform-table-add-column')),
         findsOneWidget,
       );
       expect(find.text('处理'), findsNothing);

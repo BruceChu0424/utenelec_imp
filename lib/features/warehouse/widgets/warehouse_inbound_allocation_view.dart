@@ -4,6 +4,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -187,7 +188,7 @@ Future<void> showWarehouseInboundAllocationDetails(
 Future<bool> showWarehouseInboundAllocationConfirmDialog(
   BuildContext context, {
   required String title,
-  required String description,
+  required UtenConfirmationSummary summary,
   required String actionLabel,
   required List<WarehouseInboundAllocationSection> sections,
   bool ownRelease = false,
@@ -197,7 +198,7 @@ Future<bool> showWarehouseInboundAllocationConfirmDialog(
       context: context,
       builder: (_) => _WarehouseInboundAllocationDialog(
         title: title,
-        description: description,
+        summary: summary,
         sections: sections,
         actual: false,
         confirmLabel: confirmLabel,
@@ -214,16 +215,18 @@ Future<bool> showWarehouseInboundAllocationConfirmDialog(
 class _WarehouseInboundAllocationDialog extends StatelessWidget {
   const _WarehouseInboundAllocationDialog({
     required this.title,
-    required this.description,
     required this.sections,
     required this.actual,
+    this.description = '',
+    this.summary,
     this.confirmLabel,
     this.reviewerActionLabel,
     this.ownRelease = false,
-  });
+  }) : assert(confirmLabel == null || summary != null);
 
   final String title;
   final String description;
+  final UtenConfirmationSummary? summary;
   final List<WarehouseInboundAllocationSection> sections;
   final bool actual;
   final String? confirmLabel;
@@ -258,20 +261,13 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  description,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.45,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
                 UtenReviewerResponsibilityNotice(
                   actionLabel: reviewerActionLabel ?? '仓库实物入库确认',
-                  description: ownRelease
-                      ? '本单品质放行也由当前账号执行，请再次核对实物数量、库位和预计去向。'
-                      : '请核对本次实物数量、库位和预计去向；最终以提交后系统返回的结果为准。',
+                  description: ownRelease ? '本单品质放行也由当前账号执行，请再次核对实物和库位。' : null,
+                  compact: true,
                 ),
+                const SizedBox(height: UtenSpacing.s8),
+                summary!,
                 const SizedBox(height: UtenSpacing.s12),
                 for (final section in sections)
                   _ConfirmSummaryRow(section: section),

@@ -53,6 +53,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('left spinner is centered beside wrapped loading copy', (
+    tester,
+  ) async {
+    for (final width in [360.0, 1024.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 800));
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.5)),
+            child: child!,
+          ),
+          home: const Scaffold(
+            body: Center(
+              child: UtenBusyOverlayCard(
+                title: '正在提交生产日报',
+                description: '正在保存报工和用料记录，请勿重复提交或离开本页。',
+              ),
+            ),
+          ),
+        ),
+      );
+      final spinner = tester.getRect(find.byType(CircularProgressIndicator));
+      final title = tester.getRect(find.text('正在提交生产日报'));
+      final hint = tester.getRect(find.textContaining('完成后自动继续'));
+      expect(spinner.right, lessThan(title.left));
+      expect(spinner.center.dy, closeTo((title.top + hint.bottom) / 2, 1));
+      expect(tester.takeException(), isNull);
+    }
+    await tester.binding.setSurfaceSize(null);
+  });
+
   testWidgets(
     'compact progress hides only generic copy and preserves the blocking task',
     (tester) async {

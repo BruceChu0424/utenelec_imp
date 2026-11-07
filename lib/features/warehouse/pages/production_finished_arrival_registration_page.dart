@@ -25,6 +25,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -53,6 +54,7 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
@@ -703,25 +705,39 @@ class _ProductionFinishedArrivalRegistrationPageState
       return;
     }
     final reportCount = rows.map((row) => row.report.reportId).toSet().length;
+    final warehouseCount = rows.map((row) => row.warehouseId).toSet().length;
+    final names = ref.read(masterNameServiceProvider);
     final confirmed = await UtenDialog.show(
       context,
       title: '${route.label}($reportCount 张报工单)',
       confirmLabel: stockInFirst ? '确认登记并先入库' : '确认登记送检',
-      content: InboundConfirmPoints([
-        if (excludedCount > 0)
-          '有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记，可稍后办理。',
-        ...(stockInFirst
-            ? const [
-                '按「报工单 x 入库仓库」逐组登记入库仓库与库位，并把每批实物按库位上架(先入库后质检)，一起送品质部检验。整批一起生效，不会只成功一半。',
-                '品质部到库位按整批检验：合格由系统按本次登记的仓库与库位自动入库，仓库不再确认第二次；不合格不动库存。',
-                '本次库位会记住为该仓默认库位，下次登记自动带出。',
-              ]
-            : const [
-                '按「报工单 x 入库仓库」逐组登记入库仓库与库位，送品质部按整批检验；同一仓库的行合并成一张品质检查单。',
-                '品质放行后仓库再按实物最终点收入库，可短收(短收先扣实际超产)。',
-                '本次库位会记住为该仓默认库位，下次登记自动带出。',
-              ]),
-      ]),
+      content: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(
+            label: '本次登记',
+            value: '${rows.length} 行 · $warehouseCount 个仓库',
+          ),
+          UtenConfirmationFact(
+            label: '报工数量',
+            value: exactMeasurementTotalsText(
+              rows.map(
+                (row) => ExactMeasuredAmount(
+                  value: row.lot.reportedQtyText,
+                  unitId: row.lot.unitId,
+                  unitName: row.lot.unitName ?? names.unit(row.lot.unitId),
+                ),
+              ),
+            ),
+          ),
+        ],
+        consequences: [
+          stockInFirst
+              ? '按库位整批上架送检，合格自动转正入库，不合格不增加库存。'
+              : '先整批送检，放行后按实物点收入库，短收先扣实际超产。',
+          '本次库位将带入该仓下次登记。',
+          if (excludedCount > 0) '有 $excludedCount 行未勾选，仍留待登记。',
+        ],
+      ),
     );
     if (confirmed != true || !mounted) return;
     requestScope.checkCurrent();

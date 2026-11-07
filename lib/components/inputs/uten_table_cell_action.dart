@@ -21,6 +21,16 @@ class UtenTableCellAction extends StatelessWidget {
   static const double _iconSize = 14;
   static const double _iconGap = UtenSpacing.s4;
   static const double _horizontalPadding = UtenSpacing.s4;
+  static const _visualDensity = VisualDensity.compact;
+
+  /// Space required before the table's vertical cell padding.
+  static double minimumLayoutHeightOf(BuildContext context) => _visualDensity
+      .effectiveConstraints(
+        BoxConstraints(
+          minHeight: UtenControlMetrics.minimumHitExtent(context, desktop: 0),
+        ),
+      )
+      .minHeight;
 
   /// Full width of a single-line action, before the host cell's own padding.
   static double contentWidthOf(
@@ -126,7 +136,7 @@ class UtenTableCellAction extends StatelessWidget {
         ),
         padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
+        visualDensity: _visualDensity,
         alignment: alignment,
       ),
       child: row,

@@ -33,8 +33,8 @@
 - **独立尾部草稿行 (2026-10-24)**：`appendRows` 或 `appendRowsSource` 承载没有业务身份的本地录入行。`MasterTableAppendRow.cellBuilder` 按列 key 渲染，沿用当前列序、显隐、列宽、冻结列和全屏布局；`detailsBuilder` 可为隐藏字段提供本地补充入口。空业务列表仍显示这些录入行。尾行不进入 `items`、分页、选择、筛选、排序、计数或导出，不能伪造 `T` 或 UUID 混入服务端数据。主档通过 `MasterInlineCreateConfig` 绑定原创建字段、上下文和保存回调，BOM 通过自己的编辑会话暂存组件，两者共用表格展示能力。
 - **可选双击确认与表头业务图标**：`onRowDoubleTap` 可在单击选中之外提供明确的双击动作，保留原读取和行可用性检查；未配置时行为保持。`headerTrailingBuilder` 在表头末端提供如「添加下级组件」的业务动作，与平台自定义列功能分别配置和授权。
 
-- **添加列常驻工具条（2026-10-09 统一骨架起）**：空结果/初次加载/加载失败都渲染同一张
-  表骨架（表头常在），「添加列」与全屏、业务动作一样在任何状态都显示——占位切换期间
+- **末列入口与稳定表头**：空结果、初次加载和加载失败都渲染同一张表骨架。「显示列 / 添加列」
+  随表头末列横向滚动。工具条的「表头设置」、全屏与业务动作在各状态下保持可用，切换占位时
   入口不再忽隐忽现。由共用组件统一处理，业务页面不各自判断。
   有可展开/加载/重试的前导分组时保留真实分组表。可编辑网格仍显示真实表头时，其表头内添加入口随表头显示。
 
@@ -200,7 +200,7 @@
   附「当前有 N 个表头筛选生效」说明）**不再整块换占位壳**——统一渲染同一张表
   （工具条 + 表头 + 列），提示作为一条跨满宽行插在行计划首位（`_ViewportPinnedRow` 钉横滚），
   只有行区内容随状态变。刷新时仍持旧数据的表格原地保留。工具条因此任何状态同构：
-  业务写动作（`toolbarActions`）与「添加列」「全屏」按钮在空表也渲染（骨架稳定优先，
+  业务写动作（`toolbarActions`）与「表头设置」「全屏」按钮在空表也渲染（骨架稳定优先，
   2026-09-11「空表不给进全屏」口径随之作废——放大看「类似人员」分组正需要它）。
   `scrollingHeader` 参数与状态占位壳（`_stateShell`/`_stateActionsFrame`）已随本口径删除。
   测试：`test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`、
@@ -538,6 +538,8 @@ return MasterDataTableView<Map<String, dynamic>>(
   - 文本一律 `maxLines: 1` + 省略号, 完整信息挂 Tooltip; 不用两行/softWrap。
   - 状态格的可点分支(InkWell)不垫垂直 Padding —— 格子的 8×2 留白已是点击区, 再叠 16px 会把行撑高(委外领料/车间任务状态格曾因此高 14px)。
   - 进度条用 `ProductionFlowProgress` 的单层 Row 形态, 不用「文字一行+进度条一行」的 Column。
+  - 勾选框角上的锁等徽记不占行高。不可勾选时的替代图标沿用同一勾选区域高度。
+  - 触控布局混用文字和操作控件的读表可用 `dataRowMinimumHeight` 统一最小行高。按共享控件的响应式尺寸计算，保留大字号所需的自然增长和表格固定列对齐。
 - **表格内输入框**(2026-10-08 紧凑口径, [ADR-161 修订](../99-决策记录-ADR/ADR-161-表格行高统一读表单行基准与格内组件规范.md)): 统一为「车间内料仓 → 库存盘点 → 实盘数量」常驻输入格的紧凑尺寸(上下边距收窄), 由共享注入组件 `UtenTableCellInputTheme` 给出 **isDense + contentPadding 10·6**(单一事实源 `UtenEditableGridCellSpec`, `lib/components/inputs/uten_table_cell_spec.dart`)。三个宿主共用: 编辑表(`UtenEditableGrid`)行级、读表 `MasterDataTableView` 数据格、读表卡片格(`master_data_card_list.dart`); 读表内联输入格(原约 42 处裸 isDense TextField)由此一并紧凑, 不再吃全局主题 14·12。
   - TextField 一律吃注入的紧凑装饰, 删各页自拟的 contentPadding 压缩值; 下拉统一 `dense: true`(编辑语境保留描边, 可点性可见); 表内超高按钮换 UtenTableCellAction, Checkbox 包 `materialTapTargetSize: shrinkWrap`。
   - 2026-10-06 的「输入控件 39 / 编辑表行 ≈55」数字已失真(输入格 ~48 高变 ~38 高, 含输入格的行随内容下移约 8-12 逻辑像素), 以紧凑口径为准; 全局 inputDecorationTheme(表单/弹窗 14·12)不变——本口径只管表格格内。

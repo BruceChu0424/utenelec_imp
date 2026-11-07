@@ -46,6 +46,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_task_center_record.dart';
 import '../models/arrival_registration_selection.dart';
+import '../models/inbound_registration_line.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../providers/warehouse_task_page_preparation.dart';
@@ -908,15 +909,15 @@ class _WarehouseTaskRecordsViewState
       return [
         if (canPreStock)
           UtenButton(
-            type: UtenButtonType.tonal,
+            type: UtenButtonType.success,
             isLoading: _busy,
             onPressed: _busy ? null : () => _batch(preStock: true),
-            child: Text('${warehouseTaskRecordBatchLabel(family)}（先入库后质检）'),
+            child: Text(InboundRoute.stockInFirst.label),
           ),
         UtenButton(
           isLoading: _busy,
           onPressed: _busy ? null : () => _batch(preStock: false),
-          child: Text('${warehouseTaskRecordBatchLabel(family)}（先质检后入库）'),
+          child: Text(InboundRoute.inspectFirst.label),
         ),
       ];
     }
@@ -1045,11 +1046,19 @@ class _WarehouseTaskRecordsViewState
       MasterColumnDef(
         key: 'nextStep',
         label: '下一步',
-        width: 270,
+        width: 100,
         columnSearchEnabled: false,
         value: (row) => row.nextStep ?? '—',
+        measureWidthOf: (context, row, scaler) =>
+            UtenTableCellAction.contentWidthOf(
+              context,
+              row.nextStep ?? '—',
+              textScaler: scaler,
+            ),
+        measureWidthScope: 'warehouse-record-next-step',
         cellBuilder: (_, row) => UtenTableCellAction(
           label: row.nextStep ?? '—',
+          alignment: AlignmentDirectional.centerStart,
           tooltip: '${row.nextStep ?? ''}\n${warehouseTaskRecordOpenLabel(row)}'
               .trim(),
           onPressed:

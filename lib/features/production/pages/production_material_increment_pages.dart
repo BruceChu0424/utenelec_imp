@@ -16,6 +16,7 @@ import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -290,7 +291,19 @@ class _IncrementDetailState
     if (approve) {
       final confirmed = await showUtenReviewerConfirmDialog(
         context,
-        message: '请核对原定额、已批追加和本次追加量。批准后新增材料领用额度，仓库仍需实际发料。',
+        summary: UtenConfirmationSummary(
+          facts: [
+            UtenConfirmationFact(
+              label: '工单',
+              value: detail.text('segmentCode'),
+            ),
+            UtenConfirmationFact(
+              label: '本次追加',
+              value: '${detail.text('deltaQty')} ${detail.text('unitName')}',
+            ),
+          ],
+          consequences: const ['批准后增加材料领用额度，仓库仍需实际发料。'],
+        ),
       );
       if (confirmed != true || !mounted) return;
     } else {

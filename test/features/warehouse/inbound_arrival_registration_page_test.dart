@@ -26,6 +26,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -1209,6 +1210,11 @@ void main() {
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(find.textContaining('有 2 行未勾选'), findsOneWidget);
+    final summary = tester.widget<UtenConfirmationSummary>(
+      find.byType(UtenConfirmationSummary),
+    );
+    expect(summary.facts.first.value, '1 行 · 1 个仓库');
+    expect(summary.facts.last.label, '到货实物量');
     expect(find.text('确认登记送检'), findsOneWidget);
     await tester.tap(find.text('确认登记送检'));
     await tester.pump();

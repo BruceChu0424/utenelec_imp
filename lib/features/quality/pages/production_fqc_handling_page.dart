@@ -33,6 +33,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -58,6 +59,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -618,33 +620,75 @@ Widget? _fqcSubmissionNotice(
 Future<bool> _confirmOriginalFqcReport(
   BuildContext context,
   List<FqcReportRow> rows,
-) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => UtenAlertDialog(
-        title: const Text('核对并继续原提交'),
-        content: Text(
-          [
-            '将按以下原内容继续办理。服务器已登记的决定会返回已有结果；本次尚未登记的行一起提交，任一行失败则本次新增决定全部回滚。',
-            for (final row in rows)
-              '${row.label}：合格 ${fqty(row.command.passQty ?? 0)}，不合格 ${fqty(row.command.failQty ?? 0)}'
-                  '${row.submission?['reason'] == null ? '' : '；${row.submission!['reason']}'}',
-            '本次先核对待确认行，尚未提交的其他行保留，核对完成后可继续提交。',
-          ].join('\n\n'),
+) async {
+  final withReason = rows
+      .where(
+        (row) =>
+            row.submission?['reason']?.toString().trim().isNotEmpty == true,
+      )
+      .length;
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => UtenAlertDialog(
+          title: const Text('核对并继续原提交'),
+          content: UtenConfirmationSummary(
+            facts: [
+              UtenConfirmationFact(label: '待核对', value: '${rows.length} 行'),
+              UtenConfirmationFact(
+                label: '合格',
+                value: _frozenFqcTotalsText(rows, 'passQty'),
+              ),
+              UtenConfirmationFact(
+                label: '不合格',
+                value: _frozenFqcTotalsText(rows, 'failQty'),
+              ),
+              if (withReason > 0)
+                UtenConfirmationFact(label: '已保存结论原因', value: '$withReason 行'),
+            ],
+            consequences: const [
+              '按原内容继续。已登记的决定沿用已有结果。',
+              '待登记行一起提交，任一行失败则新决定全部回滚。',
+              '未提交的其他行保留，核对后可继续提交。',
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('继续原提交'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('继续原提交'),
-          ),
-        ],
+      ) ??
+      false;
+}
+
+String _frozenFqcTotalsText(List<FqcReportRow> rows, String quantityKey) {
+  final amounts = <ExactMeasuredAmount>[];
+  var unverifiedUnits = 0;
+  for (final row in rows) {
+    final unitId = row.inspection.unitId;
+    if (rows.length > 1 && unitId?.trim().isNotEmpty != true) {
+      unverifiedUnits++;
+      continue;
+    }
+    final frozen = row.submission;
+    amounts.add(
+      ExactMeasuredAmount(
+        value: frozen == null ? null : frozen[quantityKey]?.toString() ?? '0',
+        unitId: unitId,
+        unitName: row.inspection.unitName,
       ),
-    ) ??
-    false;
+    );
+  }
+  return [
+    if (amounts.isNotEmpty) exactMeasurementTotalsText(amounts),
+    if (unverifiedUnits > 0) '$unverifiedUnits 行单位待核对',
+  ].join(' · ');
+}
 
 /// 按单位分组的数量合计文本（跨单位绝不相加，与全站口径一致）。
 String _fqcTotalsText(
@@ -940,15 +984,6 @@ class _ProductionFqcSheetHandlingPageState
           requireReason: selected.any((row) => row.failValue > 0),
           initialReason: _draftReason,
           onReasonChanged: (value) => setState(() => _draftReason = value),
-          lines: [
-            for (final row in selected)
-              InspectionReportConfirmLine(
-                label: row.label,
-                passText: fqty(row.passValue),
-                failText: fqty(row.failValue),
-                dim: row.inspection.unitName,
-              ),
-          ],
         );
       }
     } on ApiException catch (error) {
@@ -1821,14 +1856,6 @@ class _ProductionFqcInspectionPageState
           requireReason: row.failValue > 0,
           initialReason: _draftReason,
           onReasonChanged: (value) => setState(() => _draftReason = value),
-          lines: [
-            InspectionReportConfirmLine(
-              label: row.label,
-              passText: fqty(row.passValue),
-              failText: fqty(row.failValue),
-              dim: row.inspection.unitName,
-            ),
-          ],
         );
       }
     } finally {

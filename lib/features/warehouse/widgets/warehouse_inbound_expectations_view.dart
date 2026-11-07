@@ -21,6 +21,8 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -672,17 +674,20 @@ class _WarehouseInboundExpectationsViewState
       title: '继续送检',
       actionLabel: '送检',
       confirmLabel: '确认送检',
-      message:
-          '将把已登记的到货数量送品质部待检(IQC)：检验合格后转仓库待入库任务，'
-          '仓库确认实物与库位后库存才增加；'
-          '实到超过财务批准量时系统自动隔离并通知财务审核组，不会入库、不会生成应付。'
-          '单价按订货单自动带入，无需填写。',
+      summary: const UtenConfirmationSummary(
+        facts: [UtenConfirmationFact(label: '本次送检', value: '1 张已登记收货单')],
+        consequences: ['送检合格后由仓库核对实物和库位再入库。', '超批准量的单隔离转财务，不入库、不生成应付。'],
+      ),
     );
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
     try {
-      final registration = await ref
-          .read(procurementInboundRepositoryProvider)
-          .completeArrival(expectation.draftReceiptIds.first);
+      final registration = await UtenBusyOverlay.run(
+        context,
+        title: '正在继续送检',
+        action: () => ref
+            .read(procurementInboundRepositoryProvider)
+            .completeArrival(expectation.draftReceiptIds.first),
+      );
       if (!mounted) return;
       await _load(_refreshPage);
       if (mounted) {

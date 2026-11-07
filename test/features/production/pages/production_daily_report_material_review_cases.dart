@@ -98,7 +98,9 @@ void registerDailyReportMaterialReviewCases() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(UtenButton, '审核'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('本次实际用料 6 个'), findsOneWidget);
+      expect(find.text('本次实际用料 3 项'), findsOneWidget);
+      expect(find.text('余料退回仓库 1 项'), findsOneWidget);
+      expect(find.text('余料留在车间 1 项'), findsOneWidget);
       api.materialFingerprint = 'a-new-ledger-snapshot';
       await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
       await tester.pumpAndSettle();

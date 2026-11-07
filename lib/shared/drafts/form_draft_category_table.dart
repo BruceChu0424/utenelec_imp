@@ -896,6 +896,7 @@ class _FormDraftCategoryTableState<T>
       toolbarLeadingActions: table.toolbarLeadingActions,
       bodyPresentationBuilder: table.bodyPresentationBuilder,
       dataCellVerticalPadding: table.dataCellVerticalPadding,
+      dataRowMinimumHeight: table.dataRowMinimumHeight,
       // Mixed local/server records keep one table presentation. Typed source
       // cards and row-reorder commands cannot be invoked on local draft rows.
       embedded: table.embedded,

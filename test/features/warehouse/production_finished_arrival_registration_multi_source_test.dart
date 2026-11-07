@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_confirmation_summary.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -19,7 +20,6 @@ import 'package:uten_imp/features/warehouse/models/inbound_registration_line.dar
 import 'package:uten_imp/features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import 'package:uten_imp/features/warehouse/providers/inbound_warehouse_fill_memory.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
-import 'package:uten_imp/features/warehouse/widgets/inbound_registration_widgets.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -472,7 +472,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastPostPath, isNull);
     expect(find.text('先质检后入库(2 张报工单)'), findsOneWidget);
-    expect(find.byType(InboundConfirmPoints), findsOneWidget);
+    final summary = tester.widget<UtenConfirmationSummary>(
+      find.byType(UtenConfirmationSummary),
+    );
+    expect(summary.facts.first.value, '2 行 · 1 个仓库');
+    expect(summary.consequences.first, contains('短收先扣实际超产'));
     expect(find.text('确认登记并先入库'), findsNothing);
     await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
@@ -783,7 +787,7 @@ void main() {
     // finally block clears its busy overlay. Wait before interacting again.
     await tester.pumpAndSettle();
     expect(api.lastPostPath, isNull);
-    expect(find.byType(InboundConfirmPoints), findsNothing);
+    expect(find.byType(UtenConfirmationSummary), findsNothing);
     expect(
       _notices(tester).where((message) => message.contains('本次实收与报工数量不一致')),
       hasLength(1),
@@ -797,7 +801,7 @@ void main() {
     _pressSubmit(tester, key: _stockInSubmitKey);
     await tester.pumpAndSettle();
     expect(find.text('先入库后质检(2 张报工单)'), findsOneWidget);
-    expect(find.byType(InboundConfirmPoints), findsOneWidget);
+    expect(find.byType(UtenConfirmationSummary), findsOneWidget);
     expect(find.text('确认登记送检'), findsNothing);
     await tester.tap(find.text('确认登记并先入库'));
     await tester.pumpAndSettle();

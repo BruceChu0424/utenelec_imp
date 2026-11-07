@@ -117,6 +117,8 @@ class _DailyReportApi extends ApiClient {
   Object? versionOverride;
   int quantity = 1000;
   Map<String, dynamic> itemOverrides = const {};
+  List<Map<String, dynamic>>? reportItems;
+  List<Map<String, dynamic>> reportBatches = const [];
   bool includeReceipt = false;
   bool allowEdit = false;
   final approveBodies = <Map<String, dynamic>>[];
@@ -181,20 +183,23 @@ class _DailyReportApi extends ApiClient {
     'departmentName': '六车间',
     'workerIds': <String>['emp-1'],
     'workerNames': <String>['王小明'],
-    'items': <Map<String, dynamic>>[
-      <String, dynamic>{
-        'id': 'di-1',
-        'qty': quantity,
-        'defectQty': 12.5,
-        'planNo': 'SJ20260922000016',
-        'goodsId': 'g-1',
-        'goodsName': '外贸V5多功能三插后座',
-        'goodsCode': 'HV50070',
-        'colorName': '深灰色',
-        'unitName': '只',
-        ...itemOverrides,
-      },
-    ],
+    'outputBatches': reportBatches,
+    'items':
+        reportItems ??
+        <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'di-1',
+            'qty': quantity,
+            'defectQty': 12.5,
+            'planNo': 'SJ20260922000016',
+            'goodsId': 'g-1',
+            'goodsName': '外贸V5多功能三插后座',
+            'goodsCode': 'HV50070',
+            'colorName': '深灰色',
+            'unitName': '只',
+            ...itemOverrides,
+          },
+        ],
   };
 
   @override
@@ -330,6 +335,8 @@ Future<(_DailyReportApi, List<String>)> _pump(
   Object? materialReadFailure,
   Completer<void>? materialReadGate,
   Map<String, dynamic> itemOverrides = const {},
+  List<Map<String, dynamic>>? reportItems,
+  List<Map<String, dynamic>> reportBatches = const [],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -344,6 +351,8 @@ Future<(_DailyReportApi, List<String>)> _pump(
     ..readFailure = readFailure
     ..commandGate = commandGate;
   api.itemOverrides = itemOverrides;
+  api.reportItems = reportItems;
+  api.reportBatches = reportBatches;
   api.materialRows = materialRows ?? [];
   api.materialVersionOverride = materialVersionOverride;
   api.materialReadFailure = materialReadFailure;
@@ -543,6 +552,71 @@ void main() {
   registerDailyReportReviewV2Cases();
   registerDailyReportMaterialReviewCases();
   registerDailyReportMaterialRecoveryCases();
+  testWidgets('approval groups exact shares by destination and unit', (
+    tester,
+  ) async {
+    final (api, _) = await _pump(
+      tester,
+      onApprove: (_) => null,
+      capability: 2,
+      reportItems: const [
+        {
+          'id': 'share-warehouse',
+          'goodsName': '成品',
+          'qtyExact': '90071992547409.1234',
+          'outputBatchId': 'batch-one',
+          'outputBatchQtyExact': '90071992547409.1235',
+          'destination': 'WAREHOUSE',
+          'executionSegmentId': 'segment-1',
+          'unitId': 'unit-each',
+          'unitName': '件',
+        },
+        {
+          'id': 'share-direct',
+          'goodsName': '成品',
+          'qtyExact': '0.0001',
+          'outputBatchId': 'batch-one',
+          'outputBatchQtyExact': '90071992547409.1235',
+          'destination': 'WORKSHOP',
+          'executionSegmentId': 'segment-1',
+          'unitId': 'unit-each',
+          'unitName': '件',
+        },
+        {
+          'id': 'share-boxes',
+          'goodsName': '箱装品',
+          'qtyExact': '2.5',
+          'outputBatchId': 'batch-two',
+          'destination': 'WAREHOUSE',
+          'executionSegmentId': 'segment-2',
+          'unitId': 'unit-package',
+          'unitName': '箱',
+        },
+      ],
+      reportBatches: const [
+        {'batchKey': 'batch-one', 'summary': '以前逐条列出的确认内容'},
+      ],
+    );
+
+    await tester.tap(find.widgetWithText(UtenButton, '审核'));
+    await tester.pumpAndSettle();
+    final total = find.text('实际产量 90071992547409.1235 件 · 2.5 箱');
+    final span = tester.widget<Text>(total).textSpan! as TextSpan;
+    final value = span.children!.single as TextSpan;
+    expect(
+      value.style!.color,
+      Theme.of(tester.element(total)).colorScheme.error,
+    );
+    expect(value.style!.fontWeight, FontWeight.w700);
+    expect(find.text('直送上层工单 0.0001 件'), findsOneWidget);
+    expect(find.text('送入仓库 90071992547409.1234 件 · 2.5 箱'), findsOneWidget);
+    expect(find.text('直送产出经班组自检后交接上层工单。'), findsOneWidget);
+    expect(find.textContaining('合格且实收后才增加可用库存'), findsOneWidget);
+    expect(find.text('以前逐条列出的确认内容'), findsNothing);
+    expect(api.approveBodies, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('approval detail exposes no document amendment action', (
     tester,
   ) async {

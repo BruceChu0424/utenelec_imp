@@ -216,6 +216,9 @@ class ProductionDailyReportItem {
     this.weightEntryMode,
     this.weightQuantityScale,
     this.weightQuantityRounding,
+    this.unitWeightSource,
+    this.weightUnitScale,
+    this.weightUnitRounding,
     this.clientName,
     this.sourceDocNo,
     this.remark,
@@ -294,6 +297,12 @@ class ProductionDailyReportItem {
   final String? weightEntryMode;
   final int? weightQuantityScale;
   final String? weightQuantityRounding;
+  final String? unitWeightSource;
+  final int? weightUnitScale;
+  final String? weightUnitRounding;
+  String? get referenceWeightKg => financeExactTrimmed(
+    financeExactMultiplyTexts([qtyText, unitRateText, unitWeightKgExact]),
+  );
   final String? clientName;
   final String? sourceDocNo;
   final String? remark;
@@ -402,6 +411,9 @@ class ProductionDailyReportItem {
         weightEntryMode: json['weightEntryMode'] as String?,
         weightQuantityScale: _asInt(json['weightQuantityScale']),
         weightQuantityRounding: json['weightQuantityRounding'] as String?,
+        unitWeightSource: json['unitWeightSource'] as String?,
+        weightUnitScale: _asInt(json['weightUnitScale']),
+        weightUnitRounding: json['weightUnitRounding'] as String?,
         clientName: json['clientName'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
         remark: json['remark'] as String?,

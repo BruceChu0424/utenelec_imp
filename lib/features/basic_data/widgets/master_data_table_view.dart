@@ -542,6 +542,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowForegroundColor,
     this.rowDecorationBuilder,
     this.dataCellVerticalPadding = cellVerticalPadding,
+    this.dataRowMinimumHeight = 0,
     this.leadingGroups,
     this.selectable = false,
     this.showSelectionColumn = true,
@@ -579,6 +580,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.appendRowsSource,
     this.onRowDoubleTap,
   }) : assert(dataCellVerticalPadding >= 0),
+       assert(dataRowMinimumHeight >= 0),
        assert(
          !embedded || !virtualized,
          'virtualized=true requires a bounded, non-embedded table',
@@ -601,6 +603,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// reducing control hit targets or imposing a fixed row height. Tree guides
   /// must use the same value as their [UtenTreeTableCell.guideBleed].
   final double dataCellVerticalPadding;
+
+  /// Reserve a common height for text and action rows in read tables.
+  /// Larger content can still expand an individual row.
+  final double dataRowMinimumHeight;
 
   /// Picker lists share the table's paging, request fencing and scroll anchors,
   /// while keeping their existing tiles and confirmation interactions.
@@ -892,8 +898,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 非嵌入主页面默认显示。显式传 true 可在嵌入场景放开。
   final bool? showFullscreenToggle;
 
-  /// 是否显示工具条「表头设置」。窄屏页面可关闭以把有限高度留给数据，
-  /// 桌面/全屏默认保留完整列显隐能力。
+  /// 是否显示工具条「表头设置」及表头末列的「显示列 / 添加列」。
+  /// 末列随表头横向滚动，工具条入口保持可用。
   final bool showColumnChooser;
 
   /// 是否允许表体文字框选与复制，与行勾选 [selectable] 相互独立。
@@ -2949,7 +2955,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           requestedWidth: _pinnedLeadingWidth(_pinnedVisibleIndices),
           viewportWidth: position.viewportDimension,
           fallbackWidth: fallback,
-          trailingWidth: widget.showColumnChooser ? 48 : 0,
         ) >
         fallback;
   }
@@ -3136,7 +3141,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _headerH = UtenTableHorizontalScrollController(
       leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
       fallbackLeadingInset: () => _hasSelectionColumn ? _selectionColWidth : 0,
-      trailingInset: () => widget.showColumnChooser ? 48 : 0,
+      trailingInset: () => 0,
     );
     _columnOrder = _columns.map((c) => c.key).toList();
     _hiddenKeys.addAll(
@@ -3146,7 +3151,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _bodyH = UtenTableHorizontalScrollController(
       leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
       fallbackLeadingInset: () => _hasSelectionColumn ? _selectionColWidth : 0,
-      trailingInset: () => widget.showColumnChooser ? 48 : 0,
+      trailingInset: () => 0,
     );
     _bodyV = ScrollController();
     if (widget.scrollToEndRequest != 0) {
@@ -4361,18 +4366,32 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ? CrossAxisAlignment.stretch
       : CrossAxisAlignment.center;
 
+  bool get _stretchDataRows =>
+      _outputSelectable || widget.dataRowMinimumHeight > 0;
+
   /// selectable 的 stretch 行在无界高度下的合法化包裹（见 [_selectableCross]）。
   /// 非 selectable 行用 center、不需要，保持原样零开销。
-  Widget _boundStretchRow(Widget row, {double? knownHeight}) =>
-      _outputSelectable
-      ? knownHeight != null
-            ? SizedBox(height: knownHeight, child: row)
-            : IntrinsicHeight(
-                child: debugUiWorkSliceObserver == null
-                    ? row
-                    : _MasterStretchLayoutProbe(child: row),
-              )
-      : row;
+  Widget _boundStretchRow(
+    Widget row, {
+    double? knownHeight,
+    double minimumHeight = 0,
+  }) {
+    if (!_outputSelectable && minimumHeight == 0) return row;
+    if (knownHeight != null) {
+      return SizedBox(height: math.max(knownHeight, minimumHeight), child: row);
+    }
+    final intrinsic = IntrinsicHeight(
+      child: debugUiWorkSliceObserver == null
+          ? row
+          : _MasterStretchLayoutProbe(child: row),
+    );
+    return minimumHeight == 0
+        ? intrinsic
+        : ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minimumHeight),
+            child: intrinsic,
+          );
+  }
 
   TextStyle? _plainRowStyle;
   TextScaler? _plainRowScaler;
@@ -4390,11 +4409,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return _checkboxRowTheme!;
   }
 
+  double _selectionCheckboxExtent(ThemeData theme) {
+    final density =
+        theme.checkboxTheme.visualDensity ??
+        (theme.useMaterial3 ? VisualDensity.standard : theme.visualDensity);
+    return math.max(0.0, 40 + density.baseSizeAdjustment.dy);
+  }
+
   /// Default cells are single-line Text. Their real line height and checkbox
   /// minimum can be shared instead of walking every cell's intrinsic tree on
   /// every scroll frame. Rich controls retain their original measured path.
   double? _knownPlainRowHeight(ThemeData theme, {bool forEstimation = false}) {
-    if ((!forEstimation && !_outputSelectable) ||
+    if ((!forEstimation && !_stretchDataRows) ||
         widget.listItemBuilder != null ||
         widget.leadingOverlayBuilder != null ||
         widget.unselectableLeadingBuilder != null ||
@@ -4422,14 +4448,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _plainRowStyle = style;
       _plainRowScaler = scaler;
     }
-    final density =
-        theme.checkboxTheme.visualDensity ??
-        (theme.useMaterial3 ? VisualDensity.standard : theme.visualDensity);
     final checkbox = _hasSelectionColumn
-        ? math.max(0.0, 40 + density.baseSizeAdjustment.dy)
+        ? _selectionCheckboxExtent(theme)
         : 0.0;
     return math.max(
-      checkbox,
+      math.max(checkbox, widget.dataRowMinimumHeight),
       _plainRowTextHeight! + widget.dataCellVerticalPadding * 2,
     );
   }
@@ -4735,7 +4758,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _fsTick.value++;
   }
 
-  /// selectable 模式下数据单元格文本：整行 stretch 时垂直居中；非 selectable 不走此方法。
+  /// Text stays vertically centered when data cells stretch to the row height.
   Widget _dataCellText(String value, TextStyle style) {
     final text = Text(
       value,
@@ -4743,7 +4766,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     );
-    Widget cell = _outputSelectable
+    Widget cell = _stretchDataRows
         ? Align(alignment: Alignment.centerLeft, child: text)
         : text;
     if (widget.enableTextSelection && value.trim().isNotEmpty) {
@@ -4801,7 +4824,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
       ),
     );
-    final aligned = _outputSelectable && !column.fillsCellHeight
+    final aligned = _stretchDataRows && !column.fillsCellHeight
         ? Align(alignment: Alignment.centerLeft, child: custom)
         : custom;
     // 自定义格同口径：格里有文本内容（value 非空）且框选开启时，就近注入
@@ -7180,26 +7203,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               flatRow,
             ],
           );
-    return UtenTableRowRightEdge(
-      child: !widget.showColumnChooser
-          ? row
-          : UtenFrozenTrailingColumn(
-              horizontal: _headerH,
-              width: 48,
-              // 左线隔开滚过的列头；右线收住末列边缘。
-              cell: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHigh,
-                  border: Border(
-                    left: BorderSide(color: theme.colorScheme.outline),
-                    right: BorderSide(color: theme.colorScheme.outline),
-                  ),
-                ),
-                child: _platformAddButton(),
-              ),
-              row: row,
-            ),
-    );
+    return UtenTableRowRightEdge(child: row);
   }
 
   Widget _buildHeaderGroupBand(ThemeData theme, List<int> indices, int level) {
@@ -7376,7 +7380,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       horizontal: controller,
       width: width,
       fallbackWidth: _hasSelectionColumn ? _selectionColWidth : 0,
-      trailingWidth: widget.showColumnChooser ? 48 : 0,
       cell: cell,
       row: row,
     );
@@ -7746,6 +7749,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildDataRowImpl(ThemeData theme, T item) {
     final knownHeight = _knownPlainRowHeight(theme);
+    final minimumHeight = widget.dataRowMinimumHeight;
+    final rowAlignment = _stretchDataRows
+        ? CrossAxisAlignment.stretch
+        : CrossAxisAlignment.center;
     final visibleIndices = _visibleIndices;
     bool showRightDivider(int index) => true;
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
@@ -7798,29 +7805,37 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             : (_) => _toggleRow(item, rowSelectionState != true),
       ),
     );
-    final selectionCheckbox = Center(
-      child: !rowSelectable && widget.unselectableLeadingBuilder != null
-          ? widget.unselectableLeadingBuilder!(context, item)
-          : leadingOverlay == null
-          ? checkbox
-          // 可勾选但另有门槛的行：勾选框右下角压一个小徽记(如锁)，勾选仍可用。
-          : SizedBox(
-              width: _selectionColWidth,
-              height: _selectionColWidth,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Center(child: checkbox),
-                  Positioned(right: 2, bottom: 4, child: leadingOverlay),
-                ],
-              ),
-            ),
-    );
+    final Widget selectionControl;
+    if (!rowSelectable && widget.unselectableLeadingBuilder != null) {
+      // The alternate icon keeps the same lane height as the normal checkbox.
+      selectionControl = ConstrainedBox(
+        constraints: BoxConstraints(minHeight: _selectionCheckboxExtent(theme)),
+        child: Center(
+          heightFactor: 1,
+          child: widget.unselectableLeadingBuilder!(context, item),
+        ),
+      );
+    } else if (leadingOverlay != null) {
+      // A badge decorates the checkbox without contributing to row height.
+      selectionControl = SizedBox(
+        width: _selectionColWidth,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            checkbox,
+            PositionedDirectional(end: 2, bottom: 4, child: leadingOverlay),
+          ],
+        ),
+      );
+    } else {
+      selectionControl = checkbox;
+    }
     final selectionCell = DecoratedBox(
       decoration: BoxDecoration(
         border: Border(right: BorderSide(color: lineColor, width: 0.5)),
       ),
-      child: selectionCheckbox,
+      child: Center(child: selectionControl),
     );
     // 横滚时钉在视口左缘的那一份副本（[UtenFrozenLeadingColumn]）：它浮在数据格之上，
     // **必须**自带与本行一致的不透明底 + 行底线，否则下面的数据格会透上来、行线
@@ -7844,7 +7859,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ),
               child: _boundStretchRow(
                 Row(
-                  crossAxisAlignment: _selectableCross,
+                  crossAxisAlignment: rowAlignment,
                   children: [
                     if (_hasSelectionColumn)
                       SizedBox(width: _selectionColWidth, child: selectionCell),
@@ -7861,6 +7876,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   ],
                 ),
                 knownHeight: knownHeight,
+                minimumHeight: minimumHeight,
               ),
             ),
           );
@@ -7881,7 +7897,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             width: _pinnedLeadingWidth(pinnedIndices),
             cell: frozenRowRegion ?? const SizedBox.shrink(),
             row: Row(
-              crossAxisAlignment: _selectableCross,
+              crossAxisAlignment: rowAlignment,
               children: [
                 if (_hasSelectionColumn)
                   SizedBox(width: _selectionColWidth, child: selectionCell),
@@ -7899,6 +7915,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ),
           ),
           knownHeight: knownHeight,
+          minimumHeight: minimumHeight,
         ),
       ),
     );

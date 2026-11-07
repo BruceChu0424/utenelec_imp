@@ -56,12 +56,18 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
     private BigDecimal weight;
     @jakarta.validation.constraints.Size(max = 8)
     private String weightEntryMode;
-    /** Expected goods-master kg per base unit, verified by the server before saving. */
+    /** Kilograms per base unit used for this report line. */
     @com.uten.imp.common.validation.DocumentAmount
     private BigDecimal unitWeightKgExact;
     private Integer weightQuantityScale;
     @jakarta.validation.constraints.Size(max = 7)
     private String weightQuantityRounding;
+    /** Absent means the existing goods-master basis. Manual and derived values are report-local. */
+    @jakarta.validation.constraints.Size(max = 7)
+    private String unitWeightSource;
+    private Integer weightUnitScale;
+    @jakarta.validation.constraints.Size(max = 7)
+    private String weightUnitRounding;
     /** Exact existing report item for preserving an unchanged frozen draft measurement on edit. */
     private UUID weightSourceReportItemId;
     private String clientName;

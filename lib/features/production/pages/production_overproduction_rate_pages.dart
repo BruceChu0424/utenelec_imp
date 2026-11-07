@@ -13,6 +13,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -379,7 +380,21 @@ class _RateDetailState
     if (approve) {
       final confirmed = await showUtenReviewerConfirmDialog(
         context,
-        message: '请核对红色原内容与绿色申请内容。审批通过后允许超产比例才会生效。',
+        summary: UtenConfirmationSummary(
+          facts: [
+            if (detail.segmentCode case final code?)
+              UtenConfirmationFact(label: '工单', value: code),
+            UtenConfirmationFact(
+              label: '原比例',
+              value: productionRateText(detail.beforeRate),
+            ),
+            UtenConfirmationFact(
+              label: '申请比例',
+              value: productionRateText(detail.requestedRate),
+            ),
+          ],
+          consequences: const ['审批通过后，申请比例生效。'],
+        ),
       );
       if (confirmed != true || !mounted) return;
     } else {

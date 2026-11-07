@@ -103,7 +103,7 @@ void main() {
         final stale = tester
             .widget<UtenButton>(
               find.ancestor(
-                of: find.text('批量登记（先入库后质检）'),
+                of: find.text('先入库后质检'),
                 matching: find.byType(UtenButton),
               ),
             )
@@ -111,7 +111,7 @@ void main() {
         expect(stale, isNotNull);
         if (mode == 'readOnly') {
           final container = ProviderScope.containerOf(
-            tester.element(find.text('批量登记（先质检后入库）')),
+            tester.element(find.text('先质检后入库')),
           );
           container
               .read(_liveTaskScope.notifier)
@@ -127,7 +127,7 @@ void main() {
           api.allowPreStock = false;
           await tester.tap(find.byTooltip('刷新'));
           await tester.pumpAndSettle();
-          expect(find.text('批量登记（先入库后质检）'), findsNothing);
+          expect(find.text('先入库后质检'), findsNothing);
         }
         stale!();
         await tester.pumpAndSettle();
@@ -178,11 +178,8 @@ void main() {
         await tester.pump();
         // ADR-184：超管不再隐式获得「先入库后质检」——服务端只按显式权限
         // 折进行事实, 没有额外权限时只保留「先质检后入库」。
-        expect(
-          find.text('批量登记（先入库后质检）'),
-          withExtra ? findsOneWidget : findsNothing,
-        );
-        expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+        expect(find.text('先入库后质检'), withExtra ? findsOneWidget : findsNothing);
+        expect(find.text('先质检后入库'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -261,8 +258,8 @@ void main() {
     // 「先质检后入库(N)」。
     expect(table.idOf!(table.items.first), _registerRowKey);
     expect(find.byKey(const Key('warehouse-task-record-batch')), findsNothing);
-    expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
-    expect(find.text('批量登记（先入库后质检）'), findsNothing);
+    expect(find.text('先质检后入库'), findsOneWidget);
+    expect(find.text('先入库后质检'), findsNothing);
     expect(table.selectedIds, {_registerRowKey});
     await tester.tap(find.text('短收余量待点收'));
     await tester.pump();

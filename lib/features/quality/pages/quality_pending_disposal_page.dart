@@ -1348,19 +1348,6 @@ class _ProcurementInspectionDetailPageState
           rows.map((row) => (row.item, row.failValue)),
         ),
         requireReason: hasFail,
-        lines: [
-          for (final row in rows)
-            InspectionReportConfirmLine(
-              label: [
-                row.item.goodsName,
-                row.item.goodsCode,
-                row.item.colorName,
-              ].where((text) => text?.isNotEmpty == true).join(' · '),
-              passText: _fmt(row.passValue),
-              failText: _fmt(row.failValue),
-              dim: inspectionQuantityUnit(context, row.item),
-            ),
-        ],
       );
       if (reason != null) await requestScope.verify();
     } on ApiException catch (error) {

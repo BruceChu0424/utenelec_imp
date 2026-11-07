@@ -270,35 +270,6 @@ class InboundRouteSubmitButton extends StatelessWidget {
   );
 }
 
-/// 确认弹窗正文：一行一个要点(· 前缀)，比整段连排短一半以上。
-/// [extra] 是只在特定条件下才追加的那一条(如跨仓预定提示)，用警示色区分。
-class InboundConfirmPoints extends StatelessWidget {
-  const InboundConfirmPoints(this.points, {super.key, this.extra});
-
-  final List<String> points;
-  final String? extra;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget line(String text, {Color? color}) => Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      child: Text(
-        '· $text',
-        style: theme.textTheme.bodyMedium?.copyWith(color: color),
-      ),
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final point in points) line(point),
-        if (extra != null) line(extra!, color: theme.colorScheme.error),
-      ],
-    );
-  }
-}
-
 /// 明细表上方的说明行：来源单据张数。
 ///
 /// 2026-10-10 简洁口径：原「明细默认全选：右下提交只含勾选的行…」长提示删除(勾选

@@ -103,7 +103,7 @@ void _expectDestinationLayoutHeaderOrder(WidgetTester tester) {
     'planNo',
     'remark',
   ]);
-  final quantity = _destinationLayoutHeader('完工申报量 *');
+  final quantity = _destinationLayoutHeader('完工申报量');
   final destination = _destinationLayoutHeader('产出去向');
   final measuredWeight = _destinationLayoutHeader('实称总重量');
   final unitWeight = _destinationLayoutHeader('单重');
@@ -163,7 +163,7 @@ void registerDailyReportDestinationLayoutTests() {
     expect(addFile.right, closeTo(attachmentSection.right, 0.1));
     expect(
       addFile.bottom,
-      lessThan(tester.getTopLeft(_destinationLayoutHeader('完工申报量 *')).dy),
+      lessThan(tester.getTopLeft(_destinationLayoutHeader('完工申报量')).dy),
     );
     if (capture) {
       await saveAuditScreenshot(

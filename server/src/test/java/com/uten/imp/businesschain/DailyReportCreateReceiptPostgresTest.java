@@ -146,6 +146,57 @@ class DailyReportCreateReceiptPostgresTest {
         assertEquals(0, new BigDecimal("0.33").compareTo(separatelyMeasured.getWeight()));
     }
 
+    @Test void reportLocalWeightPersistsItsInputsAndOriginalReceiptWithoutChangingGoodsMaster() throws Exception {
+        var c = request();
+        var line = c.request().getItems().getFirst();
+        BigDecimal rate = line.getUnitRate() == null ? BigDecimal.ONE : line.getUnitRate();
+        BigDecimal masterBefore = db.queryForObject("SELECT m_weight FROM goods WHERE id=?",
+                BigDecimal.class, line.getGoodsId());
+        line.setQty(new BigDecimal("3"));
+        c.request().getMaterialLines().getFirst().setQtyBase(new BigDecimal("3"));
+        line.setWeight(rate);
+        line.setWeightEntryMode("UNIT");
+        line.setUnitWeightSource("DERIVED");
+        line.setUnitWeightKgExact(new BigDecimal("0.3333"));
+        line.setWeightUnitScale(4);
+        line.setWeightUnitRounding("DOWN");
+        byte[] original = json.writeValueAsBytes(c.request());
+
+        var report = reports.create(c.request());
+        var saved = report.getItems().getFirst();
+        assertEquals("UNIT", saved.getWeightEntryMode());
+        assertEquals("DERIVED", saved.getUnitWeightSource());
+        assertEquals("0.3333", saved.getUnitWeightKgExact());
+        assertEquals(4, saved.getWeightUnitScale());
+        assertEquals("DOWN", saved.getWeightUnitRounding());
+        assertEquals(0, rate.compareTo(saved.getWeight()));
+
+        var receipt = new Case(c.world(), c.request(), report.getId(), original);
+        var recovered = resolveBody(original, reader(receipt), 200);
+        assertEquals("COMMITTED", recovered.path("status").asText());
+        assertEquals("DERIVED", recovered.path("detail").path("items").get(0).path("unitWeightSource").asText());
+        var changed = json.readValue(original, DailyReportSaveRequest.class);
+        changed.getItems().getFirst().setWeightUnitRounding("HALF_UP");
+        resolve(changed, reader(receipt), 409);
+
+        changed.setExpectedVersion(report.getRowVersion());
+        var manuallyEntered = changed.getItems().getFirst();
+        manuallyEntered.setWeightSourceReportItemId(saved.getId());
+        manuallyEntered.setWeightEntryMode("QUANTITY");
+        manuallyEntered.setUnitWeightSource("MANUAL");
+        manuallyEntered.setUnitWeightKgExact(new BigDecimal("0.42"));
+        manuallyEntered.setWeight(null);
+        manuallyEntered.setWeightUnitScale(null);
+        manuallyEntered.setWeightUnitRounding(null);
+        login(c.world().superAdminUserId());
+        var updated = reports.update(report.getId(), changed).getItems().getFirst();
+        assertEquals("MANUAL", updated.getUnitWeightSource());
+        assertEquals("0.42", updated.getUnitWeightKgExact());
+        assertNull(updated.getWeight());
+        assertEquals(masterBefore, db.queryForObject("SELECT m_weight FROM goods WHERE id=?",
+                BigDecimal.class, line.getGoodsId()));
+    }
+
     @Test void aDifferentActorCannotClaimTheReceiptEvenWithGlobalObjectReadPermission() throws Exception {
         var c=create();
         FullChainEndToEndTest fixture=new FullChainEndToEndTest(); beans.autowireBean(fixture);

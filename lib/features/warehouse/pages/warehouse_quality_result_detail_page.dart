@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -37,6 +38,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../models/warehouse_iqc_return.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
@@ -422,11 +424,28 @@ class _WarehouseQualityResultDetailPageState
       actionLabel: '仓库实物入库确认',
       ownRelease: ownRelease,
       sections: sections,
-      description: ownRelease
-          ? '注意：本单品质放行由当前账号执行（单人兼任品质与仓库）。'
-                '请再次核对实物数量与实际库位后确认；提交成功后才会增加可用库存。'
-          : '本次将确认 ${items.length} 条品质放行切片的实收数量与实际库位，'
-                '提交成功后才会增加可用库存并推进对应生产供给。',
+      summary: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(
+            label: '本次入库',
+            value:
+                '${items.length} 条放行明细 · ${items.map((item) => item.warehouseId).toSet().length} 个仓库',
+          ),
+          UtenConfirmationFact(
+            label: '实收数量',
+            value: exactMeasurementTotalsText(
+              selected.map(
+                (draft) => ExactMeasuredAmount(
+                  value: draft.quantity.text.trim(),
+                  unitId: draft.slice.unitId,
+                  unitName: draft.slice.unitName,
+                ),
+              ),
+            ),
+          ),
+        ],
+        consequences: const ['按本次确认的库位增加可用库存，并推进对应生产供给。'],
+      ),
     );
     requestScope.checkCurrent();
     final command = WarehouseIqcStockInConfirmCommand(

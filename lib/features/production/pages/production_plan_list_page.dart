@@ -20,6 +20,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
@@ -368,21 +369,22 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       );
       return;
     }
-    final message = danger
-        ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
-        : '将审核选中的 ${ids.length} 个生产计划单(草稿→已审)；非草稿将被跳过。';
+    final summary = UtenConfirmationSummary(
+      facts: [UtenConfirmationFact(label: '选中的生产计划', value: '${ids.length} 张')],
+      consequences: [danger ? '仅删除草稿，删除后无法恢复。' : '审核选中的草稿，其他状态的单据跳过。'],
+    );
     final confirmed = reviewerResponsibility
         ? await showUtenReviewerConfirmDialog(
             context,
             title: '批量$verb(${ids.length} 个)',
-            message: message,
+            summary: summary,
             confirmLabel: '确认批量$verb',
             actionLabel: '批量审核',
           )
         : await UtenDialog.show(
             context,
             title: '批量$verb(${ids.length} 个)',
-            content: Text(message),
+            content: summary,
             confirmLabel: '确认批量$verb',
             danger: danger,
           );

@@ -359,24 +359,13 @@ class UtenBusyOverlayCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     ExcludeSemantics(
-                      child: compact
-                          ? Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                progress,
-                                const SizedBox(height: UtenSpacing.s12),
-                                text,
-                              ],
-                            )
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                progress,
-                                const SizedBox(width: UtenSpacing.s16),
-                                Expanded(child: text),
-                              ],
-                            ),
+                      child: Row(
+                        spacing: compact ? UtenSpacing.s12 : UtenSpacing.s16,
+                        children: [
+                          progress,
+                          Expanded(child: text),
+                        ],
+                      ),
                     ),
                     if (onCancel != null) ...[
                       const SizedBox(height: UtenSpacing.s16),

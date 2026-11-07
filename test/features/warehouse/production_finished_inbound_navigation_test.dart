@@ -13,6 +13,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -262,11 +263,21 @@ void main() {
 
       await tester.tap(find.text('待登记入库'));
       await tester.pump();
-      expect(find.text('批量登记（先入库后质检）'), findsOneWidget);
-      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
+      final stockInFirst = find.widgetWithText(UtenButton, '先入库后质检');
+      final inspectFirst = find.widgetWithText(UtenButton, '先质检后入库');
+      expect(stockInFirst, findsOneWidget);
+      expect(inspectFirst, findsOneWidget);
+      expect(
+        tester.widget<UtenButton>(stockInFirst).type,
+        UtenButtonType.success,
+      );
+      expect(
+        tester.widget<UtenButton>(inspectFirst).type,
+        UtenButtonType.primary,
+      );
 
       // 「先入库后质检(N)」：进批量登记页带 preStock=1。
-      await tester.tap(find.text('批量登记（先入库后质检）'));
+      await tester.tap(stockInFirst);
       await tester.pumpAndSettle();
       expect(find.byType(_RegistrationRouteProbe), findsOneWidget);
       var location = tester
@@ -286,11 +297,11 @@ void main() {
       // 未办理直接返回：列表刷新清空勾选，重新勾选后改点「先质检后入库(N)」带 preStock=0。
       await tester.tap(find.byKey(const Key('leave-batch-route')));
       await tester.pumpAndSettle();
-      expect(find.text('批量登记（先质检后入库）'), findsNothing);
+      expect(find.text('先质检后入库'), findsNothing);
       await tester.tap(find.text('待登记入库'));
       await tester.pump();
-      expect(find.text('批量登记（先质检后入库）'), findsOneWidget);
-      await tester.tap(find.text('批量登记（先质检后入库）'));
+      expect(find.text('先质检后入库'), findsOneWidget);
+      await tester.tap(find.text('先质检后入库'));
       await tester.pumpAndSettle();
       location = tester
           .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))

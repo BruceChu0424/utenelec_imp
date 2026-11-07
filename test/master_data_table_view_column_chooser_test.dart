@@ -3,6 +3,73 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  testWidgets('the trailing column action scrolls with the table header', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 650));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            child: MasterDataTableView<int>(
+              columns: [
+                for (var i = 0; i < 6; i++)
+                  MasterColumnDef(
+                    key: 'c$i',
+                    label: '列 $i',
+                    width: 120,
+                    minimumWidthOf: (_) => 120,
+                    value: (_) => '值 $i',
+                  ),
+              ],
+              items: const [1],
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              idOf: (row) => '$row',
+              selectable: true,
+              onSelectedIdsChanged: (_) {},
+              enableTextSelection: false,
+              embedded: true,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const Key('platform-table-add-column'));
+    final toolbar = find.text('表头设置 6/6');
+    expect(button, findsOneWidget);
+    expect(button.hitTestable(), findsNothing);
+    expect(toolbar.hitTestable(), findsOneWidget);
+
+    final body = Scrollable.of(
+      tester.element(find.text('值 1')),
+      axis: Axis.horizontal,
+    ).position;
+    expect(body.maxScrollExtent, greaterThan(250));
+    await tester.drag(find.text('值 1'), const Offset(-120, 0));
+    await tester.pumpAndSettle();
+    expect(body.pixels, greaterThan(0));
+    expect(button.hitTestable(), findsNothing);
+
+    body.jumpTo(body.maxScrollExtent);
+    await tester.pumpAndSettle();
+    expect(button.hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const Key('master-data-table-select-all')).hitTestable(),
+      findsOneWidget,
+    );
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('显示列'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('many-column chooser visibly scrolls to quantity and weight', (
     tester,
   ) async {

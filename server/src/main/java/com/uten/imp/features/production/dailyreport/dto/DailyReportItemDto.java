@@ -52,6 +52,9 @@ public class DailyReportItemDto {
     private String unitWeightKgExact;
     private Integer weightQuantityScale;
     private String weightQuantityRounding;
+    private String unitWeightSource;
+    private Integer weightUnitScale;
+    private String weightUnitRounding;
     private String clientName;
     private String sourceDocNo;
     private String remark;

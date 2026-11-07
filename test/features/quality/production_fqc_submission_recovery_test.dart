@@ -50,6 +50,7 @@ void main() {
         final reason = List.filled(4, '同一批次外观复核依据').join();
         final api = _FqcApi(ids: [_id, _id2, _id3], goodsName: longName)
           ..preStocked = true
+          ..mixedUnits = true
           ..sheetRemark = List.filled(5, '长检查单备注及待处理说明').join();
         final env = await _mount(
           tester,
@@ -200,6 +201,11 @@ void main() {
         api.failReads = false;
         api.afterPost = null;
         await _pressureTap(tester, submit);
+        if (outcome == 'unknown') {
+          expect(find.text('待核对 3 行'), findsOneWidget);
+          expect(find.text('合格 13.25 个 · 10 箱'), findsOneWidget);
+          expect(find.text('不合格 0.75 个 · 0 箱'), findsOneWidget);
+        }
         final confirm = outcome == 'unknown'
             ? find.text('继续原提交')
             : find.byKey(const Key('inspection-report-confirm-submit'));
@@ -1602,6 +1608,7 @@ class _FqcApi extends ApiClient {
   bool failReads = false;
   bool canDecide = true;
   bool preStocked = false;
+  bool mixedUnits = false;
   String? sheetRemark;
   String? statusOverride;
   VoidCallback? beforePost;
@@ -1640,7 +1647,8 @@ class _FqcApi extends ApiClient {
     'authorizedInboundQty': 0,
     'createdAt': '2026-09-30T01:00:00Z',
     'updatedAt': '2026-09-30T01:00:00Z',
-    'unitName': '个',
+    if (mixedUnits) 'unitId': id == _id3 ? 'fqc-package' : 'fqc-each',
+    'unitName': mixedUnits && id == _id3 ? '箱' : '个',
   };
 
   /// ADR-148：检查单办理页一行 = 一批实物；这里每份自成一批(批号 = 任务号)。
@@ -1651,6 +1659,7 @@ class _FqcApi extends ApiClient {
       'sourceReportId': row['sourceReportId'],
       'reportNo': row['reportNo'],
       'goodsName': row['goodsName'],
+      'unitId': row['unitId'],
       'unitName': row['unitName'],
       'reportedQty': row['reportedQty'],
       'passedQty': row['passedQty'],

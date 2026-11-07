@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-/** Goods-master basis and exact quantity adoption for production reporting. */
+/** Report-local weight basis and exact derivation for production reporting. */
 final class DailyReportWeightInputs {
     static final String MASTER_WEIGHT_JOINS = """
             LEFT JOIN units report_weight_unit ON report_weight_unit.id = g.m_weight_unit_id
@@ -30,6 +30,7 @@ final class DailyReportWeightInputs {
                  AND report_weight_profile.measurement_dimension = 'MASS'
             """;
     static final String QUANTITY_PURPOSE = "production.daily-report.weight-to-quantity";
+    static final String UNIT_WEIGHT_PURPOSE = "production.daily-report.weight-to-unit";
     private static final BigDecimal WEIGHT_LIMIT = BigDecimal.ONE.scaleByPowerOfTen(14);
 
     private DailyReportWeightInputs() { }
@@ -61,7 +62,17 @@ final class DailyReportWeightInputs {
     static boolean supplied(DailyReportItemLine line) {
         return line.getWeightEntryMode() != null || line.getUnitWeightKgExact() != null
                 || line.getWeightQuantityScale() != null || line.getWeightQuantityRounding() != null
+                || line.getUnitWeightSource() != null || line.getWeightUnitScale() != null
+                || line.getWeightUnitRounding() != null
                 || line.getWeightSourceReportItemId() != null;
+    }
+
+    static boolean usesMasterBasis(DailyReportItemLine line) {
+        return "MASTER".equals(basisSource(line.getUnitWeightSource()));
+    }
+
+    private static String basisSource(String source) {
+        return source == null ? "MASTER" : source;
     }
 
     /** Preserves one unchanged logical measurement from the current, CAS-checked draft. */
@@ -112,6 +123,9 @@ final class DailyReportWeightInputs {
                         || !Objects.equals(piece.getWeightEntryMode(), line.getWeightEntryMode())
                         || !Objects.equals(piece.getWeightQuantityScale(), line.getWeightQuantityScale())
                         || !Objects.equals(piece.getWeightQuantityRounding(), line.getWeightQuantityRounding())
+                        || !basisSource(piece.getUnitWeightSource()).equals(basisSource(line.getUnitWeightSource()))
+                        || !Objects.equals(piece.getWeightUnitScale(), line.getWeightUnitScale())
+                        || !Objects.equals(piece.getWeightUnitRounding(), line.getWeightUnitRounding())
                         || (piece.getWeight() == null) != (kg == null)) return false;
                 qty = qty.add(piece.getQty());
                 if (kg != null) kg = kg.add(piece.getWeight());
@@ -140,33 +154,50 @@ final class DailyReportWeightInputs {
     static void validate(DailyReportItemLine line, BigDecimal masterKgPerBaseUnit) {
         if (!supplied(line)) return;
         String mode = line.getWeightEntryMode();
-        BigDecimal expected = line.getUnitWeightKgExact();
-        if (mode == null || !Set.of("QUANTITY", "WEIGHT").contains(mode) || expected == null || expected.signum() <= 0) {
-            throw invalid("请重新选择日报计量方式，并核对货品资料中的单重及单位");
+        String source = basisSource(line.getUnitWeightSource());
+        BigDecimal kgPerBaseUnit = line.getUnitWeightKgExact();
+        if (mode == null || !Set.of("QUANTITY", "WEIGHT", "UNIT").contains(mode)
+                || !Set.of("MASTER", "MANUAL", "DERIVED").contains(source)
+                || "UNIT".equals(mode) != "DERIVED".equals(source)
+                || kgPerBaseUnit == null || kgPerBaseUnit.signum() <= 0) {
+            throw invalid("请核对日报计量方式、单重来源及单位");
         }
-        FinancialExactAmount.require(expected, "货品单重");
-        if (masterKgPerBaseUnit == null || expected.compareTo(masterKgPerBaseUnit) != 0) {
+        FinancialExactAmount.require(kgPerBaseUnit, "报工单重");
+        if (usesMasterBasis(line) && !sameDecimal(kgPerBaseUnit, masterKgPerBaseUnit)) {
             throw new ApiException(ErrorCode.CONFLICT, "货品单重或重量单位已变化，请重新读取并核对本次报工数量");
         }
         BigDecimal rate = defaultRate(line.getUnitRate());
         ProductionOutputQuantity.requirePositiveBaseQuantity(line.getQty(), rate);
-        Integer scale = line.getWeightQuantityScale();
-        String rounding = line.getWeightQuantityRounding();
+        var quantityChoice = precisionChoice(line.getWeightQuantityScale(), line.getWeightQuantityRounding(), 4,
+                "称重折算数量");
+        var unitChoice = precisionChoice(line.getWeightUnitScale(), line.getWeightUnitRounding(),
+                FinancialExactAmount.MAX_FRACTION_DIGITS, "称重折算单重");
+        if (quantityChoice != null && !"WEIGHT".equals(mode) || unitChoice != null && !"UNIT".equals(mode)) {
+            throw invalid("请核对本次计量方式的保留位数和取舍方式");
+        }
         if ("QUANTITY".equals(mode)) {
-            if (scale != null || rounding != null) {
-                throw invalid("按数量报工不使用称重折算的保留位数和取舍方式");
+            if (line.getWeight() != null) {
+                if ("MANUAL".equals(source)) {
+                    throw invalid("数量和手工单重推算的是参考重量，请单独填写实称总重量再核对折算");
+                }
+                // Preserve legacy quantity-mode reports with an independently measured mass.
+                requireMeasuredKg(line.getWeight());
             }
-            if (line.getWeight() != null) requireMeasuredKg(line.getWeight());
             return;
         }
         BigDecimal totalKg = requireMeasuredKg(line.getWeight());
-        if ((scale == null) != (rounding == null) || scale != null && (scale < 0 || scale > 4
-                || !Choice.supportsRounding(rounding))) {
-            throw invalid("请核对称重折算数量的保留位数和取舍方式");
+        if ("UNIT".equals(mode)) {
+            BigDecimal derived = adoptedValue(totalKg, line.getQty().multiply(rate), unitChoice,
+                    FinancialExactAmount.MAX_FRACTION_DIGITS, UNIT_WEIGHT_PURPOSE, "本次实称重量折算报工单重");
+            if (!sameDecimal(derived, kgPerBaseUnit)) {
+                throw invalid("报工单重与实称总重量、完工申报量或所选取舍不一致，请重新核对");
+            }
+            return;
         }
-        BigDecimal qty = adoptedQuantity(totalKg, masterKgPerBaseUnit.multiply(rate), scale, rounding);
-        if (qty.compareTo(line.getQty()) != 0) {
-            throw invalid("完工申报量与实称总重量、货品单重或所选取舍不一致，请重新核对");
+        BigDecimal qty = adoptedValue(totalKg, kgPerBaseUnit.multiply(rate), quantityChoice, 4,
+                QUANTITY_PURPOSE, "本次实称重量折算完工申报量");
+        if (!sameDecimal(qty, line.getQty())) {
+            throw invalid("完工申报量与实称总重量、报工单重或所选取舍不一致，请重新核对");
         }
     }
 
@@ -178,19 +209,28 @@ final class DailyReportWeightInputs {
         return totalKg;
     }
 
-    private static BigDecimal adoptedQuantity(BigDecimal totalKg, BigDecimal kgPerReportUnit, Integer scale, String rounding) {
+    private static Choice precisionChoice(Integer scale, String rounding, int maximum, String label) {
+        if (scale == null && rounding == null) return null;
+        if (scale == null || scale < 0 || scale > maximum || !Choice.supportsRounding(rounding)) {
+            throw invalid("请核对" + label + "的保留位数和取舍方式");
+        }
+        return new Choice(scale, rounding);
+    }
+
+    private static BigDecimal adoptedValue(BigDecimal numerator, BigDecimal denominator, Choice choice,
+                                           int maximum, String purpose, String label) {
         String reason;
         try {
-            BigDecimal exact = totalKg.divide(kgPerReportUnit).stripTrailingZeros();
-            if (exact.scale() <= 4) return exact;
+            BigDecimal exact = numerator.divide(denominator).stripTrailingZeros();
+            if (exact.scale() <= maximum) return exact;
             reason = "PRECISION_LIMIT";
         } catch (ArithmeticException nonTerminating) {
             reason = "NON_TERMINATING";
         }
-        if (scale == null) {
-            throw new BusinessPrecisionRequiredException(QUANTITY_PURPOSE, "本次实称重量折算完工申报量", 4, reason);
+        if (choice == null) {
+            throw new BusinessPrecisionRequiredException(purpose, label, maximum, reason);
         }
-        return new Choice(scale, rounding).divide(totalKg, kgPerReportUnit);
+        return choice.divide(numerator, denominator);
     }
 
     private static ApiException invalid(String message) {

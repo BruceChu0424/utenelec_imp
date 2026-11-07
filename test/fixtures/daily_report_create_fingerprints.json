@@ -174,4 +174,24 @@
   },
   "requestHash" : "5ba609e2fe3d9cb706381b41d8aa529a2efc01869876d33b9c5984152fd89c31",
   "fullPayloadHash" : "4c9f44dc8445d579c662c83f340105240e0570fcf55901224a7e6a742776868e"
+}, {
+  "name" : "derived_unit_weight_preserves_precision",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-triad",
+    "billDate" : "2026-11-07",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "qty" : 3,
+      "unitRate" : 1,
+      "weight" : "1.0000",
+      "weightEntryMode" : "UNIT",
+      "unitWeightKgExact" : "0.3333",
+      "unitWeightSource" : "DERIVED",
+      "weightUnitScale" : 4,
+      "weightUnitRounding" : "DOWN"
+    } ]
+  },
+  "requestHash" : "c87ec528229056739bb5dabc9af60c99da212f5026fb43c619087b90476d3da0",
+  "fullPayloadHash" : "8c8e54f58c5839d89dd781e189d531d0cb0b0556bbe73e2b9b4b8e52c660d0e9"
 } ]

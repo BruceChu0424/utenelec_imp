@@ -310,6 +310,16 @@ String dailyReportCreateRequestHash(Map<String, dynamic> body) {
         line['weightQuantityRounding'],
       );
     }
+    if (line['unitWeightSource'] != null &&
+        line['unitWeightSource'] != 'MASTER') {
+      _add(parts, '$path.unitWeightSource', line['unitWeightSource']);
+    }
+    if (line['weightUnitScale'] != null) {
+      _add(parts, '$path.weightUnitScale', line['weightUnitScale'], 'NUMBER');
+    }
+    if (line['weightUnitRounding'] != null) {
+      _add(parts, '$path.weightUnitRounding', line['weightUnitRounding']);
+    }
     if (line['weightSourceReportItemId'] != null) {
       _add(
         parts,

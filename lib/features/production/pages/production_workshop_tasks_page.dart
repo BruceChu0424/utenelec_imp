@@ -56,6 +56,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -660,6 +661,55 @@ class _ProductionWorkshopTasksPageState
     'BATCH': Icons.call_split_rounded,
     'CONTINUOUS': Icons.all_inclusive_rounded,
   };
+  static const double _routeIconWidth = 16;
+  static const double _routeMarkerWidth = 8;
+  static const _routePlaceholder = '选择生产路线';
+
+  String? _rememberedRoute(
+    ProductionExecutionWorkbenchSegment task,
+    List<String> options,
+  ) => task.startRoute == null && options.contains(task.suggestedStartRoute)
+      ? task.suggestedStartRoute
+      : null;
+
+  String _readOnlyRouteLabel(ProductionExecutionWorkbenchSegment task) =>
+      task.startRoute == null ? '待确认' : task.startRouteLabel;
+
+  ({String label, double chrome}) _nextStepGeometry(
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    if (!_routeSettableTask(task)) {
+      return (
+        label: _readOnlyRouteLabel(task),
+        chrome: _routeIconWidth + UtenSpacing.s4,
+      );
+    }
+    final current = task.startRoute;
+    final route = current ?? _rememberedRoute(task, _routeOptions(task));
+    return (
+      label: route == null
+          ? _routePlaceholder
+          : _routeOptionMeta[route]?.$1 ?? task.startRouteLabel,
+      chrome:
+          UtenDropdownField.flatArrowWidth +
+          (current == null ? 0 : _routeMarkerWidth + UtenSpacing.s4),
+    );
+  }
+
+  double _workshopTextWidth(
+    BuildContext context,
+    String label,
+    TextScaler scaler, {
+    bool bold = false,
+  }) {
+    final style = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+    return utenTableCellTextWidth(
+      label,
+      style: bold ? style.copyWith(fontWeight: FontWeight.w700) : style,
+      textScaler: scaler,
+      textDirection: Directionality.of(context),
+    );
+  }
 
   /// 路线配色（2026-09-18 用户口径「不同生产路线给不同的颜色，不然不好区分」；
   /// 五轮口径「颜色太相近看不清，取差别大的」）：齐套=绿 / 分批=蓝 / 持续=品红，
@@ -826,8 +876,8 @@ class _ProductionWorkshopTasksPageState
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.alt_route_rounded, size: 16),
-            SizedBox(width: 4),
+            Icon(Icons.alt_route_rounded, size: _routeIconWidth),
+            SizedBox(width: UtenSpacing.s4),
             Flexible(
               child: Text('待确认', maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
@@ -850,8 +900,8 @@ class _ProductionWorkshopTasksPageState
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_routeIcons[task.startRoute], size: 16),
-          const SizedBox(width: 4),
+          Icon(_routeIcons[task.startRoute], size: _routeIconWidth),
+          const SizedBox(width: UtenSpacing.s4),
           Flexible(
             child: Text(
               task.startRouteLabel,
@@ -875,16 +925,13 @@ class _ProductionWorkshopTasksPageState
     if (!_routeSettableTask(task)) return _routeCell(task);
     final options = _routeOptions(task);
     final current = task.startRoute;
-    final remembered =
-        current == null && options.contains(task.suggestedStartRoute)
-        ? task.suggestedStartRoute
-        : null;
+    final remembered = _rememberedRoute(task, options);
     return Row(
       children: [
         if (current != null) ...[
           Container(
             key: ValueKey('workshop-route-bar-${task.segmentId}'),
-            width: 8,
+            width: _routeMarkerWidth,
             height: 16,
             decoration: BoxDecoration(
               color: _routeDotColor(context, current),
@@ -906,7 +953,7 @@ class _ProductionWorkshopTasksPageState
               allowClear: false,
               searchable: false,
               value: current ?? remembered,
-              hintText: '选择生产路线',
+              hintText: _routePlaceholder,
               items: [
                 for (final option in options)
                   UtenDropdownItem(
@@ -3049,6 +3096,11 @@ class _ProductionWorkshopTasksPageState
                           ),
                       ],
                       rowsController: _tableRows,
+                      dataRowMinimumHeight:
+                          UtenControlMetrics.usesTouchTargets(context)
+                          ? UtenTableCellAction.minimumLayoutHeightOf(context) +
+                                MasterDataTableView.cellVerticalPadding * 2
+                          : 0,
                       expensiveRowMounts: _isPreparing && _canStart,
                       paginationRevision: _items,
                       // 表头列序按 tableKey 记在每用户偏好里；2026-10-29
@@ -3398,8 +3450,19 @@ class _ProductionWorkshopTasksPageState
     };
   }
 
-  /// 列随分类变化（2026-09-06 用户口径）：进度列只在「生产中」显示——
-  /// 等待物料阶段没有报工进度可言，历史任务已完工无需再看进度条。
+  String _rateCellLabel(ProductionExecutionWorkbenchSegment task) {
+    if (!task.overproductionPolicyApplies) {
+      if (task.actualOutputSupplementRequestId == null) return '固定追加量';
+      return task.segmentStatus == 'IN_PROGRESS' ? '固定追加量 · 续报' : '固定追加量 · 查看';
+    }
+    final supplement = task.pendingSupplementQty;
+    final pendingRate = task.pendingOverproductionRate;
+    return '${productionRateText(task.allowedOverproductionRate)}'
+        '${supplement != null && supplement > 0 ? ' · 待续报 ${_taskQuantity(supplement)}' : ''}'
+        '${pendingRate == null ? '' : ' · 申请 ${productionRateText(pendingRate)}待审批'}';
+  }
+
+  /// 列随任务分类变化。生产中和报工送检显示实际产出。
   List<MasterColumnDef<ProductionExecutionWorkbenchSegment>> _columnsFor(
     String status,
   ) => [
@@ -3408,6 +3471,11 @@ class _ProductionWorkshopTasksPageState
       label: '状态',
       width: 72,
       value: _taskStatus,
+      measureWidthOf: (context, task, scaler) =>
+          _workshopTextWidth(context, _taskStatus(task), scaler, bold: true) +
+          16 +
+          UtenSpacing.s4,
+      measureWidthScope: 'workshop-task-status',
       // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」＋2026-10-08
       // ADR-169 档位锚定：等待物料段整格铺实底（绿=可开工 / 紫=部分已投可开工 /
       // 蓝=去领料 / 琥珀=部分可领 / 青绿=待仓库发料 / 红=缺料等待不能开工 /
@@ -3445,7 +3513,13 @@ class _ProductionWorkshopTasksPageState
                 children: [
                   const Icon(Icons.drafts_outlined, size: 16),
                   const SizedBox(width: 4),
-                  Flexible(child: Text(_taskStatus(task))),
+                  Flexible(
+                    child: Text(
+                      _taskStatus(task),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -3512,11 +3586,17 @@ class _ProductionWorkshopTasksPageState
       MasterColumnDef(
         key: 'route',
         label: '生产路线',
-        width: 210,
+        width: 120,
         info:
             '生产中工单的路线已定：已有领料、报工或预留后不可更改。'
             '持续生产在同一工单继续领料/直送补料；齐套按一次备齐开工。',
         value: (task) => task.startRouteLabel,
+        measureValueOf: _readOnlyRouteLabel,
+        measureWidthOf: (context, task, scaler) =>
+            _workshopTextWidth(context, _readOnlyRouteLabel(task), scaler) +
+            _routeIconWidth +
+            UtenSpacing.s4,
+        measureWidthScope: 'workshop-production-route',
         // 路线分类色（齐套=绿 / 分批=蓝 / 持续=品红）铺整格，替代原格内胶囊。
         cellColor: (context, task) =>
             utenStatusBadgeCellColor(_routeBadgeType(task.startRoute)),
@@ -3528,7 +3608,7 @@ class _ProductionWorkshopTasksPageState
       MasterColumnDef(
         key: 'nextStep',
         label: '下一步',
-        width: 240,
+        width: 120,
         info:
             '等待物料的下一步=选定生产路线，下拉选中即提交：齐套生产=全部物料到齐'
             '并实际领齐后开工；持续生产=每种物料共同支持部分产量即可开工，后续到货'
@@ -3536,8 +3616,15 @@ class _ProductionWorkshopTasksPageState
             '报工。勾选多行后在任一勾选行选路线=对全部勾选行一起提交(不支持该路线'
             '或已是该路线的行自动跳过)。已开工或已有报工后路线冻结，只读回显。',
         value: (task) => task.startRoute == null
-            ? '选择生产路线'
+            ? _routePlaceholder
             : _routeOptionMeta[task.startRoute]?.$1 ?? task.startRouteLabel,
+        measureValueOf: (task) => _nextStepGeometry(task).toString(),
+        measureWidthOf: (context, task, scaler) {
+          final content = _nextStepGeometry(task);
+          return _workshopTextWidth(context, content.label, scaler) +
+              content.chrome;
+        },
+        measureWidthScope: 'workshop-next-step',
         cellBuilder: (_, task) => _nextStepCell(task),
       ),
     // 2026-10-29 用户口径：两个单号列前移包住「来源计划」——工单号在其左、
@@ -3580,6 +3667,16 @@ class _ProductionWorkshopTasksPageState
             '本车间也可能入库后领料，只有真正交到本任务后才算「已领」。缺=红、可领=蓝。'
             '点击查看明细并选择可领物料。',
         value: _materialSummaryText,
+        measureWidthOf: (context, task, scaler) =>
+            UtenTableCellAction.contentWidthOf(
+              context,
+              _materialSummaryText(task),
+              textScaler: scaler,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+        measureWidthScope: 'workshop-material-summary',
         cellBuilder: (context, task) {
           final theme = Theme.of(context);
           final dark = theme.brightness == Brightness.dark;
@@ -3639,6 +3736,7 @@ class _ProductionWorkshopTasksPageState
       key: 'productCode',
       label: '编号',
       width: 130,
+      minimumWidthOf: (_) => 48,
       value: (task) => UtenGoodsAttributeCell.text(task.productCode),
       cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productCode),
     ),
@@ -3646,6 +3744,7 @@ class _ProductionWorkshopTasksPageState
       key: 'color',
       label: '颜色',
       width: 100,
+      minimumWidthOf: (_) => 48,
       value: (task) => UtenGoodsAttributeCell.text(task.productColorName),
       cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productColorName),
     ),
@@ -3661,18 +3760,25 @@ class _ProductionWorkshopTasksPageState
     MasterColumnDef(
       key: 'allowedOverproductionRate',
       label: '允许超产比例',
-      width: 175,
+      width: 120,
       value: (task) => task.overproductionPolicyApplies
           ? productionRateText(task.allowedOverproductionRate)
           : '固定追加量',
+      measureValueOf: _rateCellLabel,
+      measureWidthOf: (context, task, scaler) =>
+          UtenTableCellAction.contentWidthOf(
+            context,
+            _rateCellLabel(task),
+            textScaler: scaler,
+          ),
+      measureWidthScope: 'workshop-overproduction-rate',
       cellBuilder: (_, task) {
+        final label = _rateCellLabel(task);
         if (!task.overproductionPolicyApplies) {
           if (task.actualOutputSupplementRequestId != null) {
             return UtenTableCellAction(
               key: ValueKey('production-supplement-open-${task.segmentId}'),
-              label: task.segmentStatus == 'IN_PROGRESS'
-                  ? '固定追加量 · 续报'
-                  : '固定追加量 · 查看',
+              label: label,
               onPressed: _navigating ? null : () => _openSupplementTask(task),
             );
           }
@@ -3685,16 +3791,6 @@ class _ProductionWorkshopTasksPageState
         // 纯文本提示——追加量不走公共超产额度，颜色跟随本列现有样式。
         // 同日行高统一口径：单行（待审批等追加信息横排「·」连接），全量信息
         // 挂 Tooltip，两行文本会把只读任务行撑高。
-        final pendingSupplement =
-            task.pendingSupplementQty != null && task.pendingSupplementQty! > 0
-            ? ' · 待续报 ${_taskQuantity(task.pendingSupplementQty!)}'
-            : '';
-        final pendingRate = task.pendingOverproductionRate != null
-            ? ' · 申请 ${productionRateText(task.pendingOverproductionRate)}待审批'
-            : '';
-        final label =
-            '${productionRateText(task.allowedOverproductionRate)}'
-            '$pendingSupplement$pendingRate';
         final tooltip = '允许超产 $label';
         if (!_canOpenRateRequest) {
           return Tooltip(message: tooltip, child: Text(label, maxLines: 1));

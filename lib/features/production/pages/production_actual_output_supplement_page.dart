@@ -7,6 +7,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_confirmation_summary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -14,6 +15,7 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../models/production_exact_quantity.dart';
 import '../providers/production_execution_refresh.dart';
 import '../widgets/production_review_reason_dialog.dart';
 import '../repositories/production_actual_output_supplement_repository.dart';
@@ -65,10 +67,31 @@ class _SupplementState
   }
 
   Future<void> _approve() async {
-    if (_busy) return;
+    final detail = _detail;
+    if (_busy || detail == null) return;
+    final unit = detail.sourceLine?.unitName;
+    String quantity(String key) =>
+        productionQuantityWithUnit(
+          detail.data['${key}Exact'] ?? detail.data[key],
+          unit,
+        ) ??
+        '数量未留存';
     final confirmed = await showUtenReviewerConfirmDialog(
       context,
-      message: '请核对同一批实际总量、原工单份额和追加数量。审批后独立记录本次追加，车间确认原批次实物与原始用料后续报。',
+      summary: UtenConfirmationSummary(
+        facts: [
+          UtenConfirmationFact(label: '本批实际产量', value: quantity('actualQty')),
+          UtenConfirmationFact(
+            label: '原工单份额',
+            value: quantity('originalReportQty'),
+          ),
+          UtenConfirmationFact(
+            label: '独立追加量',
+            value: quantity('supplementQty'),
+          ),
+        ],
+        consequences: const ['审批后独立记录追加计划，车间核对原批次实物和用料后续报。'],
+      ),
     );
     if (confirmed != true || !mounted) return;
     await _action(() async {

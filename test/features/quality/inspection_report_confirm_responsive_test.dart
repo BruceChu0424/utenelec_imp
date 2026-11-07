@@ -48,16 +48,9 @@ void main() {
                       result = await showInspectionReportConfirmDialog(
                         context,
                         lineCount: 1,
-                        passTotalText: '123456789.123',
-                        failTotalText: '9876543.21',
-                        lines: const [
-                          InspectionReportConfirmLine(
-                            label: '需要完整核对的长货品名称及来源',
-                            passText: '123456789.123',
-                            failText: '9876543.21',
-                            dim: '个',
-                          ),
-                        ],
+                        passTotalText: '123456789.123 个',
+                        failTotalText: '9876543.21 个',
+                        requireReason: true,
                         onReasonChanged: draftReasons.add,
                       );
                     },
@@ -96,7 +89,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(draftReasons.last, '原始检验结论原因');
       for (final text in [
-        '需要完整核对的长货品名称及来源',
+        '共 1 行明细',
         '合格 123456789.123 个',
         '不合格 9876543.21 个',
       ]) {

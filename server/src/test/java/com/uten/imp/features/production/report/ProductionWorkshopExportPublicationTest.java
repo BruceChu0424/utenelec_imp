@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.util.*;
+import java.util.function.Supplier;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,7 +24,8 @@ class ProductionWorkshopExportPublicationTest {
         var controller=new ProductionReportController(service,mock(ProductionWhereUsedQueryService.class),xlsx,downloads,audit,users);
         ReflectionTestUtils.setField(controller,"scopeVersions",provider);
         when(service.export(anyString(),anyMap(),isNull(),isNull())).thenReturn(new ExportPayload(List.of(),List.of(),0));
-        when(xlsx.build(anyList(),anyList(),isNull(),eq("view_production"))).thenReturn(new byte[]{1});
+        when(xlsx.buildSource(any(),isNull(),eq("view_production"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<Supplier<ExportPayload>>getArgument(0).get(),new byte[]{1}));
         when(downloads.protect(any(),eq(""))).thenReturn(new byte[]{2});
         when(scopes.scopeFor("native_workshop_tasks",actor)).thenReturn("before","after");
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->controller.export(

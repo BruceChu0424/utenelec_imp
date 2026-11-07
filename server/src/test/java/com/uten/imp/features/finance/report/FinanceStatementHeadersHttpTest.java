@@ -7,6 +7,7 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import java.util.*;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -44,7 +45,8 @@ class FinanceStatementHeadersHttpTest {
     }
     @Test void overviewSpecificExportRoutePreservesBodyFilters() throws Exception {
         when(service.export(anyString(),anyMap(),any(),any())).thenReturn(new ExportPayload(List.of(),List.of(),0));
-        when(xlsx.build(anyList(),anyList(),any(),anyString())).thenReturn(new byte[]{1,2});
+        when(xlsx.buildSource(any(),isNull(),eq("view_finance"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<Supplier<ExportPayload>>getArgument(0).get(),new byte[]{1,2}));
         when(download.protect(any(),any())).thenReturn(new byte[]{1,2});
         var mvc=MockMvcBuilders.standaloneSetup(controller()).build();
         mvc.perform(post("/api/finance/reports/export").param("report","ar-ap/overview")

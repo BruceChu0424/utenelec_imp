@@ -2,6 +2,7 @@ package com.uten.imp.features.production.report;
 
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.export.DocumentPageSink;
+import com.uten.imp.common.export.LegacyExportBudget;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.AuthUser;
@@ -79,15 +80,19 @@ class WhereUsedExportServiceTest {
         verify(query).whereUsedExportPage(material, "history", from, to, 2, 200, "goodsName", "desc",false);
     }
 
-    @Test void oversizedExportStopsBeforeIdentityOrFurtherPageReads() {
+    @Test void documentOverFiftyThousandRowsIncludesTheLastProduct() {
         UUID material = UUID.randomUUID();
-        when(query.whereUsedExportPage(material, "all", null, null, 1, 200, null, null,true)).thenReturn(
-                new ReportTableResponse(List.of(ReportColumn.text("goodsName", "产品名称")), List.of(),
-                        Map.of(), 1, 200, 50_001, 251));
-        assertThrows(ApiException.class, () -> service.document(material, "all", null, null, null, null));
-        verifyNoInteractions(em, currentUser, employees);
+        identities(material,principal(Set.of("production_where_used:view","production_where_used:export")));
+        stubDocumentPages(material,50_001);
+
+        var document=service.document(material,"all",null,null,null,null);
+
+        var products=document.sections().getFirst().rows();
+        assertEquals(50_001,products.size());
+        assertEquals("产品50000",products.getLast().get("goodsName"));
         verify(query).whereUsedExportPage(material, "all", null, null, 1, 200, null, null,true);
-        verifyNoMoreInteractions(query);
+        verify(query).whereUsedExportPage(material, "all", null, null, 251, 200, null, null,false);
+        verify(query,times(251)).whereUsedExportPage(eq(material),eq("all"),isNull(),isNull(),anyInt(),eq(200),isNull(),isNull(),anyBoolean());
     }
 
     @Test void customHeaderCriteriaRemainIdenticalAcrossAllDocumentPages(){
@@ -104,12 +109,16 @@ class WhereUsedExportServiceTest {
         verifyNoMoreInteractions(query);
     }
 
-    @Test void synchronousCompatibilityRefusesLargeResultsInsteadOfMaterializingOrTruncating() {
+    @Test void synchronousBudgetKeepsAll501Products() {
         UUID material=UUID.randomUUID();
-        when(query.whereUsedExportPage(material,"all",null,null,1,200,null,null,true)).thenReturn(new ReportTableResponse(
-                List.of(ReportColumn.text("goodsName","产品名称")),rows(0,200),Map.of(),1,200,501,3));
-        var failure=assertThrows(ApiException.class,()->service.document(material,"all",null,null,null,null));
-        assertTrue(failure.getMessage().contains("后台"));verifyNoInteractions(em,currentUser,employees);
+        identities(material,principal(Set.of("production_where_used:view","production_where_used:export")));
+        stubDocumentPages(material,501);
+        try(var budget=new LegacyExportBudget(1).open()) {
+            var products=service.document(material,"all",null,null,null,null).sections().getFirst().rows();
+            assertEquals(501,products.size());
+            assertEquals("产品500",products.getLast().get("goodsName"));
+        }
+        verify(query,times(3)).whereUsedExportPage(eq(material),eq("all"),isNull(),isNull(),anyInt(),eq(200),isNull(),isNull(),anyBoolean());
     }
 
     @Test void streamingFansEachPageIntoIndependentEvidenceAndCountsOnlyProducts()throws Exception {
@@ -180,5 +189,17 @@ class WhereUsedExportServiceTest {
 
     private static List<Map<String, Object>> rows(int start, int end) {
         return IntStream.range(start, end).mapToObj(index -> Map.<String, Object>of("goodsName", "产品" + index)).toList();
+    }
+
+    private void stubDocumentPages(UUID material,int total) {
+        int size=WhereUsedExportService.PAGE_ROWS;
+        var columns=List.of(ReportColumn.text("goodsName","产品名称"));
+        when(query.whereUsedExportPage(eq(material),eq("all"),isNull(),isNull(),anyInt(),eq(size),isNull(),isNull(),anyBoolean()))
+                .thenAnswer(call -> {
+                    int page=call.getArgument(4);
+                    assertEquals(page==1,call.<Boolean>getArgument(8).booleanValue());
+                    int start=(page-1)*size;
+                    return new ReportTableResponse(columns,rows(start,Math.min(start+size,total)),Map.of(),page,size,total,Math.ceilDiv(total,size));
+                });
     }
 }

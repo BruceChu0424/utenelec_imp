@@ -142,17 +142,25 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(sql.getAllValues().stream().noneMatch(q->q.contains("CROSS JOIN LATERAL (VALUES")||q.contains("SELECT COUNT(*)")));
         assertTrue(sql.getValue().contains("department, action_doc_type, action_doc_id, action_item_id"));
     }
-    @Test void legacyPurchaseExportRejects501RowsRatherThanPublishingTheFirst500() {
+    @Test void synchronousPurchaseExportReturnsAll501RowsInBoundedReads() {
         EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);when(em.createNativeQuery(anyString())).thenReturn(rows);
         Object[] value=taskRow("PURCHASE","PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID());
+        Object[] last=taskRow("PURCHASE","PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID());
+        last[4]="PP-final";
         var access=fullTaskAccess();
         when(access.documentAccess("PURCHASE","PURCHASE_ORDER")).thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true,false));
-        when(rows.getResultList()).thenReturn(java.util.Collections.nCopies(500,value),java.util.Collections.singletonList(value));
+        when(rows.getResultList()).thenReturn(Collections.nCopies(500,value),Collections.singletonList(last));
         try(var scope=new com.uten.imp.common.export.LegacyExportBudget(1).open()) {
-            var error=org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,()->
-                    new FulfillmentWorkbenchQueryService(em,access).exportPurchase("","","",null,null,null,100_000));
-            assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,error.getCode());
+            var payload=new FulfillmentWorkbenchQueryService(em,access).exportPurchase("","","",null,null,null,100_000);
+            assertEquals(501,payload.total());
+            assertEquals(501,payload.rows().size());
+            assertEquals(last[1],payload.rows().getLast().get("taskId"));
+            assertEquals("PP-final",payload.rows().getLast().get("planNo"));
         }
+        verify(em,times(2)).createNativeQuery(anyString());
+        verify(rows,times(2)).setParameter("limit",500);
+        verify(rows).setParameter("offset",0L);
+        verify(rows).setParameter("offset",500L);
     }
     @Test void anEmptyPurchaseExportDoesNotRunBadgesFacetsOrSummary() {
         EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);when(em.createNativeQuery(anyString())).thenReturn(rows);

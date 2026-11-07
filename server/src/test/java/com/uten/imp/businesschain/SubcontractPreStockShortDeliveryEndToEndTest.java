@@ -58,7 +58,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
-// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractPreStockShortDeliveryEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
@@ -81,13 +80,14 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
         var w=fixture.seedWorld("sc-prestock-hold-accept");fixture.loginAs(w.superAdminUserId());
         Ordered o=orderApproveAndIssueAll(w,"sc-prestock-accept");
 
-        // ① 先入库后质检登记 50: 低于下限 95, 未确认先 409; 确认后登记成功, 货按库位上架, 案件待委外判定。
+        // ① 先入库后质检登记 50: 低于成品目标 100，确认实际短交后上架，案件待委外判定。
         ApiException unacknowledged=assertThrows(ApiException.class,()->arrivals.register(preStockArrival(w,o.itemId(),"50",false,"a1")));
         assertEquals(ErrorCode.SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED,unacknowledged.getCode());
         WarehouseArrivalRegisterResult first=arrivals.register(preStockArrival(w,o.itemId(),"50",true,"a1"));
         assertEquals("STOCKED_PENDING_INSPECTION",first.outcome());
         Map<String,Object> c=caseRow(o.itemId());
         assertEquals("PENDING_OWNER",c.get("status"));assertEquals("SEVERE",c.get("severity"));
+        rate("100",(BigDecimal)c.get("floor_qty"));
         String preStockedHold=shortDeliveries.preStockedHoldReason(first.receiptId());
         assertNotNull(preStockedHold,"待判定期间先入库后质检的货也先不转正");
         assertTrue(preStockedHold.contains("货已上架, 等委外判定短交后才能转为可用库存"),preStockedHold);
@@ -148,6 +148,9 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
         rate("50",onHand(w.goodsE(),w.warehouseId()));
         assertEquals(1,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'",first.receiptId()));
 
+        // This independently committed second receipt needs the value work
+        // produced by the first batch's automatic release to finish.
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
         // 剩下 50 到齐(累计 100, 不用确认) → 案件自然完成 → 合格后自动转正 → 关单。
         WarehouseArrivalRegisterResult second=arrivals.register(preStockArrival(w,o.itemId(),"50",false,"w2"));
         assertEquals("STOCKED_PENDING_INSPECTION",second.outcome());
@@ -175,6 +178,9 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
         assertEquals(0,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",second.receiptId()),
                 "刚登记的这批还在等品质检验");
 
+        // Arrival already proved atomic release. The next quality command
+        // starts after the release's durable valuation has been published.
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
         passIqc(second.receiptId(),inspectionOf(second.receiptId()),"sc-prestock-complete-pass-2");
         rate("100",onHand(w.goodsE(),w.warehouseId()));
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,o.orderId()));

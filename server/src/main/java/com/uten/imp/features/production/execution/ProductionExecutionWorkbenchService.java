@@ -325,6 +325,9 @@ public class ProductionExecutionWorkbenchService {
         // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
         String operatorRouteMemory = history ? null : operatorRouteMemory();
         UUID scopedEmployeeId = seeAll ? null : employeeId;
+        // 「等待物料」默认档位序且无关键词：档位函数只对存储序前 3×(offset+size) 个候选求值。
+        boolean boundedCandidates = "PREPARING".equals(status) && (sort == null || sort.isBlank())
+                && KeywordSearch.terms(keyword).isEmpty();
         return segmentPage(
                 predicate,
                 query -> bindWorkshopTaskFilters(query, scopedEmployeeId,
@@ -334,7 +337,7 @@ public class ProductionExecutionWorkbenchService {
                 requestedSize,
                 orderBy,
                 operatorRouteMemory,
-                !history,true);
+                !history,true,boundedCandidates);
     }
 
     /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
@@ -727,6 +730,16 @@ public class ProductionExecutionWorkbenchService {
                      task.segment_id ASC
             """;
 
+    /**
+     * 存储列候选序（2026-11-07 读取性能根治）：「等待物料」档位排序的函数只对
+     * 3×(offset+size) 个候选求值，档位 CASE 的求值范围从全候选集缩到页窗口。
+     * 档内次序与默认序一致，档位语义不变；带关键词的搜索不走窗口（见 workshopTasks）。
+     */
+    static final String SEGMENT_STORAGE_CANDIDATES = """
+            task.segment_status ASC, task.plan_end_date ASC NULLS LAST,
+            task.plan_no ASC, task.segment_no ASC, task.segment_id ASC
+            """;
+
     /** ANALYSIS 根的分析编号（WL，V719）；历史计划根为 NULL。排序/值筛选/facets 共用。 */
     private static final String ROOT_ANALYSIS_NO_SQL =
             "(SELECT root_analysis.analysis_no FROM production_material_analyses root_analysis"
@@ -790,9 +803,20 @@ public class ProductionExecutionWorkbenchService {
             String orderBy,
             String operatorRouteMemory,
             boolean planningFacts,boolean workshopReader) {
+        return segmentPage(predicate,binder,requestedPage,requestedSize,orderBy,operatorRouteMemory,planningFacts,workshopReader,false);
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
+            String predicate,
+            java.util.function.Consumer<Query> binder,
+            int requestedPage,
+            int requestedSize,
+            String orderBy,
+            String operatorRouteMemory,
+            boolean planningFacts,boolean workshopReader,boolean boundedCandidates) {
         try(var readScope=com.uten.imp.common.util.InteractiveTaskReadScope.open(em)){
             return readSegmentPage(predicate,binder,requestedPage,requestedSize,orderBy,
-                    operatorRouteMemory,planningFacts,workshopReader);
+                    operatorRouteMemory,planningFacts,workshopReader,boundedCandidates);
         }
     }
 
@@ -803,7 +827,7 @@ public class ProductionExecutionWorkbenchService {
             int requestedSize,
             String orderBy,
             String operatorRouteMemory,
-            boolean planningFacts,boolean workshopReader) {
+            boolean planningFacts, boolean workshopReader, boolean boundedCandidates) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -813,8 +837,13 @@ public class ProductionExecutionWorkbenchService {
         long total = ((Number) count.getSingleResult()).longValue();
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
+        // 有界候选：先按存储列裁剪 3×(offset+size) 行，逐行物料/齐套函数只对窗口求值。
+        String taskSource = boundedCandidates
+                ? "(SELECT * FROM v_production_execution_workbench_segments task WHERE " + predicate
+                        + " ORDER BY " + SEGMENT_STORAGE_CANDIDATES + " LIMIT :candidateLimit) task"
+                : "v_production_execution_workbench_segments task";
         // 逐种物料事实(ADR-095)只在取页数据时按行 LATERAL 计算一次；计数查询不付这笔代价。
-        String dataFrom = " FROM v_production_execution_workbench_segments task"
+        String dataFrom = " FROM " + taskSource
                 + " LEFT JOIN LATERAL fn_execution_segment_material_summary(task.segment_id) material ON TRUE"
                 + " JOIN production_execution_segments rate_segment ON rate_segment.id=task.segment_id"
                 + " LEFT JOIN production_material_discovery_requests discovery ON discovery.execution_segment_id=task.segment_id AND discovery.status IN ('PENDING','CONFIGURED')"
@@ -847,6 +876,7 @@ public class ProductionExecutionWorkbenchService {
                 && productionAccess.hasAuthority("production_execution:view"));
         data.setParameter("limit", size);
         data.setParameter("offset", (long) (page - 1) * size);
+        if (boundedCandidates) data.setParameter("candidateLimit", 3L * ((long) (page - 1) * size + size));
         List<Object[]> rows = NativeQueryResults.objectArrayRows(data);
         var usage = materialUsage.forVisibleSegments(rows.stream().map(row -> uuid(row[0])).toList());
         java.util.Map<UUID, PlanningFacts> planning = planningFacts

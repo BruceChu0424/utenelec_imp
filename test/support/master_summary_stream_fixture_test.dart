@@ -76,7 +76,9 @@ void main() {
     final frames = masterSummaryStreamTestFrames(rows, request);
     expect(frames, hasLength(4));
     expect(
-      frames.take(3).map((frame) => ((frame['value'] as Map)['items'] as List).length),
+      frames
+          .take(3)
+          .map((frame) => ((frame['value'] as Map)['items'] as List).length),
       [100, 100, 1],
     );
     expect(frames.last['total'], 201);
@@ -86,25 +88,33 @@ void main() {
     final api = _Api([]);
     expect(await _read(api), isEmpty);
     expect(api.summaryStreamRequests, hasLength(1));
-    final frames = masterSummaryStreamTestFrames([], api.summaryStreamRequests.single);
+    final frames = masterSummaryStreamTestFrames(
+      [],
+      api.summaryStreamRequests.single,
+    );
     expect(frames.map((frame) => frame['type']), ['page', 'complete']);
     expect((frames.first['value'] as Map)['totalPages'], 0);
     expect(frames.last['total'], 0);
   });
 
   for (final fault in ['missing complete', 'trailing frame', 'wrong MIME']) {
-    test('real API rejects $fault rather than accepting a fixture map', () async {
-      final dio = Dio(BaseOptions(baseUrl: 'https://fixture.invalid/api'))
-        ..httpClientAdapter = _FaultyAdapter(fault);
-      addTearDown(() => dio.close(force: true));
-      await expectLater(
-        _read(ApiClient(dio)),
-        throwsA(isA<ApiException>().having(
-          (error) => error.code,
-          'code',
-          'INCOMPLETE_READ_PROTOCOL',
-        )),
-      );
-    });
+    test(
+      'real API rejects $fault rather than accepting a fixture map',
+      () async {
+        final dio = Dio(BaseOptions(baseUrl: 'https://fixture.invalid/api'))
+          ..httpClientAdapter = _FaultyAdapter(fault);
+        addTearDown(() => dio.close(force: true));
+        await expectLater(
+          _read(ApiClient(dio)),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.code,
+              'code',
+              'INCOMPLETE_READ_PROTOCOL',
+            ),
+          ),
+        );
+      },
+    );
   }
 }

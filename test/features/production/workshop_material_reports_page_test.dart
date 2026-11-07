@@ -15,7 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/step_up_coordinator.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/core/responsive/display_zoom_pointer_binding.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -27,6 +29,9 @@ import 'package:uten_imp/shared/search/table_column_query.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
+
+class _ReportZoomTestBinding extends AutomatedTestWidgetsFlutterBinding
+    with UtenDisplayZoomPointerEvents {}
 
 class _WasteNonlinearScaler extends TextScaler {
   const _WasteNonlinearScaler();
@@ -60,6 +65,7 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
           String? from,
           String? to,
           int page,
+          int size,
           TableColumnQuery query,
         })
       >[];
@@ -193,6 +199,7 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
       from: from,
       to: to,
       page: page,
+      size: size,
       query: columnQuery,
     ));
     if (columnQuery.searches['search.material'] != null) {
@@ -202,11 +209,11 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
       }
     }
     return PagedResult(
-      items: ledgerRecords,
+      items: ledgerRecords.skip((page - 1) * size).take(size).toList(),
       page: page,
       size: size,
-      total: ledgerRecords.isEmpty ? 0 : 120,
-      totalPages: ledgerRecords.isEmpty ? 1 : 3,
+      total: ledgerRecords.length,
+      totalPages: (ledgerRecords.length / size).ceil(),
     );
   }
 }
@@ -298,6 +305,7 @@ Future<void> _pump(
       child: MaterialApp(
         navigatorKey: navigatorKey,
         theme: theme,
+        scrollBehavior: const UtenScrollBehavior(),
         builder: (context, routed) => MediaQuery(
           data: scaler == null
               ? MediaQuery.of(context)
@@ -318,6 +326,7 @@ Future<void> _pump(
 }
 
 void main() {
+  _ReportZoomTestBinding();
   _serverShapeTests();
   testWidgets(
     'workshop failed ledger criteria and period changes retain controls without publishing old facts',
@@ -377,24 +386,25 @@ void main() {
   );
 
   testWidgets(
-    'ledger headers query full server scope and page with the same type, exact decimal and date conditions',
+    'ledger headers query the complete scope with the same type, exact decimal and dates in every internal batch',
     (tester) async {
       final repo = _FakeRepo(
-        ledgerRecords: const [
-          WmLedgerRow(
-            id: 'row-1',
-            sourceKind: 'ADJUSTMENT',
-            businessDate: '2026-10-31',
-            goodsName: '颗粒_%',
-            colorName: '黑色',
-            unitName: '千克',
-            signedQty: -0.0001,
-            signedQtyText: '-0.0001',
-            docNo: 'REQ_%',
-            requestNo: 'REQ_%',
-            operatorName: '操作人',
-            periodNo: 11,
-          ),
+        ledgerRecords: [
+          for (var index = 0; index < 120; index++)
+            WmLedgerRow(
+              id: 'row-$index',
+              sourceKind: 'ADJUSTMENT',
+              businessDate: '2026-10-31',
+              goodsName: '颗粒_%',
+              colorName: '黑色',
+              unitName: '千克',
+              signedQty: -0.0001,
+              signedQtyText: '-0.0001',
+              docNo: 'REQ_%',
+              requestNo: 'REQ_%',
+              operatorName: '操作人',
+              periodNo: 11,
+            ),
         ],
       );
       await _pump(tester, repo);
@@ -428,11 +438,16 @@ void main() {
       await tester.pumpAndSettle();
       table().onSortChange!('qty', false);
       await tester.pumpAndSettle();
-      await table().onPageChange!(2);
-      await tester.pumpAndSettle();
       final query = repo.ledgerQueries.lastWhere((read) => read.page == 2);
       expect(query.page, 2);
-      expect(table().currentPage, 2);
+      expect(table().currentPage, 1);
+      expect(table().totalPages, 1);
+      expect(repo.ledgerQueries.reversed.take(3).map((read) => read.page), [
+        3,
+        2,
+        1,
+      ]);
+      expect(repo.ledgerQueries.every((read) => read.size == 50), isTrue);
       expect(query.bin, 'bin-1');
       expect(query.query.searches, containsPair('kind', '已审核账面修正'));
       expect(
@@ -442,7 +457,7 @@ void main() {
       expect(query.query.searches, containsPair('search.qty', '-0.6..-0.0001'));
       expect(query.query.sort, 'qty');
       expect(query.query.ascending, isFalse);
-      expect(table().items, hasLength(1));
+      expect(table().items, hasLength(120));
       expect(tester.takeException(), isNull);
     },
   );
@@ -845,6 +860,12 @@ void main() {
                 widget.axisDirection == AxisDirection.right,
           ),
         );
+        Rect readoutViewport() {
+          final body = bodyViewport();
+          if (readoutHorizontal.evaluate().isEmpty) return body;
+          return tester.getRect(readoutHorizontal.first).intersect(body);
+        }
+
         expect(boxes, isNotEmpty);
         for (final box in boxes) {
           Rect glyphRect() => Rect.fromPoints(
@@ -858,7 +879,7 @@ void main() {
               glyph.bottom <= viewport.bottom + 0.5;
 
           for (var i = 0; i < 40; i++) {
-            final viewport = bodyViewport();
+            final viewport = readoutViewport();
             final glyph = glyphRect();
             expect(viewport.isEmpty, isFalse);
             expect(
@@ -873,7 +894,14 @@ void main() {
               reason:
                   'readout=$fullText paragraph=${paragraph.size} viewport=$viewport',
             );
-            if (inside(glyph, viewport)) break;
+            // A pinned interactive scrollbar can own an otherwise in-bounds
+            // point. Keep using the real wheel until the original text is
+            // both visible and reachable, as the final assertion requires.
+            final hitsText = tester
+                .hitTestOnBinding(glyph.center)
+                .path
+                .any((entry) => entry.target == paragraph);
+            if (inside(glyph, viewport) && hitsText) break;
             if ((glyph.left < viewport.left || glyph.right > viewport.right) &&
                 readoutHorizontal.evaluate().isNotEmpty) {
               final lane = tester
@@ -904,12 +932,12 @@ void main() {
           }
           final glyph = glyphRect();
           expect(
-            inside(glyph, bodyViewport()),
+            inside(glyph, readoutViewport()),
             isTrue,
             reason:
                 'each complete glyph run, including the first and last, '
                 'must be reachable within the real body viewport: $fullText; '
-                'glyph=$glyph viewport=${bodyViewport()} '
+                'glyph=$glyph viewport=${readoutViewport()} '
                 'horizontal=${readoutHorizontal.evaluate().isNotEmpty}',
           );
           expect(

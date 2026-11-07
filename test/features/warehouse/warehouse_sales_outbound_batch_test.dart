@@ -434,10 +434,7 @@ void main() {
         reason:
             'One visible source read on entry and one after the completed batch.',
       );
-      expect(
-        tasks.queries.where((query) => query.source == 'ALL'),
-        hasLength(1),
-      );
+      expect(tasks.queries.where((query) => query.source == 'ALL'), isEmpty);
       expect(tester.takeException(), isNull);
     },
   );
@@ -689,8 +686,7 @@ void main() {
             .where((query) => query.source == 'ALL' && query.status == null)
             .map((query) => query.page),
         [1],
-        reason:
-            'Switching to the exact prepared ALL query reuses its first page.',
+        reason: 'Switching to ALL explicitly reads its complete current scope.',
       );
       expect(tester.takeException(), isNull);
     },

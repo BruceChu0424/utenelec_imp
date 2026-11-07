@@ -252,7 +252,10 @@ void main() {
         api.queries.where((query) => query['page'] == 1).single['size'],
         100,
       );
-      expect(_picker(tester).items, hasLength(100));
+      expect(_picker(tester).items, hasLength(500));
+      expect(_picker(tester).totalPages, 1);
+      expect(api.queries.map((query) => query['page']), [1, 2, 3, 4, 5]);
+      expect(api.queries.every((query) => query['size'] == 100), isTrue);
       await tester.tap(find.byKey(const ValueKey('sales-batch-select-line-1')));
       await tester.pumpAndSettle();
       await tester.enterText(_input('qty', 1), '0002.5000');
@@ -301,7 +304,7 @@ void main() {
   );
 
   testWidgets(
-    'selection and raw inputs survive evicted pages and submit every chosen row',
+    'selection and raw inputs survive offscreen rows and submit every chosen row',
     (tester) async {
       final api = _Api(total: 701);
       await _open(tester, api);
@@ -309,15 +312,46 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(_input('qty', 1), '0003.2500');
       await tester.enterText(_input('weight', 1), '2.75');
-      await _picker(tester).onPageChange(7);
+      // Finish the actual edit before leaving it; a focused caret correctly
+      // reveals its field again after a programmatic jump.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
+      expect(_picker(tester).items, hasLength(701));
+      expect(api.queries, hasLength(8));
+      final list = find.byKey(const Key('sales-batch-lines'));
+      final body = find.descendant(of: list, matching: find.byType(ListView));
+      expect(body, findsOneWidget);
+      final controller = tester.widget<ListView>(body).controller!;
+      expect(controller.position.axis, Axis.vertical);
+      controller.jumpTo(controller.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final tailSelection = find.byKey(
+        const ValueKey('sales-batch-select-line-601'),
+      );
+      await tester.scrollUntilVisible(
+        tailSelection,
+        -300,
+        scrollable: find.byWidgetPredicate(
+          (widget) => widget is Scrollable && widget.controller == controller,
+        ),
+        maxScrolls: 150,
+      );
       await tester.tap(
         find.byKey(const ValueKey('sales-batch-select-line-601')),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(_input('qty', 601), '4.1250');
-      await _picker(tester).onPageChange(1);
+      await tester.ensureVisible(_input('qty', 601));
       await tester.pumpAndSettle();
+      await tester.enterText(_input('qty', 601), '4.1250');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      controller.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(
+        api.queries,
+        hasLength(8),
+        reason: 'Local scrolling cannot perform another read',
+      );
       expect(_field(tester, 'qty', 1).controller!.text, '0003.2500');
       expect(_field(tester, 'weight', 1).controller!.text, '2.75');
       expect(find.text('生成出货单(2 行)'), findsOneWidget);
@@ -415,30 +449,35 @@ void main() {
     }
   }
 
-  testWidgets('late page response cannot replace a newer empty search', (
-    tester,
-  ) async {
-    final api = _Api(total: 701);
-    await _open(tester, api);
-    final old = Completer<void>();
-    api.pageGate = old;
-    unawaited(Future.sync(() => _picker(tester).onPageChange(2)));
-    await tester.pump();
-    api.pageGate = null;
-    final search = find.descendant(
-      of: find.byKey(const Key('sales-batch-search')),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(search, 'none');
-    await tester.pump(const Duration(milliseconds: 350));
-    await tester.pumpAndSettle();
-    expect(_picker(tester).items, isEmpty);
-    old.complete();
-    await tester.pumpAndSettle();
-    expect(_picker(tester).items, isEmpty);
-    expect(_picker(tester).currentPage, 1);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'late complete-read response cannot replace a newer empty search',
+    (tester) async {
+      final api = _Api(total: 701);
+      await _open(tester, api);
+      final old = Completer<void>();
+      api.pageGate = old;
+      final search = find.descendant(
+        of: find.byKey(const Key('sales-batch-search')),
+        matching: find.byType(TextField),
+      );
+      final before = api.queries.length;
+      await tester.enterText(search, 'old');
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(api.queries, hasLength(before + 1));
+      expect(api.queries.last['keyword'], 'old');
+      expect(old.isCompleted, isFalse);
+      api.pageGate = null;
+      await tester.enterText(search, 'none');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(_picker(tester).items, isEmpty);
+      old.complete();
+      await tester.pumpAndSettle();
+      expect(_picker(tester).items, isEmpty);
+      expect(_picker(tester).currentPage, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('closing a pending read never publishes its late response', (
     tester,

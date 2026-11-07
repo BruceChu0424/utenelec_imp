@@ -1780,6 +1780,7 @@ class _WasteTrendReadout extends StatelessWidget {
       final scaler = MediaQuery.textScalerOf(context);
       final direction = Directionality.of(context);
       var minimumWidth = 0.0;
+      final measurements = <({TextPainter text, int length})>[];
       for (final line in lines) {
         final text = TextPainter(
           text: TextSpan(text: line, style: style),
@@ -1787,6 +1788,7 @@ class _WasteTrendReadout extends StatelessWidget {
           textScaler: scaler,
           locale: Localizations.maybeLocaleOf(context),
         )..layout(maxWidth: constraints.maxWidth);
+        measurements.add((text: text, length: line.length));
         minimumWidth = math.max(minimumWidth, text.minIntrinsicWidth);
         // Numeric/date line-break rules can allow glyph boxes to overhang an
         // otherwise constrained paragraph. Account for its actual shaped text,
@@ -1796,15 +1798,37 @@ class _WasteTrendReadout extends StatelessWidget {
         )) {
           minimumWidth = math.max(minimumWidth, box.right);
         }
-        text.dispose();
+      }
+      // Changing the allocated width changes numeric/date line breaks. Measure
+      // the resulting layout as well: a box from the old layout can fit while
+      // a newly joined run overhangs the final paragraph. Width only increases
+      // to the next whole logical pixel, until all shaped runs really fit.
+      var layoutWidth = minimumWidth <= constraints.maxWidth
+          ? constraints.maxWidth
+          : minimumWidth.ceilToDouble();
+      while (true) {
+        var requiredWidth = layoutWidth;
+        for (final measurement in measurements) {
+          final text = measurement.text..layout(maxWidth: layoutWidth);
+          for (final box in text.getBoxesForSelection(
+            TextSelection(baseOffset: 0, extentOffset: measurement.length),
+          )) {
+            requiredWidth = math.max(requiredWidth, box.right);
+          }
+        }
+        if (requiredWidth <= layoutWidth) break;
+        layoutWidth = requiredWidth.ceilToDouble();
+      }
+      for (final measurement in measurements) {
+        measurement.text.dispose();
       }
       Widget contents() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [for (final line in lines) Text(line)],
       );
-      if (minimumWidth <= constraints.maxWidth) return contents();
+      if (layoutWidth <= constraints.maxWidth) return contents();
       return UtenHScrollArea(
-        child: SizedBox(width: minimumWidth.ceilToDouble(), child: contents()),
+        child: SizedBox(width: layoutWidth, child: contents()),
       );
     },
   );

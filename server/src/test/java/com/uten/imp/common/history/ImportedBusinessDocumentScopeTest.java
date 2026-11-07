@@ -104,6 +104,27 @@ class ImportedBusinessDocumentScopeTest {
         assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeTable("stock_documents UNION SELECT"));
     }
 
+    @Test void correlatedNativeRowsSelectOnlyTheirExactRelationshipBeforeOriginChecks() {
+        String document=ImportedBusinessDocumentScope.nativeRowsByKey("stock_documents","id","draw_mapping.document_id");
+        assertTrue(document.startsWith("LATERAL (WITH selected AS MATERIALIZED"));
+        assertTrue(document.contains("candidate.id=draw_mapping.document_id"));
+        assertTrue(document.indexOf("candidate.id=draw_mapping.document_id")
+                <document.indexOf("fn_imported_business_document_row"));
+        assertTrue(document.contains(ImportedBusinessDocumentScope.nativePredicate("stock_documents","archive_origin")));
+        String lines=ImportedBusinessDocumentScope.nativeRowsByKey("stock_document_items","doc_id","pending_document.id");
+        assertTrue(lines.contains("candidate.doc_id=pending_document.id"));
+        assertTrue(lines.contains(ImportedBusinessDocumentScope.nativePredicate("stock_document_items","archive_origin")));
+    }
+
+    @Test void correlatedNativeSourceAcceptsOnlyInternalIdentifiersAndQualifiedKeys() {
+        for(String key:List.of("id OR TRUE","id;SELECT","id::text","candidate.id"))
+            assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeRowsByKey("stock_documents",key,"task.id"));
+        for(String reference:List.of("task","task.id OR TRUE","task..id","schema.task.id","?"))
+            assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeRowsByKey("stock_documents","id",reference));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeRowsByKey("goods","id","task.id"));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeRowsByKey("stock_documents","id",null));
+    }
+
     @Test @SuppressWarnings("unchecked") void masterLegacyKeysRemainUsableAsMasterIdentities() {
         Root<Goods> root=mock(Root.class);CriteriaBuilder cb=mock(CriteriaBuilder.class);
         doReturn(Goods.class).when(root).getJavaType();

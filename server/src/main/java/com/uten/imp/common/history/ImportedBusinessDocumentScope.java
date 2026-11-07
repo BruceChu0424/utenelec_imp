@@ -90,6 +90,20 @@ public final class ImportedBusinessDocumentScope {
         return "(SELECT * FROM " + table + " archive_origin WHERE " + nativePredicate(table,"archive_origin") + ")";
     }
 
+    /** Correlated reads must select their real relationship before classifying
+     * provenance. Otherwise a cheap legacy-key index can cause PostgreSQL to
+     * traverse unrelated document graphs before applying the caller's join. */
+    public static String nativeRowsByKey(String table,String keyColumn,String referenceAliasField) {
+        String predicate=nativePredicate(table,"archive_origin");
+        if(keyColumn==null || !keyColumn.matches("[a-zA-Z_][a-zA-Z0-9_]*")
+                || referenceAliasField==null
+                || !referenceAliasField.matches("[a-zA-Z_][a-zA-Z0-9_]*\\.[a-zA-Z_][a-zA-Z0-9_]*"))
+            throw new IllegalArgumentException("Invalid internal native relationship");
+        return "LATERAL (WITH selected AS MATERIALIZED (SELECT candidate.* FROM "+table
+                +" candidate WHERE candidate."+keyColumn+"="+referenceAliasField+") "
+                +"SELECT archive_origin.* FROM selected archive_origin WHERE "+predicate+")";
+    }
+
     /** Correlated/materialized sources use the same predicate after their exact
      * relationship has been selected; their existing query scope stays intact. */
     public static String nativePredicate(String table,String alias) {

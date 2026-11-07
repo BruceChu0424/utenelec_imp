@@ -156,24 +156,23 @@ class _UtenTableCellHintsState extends State<UtenTableCellHints>
           // portal as the Web input client activates can blur that DOM client.
           Tooltip.dismissAllToolTips();
         },
-        child: TooltipVisibility(
-          visible: !_inputFocused,
-          child: Tooltip(
-            key: _tooltipKey,
-            message: message,
-            waitDuration: const Duration(milliseconds: 250),
-            showDuration: const Duration(seconds: 10),
-            constraints: const BoxConstraints(maxWidth: 480),
-            excludeFromSemantics: true,
-            child: Semantics(
-              key: _contentKey,
-              // Keep the tooltip's OverlayPortal traversal owner outside native
-              // input semantics; Web textboxes must not own popup text via aria-owns.
-              container: true,
-              hint: message.isEmpty ? null : message,
-              liveRegion: liveRegion,
-              child: widget.child,
-            ),
+        // Suppress this cell's hint only. Hiding descendant tooltips rebuilds
+        // their overlay wrappers and detaches the just-focused row action.
+        child: Tooltip(
+          key: _tooltipKey,
+          message: _inputFocused ? '' : message,
+          waitDuration: const Duration(milliseconds: 250),
+          showDuration: const Duration(seconds: 10),
+          constraints: const BoxConstraints(maxWidth: 480),
+          excludeFromSemantics: true,
+          child: Semantics(
+            key: _contentKey,
+            // Keep the tooltip's OverlayPortal traversal owner outside native
+            // input semantics; Web textboxes must not own popup text via aria-owns.
+            container: true,
+            hint: message.isEmpty ? null : message,
+            liveRegion: liveRegion,
+            child: widget.child,
           ),
         ),
       ),

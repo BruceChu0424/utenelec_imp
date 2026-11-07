@@ -325,6 +325,31 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   return (events, key);
 }
 
+bool _hasKeyboardFocus(Key key) {
+  final context = FocusManager.instance.primaryFocus?.context;
+  if (context?.widget.key == key) return true;
+  var matches = false;
+  context?.visitAncestorElements((element) {
+    matches = element.widget.key == key;
+    return !matches;
+  });
+  return matches;
+}
+
+Future<void> _tabTo(WidgetTester tester, Key key) async {
+  final visited = <FocusNode?>{};
+  while (!_hasKeyboardFocus(key) &&
+      visited.add(FocusManager.instance.primaryFocus)) {
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+  }
+  expect(
+    _hasKeyboardFocus(key),
+    isTrue,
+    reason: '$key must be reachable in one keyboard traversal',
+  );
+}
+
 void main() {
   for (final (factor, textScale) in [(0.85, 1.0), (1.0, 2.0), (2.0, 2.0)]) {
     testWidgets(
@@ -785,16 +810,7 @@ void main() {
         onRemoveAllocation: removed.add,
       );
       final buttonKey = ValueKey('daily-remove-allocation-${first.localRowId}');
-      bool focusedButton() =>
-          FocusManager.instance.primaryFocus?.context
-              ?.findAncestorWidgetOfExactType<IconButton>()
-              ?.key ==
-          buttonKey;
-      for (var attempt = 0; attempt < 50 && !focusedButton(); attempt++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.pump();
-      }
-      expect(focusedButton(), isTrue);
+      await _tabTo(tester, buttonKey);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(removed, [first]);
@@ -1005,21 +1021,12 @@ void main() {
       expect(button.height, 36);
       expect(tester.getSize(find.byKey(buttonKey)).height, 36);
       expect(button.onPressed, isNotNull);
-      bool focusedButton() =>
-          FocusManager.instance.primaryFocus?.context
-              ?.findAncestorWidgetOfExactType<UtenButton>()
-              ?.key ==
-          buttonKey;
-      for (var attempt = 0; attempt < 30 && !focusedButton(); attempt++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.pump();
-      }
-      expect(focusedButton(), isTrue);
+      await _tabTo(tester, buttonKey);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(key.currentState!.allocationsOpen, isTrue);
       expect(find.byTooltip('收起产出去向'), findsOneWidget);
-      expect(focusedButton(), isTrue);
+      expect(_hasKeyboardFocus(buttonKey), isTrue);
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pumpAndSettle();
       expect(key.currentState!.allocationsOpen, isFalse);
@@ -1092,16 +1099,7 @@ void main() {
       await tester.enterText(field, '500.1250');
       await tester.pump();
       const buttonKey = ValueKey('daily-product-allocation-toggle-product');
-      bool focusedButton() =>
-          FocusManager.instance.primaryFocus?.context
-              ?.findAncestorWidgetOfExactType<UtenButton>()
-              ?.key ==
-          buttonKey;
-      for (var attempt = 0; attempt < 40 && !focusedButton(); attempt++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.pump();
-      }
-      expect(focusedButton(), isTrue);
+      await _tabTo(tester, buttonKey);
       expect(events.focused, contains(false));
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pumpAndSettle();

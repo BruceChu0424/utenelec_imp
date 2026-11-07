@@ -3258,8 +3258,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
       color: theme.colorScheme.outlineVariant,
       width: 0.5,
     );
-    final headerUnit = KeyedSubtree(
+    // Focusing a cell scrolls columns. Keep the order within each scroll
+    // surface stable while the header and row controls move on screen.
+    final headerUnit = FocusTraversalGroup(
       key: _headerKey,
+      policy: WidgetOrderTraversalPolicy(),
       child: _buildHeaderUnit(theme, total, visibleColumnIndices),
     );
     // 首帧/数据/布局变化后，post-frame 重算 sticky 表头位置。
@@ -3279,8 +3282,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
             // 空态只占可视宽，不进「列宽和」的横滚盒：列总宽超过面板/视口时，
             // 居中于滚动内容会把空态引导块（含按钮）推出屏幕外（2026-10-10
             // AR 选择器实测）。
-            KeyedSubtree(
+            FocusTraversalGroup(
               key: _bodyKey,
+              policy: WidgetOrderTraversalPolicy(),
               // Plain Text and custom read-only cells share a local region;
               // TextField keeps its own native selection. Header and action
               // gestures stay outside it, isolated from any page region.

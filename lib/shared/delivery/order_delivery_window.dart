@@ -8,6 +8,7 @@ import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/feedback/uten_floating_window.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
+import '../../components/inputs/uten_table_cell_action.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
@@ -702,6 +703,16 @@ class _OrderDeliveryWindowState extends ConsumerState<_OrderDeliveryWindow> {
 
 /// Shared order/production cell. Each caller retains its own immutable order-line plan.
 class OrderDeliveryPlanCell extends StatefulWidget {
+  static double contentWidthOf(
+    BuildContext context,
+    OrderDeliveryPlan? plan,
+    TextScaler textScaler,
+  ) => UtenTableCellAction.contentWidthOf(
+    context,
+    orderDeliveryLabel(plan),
+    textScaler: textScaler,
+  );
+
   const OrderDeliveryPlanCell({
     super.key,
     required this.plan,
@@ -809,15 +820,9 @@ class _OrderDeliveryPlanCellState extends State<OrderDeliveryPlanCell> {
   }
 
   @override
-  Widget build(BuildContext context) => TextButton(
-    style: widget.readOnly && !UtenControlMetrics.usesTouchTargets(context)
-        ? TextButton.styleFrom(
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-            textStyle: Theme.of(context).textTheme.bodyMedium,
-          )
-        : null,
+  Widget build(BuildContext context) => UtenTableCellAction(
+    label: orderDeliveryLabel(widget.plan),
+    alignment: AlignmentDirectional.centerStart,
     onPressed:
         widget.goodsId?.isNotEmpty == true ||
             widget.readOnly &&
@@ -825,10 +830,5 @@ class _OrderDeliveryPlanCellState extends State<OrderDeliveryPlanCell> {
                 widget.orderItemId != null
         ? _open
         : null,
-    child: Text(
-      orderDeliveryLabel(widget.plan),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
   );
 }

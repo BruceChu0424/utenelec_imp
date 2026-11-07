@@ -888,7 +888,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       EditableGridColumn<SalesGridRow>(
         key: 'deliveryPlan',
         label: '交付方式',
-        width: 210,
+        width: 112,
         headerInfo: '逐订单行设置交付层级与必要加工。查看下级不等于拆分；原BOM保持不变，数量由服务端确认。',
         textOf: (row) => orderDeliveryLabel(row.deliveryPlan),
         listenableOf: (row) => row.deliveryPlanNotifier,

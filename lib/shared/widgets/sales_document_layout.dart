@@ -12,6 +12,7 @@ const salesDocumentColumnKeys = <String>[
   'discount',
   'clientPrice',
   'amount',
+  'currency',
   'remark',
 ];
 
@@ -31,6 +32,7 @@ List<String> salesDocumentDefaultColumns({required bool order}) => [
   'price',
   'discount',
   'amount',
+  if (order) 'currency',
   'remark',
 ];
 

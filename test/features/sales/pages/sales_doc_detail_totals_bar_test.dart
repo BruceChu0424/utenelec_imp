@@ -10,12 +10,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+
+import '../../../support/table_cell_geometry.dart';
 
 void main() {
   testWidgets('订货详情：合计数量按单位分组、合计金额用白字且币种取表头', (tester) async {
@@ -29,6 +33,19 @@ void main() {
 
     expect(find.text('合计金额(美元): '), findsOneWidget);
     expect(find.textContaining('¥'), findsNothing);
+    final amountHeader = tableCellFrame(find.text('总金额(订单币种)'));
+    final currencyHeader = tableCellFrame(find.text('币种'));
+    expect(
+      tester.getRect(currencyHeader).left,
+      closeTo(tester.getRect(amountHeader).right, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(MasterDataTableView<SalesDocItem>),
+        matching: find.text('美元'),
+      ),
+      findsNWidgets(2),
+    );
     expect(
       tester
           .widget<Text>(
@@ -51,6 +68,30 @@ void main() {
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
     expect(find.text('3 箱 · 12 个'), findsOneWidget);
     expect(find.textContaining('合计金额'), findsNothing);
+    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('2400.00'), findsNothing);
+  });
+
+  testWidgets('交付方式左对齐，列宽容纳表头提示并随内容收紧', (tester) async {
+    await _pumpDetail(tester, priceMasked: false);
+
+    final header = tableCellFrame(find.text('交付方式'));
+    final headerRect = tester.getRect(header);
+    final hint = find.descendant(
+      of: header,
+      matching: find.byType(UtenColumnHintIcon),
+    );
+    expect(tester.getRect(hint).right, lessThan(headerRect.right));
+    expect(headerRect.width, lessThan(210));
+
+    final label = find.text('整装交付').first;
+    final bodyRect = tester.getRect(tableCellFrame(label));
+    expect(bodyRect.width, closeTo(headerRect.width, 1));
+    expect(
+      tester.getRect(label).left,
+      closeTo(bodyRect.left + UtenSpacing.s12 + UtenSpacing.s4, 1),
+    );
+    expect(tester.getRect(label).right, lessThan(bodyRect.right));
   });
 
   // 2026-09-15 用户口径：合计条竖向跟着最后一行走，横向永远贴表格可视框右缘——

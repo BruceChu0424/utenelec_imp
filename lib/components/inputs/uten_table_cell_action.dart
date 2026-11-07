@@ -56,6 +56,7 @@ class UtenTableCellAction extends StatelessWidget {
     this.tooltip,
     this.maxLines = 1,
     this.error = false,
+    this.alignment,
   }) : textSpan = null;
 
   /// 保留摘要内各段业务颜色，交互、键盘焦点与普通文字动作共用同一入口。
@@ -68,6 +69,7 @@ class UtenTableCellAction extends StatelessWidget {
     this.tooltip,
     this.maxLines = 1,
     this.error = false,
+    this.alignment,
   });
 
   final String label;
@@ -75,6 +77,7 @@ class UtenTableCellAction extends StatelessWidget {
   final VoidCallback? onPressed;
   final IconData? icon;
   final String? tooltip;
+  final AlignmentGeometry? alignment;
 
   /// 动作文案最多几行（默认 1：读行高度不因动作文案折行而变化）。
   final int maxLines;
@@ -124,6 +127,7 @@ class UtenTableCellAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
+        alignment: alignment,
       ),
       child: row,
     );

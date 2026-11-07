@@ -1398,8 +1398,15 @@ class _FinanceSalesOrderReviewPageState
             MasterColumnDef<SalesOrderFinanceReviewLine>(
               key: 'deliveryPlan',
               label: '交付方式',
-              width: 210,
+              width: 112,
               value: (item) => orderDeliveryLabel(item.deliveryPlan),
+              measureWidthOf: (context, item, scaler) =>
+                  OrderDeliveryPlanCell.contentWidthOf(
+                    context,
+                    item.deliveryPlan,
+                    scaler,
+                  ),
+              measureWidthScope: OrderDeliveryPlanCell,
               cellBuilder: (_, item) => OrderDeliveryPlanCell(
                 plan: item.deliveryPlan,
                 orderId: widget.id,

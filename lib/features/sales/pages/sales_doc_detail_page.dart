@@ -2482,8 +2482,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   MasterColumnDef<SalesDocItem>(
                     key: 'deliveryPlan',
                     label: '交付方式',
-                    width: 210,
+                    width: 112,
                     value: (item) => orderDeliveryLabel(item.deliveryPlan),
+                    measureWidthOf: (context, item, scaler) =>
+                        OrderDeliveryPlanCell.contentWidthOf(
+                          context,
+                          item.deliveryPlan,
+                          scaler,
+                        ),
+                    measureWidthScope: OrderDeliveryPlanCell,
                     info: '此列保留本单交付配置；查看窗口只读。历史交付配置不按当前BOM静默重算。',
                     cellBuilder: (_, item) => OrderDeliveryPlanCell(
                       plan: item.deliveryPlan,
@@ -2552,6 +2559,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                         ),
                 ),
                 if (isOrder) ...[
+                  MasterColumnDef(
+                    key: 'currency',
+                    label: '币种',
+                    width: 80,
+                    value: (_) => orderCurrency,
+                  ),
                   MasterColumnDef(
                     key: 'machiningPrice',
                     defaultVisible: items.any(

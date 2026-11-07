@@ -80,9 +80,9 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage>
   ///（搜索与排序仍走服务端；表头筛选属展示层能力）。
   Map<String, String?> _filters = {};
 
-  /// 服务端排序：列 key（code / hireDate / workYears，白名单见后端
-  /// EmployeeListQuery#orderBy）；null = 默认「负责人优先 + 工号」。
-  String? _sortColumn;
+  /// 员工档案默认按工号升序，由服务端对完整结果排序。
+  static const _defaultSortColumn = 'code';
+  String _sortColumn = _defaultSortColumn;
   bool _sortAsc = true;
 
   @override
@@ -117,7 +117,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage>
           isCurrent: current,
           search: search.isEmpty ? null : search,
           sort: _sortColumn,
-          order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          order: _sortAsc ? 'asc' : 'desc',
           onBatch: (items, total, hasMore) {
             setState(() {
               _items
@@ -179,18 +179,14 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage>
     }
   }
 
-  /// 表头排序菜单：(null, _) 取消排序回到服务端默认顺序。
+  /// 表头排序菜单：(null, _) 回到员工档案的默认顺序。
   void _onSortChange(String? column, bool ascending) {
-    if (column == null) {
-      if (_sortColumn == null) return;
-      setState(() => _sortColumn = null);
-      _reload();
-      return;
-    }
-    if (column == _sortColumn && ascending == _sortAsc) return;
+    final nextColumn = column ?? _defaultSortColumn;
+    final nextAscending = column == null || ascending;
+    if (nextColumn == _sortColumn && nextAscending == _sortAsc) return;
     setState(() {
-      _sortColumn = column;
-      _sortAsc = ascending;
+      _sortColumn = nextColumn;
+      _sortAsc = nextAscending;
     });
     _reload();
   }

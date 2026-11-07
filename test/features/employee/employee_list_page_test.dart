@@ -51,8 +51,7 @@ class _PagingEmployeeRepository extends Fake implements EmployeeRepository {
   int pages = 2;
   int version = 1;
   Completer<PagedResult<EmployeeSummary>>? pendingSecond;
-  String? lastSort;
-  String? lastOrder;
+  final sortRequests = <(String?, String?)>[];
   Set<String>? lastStatuses;
 
   EmployeeSummary _row(int n) => EmployeeSummary(
@@ -78,8 +77,7 @@ class _PagingEmployeeRepository extends Fake implements EmployeeRepository {
   }) async {
     requestedPages.add(page);
     versionedRequests.add((version, page));
-    lastSort = sort;
-    lastOrder = order;
+    sortRequests.add((sort, order));
     lastStatuses = statuses;
     if (page == 2 && pendingSecond != null) return pendingSecond!.future;
     return result(page, size);
@@ -201,17 +199,27 @@ void main() {
     expect(find.text('共 40 人'), findsOneWidget);
   });
 
-  testWidgets('工号表头排序菜单 → 服务端带 sort/order 重查', (tester) async {
+  testWidgets('默认和恢复默认均按工号升序，支持手动降序', (tester) async {
     final repo = _PagingEmployeeRepository();
     await tester.pumpWidget(_app(repo));
     await tester.pumpAndSettle();
+    expect(repo.sortRequests, [('code', 'asc'), ('code', 'asc')]);
+    final table = find.byKey(const Key('employee-list-table'));
+    expect(
+      tester.widget<MasterDataTableView<EmployeeSummary>>(table).sortColumn,
+      'code',
+    );
 
     await tester.tap(find.text('工号'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('从小到大'));
+    await tester.tap(find.text('从大到小'));
     await tester.pumpAndSettle();
+    expect(repo.sortRequests.sublist(2), [('code', 'desc'), ('code', 'desc')]);
 
-    expect(repo.lastSort, 'code');
-    expect(repo.lastOrder, 'asc');
+    await tester.tap(find.text('工号'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消排序'));
+    await tester.pumpAndSettle();
+    expect(repo.sortRequests.sublist(4), [('code', 'asc'), ('code', 'asc')]);
   });
 }

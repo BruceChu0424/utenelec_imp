@@ -78,7 +78,7 @@ class SubcontractShortDeliveryEndToEndTest extends SubcontractFullChainTestConte
 
         // ① 订货 20 件、允许损耗 5%：保存即冻结到本行，并回写货品主档记忆；/last-terms 下次预填 5。
         db.update("UPDATE goods SET name=? WHERE id=?", "短交检索螺丝 M3_20%", w.goodsE());
-        UUID orderId=orders.create(orderRequest(w,"20","5")).getId();
+        UUID orderId=fixture.createWithFullMaterialBudget(orderRequest(w,"20","5")).getId();
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         rate("5",db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
         rate("5",db.queryForObject("SELECT subcontract_allowed_loss_pct FROM goods WHERE id=?",BigDecimal.class,w.goodsE()));

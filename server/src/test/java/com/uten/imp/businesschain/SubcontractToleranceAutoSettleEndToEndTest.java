@@ -82,7 +82,7 @@ class SubcontractToleranceAutoSettleEndToEndTest extends SubcontractFullChainTes
         fixture.loginAs(w.superAdminUserId());
         UUID material = fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
         fixture.receiveSubcontractMaterial(w, material, "1000");
-        UUID orderId = orders.create(orderRequest(w, "1000", "10")).getId();
+        UUID orderId = fixture.createWithFullMaterialBudget(orderRequest(w, "1000", "10")).getId();
         UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
         UUID makerId = db.queryForObject("SELECT maker_id FROM subcontract_orders WHERE id=?", UUID.class, orderId);
         assertNotNull(makerId);

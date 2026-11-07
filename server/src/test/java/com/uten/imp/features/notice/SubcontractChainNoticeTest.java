@@ -144,15 +144,16 @@ class SubcontractChainNoticeTest {
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
         assertEquals(new BigDecimal("40.0000"), refreshInsideRecheckDelivery(service, orderItemId),
-                "重算按卡上写的可领量记水位");
+                "重算仍按领料分配口径记水位");
 
         String route = "/operations/workbench/subcontract?segment=DRAW&orderItemId=" + orderItemId;
         verify(notice).resolveReviewNotices("SUBCONTRACT_ORDER_ITEM", orderItemId, "STATE_CHANGED");
         for (UUID recipient : List.of(drawerId, viewAllId)) {
             verify(notice).publishForUser(
                     eq(recipient),
-                    eq("委外可领料：WO-2026-001 委外成品 预算可领 40 个"),
-                    argThat(content -> content.contains("按备料预算可领 40 个")
+                    eq("委外可领料：WO-2026-001 委外成品"),
+                    argThat(content -> content.contains("有物料可领")
+                            && !content.contains("40 个")
                             && content.contains("委外任务中心「领料」")
                             && !content.contains("DRAW")),
                     eq(ChainNoticeService.TYPE_TASK),

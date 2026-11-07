@@ -371,31 +371,40 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail create(OrderSaveRequest req) {
         requireDecompositionAuthorityIfNeeded(req);
         tx.bind();
+        StagedOrder staged = stageNewOrder(req);
+        if (kit != null) kit.chooseOrderMaterialBudget(List.of(staged.order().getId()), req, "生成委外订货单");
+        return completeNewOrder(staged);
+    }
+
+    private record StagedOrder(SubcontractOrder order, List<OrderItemDto> items) {}
+
+    private StagedOrder stageNewOrder(OrderSaveRequest req) {
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
-        var mutationGuard=lockOrderRequest(null,req);
+        var mutationGuard = lockOrderRequest(null, req);
         mutationGuard.verifyUnchanged();
         requireDrawableBomForApplicationLines(req);
-        SubcontractOrder r = new SubcontractOrder();
-        applyHeader(req, r);
-        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
-        r.setStatus(STATUS_DRAFT);
-        mutationLocks.expectCreatedOrder(orderType(),r.getId());
-        orderRepo.save(r);
+        SubcontractOrder order = new SubcontractOrder();
+        applyHeader(req, order);
+        order.setMakerId(currentUser.requireEmployeeId());
+        order.setStatus(STATUS_DRAFT);
+        mutationLocks.expectCreatedOrder(orderType(), order.getId());
+        orderRepo.save(order);
         orderRepo.flush();
-        mutationLocks.registerCreatedOrder(orderType(),r.getId());
-        List<OrderItemDto> items = saveItems(r, req.getItems());
-        applyTotals(r, items);
-        // 主档写回必须在明细落库并 flush 之后: 写回服务按订单 id 用 JDBC 读
-        // subcontract_orders/subcontract_order_items 取事实, Hibernate 未 flush 的头/行它看不见
-        // (此前放在 save 之后、明细之前, 新建单永远学不到货品委外商与加工单价)。
+        mutationLocks.registerCreatedOrder(orderType(), order.getId());
+        List<OrderItemDto> items = saveItems(order, req.getItems());
+        applyTotals(order, items);
+        // Stock pools and master defaults read persisted quantities and source allocations through SQL.
         orderRepo.flush();
-        referencePricePolicies.adoptSavedOrder("SUBCONTRACT",r.getId());
-        masterDefaultsSync.syncFromSubcontractOrder(r.getId());
-        // ADR-156：明细落库后按本单需要核对直属物料齐套(同事务内拆出的几张单彼此可见, 不会重复占同一批库存)。
-        requireKit(r.getId(), "生成委外订货单", KIT_HINT_ORDER);
-        enqueueKitRecheck(r.getId());
-        return toDetail(r, items);
+        return new StagedOrder(order, items);
+    }
+
+    private OrderDetail completeNewOrder(StagedOrder staged) {
+        SubcontractOrder order = staged.order();
+        referencePricePolicies.adoptSavedOrder("SUBCONTRACT", order.getId());
+        masterDefaultsSync.syncFromSubcontractOrder(order.getId());
+        enqueueKitRecheck(order.getId());
+        return toDetail(order, staged.items());
     }
 
     /**
@@ -410,7 +419,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         tx.bind();
         Map<CommercialGroupKey, List<OrderItemLine>> groups = groupByCommercial(req);
         lockOrderRequest(null,req).verifyUnchanged();
-        List<OrderDetail> created = new ArrayList<>();
+        List<StagedOrder> staged = new ArrayList<>();
         for (Map.Entry<CommercialGroupKey, List<OrderItemLine>> entry : groups.entrySet()) {
             CommercialGroupKey key = entry.getKey();
             OrderSaveRequest sub = new OrderSaveRequest();
@@ -426,9 +435,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             sub.setDeliverDate(req.getDeliverDate());
             sub.setRemark(req.getRemark());
             sub.setItems(entry.getValue());
-            created.add(create(sub));
+            staged.add(stageNewOrder(sub));
         }
-        return created;
+        if (kit != null) kit.chooseOrderMaterialBudget(staged.stream().map(value -> value.order().getId()).toList(), req, "生成委外订货单");
+        return staged.stream().map(this::completeNewOrder).toList();
     }
 
     /** 商业拆单分组键：委外商 + 结算方式 + 币种 + 汇率 + 税率（数值按值等价，2.0 与 2 同组）。 */
@@ -631,6 +641,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             requestedLine++;var saved=quantityPlan.saved(line.getLineNo()==null?requestedLine:line.getLineNo());
             if(saved!=null){var match=saved.entity(em,SubcontractOrderItem.class);retained.put(line,match);remaining.remove(match);}
         }
+        boolean materialBasisChanged = !remaining.isEmpty() || retained.size() != req.getItems().size()
+                || retained.entrySet().stream().anyMatch(entry -> !Objects.equals(
+                        normalizeLossPercent(entry.getKey().getAllowedLossPct()),
+                        normalizeLossPercent(entry.getValue().getAllowedLossPct())));
         applyHeader(req, r);
         for(var removed:remaining){removed.setDeleted(true);itemRepo.save(removed);}
         itemRepo.flush();
@@ -638,11 +652,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         applyTotals(r, items);
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
         orderRepo.flush();
+        if (kit != null && materialBasisChanged) {
+            kit.chooseOrderMaterialBudget(List.of(r.getId()), req, "保存委外订货单");
+        } else {
+            requireKit(r.getId(), "保存委外订货单", KIT_HINT_ORDER);
+        }
         referencePricePolicies.adoptSavedOrder("SUBCONTRACT",r.getId());
         masterDefaultsSync.syncFromSubcontractOrder(r.getId());
-        requireKit(r.getId(), "保存委外订货单", KIT_HINT_ORDER);
         enqueueKitRecheck(r.getId());
         return toDetail(r, items);
+    }
+
+    private static BigDecimal normalizeLossPercent(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value.stripTrailingZeros();
     }
 
     @Transactional

@@ -60,7 +60,8 @@ public final class SubcontractDrawContracts {
             BigDecimal materialQty,
             String planNo,
             List<UUID> applicationItemIds,
-            BigDecimal differenceQty) {
+            BigDecimal differenceQty,
+            DrawSingleMaterial singleMaterial) {
         public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
         public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
         public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
@@ -72,6 +73,21 @@ public final class SubcontractDrawContracts {
         public String getDifferenceQtyExact() {
             return com.uten.imp.common.util.DecimalText.of(differenceQty);
         }
+    }
+
+    /** Physical quantities when the task has exactly one frozen material line. */
+    public record DrawSingleMaterial(String unitName, BigDecimal requiredQty, BigDecimal baseRequiredQty, BigDecimal pendingQty,
+                                     BigDecimal drawableQty, BigDecimal shortQty) {
+        public String getRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(requiredQty); }
+        public String getBaseRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(baseRequiredQty); }
+        public String getLossRequiredQtyExact() { return lossRequiredQtyExact(requiredQty, baseRequiredQty); }
+        public String getPendingQtyExact() { return com.uten.imp.common.util.DecimalText.of(pendingQty); }
+        public String getDrawableQtyExact() { return com.uten.imp.common.util.DecimalText.of(drawableQty); }
+        public String getShortQtyExact() { return com.uten.imp.common.util.DecimalText.of(shortQty); }
+    }
+
+    public static String lossRequiredQtyExact(BigDecimal required, BigDecimal base) {
+        return base == null ? null : com.uten.imp.common.util.DecimalText.of(required.subtract(base));
     }
 
     /** 列表能力位: 是否持有委外领料权限(新页面一律读它, 不在页面里判断权限常量)。 */
@@ -124,6 +140,7 @@ public final class SubcontractDrawContracts {
             String unitName,
             BigDecimal perUnitQty,
             BigDecimal requiredQty,
+            BigDecimal baseRequiredQty,
             BigDecimal sentQty,
             BigDecimal pendingQty,
             BigDecimal availableQty,
@@ -133,6 +150,8 @@ public final class SubcontractDrawContracts {
             List<DrawSupplySource> supplySources) {
         public String getPerUnitQtyExact(){return com.uten.imp.common.util.DecimalText.of(perUnitQty);}
         public String getRequiredQtyExact(){return com.uten.imp.common.util.DecimalText.of(requiredQty);}
+        public String getBaseRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(baseRequiredQty); }
+        public String getLossRequiredQtyExact() { return lossRequiredQtyExact(requiredQty, baseRequiredQty); }
         public String getSentQtyExact(){return com.uten.imp.common.util.DecimalText.of(sentQty);}
         public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
         public String getAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(availableQty);}
@@ -182,13 +201,19 @@ public final class SubcontractDrawContracts {
         }
     }
 
-    /** 批量领料的一项: qty 为 null 时取联合分配后的本批可领。 */
-    public record DrawItemRequest(UUID orderItemId, BigDecimal qty) {
+    /** qty is the order-unit budget equivalent. A single frozen material also accepts its exact physical quantity. */
+    public record DrawItemRequest(UUID orderItemId, BigDecimal qty, BigDecimal materialQty, UUID materialPlanItemId) {
+        public DrawItemRequest(UUID orderItemId, BigDecimal qty) {
+            this(orderItemId, qty, null, null);
+        }
         public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
 
     }
 
-    public record DrawPreviewRequest(List<DrawItemRequest> items) {
+    public record DrawPreviewRequest(List<DrawItemRequest> items, boolean physicalDefaults) {
+        public DrawPreviewRequest(List<DrawItemRequest> items) {
+            this(items, false);
+        }
     }
 
     public record DrawPreviewTask(
@@ -206,12 +231,18 @@ public final class SubcontractDrawContracts {
             BigDecimal drawnQty,
             BigDecimal drawableQty,
             BigDecimal batchDrawableQty,
-            BigDecimal qty) {
+            BigDecimal qty,
+            UUID materialPlanItemId,
+            String materialUnitName,
+            BigDecimal materialBatchDrawableQty,
+            BigDecimal materialQty) {
         public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
         public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
         public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
         public String getBatchDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(batchDrawableQty);}
         public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+        public String getMaterialBatchDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(materialBatchDrawableQty);}
+        public String getMaterialQtyExact(){return com.uten.imp.common.util.DecimalText.of(materialQty);}
 
     }
 

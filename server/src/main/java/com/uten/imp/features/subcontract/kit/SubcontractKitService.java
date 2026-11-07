@@ -1,8 +1,10 @@
 package com.uten.imp.features.subcontract.kit;
 
 import com.uten.imp.application.port.SubcontractOutboundWakePort;
+import com.uten.imp.common.storage.ImmutableDocumentStore;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -89,24 +92,8 @@ public class SubcontractKitService {
         if (orderId == null) {
             return;
         }
-        List<Map<String, Object>> components = jdbc.queryForList("""
-                SELECT DISTINCT edge.component_goods_id AS goods_id, edge.color_id
-                FROM subcontract_order_items item
-                CROSS JOIN LATERAL fn_subcontract_draw_edges(item.goods_id) edge
-                WHERE item.order_id = ? AND NOT item.is_deleted AND COALESCE(item.qty, 0) > 0
-                UNION
-                SELECT line.goods_id, line.color_id
-                FROM subcontract_order_items item
-                JOIN subcontract_material_plan_items line ON line.order_item_id = item.id AND NOT line.is_deleted
-                WHERE item.order_id = ? AND NOT item.is_deleted
-                ORDER BY 1, 2 NULLS FIRST
-                """, orderId, orderId);
-        if (components.isEmpty()) {
+        if (!lockOrderComponents(orderId.toString())) {
             return;
-        }
-        for (Map<String, Object> component : components) {
-            jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text", String.class,
-                    "subcontract-kit:" + component.get("goods_id") + ':' + Objects.toString(component.get("color_id"), "-"));
         }
         List<Map<String, Object>> shortages = jdbc.queryForList("""
                 SELECT shortage.need_qty, shortage.exact_free_qty, shortage.public_free_qty,
@@ -132,6 +119,161 @@ public class SubcontractKitService {
         throw new ApiException(ErrorCode.CONFLICT, "直属物料还没齐套，不能" + action + "：" + String.join("；", parts)
                 + "(已扣掉其它还在办的委外单要领的量)。委外价格每天不一样，物料齐了才解锁下单；"
                 + hint + "。");
+    }
+
+
+    /**
+     * Validate all newly staged order rows as one request, including orders split
+     * by commercial terms. Recompute the preview under the same kit locks on retry.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void chooseOrderMaterialBudget(List<UUID> orderIds, OrderSaveRequest request, String action) {
+        String ids = orderIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        BigDecimal factor = BigDecimal.ONE;
+        BigDecimal fundedFactor = null;
+        if (lockOrderComponents(ids)) {
+            List<Map<String, Object>> facts = jdbc.queryForList("""
+                    WITH scope AS MATERIALIZED (
+                        SELECT CAST(string_to_array(CAST(? AS text), ',') AS uuid[]) AS ids
+                    ), snapshot AS MATERIALIZED (
+                        SELECT scope.ids, fn_subcontract_order_budget_pool_snapshot(scope.ids) AS pools FROM scope
+                    ), full_budget AS MATERIALIZED (
+                        SELECT fact.* FROM snapshot
+                        CROSS JOIN LATERAL fn_subcontract_order_budget_facts(snapshot.ids, 1, snapshot.pools) fact
+                    ), shortage_scope AS MATERIALIZED (
+                        SELECT * FROM snapshot WHERE EXISTS (SELECT 1 FROM full_budget WHERE short_qty > 0)
+                    ), base_budget AS MATERIALIZED (
+                        SELECT fact.* FROM shortage_scope
+                        CROSS JOIN LATERAL fn_subcontract_order_budget_facts(shortage_scope.ids, 0, shortage_scope.pools) fact
+                    ), choice AS MATERIALIZED (
+                        SELECT shortage_scope.*, CASE WHEN NOT EXISTS (
+                            SELECT 1 FROM base_budget WHERE short_qty > 0
+                        ) THEN fn_subcontract_order_budget_cap_factor(shortage_scope.ids, shortage_scope.pools) END AS cap_factor
+                        FROM shortage_scope
+                    ), capped AS MATERIALIZED (
+                        SELECT fact.* FROM choice
+                        CROSS JOIN LATERAL fn_subcontract_order_budget_facts(choice.ids, choice.cap_factor, choice.pools) fact
+                        WHERE choice.cap_factor IS NOT NULL
+                    )
+                    SELECT budget.goods_id, budget.color_id, goods.code AS goods_code, goods.name AS goods_name,
+                           color.name AS color_name, unit.name AS unit_name,
+                           budget.need_qty, budget.available_qty, budget.short_qty, base.need_qty AS base_qty,
+                           capped.need_qty AS capped_qty, choice.cap_factor
+                    FROM choice CROSS JOIN full_budget budget
+                    JOIN goods ON goods.id = budget.goods_id
+                    LEFT JOIN colors color ON color.id = budget.color_id
+                    LEFT JOIN units unit ON unit.id = goods.unit_id
+                    LEFT JOIN base_budget base ON base.goods_id = budget.goods_id
+                         AND base.color_id IS NOT DISTINCT FROM budget.color_id
+                    LEFT JOIN capped ON capped.goods_id = budget.goods_id
+                         AND capped.color_id IS NOT DISTINCT FROM budget.color_id
+                    WHERE budget.short_qty > 0 OR capped.need_qty < budget.need_qty
+                    ORDER BY budget.goods_id, budget.color_id NULLS FIRST
+                    """, ids);
+            if (!facts.isEmpty()) {
+                BigDecimal capFactor = (BigDecimal) facts.getFirst().get("cap_factor");
+                var shortage = new MaterialShortageException(facts, request, action);
+                if (capFactor == null || request.getMaterialShortageChoice() == null
+                        || !shortage.token().equals(request.getMaterialShortageToken())) {
+                    throw shortage;
+                }
+                if (request.getMaterialShortageChoice() == OrderSaveRequest.MaterialShortageChoice.USE_AVAILABLE) {
+                    factor = capFactor;
+                } else {
+                    fundedFactor = capFactor;
+                }
+            }
+        }
+        if (request.getMaterialShortageChoice() == OrderSaveRequest.MaterialShortageChoice.USE_AVAILABLE
+                && factor.compareTo(BigDecimal.ONE) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "库存已补足，请核对领料数量后重新保存");
+        }
+        jdbc.update("""
+                UPDATE subcontract_order_items
+                SET material_supply_loss_factor = ?, material_supply_funded_loss_factor = ?
+                WHERE order_id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
+                  AND NOT is_deleted AND (material_supply_loss_factor IS DISTINCT FROM ?
+                       OR material_supply_funded_loss_factor IS DISTINCT FROM ?)
+                """, factor, fundedFactor, ids, factor, fundedFactor);
+    }
+
+    private boolean lockOrderComponents(String orderIds) {
+        List<Map<String, Object>> components = jdbc.queryForList("""
+                WITH scope AS (SELECT CAST(string_to_array(CAST(? AS text), ',') AS uuid[]) AS ids)
+                SELECT DISTINCT edge.component_goods_id AS goods_id, edge.color_id
+                FROM scope
+                JOIN subcontract_order_items item ON item.order_id = ANY(scope.ids)
+                CROSS JOIN LATERAL fn_subcontract_draw_edges(item.goods_id) edge
+                WHERE NOT item.is_deleted AND COALESCE(item.qty, 0) > 0
+                UNION
+                SELECT line.goods_id, line.color_id
+                FROM scope
+                JOIN subcontract_order_items item ON item.order_id = ANY(scope.ids)
+                JOIN subcontract_material_plan_items line ON line.order_item_id = item.id AND NOT line.is_deleted
+                WHERE NOT item.is_deleted
+                ORDER BY 1, 2 NULLS FIRST
+                """, orderIds);
+        for (Map<String, Object> component : components) {
+            jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text", String.class,
+                    "subcontract-kit:" + component.get("goods_id") + ':' + Objects.toString(component.get("color_id"), "-"));
+        }
+        return !components.isEmpty();
+    }
+
+    private static final class MaterialShortageException extends ApiException {
+        private final String token;
+        private final Map<String, Object> details;
+
+        MaterialShortageException(List<Map<String, Object>> rows, OrderSaveRequest request, String action) {
+            super(ErrorCode.CONFLICT, "直属物料还没齐套，不能" + action + "：" + rows.stream()
+                    .filter(row -> decimal(row.get("short_qty")).signum() > 0)
+                    .map(row -> "「" + materialLabel(row) + "」本单需要 " + plain(decimal(row.get("need_qty")))
+                            + Objects.toString(row.get("unit_name"), "") + "，现在能用的只有 "
+                            + plain(decimal(row.get("available_qty"))) + Objects.toString(row.get("unit_name"), ""))
+                    .collect(java.util.stream.Collectors.joining("；")));
+            boolean baseCovered = rows.getFirst().get("cap_factor") != null;
+            // Stable across rolled-back draft IDs; quantities, source choices and review facts bind the retry.
+            var requestedLines = request.getItems().stream().map(line -> java.util.Arrays.asList(
+                    line.getGoodsId(), line.getColorId(), line.getUnitId(), line.getUnitRate(), line.getQty(),
+                    line.getAllowedLossPct(), line.resolvedApplicationItemIds())).toList();
+            var evidence = java.util.Arrays.asList(request.getWarehouseId(), requestedLines, rows);
+            token = ImmutableDocumentStore.digest(evidence.toString().getBytes(StandardCharsets.UTF_8));
+            details = Map.of(
+                    "kind", "SUBCONTRACT_MATERIAL_SHORTAGE",
+                    "token", token,
+                    "canContinueFull", baseCovered,
+                    "canUseAvailable", baseCovered,
+                    "materials", rows.stream().map(MaterialShortageException::displayMaterial).toList());
+        }
+
+        String token() {
+            return token;
+        }
+
+        @Override
+        public Map<String, Object> details() {
+            return details;
+        }
+
+        private static Map<String, Object> displayMaterial(Map<String, Object> row) {
+            Map<String, Object> material = new LinkedHashMap<>();
+            material.put("goodsCode", row.get("goods_code"));
+            material.put("goodsName", row.get("goods_name"));
+            material.put("colorName", row.get("color_name"));
+            material.put("unitName", row.get("unit_name"));
+            BigDecimal base = decimal(row.get("base_qty"));
+            BigDecimal required = decimal(row.get("need_qty"));
+            material.put("baseQtyExact", plain(base));
+            material.put("requiredLossQtyExact", plain(required.subtract(base)));
+            material.put("requiredQtyExact", plain(required));
+            material.put("availableQtyExact", plain(decimal(row.get("available_qty"))));
+            if (row.get("capped_qty") != null) {
+                BigDecimal capped = decimal(row.get("capped_qty"));
+                material.put("cappedQtyExact", plain(capped));
+                material.put("cappedLossQtyExact", plain(capped.subtract(base)));
+            }
+            return material;
+        }
     }
 
     // ==================== 读模型 ====================

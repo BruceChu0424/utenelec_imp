@@ -1,6 +1,7 @@
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../models/subcontract_draw.dart';
+import '../models/subcontract_material_quantity.dart';
 import 'subcontract_draw_status.dart';
 
 /// The same server-authored material facts in task details and order progress.
@@ -55,13 +56,27 @@ List<MasterColumnDef<SubcontractDrawMaterial>> subcontractDrawMaterialColumns({
       filterFromRows: true,
       value: (row) => label(row.colorName),
     ),
-    quantity('perUnitQty', '每套备料上限', info: '每套基础用料加冻结损耗额度。'),
-    quantity('requiredQty', '备料上限'),
+    quantity('perUnitQty', '每套领料量', info: '按订货时确认的供料口径计算。'),
+    MasterColumnDef(
+      key: 'requiredQty',
+      label: '计划领料',
+      info: '基础用料加损耗，按本物料单位显示。',
+      width: quantityWidth + 48,
+      type: 'number',
+      sortable: true,
+      exactValueOf: (row) => row.quantityText('requiredQty'),
+      value: (row) => formatSubcontractMaterialQtyBreakdown(
+        baseQty: row.quantityText('baseRequiredQty'),
+        lossQty: row.quantityText('lossRequiredQty'),
+        totalQty: row.quantityText('requiredQty'),
+        unitName: row.unitName,
+      ),
+    ),
     quantity('sentQty', '已发外'),
     quantity('pendingQty', '待仓库发'),
     quantity('availableQty', '仓库可用'),
     quantity('drawableQty', '本次可领'),
-    quantity('shortQty', '备料差额', info: '与含损耗备料上限的差额。成品的基础用料覆盖按冻结基础单耗核对。'),
+    quantity('shortQty', '备料差额', info: '计划领料扣除已发、待发和仓库可用后的差额。'),
     const MasterColumnDef(
       key: 'supplySources',
       label: '供应来源',

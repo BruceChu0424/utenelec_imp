@@ -82,6 +82,7 @@ import '../../operations_workbench/repositories/operations_workbench_repository.
 import '../../../shared/models/subcontract_short_delivery.dart'
     show subcontractProgressStatusLabel;
 import '../models/subcontract_draw.dart';
+import '../models/subcontract_material_quantity.dart';
 import '../repositories/subcontract_draw_repository.dart';
 import '../repositories/subcontract_kit_repository.dart';
 import '../widgets/subcontract_application_kit_dialog.dart';
@@ -2391,7 +2392,7 @@ class _SubcontractDecompositionPageState
               task,
             ),
             SubcontractPendingDrawRow(:final row) =>
-              subcontractDrawStatusTooltip(row) ?? '当前状态不能领料',
+              subcontractDrawStatusTooltip(row),
           },
           child: Icon(
             Icons.lock_outline_rounded,
@@ -2539,11 +2540,19 @@ class _SubcontractDecompositionPageState
               task.requiredQty,
               task.unitName,
             ),
-            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
-              row.orderQty,
+            SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
+              row.quantityText('orderQty'),
               row.unitName,
             ),
           },
+        ),
+        MasterColumnDef(
+          key: 'materialBudgetQty',
+          label: '领料数量',
+          info: '基础用料加损耗。按库存调整后，以确认的领料量为准。多种物料见领料明细。',
+          width: 144,
+          value: _materialBudgetText,
+          cellBuilder: _materialBudgetCell,
         ),
         procurementDifferenceColumn<SubcontractPendingRow>(
           context: context,
@@ -2625,30 +2634,29 @@ class _SubcontractDecompositionPageState
                 (row.task.orderableQty ?? 0) > 0,
           ),
         ),
-        _pendingDrawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
-        _pendingDrawQtyColumn(
-          'drawnQty',
-          subcontractDrawnBudgetLabel,
-          (row) => row.drawnQty,
+        MasterColumnDef(
+          key: 'orderQty',
+          label: '订货数量',
+          width: 96,
+          type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
+          exactValueOf: (row) => switch (row) {
+            SubcontractPendingDrawRow(:final row) => row.quantityText(
+              'orderQty',
+            ),
+            _ => null,
+          },
+          value: _orderQuantityText,
+          cellBuilder: (context, row) => _pendingQuantityCell(
+            context,
+            _orderQuantityText(row),
+            switch (row) {
+              SubcontractApplicationRow(:final task) => task.allocatedQty > 0,
+              SubcontractPendingDrawRow(:final row) => row.orderQty > 0,
+            },
+          ),
         ),
-        _pendingDrawQtyColumn(
-          'pendingQty',
-          subcontractPendingBudgetLabel,
-          (row) => row.pendingQty,
-        ),
-        _pendingDrawQtyColumn(
-          'drawableQty',
-          subcontractDrawableBudgetLabel,
-          (row) => row.drawableQty,
-          info: subcontractDrawBudgetHint,
-        ),
-        _pendingDrawQtyColumn(
-          'shortQty',
-          subcontractShortBudgetLabel,
-          (row) => row.shortQty,
-        ),
-        // 「单位」列 2026-10-10 删除（数量+单位口径）：领料行各数量列已内联订货单位
-        // （row.unitName），申请行本就没有单位。
         MasterColumnDef(
           key: 'needDate',
           sortable: true,
@@ -2774,85 +2782,59 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  MasterColumnDef<SubcontractPendingRow> _pendingDrawQtyColumn(
-    String key,
-    String label,
-    double Function(SubcontractDrawTaskRow row) qty, {
-    String? info,
-  }) => MasterColumnDef(
-    key: key,
-    label: label,
-    info: info,
-    width: 96,
-    type: 'number',
-    sortable: true,
-    columnSearchEnabled: true,
-    exactValueOf: (row) => switch (row) {
-      SubcontractPendingDrawRow(:final row) => row.quantityText(key),
-      _ => null,
-    },
-    // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
-    // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
-    value: (row) => switch (row) {
-      SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
-        task,
-        key,
-      ),
-      SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
-        row.quantityText(key),
-        row.unitName,
-      ),
-    },
-    cellBuilder: (context, row) {
-      final text = switch (row) {
-        SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
-          task,
-          key,
-        ),
-        SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
-          row.quantityText(key),
-          row.unitName,
-        ),
-      };
-      if (row is SubcontractApplicationRow &&
-          key != 'orderQty' &&
-          row.task.allocatedQty > 0 &&
-          _drawVisible) {
-        return InkWell(
-          onTap: () => _showApplicationDrawTasks(row.task),
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: MasterDataTableCellScope.maybeOf(context)?.selected == true
-                  ? MasterDataTableCellScope.maybeOf(context)?.foregroundColor
-                  : Theme.of(context).colorScheme.primary,
-            ),
-          ),
-        );
-      }
-      final value = switch (row) {
-        SubcontractApplicationRow(:final task) =>
-          key == 'orderQty' ? task.allocatedQty : 0,
-        SubcontractPendingDrawRow(:final row) => qty(row),
-      };
-      return _pendingQuantityCell(
-        context,
-        text,
-        const {'orderQty', 'drawableQty', 'shortQty'}.contains(key) &&
-            value > 0,
-      );
-    },
-  );
+  String _orderQuantityText(SubcontractPendingRow row) => switch (row) {
+    SubcontractApplicationRow(:final task) =>
+      task.isDocumentGrouped
+          ? '查看明细'
+          : formatQtyWithUnit(task.allocatedQty, task.unitName),
+    SubcontractPendingDrawRow(:final row) => formatExactQtyWithUnit(
+      row.quantityText('orderQty'),
+      row.unitName,
+    ),
+  };
 
-  String _applicationDrawQtyText(OperationsWorkbenchTask task, String key) {
-    if (task.isDocumentGrouped) return '查看明细';
-    if (key == 'orderQty') {
-      return formatQtyWithUnit(task.allocatedQty, task.unitName);
+  String _materialBudgetText(SubcontractPendingRow row) => switch (row) {
+    SubcontractApplicationRow(:final task) =>
+      task.isDocumentGrouped
+          ? '查看明细'
+          : task.allocatedQty <= 0
+          ? '下单后领料'
+          : _drawVisible
+          ? '见领料任务'
+          : '受限',
+    SubcontractPendingDrawRow(:final row) => switch (row.singleMaterial) {
+      final material? when material.requiredQtyText != null =>
+        formatSubcontractMaterialQtyBreakdown(
+          baseQty: material.baseRequiredQtyText,
+          lossQty: material.lossRequiredQtyText,
+          totalQty: material.requiredQtyText,
+          unitName: material.unitName,
+        ),
+      _ => '见领料明细',
+    },
+  };
+
+  Widget _materialBudgetCell(BuildContext context, SubcontractPendingRow row) {
+    final text = _materialBudgetText(row);
+    if (row is! SubcontractApplicationRow ||
+        row.task.allocatedQty <= 0 ||
+        !_drawVisible) {
+      return _pendingQuantityCell(context, text, false);
     }
-    if (task.allocatedQty <= 0) return '下单后领料';
-    return _drawVisible ? '见领料任务' : '受限';
+    final scope = MasterDataTableCellScope.maybeOf(context);
+    return InkWell(
+      onTap: () => _showApplicationDrawTasks(row.task),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: scope?.selected == true
+              ? scope?.foregroundColor
+              : Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
   }
 
   void _showApplicationDrawTasks(OperationsWorkbenchTask task) {
@@ -2964,12 +2946,12 @@ class _DrawStatusCell extends StatelessWidget {
     );
     if (!actionable) {
       return Tooltip(
-        message: tooltip ?? label,
+        message: tooltip,
         child: Semantics(label: label, child: content),
       );
     }
     return Tooltip(
-      message: tooltip ?? '点击去领料',
+      message: tooltip,
       child: Semantics(
         button: true,
         label: '$label，点击去领料',

@@ -283,8 +283,8 @@ void main() {
     );
     for (final header in [
       '物料名称',
-      '每套备料上限',
-      '备料上限',
+      '每套领料量',
+      '计划领料',
       '已发外',
       '待仓库发',
       '仓库可用',
@@ -299,7 +299,7 @@ void main() {
     expect(find.text('外壳毛坯'), findsOneWidget);
     expect(find.text('油漆'), findsOneWidget);
     expect(find.text('已备'), findsOneWidget);
-    expect(find.text('备料未满'), findsOneWidget);
+    expect(find.text('部分可领'), findsOneWidget);
     expect(find.text('采购在途 60(PO-001)'), findsOneWidget);
     // 与任务详情同一规则：不缺的物料来源列是「—」，只有还缺且没有在途才是「未安排」。
     expect(find.text('未安排'), findsNothing);

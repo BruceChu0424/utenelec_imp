@@ -121,9 +121,11 @@ public class SubcontractMaterialPlanService {
                 SELECT oi.id, oi.line_no, edge.component_goods_id, edge.color_id, component.unit_id,
                        component.code, component.name, edge_color.name, component_unit.name,
                        fn_subcontract_supply_unit_qty(
-                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct) AS bom_unit_qty,
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6),
+                           fn_subcontract_effective_supply_loss_pct(oi.allowed_loss_pct, oi.material_supply_loss_factor)) AS bom_unit_qty,
                        fn_subcontract_draw_f(oi.qty, fn_subcontract_supply_unit_qty(
-                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct)) AS planned_qty,
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6),
+                           fn_subcontract_effective_supply_loss_pct(oi.allowed_loss_pct, oi.material_supply_loss_factor))) AS planned_qty,
                        NULL::numeric AS issued_qty, FALSE AS frozen
                 FROM subcontract_order_items oi
                 CROSS JOIN LATERAL fn_subcontract_draw_edges(oi.goods_id) edge
@@ -187,10 +189,12 @@ public class SubcontractMaterialPlanService {
                        edge.component_goods_id, edge.color_id, component.unit_id, component.code, component.name,
                        ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6) AS base_bom_unit_qty,
                        fn_subcontract_supply_unit_qty(
-                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct) AS bom_unit_qty,
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6),
+                           fn_subcontract_effective_supply_loss_pct(oi.allowed_loss_pct, oi.material_supply_loss_factor)) AS bom_unit_qty,
                        fn_subcontract_draw_f(oi.qty, fn_subcontract_supply_unit_qty(
-                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct)),
-                       COALESCE(oi.allowed_loss_pct, 0) AS material_loss_pct
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6),
+                           fn_subcontract_effective_supply_loss_pct(oi.allowed_loss_pct, oi.material_supply_loss_factor))),
+                       fn_subcontract_effective_supply_loss_pct(oi.allowed_loss_pct, oi.material_supply_loss_factor) AS material_loss_pct
                 FROM subcontract_order_items oi
                 CROSS JOIN LATERAL fn_subcontract_draw_edges(oi.goods_id) edge
                 JOIN goods component ON component.id = edge.component_goods_id

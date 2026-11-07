@@ -428,24 +428,47 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         UUID item = itemOf(order);
         otherIn(w, w.warehouseId(), material, null, "10000", "1");
 
+        var task = taskRow(order);
+        var physical = task.singleMaterial();
+        assertNotNull(physical, "单种物料在列表提供实物摘要");
+        assertEquals("11000", physical.getRequiredQtyExact());
+        assertEquals("10000", physical.getBaseRequiredQtyExact());
+        assertEquals("1000", physical.getLossRequiredQtyExact());
+        assertEquals("10000", physical.getDrawableQtyExact());
+        assertEquals("1000", physical.getShortQtyExact());
+
         var detail = drawQueries.materials(item);
         qty("10000", detail.task().orderQty(), "订货目标");
         qty("9090.909", detail.task().drawableQty(), "按含损耗备料上限折算的可领套数");
         qty("10000", detail.baseMaterialCoverageQty(), "冻结基础单耗覆盖原成品目标");
         var line = detail.materials().getFirst();
         qty("11000", line.requiredQty(), "损耗备料上限");
+        assertEquals("10000", line.getBaseRequiredQtyExact());
+        assertEquals("1000", line.getLossRequiredQtyExact());
         qty("1000", line.shortQty(), "仅差损耗备料额度");
         qty("10000", line.drawableQty(), "本次可领恰好是实际库存");
-        qty("10000", orderProgress.progress(order).items().getFirst().materials().getFirst().drawableQty(),
+        assertEquals(line.unitName(), physical.unitName(), "列表沿用物料自身单位");
+        var progress = orderProgress.progress(order).items().getFirst();
+        qty("10000", progress.materials().getFirst().drawableQty(),
                 "委外订货进度与任务详情的实物领料量一致");
+        assertTrue(progress.timeline().stream().anyMatch(node ->
+                node.detail() != null && node.detail().contains("可领 10000") && !node.detail().contains("9090")));
 
         var selection = List.of(new DrawItemRequest(item, null));
         var preview = drawQueries.preview(new DrawPreviewRequest(selection));
         qty("10000", preview.lines().getFirst().qty(), "预览与详情量一致");
-        var submitted = drawCommands.submit(new DrawSubmitRequest(selection, "budget-grid-" + item));
-        UUID issue = submitted.issueIds().getFirst();
-        assertDraftLine(issue, material, "10000", "10000");
-        materialIssues.approve(issue);
+        var previewTask = preview.tasks().getFirst();
+        assertEquals("10000", previewTask.getMaterialBatchDrawableQtyExact());
+        assertEquals(line.planItemId(), previewTask.materialPlanItemId());
+        for (String amount : List.of("4000.0001", "5999.9999")) {
+            var edited = List.of(new DrawItemRequest(item, null, new BigDecimal(amount), line.planItemId()));
+            var editedPreview = drawQueries.preview(new DrawPreviewRequest(edited));
+            qty(amount, editedPreview.lines().getFirst().qty(), "手填实物量不经套数舍入");
+            var submitted = drawCommands.submit(new DrawSubmitRequest(edited, "budget-grid-" + amount + "-" + item));
+            UUID issue = submitted.issueIds().getFirst();
+            assertDraftLine(issue, material, amount, amount);
+            materialIssues.approve(issue);
+        }
         qty("10000", returnable(item), "实际发料足以回厂 10000，不强制先发出损耗预算");
     }
 
@@ -577,7 +600,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
             request.getItems().getFirst().setUnitId(orderUnit);
             request.getItems().getFirst().setUnitRate(new BigDecimal("0.1"));
             var staged = fixture.stageSubcontractKit(w, Map.of(p, "10000"));
-            UUID order = orders.create(request).getId();
+            UUID order = fixture.createWithFullMaterialBudget(request).getId();
             fixture.stageSubcontractKitUntilApproval(order, staged);
             approveSubcontract(w, order);
             UUID item = itemOf(order);
@@ -679,6 +702,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         DrawTaskRow row = taskRow(orderId);
         assertRow(row, "0", "0", "0", "100", "WAITING_PLANNING");
         assertEquals(2, row.materialKindCount(), "物料种数");
+        assertNull(row.singleMaterial(), "多种物料不合计实物数量");
         assertEquals(0, row.readyKindCount(), "已备种数");
         assertEquals(2, row.shortKindCount(), "还缺种数");
         assertEquals(1, row.unplannedShortKindCount(), "只有 A 没有在途供应");
@@ -727,7 +751,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         assertEquals("SHORT", mb.state());
         assertTrue(drawQueries.countDrawable() >= 1, "「领料」红数含本任务");
         drainOutboxFor(mine);
-        assertDrawAvailableCard(item, w.superAdminUserId(), "可领 40");
+        assertDrawAvailableCard(item, w.superAdminUserId());
         qty("40", markOf(item), "可领提醒水位");
 
         // 没有委外领料权限的人: 红数恒为 0、能力位为假、提交被拒。
@@ -851,7 +875,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         row = taskRow(orderId);
         assertRow(row, "30", "0", "70", "0", "DRAWABLE");
         drainOutboxFor(mine);
-        assertDrawAvailableCard(item, w.superAdminUserId(), "可领 70");
+        assertDrawAvailableCard(item, w.superAdminUserId());
         qty("70", markOf(item), "可领提醒水位抬到 70");
 
         // ⑩ 第二次只领 10 套: 领先的 A 已够 40 套不多发, 只补齐落后的 B(再发 20)。
@@ -1463,7 +1487,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         // C 合格入库 → P 可领 10 套, 委外人员收到可领提醒。
         assertRow(taskRow(parentOrder), "0", "0", "10", "0", "DRAWABLE");
         drainOutboxFor(mine);
-        assertDrawAvailableCard(parentItem, w.superAdminUserId(), "可领 10");
+        assertDrawAvailableCard(parentItem, w.superAdminUserId());
         DrawSubmitResult submitted = drawCommands.submit(new DrawSubmitRequest(
                 List.of(new DrawItemRequest(parentItem, null)), "scstep-nested-parent-" + parentItem));
         assertDraftLine(submitted.issueIds().getFirst(), c, "10", "10");
@@ -1531,7 +1555,7 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
                 BigDecimal.class, item), "发卡时 A 已出库, 卡只撤不发, 水位记卡上的 0");
         otherIn(w, w.warehouseId(), a, null, "10", "5");
         drainOutboxFor(mine);
-        assertDrawAvailableCard(item, w.superAdminUserId(), "可领 10");
+        assertDrawAvailableCard(item, w.superAdminUserId());
     }
 
     // =====================================================================================
@@ -1998,7 +2022,8 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
         // ADR-156: 下单到财务批准时直属物料要齐。本类测的是批准之后的领料, 缺的部分在暂存仓补齐、批准后清掉,
         // 即「下单时物料是齐的, 之后被别处用掉了」。
         var stage = fixture.stageSubcontractKit(w, Map.of(goodsId, qty));
-        UUID orderId = orders.create(orderRequest(w, goodsId, qty, deliverDate, allowedLossPct)).getId();
+        UUID orderId = fixture.createWithFullMaterialBudget(
+                orderRequest(w, goodsId, qty, deliverDate, allowedLossPct)).getId();
         fixture.stageSubcontractKitUntilApproval(orderId, stage);
         return orderId;
     }
@@ -2406,15 +2431,15 @@ class SubcontractStepDrawEndToEndTest extends SubcontractFullChainTestContext {
                 """, BigDecimal.class, goodsId, warehouseId, colorId);
     }
 
-    private void assertDrawAvailableCard(UUID orderItemId, UUID audience, String expectedFragment) {
+    private void assertDrawAvailableCard(UUID orderItemId, UUID audience) {
         List<Map<String, Object>> cards = db.queryForList("""
                 SELECT title, action_route FROM notices
                 WHERE audience_user_id=? AND source_event='SUBCONTRACT_DRAW_AVAILABLE' AND aggregate_id=?
                   AND resolved_at IS NULL
                 """, audience, orderItemId);
         assertEquals(1, cards.size(), "每个委外任务一张未办结的可领料卡, 现状 " + cards);
-        assertTrue(String.valueOf(cards.getFirst().get("title")).contains(expectedFragment),
-                "可领料卡按实时可领量生成, 期望含「" + expectedFragment + "」, 现状 " + cards.getFirst().get("title"));
+        String title = String.valueOf(cards.getFirst().get("title"));
+        assertTrue(title.startsWith("委外可领料：") && !title.contains("预算可领"), title);
         assertEquals(DRAW_ROUTE + orderItemId, cards.getFirst().get("action_route"), "卡片直达「领料」分段并按该明细筛选");
     }
 

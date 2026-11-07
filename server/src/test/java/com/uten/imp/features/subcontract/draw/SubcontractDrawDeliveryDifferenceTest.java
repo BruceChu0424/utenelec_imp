@@ -154,7 +154,7 @@ class SubcontractDrawDeliveryDifferenceTest {
                 new DocumentAccessPolicy.NativeReadScope("o.maker_id IN (:readOwners)", "readOwners", Set.of(owner)));
         when(access.hasAuthority("subcontract_order:view")).thenReturn(canView);
         when(em.createNativeQuery(anyString())).thenReturn(query);
-        Object[] row = new Object[35];
+        Object[] row = new Object[43];
         // 2026-10-30 表头名称汇总: 分面改为单列 [key,value,label,count] 数组聚合。
         row[34] = "[[\"colorName\",\"浅灰\",null,201],[\"colorName\",\"梦幻金\",null,5],[\"colorName\",null,null,3]]";
         row[4] = 1L; row[5] = 1L;

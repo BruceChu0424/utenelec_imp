@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
@@ -295,16 +297,78 @@ void main() {
     expect(capped.kitQty, 2.5);
     expect(capped.orderableQty, 2.5);
   });
+
+  testWidgets('库存不足需明确选择，库存变化重新确认，取消保留原订货输入', (tester) async {
+    final api = await _pumpPrefill(
+      tester,
+      [_defaultLines.first],
+      drafts: MemoryFormDraftStorage(),
+      rejectForMaterialShortage: true,
+      surface: const Size(400, 760),
+    );
+    final grid = tester
+        .widget<UtenEditableGrid<SubcontractGridRow>>(
+          find.byType(UtenEditableGrid<SubcontractGridRow>),
+        )
+        .controller;
+    final row = grid.rows.single
+      ..supplierId = 's1'
+      ..settlementMethodId = 'settle-1'
+      ..currencyId = 'cny';
+    row.qty.text = '10000';
+    row.allowedLossPct.text = '10';
+    row.exchangeRate.text = '1';
+    row.taxRate.text = '0';
+    row.price.text = '1';
+    await tester.pumpAndSettle();
+
+    final save = find.byKey(const ValueKey('uten-edit-save'));
+    final pressSave = tester.widget<UtenButton>(save).onPressed!;
+    pressSave();
+    pressSave();
+    await tester.pumpAndSettle();
+    expect(api.writes, hasLength(1));
+    expect(find.text('委外备料不足'), findsOneWidget);
+    expect(find.text('10000 + 1000 个'), findsOneWidget);
+    expect(find.text('10000 + 500 个'), findsOneWidget);
+    expect(find.text('10,500 个'), findsOneWidget);
+    expect(find.text('按原预算继续'), findsOneWidget);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+
+    await tester.tap(find.text('按 10,500 个下单'));
+    await tester.pumpAndSettle();
+    expect(api.writes, hasLength(2));
+    final attempt = api.writes.last as Map;
+    expect(attempt['materialShortageChoice'], 'USE_AVAILABLE');
+    expect(attempt['materialShortageToken'], 'stock-10500');
+    expect(
+      (attempt['items'] as List<Map<String, dynamic>>).single['qty'],
+      '10000',
+    );
+    expect(find.text('按 10,250 个下单'), findsOneWidget);
+
+    await tester.tap(find.text('返回修改'));
+    await tester.pumpAndSettle();
+    expect(api.writes, hasLength(2));
+    expect(row.qty.text, '10000');
+    expect(row.allowedLossPct.text, '10');
+    expect(find.byType(UtenBusyOverlay), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<_SelectionApi> _pumpPrefill(
   WidgetTester tester,
   List<SubcontractDecompositionLine> lines, {
   MemoryFormDraftStorage? drafts,
+  bool rejectForMaterialShortage = false,
+  Size surface = const Size(1400, 1000),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1000));
+  await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final api = _SelectionApi();
+  final api = _SelectionApi(
+    rejectForMaterialShortage: rejectForMaterialShortage,
+  );
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -375,7 +439,8 @@ class _DraftSessionNotifier extends SessionNotifier {
 }
 
 class _SelectionApi extends ApiClient {
-  _SelectionApi() : super(Dio());
+  _SelectionApi({this.rejectForMaterialShortage = false}) : super(Dio());
+  final bool rejectForMaterialShortage;
   final writes = <Object?>[];
 
   @override
@@ -386,6 +451,33 @@ class _SelectionApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     writes.add(body);
+    if (rejectForMaterialShortage && path == '/subcontract/orders/batch') {
+      final available = writes.length == 1 ? '10500' : '10250';
+      throw ApiException(
+        'CONFLICT',
+        '委外备料不足',
+        hasResponseCode: true,
+        httpStatus: 409,
+        details: {
+          'kind': 'SUBCONTRACT_MATERIAL_SHORTAGE',
+          'token': 'stock-$available',
+          'canContinueFull': true,
+          'canUseAvailable': true,
+          'materials': [
+            {
+              'goodsName': '按钮壳',
+              'unitName': '个',
+              'requiredQtyExact': '11000',
+              'baseQtyExact': '10000',
+              'requiredLossQtyExact': '1000',
+              'availableQtyExact': available,
+              'cappedQtyExact': available,
+              'cappedLossQtyExact': writes.length == 1 ? '500' : '250',
+            },
+          ],
+        },
+      );
+    }
     return {};
   }
 
@@ -409,6 +501,11 @@ class _SelectionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/reference-methods/settlement') {
+      return const [
+        {'id': 'settle-1', 'code': 'CASH', 'name': '现结'},
+      ];
+    }
     if (path.contains('/master/suppliers/dict')) {
       return const [
         {'id': 's1', 'code': 'W001', 'name': '宁海外协', 'status': '使用'},

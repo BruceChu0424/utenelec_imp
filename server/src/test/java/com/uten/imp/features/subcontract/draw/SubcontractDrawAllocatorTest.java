@@ -113,6 +113,41 @@ class SubcontractDrawAllocatorTest {
     }
 
     @Test
+    void physicalQuantityIsExactAndCompetingTasksSeeTheRemainingPublicStock() {
+        UUID goods = UUID.randomUUID();
+        var stock = List.of(stock(WAREHOUSE, "0", "10500"));
+        var first = new SubcontractDrawAllocator.Line(UUID.randomUUID(), goods, null, new BigDecimal("1.1"),
+                new BigDecimal("11000"), BigDecimal.ZERO, stock);
+        var second = new SubcontractDrawAllocator.Line(UUID.randomUUID(), goods, null, new BigDecimal("1.1"),
+                new BigDecimal("11000"), BigDecimal.ZERO, stock);
+        var tasks = List.of(
+                new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("10000"),
+                        null, new BigDecimal("4000"), List.of(first)),
+                new SubcontractDrawAllocator.Task(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("10000"),
+                        null, new BigDecimal("6500.0001"), List.of(second)));
+
+        var result = SubcontractDrawAllocator.allocate(tasks);
+
+        assertThat(qty(result, first.planItemId())).isEqualByComparingTo("4000");
+        assertThat(result.tasks().getFirst().material().maximum()).isEqualByComparingTo("10500");
+        assertThat(result.tasks().getLast().material().maximum()).isEqualByComparingTo("6500");
+        assertThat(result.anyExceeded()).isTrue();
+        assertThat(qty(result, second.planItemId())).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void physicalDefaultIncludesStockBelowTheLegacySetGrid() {
+        UUID plan = UUID.randomUUID();
+        var task = task("1", null, line(plan, "1000", "1000", "0",
+                stock(WAREHOUSE, "0", "30.04009"), stock(OTHER_WAREHOUSE, "0", "25.00009")));
+
+        assertThat(qty(SubcontractDrawAllocator.allocate(List.of(task)), plan)).isEqualByComparingTo("55");
+        var physical = SubcontractDrawAllocator.allocate(List.of(task), true);
+        assertThat(qty(physical, plan)).isEqualByComparingTo("55.04");
+        assertThat(physical.slices()).allSatisfy(slice -> assertThat(slice.qty().scale()).isLessThanOrEqualTo(4));
+    }
+
+    @Test
     void exactLotsAreTakenBeforePublicStockAndRicherWarehouseFirst() {
         UUID a = UUID.randomUUID();
         var task = task("10", null, line(a, "1", "10", "0",

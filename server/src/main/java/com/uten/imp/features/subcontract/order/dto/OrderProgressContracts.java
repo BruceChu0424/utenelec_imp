@@ -55,6 +55,7 @@ public final class OrderProgressContracts {
             String unitName,
             BigDecimal perUnitQty,
             BigDecimal requiredQty,
+            BigDecimal baseRequiredQty,
             BigDecimal sentQty,
             BigDecimal pendingQty,
             BigDecimal availableQty,
@@ -65,6 +66,10 @@ public final class OrderProgressContracts {
             List<SupplySource> supplySources) {
         public String getPerUnitQtyExact(){return com.uten.imp.common.util.DecimalText.of(perUnitQty);}
         public String getRequiredQtyExact(){return com.uten.imp.common.util.DecimalText.of(requiredQty);}
+        public String getBaseRequiredQtyExact() { return com.uten.imp.common.util.DecimalText.of(baseRequiredQty); }
+        public String getLossRequiredQtyExact() {
+            return com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.lossRequiredQtyExact(requiredQty, baseRequiredQty);
+        }
         public String getSentQtyExact(){return com.uten.imp.common.util.DecimalText.of(sentQty);}
         public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
         public String getAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(availableQty);}

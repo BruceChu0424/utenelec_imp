@@ -11515,6 +11515,32 @@ class FullChainEndToEndTest {
         return result;
     }
 
+    /**
+     * Fixtures testing post-creation behavior explicitly keep the original loss budget
+     * when their staged stock covers the finished order but not the entire allowance.
+     */
+    com.uten.imp.features.subcontract.order.dto.OrderDetail createWithFullMaterialBudget(
+            com.uten.imp.features.subcontract.order.dto.OrderSaveRequest request) {
+        try {
+            return subcontractOrderService.create(request);
+        } catch (ApiException shortage) {
+            var details = shortage.details();
+            if (details == null || !"SUBCONTRACT_MATERIAL_SHORTAGE".equals(details.get("kind"))
+                    || !Boolean.TRUE.equals(details.get("canContinueFull"))) {
+                throw shortage;
+            }
+            request.setMaterialShortageChoice(com.uten.imp.features.subcontract.order.dto.OrderSaveRequest
+                    .MaterialShortageChoice.CONTINUE_FULL);
+            request.setMaterialShortageToken((String) details.get("token"));
+            try {
+                return subcontractOrderService.create(request);
+            } finally {
+                request.setMaterialShortageChoice(null);
+                request.setMaterialShortageToken(null);
+            }
+        }
+    }
+
     /** 同上, 下单动作没有返回值。 */
     void withSubcontractKitStaged(World w, Map<UUID, String> qtyBySubcontractGoods, Runnable action) {
         withSubcontractKitStaged(w, qtyBySubcontractGoods, () -> {

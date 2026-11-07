@@ -15,7 +15,6 @@ import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
 import com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnService;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest;
-import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest;
@@ -593,7 +592,7 @@ class SubcontractMaterialAnalysisSupplyEndToEndTest extends SubcontractFullChain
         request.setCurrencyId(c.world().currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
         var line=new OrderItemLine();line.setGoodsId(c.common());line.setApplicationItemId(application);line.setUnitId(c.world().unitId());
         line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.ONE);line.setAllowedLossPct(new BigDecimal(loss));
-        request.setItems(List.of(line));UUID order=beans.getBean(SubcontractOrderService.class).create(request).getId();
+        request.setItems(List.of(line));UUID order=h.fixture.createWithFullMaterialBudget(request).getId();
         UUID reviewer=ReflectionTestUtils.invokeMethod(h.fixture,"createApprover",c.world());finance.submit("SUBCONTRACT",order);
         h.fixture.loginAs(reviewer);h.fixture.approvePendingFinance("SUBCONTRACT",order);h.fixture.loginAs(c.world().superAdminUserId());
         return h.db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,order);

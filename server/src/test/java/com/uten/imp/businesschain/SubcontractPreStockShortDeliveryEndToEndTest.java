@@ -269,7 +269,7 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
     /** 委外件 E 发外直属物料 M(按件用量 1): 订 100、允许损耗 5%, 财务批准, 领满 100 套并由仓库发出。 */
     private Ordered orderApproveAndIssueAll(FullChainEndToEndTest.World w,String tag){
         UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"100");
-        UUID orderId=orders.create(orderRequest(w,"100","5")).getId();
+        UUID orderId=fixture.createWithFullMaterialBudget(orderRequest(w,"100","5")).getId();
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);

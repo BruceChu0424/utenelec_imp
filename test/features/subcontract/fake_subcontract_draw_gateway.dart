@@ -178,6 +178,7 @@ SubcontractDrawTaskRow drawRow(
   bool canDraw = true,
   String? planNo,
   List<String> applicationItemIds = const [],
+  Map<String, dynamic>? singleMaterial,
 }) => SubcontractDrawTaskRow.fromJson(<String, dynamic>{
   'orderItemId': orderItemId,
   'orderId': orderId,
@@ -206,6 +207,7 @@ SubcontractDrawTaskRow drawRow(
   'canDraw': canDraw,
   'planNo': ?planNo,
   'applicationItemIds': applicationItemIds,
+  'singleMaterial': ?singleMaterial,
 });
 
 Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
@@ -238,6 +240,16 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'canDraw': row.canDraw,
       'planNo': ?row.planNo,
       'applicationItemIds': row.applicationItemIds,
+      if (row.singleMaterial case final material?)
+        'singleMaterial': {
+          'unitName': material.unitName,
+          'requiredQtyExact': material.requiredQtyText,
+          'baseRequiredQtyExact': material.baseRequiredQtyText,
+          'lossRequiredQtyExact': material.lossRequiredQtyText,
+          'pendingQtyExact': material.pendingQtyText,
+          'drawableQtyExact': material.drawableQtyText,
+          'shortQtyExact': material.shortQtyText,
+        },
     };
 
 /// 预览任务行。

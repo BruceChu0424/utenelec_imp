@@ -23,6 +23,10 @@ public class ApiException extends RuntimeException {
         this.fieldErrors = null;
     }
 
+    public java.util.Map<String, Object> details() {
+        return null;
+    }
+
     /**
      * 同一请求稍后原样重发可能成功(瞬时冲突、等锁超时等), 本次什么都没生效。
      * 响应带 {@code Retry-After} 提示; 默认否。

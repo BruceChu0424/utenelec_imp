@@ -85,6 +85,7 @@ import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_goods_picker.dart';
 import '../widgets/subcontract_link_picker.dart';
+import '../widgets/subcontract_material_shortage_dialog.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
@@ -146,6 +147,7 @@ class _SubcontractOrderEditPageState
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _saveInProgress = false;
   bool _loading = false;
   bool _documentIdentityChanged = false;
   late final Key _openedDocumentIdentity;
@@ -1175,13 +1177,46 @@ class _SubcontractOrderEditPageState
   }
 
   Future<void> _save() async {
-    if (!mounted || !formDraftIdentityIsCurrent || _saving) return;
+    if (!mounted || !formDraftIdentityIsCurrent || _saveInProgress) return;
+    _saveInProgress = true;
     try {
       final requestScope = await captureFormDraftRequestScope();
       await requestScope.run(() => _saveOwned(requestScope.verify));
     } catch (error) {
       if (mounted && formDraftIdentityIsCurrent) context.appApiError(error);
+    } finally {
+      _saveInProgress = false;
     }
+  }
+
+  Future<T?> _saveWithMaterialChoice<T extends Object>(
+    Map<String, dynamic> body,
+    Future<void> Function() verifyRequestScope,
+    Future<T> Function(Map<String, dynamic>) save,
+  ) async {
+    var attempt = body;
+    while (mounted && formDraftIdentityIsCurrent) {
+      try {
+        await verifyRequestScope();
+        return await save(attempt);
+      } on ApiException catch (error) {
+        final shortage = SubcontractMaterialShortage.fromError(error);
+        if (shortage == null || formDraftHasUnknownSubmission) rethrow;
+        if (!mounted || !formDraftIdentityIsCurrent) return null;
+        setState(() => _saving = false);
+        final choice = await shortage.show(context);
+        if (choice == null || !mounted || !formDraftIdentityIsCurrent) {
+          return null;
+        }
+        attempt = {
+          ...body,
+          'materialShortageChoice': choice,
+          'materialShortageToken': shortage.token,
+        };
+        setState(() => _saving = true);
+      }
+    }
+    return null;
   }
 
   Future<void> _saveOwned(Future<void> Function() verifyRequestScope) async {
@@ -1319,7 +1354,11 @@ class _SubcontractOrderEditPageState
       context.appError('既有委外订货单必须保持一套商业条款（委外商/结算方式/币种/汇率/税率）');
       return;
     }
-    final settlementEntries = await _settlementEntries();
+    final settlementEntries = await UtenBusyOverlay.run(
+      context,
+      title: '正在核对结算方式',
+      action: _settlementEntries,
+    );
     if (!mounted || !formDraftIdentityIsCurrent) return;
     final stoppedSettlement = <String>[];
     SubcontractGridRow? firstStoppedSettlement;
@@ -1436,10 +1475,12 @@ class _SubcontractOrderEditPageState
       );
       if (_isCreate) {
         await saveFormDraftNow();
-        final created = await runFormDraftSubmission(
-          () => repo.createBatch(body),
+        final created = await _saveWithMaterialChoice(
+          body,
+          verifyRequestScope,
+          (attempt) => runFormDraftSubmission(() => repo.createBatch(attempt)),
         );
-        if (!mounted || !formDraftIdentityIsCurrent) return;
+        if (created == null || !mounted || !formDraftIdentityIsCurrent) return;
         setState(() {
           _createdOrders = created;
           _termsLoadGeneration++;
@@ -1455,15 +1496,19 @@ class _SubcontractOrderEditPageState
       body['currencyId'] = first.currencyId;
       body['exchangeRate'] = double.tryParse(first.exchangeRate.text.trim());
       body['taxRate'] = double.tryParse(first.taxRate.text.trim());
-      final outcome = await saveSubcontractDocument(
-        repository: repo,
-        docType: SubcontractDocType.order,
-        body: body,
-        id: widget.id,
-        submitFinance: _canSubmitFinance,
-        beforeFinanceSubmit: verifyRequestScope,
+      final outcome = await _saveWithMaterialChoice(
+        body,
+        verifyRequestScope,
+        (attempt) => saveSubcontractDocument(
+          repository: repo,
+          docType: SubcontractDocType.order,
+          body: attempt,
+          id: widget.id,
+          submitFinance: _canSubmitFinance,
+          beforeFinanceSubmit: verifyRequestScope,
+        ),
       );
-      if (!mounted || !formDraftIdentityIsCurrent) return;
+      if (outcome == null || !mounted || !formDraftIdentityIsCurrent) return;
       final d = outcome.detail;
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('委外订货单已保存，但未提交财务：$error。可在详情页重新提交。');

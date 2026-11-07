@@ -422,7 +422,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         fixture.loginAs(w.superAdminUserId());
         bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
-        UUID orderId = orders.create(orderRequest(w, "1000")).getId();
+        UUID orderId = fixture.createWithFullMaterialBudget(orderRequest(w, "1000")).getId();
         UUID orderItemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
 
         // 执行生产代码的真实 PostgreSQL facts 查询。CTE 仅提供不同发出阶段的冻结计划行
@@ -591,7 +591,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         // ① ADR-156: 下单到批准时直属物料要齐(不良品仓里的不算); 在暂存仓补齐、批准后清掉,
         // 即「下单时物料是齐的, 之后被判不良转走了」。批准冻结一条计划行。
         var kitStage = fixture.stageSubcontractKit(w, Map.of(w.goodsE(), "1000"));
-        UUID orderId = orders.create(orderRequest(w, "1000")).getId();
+        UUID orderId = fixture.createWithFullMaterialBudget(orderRequest(w, "1000")).getId();
         fixture.stageSubcontractKitUntilApproval(orderId, kitStage);
         UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
@@ -685,7 +685,7 @@ class SubcontractComponentReturnLegEndToEndTest {
     private Ordered orderApproveAndIssueAll(FullChainEndToEndTest.World w, String qty, String allowedLossPct) {
         var request = orderRequest(w, qty);
         request.getItems().getFirst().setAllowedLossPct(new BigDecimal(allowedLossPct));
-        UUID orderId = orders.create(request).getId();
+        UUID orderId = fixture.createWithFullMaterialBudget(request).getId();
         UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
         qty(allowedLossPct, db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?", BigDecimal.class, itemId),
                 "允许损耗必须冻结在订货行");

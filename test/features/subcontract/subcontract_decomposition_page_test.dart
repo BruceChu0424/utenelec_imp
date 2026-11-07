@@ -903,7 +903,7 @@ void main() {
       expect(table.items.map(quantity.value), everyElement('10 件'));
       final link =
           table.columns
-                  .singleWhere((column) => column.key == 'drawnQty')
+                  .singleWhere((column) => column.key == 'materialBudgetQty')
                   .cellBuilder!(tester.element(finder), table.items.first)
               as InkWell;
       link.onTap!();
@@ -945,10 +945,9 @@ void main() {
       final late = Completer<SubcontractDrawTaskList>();
       draw.onList = (_) => late.future;
       final link =
-          initial.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
-                tester.element(finder),
-                initial.items.first,
-              )
+          initial.columns
+                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .cellBuilder!(tester.element(finder), initial.items.first)
               as InkWell;
       link.onTap!();
       await tester.pump();
@@ -1047,10 +1046,9 @@ void main() {
         finder,
       );
       final link =
-          table.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
-                tester.element(finder),
-                table.items.first,
-              )
+          table.columns
+                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .cellBuilder!(tester.element(finder), table.items.first)
               as InkWell;
       link.onTap!();
       await tester.pumpAndSettle();
@@ -1114,7 +1112,9 @@ void main() {
       expect(table().unpagedItems, hasLength(201));
       expect(find.byKey(const Key('subcontract-draw-next')), findsNothing);
       final link =
-          table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+          table().columns
+                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -1188,7 +1188,9 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
       final link =
-          table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+          table().columns
+                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -1260,7 +1262,9 @@ void main() {
       final late = Completer<SubcontractDrawTaskList>();
       draw.onList = (_) => late.future;
       final link =
-          initial.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+          initial.columns
+                  .singleWhere((c) => c.key == 'materialBudgetQty')
+                  .cellBuilder!(
                 tester.element(
                   find.byKey(
                     const Key('subcontract-decomposition-pending-table'),
@@ -1334,7 +1338,7 @@ void main() {
           .singleWhere((column) => column.key == key)
           .value(applicationRow);
       expect(value('orderQty'), '4 件');
-      for (final key in ['drawnQty', 'pendingQty', 'drawableQty', 'shortQty']) {
+      for (final key in ['materialBudgetQty']) {
         expect(value(key), '见领料任务');
       }
       final context = tester.element(
@@ -1342,7 +1346,7 @@ void main() {
       );
       final link =
           initial.columns
-                  .singleWhere((column) => column.key == 'drawnQty')
+                  .singleWhere((column) => column.key == 'materialBudgetQty')
                   .cellBuilder!(context, applicationRow)
               as InkWell;
       link.onTap!();
@@ -2418,8 +2422,19 @@ void main() {
               status: 'DRAWABLE_PARTIAL',
               orderBillNo: 'WD-002',
               goodsName: '委外件B',
-              drawableQty: 20,
-              pendingQty: 10,
+              unitName: '套',
+              orderQty: 10000,
+              drawableQty: 9090.909,
+              materialKindCount: 1,
+              singleMaterial: const {
+                'unitName': '个',
+                'requiredQtyExact': '11000',
+                'baseRequiredQtyExact': '10000',
+                'lossRequiredQtyExact': '1000',
+                'drawableQtyExact': '10000',
+                'pendingQtyExact': '0',
+                'shortQtyExact': '1000',
+              },
             ),
             drawRow(
               'item-submitted',
@@ -2428,6 +2443,8 @@ void main() {
               drawableQty: 0,
               pendingQty: 30,
               canDraw: false,
+              materialKindCount: 1,
+              singleMaterial: const {'unitName': '个', 'pendingQtyExact': '33'},
             ),
             drawRow(
               'item-planning',
@@ -2507,11 +2524,12 @@ void main() {
           'draw-item-planning',
           'draw-item-waiting',
         ]);
-        expect(find.byTooltip('按预算折算待发 30 个，等仓库发出'), findsOneWidget);
+        expect(find.byTooltip('待发 33 个，等仓库发出'), findsOneWidget);
         // 状态列文案 + ADR-169 十档整格底色(绿 / 紫 / 青 / 红 / 红——
         // 等计划安排与等待物料都是「不能领」，同红靠文案区分)。
-        expect(find.text('预算可领 60 个·去领料'), findsOneWidget);
-        expect(find.text('预算可领 20 个·去领料'), findsOneWidget);
+        expect(find.text('物料可领·去领料'), findsOneWidget);
+        expect(find.text('可领 10000 个·去领料'), findsOneWidget);
+        expect(find.textContaining('9090.909'), findsNothing);
         expect(find.text('已提交领料·待仓库发料'), findsOneWidget);
         expect(find.text('等计划安排·缺 2 种'), findsOneWidget);
         expect(find.text('等待物料·已备 1/3 种'), findsOneWidget);
@@ -2531,17 +2549,14 @@ void main() {
           utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
           utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
         ]);
-        // 可领与待仓库发同时存在时悬浮提示两者。
-        expect(
-          find.byTooltip('预算可领 20 个，另有 10 个按预算折算待发。备料预算还有余量，到货后可继续领'),
-          findsOneWidget,
+        expect(find.byTooltip('可领 10000 个，备料还差 1000 个'), findsOneWidget);
+        final materialBudget = table.columns.singleWhere(
+          (column) => column.key == 'materialBudgetQty',
         );
-        // 已领 / 待仓库发 / 可领 / 还缺 与货品身份三列(与申请行的数量列并存)。
+        expect(materialBudget.value(table.unpagedItems[1]), '10000 + 1000 个');
+        expect(materialBudget.value(table.unpagedItems.first), '见领料明细');
         for (final label in [
-          '已领折算',
-          '待发折算',
-          '预算可领',
-          '备料预算缺口',
+          '领料数量',
           '委外件名称',
           '编号',
           '颜色',
@@ -2597,19 +2612,7 @@ void main() {
           '0 个',
         );
         final applicationRow = table.items.first;
-        for (final key in [
-          'drawnQty',
-          'pendingQty',
-          'drawableQty',
-          'shortQty',
-        ]) {
-          expect(
-            table.columns
-                .singleWhere((column) => column.key == key)
-                .value(applicationRow),
-            '下单后领料',
-          );
-        }
+        expect(materialBudget.value(applicationRow), '下单后领料');
         expect(
           table.columns.where((column) => column.key == 'unitName'),
           isEmpty,
@@ -2736,8 +2739,7 @@ void main() {
           isNull,
         );
         expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
-        // 只显示可领量，不出现「去领料」入口。
-        expect(find.text('预算可领 40 个'), findsOneWidget);
+        expect(find.text('物料可领'), findsOneWidget);
         expect(
           find.byKey(const ValueKey('subcontract-draw-go-item-1')),
           findsNothing,
@@ -2784,8 +2786,8 @@ void main() {
           '物料名称',
           '编号',
           '颜色',
-          '每套备料上限',
-          '备料上限',
+          '每套领料量',
+          '计划领料',
           '已发外',
           '待仓库发',
           '仓库可用',
@@ -2794,12 +2796,18 @@ void main() {
           '供应来源',
         ]);
         expect(
+          materials.columns
+              .singleWhere((column) => column.key == 'requiredQty')
+              .value(materials.items.first),
+          '180 + 20 kg',
+        );
+        expect(
           find.text('基础用料可覆盖 10000 个', findRichText: true),
           findsOneWidget,
         );
         expect(find.text('采购在途 50(PO-9)'), findsOneWidget);
         expect(find.text('未安排'), findsOneWidget);
-        expect(find.text('备料未满'), findsWidgets);
+        expect(find.text('部分可领'), findsWidgets);
         expect(find.text('已备'), findsOneWidget);
         expect(find.textContaining('WF-1'), findsOneWidget);
 
@@ -3665,6 +3673,8 @@ SubcontractDrawTaskDetail _detail(
       'unitName': 'kg',
       'perUnitQty': 2,
       'requiredQty': 200,
+      'baseRequiredQtyExact': '180',
+      'lossRequiredQtyExact': '20',
       'sentQty': 0,
       'pendingQty': 0,
       'availableQty': 80,

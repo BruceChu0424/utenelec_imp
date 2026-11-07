@@ -1,6 +1,6 @@
 // ADR-143 §4.1 委外任务详情：物料表 + 已提交未发的领料 + 服务端放行的动作。
 //
-// 物料表逐种直属物料显示 每套备料上限 / 备料上限 / 已发外 / 待仓库发 / 仓库可用 /
+// 物料表逐种直属物料显示 每套领料量 / 计划领料 / 已发外 / 待仓库发 / 仓库可用 /
 // 本次可领 / 备料差额 / 供应来源 / 状态。数量都是服务端算好的结果。底部动作只看服务端
 // allowedActions：撤回未发领料(WITHDRAW)、结束领料(CLOSE，必填原因)；
 // 「去领料」只在本行 canDraw 且账号可提交领料时出现。
@@ -255,10 +255,6 @@ class _SubcontractDrawTaskDetailDialogState
       ('编号', _label(task.goodsCode)),
       ('颜色', _label(task.colorName)),
       ('订货数量', qty(task.quantityText('orderQty'))),
-      (subcontractDrawnBudgetLabel, qty(task.quantityText('drawnQty'))),
-      (subcontractPendingBudgetLabel, qty(task.quantityText('pendingQty'))),
-      (subcontractDrawableBudgetLabel, qty(task.quantityText('drawableQty'))),
-      (subcontractShortBudgetLabel, qty(task.quantityText('shortQty'))),
       if (detail.baseMaterialCoverageQtyText case final coverage?)
         ('基础用料可覆盖', qty(coverage)),
       if ((task.deliverDate ?? '').isNotEmpty) ('交期', task.deliverDate!),
@@ -291,11 +287,6 @@ class _SubcontractDrawTaskDetailDialogState
                 const UtenFieldHintIcon(
                   dense: true,
                   info: '把已发外可用、待发和可领材料按基础单耗折算，最多显示本方应供套数。回厂数量由仓库实际清点。',
-                ),
-              if (label == subcontractDrawableBudgetLabel)
-                const UtenFieldHintIcon(
-                  dense: true,
-                  info: subcontractDrawBudgetHint,
                 ),
             ],
           ),

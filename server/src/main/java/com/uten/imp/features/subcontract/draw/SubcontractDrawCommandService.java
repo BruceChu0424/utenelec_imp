@@ -116,14 +116,13 @@ public class SubcontractDrawCommandService {
         lockPlanRows(itemIds);
         guard.verifyUnchanged();
 
-        SubcontractDrawQueryService.DrawBatch batch = queries.computeBatch(items, true);
+        SubcontractDrawQueryService.DrawBatch batch = queries.computeBatch(items, true, false);
         if (batch.allocation().anyExceeded()) {
-            throw conflict(queries.exceededMessage(batch, "本批可领已变化",
-                    "请按实时可领重新核对后再提交"));
+            throw queries.quantityExceeded(batch, "本批可领已变化", "请按实时可领重新核对后再提交");
         }
         List<String> empty = new ArrayList<>();
         for (SubcontractDrawAllocator.TaskResult result : batch.allocation().tasks()) {
-            if (result.qty().signum() <= 0) {
+            if (!result.hasQuantity()) {
                 SubcontractDrawQueryService.TaskRow row = batch.rows().get(result.orderItemId());
                 empty.add("委外订货单 " + row.orderBillNo() + " 第 " + row.lineNo() + " 行 "
                         + Objects.toString(row.goodsName(), ""));
@@ -481,7 +480,7 @@ public class SubcontractDrawCommandService {
         for (Object[] row : found.values()) {
             int status = row[2] == null ? -1 : ((Number) row[2]).intValue();
             if (Boolean.TRUE.equals(row[3]) || (status != 0 && status != 1)) {
-                throw conflict(REPLAY_CHANGED);
+                throw replayRetired(REPLAY_CHANGED);
             }
             changed |= Boolean.TRUE.equals(row[5]);
         }
@@ -503,9 +502,18 @@ public class SubcontractDrawCommandService {
         }
         if (!replayedItems.equals(new HashSet<>(itemIds))) {
             // 撤回了其中部分任务的领料(行已删)也会对不上: 按「已变化」提示, 不说成键冲突。
-            throw conflict(changed ? REPLAY_CHANGED : "同一操作编号对应了不同的领料批次，请重新打开领料页后再提交");
+            throw replayRetired(changed ? REPLAY_CHANGED : "同一操作编号对应了不同的领料批次，请重新打开领料页后再提交");
         }
         return new DrawSubmitResult(issueIds, billNos, issueIds.size(), true);
+    }
+
+    private static ApiException replayRetired(String message) {
+        return new ApiException(ErrorCode.CONFLICT, message) {
+            @Override
+            public Map<String, Object> details() {
+                return Map.of("kind", "SUBCONTRACT_DRAW_REPLAY_RETIRED");
+            }
+        };
     }
 
     /** 新草稿主键 = UUID(账号 + 幂等键 + 序号), 重放可按序号找回。 */

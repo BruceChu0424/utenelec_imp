@@ -10,13 +10,9 @@ import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_colors.dart';
+import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../models/subcontract_draw.dart';
-
-const subcontractDrawnBudgetLabel = '已领折算';
-const subcontractPendingBudgetLabel = '待发折算';
-const subcontractDrawableBudgetLabel = '预算可领';
-const subcontractShortBudgetLabel = '备料预算缺口';
-const subcontractDrawBudgetHint = '按含损耗备料上限折算的套数，可能出现小数。实际物料数量见领料明细「本次可领」。';
 
 enum SubcontractDrawTone {
   toDraw,
@@ -60,14 +56,17 @@ String subcontractDrawStatusLabel(
   SubcontractDrawTaskRow row, {
   required bool actionable,
 }) {
-  final unit = row.unitName.trim();
   switch (row.status) {
     case SubcontractDrawStatus.drawable:
     case SubcontractDrawStatus.drawablePartial:
-      final qty =
-          '$subcontractDrawableBudgetLabel ${subcontractDrawQty(row.quantityText('drawableQty'))}'
-          '${unit.isEmpty ? '' : ' $unit'}';
-      return actionable ? '$qty·去领料' : qty;
+      final material = row.singleMaterial;
+      final qty = material?.drawableQtyText;
+      final label = material != null && qty != null
+          ? '可领 ${formatExactQtyWithUnit(qty, material.unitName)}'
+          : row.status == SubcontractDrawStatus.drawablePartial
+          ? '部分物料可领'
+          : '物料可领';
+      return actionable ? '$label·去领料' : label;
     case SubcontractDrawStatus.drawSubmitted:
       return '已提交领料·待仓库发料';
     case SubcontractDrawStatus.waitingPlanning:
@@ -79,21 +78,25 @@ String subcontractDrawStatusLabel(
 }
 
 /// 可领与待仓库发同时存在时悬浮提示两者；其余状态说明下一步由谁动手。
-String? subcontractDrawStatusTooltip(SubcontractDrawTaskRow row) {
-  final unit = row.unitName.trim();
-  String qty(String key) =>
-      '${subcontractDrawQty(row.quantityText(key))}${unit.isEmpty ? '' : ' $unit'}';
+String subcontractDrawStatusTooltip(SubcontractDrawTaskRow row) {
+  final material = row.singleMaterial;
+  String? positiveQty(String? value) =>
+      material == null || positiveDocumentQuantityText(value ?? '') == null
+      ? null
+      : formatExactQtyWithUnit(value, material.unitName);
+  final pending = positiveQty(material?.pendingQtyText);
+  final short = positiveQty(material?.shortQtyText);
   switch (row.status) {
     case SubcontractDrawStatus.drawable:
     case SubcontractDrawStatus.drawablePartial:
-      final partial = row.status == SubcontractDrawStatus.drawablePartial
-          ? '。备料预算还有余量，到货后可继续领'
-          : '';
-      return row.pendingQty > 0
-          ? '$subcontractDrawableBudgetLabel ${qty('drawableQty')}，另有 ${qty('pendingQty')}按预算折算待发$partial'
-          : '$subcontractDrawableBudgetLabel ${qty('drawableQty')}$partial';
+      return [
+        subcontractDrawStatusLabel(row, actionable: false),
+        if (pending != null) '另有 $pending 待仓库发料',
+        if (short != null) '备料还差 $short',
+        if (material == null) '各物料的数量见领料明细',
+      ].join('，');
     case SubcontractDrawStatus.drawSubmitted:
-      return '按预算折算待发 ${qty('pendingQty')}，等仓库发出';
+      return pending == null ? '已提交领料，等仓库发出' : '待发 $pending，等仓库发出';
     case SubcontractDrawStatus.waitingPlanning:
       return '备料差额没有采购、生产或委外在途';
     case SubcontractDrawStatus.waitingMaterial:
@@ -109,7 +112,7 @@ String subcontractDrawMaterialStateLabel(SubcontractDrawMaterial material) =>
       'SENT_FULL' => '已发齐',
       'PENDING' => '待仓库发料',
       'DRAWABLE' => material.drawableQty > 0 ? '可领' : '已备',
-      'SHORT' => '备料未满',
+      'SHORT' => material.drawableQty > 0 ? '部分可领' : '备料未满',
       'CLOSED' => '已结束领料',
       _ => '—',
     };
@@ -127,7 +130,10 @@ Color? subcontractDrawMaterialCellColor(SubcontractDrawMaterial material) =>
         material.drawableQty > 0
             ? UtenColors.statusSuccess
             : UtenColors.statusViolet,
-      'SHORT' => UtenColors.statusDanger,
+      'SHORT' =>
+        material.drawableQty > 0
+            ? UtenColors.statusViolet
+            : UtenColors.statusDanger,
       _ => null,
     };
 

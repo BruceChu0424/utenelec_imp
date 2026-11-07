@@ -2837,7 +2837,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
                        order_header.maker_id,
                        goods.code AS goods_code, goods.name AS goods_name,
-                       unit.name AS unit_name,
                        summary.drawable_qty
                 FROM subcontract_order_items order_item
                 JOIN subcontract_orders order_header
@@ -2846,7 +2845,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                  AND order_header.is_deleted = FALSE
                  AND COALESCE(order_header.is_closed, FALSE) = FALSE
                 JOIN goods ON goods.id = order_item.goods_id
-                LEFT JOIN units unit ON unit.id = order_item.unit_id
                 CROSS JOIN LATERAL fn_subcontract_draw_summary(order_item.id) summary
                 WHERE order_item.id = ?
                   AND order_item.is_deleted = FALSE
@@ -2870,9 +2868,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (task == null || drawable.signum() <= 0) return BigDecimal.ZERO;
         String orderNo = str(task.get("order_bill_no"));
         String target = subcontractTargetName(task);
-        String quantity = qtyWithUnit(drawable, task.get("unit_name"));
-        String title = "委外可领料：" + orderNo + " " + target + " 预算可领 " + quantity;
-        String content = "委外订货单 " + orderNo + " 的委外件 " + target + " 按备料预算可领 " + quantity
+        String title = "委外可领料：" + orderNo + " " + target;
+        String content = "委外订货单 " + orderNo + " 的委外件 " + target + " 有物料可领"
                 + "。请到委外任务中心「领料」核对各仓实际物料数量后提交，由仓库发料。"
                 + "可领数量随实时库存变化。";
         String route = SUBCONTRACT_DRAW_SEGMENT_ROUTE + orderItemId;

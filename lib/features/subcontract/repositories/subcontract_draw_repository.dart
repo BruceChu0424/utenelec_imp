@@ -124,7 +124,10 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
   ) async => SubcontractDrawPreview.fromJson(
     await api.post(
       '$base/preview',
-      body: {'items': items.map((item) => item.toJson()).toList()},
+      body: {
+        'items': items.map((item) => item.toJson()).toList(),
+        'physicalDefaults': true,
+      },
     ),
   );
 

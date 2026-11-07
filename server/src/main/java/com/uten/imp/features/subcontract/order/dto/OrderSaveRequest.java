@@ -33,6 +33,11 @@ public class OrderSaveRequest {
     private LocalDate deliverDate;
     private String remark;
 
+    public enum MaterialShortageChoice { CONTINUE_FULL, USE_AVAILABLE }
+    private MaterialShortageChoice materialShortageChoice;
+    @Size(max = 64)
+    private String materialShortageToken;
+
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<@Valid OrderItemLine> items;

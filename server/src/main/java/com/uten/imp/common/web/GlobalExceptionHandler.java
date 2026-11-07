@@ -71,7 +71,7 @@ public class GlobalExceptionHandler {
         if (ex.retryable() || ex.getCode() == ErrorCode.AUTH_BUSY) {
             response.header(HttpHeaders.RETRY_AFTER, "1");
         }
-        return response.body(ApiError.of(ex.getCode(), ex.getMessage(), ex.getFieldErrors()));
+        return response.body(ApiError.of(ex.getCode(), ex.getMessage(), ex.getFieldErrors()).withDetails(ex.details()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

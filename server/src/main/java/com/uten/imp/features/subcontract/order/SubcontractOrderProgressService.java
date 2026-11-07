@@ -328,7 +328,7 @@ public class SubcontractOrderProgressService {
             List<MaterialLine> materials = hasPlan ? materials(orderItemId) : List.of();
             BigDecimal returnable = hasPlan ? returnable(orderItemId) : BigDecimal.ZERO;
 
-            List<TimelineNode> timeline = timeline(order, financeStatus, draw, hasPlan, summary,
+            List<TimelineNode> timeline = timeline(order, financeStatus, draw, hasPlan, summary, materials,
                     orderQty, unitName, received, returnable, qualified, pendingInspection,
                     stocked, settledLoss, inspected);
             out.add(new ItemProgress(
@@ -387,9 +387,11 @@ public class SubcontractOrderProgressService {
                        CASE WHEN facts.line_open THEN GREATEST(0,
                                 facts.needed_qty - facts.sent_qty - facts.pending_qty
                                 - facts.available_qty)
-                            ELSE 0 END AS short_qty
+                            ELSE 0 END AS short_qty,
+                       summary.material_kind_count, summary.material_qty, plan.base_bom_unit_qty
                 FROM fn_subcontract_draw_facts(:id) facts
                 CROSS JOIN fn_subcontract_draw_summary(:id) summary
+                JOIN subcontract_material_plan_items plan ON plan.id = facts.plan_item_id
                 JOIN goods g ON g.id = facts.goods_id
                 LEFT JOIN colors c ON c.id = facts.color_id
                 LEFT JOIN units u ON u.id = facts.unit_id
@@ -401,9 +403,15 @@ public class SubcontractOrderProgressService {
             BigDecimal sent = bd(row[11]);
             BigDecimal pending = bd(row[12]);
             boolean open = Boolean.TRUE.equals(row[15]);
-            BigDecimal drawable = row[16] == null ? BigDecimal.ZERO
-                    : SubcontractDrawAllocator.drawMaterialQty(bd(row[16]), bd(row[9]), sent.add(pending),
-                            bd(row[13]), required, true);
+            BigDecimal drawable = BigDecimal.ZERO;
+            if (row[16] != null) {
+                BigDecimal covered = sent.add(pending);
+                BigDecimal available = bd(row[13]);
+                drawable = ((Number) row[18]).intValue() == 1
+                        ? SubcontractDrawAllocator.materialMaximum(required, covered, available)
+                        : SubcontractDrawAllocator.drawMaterialQty(bd(row[16]), bd(row[9]), covered,
+                                available, required, true);
+            }
             BigDecimal shortQty = bd(row[17]);
             List<SupplySource> sources = open && shortQty.signum() > 0
                     ? SubcontractOpenSupplySources.read(em, (UUID) row[2], (UUID) row[5]).stream()
@@ -415,7 +423,8 @@ public class SubcontractOrderProgressService {
                     (UUID) row[0], row[1] == null ? null : ((Number) row[1]).intValue(),
                     (UUID) row[2], (String) row[3], (String) row[4],
                     (UUID) row[5], (String) row[6], (UUID) row[7], (String) row[8],
-                    bd(row[9]), required, sent, pending, bd(row[13]), drawable, shortQty, bd(row[14]),
+                    bd(row[9]), required, SubcontractDrawAllocator.materialBaseQuantity(required, bd(row[19]), bd(row[20])),
+                    sent, pending, bd(row[13]), drawable, shortQty, bd(row[14]),
                     materialState(open, required, sent, pending, shortQty), sources));
         }
         return out;
@@ -436,7 +445,7 @@ public class SubcontractOrderProgressService {
 
     /** 下单 → 财务审批 → 领料发外 → 加工回厂 → 品质检验 → 仓库确认入仓 → 结案核销。 */
     static List<TimelineNode> timeline(SubcontractOrder order, String financeStatus, boolean draw,
-                                       boolean hasPlan, Summary summary, BigDecimal orderQty,
+                                       boolean hasPlan, Summary summary, List<MaterialLine> materials, BigDecimal orderQty,
                                        String unitName, BigDecimal received, BigDecimal returnable,
                                        BigDecimal qualified, BigDecimal pendingInspection,
                                        BigDecimal stocked, BigDecimal settledLoss, boolean inspected) {
@@ -483,16 +492,24 @@ public class SubcontractOrderProgressService {
             drawState = OrderProgressContracts.NODE_PENDING;
             drawDetail = "领料计划尚未生成";
         } else {
-            StringBuilder detail = new StringBuilder("已领折算 " + plain(summary.drawnQty()) + "/"
-                    + plain(orderQty) + unit);
-            if (summary.pendingQty().signum() > 0) {
-                detail.append("，待发折算 ").append(plain(summary.pendingQty())).append(unit);
-            }
-            if (summary.drawableQty().signum() > 0) {
-                detail.append("，预算可领 ").append(plain(summary.drawableQty())).append(unit);
-            }
-            if (summary.shortQty().signum() > 0 && summary.anyOpen()) {
-                detail.append("，备料预算缺口 ").append(plain(summary.shortQty())).append(unit);
+            StringBuilder detail = new StringBuilder();
+            if (materials.size() == 1) {
+                MaterialLine material = materials.getFirst();
+                String materialUnit = material.unitName() == null || material.unitName().isBlank()
+                        ? "" : " " + material.unitName();
+                detail.append("已发外 ").append(plain(material.sentQty())).append("/")
+                        .append(plain(material.requiredQty())).append(materialUnit);
+                if (material.pendingQty().signum() > 0) {
+                    detail.append("，待仓库发 ").append(plain(material.pendingQty())).append(materialUnit);
+                }
+                if (material.drawableQty().signum() > 0) {
+                    detail.append("，可领 ").append(plain(material.drawableQty())).append(materialUnit);
+                }
+                if (material.shortQty().signum() > 0) {
+                    detail.append("，备料还差 ").append(plain(material.shortQty())).append(materialUnit);
+                }
+            } else {
+                detail.append("各物料的计划领料及可领数量见明细");
             }
             if (!summary.anyOpen() && !summary.allSent()) {
                 detail.append("，已结束领料");

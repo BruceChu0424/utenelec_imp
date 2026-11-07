@@ -264,6 +264,105 @@ class SubcontractKitLockEndToEndTest {
         assertEquals(ErrorCode.CONFLICT, second.getCode());
     }
 
+    @Test
+    void aShortLossAllowanceCanBeCappedWithoutChangingTheFinishedOrder() {
+        String tag = "sckit-budget-cap";
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        UUID product = goods(w, tag, "P", "委外");
+        UUID material = goods(w, tag, "M", "采购");
+        fixture.insertBom(product, material, "1");
+        otherIn(w, w.warehouseId(), material, "10500");
+        OrderSaveRequest request = orderRequest(w, product, "10000", null);
+        request.getItems().getFirst().setAllowedLossPct(BigDecimal.TEN);
+
+        var preview = assertThrows(ApiException.class, () -> orders.create(request));
+        assertEquals(ErrorCode.CONFLICT, preview.getCode());
+        assertEquals("SUBCONTRACT_MATERIAL_SHORTAGE", preview.details().get("kind"));
+        assertEquals(true, preview.details().get("canContinueFull"));
+        assertEquals(true, preview.details().get("canUseAvailable"));
+        var materialRows = (List<?>) preview.details().get("materials");
+        var row = (Map<?, ?>) materialRows.getFirst();
+        assertEquals("10000", row.get("baseQtyExact"));
+        assertEquals("1000", row.get("requiredLossQtyExact"));
+        assertEquals("11000", row.get("requiredQtyExact"));
+        assertEquals("10500", row.get("availableQtyExact"));
+        assertEquals("10500", row.get("cappedQtyExact"));
+        assertEquals("500", row.get("cappedLossQtyExact"));
+        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?", product));
+
+        request.setMaterialShortageChoice(OrderSaveRequest.MaterialShortageChoice.USE_AVAILABLE);
+        request.setMaterialShortageToken((String) preview.details().get("token"));
+        otherOut(w, w.warehouseId(), material, "100");
+        var stale = assertThrows(ApiException.class, () -> orders.create(request));
+        assertFalse(request.getMaterialShortageToken().equals(stale.details().get("token")));
+        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?", product));
+        otherIn(w, w.warehouseId(), material, "600");
+        var replenished = assertThrows(ApiException.class, () -> orders.create(request));
+        assertTrue(replenished.getMessage().contains("库存已补足"));
+        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?", product));
+        otherOut(w, w.warehouseId(), material, "500");
+
+        UUID order = orders.create(request).getId();
+        UUID item = itemOf(order);
+        qty("10000", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, item),
+                "保留成品订货目标");
+        qty("10500", db.queryForObject("SELECT fn_subcontract_order_item_component_need(?, ?, NULL)",
+                BigDecimal.class, item, material), "草稿按确认的物料预算占用");
+        qty("10", db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?",
+                BigDecimal.class, item), "保留正常允许损耗政策");
+        qty("10", db.queryForObject("SELECT subcontract_allowed_loss_pct FROM goods WHERE id=?",
+                BigDecimal.class, product), "保留主档默认损耗率");
+
+        otherIn(w, w.warehouseId(), material, "500");
+        request.getItems().getFirst().setId(item);
+        request.setMaterialShortageChoice(null);
+        request.setMaterialShortageToken(null);
+        request.setRemark("库存后来补齐，普通改单保留原供料上限");
+        orders.update(order, request);
+        approve(w, order);
+        qty("10500", db.queryForObject("SELECT planned_qty FROM subcontract_material_plan_items WHERE order_item_id=?",
+                BigDecimal.class, item), "批准冻结已经确认的供料上限");
+        qty("5", db.queryForObject("SELECT material_loss_pct FROM subcontract_material_plan_items WHERE order_item_id=?",
+                BigDecimal.class, item), "实际供料预算余量为五个百分点");
+    }
+
+    @Test
+    void aShortLossAllowanceCanContinueAtTheFullBudgetWhenTheBaseIsCovered() {
+        String tag = "sckit-budget-full";
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        UUID product = goods(w, tag, "P", "委外");
+        UUID material = goods(w, tag, "M", "采购");
+        fixture.insertBom(product, material, "1");
+        otherIn(w, w.warehouseId(), material, "9999");
+        OrderSaveRequest request = orderRequest(w, product, "10000", null);
+        request.getItems().getFirst().setAllowedLossPct(BigDecimal.TEN);
+
+        var hardShortage = assertThrows(ApiException.class, () -> orders.createBatch(request));
+        assertEquals(false, hardShortage.details().get("canContinueFull"));
+        assertEquals(false, hardShortage.details().get("canUseAvailable"));
+        request.setMaterialShortageChoice(OrderSaveRequest.MaterialShortageChoice.CONTINUE_FULL);
+        request.setMaterialShortageToken((String) hardShortage.details().get("token"));
+        assertThrows(ApiException.class, () -> orders.createBatch(request));
+
+        UUID firstProduct = goods(w, tag, "EARLIER", "委外");
+        fixture.insertBom(firstProduct, material, "1");
+        otherIn(w, w.warehouseId(), material, "10501");
+        UUID firstOrder = orders.create(orderRequest(w, firstProduct, "10000", null)).getId();
+
+        var preview = assertThrows(ApiException.class, () -> orders.createBatch(request));
+        request.setMaterialShortageToken((String) preview.details().get("token"));
+        UUID order = orders.createBatch(request).getFirst().getId();
+        UUID item = itemOf(order);
+        qty("10500", db.queryForObject("SELECT fn_subcontract_order_item_component_need(?, ?, NULL)",
+                BigDecimal.class, item, material), "未到库的余量不能挤占已齐套单据");
+        approve(w, order);
+        approve(w, firstOrder);
+        qty("11000", db.queryForObject("SELECT planned_qty FROM subcontract_material_plan_items WHERE order_item_id=?",
+                BigDecimal.class, item), "继续下单保留完整的损耗供料预算");
+    }
+
     // =====================================================================================
 
     private UUID goods(FullChainEndToEndTest.World w, String tag, String code, String sourceType) {
@@ -318,6 +417,10 @@ class SubcontractKitLockEndToEndTest {
 
     /** 从委外任务中心带单下单(applicationItem 为 null 时是没有来源申请的手工委外单)。 */
     private UUID orderFrom(FullChainEndToEndTest.World w, UUID goodsId, String qty, UUID applicationItem) {
+        return orders.create(orderRequest(w, goodsId, qty, applicationItem)).getId();
+    }
+
+    private OrderSaveRequest orderRequest(FullChainEndToEndTest.World w, UUID goodsId, String qty, UUID applicationItem) {
         fixture.loginAs(w.superAdminUserId());
         var request = new OrderSaveRequest();
         request.setBillDate(BusinessTime.today());
@@ -339,7 +442,7 @@ class SubcontractKitLockEndToEndTest {
         line.setQty(new BigDecimal(qty));
         line.setPrice(new BigDecimal("30"));
         request.setItems(List.of(line));
-        return orders.create(request).getId();
+        return request;
     }
 
     private void approve(FullChainEndToEndTest.World w, UUID orderId) {

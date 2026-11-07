@@ -39,6 +39,10 @@ public final class SubcontractDrawAllocator {
     /** 某仓里本计划行可动用的量(基本单位): 本订货明细专属批次 + 该仓公共可用(全体共享)。 */
     record Stock(UUID warehouseId, String warehouseCode, String warehouseName,
                  BigDecimal exactQty, BigDecimal publicQty) {
+        Stock {
+            exactQty = positive(exactQty).setScale(SCALE, RoundingMode.DOWN);
+            publicQty = positive(publicQty).setScale(SCALE, RoundingMode.DOWN);
+        }
     }
 
     /** 一条冻结计划行: covered = 已发净量 + 待仓库发。 */
@@ -48,7 +52,10 @@ public final class SubcontractDrawAllocator {
 
     /** 一个委外任务(订货明细); materialShareQty = Qm(套数封顶); requestedQty 为 null 时取本批可领。 */
     record Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty,
-                BigDecimal requestedQty, List<Line> lines) {
+                BigDecimal requestedQty, BigDecimal requestedMaterialQty, List<Line> lines) {
+        Task(UUID orderItemId, UUID orderId, BigDecimal materialShareQty, BigDecimal requestedQty, List<Line> lines) {
+            this(orderItemId, orderId, materialShareQty, requestedQty, null, lines);
+        }
     }
 
     /** 一个仓里本次要领的一段(基本单位), warehouseAvailableQty 为分配前该仓本行可动用量。 */
@@ -58,7 +65,13 @@ public final class SubcontractDrawAllocator {
     }
 
     record TaskResult(UUID orderItemId, BigDecimal completeQty, BigDecimal batchDrawableQty,
-                      BigDecimal qty, boolean exceeded) {
+                      BigDecimal qty, boolean exceeded, MaterialResult material) {
+        boolean hasQuantity() {
+            return (material == null ? qty : material.qty()).signum() > 0;
+        }
+    }
+
+    record MaterialResult(UUID planItemId, BigDecimal maximum, BigDecimal qty, boolean requested) {
     }
 
     record Result(List<TaskResult> tasks, List<Slice> slices) {
@@ -96,6 +109,10 @@ public final class SubcontractDrawAllocator {
     }
 
     static Result allocate(List<Task> orderedTasks) {
+        return allocate(orderedTasks, false);
+    }
+
+    static Result allocate(List<Task> orderedTasks, boolean physicalDefaults) {
         Map<PublicKey, BigDecimal> publicUsed = new HashMap<>();
         List<TaskResult> results = new ArrayList<>();
         List<Slice> slices = new ArrayList<>();
@@ -111,15 +128,38 @@ public final class SubcontractDrawAllocator {
                     ? BigDecimal.ZERO
                     : reach.subtract(complete).max(BigDecimal.ZERO);
             BigDecimal qty = task.requestedQty() == null ? batch : task.requestedQty();
+            MaterialResult material = null;
             boolean exceeded = qty.compareTo(batch) > 0;
-            results.add(new TaskResult(task.orderItemId(), complete, batch, qty, exceeded));
-            if (exceeded || qty.signum() <= 0) {
+            if (task.lines().size() == 1) {
+                Line line = task.lines().getFirst();
+                BigDecimal available = available(publicUsed, line);
+                BigDecimal maximum = materialMaximum(line.neededQty(), line.coveredQty(), available);
+                BigDecimal physical = task.requestedMaterialQty();
+                if (physical == null && physicalDefaults && task.requestedQty() == null) {
+                    physical = maximum;
+                }
+                if (physical != null) {
+                    exceeded = physical.compareTo(maximum) > 0;
+                    qty = materialShareQty.min(sets(line.coveredQty().add(physical), line.perUnitQty()))
+                            .subtract(complete).max(BigDecimal.ZERO);
+                } else {
+                    physical = exceeded || qty.signum() <= 0 ? BigDecimal.ZERO
+                            : drawMaterialQty(complete.add(qty), line.perUnitQty(), line.coveredQty(),
+                                    available, line.neededQty(), qty.compareTo(batch) == 0);
+                }
+                material = new MaterialResult(line.planItemId(), maximum, physical, task.requestedMaterialQty() != null);
+            }
+            TaskResult result = new TaskResult(task.orderItemId(), complete, batch, qty, exceeded, material);
+            results.add(result);
+            if (exceeded || !result.hasQuantity()) {
                 continue;
             }
             BigDecimal target = complete.add(qty);
             for (Line line : task.lines()) {
-                BigDecimal need = drawMaterialQty(target, line.perUnitQty(), line.coveredQty(),
-                        available(publicUsed, line), line.neededQty(), qty.compareTo(batch) == 0);
+                BigDecimal need = material == null
+                        ? drawMaterialQty(target, line.perUnitQty(), line.coveredQty(),
+                                available(publicUsed, line), line.neededQty(), qty.compareTo(batch) == 0)
+                        : material.qty();
                 if (need.signum() == 0) {
                     continue;
                 }
@@ -178,6 +218,14 @@ public final class SubcontractDrawAllocator {
             }
         }
         return new Result(results, slices);
+    }
+
+    public static BigDecimal materialMaximum(BigDecimal required, BigDecimal covered, BigDecimal available) {
+        return available.min(required.subtract(covered).max(BigDecimal.ZERO)).setScale(SCALE, RoundingMode.DOWN);
+    }
+
+    public static BigDecimal materialBaseQuantity(BigDecimal required, BigDecimal orderUnits, BigDecimal basePerUnit) {
+        return basePerUnit == null ? null : materialQty(orderUnits, basePerUnit).min(required);
     }
 
     public static BigDecimal drawMaterialQty(BigDecimal target, BigDecimal perUnitQty, BigDecimal covered,

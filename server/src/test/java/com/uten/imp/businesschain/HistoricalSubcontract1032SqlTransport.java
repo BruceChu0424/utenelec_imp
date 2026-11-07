@@ -27,14 +27,15 @@ final class HistoricalSubcontract1032SqlTransport {
     private HistoricalSubcontract1032SqlTransport() { }
     private record SqlVersion(String label,String sql,boolean dropsMaterialVersion) { }
     private static final Map<String,SqlVersion> ORIGINAL_ENTITY_SQL=Map.ofEntries(
-        Map.entry("84f01f87f7d794e81331224f5772172848f3eb2fe102c2cc987f47410e1c4d7d", new SqlVersion("original V798 draw sets", """
+        Map.entry("b00c4dc817bfdf42f403da3cafac263693a530eb8e627826d3ffb735da827e0b", new SqlVersion("original V798 draw sets", """
                 SELECT oi.id, facts.plan_item_id, facts.line_no, facts.goods_id, material.code, material.name,
                        facts.color_id, material_color.name, facts.unit_id, material_unit.name,
                        facts.bom_unit_qty, facts.sent_qty, facts.pending_qty,
                        facts.available_qty, facts.line_open, facts.needed_qty,
                        fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty
                            +CASE WHEN facts.line_open THEN facts.available_qty ELSE 0 END, facts.bom_unit_qty),
-                       fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty, facts.bom_unit_qty)
+                       fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty, facts.bom_unit_qty),
+                       NULL::numeric
                 FROM subcontract_order_items oi
                 CROSS JOIN LATERAL fn_subcontract_draw_facts(oi.id) facts
                 LEFT JOIN goods material ON material.id = facts.goods_id

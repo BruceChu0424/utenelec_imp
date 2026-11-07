@@ -6,7 +6,7 @@ import '../../../shared/formatters/exact_decimal.dart';
 // 一行 = 一条已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
 // 所有数量(已领 / 待仓库发 / 可领 / 还缺 / 本批可领)都由服务端在一处算好
 // (ADR-143 §三「只在服务端算一次」)；客户端只显示，不做任何加减推算。
-// 数量单位：任务行 = 委外件的订货单位；物料行 = 各物料自己的单位。
+// 任务行保留用于分配的套数；singleMaterial 与物料明细使用物料自己的单位。
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -90,6 +90,7 @@ class SubcontractDrawTaskRow {
     this.planNo,
     this.applicationItemIds = const [],
     this.differenceQtyText,
+    this.singleMaterial,
     this.exactQuantities = const {},
   });
 
@@ -113,6 +114,7 @@ class SubcontractDrawTaskRow {
   /// Server-authored received − returned − ordered, in [unitName].
   /// Missing facts remain unknown; draw and material quantities are independent.
   final String? differenceQtyText;
+  final SubcontractDrawSingleMaterial? singleMaterial;
 
   /// 已领 = 已发齐的完整套数。
   final double drawnQty;
@@ -167,6 +169,11 @@ class SubcontractDrawTaskRow {
         unitName: _string(json, 'unitName') ?? '',
         orderQty: _double(json, 'orderQty'),
         differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
+        singleMaterial: switch (json['singleMaterial']) {
+          final Map<String, dynamic> material =>
+            SubcontractDrawSingleMaterial.fromJson(material),
+          _ => null,
+        },
         drawnQty: _double(json, 'drawnQty'),
         pendingQty: _double(json, 'pendingQty'),
         drawableQty: _double(json, 'drawableQty'),
@@ -183,6 +190,26 @@ class SubcontractDrawTaskRow {
             .map((id) => id.toString())
             .toList(growable: false),
       );
+}
+
+/// Physical quantities for one material line; multiple materials stay separate.
+class SubcontractDrawSingleMaterial {
+  SubcontractDrawSingleMaterial.fromJson(Map<String, dynamic> json)
+    : unitName = _string(json, 'unitName') ?? '',
+      requiredQtyText = receiptRecordedDecimal(json, 'requiredQty'),
+      baseRequiredQtyText = receiptRecordedDecimal(json, 'baseRequiredQty'),
+      lossRequiredQtyText = receiptRecordedDecimal(json, 'lossRequiredQty'),
+      pendingQtyText = receiptRecordedDecimal(json, 'pendingQty'),
+      drawableQtyText = receiptRecordedDecimal(json, 'drawableQty'),
+      shortQtyText = receiptRecordedDecimal(json, 'shortQty');
+
+  final String unitName;
+  final String? requiredQtyText;
+  final String? baseRequiredQtyText;
+  final String? lossRequiredQtyText;
+  final String? pendingQtyText;
+  final String? drawableQtyText;
+  final String? shortQtyText;
 }
 
 /// GET /subcontract/draw-tasks 的完整响应：分页行 + 状态计数 + 账号能力。
@@ -344,6 +371,8 @@ class SubcontractDrawMaterial {
         exactQuantities: recordedDecimalFields(json, [
           'perUnitQty',
           'requiredQty',
+          'baseRequiredQty',
+          'lossRequiredQty',
           'sentQty',
           'pendingQty',
           'availableQty',
@@ -461,12 +490,25 @@ class SubcontractDrawTaskDetail {
 
 /// 领料页提交/预览的一项：委外订货明细 + 本次领料数量(null = 服务端默认本批可领)。
 class SubcontractDrawRequestItem {
-  const SubcontractDrawRequestItem({required this.orderItemId, this.qty});
+  const SubcontractDrawRequestItem({
+    required this.orderItemId,
+    this.qty,
+    this.materialQty,
+    this.materialPlanItemId,
+  }) : assert(qty == null || materialQty == null),
+       assert((materialQty == null) == (materialPlanItemId == null));
 
   final String orderItemId;
   final Object? qty;
+  final String? materialQty;
+  final String? materialPlanItemId;
 
-  Map<String, dynamic> toJson() => {'orderItemId': orderItemId, 'qty': qty};
+  Map<String, dynamic> toJson() => {
+    'orderItemId': orderItemId,
+    'qty': qty,
+    'materialQty': ?materialQty,
+    'materialPlanItemId': ?materialPlanItemId,
+  };
 }
 
 /// 领料页任务表一行(POST /preview 的 tasks[])。
@@ -502,6 +544,10 @@ class SubcontractDrawPreviewTask {
     required this.qty,
     this.exactQuantities = const {},
     this.commandQtyText,
+    this.materialQtyText,
+    this.materialBatchDrawableQtyText,
+    this.materialUnitName = '',
+    this.materialPlanItemId,
   });
 
   final String orderItemId;
@@ -524,9 +570,28 @@ class SubcontractDrawPreviewTask {
   /// 本次领料数量(请求未指定时 = 本批可领)。
   final double qty;
 
+  final String? materialQtyText;
+  final String? materialBatchDrawableQtyText;
+  final String materialUnitName;
+  final String? materialPlanItemId;
+
+  bool get usesMaterialQuantity => materialPlanItemId != null;
+  String? get defaultInputQtyText =>
+      usesMaterialQuantity ? materialQtyText : commandQtyText;
+  String? get batchInputMaxText => usesMaterialQuantity
+      ? materialBatchDrawableQtyText
+      : quantityText('batchDrawableQty');
+
   factory SubcontractDrawPreviewTask.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawPreviewTask(
         commandQtyText: recordedDocumentDecimal(json, 'qty'),
+        materialQtyText: recordedDocumentDecimal(json, 'materialQty'),
+        materialBatchDrawableQtyText: recordedDocumentDecimal(
+          json,
+          'materialBatchDrawableQty',
+        ),
+        materialUnitName: _string(json, 'materialUnitName') ?? '',
+        materialPlanItemId: _string(json, 'materialPlanItemId'),
         exactQuantities: recordedDecimalFields(json, [
           'orderQty',
           'drawnQty',

@@ -26,7 +26,7 @@ public class ProductionWorkshopTaskExportService {
         String status = p.get("status");
         UUID workshop = ReportQueryKit.parseUuid(p.get("workshopDepartmentId"));
         LocalDate from = ReportQueryKit.parseDate(p.get("dateFrom")), to = ReportQueryKit.parseDate(p.get("dateTo"));
-        return ReportQueryKit.paginateAll((page, size) -> tasks.workshopTasks(page, size, p.get("keyword"), status, workshop, from, to,
+        return ReportQueryKit.paginateAll((page, size) -> tasks.workshopTaskExportBatch(page, size, p.get("keyword"), status, workshop, from, to,
                         p.get("preparationFilter"), p.get("routeFilter"), p.get("analysisNo"), p.get("segmentCode"), sort, order),
                 page -> page.getTotal(), page -> columns(status),
                 page -> page.getItems().stream().map(ProductionWorkshopTaskExportService::row).toList());

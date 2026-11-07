@@ -526,8 +526,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         var reversedIssue = page.getItems().get(3);
         assertThat(reversedIssue.hasMaterialActivity()).isTrue();
         assertThat(reversedIssue.hasUnregisteredMaterial()).isFalse();
-        // Count + page + one material-ledger batch + one source-instructions batch.
-        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(4);
+        // One count-and-page statement + one material-ledger batch + one source-instructions batch.
+        assertThat(factory.getStatistics().getPrepareStatementCount()).isEqualTo(3);
     }
 
     @Test
@@ -863,6 +863,74 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(service.list(1,50,"Assembly "+word,null,false,null,null,null).getTotal()).isEqualTo(1);
         } finally {
             if(ownsTransaction)em.getTransaction().rollback();
+        }
+    }
+
+    @Test
+    void preparingOrderIsOneGlobalReadinessOrderAcrossEveryPageAndExportBatch() {
+        // 12 more READY tasks than three pages of two hold; the three ready-to-start ones
+        // are last in storage order. A per-page window over storage order would skip them
+        // on page one and repeat earlier rows later; the complete reader rejects both.
+        List<UUID> added = new java.util.ArrayList<>();
+        List<UUID> readyToStart = new java.util.ArrayList<>(), waitingForDraw = new java.util.ArrayList<>();
+        try {
+            for (int index = 0; index < 12; index++) {
+                UUID segment = new UUID(7, index);
+                boolean startable = index >= 9;
+                jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,responsible_employee_id) VALUES (?,'READY',?,?,?,?)",
+                        segment, PLAN, PLAN, WORKSHOP, EMPLOYEE);
+                jdbc.update("""
+                        INSERT INTO v_production_execution_workbench_segments(
+                            segment_id, plan_id, root_id, segment_code, segment_no, workshop_department_id,
+                            segment_status, preparation_status, issued, plan_end_date)
+                        VALUES (?, ?, ?, ?, ?, ?, 'READY', 'PREPARING', ?, ?)
+                        """, segment, PLAN, PLAN, "WINDOW-" + index, 100 + index, WORKSHOP, startable,
+                        LocalDate.parse("2026-10-01").plusDays(index));
+                added.add(segment);
+                (startable ? readyToStart : waitingForDraw).add(segment);
+            }
+            // Tier 0 (startable) by plan end date, tier 3 (go draw), then tier 4 (WAITING).
+            List<UUID> expected = new java.util.ArrayList<>();
+            expected.add(new UUID(0, 3));
+            expected.addAll(readyToStart);
+            expected.add(new UUID(0, 2));
+            expected.addAll(waitingForDraw);
+            expected.add(new UUID(0, 1));
+
+            List<UUID> paged = new java.util.ArrayList<>();
+            for (int page = 1; page <= 8; page++) {
+                var result = service.workshopTasks(page, 2, null, "PREPARING", null, null, null);
+                assertThat(result.getTotal()).isEqualTo(expected.size());
+                assertThat(result.getTotalPages()).isEqualTo(8);
+                result.getItems().forEach(item -> paged.add(item.segmentId()));
+            }
+            assertThat(paged).containsExactlyElementsOf(expected);
+            assertThat(service.workshopTasks(1, 100, null, "PREPARING", null, null, null).getItems())
+                    .extracting(ProductionExecutionWorkbenchSegment::segmentId).containsExactlyElementsOf(expected);
+            // A page past the end keeps the original clamp to the last page.
+            var clamped = service.workshopTasks(99, 2, null, "PREPARING", null, null, null);
+            assertThat(clamped.getPage()).isEqualTo(8);
+            assertThat(clamped.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactly(new UUID(0, 1));
+            // Exports read the same order in their 500-row batches instead of the 100-row page cap.
+            var export = service.workshopTaskExportBatch(1, 500, null, "PREPARING", null, null, null,
+                    null, null, null, null, null, null);
+            assertThat(export.getSize()).isEqualTo(500);
+            assertThat(export.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactlyElementsOf(expected);
+            assertThat(service.workshopTasks(1, 500, null, "PREPARING", null, null, null).getSize()).isEqualTo(100);
+            // One statement now serves both bucket columns with the original values and order.
+            var facets = service.workshopTaskFacets(null, "PREPARING", null, null, null, null, null);
+            assertThat(facets.get("sourcePlan")).isEmpty();
+            assertThat(facets.get("segment")).extracting(bucket -> bucket.get("value"))
+                    .containsExactlyElementsOf(expected.stream().map(id -> id.getMostSignificantBits() == 7
+                            ? "WINDOW-" + id.getLeastSignificantBits() : "WORK-" + id.getLeastSignificantBits()).sorted().toList());
+            assertThat(facets.get("segment")).allSatisfy(bucket -> assertThat(bucket.get("count")).isEqualTo(1L));
+        } finally {
+            for (UUID segment : added) {
+                jdbc.update("DELETE FROM v_production_execution_workbench_segments WHERE segment_id=?", segment);
+                jdbc.update("DELETE FROM production_execution_segments WHERE id=?", segment);
+            }
         }
     }
 

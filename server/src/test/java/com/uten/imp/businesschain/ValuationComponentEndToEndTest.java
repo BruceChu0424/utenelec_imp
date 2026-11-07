@@ -476,6 +476,23 @@ class ValuationComponentEndToEndTest {
         UUID scope=db.queryForObject("SELECT fn_production_execution_cost_scope(?)",UUID.class,bench.segment);
         assertThat(amount("SELECT count(*) FROM stock_value_production_cost_inputs WHERE execution_segment_id=? AND input_kind='PERIODIC_MATERIAL'",scope)).isEqualByComparingTo("100");
         assertThat(db.queryForObject("SELECT business_refresh_pending FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Boolean.class,scope)).isTrue();
+        List<UUID> pendingInputs=db.queryForList("""
+                SELECT candidate.result_node_id FROM v_production_cost_input_candidates candidate
+                WHERE candidate.member_segment_id=? AND candidate.input_kind='PERIODIC_MATERIAL' AND candidate.node_active
+                  AND NOT EXISTS(SELECT 1 FROM stock_value_production_cost_inputs registered
+                    WHERE registered.approved_posting_id=candidate.approved_posting_id)
+                """,UUID.class,scope);
+        assertThat(pendingInputs).hasSize(1);
+        List<UUID> outputNodes=db.queryForList("""
+                SELECT source_node_id FROM stock_value_production_cost_outputs WHERE execution_segment_id=?
+                """,UUID.class,scope);
+        assertThat(outputNodes).isNotEmpty();
+        assertThat(db.queryForList("SELECT node_id FROM fn_inventory_value_precision_successors(?)",UUID.class,pendingInputs.getFirst()))
+                .containsAll(outputNodes);
+        for (UUID outputNode : outputNodes) {
+            assertThat(db.queryForList("SELECT node_id FROM fn_inventory_value_precision_predecessors(?)",UUID.class,outputNode))
+                    .contains(pendingInputs.getFirst());
+        }
         assertThat(BusinessPrecisionContext.choices()).isEmpty();
         long resumedAt=System.nanoTime();
         try{org.springframework.test.util.ReflectionTestUtils.invokeMethod(bench.fixture,"drainCostsWithFreshRunnerWithoutSession",bench.world,java.time.Duration.ofSeconds(120));}

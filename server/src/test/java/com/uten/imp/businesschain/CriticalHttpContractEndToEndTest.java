@@ -472,14 +472,17 @@ class CriticalHttpContractEndToEndTest {
                 pathEntry.getValue().path("parameters").forEach(parameters::add);
                 operation.path("parameters").forEach(parameters::add);
                 String resolvedPath = resolvePath(pathEntry.getKey(), parameters);
+                boolean completeMasterSummary = "post".equals(method) && resolvedPath.endsWith("/summaries")
+                        && (resolvedPath.startsWith("/api/master/") || resolvedPath.startsWith("/api/business-references/"));
                 String query = requiredQuery(parameters);
+                if (completeMasterSummary) query = query.isEmpty() ? "complete=true" : query + "&complete=true";
                 String requestPath = query.isEmpty() ? resolvedPath : resolvedPath + "?" + query;
 
                 try {
                     HttpRequest.Builder builder = HttpRequest.newBuilder()
                             .uri(URI.create("http://127.0.0.1:" + port + requestPath))
                             .timeout(HTTP_REQUEST_TIMEOUT)
-                            .header("Accept", "application/json")
+                            .header("Accept", completeMasterSummary ? "application/x-ndjson" : "application/json")
                             .header("Authorization", "Bearer " + accessToken);
                     for (JsonNode parameter : parameters) {
                         if (parameter.path("required").asBoolean()
@@ -487,11 +490,12 @@ class CriticalHttpContractEndToEndTest {
                             builder.header(parameter.path("name").asText(), probeValue(parameter));
                         }
                     }
-                    boolean hasRequestBody = operation.has("requestBody");
+                    boolean hasRequestBody = completeMasterSummary || operation.has("requestBody");
+                    String requestBody = completeMasterSummary ? "{\"filter\":{},\"page\":1,\"size\":100}" : "{}";
                     builder.method(
                             method.toUpperCase(java.util.Locale.ROOT),
                             hasRequestBody
-                                    ? HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8)
+                                    ? HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8)
                                     : HttpRequest.BodyPublishers.noBody());
                     if (hasRequestBody) {
                         builder.header("Content-Type", "application/json");
@@ -501,6 +505,10 @@ class CriticalHttpContractEndToEndTest {
                             ? watch : http.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
                     watchCovered |= watchOperation;
                     statuses.merge(response.statusCode(), 1, Integer::sum);
+                    if (completeMasterSummary && !hasCompleteSummary(response)) {
+                        failures.add("POST " + requestPath + " must return a complete NDJSON summary; received "
+                                + response.statusCode() + " " + boundedBody(response.body()));
+                    }
                     List<String> requiredFields = "get".equals(method)
                             ? READ_QUERY_RESPONSE_FIELDS.get(resolvedPath) : null;
                     if (requiredFields != null) {
@@ -536,6 +544,15 @@ class CriticalHttpContractEndToEndTest {
         assertEquals(READ_QUERY_RESPONSE_FIELDS.keySet(), verifiedReadQueries,
                 "Every repaired read query must remain covered by the HTTP contract");
         assertTrue(failures.isEmpty(), () -> "HTTP operation smoke failures:\n" + String.join("\n", failures));
+    }
+
+    private boolean hasCompleteSummary(HttpResponse<byte[]> response) throws java.io.IOException {
+        if (response.statusCode() != 200 || response.headers().firstValue("Content-Type")
+                .filter(type -> type.startsWith("application/x-ndjson")).isEmpty()) return false;
+        List<String> lines = new String(response.body(), StandardCharsets.UTF_8).lines().toList();
+        if (lines.size() < 2 || !"page".equals(objectMapper.readTree(lines.getFirst()).path("type").asText()))
+            return false;
+        return "complete".equals(objectMapper.readTree(lines.getLast()).path("type").asText());
     }
 
     /** This subscription deliberately waits 25s when nothing changes. Complete

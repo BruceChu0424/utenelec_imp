@@ -26,6 +26,7 @@ public enum ErrorCode {
     NOT_FOUND(404, "资源不存在"),
     /** 路径存在但不支持这种请求方式 (如已删除的写接口只剩查询)。 */
     METHOD_NOT_ALLOWED(405, "不支持这种请求方式"),
+    NOT_ACCEPTABLE(406, "此接口不支持请求的响应格式"),
     CONFLICT(409, "数据或操作条件已变化，请刷新后重新核对"),
     DAILY_REPORT_REVIEW_VERSION_CONFLICT(409, "这张日报已经变化，请刷新并重新核对后审核"),
     DAILY_REPORT_MATERIAL_REVIEW_CONFLICT(409, "材料余额或可退来源已变化，请刷新余料明细并重新核对后审核"),

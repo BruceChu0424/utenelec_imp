@@ -83,6 +83,13 @@ class GlobalExceptionHandlerMediaTypeTest {
                 .andExpect(content().string("{\"type\":\"complete\",\"total\":0}\n"));
     }
 
+    @Test void anIncompatibleAcceptHeaderReturns406WithAStructuredError() throws Exception {
+        mvc.perform(get("/stream/required").param("complete", "true").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.code").value("NOT_ACCEPTABLE"));
+    }
+
     record Input(@NotNull String value) { }
     @org.springframework.boot.test.context.TestComponent
     @RestController static class StreamController {

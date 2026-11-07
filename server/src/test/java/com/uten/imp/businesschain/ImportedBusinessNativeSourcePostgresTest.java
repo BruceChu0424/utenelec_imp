@@ -3,8 +3,6 @@ package com.uten.imp.businesschain;
 import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +15,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real schema and source-set equivalence, sharing the streaming HTTP test's migrated database. */
 class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSupport {
-    @Autowired JdbcTemplate jdbc;
     @MockitoSpyBean GoodsRepository goodsRepository;
 
     @Test

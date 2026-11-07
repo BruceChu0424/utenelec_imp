@@ -169,11 +169,11 @@ class RootFulfillmentSharedCurvePostgresTest {
     private String delta(World w,String qty)throws Exception{return scalar("SELECT fn_root_fulfilled_source_qty_with_delta(?,?)",w.item(),decimal(qty));}
     private int number(String query,Object... args)throws Exception{return Integer.parseInt(scalar(query,args));}
     private String scalar(String query,Object... args)throws Exception {
-        try(var statement=db.prepareStatement(query)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);
+        try(var statement=db.prepareStatement(query)){for(int i=0;i<args.length;i++){statement.setObject(i+1,args[i]);}
             try(var rows=statement.executeQuery()){assertTrue(rows.next());return rows.getString(1);}}
     }
     private void update(String query,Object... args)throws Exception {
-        try(var statement=db.prepareStatement(query)){for(int i=0;i<args.length;i++)statement.setObject(i+1,args[i]);statement.executeUpdate();}
+        try(var statement=db.prepareStatement(query)){for(int i=0;i<args.length;i++){statement.setObject(i+1,args[i]);}statement.executeUpdate();}
     }
     private void sql(String query)throws Exception{try(var statement=db.createStatement()){statement.execute(query);}}
     private static BigDecimal decimal(String value){return new BigDecimal(value);}

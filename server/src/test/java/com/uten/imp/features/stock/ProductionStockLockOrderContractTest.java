@@ -70,10 +70,10 @@ class ProductionStockLockOrderContractTest {
         assertThat(method.indexOf(
                         "select package_id, status from production_execution_segments"))
                 .isLessThan(method.indexOf(
-                        "join (select * from stock_documents archive_origin"));
-        assertThat(method).contains("not fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) document")
-                .contains("formatted(lock?\"for update\":\"\")")
-                .contains("formatted(lock?\"for update of header, document\":\"\")");
+                        "join %2$s document"));
+        assertThat(method).contains("formatted(lock?\"for update\":\"\")")
+                .contains("formatted(lock?\"for update of header, document\":\"\", "
+                        + "com.uten.imp.common.history.importedbusinessdocumentscope.nativetable(\"stock_documents\"))");
     }
 
     private static String method(String source, String signature) {

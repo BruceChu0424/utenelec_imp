@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.execution.ProductionOverproductionRateService;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -107,10 +109,7 @@ class MaterialAnalysisOverproductionRateServiceTest {
             if (plans != null && sql.startsWith("SELECT id FROM ")
                     && sql.contains("material_analysis_item_id IN (:sources)")) {
                 assertThat(sql)
-                        .contains("(SELECT * FROM production_plans archive_origin WHERE"
-                                + " NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
-                                + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
-                                + " AND NOT fn_imported_business_document_row('production_plans',to_jsonb(archive_origin)))")
+                        .contains(ImportedBusinessDocumentScope.nativeTable("production_plans"))
                         .contains("WHERE material_analysis_id=:analysis")
                         .contains("AND NOT is_deleted")
                         .contains("status IN(0,1) AND NOT is_canceled ORDER BY id");

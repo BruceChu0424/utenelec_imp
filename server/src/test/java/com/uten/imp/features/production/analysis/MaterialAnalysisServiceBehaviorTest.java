@@ -1698,9 +1698,15 @@ class MaterialAnalysisServiceBehaviorTest {
                 new Object[]{ownerMaterialId, bd("6")}));
         Query custodyRows = query(Collections.singletonList(new Object[]{UUID.randomUUID(),ownerMaterialId,
                 UUID.randomUUID(),"owned-child",UUID.randomUUID(),null,UUID.randomUUID(),UUID.randomUUID(),bd("4")}));
-        when(em.createNativeQuery(anyString())).thenAnswer(call ->
-                call.getArgument(0,String.class).contains("custody.child_material_id=child.id")
-                        ? custodyRows : exactRows);
+        Query physicalRows = query(Collections.singletonList(new Object[]{UUID.randomUUID(), ownerMaterialId,
+                UUID.randomUUID(), "owned-child", UUID.randomUUID(), null, UUID.randomUUID(), bd("2"), UUID.randomUUID()}));
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            String sql = call.getArgument(0);
+            if (sql.contains("custody.child_material_id=child.id")) return custodyRows;
+            if (sql.contains("FROM v_preplan_stock_entitlement_beneficiary_balance")) return exactRows;
+            if (sql.contains("reservation.source_doc_type='PREPLAN_STOCK_BALANCE'")) return physicalRows;
+            throw new AssertionError("Unexpected exact stock projection: " + sql);
+        });
         MaterialAnalysisService service = service(
                 em, mock(ProductionDocumentAccessPolicy.class));
 
@@ -1711,7 +1717,7 @@ class MaterialAnalysisServiceBehaviorTest {
                 new Class<?>[]{UUID.class, UUID.class, List.class},
                 analysisId, UUID.randomUUID(), custodySnapshot);
 
-        assertThat(exact.get(ownerMaterialId)).isEqualByComparingTo("10");
+        assertThat(exact.get(ownerMaterialId)).isEqualByComparingTo("12");
         assertThat(exact.getOrDefault(siblingMaterialId, BigDecimal.ZERO))
                 .isEqualByComparingTo("0");
     }

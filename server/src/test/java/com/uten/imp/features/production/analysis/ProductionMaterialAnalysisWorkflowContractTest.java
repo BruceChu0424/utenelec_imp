@@ -189,15 +189,17 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(commands).contains("只有自制路线的物料才能直接下达车间");
         // ADR-143 §4.5：委外节点(任何层级)一律走下达委外, 不进车间; 真实下达与下达预览同一判定。
         assertThat(commands).contains(
-                "workshopMakeLines(candidateRoutesByMaterialLine(preArrange), request)");
+                "workshopMakeLines(candidateRoutesByMaterialLine(preArrange), writableRequest)");
         assertThat(commands).contains(
-                "workshopMakeLines(candidateRoutesByMaterialLine(current), request)");
+                "workshopMakeLines(candidateRoutesByMaterialLine(current), writable)");
         assertThat(commands).contains("委外件请走「下达委外」，委外商按工序领它的直属物料，不能直接建生产计划");
         assertThat(commands).doesNotContain("soleComponentSubcontractGoodsIds")
                 .doesNotContain("activeBomParentIds")
                 .doesNotContain("-ARRANGE");
-        assertThat(commands).contains(
-                "material.actionable() || \"ROOT_SUPPLY\".equals(material.nodeRole())");
+        assertThat(commands).contains("return preparationOrderingMaterials(view).stream()",
+                ".filter(material -> !\"ROOT_SUPPLY\".equals(material.nodeRole()))",
+                "row->\"ROOT_SUPPLY\".equals(row.nodeRole())",
+                "AggregateMaterialSourceEligibility.hasOrderingContext(row,products,actions)");
         assertThat(commands).contains("rootSupply.fulfillExisting(analysisId");
         assertThat(commands).contains("map(MaterialView::demandSupplyGapQty)");
         assertThat(commands).contains("analysisService.refreshLocked(analysisId)");
@@ -228,9 +230,15 @@ class ProductionMaterialAnalysisWorkflowContractTest {
                 .contains("把混合结果重新压成一个全量 WAITING 会吞掉可立即生产的批次")
                 .contains("segment.setRequestedStatus(requestedStatus)")
                 .contains("segment.setDeferUntilManualRelease(false)")
-                // ADR-71：下达车间不再走联合预览，齐套结论不拦截（缺料=WAITING）。
-                .doesNotContain("previewFingerprint")
+                // ADR-71：齐套结论不拦截（缺料=WAITING）。
                 .doesNotContain("计划预览发现不可排产");
+        // The ordinary workshop submit request has no preview prerequisite.
+        // Independent public stocking delegates to the aggregate order contract.
+        assertThat(MaterialAnalysisContracts.IssueWorkshopPlansRequest.class.getRecordComponents())
+                .extracting(java.lang.reflect.RecordComponent::getName)
+                .doesNotContain("previewFingerprint");
+        assertThat(commands).contains("aggregatePreviews.resolve(analysisId,previewRequest,current)",
+                "List.of(group),shown.previewFingerprint(),true)");
     }
 
     @Test
@@ -355,7 +363,10 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(contracts).contains("List<GeneratedDraw> drawDocuments");
         assertThat(commands).contains("drawDocuments(UUID packageId)");
         assertThat(commands).contains(
-                "NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))) stock ON stock.id = doc.document_id");
+                "SELECT doc.document_id, stock.bill_no",
+                "JOIN %1$s stock ON stock.id = doc.document_id",
+                "WHERE doc.package_id = :id AND doc.document_type = 'DRAW'",
+                "ImportedBusinessDocumentScope.nativeTable(\"stock_documents\")");
     }
 
     @Test

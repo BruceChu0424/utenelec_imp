@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.InventoryKey;
@@ -24,6 +25,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -362,10 +364,16 @@ class PreplanAnalysisStockPegServiceTest {
     @Test
     void analysisCancellationFailsClosedWhileReallocationIsNotClosed() {
         EntityManager em = mock(EntityManager.class);
+        Query formalizations = mock(Query.class);
+        when(formalizations.setParameter(anyString(), any())).thenReturn(formalizations);
+        when(formalizations.getResultList()).thenReturn(List.of());
         Query relations = mock(Query.class);
         when(relations.setParameter(anyString(), any())).thenReturn(relations);
         when(relations.getResultList()).thenReturn(List.of(UUID.randomUUID()));
-        when(em.createNativeQuery(anyString())).thenReturn(relations);
+        when(em.createNativeQuery(contains("FROM preplan_physical_stock_formalizations")))
+                .thenReturn(formalizations);
+        when(em.createNativeQuery(contains("FROM preplan_material_reallocations reallocation")))
+                .thenReturn(relations);
         PreplanAnalysisStockPegService service = new PreplanAnalysisStockPegService(
                 em, mock(TxSessionVars.class),
                 mock(SecurityContextCurrentUser.class),
@@ -654,10 +662,7 @@ class PreplanAnalysisStockPegServiceTest {
 
     private static void assertNativeSources(String sql, String... tables) {
         for (String table : tables) {
-            assertThat(sql).contains("(SELECT * FROM " + table
-                    + " archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
-                    + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
-                    + " AND NOT fn_imported_business_document_row('" + table + "',to_jsonb(archive_origin)))");
+            assertThat(sql).contains(ImportedBusinessDocumentScope.nativeTable(table));
         }
     }
 }

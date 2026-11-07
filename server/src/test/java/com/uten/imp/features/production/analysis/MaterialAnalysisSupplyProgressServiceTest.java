@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import jakarta.persistence.EntityManager;
@@ -620,10 +621,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
 
     private static void assertNativeSources(String sql, String... tables) {
         for (String table : tables) {
-            assertThat(sql).contains("(SELECT * FROM " + table
-                    + " archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL"
-                    + " AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL"
-                    + " AND NOT fn_imported_business_document_row('" + table + "',to_jsonb(archive_origin)))");
+            assertThat(sql).contains(ImportedBusinessDocumentScope.nativeTable(table));
         }
     }
 }

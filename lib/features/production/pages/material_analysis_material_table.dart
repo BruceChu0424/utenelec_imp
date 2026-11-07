@@ -4082,6 +4082,11 @@ abstract class _MaterialAnalysisMaterialTableState
       }
       final shown = _tablePreviewed(path, authoritative: authoritative);
       final preparation = shown.aggregatePreparation;
+      // A shared execution child has no separate sales-source baseline. Its
+      // current BOM requirement belongs to the existing shared batch.
+      final sharedExecution =
+          indexes?.productsById[path.analysisLineId]?.sourceType ==
+          'AGGREGATE_MAKE';
       final independent = _independentMaterialPreparation(
         _MaterialGroup(key: group.key, paths: [shown]),
       );
@@ -4096,7 +4101,7 @@ abstract class _MaterialAnalysisMaterialTableState
         continue;
       }
       parts.add(
-        driven && !independent
+        (driven || sharedExecution) && !independent
             ? materialPresentationFact(
                 preparation?.quantityFactsExact ?? shown.quantityFactsExact,
                 'requiredQty',

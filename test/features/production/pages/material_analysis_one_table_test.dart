@@ -1164,7 +1164,9 @@ void main() {
     expect(pending, hasLength(1));
     expect(pending.single.cancelToken!.isCancelled, isFalse);
     await _submitSelected(tester);
-    expect(pending.single.cancelToken!.isCancelled, isTrue);
+    expect(pending.first.cancelToken!.isCancelled, isTrue);
+    expect(pending, hasLength(2), reason: '提交前必须核对权威预览');
+    expect(pending.last.cancelToken!.isCancelled, isFalse);
     final parent = _aggregateSubmits()
         .expand((r) => _records(r.body!['groups']))
         .singleWhere((g) => (g['materialLineIds'] as List).contains('m-s'));
@@ -1174,7 +1176,7 @@ void main() {
     expect(_orderQty('m-s'), findsNothing);
     expect(_appendQty('m-s'), findsOneWidget);
     expect(_nodeSelected(tester, 'm-s'), isFalse);
-    expect(pending, hasLength(1));
+    expect(pending, hasLength(2));
   });
 
   testWidgets('准备最新：各产品独立填写并明确显示相同货品合计12000', (tester) async {
@@ -1424,6 +1426,8 @@ void main() {
         _threeSharedBuySources(data);
         for (var i = 0; i < 3; i++) {
           _fixtureMaterial(data, 'shared-$i').addAll({
+            'requiredQty': 100,
+            'sourceRequiredQty': 100,
             'preparationPoolKey': 'xy-pool',
             'preparationSharedAvailableQty': 200,
             'preparationOwnedAvailableQty': 0,
@@ -1452,13 +1456,15 @@ void main() {
       findsOneWidget,
     );
     expect(tester.widget<Tooltip>(shortage).message, contains('还缺 100'));
+    expect(tester.widget<Tooltip>(shortage).message, contains('共同可用余量 100'));
     await _toggle(tester, _rowCheckbox('shared-1'));
     await _settleRebuild(tester);
     expect(
-      find.descendant(of: available, matching: find.text('200 个')),
+      find.descendant(of: available, matching: find.text('100 个')),
       findsOneWidget,
     );
     expect(tester.widget<Tooltip>(shortage).message, contains('还缺 0'));
+    expect(tester.widget<Tooltip>(shortage).message, contains('共同可用余量 200'));
   });
   testWidgets('草稿预算汇总输入4500在三个原来源只预占一次', (tester) async {
     await _pump(
@@ -1488,29 +1494,33 @@ void main() {
       '4500',
     );
     await _settlePreview(tester);
-    expect(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey(
-            'material-analysis-public-available-AGGREGATE|g-m-2|本色|unit-1',
-          ),
-        ),
-        matching: find.text('5500 个'),
+    await _chooseRowOrderMethod(
+      tester,
+      find.byKey(
+        const ValueKey('material-aggregate-order-method-g-m-2|本色|unit-1'),
       ),
+      extra: false,
+    );
+    final aggregateAvailable = find.byKey(
+      const ValueKey(
+        'material-analysis-public-available-AGGREGATE|g-m-2|本色|unit-1',
+      ),
+    );
+    expect(
+      find.descendant(of: aggregateAvailable, matching: find.text('10000 个')),
       findsOneWidget,
+    );
+    expect(
+      tester.widget<Tooltip>(aggregateAvailable).message,
+      contains('本次临时预留 4500'),
     );
     await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
     await tester.pumpAndSettle();
     for (var i = 0; i < 3; i++) {
-      expect(
-        find.descendant(
-          of: find.byKey(
-            ValueKey('material-analysis-public-available-shared-$i'),
-          ),
-          matching: find.text('5500 个'),
-        ),
-        findsOneWidget,
+      final shortage = find.byKey(
+        ValueKey('material-analysis-net-shortage-shared-$i'),
       );
+      expect(tester.widget<Tooltip>(shortage).message, contains('共同可用余量 5500'));
     }
   });
 
@@ -1520,7 +1530,7 @@ void main() {
     await _settlePreview(tester);
     expect(_qtyText(tester, _appendQty('m-p')), '1500');
     expect(_rowChecked(tester, 'm-p'), isFalse);
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
     expect(previews, isEmpty);
   });
   testWidgets('草稿预算只扣选中有效输入，取消和清空恢复同料余额，私有量不外借', (tester) async {
@@ -1553,20 +1563,30 @@ void main() {
               .last,
         )
         .data!;
+    String shortage(String id) => tester
+        .widget<Tooltip>(
+          find.byKey(ValueKey('material-analysis-net-shortage-$id')),
+        )
+        .message!;
     expect(available('shared-0'), '10000 个');
     await tester.enterText(_orderQty('shared-0'), '1000');
     await _check(tester, _rowCheckbox('shared-0'));
     await _settleRebuild(tester);
-    expect(available('shared-1'), '9000 个');
-    expect(available('shared-2'), '9000 个');
+    expect(available('shared-1'), '10000 个');
+    expect(available('shared-2'), '10200 个');
+    expect(shortage('shared-1'), contains('共同可用余量 9000'));
+    expect(shortage('shared-2'), contains('共同可用余量 9000'));
     await _toggle(tester, _rowCheckbox('shared-0'));
     await _settleRebuild(tester);
     expect(_qtyText(tester, _orderQty('shared-0')), '1000');
     expect(available('shared-1'), '10000 个');
+    expect(shortage('shared-1'), contains('共同可用余量 10000'));
     await tester.enterText(_orderQty('shared-1'), '10000');
-    await _settleRebuild(tester);
-    expect(available('shared-0'), '0 个');
-    expect(available('shared-2'), '0 个');
+    await _chooseRowOrderMethod(tester, _orderMethod('shared-1'), extra: false);
+    expect(available('shared-0'), '10000 个');
+    expect(available('shared-2'), '10200 个');
+    expect(shortage('shared-0'), contains('共同可用余量 0'));
+    expect(shortage('shared-2'), contains('共同可用余量 0'));
     expect(
       tester
           .widget<Tooltip>(
@@ -1590,6 +1610,8 @@ void main() {
     await tester.enterText(_orderQty('shared-1'), '');
     await _settleRebuild(tester);
     expect(available('shared-0'), '10000 个');
+    expect(_rowChecked(tester, 'shared-1'), isFalse);
+    expect(shortage('shared-0'), contains('共同可用余量 10000'));
     expect(previews, isEmpty);
   });
 
@@ -1624,12 +1646,20 @@ void main() {
     expect(_orderQty('m-3'), findsNothing);
     expect(available(), '10000 个');
     await tester.enterText(_appendQty('m-3'), '1000');
-    await _settleRebuild(tester);
-    expect(available(), '9000 个');
+    await _chooseRowOrderMethod(tester, _orderMethod('m-3'), extra: false);
+    expect(available(), '10000 个');
+    final availability = find.byKey(
+      const ValueKey('material-analysis-public-available-m-3'),
+    );
+    expect(
+      tester.widget<Tooltip>(availability).message,
+      contains('本次临时预留 1000'),
+    );
     await _toggle(tester, _rowCheckbox('m-3'));
     await _settleRebuild(tester);
     expect(_qtyText(tester, _appendQty('m-3')), '1000');
     expect(available(), '10000 个');
+    expect(tester.widget<Tooltip>(availability).message, contains('本次临时预留 0'));
   });
 
   testWidgets('取消父件选择保留手输但立即停止展开，预览也只传有效选择', (tester) async {
@@ -1640,7 +1670,7 @@ void main() {
     await _toggle(tester, _rowCheckbox('m-p'));
     await _settlePreview(tester);
     expect(_qtyText(tester, _appendQty('m-p')), '2000');
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
     expect(_rowChecked(tester, 'm-pc'), isFalse);
     final count = previews.length;
     await _check(tester, _rowCheckbox('m-p'));
@@ -2942,6 +2972,8 @@ void main() {
             (data['flatMaterials'] as List).removeWhere(
               (raw) => (raw as Map)['materialLineId'] == 'p',
             );
+            _fixtureMaterial(data, 'h')['preparationAvailableQty'] =
+                scenario.remaining == 0 ? 3 : 1;
             final parentKey = _fixtureMaterial(
               data,
               'raw-direct',
@@ -2950,6 +2982,7 @@ void main() {
               final child = _fixtureMaterial(data, id);
               child['parentNodeKey'] = parentKey;
               child['requiredQty'] = 6;
+              child['sourceRequiredQty'] = 6;
               child['additionalSupplyRecommendedQty'] = 6;
               child['netShortageQty'] = 6;
             }
@@ -2987,11 +3020,18 @@ void main() {
           await tester.enterText(_orderQty('raw-deep'), '9');
           await _settleRebuild(tester);
         }
+        if (scenario.remaining > 0) {
+          await _chooseRowOrderMethod(tester, _orderMethod('h'), extra: false);
+        }
         for (final id in ['h', 'raw-direct', 'raw-deep']) {
           await _check(tester, _rowCheckbox(id));
         }
         await _submitSelected(tester);
         final writes = _aggregateSubmits();
+        expect(
+          _records(writes.first.body!['groups']).single['orderMethod'],
+          scenario.remaining == 0 ? 'AVAILABLE_ONLY' : 'AVAILABLE_THEN_ORDER',
+        );
         if (scenario.remaining == 0) {
           expect(writes, hasLength(1));
           expect(_nodeSelected(tester, 'raw-direct'), isFalse);
@@ -3703,10 +3743,10 @@ void main() {
     });
   }
 
-  testWidgets('列定稿为 17 列，交付要求及原销售生产要求与数量列保持完整', (tester) async {
+  testWidgets('18 列保留交付要求、销售生产要求及逐行下单方式', (tester) async {
     await _pump(tester);
     _observeMaterialUi(tester, 'column-contract');
-    expect(find.text('表头设置 17/17'), findsOneWidget);
+    expect(find.text('表头设置 18/18'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
@@ -3719,6 +3759,7 @@ void main() {
       '可用数量',
       '还缺数量',
       '下单数量',
+      '下单方式',
       '允许超产比例',
       '追加下单',
       '所属仓库',
@@ -3769,11 +3810,11 @@ void main() {
     );
   });
 
-  testWidgets('确认过路线但没下过单的行：下单数量可填并预填还缺数量，追加下单恒为只读 0', (tester) async {
+  testWidgets('确认路线后的首次下单预填完整需求，追加格仍为只读 0', (tester) async {
     await _pump(tester);
     final field = tester.widget<TextField>(_orderQty('m-2'));
     expect(field.enabled, isTrue);
-    expect(field.controller!.text, '500');
+    expect(field.controller!.text, '1000');
     // 还没下过单就没有「追加」可言，避免两列都能填造成歧义。
     expect(_appendQty('m-2'), findsNothing);
   });
@@ -3790,30 +3831,16 @@ void main() {
     expect(_issueButton('m-3'), findsNothing);
   });
 
-  testWidgets('没有量可下的行：下单格只读 0，不再渲染成可编辑的红 0(2026-09-26)', (tester) async {
+  testWidgets('零需求只读，现货覆盖的有效需求可选择仅使用可用数量', (tester) async {
     await _pump(tester);
     _observeMaterialUi(tester, 'readonly-zero-rows');
-    // 同料兄弟行(需要数量 0)与现货盖住的行(缺口 0)都不给输入框——
-    // 全选下单结束后满屏「可编辑的红 0」会让人以为中间很多行没下成。
+    // 零需求的同料行不产生新的采购输入；有效需求可办理现货。
     expect(_orderQty('m-sibling'), findsNothing);
-    expect(_orderQty('m-covered'), findsNothing);
-    for (final entry in const {
-      'm-sibling': '没有要下单的量',
-      'm-covered': '本批现货已覆盖，无需补缺',
-    }.entries) {
-      expect(
-        find.descendant(
-          of: find.byKey(ValueKey('material-table-row-${entry.key}')),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is Tooltip &&
-                (widget.message ?? '').contains(entry.value),
-          ),
-        ),
-        findsOneWidget,
-        reason: '零需求与现货覆盖必须分别说明真实来源，不只比对相同提示数量',
-      );
-    }
+    expect(_qtyText(tester, _orderQty('m-covered')), '1000');
+    expect(
+      tester.widget<UtenDropdownField>(_orderMethod('m-covered')).value,
+      'AVAILABLE_ONLY',
+    );
     final readonly = find.byWidgetPredicate(
       (widget) =>
           widget is Tooltip && (widget.message ?? '').contains('没有要下单的量'),
@@ -3965,7 +3992,7 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-6'),
         ),
-        matching: find.text('10000 个'),
+        matching: find.text('10100 个'),
       ),
       findsOneWidget,
     );
@@ -4237,7 +4264,7 @@ void main() {
         return data;
       },
     );
-    expect(_qtyText(tester, _orderQty('m-6c')), '1000');
+    expect(_qtyText(tester, _orderQty('m-6c')), '500');
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -4463,11 +4490,11 @@ void main() {
   testWidgets('主表追加格也带动子层：在已下达父件的追加格填数，子件按新数量重算', (tester) async {
     await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     // 已下达的自制父件两格都在(下单数量 + 追加下单)，它们是同一个提交单元的
-    // 两半；子件此刻按权威快照是 600。
+    // 两半；子件下单预填完整需求 1000，原缺口仍是 600。
     expect(find.text('已下达委外父件'), findsWidgets);
     expect(find.text('父件的子件'), findsWidgets);
     expect(_qtyText(tester, _appendQty('m-p')), '0');
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
 
     await tester.enterText(_appendQty('m-p'), '1500');
     await tester.pump(const Duration(milliseconds: 400));
@@ -4476,7 +4503,7 @@ void main() {
     // 追加格填的数要进 typedOutputs，否则子层纹丝不动(这一条原来是断的)。
     expect(previews, isNotEmpty);
     expect(previews.last['typedOutputs'], [
-      {'materialLineId': 'm-p', 'qty': 1500.0},
+      {'materialLineId': 'm-p', 'qty': '1500', 'orderMethod': 'ORDER_ALL'},
     ]);
     expect(previews.last['lines'], isEmpty);
     // 子件跟着重算后的数走。
@@ -4508,7 +4535,7 @@ void main() {
     expect(previews, hasLength(2));
     expect(maxPreviewsInFlight, 1);
     expect(previews.last['typedOutputs'], [
-      {'materialLineId': 'm-p', 'qty': 1600.0},
+      {'materialLineId': 'm-p', 'qty': '1600', 'orderMethod': 'ORDER_ALL'},
     ]);
     expect(_qtyText(tester, _orderQty('m-pc')), '1600');
   });
@@ -4542,9 +4569,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     // 手滑敲一下再删掉不能让这一行永久脱离跟随：模拟快照当场作废、子件回到
-    // 权威快照的 600，而且不必再问服务端一次(没有要送的数量了)。
+    // 权威快照的完整需求 1000，而且不必再问服务端一次(没有要送的数量了)。
     expect(previews, hasLength(sent));
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
   });
 
   testWidgets('敲一下当场变：父行填数的那一拍子件就按比例换算好，不等服务端那趟', (tester) async {
@@ -4562,7 +4589,7 @@ void main() {
     // 已覆盖的 400 是不变量，还需安排 2100；原始需要数量仍为 1000。
     expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000 个');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 2100'));
-    expect(_qtyText(tester, _orderQty('m-pc')), '2100');
+    expect(_qtyText(tester, _orderQty('m-pc')), '2500');
 
     // 300ms 后服务端那份回来(假后端按 1500 展开)，整体覆盖估算值。
     await tester.pump(const Duration(milliseconds: 400));
@@ -4577,15 +4604,15 @@ void main() {
     await _pump(tester, permissions: _overSupplyPermissions, overSupply: true);
     await tester.enterText(_appendQty('m-p'), '1500');
     await tester.pump();
-    expect(_qtyText(tester, _orderQty('m-pc')), '2100');
+    expect(_qtyText(tester, _orderQty('m-pc')), '2500');
 
     await tester.enterText(_appendQty('m-p'), '');
     await tester.pump();
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(previews, isEmpty);
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
   });
 
   testWidgets('服务端那份回来之后再改：从模拟快照起算比例，不是从权威快照', (tester) async {
@@ -4622,8 +4649,8 @@ void main() {
       },
       defaultWorkshops: _workshopDefaultsFor(const ['g-m-root', 'g-m-6']),
     );
-    expect(_qtyText(tester, _orderQty('m-6')), '400');
-    expect(_qtyText(tester, _orderQty('m-pc')), '600');
+    expect(_qtyText(tester, _orderQty('m-6')), '1000');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1000');
 
     // 顶层需求 1000、本次填 1200 → 1.2 倍。第 1 层子件的 parentNodeKey 是空的，
     // 按原始桶查顶层永远「没有下层」——既不换算也不发请求，正是用户实机看到的
@@ -4632,15 +4659,20 @@ void main() {
     await tester.pump();
     expect(previews, isEmpty);
     // 自制子件：需求 1000 → 1200，已覆盖 600 不变 → 还需 600。
-    expect(_qtyText(tester, _orderQty('m-6')), '600');
+    expect(_qtyText(tester, _orderQty('m-6')), '1200');
     // 已下达的委外父件 m-p 跟着变(已下 1000 + 还需 200 = 1200)，它的子件再按 1.2 倍：
     // 需求 1200、已覆盖 400 → 还需 800。
-    expect(_qtyText(tester, _orderQty('m-pc')), '800');
+    expect(_qtyText(tester, _orderQty('m-pc')), '1200');
 
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(previews.last['typedOutputs'], [
-      {'materialLineId': 'm-root', 'qty': 1200.0},
+      {
+        'materialLineId': 'm-root',
+        'qty': '1200',
+        'quantityMode': 'COVERAGE_TOTAL',
+        'orderMethod': 'ORDER_ALL',
+      },
     ]);
   });
 
@@ -4693,7 +4725,12 @@ void main() {
 
     await _settlePreview(tester);
     expect(previews.single['typedOutputs'], [
-      {'materialLineId': 'm-root', 'qty': 3000.0},
+      {
+        'materialLineId': 'm-root',
+        'qty': '3000',
+        'quantityMode': 'COVERAGE_TOTAL',
+        'orderMethod': 'ORDER_ALL',
+      },
     ]);
     expect(
       tester.widget<Checkbox>(_productCheckbox('product-1')).value,
@@ -4818,7 +4855,7 @@ void main() {
     await tester.enterText(_appendQty('m-root'), '200');
     await _settlePreview(tester);
     expect(previews.last['typedOutputs'], [
-      {'materialLineId': 'm-root', 'qty': 200.0},
+      {'materialLineId': 'm-root', 'qty': '200', 'orderMethod': 'ORDER_ALL'},
     ]);
   });
 
@@ -5022,7 +5059,7 @@ void main() {
     // 自制行实际走 issue-plans, 那条路按 V577 接受任意数量。
     final field = tester.widget<TextField>(_orderQty('m-6'));
     expect(field.enabled, isTrue);
-    expect(field.controller!.text, '400');
+    expect(field.controller!.text, '1000');
     // 还没下达过, 追加格仍是只读的(避免两列都能填的歧义)。
     expect(_appendQty('m-6'), findsNothing);
   });
@@ -5033,7 +5070,7 @@ void main() {
     await _pump(tester, mutate: _withDrawSubcontract);
     final field = tester.widget<TextField>(_orderQty('m-u'));
     expect(field.enabled, isTrue);
-    expect(field.controller!.text, '800');
+    expect(field.controller!.text, '1000');
     // 还没下达过：追加格仍是只读的。
     expect(_appendQty('m-u'), findsNothing);
     expect(_nodeSelected(tester, 'm-u'), isFalse);
@@ -5134,7 +5171,7 @@ void main() {
     expect(_transferButton('m-root'), findsOneWidget);
     final field = tester.widget<TextField>(_orderQty('m-root'));
     expect(field.enabled, isTrue);
-    expect(field.controller!.text, '600');
+    expect(field.controller!.text, '1000');
   });
 
   testWidgets('按物料汇总顶层已下单：办理列给撤回不再是调拨，未下单照旧调拨(2026-10-09)', (tester) async {
@@ -6065,7 +6102,10 @@ void main() {
     final child = _records(submits.last.body!['groups']).single;
     expect(child['materialLineIds'], ['m-sc']);
     // 子件按父件填的 700 换算(还需安排 800 → 700)，父件落地后照样送 700，不翻倍。
-    expect(first.singleWhere((group) => group['route'] == 'BUY')['qty'], '500');
+    expect(
+      first.singleWhere((group) => group['route'] == 'BUY')['qty'],
+      '1000',
+    );
     expect(child['qty'], '700');
     // 提交期间与提交之后都不再补发层级预览：填过的数已随下达交还系统。
     // 假后端每段等 350ms，300ms 的去抖若没被挡住早就发出去了。
@@ -6298,7 +6338,7 @@ void main() {
     final first = _records(submits.first.body!['groups']);
     final make = first.singleWhere((group) => group['route'] == 'MAKE');
     expect(make['materialLineIds'], ['m-6']);
-    expect(make['qty'], '400');
+    expect(make['qty'], '1000');
     expect(make['allowedOverproductionRate'], 0.123456);
     expect(first.any((group) => group['route'] == 'SUBCONTRACT'), isTrue);
     expect(_records(submits.last.body!['groups']).single['route'], 'BUY');
@@ -7044,8 +7084,8 @@ void main() {
     );
     expect(tester.widget<Text>(note).data, '按车间/负责人分成 2 张工单');
     final detail = _splitDetail(tester, note);
-    expect(detail, contains('第 1 张  装配二车间 / 李四 / 超产 0%：1000 个'));
-    expect(detail, contains('第 2 张  装配一车间 / 张三 / 超产 0%：2000 个'));
+    expect(detail, contains('第 1 张  装配二车间 / 李四 / 超产 0% / 全部下单：1000 个'));
+    expect(detail, contains('第 2 张  装配一车间 / 张三 / 超产 0% / 全部下单：2000 个'));
 
     await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
     await tester.pumpAndSettle();
@@ -7230,8 +7270,14 @@ void main() {
       const ValueKey('material-aggregate-split-$draftKey'),
     );
     expect(tester.widget<Text>(note).data, '按车间/负责人分成 2 张工单');
-    expect(_splitDetail(tester, note), contains('装配二车间 / 李四 / 超产 0%：1500 个'));
-    expect(_splitDetail(tester, note), contains('装配一车间 / 张三 / 超产 0%：3000 个'));
+    expect(
+      _splitDetail(tester, note),
+      contains('装配二车间 / 李四 / 超产 0% / 全部下单：1500 个'),
+    );
+    expect(
+      _splitDetail(tester, note),
+      contains('装配一车间 / 张三 / 超产 0% / 全部下单：3000 个'),
+    );
     expect(find.text('撤销汇总草稿(1)'), findsOneWidget);
 
     requests.clear();
@@ -7449,7 +7495,11 @@ void main() {
           'remainingQty': jsonDecode(source),
           'maxSchedulableQty': jsonDecode(source),
           'unitRate': 3,
-          'quantityFactsExact': {'remainingQty': source, 'unitRate': '3'},
+          'quantityFactsExact': {
+            'requestedQty': source,
+            'remainingQty': source,
+            'unitRate': '3',
+          },
         });
         final row = _fixtureMaterial(data, 'm-root');
         for (final key in [
@@ -7463,6 +7513,8 @@ void main() {
           row[key] = jsonDecode(base);
         }
         row['quantityFactsExact'] = {
+          'sourceRequiredQty': base,
+          'requiredQty': base,
           'additionalSupplyRecommendedQty': base,
           'priorityMakeSupplementQty': '0',
         };
@@ -7584,6 +7636,7 @@ void main() {
         }
         row['mainWarehouseSafetyReplenishmentGapQty'] = jsonDecode(safety);
         row['quantityFactsExact'] = {
+          'sourceRequiredQty': qty,
           'additionalSupplyRecommendedQty': qty,
           'mainWarehouseSafetyReplenishmentGapQty': safety,
         };
@@ -7639,7 +7692,7 @@ void main() {
       mutate: (data) {
         _threeSharedBuySources(data);
         _fixtureMaterial(data, 'shared-0')['quantityFactsExact'] = {
-          'additionalSupplyRecommendedQty': 'broken',
+          'sourceRequiredQty': 'broken',
         };
         return data;
       },
@@ -9455,14 +9508,14 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
       stockQty: 0,
       requiredQty: 0,
     ),
-    // 缺口已由现货盖住、从未下过单的行：同样没有量可下。
+    // 缺口由可采用现货覆盖的有效需求，未生成采购单。
     _material(
       line: 'm-covered',
       name: '现货盖住的行',
       confirmed: 'BUY',
       netShortageQty: 0,
       stockQty: 1000,
-    ),
+    )..['preparationAvailableQty'] = 1000,
   ],
   // 客户端按 operationType 区分「真下过单」与「只是把别处的在途搬过来」。
   'supplyActions': [

@@ -755,18 +755,38 @@ void materialOrderAuthorityCases() {
   });
   testWidgets('来源办理权限：已采用成功回执不会把下次新账号的新下单永久锁死', (tester) async {
     final session = _OrderAuthoritySession();
+    final storage = MemoryFormDraftStorage();
+    late Map<String, dynamic> accepted;
     await _pump(
       tester,
       session: session,
+      draftStorage: storage,
       permissions: _overSupplyPermissions,
       overSupply: true,
+      aggregateSubmit: (body, data) {
+        final result = _defaultAggregateSubmit(body, data);
+        accepted = result['analysis'] as Map<String, dynamic>;
+        return result;
+      },
     );
     await _check(tester, _rowCheckbox('m-2'));
     await tester.pumpAndSettle();
+    final originalOwner = _materialDraftOwner(tester);
     await _submitSelected(tester);
     expect(_aggregateSubmits(), hasLength(1));
     session.switchAccount('next-order-account');
     await tester.pumpAndSettle();
+    expect(find.textContaining('登录身份或权限已变化'), findsOneWidget);
+    expect(_appendQty('m-2'), findsNothing);
+    await _pump(
+      tester,
+      session: _OrderAuthoritySession(initialId: 'next-order-account'),
+      draftStorage: storage,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (_) => accepted,
+    );
+    expect(_materialDraftOwner(tester), isNot(originalOwner));
     await tester.enterText(_appendQty('m-2'), '25');
     await tester.pumpAndSettle();
     await _check(tester, _rowCheckbox('m-2'));
@@ -805,10 +825,14 @@ void materialOrderAuthorityCases() {
 }
 
 class _OrderAuthoritySession extends SessionNotifier {
+  _OrderAuthoritySession({this.initialId = 'first-account'});
+
+  final String initialId;
+
   @override
-  SessionState build() => const SessionState(
+  SessionState build() => SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: 'first-account', code: 'FIRST', name: '计划甲'),
+    user: AppUser(id: initialId, code: initialId, name: '计划员'),
   );
 
   void switchAccount(String id) {

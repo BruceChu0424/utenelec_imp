@@ -549,9 +549,11 @@ void main() {
     addTearDown(() {
       if (!gate.isCompleted) gate.complete();
     });
-    final refresh = find.byTooltip('按最新库存刷新分析').hitTestable().first;
+    final refresh = find.byKey(const Key('material-analysis-refresh'));
+    expect(refresh.hitTestable(), findsOneWidget);
+    final refreshPosition = tester.getCenter(refresh);
     for (var click = 0; click < 3; click++) {
-      await tester.tap(refresh);
+      await tester.tapAt(refreshPosition);
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect(_requestCounts(server), {
@@ -562,6 +564,7 @@ void main() {
     expect(_requestCounts(server), {
       'POST /production/material-analyses/preview': 1,
       'GET /production/material-analyses/analysis-1/future-transfers': 1,
+      'GET /production/material-analyses/analysis-1/workshop-urges': 1,
     });
   });
 

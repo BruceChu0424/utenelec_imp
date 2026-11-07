@@ -219,11 +219,14 @@ final class _MaterialPreparationDraftBudgetController {
           pendingReason: '备料数量缺少完整原值，请重新读取来源；原输入已保留',
         );
       }
-      final _PreparationBudgetInput input;
+      final isSelected = owner._selectedMaterialGroupKeys.contains(group.key);
+      final _PreparationBudgetInput? input;
       final String requestedText;
       try {
-        input = inputOf(group);
-        requestedText = adjustedRequested(input);
+        input = isSelected ? inputOf(group) : null;
+        // Unselected draft text cannot reserve shared supply. Keep its row in
+        // the budget for the authoritative pool and shortage facts.
+        requestedText = input == null ? '0' : adjustedRequested(input);
       } on FormatException catch (failure) {
         return _value = MaterialPreparationDraftBudget(
           rows: const {},
@@ -238,9 +241,9 @@ final class _MaterialPreparationDraftBudgetController {
           ownedAvailableQty: owned,
           uncoveredBeforeSharedQty: double.parse(needText),
           requestedQty: requested,
-          useAvailableQty: input.method.usesAvailableQty,
-          selected: owner._selectedMaterialGroupKeys.contains(group.key),
-          inputKey: input.key,
+          useAvailableQty: input?.method.usesAvailableQty ?? false,
+          selected: isSelected,
+          inputKey: input?.key,
           priority: priorities[material.analysisLineId] ?? 0,
           adoptableSharedQty: material.preparationAdoptableSharedQty,
           supplySlices: material.preparationSharedSupplySlices,

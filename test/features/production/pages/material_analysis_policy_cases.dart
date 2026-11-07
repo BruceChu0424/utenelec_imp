@@ -106,7 +106,7 @@ void materialPolicyCases() {
         );
         for (var i = 0; i < 3; i++) {
           final field = _orderQty('shared-$i');
-          expect(_qtyText(tester, field), configured ? '2' : '0.5');
+          expect(_qtyText(tester, field), '0.5');
           final frame = find
               .ancestor(of: field, matching: find.byType(RequiredCellFrame))
               .first;

@@ -206,24 +206,26 @@ final class _MaterialAggregateSubmission {
         completed.addAll(skipped);
         if (positive.isEmpty) continue;
         final active = _window(positive);
-        final settings = <String, _MaterialAggregateRebindSettings>{
-          for (final key in remaining.difference(active))
-            if (table.drafts[key] case final draft?) key: _settings(draft),
-        };
         // 逐行的车间 / 负责人 / 比例也在本轮前拍下：下层来源被身份桥换到新
         // 共享行后，靠它把各自的做法带过去，分单才不会被默认值抹平。
-        final lineParams = <String, _MaterialAggregateMakeParams>{
-          for (final key in remaining.difference(active))
-            if (table.drafts[key] case final draft?)
-              for (final source in table.draftSources(draft))
-                source.line: table.makeParams(source.group),
-        };
-        final lineChoices = <String, MaterialPreparationOrderMethod>{
-          for (final key in remaining.difference(active))
-            if (table.drafts[key] case final draft?)
-              for (final source in table.draftSources(draft))
-                source.line: owner._preparationOrderMethod(source.group),
-        };
+        final settings = <String, _MaterialAggregateRebindSettings>{};
+        final lineParams = <String, _MaterialAggregateMakeParams>{};
+        final lineChoices = <String, MaterialPreparationOrderMethod>{};
+        final independentBefore = <String>{};
+        for (final key in remaining.difference(active)) {
+          final draft = table.drafts[key];
+          if (draft == null) continue;
+          settings[key] = _settings(draft);
+          for (final source in table.draftSources(draft)) {
+            lineParams[source.line] = table.makeParams(source.group);
+            lineChoices[source.line] = owner._preparationOrderMethod(
+              source.group,
+            );
+            if (owner._independentMaterialPreparation(source.group)) {
+              independentBefore.add(source.line);
+            }
+          }
+        }
         final sources = [
           for (final key in active) ...table.draftGroups(table.drafts[key]!),
         ];
@@ -254,6 +256,7 @@ final class _MaterialAggregateSubmission {
               settings: settings[key]!,
               lineParams: lineParams,
               lineChoices: lineChoices,
+              independentBefore: independentBefore,
             );
           }
         });
@@ -386,6 +389,7 @@ final class _MaterialAggregateSubmission {
     required _MaterialAggregateRebindSettings settings,
     Map<String, _MaterialAggregateMakeParams> lineParams = const {},
     Map<String, MaterialPreparationOrderMethod> lineChoices = const {},
+    required Set<String> independentBefore,
   }) {
     final indexes = owner._analysisIndexes(owner._analysis!);
     final rewrites = <String, Set<String>>{};
@@ -415,21 +419,26 @@ final class _MaterialAggregateSubmission {
     for (final old in oldSnapshots.keys) {
       final originalGroup = indexes.groupsByLine[old];
       final original = originalGroup?.representative;
-      if (original?.aggregatePreparation?.actionable == true) {
-        // 用户原行继续持有输入和来源身份；目标只由服务端在事务内精确解析。
-        nextIds.add(old);
-        continue;
-      }
+      final becameIndependent =
+          includeNew &&
+          !independentBefore.contains(old) &&
+          originalGroup != null &&
+          owner._independentMaterialPreparation(originalGroup);
       if (originalGroup != null &&
           !rewrites.containsKey(old) &&
-          table.inactiveSourceContext(originalGroup) &&
-          owner._tableGroupResidual(originalGroup, authoritative: true) <=
-              0.0001) {
+          (becameIndependent || table.inactiveSourceContext(originalGroup)) &&
+          owner._tableGroupResidualText(originalGroup, authoritative: true) ==
+              '0') {
         if (oldSnapshots[old]!.hasExplicitQty) {
           throw FormatException('「${draft.label}」的来源已无需新增备料，手填数量已保留，请重新核对');
         }
         // Full adoption of a parent can remove its automatic child demand.
         // This is a proven zero, not a lost identity bridge or failed order.
+        continue;
+      }
+      if (original?.aggregatePreparation?.actionable == true) {
+        // 用户原行继续持有输入和来源身份；目标只由服务端在事务内精确解析。
+        nextIds.add(old);
         continue;
       }
       if (rewrites[old] case final replacements?) {
@@ -497,8 +506,9 @@ final class _MaterialAggregateSubmission {
       final group = indexes.groupsByLine[id]!;
       owner._preparationOrderMethodByGroup[group.key] = nextChoices[id]!;
       final original = oldSnapshots[id];
-      final residual = owner._qty(
-        owner._tableDefaultSubmitQty(group, authoritative: true),
+      final residual = owner._tableDefaultSubmitQtyText(
+        group,
+        authoritative: true,
       );
       final explicit = original?.hasExplicitQty == true;
       final order = owner._tableOrderQtyController(group),

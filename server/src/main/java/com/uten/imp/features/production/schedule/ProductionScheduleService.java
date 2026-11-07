@@ -9,6 +9,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.features.production.analysis.MaterialConsumptionMath;
+import com.uten.imp.features.production.analysis.MaterialAnalysisSourceCoverageSql;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
@@ -70,9 +71,7 @@ public class ProductionScheduleService {
      *  外层 sales_order_items 必须别名 i。 */
     static final String ACTIVE_ANALYSIS_COVERED_SQL = """
             COALESCE((
-                SELECT SUM(GREATEST(analysis_item.requested_qty
-                                    - analysis_item.approved_qty
-                                    - analysis_item.root_fulfilled_qty, 0))
+                SELECT SUM(%s)
                 FROM production_material_analysis_items analysis_item
                 JOIN production_material_analyses analysis
                   ON analysis.id = analysis_item.analysis_id
@@ -80,7 +79,8 @@ public class ProductionScheduleService {
                   AND analysis_item.source_type = 'SALES_ORDER_ITEM'
                   AND analysis_item.is_deleted = FALSE
                   AND analysis.is_deleted = FALSE
-                  AND analysis.status <> 'CANCELLED'), 0)""";
+                  AND analysis.status <> 'CANCELLED'), 0)"""
+            .formatted(MaterialAnalysisSourceCoverageSql.coveredQty("analysis_item"));
 
     /** 待排产缺口 = 剩余未排量 − 活动分析已承接量(下限 0)。列表 / facets / 徽章计数三处同源。 */
     static final String PENDING_NEED_SQL =
@@ -249,11 +249,11 @@ public class ProductionScheduleService {
                       AND ai.source_type = 'SALES_ORDER_ITEM'
                       AND ai.is_deleted = FALSE AND a.is_deleted = FALSE
                       AND a.status <> 'CANCELLED'
-                      AND ai.requested_qty-ai.approved_qty-ai.root_fulfilled_qty > 0
+                      AND %s > 0
                     ORDER BY a.analyzed_at DESC, a.id DESC
                     LIMIT 1
                 ) latest_analysis ON TRUE
-                """;
+                """.formatted(MaterialAnalysisSourceCoverageSql.coveredQty("ai"));
     }
 
     private static String pendingWhere(String kw, LocalDate dateFrom, LocalDate dateTo) {

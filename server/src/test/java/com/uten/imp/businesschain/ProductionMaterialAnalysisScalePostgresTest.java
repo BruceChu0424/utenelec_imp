@@ -89,6 +89,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired MaterialAnalysisService analysis;
     @Autowired MaterialAnalysisCommandService commands;
+    @Autowired com.uten.imp.features.production.schedule.ProductionScheduleService schedule;
     @Autowired SalesOrderService sales;
     @Autowired SalesOrderFinanceConfirmService finance;
     @Autowired com.uten.imp.features.production.plan.ProductionPlanService planService;
@@ -863,6 +864,83 @@ class ProductionMaterialAnalysisScalePostgresTest {
         assertTrue(rejected.getMessage().contains("十层"));
         assertEquals(0, jdbc.queryForObject("select count(*) from production_material_analyses where warehouse_id=?",
                 Integer.class, tooDeep.world().warehouseId()), "The rejected analysis must roll back completely");
+    }
+
+    @Test
+    void sourceCoverageIncludesSubmittedPlansUntilApprovalOrRootFulfillment() {
+        String coverage = com.uten.imp.features.production.analysis.MaterialAnalysisSourceCoverageSql.coveredQty("source");
+        var quantities = jdbc.queryForList("SELECT " + coverage + " FROM (VALUES "
+                + "(5000,0,3500,0),(1500,1500,0,0),(5000,0,3500,1500),(5000,0,0,1500))"
+                + " AS source(requested_qty,submitted_qty,approved_qty,root_fulfilled_qty)", BigDecimal.class);
+        assertEquals(List.of(1500,1500,0,3500), quantities.stream().map(BigDecimal::intValueExact).toList());
+    }
+
+    @Test
+    void fullyPlannedSourceInAnOpenBatchDoesNotOwnTheUnclaimedSalesRemainder() throws Exception {
+        var scenario = factory.sharedTree("source-remainder-" + suffix(), 1, "5000");
+        var source = scenario.sources().getFirst();
+        var firstItems = List.of(new PreviewItem(source.sourceType(), source.salesOrderItemId(),
+                null, null, null, null, null, source.deliveryDate(), new BigDecimal("3500")));
+        var firstRequest = new PreviewRequest(null, null, null, scenario.world().warehouseId(),
+                "remainder-first-" + suffix(), firstItems);
+        var initial = confirmAllRoutes(analysis.preview(firstRequest), false);
+        var product = initial.products().stream()
+                .filter(row -> source.salesOrderItemId().equals(row.salesOrderItemId())).findFirst().orElseThrow();
+        var generated = commands.issueWorkshopPlans(initial.analysisId(), new IssueWorkshopPlansRequest(
+                initial.version(), initial.fingerprint(), "remainder-plan-" + suffix(),
+                scenario.world().warehouseId(), LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(product.analysisLineId(), new BigDecimal("3500")))));
+        assertEquals("PARTIALLY_PLANNED", generated.analysis().status(),
+                "The approved plan keeps fulfillment open after this source is fully planned");
+        String billNo = jdbc.queryForObject("SELECT bill_no FROM sales_orders WHERE id=?", String.class, scenario.orderId());
+        var pending = schedule.pending(1, 100, null, null, null, null, null, null, billNo).getItems().stream()
+                .filter(row -> row.orderItemId().equals(source.salesOrderItemId())).findFirst().orElseThrow();
+        assertEquals(0, pending.plannedQty().compareTo(new BigDecimal("3500")));
+        assertEquals(0, pending.needQty().compareTo(new BigDecimal("1500")));
+        assertEquals(0, pending.analysisCoveredQty().signum(), "The fully planned source claims none of the remainder");
+        assertNull(pending.materialAnalysisId());
+        var initialCandidate = analysis.salesCandidates(null, 1, 100, null, null, billNo).items().getFirst().lines().getFirst();
+
+        var remainderItems = List.of(new PreviewItem(source.sourceType(), source.salesOrderItemId(),
+                null, null, null, null, null, source.deliveryDate(), new BigDecimal("1500")));
+        var remainderRequest = new PreviewRequest(null, null, null, scenario.world().warehouseId(),
+                "remainder-new-" + suffix(), remainderItems);
+        var remainder = analysis.preview(remainderRequest);
+        assertNull(initialCandidate.analysisId(), "The candidate must not point at the exhausted source's batch");
+        assertNotEquals(initial.analysisId(), remainder.analysisId());
+        assertEquals(0, remainder.products().getFirst().requestedQty().compareTo(new BigDecimal("1500")));
+        var coveredCandidate = analysis.salesCandidates(null, 1, 100, null, null, billNo).items().getFirst().lines().getFirst();
+        assertEquals(remainder.analysisId(), coveredCandidate.analysisId());
+        var samePayload = new PreviewRequest(null, null, null, scenario.world().warehouseId(),
+                "remainder-repeat-" + suffix(), remainderItems);
+        assertEquals(remainder.analysisId(), analysis.preview(samePayload).analysisId(),
+                "A covered source must still reuse its owner rather than create a duplicate");
+        var mismatch = assertThrows(com.uten.imp.common.web.ApiException.class, () -> analysis.preview(new PreviewRequest(
+                null, null, null, scenario.world().warehouseId(), "remainder-mismatch-" + suffix(),
+                List.of(new PreviewItem(source.sourceType(), source.salesOrderItemId(), null, null, null,
+                        null, null, source.deliveryDate(), new BigDecimal("1000"))))));
+        assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT, mismatch.getCode());
+        assertTrue(mismatch.getMessage().contains("请打开原分析后刷新"));
+        assertFalse(mismatch.getMessage().contains("fingerprint"));
+        var cancelled = commands.cancelAnalysis(remainder.analysisId(), new CancelRequest(remainder.version(),
+                remainder.fingerprint(), "remainder-cancel-" + suffix(), "取消本次剩余需求分析"));
+        assertEquals("CANCELLED", cancelled.status());
+        assertEquals("CANCELLED", analysis.preview(remainderRequest).status(),
+                "An old uncertain creation retry keeps its cancelled identity");
+        var recreated = analysis.preview(new PreviewRequest(null, null, null, scenario.world().warehouseId(),
+                "remainder-after-cancel-" + suffix(), remainderItems));
+        assertNotEquals(remainder.analysisId(), recreated.analysisId());
+        assertEquals(initial.analysisId(), analysis.preview(firstRequest).analysisId());
+        assertEquals(0, jdbc.queryForObject("SELECT planned_qty FROM sales_order_items WHERE id=?",
+                BigDecimal.class, source.salesOrderItemId()).compareTo(new BigDecimal("3500")));
+        assertEquals(0, jdbc.queryForObject("SELECT approved_qty FROM production_material_analysis_items WHERE id=?",
+                BigDecimal.class, product.analysisLineId()).compareTo(new BigDecimal("3500")));
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM production_material_analysis_plan_links WHERE analysis_item_id=? AND allocation_status='APPROVED'",
+                Integer.class, product.analysisLineId()), "The original approved plan remains untouched");
+        assertEquals(generated.plans().getFirst().planId(), jdbc.queryForObject(
+                "SELECT plan_id FROM production_material_analysis_plan_links WHERE analysis_item_id=? AND allocation_status='APPROVED'",
+                UUID.class, product.analysisLineId()));
+        assertEquals(generated.analysis().version(), analysis.detail(initial.analysisId()).version());
     }
 
     @Test

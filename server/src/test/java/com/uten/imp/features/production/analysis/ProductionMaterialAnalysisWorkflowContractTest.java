@@ -165,8 +165,13 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 准入量也改为 requested − approved − root_fulfilled > 0，与待排产承接量逐项同源——
         // 保证「已分析 > 0」的行一定有一张可点开的分析。
         assertThat(service).contains("a.status <> 'CANCELLED'");
-        assertThat(service)
-                .contains("ai.requested_qty-ai.approved_qty-ai.root_fulfilled_qty > 0");
+        assertThat(service).contains("MaterialAnalysisSourceCoverageSql.coveredQty(\"ai\")");
+        assertThat(service).contains("MaterialAnalysisSourceCoverageSql.coveredQty(\"analysis_item\")");
+        String coverage = source("features/production/analysis/MaterialAnalysisSourceCoverageSql.java");
+        assertThat(coverage).contains(".requested_qty - ", ".approved_qty - ", ".root_fulfilled_qty, 0)")
+                .doesNotContain(".submitted_qty");
+        assertThat(source("features/production/analysis/MaterialAnalysisSalesSourceReader.java"))
+                .contains("MaterialAnalysisSourceCoverageSql.coveredQty(\"source\")");
     }
 
     @Test

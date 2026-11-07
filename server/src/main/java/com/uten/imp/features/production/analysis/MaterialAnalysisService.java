@@ -1235,8 +1235,10 @@ public class MaterialAnalysisService {
                     FROM production_material_analysis_items ai
                     JOIN production_material_analyses a ON a.id = ai.analysis_id
                     WHERE ai.sales_order_item_id = i.id
+                      AND ai.source_type = 'SALES_ORDER_ITEM'
                       AND ai.is_deleted = FALSE AND a.is_deleted = FALSE
                       AND a.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                      AND %5$s > 0
                     ORDER BY a.analyzed_at DESC, a.id
                     LIMIT 1
                 ) active_analysis ON TRUE
@@ -1253,7 +1255,7 @@ public class MaterialAnalysisService {
                       - COALESCE(draft.qty,0), 0) > 0
                 ORDER BY o.deliver_date NULLS LAST, o.bill_date, o.bill_no,
                          COALESCE(i.line_no,0), i.id
-                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"))).setParameter("orderIds", orderIds));
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), MaterialAnalysisSourceCoverageSql.coveredQty("ai"))).setParameter("orderIds", orderIds));
         Map<UUID, CandidateOrderBuilder> builders = new LinkedHashMap<>();
         for (Object[] row : rows) {
             UUID orderId = uuid(row[0]);
@@ -5488,8 +5490,8 @@ public class MaterialAnalysisService {
     }
 
     private ApiException reusablePayloadConflict() {
-        return conflict("所选来源已有进行中的物料分析，但数量、交期、主仓或参与仓不同；"
-                + "请打开原分析并携带 analysisId/version/fingerprint 刷新");
+        return conflict("所选来源已有进行中的物料分析，但分析数量、交期或仓库范围不同；"
+                + "请打开原分析后刷新");
     }
 
     private UUID analysisByInitialIdempotencyKey(String key) {

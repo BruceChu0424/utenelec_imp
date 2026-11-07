@@ -25,8 +25,9 @@ final class MaterialAnalysisSalesSourceReader {
                     JOIN production_material_analyses analysis ON analysis.id=source.analysis_id AND analysis.is_deleted=FALSE
                     WHERE source.is_deleted=FALSE AND source.source_type='SALES_ORDER_ITEM'
                       AND source.sales_order_item_id IN (:ids) AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
+                      AND %s > 0
                     ORDER BY analysis.id
-                    """).setParameter("ids",batch),UUID.class));
+                    """.formatted(MaterialAnalysisSourceCoverageSql.coveredQty("source"))).setParameter("ids",batch),UUID.class));
         }
         return Collections.unmodifiableSet(result);
     }

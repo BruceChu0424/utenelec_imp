@@ -15,11 +15,17 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -31,8 +37,22 @@ import static org.assertj.core.api.Assertions.*;
     "uten.reporting.materialized-view-refresh.enabled=false","uten.features.goods-owner-scope-enabled=false",
     "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
     "uten.production.readiness-reconcile.enabled=false"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = SalesBomDeliveryEndToEndTest.DatabaseCleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class SalesBomDeliveryEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry r){FullChainEndToEndTest.registerDataSource(r);}
+    // Legacy unresolved jobs conservatively fence cost publication across the
+    // database. This test owns the entire cost graph whose readiness it asserts.
+    private static final PostgreSQLContainer DATABASE = new PostgreSQLContainer("postgres:16-alpine");
+
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
+        FullChainEndToEndTest.registerDataSource(registry, DATABASE);
+    }
+
+    static class DatabaseCleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
+        @Override public void afterTestClass(TestContext ignored) { DATABASE.stop(); }
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired SalesOrderService orders;
@@ -92,6 +112,7 @@ class SalesBomDeliveryEndToEndTest {
         assertThat(balance(w.warehouseId(),w.goodsA())).isZero();
         assertThat(balance(w.warehouseId(),w.goodsB())).isZero();
         assertThat(balance(w.warehouseId(),w.goodsE())).isZero();
+        ReflectionTestUtils.invokeMethod(fixture,"drainCosts",w);
         assertThat(db.queryForObject("SELECT bool_or(pending) FROM v_stock_actual_sales_cost_coverage WHERE shipment_id=?",Boolean.class,r.shipment())).isFalse();
     }
     @Test void shortageAndIncompleteSelectionRollBackEveryComponentAndCommercialFact(){

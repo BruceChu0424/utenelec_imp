@@ -163,22 +163,29 @@ class FullChainEndToEndTest {
 
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
-        POSTGRES.start();
+        ATTACH_TEST_DIR = registerDataSource(registry, POSTGRES);
+    }
+
+    static java.nio.file.Path registerDataSource(
+            DynamicPropertyRegistry registry, PostgreSQLContainer database) {
+        database.start();
+        java.nio.file.Path attachments;
         try {
-            ATTACH_TEST_DIR = java.nio.file.Files.createTempDirectory("uten-attach-test-");
+            attachments = java.nio.file.Files.createTempDirectory("uten-attach-test-");
         } catch (java.io.IOException e) {
             throw new IllegalStateException("无法创建附件测试临时目录", e);
         }
-        registry.add("uten.storage.local-dir", () -> ATTACH_TEST_DIR.toString());
+        registry.add("uten.storage.local-dir", attachments::toString);
         // This empty isolated container must migrate with its own fixture identity,
         // independently of the host developer's optional migration credentials.
-        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
-                POSTGRES::getUsername, POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         registry.add("uten.bootstrap.admin-login", () -> SHARED_ADMIN_LOGIN);
         registry.add("uten.bootstrap.admin-password", () -> SHARED_ADMIN_PASSWORD);
         registry.add("uten.jwt.secret", () -> SHARED_JWT_SECRET);
         registry.add("uten.crypto.pgp-master-key", () -> SHARED_PGP_KEY);
         registry.add("uten.crypto.hmac-key", () -> SHARED_HMAC_KEY);
+        return attachments;
     }
 
     /** Monotonic legacy ids remain useful for migration-shaped fixtures, while all current

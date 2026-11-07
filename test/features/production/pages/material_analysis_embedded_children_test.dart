@@ -111,8 +111,19 @@ void main() {
         const ValueKey('material-aggregate-child-goods||unit-1'),
       );
       expect(orphan, findsOneWidget);
+      // The row now also displays its preparation method. An orphan retains
+      // that readout without gaining either route editing or an enabled order
+      // method control.
+      final method = find.descendant(
+        of: orphan,
+        matching: find.byKey(
+          const ValueKey('material-aggregate-order-method-child-goods||unit-1'),
+        ),
+      );
+      expect(method, findsOneWidget);
+      expect(tester.widget<UtenDropdownField>(method).enabled, isFalse);
       expect(
-        find.descendant(of: orphan, matching: find.byType(UtenDropdownField)),
+        find.byKey(const ValueKey('material-route-dropdown-child-material')),
         findsNothing,
       );
 

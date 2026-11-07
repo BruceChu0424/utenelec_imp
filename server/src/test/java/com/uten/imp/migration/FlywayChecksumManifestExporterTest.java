@@ -6,8 +6,8 @@ import org.flywaydb.core.api.MigrationVersion;
 import org.flywaydb.core.api.resource.LoadableResource;
 import org.flywaydb.core.internal.resolver.ChecksumCalculator;
 import org.flywaydb.core.internal.resource.classpath.ClassPathResource;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -32,7 +32,6 @@ import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERS
 import static com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT;
 
 class FlywayChecksumManifestExporterTest {
-    private static final String EXPORT_PROPERTY = "uten.exportFlywayChecksums";
     private static final String OUTPUT_NAME = "uten-imp-flyway-checksums.tsv";
     private static final String HEADER = "# uten-imp-flyway-checksums-v1";
     private static final Pattern MIGRATION_FILE = Pattern.compile(
@@ -121,9 +120,9 @@ class FlywayChecksumManifestExporterTest {
         return output.toString();
     }
 
-    @Test void exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested() throws IOException, URISyntaxException {
-        Assumptions.assumeTrue("true".equals(System.getProperty(EXPORT_PROPERTY)),
-                () -> "Set -D" + EXPORT_PROPERTY + "=true only for an explicitly requested checksum export");
+    @Test
+    @EnabledIfSystemProperty(named = "uten.exportFlywayChecksums", matches = "true")
+    void exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested() throws IOException, URISyntaxException {
         String output = manifestContents(getClass().getClassLoader());
         Path testClasses = Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
         Path targetDirectory = testClasses.getParent();

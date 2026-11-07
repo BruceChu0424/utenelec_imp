@@ -44,6 +44,7 @@ OPTIONAL_GATES = {
     "UTEN_RECOVERY_MANIFEST",
 }
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
+EXPORT_CHECKSUMS_PROPERTY = "uten.exportFlywayChecksums"
 WORKBOOK_PROPERTY = "uten.cost.companyWorkbook"
 WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkbookReviewTest#preservesFortyDetailBlocksIncludingProductsAbsentFromTheThirtySevenRowSummary"
 MATERIAL_PRODUCER_PROPERTY = "uten.materialForecast.contractDirectory"
@@ -365,6 +366,7 @@ def xml_cases(directory):
                                     "os_name": properties.get("os.name", ""),
                                     # Record presence only; private local workbook paths never enter summaries.
                                     "workbook_property_present": WORKBOOK_PROPERTY in properties,
+                                    "export_checksums_property_present": EXPORT_CHECKSUMS_PROPERTY in properties,
                                     "material_producer_property_present": MATERIAL_PRODUCER_PROPERTY in properties,
                                     "skip_reason": (skipped.attrib.get("message", "") + " " + (skipped.text or "")).strip() if skipped is not None else ""})
             except (ET.ParseError, OSError, ValueError) as exc:
@@ -393,7 +395,9 @@ def os_family(os_name):
 def allowed_skip(case, method, runtime_platform=None):
     reason = case["skip_reason"]
     if method["id"] == EXPORTER:
-        return "Set -Duten.exportFlywayChecksums=true only in the signed-release CI job" in reason
+        return (method.get("system_property_gates") == [{"named": EXPORT_CHECKSUMS_PROPERTY, "matches": "true"}]
+                and not case.get("export_checksums_property_present", False)
+                and reason == f"System property [{EXPORT_CHECKSUMS_PROPERTY}] does not exist")
     # The WPF package inspector and runtime-family tests read a pinned private
     # BouncyCastle fixture that lives outside the repository; by design CI either
     # provides it via -Duten.wpf.dependencyFixtureRoot or every fixture-backed
@@ -462,6 +466,8 @@ def audit_cases(plan, shard_id, cases, maven_exit, runtime_platform=None):
             skipped.append({"id": identifier, "reason": case["skip_reason"], "permitted": permitted,
                             "os_name": case.get("os_name", ""),
                             "workbook_property_present": case.get("workbook_property_present", False),
+                            **({"export_checksums_property_present": case.get("export_checksums_property_present", False)}
+                               if identifier == EXPORTER else {}),
                             **({"material_producer_property_present": case.get("material_producer_property_present", False)}
                                if identifier == MATERIAL_PRODUCER_REVIEW else {})})
             if not permitted:

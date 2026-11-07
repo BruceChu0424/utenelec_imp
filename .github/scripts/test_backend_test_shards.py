@@ -433,6 +433,21 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(allowed["skipped"][0]["permitted"])
         self.assertFalse(runner.audit_cases(plan(), 0, [case], 0)["complete"])
 
+    def test_checksum_export_only_allows_its_declared_missing_property(self):
+        classname, name = runner.EXPORTER.split("#")
+        gate = runner.EXPORT_CHECKSUMS_PROPERTY
+        exporter = test_class(classname, (name,))
+        case = testcase(name, classname, "skipped", f"System property [{gate}] does not exist")
+        self.assertFalse(runner.audit_cases(plan([exporter]), 0, [case], 0)["complete"])
+        exporter["methods"][0]["system_property_gates"] = [{"named": gate, "matches": "true"}]
+        self.assertTrue(runner.audit_cases(plan([exporter]), 0, [case], 0)["complete"])
+        present = {**case, "export_checksums_property_present": True}
+        self.assertFalse(runner.audit_cases(plan([exporter]), 0, [present], 0)["complete"])
+        other = test_class(classname, ("anotherCheck",))
+        other["methods"][0]["system_property_gates"] = exporter["methods"][0]["system_property_gates"]
+        other_case = {**case, "name": "anotherCheck"}
+        self.assertFalse(runner.audit_cases(plan([other]), 0, [other_case], 0)["complete"])
+
     def test_private_finance_source_absence_keeps_all_public_parser_methods_mandatory(self):
         classname = "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
         private = "privateSuppliedFilesAreReadOnlyOptionalEvidence"

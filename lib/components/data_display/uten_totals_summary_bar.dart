@@ -22,7 +22,7 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   /// 合计项（按展示顺序）。
   final List<UtenTotalEntry> entries;
 
-  /// 保留已有调用接口。汇总始终使用正常正文字号，不因紧凑布局缩小。
+  /// 保留已有调用接口。紧凑布局与普通布局共用同一字号。
   final bool density;
 
   /// 顶部分隔线。2026-09-15 用户口径：合计条不再画顶部分隔线（表格自带行线，
@@ -117,12 +117,10 @@ class _UtenTotalEntryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final heading =
-        Theme.of(context).textTheme.titleLarge ?? const TextStyle(fontSize: 18);
-    final labelStyle = heading.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-    );
+    final labelStyle =
+        (Theme.of(context).textTheme.bodyMedium ??
+                const TextStyle(fontSize: 14))
+            .copyWith(color: Colors.white, fontWeight: FontWeight.w700);
     return Wrap(
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -132,7 +130,7 @@ class _UtenTotalEntryView extends StatelessWidget {
           entry.value,
           textAlign: TextAlign.end,
           style: labelStyle.copyWith(
-            fontSize: (labelStyle.fontSize ?? 18) + 4,
+            fontSize: (labelStyle.fontSize ?? 14) + 2,
             fontWeight: entry.danger ? FontWeight.w800 : FontWeight.w700,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),

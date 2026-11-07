@@ -40,8 +40,8 @@ void main() {
       );
       final label = tester.widget<Text>(find.text('本次收款金额: '));
       final amount = tester.widget<Text>(find.text('100.00'));
-      expect(label.style!.fontSize, 18);
-      expect(amount.style!.fontSize, 22);
+      expect(label.style!.fontSize, 14);
+      expect(amount.style!.fontSize, 16);
       expect(label.style!.color, Colors.white);
       expect(label.style!.fontWeight, FontWeight.w700);
       expect(amount.style!.color, Colors.white);

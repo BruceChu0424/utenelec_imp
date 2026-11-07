@@ -95,6 +95,10 @@ public class InstantInventoryRow {
     @Setter private BigDecimal closingQty;
     @Setter private BigDecimal periodCostAmount;
     @Setter private BigDecimal costPrice;
+    /** Active reservations with a physical location in this inventory scope. */
+    @Setter private BigDecimal reservedQty;
+    /** Physical quantity left after those reservations, before business-specific issue rules. */
+    @Setter private BigDecimal availableQty;
 
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
                                String name, String spec, String colorName, String unitName, String remark,
@@ -107,7 +111,7 @@ public class InstantInventoryRow {
                 weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
                 weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked,
                 owningWarehouseId, owningWarehouseName, defectiveQty, null, null, false, null, true,
-                false, null, null, null, null, null);
+                false, null, null, null, null, null, null, null);
     }
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */
@@ -133,4 +137,16 @@ public class InstantInventoryRow {
 
     @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
     public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
+
+    public String getQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(qty);
+    }
+
+    public String getReservedQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(reservedQty);
+    }
+
+    public String getAvailableQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(availableQty);
+    }
 }

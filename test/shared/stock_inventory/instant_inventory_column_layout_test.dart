@@ -245,11 +245,13 @@ void main() {
         defaultHidden: {},
         insertNewColumnsAtDeclaredPosition: true,
       );
-      expect(effective.order.take(8), [
+      expect(effective.order.take(10), [
         'name',
         'goodsCode',
         'color',
         'qty',
+        'reservedQty',
+        'availableQty',
         'weight',
         'periodInQty',
         'periodOutQty',
@@ -258,6 +260,41 @@ void main() {
       expect(effective.order.last, 'remark');
       expect(effective.hidden, {'remark'});
       expect(effective.widths, {'name': 280});
+
+      final personal =
+          declaredKeys
+              .where((key) => key != 'reservedQty' && key != 'availableQty')
+              .toList()
+            ..remove('qty')
+            ..insert(1, 'qty');
+      controller.layout =
+          PlatformTableLayoutNotifier(instantInventoryTableKeys.first).decode({
+            'layoutVersion': 2,
+            'order': personal,
+            'hidden': ['remark'],
+            'pinned': ['name'],
+            'widths': {'qty': 220},
+          })!;
+      final upgraded = controller.localLayout(
+        declaredKeys,
+        defaultHidden: {},
+        insertNewColumnsAtDeclaredPosition: true,
+      );
+      expect(upgraded.order.take(4), [
+        'name',
+        'qty',
+        'reservedQty',
+        'availableQty',
+      ]);
+      expect(
+        upgraded.order.where(
+          (key) => key != 'reservedQty' && key != 'availableQty',
+        ),
+        personal,
+      );
+      expect(upgraded.hidden, {'remark'});
+      expect(upgraded.pinned, {'name'});
+      expect(upgraded.widths, {'qty': 220});
     },
   );
 }

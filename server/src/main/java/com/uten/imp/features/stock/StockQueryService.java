@@ -481,8 +481,13 @@ public class StockQueryService {
         // 同名货品/多个颜色必须有稳定次序，避免行动清单翻页时重复或遗漏。
         orderBy += ", goods_id ASC, color_id ASC NULLS FIRST";
         if (!KeywordSearch.terms(sql.filter().keyword()).isEmpty()) orderBy = "search_rank ASC, " + orderBy;
-        var dataQ = com.uten.imp.common.report.ReportExportCursor.query(em,
-                sql.core() + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+        String sortSql = " ORDER BY " + orderBy;
+        String pageSql = " LIMIT :__limit OFFSET :__offset";
+        // Cursor exports remove the terminal LIMIT/OFFSET to stream the same ordered rows.
+        String dataSql = com.uten.imp.common.report.ReportExportCursor.active()
+                ? sql.withReservationQuantities(sql.core()) + sortSql + pageSql
+                : sql.withReservationQuantities(sql.core() + sortSql + pageSql) + sortSql;
+        var dataQ = com.uten.imp.common.report.ReportExportCursor.query(em, dataSql);
         sql.bindAll(dataQ);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -529,6 +534,9 @@ public class StockQueryService {
                 item.setPeriodCostAmount(canViewCost ? decimal(r[start + 3]) : null);
                 item.setCostPrice(canViewCost ? decimal(r[start + 4]) : null);
             }
+            int reservationIndex = measurementIndex + 8;
+            item.setReservedQty(decimal(r[reservationIndex]));
+            item.setAvailableQty(decimal(r[reservationIndex + 1]));
             items.add(item);
         }
         long total = com.uten.imp.common.report.ReportReadPlan.UNKNOWN_TOTAL;
@@ -544,7 +552,27 @@ public class StockQueryService {
     /** 即时库存 SQL 与参数绑定(列表/计数/合计绑全部筛选；facet 只绑范围 + 分类 + 关键字)。 */
     private record InstantSql(String core, String coreFacet, boolean canViewCost, Set<UUID> warehouseScope,
                               InstantInventoryFilter filter, String seriesFilter,
-                              Map<String, Object> searchParameters) {
+                              Map<String, Object> searchParameters, String warehouseBalanceWhere) {
+
+        // Add only physically located claims. A warehouse-less public reservation must
+        // not be counted against every warehouse, and business issue limits are separate.
+        String withReservationQuantities(String dataCore) {
+            return """
+                    SELECT inventory.*,
+                           CASE WHEN inventory.available_known THEN held.reserved_qty END AS reserved_qty,
+                           CASE WHEN inventory.available_known THEN GREATEST(inventory.qty - held.reserved_qty, 0) END AS available_qty
+                    FROM (%s) inventory
+                    LEFT JOIN LATERAL (
+                        SELECT COALESCE(SUM(b.open_qty), 0) AS reserved_qty
+                        FROM v_stock_reservation_storage_locations b
+                        JOIN warehouses w ON w.id = b.warehouse_id
+                        %s
+                          AND inventory.available_known
+                          AND b.goods_id = inventory.goods_id
+                          AND b.color_id IS NOT DISTINCT FROM inventory.color_id
+                    ) held ON TRUE
+                    """.formatted(dataCore, warehouseBalanceWhere);
+        }
 
         void bindAll(Query q) {
             bindBase(q);
@@ -853,7 +881,8 @@ public class StockQueryService {
             core = "SELECT * FROM (" + core + ") attention_scope WHERE attention_scope."
                     + attention.countColumn + " > 0";
         }
-        return new InstantSql(core, coreFacet, canViewCost, warehouseScope, filter, seriesFilter, keyword.parameters());
+        return new InstantSql(core, coreFacet, canViewCost, warehouseScope, filter, seriesFilter,
+                keyword.parameters(), balWhere.toString());
     }
 
     /** facet 聚合查询 → 桶列表（v=值、label=展示名、c=命中数；label 列可为 null）。 */

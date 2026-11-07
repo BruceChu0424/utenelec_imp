@@ -37,6 +37,8 @@ public final class ReportExportCursor implements AutoCloseable {
 
     public static ReportExportCursor open() { return new ReportExportCursor(); }
 
+    public static boolean active() { return CURRENT.get() != null; }
+
     /** Hibernate getQueryString exposes adjusted positional SQL; retain the application original explicitly. */
     public static Query query(EntityManager em, String sql) {
         Query query = em.createNativeQuery(sql);

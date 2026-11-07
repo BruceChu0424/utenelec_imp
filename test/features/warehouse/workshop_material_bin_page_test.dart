@@ -591,8 +591,9 @@ void main() {
     expect(find.byKey(const Key('wm-bin-return')), findsNothing);
     expect(find.byKey(const Key('wm-bin-other-issue')), findsNothing);
     expect(find.byKey(const Key('wm-bin-count')), findsNothing);
-    // 现存表: 估计还剩与仓库还有（2026-10-10 数量+单位内联口径，公斤跟数字）。
+    // 区分内料仓余量和普通仓的可发量，数量与单位同列。
     expect(find.text('PP 颗粒'), findsOneWidget);
+    expect(find.text('仓库可发'), findsOneWidget);
     expect(find.text('800 公斤'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());

@@ -40,6 +40,14 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
     );
   }
 
+  String stockValue(InstantInventoryRow row, String? quantity) =>
+      quantity == null
+      ? '—'
+      : formatExactQtyWithUnit(
+          quantity,
+          row.measurementPending ? null : row.unitName,
+        );
+
   return <MasterColumnDef<InstantInventoryRow>>[
     // 识别货品 → 当前数量/重量 → 期间进出与结存 → 成本 → 待处理量；
     // 库位与主档资料随后，分类及备注收尾。成本授权不拆散数量流转列。
@@ -85,13 +93,15 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
       key: 'qty',
-      label: '库存数量',
+      label: '实物库存',
       width: 185,
       type: 'number',
       sortable: true,
+      info: '所选仓库范围内已入库、尚未出库的数量，包含已被订单或领料占用的库存。',
+      exactValueOf: (r) => r.qtyText,
       value: (r) => r.measurementPending
-          ? '${formatQty(r.qty)}（${r.measurementNotice}）'
-          : formatQtyWithUnit(r.qty, r.unitName),
+          ? '${stockValue(r, r.qtyText)}（${r.measurementNotice}）'
+          : stockValue(r, r.qtyText),
       // ADR-146: 打开「含不良品仓」时, 数量里在不良品仓的部分另标出来。
       cellBuilder: (context, r) {
         if (r.measurementPending) {
@@ -102,7 +112,7 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  formatQty(r.qty),
+                  stockValue(r, r.qtyText),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -116,7 +126,7 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
             ),
           );
         }
-        final qty = formatQtyWithUnit(r.qty, r.unitName);
+        final qty = stockValue(r, r.qtyText);
         final defective = r.defectiveQty ?? 0;
         if (defective <= 0) return Text(qty);
         return Text(
@@ -128,6 +138,26 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
           overflow: TextOverflow.ellipsis,
         );
       },
+    ),
+    MasterColumnDef(
+      key: 'reservedQty',
+      label: '已占用',
+      width: 125,
+      type: 'number',
+      columnSearchEnabled: false,
+      info: '订单、领料等业务已分配到所选仓库的占用量。未分仓占用按全局口径核对。',
+      exactValueOf: (r) => r.reservedQtyText,
+      value: (r) => stockValue(r, r.reservedQtyText),
+    ),
+    MasterColumnDef(
+      key: 'availableQty',
+      label: '仓内未占用',
+      width: 130,
+      type: 'number',
+      columnSearchEnabled: false,
+      info: '实物库存扣除已分仓占用后的数量。未分仓占用另按全局口径核对。实际可发量还要核对单据的仓库、品质和领用权限。',
+      exactValueOf: (r) => r.availableQtyText,
+      value: (r) => stockValue(r, r.availableQtyText),
     ),
     // 库存重量：千克按用户显示单位换算，估算「≈」、没称「未称」。
     MasterColumnDef(
@@ -176,12 +206,12 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
     ),
     MasterColumnDef(
       key: 'closingQty',
-      label: '结存数量',
+      label: '期末结存',
       width: 170,
       type: 'number',
       sortable: periodSelected,
       columnSearchEnabled: false,
-      info: '所选截止日结束时的结存；库存数量列仍显示当前实时库存。',
+      info: '所选截止日结束时的结存，实物库存列显示当前的数量。',
       value: (r) => periodValue(r, r.closingQty),
     ),
     if (canViewCost) ...[

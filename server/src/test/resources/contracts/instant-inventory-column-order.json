@@ -2,7 +2,7 @@
   "version": 2,
   "columns": [
     "name", "goodsCode", "color",
-    "qty", "weight",
+    "qty", "reservedQty", "availableQty", "weight",
     "periodInQty", "periodOutQty", "closingQty",
     "costPrice", "periodCostAmount",
     "pendingQty", "pendingStockInQty",

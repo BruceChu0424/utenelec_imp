@@ -787,7 +787,10 @@ void main() {
               'owningWarehouseId': 'finished',
               'owningWarehouseName': '成品仓',
               'remark': '外购',
-              'qty': 10,
+              'qty': 10000,
+              'qtyExact': '10000',
+              'reservedQtyExact': '10000',
+              'availableQtyExact': '0',
               'unitName': '个',
               'weightUnknown': true,
               'pendingQty': 2,
@@ -811,6 +814,8 @@ void main() {
         'goodsCode',
         'color',
         'qty',
+        'reservedQty',
+        'availableQty',
         'weight',
         'periodInQty',
         'periodOutQty',
@@ -832,6 +837,9 @@ void main() {
       };
       expect(values['stockPlace'], 'A31-3-1');
       expect(values['owningWarehouse'], '成品仓');
+      expect(values['qty'], '10000 个');
+      expect(values['reservedQty'], '10000 个');
+      expect(values['availableQty'], '0 个');
       expect(values['weight'], '未称');
       expect(values['pendingStockInQty'], '3 个');
       expect(values['periodInQty'], '服务器未提供期间统计');

@@ -41,6 +41,7 @@ class ReportExportSpecialSourcesPostgresTest {
             .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withMemory(768L * 1024 * 1024).withNanoCPUs(1_000_000_000L));
     private static final String[] TABLES = {"currencies","clients","suppliers","accounts","units","colors","departments",
             "goods","material_categories","payment_styles","gl_entries","stock_balances","stock_movements","stock_measurement_holds",
+            "stock_reservations","stock_reservation_storage_positions",
             "procurement_inspection_items","goods_weight_estimates","production_plans","production_plan_items",
             "warehouses","warehouse_goods_place_preferences","finance_reconciliations","account_flow_monthly_summaries",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines","ar_ap_ledger",
@@ -56,6 +57,7 @@ class ReportExportSpecialSourcesPostgresTest {
     @BeforeAll static void start() {
         PG.start();db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(db,TABLES);
+        MigratedProjectionSchema.createCurrentViews(db,"v_stock_reservation_storage_locations");
         MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer",
                 "fn_business_exact_divide_with_policy","fn_business_exact_divide","fn_finance_gl_voucher_is_booked");
     }
@@ -72,6 +74,17 @@ class ReportExportSpecialSourcesPostgresTest {
                 SELECT gen_random_uuid(),'G-'||lpad(n::text,5,'0'),'货品-'||lpad(n::text,5,'0'),?,'A-1-1','使用',false,1,1
                 FROM generate_series(1,1001) n
                 """,UNIT);
+        UUID warehouse = UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name,is_accountable) VALUES (?,'B1-HOLD','预留验证仓',TRUE)", warehouse);
+        db.update("""
+                INSERT INTO stock_balances(id,goods_id,warehouse_id,qty,amount_local)
+                SELECT gen_random_uuid(),id,?,10000,0 FROM goods WHERE code='G-00001'
+                """, warehouse);
+        db.update("""
+                INSERT INTO stock_reservations(id,goods_id,warehouse_id,qty,owner_type,owner_id,purpose)
+                SELECT gen_random_uuid(),id,?,10000,'SUBCONTRACT_OUTBOUND',gen_random_uuid(),'SUBCONTRACT_OUTBOUND'
+                FROM goods WHERE code='G-00001'
+                """, warehouse);
         UUID receipt=UUID.randomUUID();
         db.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,status,is_deleted,currency_id) VALUES (?,'B1-RECEIPT',?,?,1,false,?)",receipt,DATE,SUPPLIER,CURRENCY);
         db.update("""
@@ -171,6 +184,13 @@ class ReportExportSpecialSourcesPostgresTest {
             assertThat(batches).extracting(batch->batch.rows().size()).containsExactly(500,500,expectedRows-1000);
             var streamed=batches.stream().flatMap(batch->batch.rows().stream()).toList();
             assertThat(streamed).containsExactlyElementsOf(original.rows());
+            if (report.equals("stock/instant-inventory")) {
+                var first = streamed.getFirst();
+                assertThat(first.get("goodsCode")).isEqualTo("G-00001");
+                assertThat((BigDecimal) first.get("qty")).isEqualByComparingTo("10000");
+                assertThat((BigDecimal) first.get("reservedQty")).isEqualByComparingTo("10000");
+                assertThat((BigDecimal) first.get("availableQty")).isEqualByComparingTo("0");
+            }
             // Dirty-month checks are now embedded in the authoritative statement data CTE.
             // Excluding every SQL containing that table would discard the real data read.
             // The exact top-level month proof runs once for each requested batch;

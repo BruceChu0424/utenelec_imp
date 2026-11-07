@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
@@ -15,7 +16,7 @@ import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 
 /// 车间任务详情里的「每种物料」表（ADR-095，2026-09-20 用户口径「车间内流转的
-/// 货品数量怎么统计、显示在哪里」）：需求 / 仓库已到 / 直送已交接 / 已领 / 缺口 /
+/// 货品数量怎么统计、显示在哪里」）：需求 / 本任务仓库可用 / 直送已交接 / 已领 / 缺口 /
 /// 状态 / 子件工单，全部来自服务端逐种事实，页面不做任何推算。
 class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
   const WorkshopTaskMaterialTable({
@@ -54,6 +55,10 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
 
 class _WorkshopTaskMaterialTableState
     extends ConsumerState<WorkshopTaskMaterialTable> {
+  static const _warehouseAvailableLabel = '本任务仓库可用';
+  static const _warehouseAvailableHint =
+      '含本任务专属来源和扣除其他占用及安全库存后可用的公共数量。齐套生产在到齐前不预留。';
+
   late Future<List<ProductionWorkshopTaskMaterial>> _future;
   final Set<String> _expandedDemandIds = {};
   bool _showAllMaterials = false;
@@ -271,8 +276,9 @@ class _WorkshopTaskMaterialTableState
             ),
             MasterColumnDef(
               key: 'warehouseAvailableQty',
-              label: '仓库已到',
-              width: 140,
+              label: _warehouseAvailableLabel,
+              info: _warehouseAvailableHint,
+              width: 168,
               type: 'number',
               sortable: true,
               filterFromRows: true,
@@ -280,8 +286,7 @@ class _WorkshopTaskMaterialTableState
               exactValueOf: (row) => row.warehouseAvailableQty.toString(),
               value: (row) => _qty(row.warehouseAvailableQty, row.unitName),
               cellBuilder: (_, row) => Tooltip(
-                message:
-                    '仓库里当前可给本任务用的实物（专属来源 + 允许动用的公共库存），齐套生产到齐前不预留；已预留 ${_qty(row.reservedQty, row.unitName)}',
+                message: '本任务已预留 ${_qty(row.reservedQty, row.unitName)}',
                 child: Text(_qty(row.warehouseAvailableQty, row.unitName)),
               ),
             ),
@@ -596,7 +601,6 @@ class _WorkshopTaskMaterialTableState
   ) {
     final theme = Theme.of(context);
     final facts = <(String, String)>[
-      ('仓库已到', _qty(row.warehouseAvailableQty, row.unitName)),
       ('已预留', _qty(row.reservedQty, row.unitName)),
       ('待仓库发料', _qty(row.requestedUnissuedQty, row.unitName)),
       ('可申请领料', _qty(row.requestableQty, row.unitName)),
@@ -615,6 +619,21 @@ class _WorkshopTaskMaterialTableState
           spacing: UtenSpacing.s16,
           runSpacing: UtenSpacing.s6,
           children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '$_warehouseAvailableLabel ${_qty(row.warehouseAvailableQty, row.unitName)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                const UtenFieldHintIcon(
+                  info: _warehouseAvailableHint,
+                  dense: true,
+                ),
+              ],
+            ),
             for (final (label, value) in facts)
               Text('$label $value', style: theme.textTheme.bodySmall),
           ],

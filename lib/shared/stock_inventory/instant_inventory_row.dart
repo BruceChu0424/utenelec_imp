@@ -1,4 +1,5 @@
 import '../formatters/exact_decimal.dart';
+import '../measurement/document_quantity.dart';
 import 'measurement_hold.dart';
 
 /// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
@@ -23,6 +24,7 @@ class InstantInventoryRow {
     this.unitWeightKgExact,
     this.weightTier,
     this.qty,
+    this.stockQuantities = const {},
     this.costAmount,
     this.costMasked = false,
     this.periodSelected = false,
@@ -87,7 +89,21 @@ class InstantInventoryRow {
 
   /// 单重可靠度 GREEN / YELLOW / RED。
   final String? weightTier;
-  final double? qty; // 库存数量
+  final double? qty; // 已入库、尚未实际出库的数量
+
+  /// 同一仓库范围的服务端数量事实，缺失的占用和可用量保留为未知。
+  final Map<String, String?> stockQuantities;
+  String? get qtyText => stockQuantities['qty'] ?? financeExactDecimal(qty);
+  String? get reservedQtyText => stockQuantities['reservedQty'];
+  String? get availableQtyText =>
+      availableKnown ? stockQuantities['availableQty'] : null;
+
+  Map<String, String?> get stockQuantityFacts => {
+    'qty': qtyText,
+    'reservedQty': reservedQtyText,
+    'availableQty': availableQtyText,
+  };
+
   /// 当前筛选仓范围内 stock_balances.amount_local 的库存台账金额聚合。
   ///
   /// 不是 goods.c_total × qty 的标准成本估算。
@@ -148,6 +164,11 @@ class InstantInventoryRow {
         ),
         weightTier: json['weightTier'] as String?,
         qty: (json['qty'] as num?)?.toDouble(),
+        stockQuantities: recordedDecimalFields(json, const [
+          'qty',
+          'reservedQty',
+          'availableQty',
+        ]),
         costAmount: json['costMasked'] == true
             ? null
             : (json['costAmount'] as num?)?.toDouble(),

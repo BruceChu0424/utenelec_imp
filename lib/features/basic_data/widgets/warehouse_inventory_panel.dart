@@ -286,7 +286,7 @@ class _WarehouseInventoryPanelState
         ],
         factsOf: (row) => {
           ...row.identityFields,
-          'qty': row.qty?.toString(),
+          ...row.stockQuantityFacts,
           'weight': row.weight?.toString(),
           if (_canViewCost) 'costPrice': row.costPrice?.toString(),
           if (_canViewCost)

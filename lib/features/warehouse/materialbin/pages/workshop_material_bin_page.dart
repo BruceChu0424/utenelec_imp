@@ -4,7 +4,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 车间内料仓页 (/workshop-material/bin?workshopId=, ADR-131 §8.1)。
 //
 // 车间看: 内料仓里每种料的账面、本期领入 / 退回 / 其它耗用、估计已用与估计还剩、
-// 仓库还有多少; 顶部是盘点与自动结算状态 ("差什么、谁来补")。
+// 仓库可发量; 顶部是盘点与自动结算状态 ("差什么、谁来补")。
 // 只开通、还没开启整批领料的内料仓 (ADR-147 已开通, 收车间直送) 只列现有的料与数量。
 // 通用入口是车间总览 (唯一的车间清单, 开通/开启整批领料/撤销都在总览里批量办)。
 // 操作: 申请领料、退回、其它耗用、盘点、记录。按钮只按服务端下发的 allowedActions 显示。
@@ -1350,7 +1350,8 @@ class _WorkshopMaterialBinPageState
         ),
         MasterColumnDef(
           key: 'warehouseAvailableQty',
-          label: '仓库还有',
+          label: '仓库可发',
+          info: '扣除预留和安全库存后，可从仓库发出的数量。',
           width: 150,
           type: 'number',
           value: (r) =>

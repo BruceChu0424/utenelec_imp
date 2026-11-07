@@ -124,13 +124,13 @@ class StockReportCostVisibilityTest {
     }
 
     @Test
-    void weightFollowsQuantityInOneExportUnitWithAStatusColumn() {
+    void weightFollowsStockQuantitiesInOneExportUnitWithAStatusColumn() {
         when(costMasker.canView()).thenReturn(false);
 
         ExportPayload kg = service.export("instant-inventory", Map.of(), null, null);
         List<String> keys = kg.columns().stream().map(ExportColumn::key).toList();
-        assertThat(keys.indexOf("weight")).isEqualTo(keys.indexOf("qty") + 1);
-        assertThat(keys.indexOf("weightStatus")).isEqualTo(keys.indexOf("weight") + 1);
+        assertThat(keys.subList(keys.indexOf("qty"), keys.indexOf("weightStatus") + 1))
+                .containsExactly("qty", "reservedQty", "availableQty", "weight", "weightStatus");
         assertThat(kg.columns()).filteredOn(c -> "weight".equals(c.key())).singleElement()
                 .satisfies(c -> {
                     assertThat(c.label()).isEqualTo("库存重量(千克)");

@@ -613,7 +613,52 @@ void main() {
     expect(stock.lastUnitId, isNull);
   });
 
-  // ADR-135：库存重量紧跟库存数量；估算「≈」、有库存没称过「未称」、本行无库存「—」，
+  testWidgets('fully reserved inventory remains visible as physical stock', (
+    tester,
+  ) async {
+    final reserved = InstantInventoryRow.fromJson({
+      'goodsId': 'reserved-material',
+      'name': '全部占用的物料',
+      'unitName': '个',
+      'qty': 10000,
+      'qtyExact': '10000',
+      'reservedQtyExact': '10000',
+      'availableQtyExact': '0',
+    });
+    final legacy = InstantInventoryRow.fromJson({
+      'goodsId': 'legacy-material',
+      'name': '旧版库存',
+      'unitName': '个',
+      'qty': 5,
+      'qtyExact': '5.000000000000000000000001',
+    });
+    final held = InstantInventoryRow.fromJson({
+      'goodsId': 'held-material',
+      'name': '计量待核库存',
+      'qty': 8,
+      'availableQtyExact': '0',
+      'availableKnown': false,
+    });
+    final stock = _RecordingStockRepository(rows: [reserved, legacy, held]);
+    await pumpPage(tester, stock: stock);
+
+    final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+      find.byType(MasterDataTableView<InstantInventoryRow>),
+    );
+    final columns = {for (final column in table.columns) column.key: column};
+    expect(find.text('实物库存'), findsOneWidget);
+    expect(find.text('已占用'), findsOneWidget);
+    expect(find.text('仓内未占用'), findsOneWidget);
+    expect(find.text('10000 个'), findsNWidgets(2));
+    expect(find.text('0 个'), findsOneWidget);
+    expect(columns['qty']!.value(legacy), '5.000000000000000000000001 个');
+    expect(columns['reservedQty']!.value(legacy), '—');
+    expect(columns['availableQty']!.value(legacy), '—');
+    expect(columns['availableQty']!.value(held), '—');
+    expect(tester.takeException(), isNull);
+  });
+
+  // ADR-135：库存重量紧跟库存数量组；估算「≈」、有库存没称过「未称」、本行无库存「—」，
   // 绝不把未知显示成 0；工具条「重量单位」切换显示单位，导出跟着带固定单位与表头筛选。
   testWidgets('weight follows quantity, marks estimates and unknowns, and '
       'the display unit drives cells and export', (tester) async {
@@ -639,7 +684,7 @@ void main() {
         table().columns.firstWhere((c) => c.key == 'weight');
 
     final keys = [for (final c in table().columns) c.key];
-    expect(keys.indexOf('weight'), keys.indexOf('qty') + 1);
+    expect(keys.indexOf('weight'), keys.indexOf('availableQty') + 1);
     expect(weightColumn().type, 'weight');
     expect(weightColumn().value(rows[0]), '≈11.55 kg');
     expect(weightColumn().value(rows[1]), '未称');
@@ -681,7 +726,8 @@ void main() {
                 name: 'V5压线铜螺丝（加强型铜材）',
                 unitName: '个',
                 colorName: '镀镍',
-                qty: 5000,
+                qty: 10000,
+                stockQuantities: {'reservedQty': '10000', 'availableQty': '0'},
                 weight: 11.55,
                 weightEstimated: true,
                 pendingQty: 200,
@@ -699,6 +745,7 @@ void main() {
                 unitName: '个',
                 colorName: '灰色',
                 qty: 320,
+                stockQuantities: {'reservedQty': '20', 'availableQty': '300'},
                 periodSelected: true,
                 periodInQty: 80,
                 periodOutQty: 50,

@@ -100,6 +100,9 @@ class StockQueryCostVisibilityTest {
 
         assertNull(row.getCostAmount());
         assertTrue(row.isCostMasked());
+        assertEquals("10", row.getQtyExact());
+        assertEquals("10", row.getReservedQtyExact());
+        assertEquals("0", row.getAvailableQtyExact());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         // 列表 + 计数 + 两条服务端合计（ReportTotalsCalculator 按分组维度各发一条）
         // + V587/V590 归属仓库 facet 两桶（有值桶 + 空归属计数）+ 2026-09-16 起的
@@ -109,6 +112,8 @@ class StockQueryCostVisibilityTest {
         verify(entityManager, times(9)).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().stream().noneMatch(value -> value.contains("g.c_total")));
         assertTrue(sql.getAllValues().stream().allMatch(value -> value.contains("CAST(NULL AS NUMERIC)")));
+        assertEquals(1, sql.getAllValues().stream()
+                .filter(value -> value.contains("v_stock_reservation_storage_locations")).count());
     }
 
     @Test
@@ -153,11 +158,10 @@ class StockQueryCostVisibilityTest {
     }
 
     /**
-     * 即时库存 SELECT 的完整一行(40 列, 按位置映射): 前 19 列为原口径, 19-23 为 ADR-135 重量扩展,
-     * 24-36 为合计用的计数列, 37-38 为所属仓库, 39 为 ADR-146 不良品数量。
+     * 即时库存 SELECT 的无搜索、无期间条件行。计量/期间投影后追加落仓占用与未占用量。
      */
     private static Object[] instantRow(BigDecimal costAmount) {
-        Object[] row = new Object[40];
+        Object[] row = new Object[51];
         Object[] head = {
                 UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
                 "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
@@ -167,6 +171,10 @@ class StockQueryCostVisibilityTest {
         };
         System.arraycopy(head, 0, row, 0, head.length);
         row[39] = BigDecimal.ZERO;
+        row[41] = Boolean.FALSE;
+        row[43] = Boolean.TRUE;
+        row[49] = BigDecimal.TEN;
+        row[50] = BigDecimal.ZERO;
         return row;
     }
 

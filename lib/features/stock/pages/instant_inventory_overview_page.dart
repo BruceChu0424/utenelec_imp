@@ -21,6 +21,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/instant_inventory_scope.dart';
@@ -450,6 +451,17 @@ class _InstantInventoryOverviewPageState
     String qty(double? value, String? unit) => value == null
         ? '未提供'
         : '${number.format(value)} ${unit?.trim().isNotEmpty == true ? unit : '计量待核'}';
+    String physicalStock(InstantInventoryRow row) {
+      final heading = row.measurementPending ? '账面库存' : '实物库存';
+      final quantity = row.qtyText;
+      if (quantity == null) return '$heading 未提供';
+      final unit =
+          row.measurementPending || row.unitName?.trim().isNotEmpty != true
+          ? '计量待核'
+          : row.unitName;
+      return '$heading ${formatExactQtyWithUnit(quantity, unit, groupThousands: true)}';
+    }
+
     final page = _riskPage;
     return UtenCard(
       key: const Key('inventory-risk-details'),
@@ -528,11 +540,7 @@ class _InstantInventoryOverviewPageState
                       spacing: UtenSpacing.s16,
                       runSpacing: UtenSpacing.s8,
                       children: [
-                        Text(
-                          row.measurementPending
-                              ? '账面库存 ${qty(row.qty, null)}'
-                              : '库存 ${qty(row.qty, row.unitName)}',
-                        ),
+                        Text(physicalStock(row)),
                         if (row.measurementPending) Text(row.measurementNotice),
                         if (risk == 'AWAITING_STOCK_IN')
                           Text(

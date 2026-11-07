@@ -4120,8 +4120,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     .append(str(missing.get("goods_code")))
                     .append(str(missing.get("color_name")).isBlank()
                             ? "" : "(" + str(missing.get("color_name")) + ")")
-                    .append(arrived.signum() > 0 ? " 仓库已到 " + qty(arrived) + unit + "，" : " ")
-                    .append(remaining.signum() > 0 ? "还缺 " + qty(remaining) + unit : "已到齐待预留")
+                    .append(arrived.signum() > 0 ? " 本任务仓库可用 " + qty(arrived) + unit + "，" : " ")
+                    .append(remaining.signum() > 0 ? "还缺 " + qty(remaining) + unit : "已够用，待预留")
                     // 自制子件做完可能直送本车间也可能入库后领料，只说来源不许诺交接方式(ADR-096)。
                     .append(Boolean.TRUE.equals(missing.get("in_house_child")) ? "(自制子件在产)" : "");
             shown++;

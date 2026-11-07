@@ -43,13 +43,16 @@ class InstantInventoryPeriodPostgresTest {
         db = new JdbcTemplate(source); named = new NamedParameterJdbcTemplate(source);
         MigratedProjectionSchema.createCurrentTables(db, "goods", "colors", "units", "warehouses", "material_categories",
                 "stock_balances", "stock_movements", "stock_measurement_holds", "procurement_inspection_items",
-                "goods_weight_estimates", "production_plan_items", "production_plans");
+                "goods_weight_estimates", "production_plan_items", "production_plans", "stock_reservations",
+                "stock_reservation_storage_positions");
+        MigratedProjectionSchema.createCurrentViews(db, "v_stock_reservation_storage_locations");
     }
     @AfterAll static void stop() { PG.stop(); }
 
     @BeforeEach void fixture() {
         db.execute("TRUNCATE goods,colors,units,warehouses,material_categories,stock_balances,stock_movements,"
-                + "stock_measurement_holds,procurement_inspection_items,goods_weight_estimates,production_plan_items,production_plans");
+                + "stock_measurement_holds,procurement_inspection_items,goods_weight_estimates,production_plan_items,production_plans,"
+                + "stock_reservations,stock_reservation_storage_positions");
         em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> query(call.getArgument(0)));
         masker = mock(StockCostMasker.class); when(masker.canView()).thenReturn(true);
@@ -127,6 +130,41 @@ class InstantInventoryPeriodPostgresTest {
                 .getItems()).isEmpty();
     }
 
+    @Test void fullyReservedStockStaysOnHandAndClaimsFollowTheirPhysicalWarehouse() throws Exception {
+        db.update("UPDATE stock_balances SET qty=10000 WHERE warehouse_id=?", one);
+        UUID allocated = reservation(parent, "10000");
+        db.update("INSERT INTO stock_reservation_storage_positions(reservation_id,warehouse_id,qty) VALUES(?,?,10000)",
+                allocated, one);
+        reservation(null, "100");
+        UUID released = reservation(one, "10");
+        db.update("UPDATE stock_reservations SET released_qty=qty WHERE id=?", released);
+
+        var http = MockMvcBuilders.standaloneSetup(new StockQueryController(service)).build();
+        http.perform(get("/api/stock/instant-inventory").param("warehouseId", one.toString())
+                        .param("keyword", "日期").param("dateFrom", "2026-10-01").param("dateTo", "2026-10-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("items[0].qtyExact").value("10000"))
+                .andExpect(jsonPath("items[0].reservedQtyExact").value("10000"))
+                .andExpect(jsonPath("items[0].availableQtyExact").value("0"))
+                .andExpect(jsonPath("items[0].closingQty").value(9992));
+
+        var otherWarehouse = service.instantInventoryRows(filter(two, false, null), 1, 20, null, null).getItems().getFirst();
+        assertThat(otherWarehouse.getReservedQty()).isEqualByComparingTo("0");
+        assertThat(otherWarehouse.getAvailableQty()).isEqualByComparingTo("40");
+
+        var subtree = service.instantInventoryRows(filter(parent, false, null), 1, 20, null, null).getItems().getFirst();
+        assertThat(subtree.getQty()).isEqualByComparingTo("10040");
+        assertThat(subtree.getReservedQty()).isEqualByComparingTo("10000");
+        assertThat(subtree.getAvailableQty()).isEqualByComparingTo("40");
+
+        db.update("UPDATE stock_reservations SET status=1, consumed_qty=qty WHERE id=?", allocated);
+        db.update("UPDATE stock_balances SET qty=0 WHERE warehouse_id=?", one);
+        var posted = service.instantInventoryRows(filter(one, false, null), 1, 20, null, null).getItems().getFirst();
+        assertThat(posted.getQty()).isEqualByComparingTo("0");
+        assertThat(posted.getReservedQty()).isEqualByComparingTo("0");
+        assertThat(posted.getAvailableQty()).isEqualByComparingTo("0");
+    }
+
     @Test void missingRangeNeverReturnsInventedZerosAndZeroClosingHasNoInventedPrice() {
         var noPeriod = service.instantInventoryRows(filter(parent, false, null), 1, 20, null, null).getItems().getFirst();
         assertThat(noPeriod.isPeriodSelected()).isFalse();
@@ -189,6 +227,14 @@ class InstantInventoryPeriodPostgresTest {
     void balance(UUID warehouse, UUID colorId, String qty, String amount) {
         db.update("INSERT INTO stock_balances(id,goods_id,color_id,warehouse_id,qty,amount_local) VALUES(?,?,?,?,?,?)",
                 UUID.randomUUID(), goods, colorId, warehouse, new BigDecimal(qty), new BigDecimal(amount));
+    }
+    UUID reservation(UUID warehouse, String quantity) {
+        UUID id = UUID.randomUUID();
+        db.update("""
+                INSERT INTO stock_reservations(id,goods_id,color_id,warehouse_id,qty,owner_type,owner_id,purpose)
+                VALUES(?,?,?,?,?,'SUBCONTRACT_ISSUE',?,'SUBCONTRACT_DRAW')
+                """, id, goods, color, warehouse, new BigDecimal(quantity), UUID.randomUUID());
+        return id;
     }
     void movement(UUID warehouse, UUID colorId, int type, int direction, String date, String qty, String amount, UUID doc, UUID item) {
         db.update("INSERT INTO stock_movements(id,goods_id,color_id,warehouse_id,movement_type,direction,transaction_date,qty,amount_local,source_doc_type,source_doc_id,source_item_id)"

@@ -63,7 +63,9 @@ class InstantInventoryAttentionTest {
 
         String dataSql = queries.keySet().stream().filter(sql -> sql.contains(" LIMIT :__limit"))
                 .findFirst().orElseThrow();
-        String exactCore = dataSql.substring(0, dataSql.lastIndexOf(" ORDER BY "));
+        String orderedPageCore = dataSql.substring(dataSql.indexOf("FROM (") + "FROM (".length(),
+                dataSql.indexOf(" LIMIT :__limit"));
+        String exactCore = orderedPageCore.substring(0, orderedPageCore.lastIndexOf(" ORDER BY "));
         String predicate = "attention_scope." + column + " > 0";
         assertThat(exactCore).startsWith("SELECT * FROM (")
                 .endsWith(") attention_scope WHERE " + predicate)
@@ -79,7 +81,7 @@ class InstantInventoryAttentionTest {
                 .filter(sql -> sql.contains("SUM(t.\"")).toList();
         assertThat(aggregateSql).hasSize(2).allSatisfy(sql -> assertThat(sql)
                 .contains("FROM (" + exactCore + "  ) t")
-                .doesNotContain("LIMIT", "OFFSET"));
+                .doesNotContain("LIMIT", "OFFSET", "v_stock_reservation_storage_locations"));
         // 四条查询共用全部筛选绑定，分页参数只属于列表。
         for (var entry : queries.entrySet()) {
             if (!entry.getKey().contains(predicate)) continue;

@@ -452,7 +452,7 @@ public class StockReportService {
     }
 
     /**
-     * 即时库存导出列(与页面完整业务列一致；重量紧跟库存数量，表头带导出单位，另附「重量状态」
+     * 即时库存导出列(与页面完整业务列一致；库存重量带导出单位，另附「重量状态」
      * 说明估算/未称；成本列按 goods:cost:view 动态裁剪)。
      */
     static List<ReportColumn> instantExportColumns(WeightUnit weightUnit, boolean canViewCost) {
@@ -461,13 +461,15 @@ public class StockReportService {
                 ReportColumn.text("name", "货品名称", 220),
                 ReportColumn.text("goodsCode", "物料编码", 120),
                 ReportColumn.text("color", "颜色", 90),
-                ReportColumn.number("qty", "库存数量").withUnitKey("unit"),
+                ReportColumn.number("qty", "实物库存").withUnitKey("unit"),
+                ReportColumn.number("reservedQty", "已占用").withUnitKey("unit"),
+                ReportColumn.number("availableQty", "仓内未占用").withUnitKey("unit"),
                 // 文件里不混单位：整列按一个导出单位(默认千克)写数值，估算/未称另列说明。
                 ReportColumn.number("weight", "库存重量(" + weightUnit.label() + ")"),
                 ReportColumn.text("weightStatus", "重量状态", 80),
                 ReportColumn.number("periodInQty", "进仓数量").withUnitKey("unit"),
                 ReportColumn.number("periodOutQty", "发货数量").withUnitKey("unit"),
-                ReportColumn.number("closingQty", "结存数量").withUnitKey("unit")));
+                ReportColumn.number("closingQty", "期末结存").withUnitKey("unit")));
         if (canViewCost) {
             columns.add(ReportColumn.money("costPrice", "成本价").withUnitLabel("元"));
             columns.add(ReportColumn.money("periodCostAmount", "成本金额").withUnitLabel("元"));
@@ -536,6 +538,8 @@ public class StockReportService {
                 m.put("unit", it.getUnitName());
                 m.put("remark", it.getRemark());
                 m.put("qty", it.getQty());
+                m.put("reservedQty", it.getReservedQty());
+                m.put("availableQty", it.getAvailableQty());
                 m.put("weight", it.getWeight() == null ? null
                         : weightUnit.fromKg(it.getWeight(), exportWeightScale(weightUnit)));
                 m.put("weightStatus", it.getWeight() == null ? "未称" : it.isWeightEstimated() ? "估算" : "");

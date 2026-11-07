@@ -57,7 +57,7 @@ public class ProductionExecutionWorkbenchService {
     private final SecurityContextCurrentUser currentUser;
     private final ProductionMaterialUsageReadPort materialUsage;
     private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
-    /** 详情里「仓库已到多少」与齐套提升同口径(ADR-095)；只读端口，单任务粒度调用。 */
+    /** 详情的「本任务仓库可用」与齐套提升同口径(ADR-095)，只读端口按单任务调用。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort materialAvailability;
     /**
@@ -613,7 +613,7 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /**
-     * 「仓库已到多少」= 本任务专属来源权益 + 允许动用的公共库存(同主仓、扣安全库存)，与齐套
+     * 「本任务仓库可用」= 本任务专属来源权益 + 允许动用的公共库存(同主仓、扣安全库存)，与齐套
      * 提升的 {@code batchAvailability} 同一口径；公共份额在同货品颜色的多条需求间不重复计入。
      * 无可用端口(单元测试桩)或任务缺少确认计划包时返回空表，不猜数。
      */

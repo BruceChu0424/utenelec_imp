@@ -55,7 +55,7 @@ void main() {
         find.descendant(of: table, matching: find.text('20')),
         findsOneWidget,
       );
-      await tester.tap(find.text('库存数量').last);
+      await tester.tap(find.text('实物库存').last);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('uten-column-keyword-input')),

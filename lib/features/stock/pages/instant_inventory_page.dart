@@ -648,7 +648,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         ],
         factsOf: (row) => {
           ...row.identityFields,
-          'qty': row.qty?.toString(),
+          ...row.stockQuantityFacts,
           if (_canViewCost) 'costAmount': row.costAmount?.toString(),
           if (_canViewCost) 'costPrice': row.costPrice?.toString(),
           if (_canViewCost)

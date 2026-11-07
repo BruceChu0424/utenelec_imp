@@ -166,7 +166,7 @@ void main() {
       Theme.of(context).colorScheme.error,
     );
     expect(find.textContaining('表头设置'), findsNothing);
-    expect(find.textContaining('仓库已到'), findsNothing);
+    expect(find.textContaining('本任务仓库可用'), findsNothing);
     expect(find.textContaining('子件工单'), findsNothing);
 
     await tester.tap(
@@ -175,7 +175,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final fact in [
-      '仓库已到 991 个',
+      '本任务仓库可用 991 个',
       '已预留 113 个',
       '待仓库发料 227 个',
       '可申请领料 331 个',
@@ -190,7 +190,7 @@ void main() {
     }
     await tester.tap(find.text('到料明细'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('仓库已到'), findsNothing);
+    expect(find.textContaining('本任务仓库可用'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -249,12 +249,12 @@ void main() {
       await _pump(tester, repository);
       await tester.tap(find.text('到料明细'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('仓库已到'), findsOneWidget);
+      expect(find.textContaining('本任务仓库可用'), findsOneWidget);
 
       await _pump(tester, repository, segmentId: 'segment-2');
 
       expect(repository.loadedIds, ['segment-1', 'segment-2']);
-      expect(find.textContaining('仓库已到'), findsNothing);
+      expect(find.textContaining('本任务仓库可用'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

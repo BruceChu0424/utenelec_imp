@@ -47,11 +47,15 @@ class InstantInventorySummaryTest {
         String aggregate = summarySql();
         String pageSql = queries.keySet().stream().filter(sql -> sql.contains(" LIMIT :__limit"))
                 .findFirst().orElseThrow();
-        String exactListCore = pageSql.substring(0, pageSql.lastIndexOf(" ORDER BY "));
+        String orderedPageCore = pageSql.substring(pageSql.indexOf("FROM (") + "FROM (".length(),
+                pageSql.indexOf(" LIMIT :__limit"));
+        String exactListCore = orderedPageCore.substring(0, orderedPageCore.lastIndexOf(" ORDER BY "));
+        assertThat(pageSql).contains("LIMIT :__limit OFFSET :__offset) inventory\nLEFT JOIN LATERAL",
+                "v_stock_reservation_storage_locations");
         assertThat(aggregate).contains("FROM (" + exactListCore + "  ) t")
                 .contains("NOT w.is_defective", "NOT w.is_line_side", "w.is_accountable")
                 .contains("base.color_id = :colorId", "g.series = :series", "u.id = :unitId")
-                .doesNotContain("LIMIT", "OFFSET");
+                .doesNotContain("LIMIT", "OFFSET", "v_stock_reservation_storage_locations");
         Query query = queries.get(aggregate);
         verify(query).setParameter("scopeIds", Set.of(warehouse, childWarehouse));
         verify(query).setParameter("categoryId", category);

@@ -54,7 +54,10 @@ class StockWarehouseRelatedInventoryPostgresTest {
         }
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,
                 "goods","warehouses","stock_balances","procurement_inspection_items","material_categories",
-                "colors","units","goods_weight_estimates","production_plans","production_plan_items","stock_measurement_holds");
+                "colors","units","goods_weight_estimates","production_plans","production_plan_items","stock_measurement_holds",
+                "stock_reservations","stock_reservation_storage_positions");
+        MigratedProjectionSchema.copyReadViewFromMigratedCatalog(connection, "v_stock_reservation_storage_locations",
+                "stock_reservations", "stock_reservation_storage_positions");
         jdbc=new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection,true));
         costs=mock(StockCostMasker.class);
         service=new StockQueryService(mock(StockBalanceRepository.class),executingEntityManager(),costs);

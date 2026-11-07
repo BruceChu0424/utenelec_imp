@@ -34,7 +34,6 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -686,12 +685,16 @@ void main() {
         find.byKey(const Key('material-analysis-bom-issues')),
         findsNothing,
       );
-      await tester.tap(find.byKey(const Key('material-analysis-start')));
+      final previewCount = harness.requests
+          .where((request) => request.path.endsWith('/preview'))
+          .length;
+      await tester.tap(find.byKey(const Key('material-analysis-seeded-retry')));
       await tester.pumpAndSettle();
-      final preview = harness.requests.lastWhere(
+      final previews = harness.requests.where(
         (request) => request.path.endsWith('/preview'),
       );
-      expect((preview.data as Map)['sources'], [
+      expect(previews, hasLength(previewCount + 1));
+      expect((previews.last.data as Map)['sources'], [
         {'salesOrderItemId': 'bad-source', 'requestedQty': 7.0},
       ]);
       expect(tester.takeException(), isNull);
@@ -1063,13 +1066,14 @@ void main() {
       );
       await _openBucketDetail(tester, 'workshop');
       // 2026-09-22 起桶表只读: 勾选候选行 → 进「核对并下单」页(候选没有生产性
-      // 下层), 树顶默认数量 = 全部剩余 8, 车间空待填(负责人随车间带出)。
+      // 下层)，树顶预填完整需求 10；本次只安排 8，负责人随车间带出。
       await _tapBucketRowCheckbox(tester, '自制组件 A');
       await _openIssuePageFromBucket(
         tester,
         'material-analysis-bucket-action-ready',
       );
-      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '10');
+      await _enterCascadeSeedQty(tester, 'make-path-1', '8');
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
@@ -2275,16 +2279,23 @@ void main() {
         ),
         isEmpty,
       );
+      await tester.tap(find.byKey(const Key('material-analysis-refresh')));
+      await tester.pumpAndSettle();
+      final analysisRequests = harness.requests.where(
+        (request) => request.path.startsWith('/production/material-analyses/'),
+      );
       expect(
-        tester
-            .widget<UtenAppBarActionButton>(
-              find.byWidgetPredicate(
-                (widget) =>
-                    widget is UtenAppBarActionButton && widget.label == '刷新',
-              ),
+        analysisRequests
+            .where(
+              (request) =>
+                  request.path == '/production/material-analyses/analysis-1',
             )
-            .onPressed,
-        isNull,
+            .map((request) => request.method),
+        ['GET', 'GET'],
+      );
+      expect(
+        analysisRequests.where((request) => request.method != 'GET'),
+        isEmpty,
       );
     },
   );
@@ -2340,6 +2351,7 @@ void main() {
       // 执行段 WAITING/READY 完成)。2026-09-22 起桶表只读: 产品行「缺口」列 =
       // 还没转入计划的剩余需求, 直接读最新快照的 10 (不是齐套 7)。
       await _openBucketDetail(tester, 'workshop');
+      expect(detailReads, 3, reason: '分桶入口读取当前权威快照');
       expect(find.text('测试产品'), findsOneWidget);
       expect(_bucketShortageText(tester, '测试产品'), '10');
       await _closeBucketDetail(tester);
@@ -2361,7 +2373,7 @@ void main() {
               request.method == 'GET' &&
               request.path == '/production/material-analyses/analysis-1',
         ),
-        hasLength(2),
+        hasLength(3),
       );
     },
   );
@@ -3877,6 +3889,8 @@ void main() {
           Perm.productionMaterialAnalysisReallocate,
         },
         allowedActions: const ['VIEW'],
+        analysisId: 'analysis-1',
+        seeded: false,
       );
 
       expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
@@ -3885,17 +3899,8 @@ void main() {
         find.byKey(const Key('material-analysis-priority-edit')),
         findsNothing,
       );
-      expect(
-        tester
-            .widget<UtenAppBarActionButton>(
-              find.byWidgetPredicate(
-                (widget) =>
-                    widget is UtenAppBarActionButton && widget.label == '刷新',
-              ),
-            )
-            .onPressed,
-        isNull,
-      );
+      await tester.tap(find.byKey(const Key('material-analysis-refresh')));
+      await tester.pumpAndSettle();
       await _materialTableRowVisible(tester, 'material-path-1');
       expect(
         find.byKey(const ValueKey('material-route-dropdown-material-path-1')),
@@ -3907,12 +3912,7 @@ void main() {
       );
       expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
       expect(
-        harness.requests.where(
-          (request) =>
-              request.path.endsWith('/routes') ||
-              request.path.endsWith('/notify') ||
-              request.path.endsWith('/issue-plans'),
-        ),
+        harness.requests.where((request) => request.method != 'GET'),
         isEmpty,
       );
     },
@@ -3938,14 +3938,11 @@ void main() {
         analysisJson: json,
       );
 
-      expect(
-        find.textContaining('仅用于冻结 FQC 补产 BOM', skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('返回“FQC 补产待办”', skipOffstage: false),
-        findsOneWidget,
-      );
+      final hint = find.byKey(const Key('material-analysis-next-step'));
+      expect(hint, findsOneWidget);
+      final info = tester.widget<UtenFieldHintIcon>(hint).info;
+      expect(info, contains('仅用于冻结 FQC 补产 BOM'));
+      expect(info, contains('返回“FQC 补产待办”'));
       expect(find.byKey(const Key('material-analysis-generate')), findsNothing);
       expect(
         find.byKey(const Key('material-analysis-notify-BUY')),
@@ -4746,21 +4743,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('库存已覆盖但没有超量权限时保持零量只读', (tester) async {
+  testWidgets('上级件已覆盖且没有超量权限时不能下达子件备货', (tester) async {
     final json = _makeTreeAnalysisJson();
     final material = (json['flatMaterials'] as List)
         .cast<Map<String, dynamic>>()
         .firstWhere((row) => row['materialLineId'] == 'buy-child');
     material.addAll({
-      'requiredQty': 12,
-      'allocatedAvailableQty': 12,
+      'sourceRequiredQty': 12,
+      'requiredQty': 0,
+      'allocatedAvailableQty': 0,
       'shortageQty': 0,
       'demandSupplyGapQty': 0,
       'additionalSupplyRecommendedQty': 0,
       'actionable': false,
+      'requirementState': 'INACTIVE_PARENT_COVERED',
       'flowStage': 'BUY_PENDING_ISSUE',
       'aggregatePreparation': {
-        'requiredQty': 12,
+        'requiredQty': 0,
         'orderedQty': 0,
         'allocatedOrderedQty': 0,
         'totalOrderedQty': 0,
@@ -4771,7 +4770,7 @@ void main() {
         'actionable': true,
       },
     });
-    await _pumpPage(
+    final harness = await _pumpPage(
       tester,
       size: const Size(1600, 1000),
       permissions: const {
@@ -4781,9 +4780,23 @@ void main() {
       },
       allowedActions: const ['NOTIFY_SUPPLY'],
       analysisJson: json,
+      analysisId: 'analysis-1',
+      seeded: false,
     );
-    await _materialTableRowVisible(tester, 'buy-child');
-    expect(_cascadeSeedQtyField('buy-child'), findsNothing);
+    final row = await _materialTableRowVisible(tester, 'buy-child');
+    final field = _cascadeSeedQtyField('buy-child');
+    expect(field, findsOneWidget);
+    await _enterCascadeSeedQty(tester, 'buy-child', '5');
+    final checkbox = find.descendant(of: row, matching: find.byType(Checkbox));
+    expect(checkbox, findsWidgets);
+    for (final control in tester.widgetList<Checkbox>(checkbox)) {
+      expect(control.value, isFalse);
+      expect(control.onChanged, isNull);
+    }
+    expect(
+      harness.requests.where((request) => request.method != 'GET'),
+      isEmpty,
+    );
     expect(find.text('待维护货品来源'), findsNothing);
   });
 
@@ -4969,7 +4982,8 @@ void main() {
       tester,
       'material-analysis-bucket-action-buy',
     );
-    expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
+    expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '10');
+    await _enterCascadeSeedQty(tester, 'buy-line-2', '8');
     await _submitIssuePage(tester);
     expect(
       find.byKey(const Key('material-preparation-order-page')),
@@ -5013,7 +5027,7 @@ void main() {
         analysisJson: _buySafetySplitAnalysisJson(),
       );
 
-      // 2026-09-22 口径：数量在「核对并下单」页树顶改(默认=缺口−在途)，
+      // 数量在「核对并下单」页树顶改，首次下单预填完整需求。
       // 页里点「下单」只弹「品种数+合计」总结确认；安全缺口去重仍按 goods/
       // color/unit 维度，公共补库作为固定数量并入合计。
       await _openBucketDetail(tester, 'buy');
@@ -5025,9 +5039,11 @@ void main() {
         tester,
         'material-analysis-bucket-action-buy',
       );
-      // 树顶默认量：两行各 8(安全补库是固定切片，不进默认输入值)。
-      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '8');
-      expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '8');
+      // 安全补库是固定切片，不计入树顶下单输入。
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '10');
+      expect(_cascadeSeedQtyText(tester, 'buy-line-2'), '10');
+      await _enterCascadeSeedQty(tester, 'buy-line-1', '8');
+      await _enterCascadeSeedQty(tester, 'buy-line-2', '8');
       await _submitIssuePage(tester, confirm: false);
 
       expect(find.byType(AlertDialog), findsOneWidget);
@@ -5098,10 +5114,10 @@ void main() {
           tester,
           'material-analysis-bucket-action-buy',
         );
+        await _enterCascadeSeedQty(tester, 'buy-line-1', '8');
+        await _enterCascadeSeedQty(tester, 'buy-line-2', '8');
         await _submitIssuePage(tester, confirm: false);
-        if (budget.gap > 0) {
-          expect(find.textContaining('合计 ${16 + budget.gap}'), findsOneWidget);
-        }
+        expect(find.textContaining('合计 ${16 + budget.gap}'), findsOneWidget);
         await _confirmSupplyQuantityDialog(tester);
         final request = harness.requests.singleWhere(
           (request) => request.path.endsWith('/aggregate-orders/submit'),
@@ -5361,14 +5377,15 @@ void main() {
 
       await _openBucketDetail(tester, 'workshop');
       // 下层只齐套 4 也不影响下达：勾选候选行进「核对并下单」页, 树顶默认
-      // 数量=全部剩余 8(齐套拆分由计划审批后的执行段 WAITING/READY 自动完成),
+      // 预填完整需求 10（齐套拆分由计划审批后的执行段 WAITING/READY 完成），
       // 车间在页里选, 负责人随车间带出。
       await _tapBucketRowCheckbox(tester, '自制组件 A');
       await _openIssuePageFromBucket(
         tester,
         'material-analysis-bucket-action-ready',
       );
-      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '10');
+      await _enterCascadeSeedQty(tester, 'make-path-1', '8');
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
 
@@ -5800,8 +5817,8 @@ void main() {
       expect(approve.value, isTrue);
       approve.onChanged!(false);
       await tester.pumpAndSettle();
-      // ADR-71：数量默认=剩余需求 8(齐套拆批由执行段完成)。
-      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      // 首次下达预填完整需求，保留计划员填写的分批数量。
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '10');
       await _enterCascadeSeedQty(tester, 'make-path-1', '3');
       await _pickCascadeWorkshop(tester, 'make-path-1', '装配一车间');
       await _submitIssuePage(tester);
@@ -5907,7 +5924,7 @@ void main() {
   );
 
   testWidgets(
-    'supply notify quantity defaults to residual and supports partial top-up',
+    'first supply order defaults to full demand and supports partial top-up',
     (tester) async {
       Map<String, dynamic> state({required bool partial}) {
         final json = _buySelectionAnalysisJson();
@@ -5975,7 +5992,7 @@ void main() {
         },
       );
 
-      // 2026-09-22 口径：数量在「核对并下单」页树顶改(默认=本批缺口 8)；
+      // 数量在「核对并下单」页树顶改（默认完整需求 10）。
       // 页里点「下单」弹总结确认。当前账号没有超量下单权限，公共超量始终为 0。
       await _openBucketDetail(tester, 'buy');
       await _tapBucketRowCheckbox(tester, '采购件一');
@@ -5984,7 +6001,7 @@ void main() {
         tester,
         'material-analysis-bucket-action-buy',
       );
-      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '8');
+      expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '10');
       // 树顶改小成 5 实现分批。
       await _enterCascadeSeedQty(tester, 'buy-line-1', '5');
       await _submitIssuePage(tester);
@@ -6054,7 +6071,7 @@ void main() {
   );
 
   testWidgets(
-    'approve-now defaults on and shows both submission stages before result',
+    'approve-now defaults on and shows progress until the atomic result',
     (tester) async {
       final issueGate = Completer<void>();
       final secondRound = _planReadyChildAnalysisJson(readyNowQty: 1);
@@ -6136,10 +6153,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump();
-      expect(
-        find.byKey(const Key('material-analysis-plan-submission-progress')),
-        findsOneWidget,
+      final progress = find.byKey(
+        const Key('material-analysis-action-progress'),
       );
+      expect(progress, findsOneWidget);
       expect(find.text('正在生成并审核下达'), findsOneWidget);
       expect(
         harness.requests.where(
@@ -6151,6 +6168,7 @@ void main() {
       issueGate.complete();
       await tester.pump();
       await tester.pumpAndSettle();
+      expect(progress, findsNothing);
 
       final issue = harness.requests.singleWhere(
         (request) => request.path.endsWith('/aggregate-orders/submit'),
@@ -7153,18 +7171,15 @@ void main() {
       await _closeMaterialTableDetails(tester);
       await tester.tap(find.byKey(const Key('transfer-launcher-close')));
       await tester.pumpAndSettle();
-      // 认领后桶页重建行集: 剩余 100 仍可勾选下达, 下单页树顶默认跟着变成 100。
+      // 认领后还缺 100，仍可下单；首次下单输入保持来源完整需求。
       await _tapBucketRowCheckbox(tester, '未来物料');
       expect(find.text('提交采购需求(1)…'), findsOneWidget);
       await _openIssuePageFromBucket(
         tester,
         'material-analysis-bucket-action-buy',
       );
-      expect(
-        _cascadeSeedQtyText(tester, 'future-material'),
-        '100',
-        reason: 'bucket refresh must update the old 1000 default',
-      );
+      expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
+      _expectCascadeShortage('future-material', '100 个');
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -7189,6 +7204,8 @@ void main() {
           .single
           .addAll({
             'additionalSupplyRecommendedQty': 100,
+            'planningUncoveredQty': 100,
+            'netShortageQty': 100,
             'inboundQty': 900,
             'status': 'NOTIFIED',
           });
@@ -7311,13 +7328,14 @@ void main() {
       await tester.tap(find.text('稍后补供'));
       await tester.pumpAndSettle();
       await _closeMaterialTableDetails(tester);
-      // 调入后桶页重建行集: 剩余 100 仍待下达, 下单页树顶默认跟着变成 100。
+      // 调入后剩余 100 仍待下达，首次下单输入保持来源完整需求。
       await _tapBucketRowCheckbox(tester, '未来物料');
       await _openIssuePageFromBucket(
         tester,
         'material-analysis-bucket-action-buy',
       );
-      expect(_cascadeSeedQtyText(tester, 'future-material'), '100');
+      expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
+      _expectCascadeShortage('future-material', '100 个');
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
         isEmpty,
@@ -7566,7 +7584,7 @@ void main() {
         );
         // 2026-09-22 起桶表只读: 行菜单里有「物料调拨」(2026-10-10 公共在途拆成
         // 独立菜单项; 弹菜单会把该行置为选中, 关掉菜单勾选态保留); 勾选进下单页
-        // 后树顶默认 = 剩余 100。
+        // 后树顶预填完整需求 1000，缺口仍为 100。
         await _tapBucketRowCheckbox(tester, '未来物料');
         expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
         await _openBucketRowMenu(tester, '未来物料');
@@ -7580,7 +7598,8 @@ void main() {
               ? 'material-analysis-bucket-action-ready'
               : 'material-analysis-bucket-action-subcontract',
         );
-        expect(_cascadeSeedQtyText(tester, 'future-material'), '100');
+        expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
+        _expectCascadeShortage('future-material', '100 个');
         expect(tester.takeException(), isNull);
       },
     );
@@ -8341,7 +8360,7 @@ void main() {
         tester,
         'material-analysis-bucket-action-ready',
       );
-      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '8');
+      expect(_cascadeSeedQtyText(tester, 'make-path-1'), '10');
       final requestCountBefore = harness.requests.length;
       await _submitIssuePage(tester);
       expect(
@@ -9163,8 +9182,7 @@ void main() {
     },
   );
 
-  /// 起订量/订货倍数只改采购桶「下达数量」的默认值：
-  /// 默认 = 向上取整到倍数(max(还需安排量, 起订量))，富余归公共备货。
+  /// 首次采购仍预填完整需求；起订量和整包装保留为可选择的采购建议。
   Map<String, dynamic> buyOrderPolicyAnalysis({
     required num recommended,
     num? minOrderQty,
@@ -9178,6 +9196,7 @@ void main() {
       (material) => material['materialLineId'] == 'buy-line-1',
     );
     first
+      ..['sourceRequiredQty'] = recommended
       ..['requiredQty'] = recommended
       ..['allocatedAvailableQty'] = 0
       ..['availableQty'] = 0
@@ -9204,7 +9223,7 @@ void main() {
     return analysis;
   }
 
-  testWidgets('起订量与整包装把采购默认下达量抬到 150 并说明富余去向', (tester) async {
+  testWidgets('起订量与整包装建议下单 150，确认后将富余归公共备货', (tester) async {
     // 只需 100，供应商起订 120、整箱 50 → 向上取整到 150，富余 50 归公共备货。
     final harness = await _pumpPage(
       tester,
@@ -9230,7 +9249,7 @@ void main() {
       tester,
       'material-analysis-bucket-action-buy',
     );
-    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '150');
+    expect(_cascadeSeedQtyText(tester, 'buy-line-1'), '100');
     expect(
       find.byWidgetPredicate(
         (widget) =>
@@ -9240,6 +9259,7 @@ void main() {
       ),
       findsOneWidget,
     );
+    await _enterCascadeSeedQty(tester, 'buy-line-1', '150');
 
     await _submitIssuePage(tester);
 
@@ -9286,7 +9306,7 @@ void main() {
     );
   });
 
-  testWidgets('未维护起订量与订货倍数时默认值保持净需求且不出提示', (tester) async {
+  testWidgets('未维护起订量与订货倍数时预填完整需求且不出建议', (tester) async {
     await _pumpPage(
       tester,
       size: const Size(1200, 900),
@@ -9328,6 +9348,7 @@ void main() {
       (material) => material['materialLineId'] == 'buy-line-1',
     );
     first
+      ..['sourceRequiredQty'] = 500
       ..['requiredQty'] = 500
       ..['allocatedAvailableQty'] = 0
       ..['availableQty'] = 0
@@ -10869,6 +10890,7 @@ Map<String, dynamic> _bulkRouteAnalysisJson({
         'unitName': '个',
         'level': 1,
         'path': ['测试产品', '批量缺料 $index'],
+        'sourceRequiredQty': 10,
         'requiredQty': 10,
         'allocatedAvailableQty': 2,
         'availableQty': 2,
@@ -11277,6 +11299,7 @@ Map<String, dynamic> _workshopRootTransferJson({bool transferred = false}) {
       'level': 0,
       'nodeRole': 'ROOT_SUPPLY',
       'path': const ['柜'],
+      'sourceRequiredQty': 1000,
       'requiredQty': 1000,
       'shortageQty': 1000,
       'demandSupplyGapQty': 1000,
@@ -11337,6 +11360,7 @@ Map<String, dynamic> _futureCoverageAnalysisJson(
         route: route,
         controlStage: 'START',
       ),
+      'sourceRequiredQty': 1000,
       'requiredQty': 1000,
       'shortageQty': 1000,
       'demandSupplyGapQty': 1000,
@@ -11345,6 +11369,8 @@ Map<String, dynamic> _futureCoverageAnalysisJson(
       'exactPeggedQty': 0,
       'inboundQty': 0,
       'additionalSupplyRecommendedQty': claimed ? 100 : 1000,
+      'planningUncoveredQty': claimed ? 100 : 1000,
+      'netShortageQty': claimed ? 100 : 1000,
       'sharedFutureClaimedQty': claimed ? 900 : 0,
       'sharedFuturePendingQty': claimed ? 900 : 0,
       'publicSurplusRemainingQty': claimed ? 0 : 900,
@@ -11901,6 +11927,7 @@ Map<String, dynamic> _routeMaterial({
   'unitName': '个',
   'level': 1,
   'path': ['测试产品', goodsName],
+  'sourceRequiredQty': 10,
   'requiredQty': 10,
   'allocatedAvailableQty': 2,
   'exactPeggedQty': 0,
@@ -11959,6 +11986,7 @@ Map<String, dynamic> _materialJson({
   'unitName': '个',
   'level': level,
   'path': path,
+  'sourceRequiredQty': 16,
   'requiredQty': 16,
   'allocatedAvailableQty': 3,
   'exactPeggedQty': 0,
@@ -12233,6 +12261,16 @@ Finder _cascadeSeedQtyField(String rowId) => find.byWidgetPredicate((widget) {
 /// 读下单页种子行数量框当前的文字。
 String _cascadeSeedQtyText(WidgetTester tester, String rowId) =>
     tester.widget<TextField>(_cascadeSeedQtyField(rowId)).controller!.text;
+
+void _expectCascadeShortage(String rowId, String quantity) {
+  expect(
+    find.descendant(
+      of: find.byKey(ValueKey('material-analysis-net-shortage-$rowId')),
+      matching: find.text(quantity),
+    ),
+    findsOneWidget,
+  );
+}
 
 /// 改下单页种子行的本批数量, 并等 300ms 去抖的服务端重算(如有)回来。
 Future<void> _enterCascadeSeedQty(

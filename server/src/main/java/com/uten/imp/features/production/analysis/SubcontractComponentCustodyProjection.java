@@ -246,8 +246,8 @@ final class SubcontractComponentCustodyProjection {
                 ), sources AS MATERIALIZED (
                     SELECT source.order_item_id,source.application_item_id,source.alloc_qty
                     FROM subcontract_order_item_sources source
-                    JOIN %1$s item ON item.id=source.order_item_id AND NOT item.is_deleted
-                    JOIN %2$s document ON document.id=item.order_id
+                    JOIN %6$s item ON item.id=source.order_item_id AND NOT item.is_deleted
+                    JOIN %7$s document ON document.id=item.order_id
                       AND document.status=1 AND NOT document.is_deleted
                     -- The membership predicate already implies this scope is nonempty. Keep an
                     -- uncorrelated gate so stale statistics cannot evaluate unrelated document
@@ -258,8 +258,8 @@ final class SubcontractComponentCustodyProjection {
                         WHERE relevant.application_item_id IN (SELECT application_item_id FROM live_items))
                 ), stocked AS MATERIALIZED (
                     SELECT item.id AS order_item_id,item.qty AS ordered_qty,COALESCE(item.unit_rate,1) AS order_unit_rate,
-                           %%s AS stocked_base,%%s AS legacy_stocked_base,%%s AS use_actual_precision
-                    FROM %1$s item
+                           %1$s AS stocked_base,%2$s AS legacy_stocked_base,%3$s AS use_actual_precision
+                    FROM %6$s item
                     WHERE EXISTS (SELECT 1 FROM sources)
                       AND item.id IN (SELECT order_item_id FROM sources)
                 ), source_progress AS MATERIALIZED (
@@ -284,7 +284,7 @@ final class SubcontractComponentCustodyProjection {
                     SELECT responsibility.*
                     FROM preplan_supply_actions action
                     CROSS JOIN LATERAL (
-                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders")) + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
+                """ + SubcontractPublicResponsibilityProjection.OWNERS_FOR_ACTION_SQL + """
                     ) responsibility
                     WHERE action.route='SUBCONTRACT' AND action.operation_type='SUPPLY'
                       AND action.status<>'CANCELLED' AND action.requested_qty=0 AND action.public_surplus_qty>0
@@ -361,7 +361,7 @@ final class SubcontractComponentCustodyProjection {
                     FROM owner_shares WHERE analysis_id=:analysisId GROUP BY parent_material_id
                 ), plan_lines AS MATERIALIZED (
                     SELECT line.*,precision_rule.use_actual_precision,
-                           CASE WHEN precision_rule.use_actual_precision THEN %s::numeric ELSE 10000::numeric END AS unit_quantum,
+                           CASE WHEN precision_rule.use_actual_precision THEN %4$s::numeric ELSE 10000::numeric END AS unit_quantum,
                            GREATEST(line.gross_qty-(
                 """ + ceilMaterialFractionSql("LEAST(stocked.stocked_base,stocked.legacy_stocked_base)*line.bom_unit_qty", "stocked.order_unit_rate") + "+" +
                 ceilActualMaterialFractionSql("GREATEST(stocked.stocked_base-stocked.legacy_stocked_base,0)*line.base_bom_unit_qty", "stocked.order_unit_rate") + """
@@ -380,8 +380,8 @@ final class SubcontractComponentCustodyProjection {
                                      AND issue.status=1 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0)+COALESCE((
                                    SELECT SUM(issue_item.qty)
-                                   FROM %1$s issue_item
-                                   JOIN %2$s issue ON issue.id=issue_item.issue_id
+                                   FROM %8$s issue_item
+                                   JOIN %9$s issue ON issue.id=issue_item.issue_id
                                      AND issue.status=0 AND NOT issue.is_deleted
                                    WHERE issue_item.plan_item_id=plan_item.id AND NOT issue_item.is_deleted),0) AS gross_qty
                         FROM subcontract_material_plan_items plan_item
@@ -392,7 +392,7 @@ final class SubcontractComponentCustodyProjection {
                     ) line
                     JOIN stocked ON stocked.order_item_id=line.order_item_id
                     CROSS JOIN LATERAL (SELECT stocked.use_actual_precision OR (
-                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues")) + PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL + """
+                """ + PLAN_ITEM_HAS_NATIVE_MATERIAL_PRECISION_SQL + """
                     ) AS use_actual_precision OFFSET 0) precision_rule
                 ), owner_material_raw AS (
                     -- Material factors stay in numerators until the final ceiling.
@@ -590,10 +590,14 @@ final class SubcontractComponentCustodyProjection {
                     LIMIT 1
                 ) child ON TRUE
                 GROUP BY parent.analysis_item_id,child.node_key,child.id,nets.goods_id,nets.color_id
-                HAVING SUM(nets.net_qty)>0 OR (%s AND SUM(nets.required_qty)>0)
+                HAVING SUM(nets.net_qty)>0 OR (%5$s AND SUM(nets.required_qty)>0)
                 ORDER BY parent.analysis_item_id,child.node_key
                 """).formatted(ORDER_ITEM_STOCKED_BASE_SQL,ORDER_ITEM_STOCKED_LEGACY_BASE_SQL,ORDER_ITEM_USES_ACTUAL_PRECISION_SQL,
-                        ACTUAL_MATERIAL_QUANTUM,includeUncovered?"TRUE":"FALSE")).setParameter("analysisId", analysisId))
+                        ACTUAL_MATERIAL_QUANTUM,includeUncovered?"TRUE":"FALSE",
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_order_items"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_orders"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issue_items"),
+                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_material_issues"))).setParameter("analysisId", analysisId))
                 .stream()
                 .map(row -> new ChildCoverage((UUID) row[0], (String) row[1], (UUID) row[2],
                         (UUID) row[3], (UUID) row[4], decimal(row[5]), decimal(row[6]),decimal(row[7]),decimal(row[8])))

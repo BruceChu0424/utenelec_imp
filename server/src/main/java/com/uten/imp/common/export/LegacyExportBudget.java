@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
  * File/temp limits remain owned by ExportResourceLimits/ExportTemporaryBudget. */
 @Component
 public final class LegacyExportBudget {
-    public static final int MAX_ROWS = 500;
     private static final ThreadLocal<Operation> CURRENT = new ThreadLocal<>();
     private final Semaphore slots;
 
@@ -21,7 +20,7 @@ public final class LegacyExportBudget {
         slots = new Semaphore(Math.max(1, concurrency), true);
     }
 
-    public Scope open() { return acquire(true, MAX_ROWS); }
+    public Scope open() { return acquire(true, 0); }
 
     /** Explicit existing single-object file contract, never a client override. */
     public Scope openNatural(int maximumRows) {
@@ -30,7 +29,7 @@ public final class LegacyExportBudget {
     }
 
     /** Existing artifact and payroll downloads share the same physical slots,
-     * but are not a new 500-row source query. */
+     * and do not impose a business row limit. */
     public Scope openDownload() { return acquire(false, Integer.MAX_VALUE); }
 
     private Scope acquire(boolean legacy, int maximumRows) {
@@ -47,18 +46,16 @@ public final class LegacyExportBudget {
                 && ExportPageSink.current() == null && DocumentPageSink.current() == null;
     }
 
-    public static int maximumRows(int configured) { return active() ? Math.min(configured, CURRENT.get().maximumRows()) : configured; }
+    public static int maximumRows(int configured) {
+        return active() && CURRENT.get().maximumRows() > 0
+                ? Math.min(configured, CURRENT.get().maximumRows()) : configured;
+    }
 
     public static void requireRows(long actual) {
         checkpoint();
-        if (active() && actual > CURRENT.get().maximumRows()) {
-            if (CURRENT.get().maximumRows() == MAX_ROWS) throw tooManyRows();
+        if (active() && CURRENT.get().maximumRows() > 0 && actual > CURRENT.get().maximumRows()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "单据超过完整文件边界，请核对原业务文件范围；本次未生成文件");
         }
-    }
-
-    public static ApiException tooManyRows() {
-        return new ApiException(ErrorCode.VALIDATION_FAILED, "同步导出最多 500 行，请使用后台导出任务或收窄筛选；本次未生成文件");
     }
 
     public static void checkpoint() {

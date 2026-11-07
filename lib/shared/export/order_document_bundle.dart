@@ -7,10 +7,10 @@ import 'document_batch_limits.dart';
 import '../print/procurement_order_pdf.dart';
 import '../print/procurement_order_print_document.dart';
 
-/// Existing workbench business maximum, plus explicit local resource budgets.
-/// This is a bounded small-document batch, not a streaming bulk-export source.
+/// Byte budgets bound a complete document export. Request/proof batches stay
+/// bounded independently of the number of selected documents.
 abstract final class OrderDocumentExportLimits {
-  static const documents = maxWorkbenchDocumentExport;
+  static const authorizationBatchSize = orderDocumentAuthorizationBatchSize;
   static const sourceBytes = 32 * 1024 * 1024;
   static const artifactBytes = 100 * 1024 * 1024;
   static const metadataBytes = 64 * 1024;
@@ -22,10 +22,7 @@ Future<({String payload, int bytes})> encodeOrderBundleInput(
   List<Map<String, dynamic>> documents, {
   required bool Function() stillCurrent,
 }) async {
-  if (documents.isEmpty ||
-      documents.length > OrderDocumentExportLimits.documents) {
-    throw StateError('一次最多导出100份单据，请分批选择');
-  }
+  if (documents.isEmpty) throw StateError('请选择需要导出的单据');
   final output = StringBuffer();
   var bytes = 0;
   final work = UiWorkBudget(
@@ -92,9 +89,7 @@ Future<Uint8List> renderOrderBundle(
       throw const _ResourceLimit();
     }
     final raw = jsonDecode(payload) as List;
-    if (raw.isEmpty || raw.length > OrderDocumentExportLimits.documents) {
-      throw const _ResourceLimit();
-    }
+    if (raw.isEmpty) throw const _ResourceLimit();
     final font = fontBytes == null
         ? pw.Font.helvetica()
         : pw.Font.ttf(ByteData.sublistView(fontBytes));
@@ -222,45 +217,161 @@ class OrderDocumentZipOutput extends OutputMemoryStream {
   }
 }
 
+const _sectionedPacket = 0x554f4232;
+
 Uint8List _packet(Map<String, Object?> metadata, Uint8List bytes) {
-  final header = utf8.encode(jsonEncode(metadata));
-  if (header.length > OrderDocumentExportLimits.metadataBytes) {
-    throw StateError('worker metadata');
+  final successful = metadata['successful'] as List? ?? const [];
+  final failed = metadata['failed'] as List? ?? const [];
+  final count = successful.length > failed.length
+      ? successful.length
+      : failed.length;
+  final headers = <List<int>>[];
+  var metadataBytes = 0;
+  for (
+    var start = 0;
+    start < count || headers.isEmpty;
+    start += OrderDocumentExportLimits.authorizationBatchSize
+  ) {
+    List<dynamic> section(List<dynamic> values) => start >= values.length
+        ? const []
+        : values.sublist(
+            start,
+            (start + OrderDocumentExportLimits.authorizationBatchSize).clamp(
+              0,
+              values.length,
+            ),
+          );
+    final header = utf8.encode(
+      jsonEncode({
+        if (metadata['error'] != null) 'error': metadata['error'],
+        'filename': metadata['filename'] ?? '',
+        'successful': section(successful),
+        'failed': section(failed),
+      }),
+    );
+    if (header.length > OrderDocumentExportLimits.metadataBytes ||
+        header.length > OrderDocumentExportLimits.sourceBytes - metadataBytes) {
+      throw StateError('worker metadata');
+    }
+    metadataBytes += header.length;
+    headers.add(header);
   }
-  final output = Uint8List(4 + header.length + bytes.length);
-  ByteData.sublistView(output).setUint32(0, header.length);
-  output.setRange(4, 4 + header.length, header);
-  output.setRange(4 + header.length, output.length, bytes);
+  final output = Uint8List(
+    8 + headers.length * 4 + metadataBytes + bytes.length,
+  );
+  final data = ByteData.sublistView(output)
+    ..setUint32(0, _sectionedPacket)
+    ..setUint32(4, headers.length);
+  var offset = 8;
+  for (final header in headers) {
+    data.setUint32(offset, header.length);
+    offset += 4;
+    output.setRange(offset, offset + header.length, header);
+    offset += header.length;
+  }
+  output.setRange(offset, output.length, bytes);
   return output;
 }
 
-class OrderDocumentBundleResult {
-  OrderDocumentBundleResult.decode(Uint8List packet) {
+class _BundlePacket {
+  _BundlePacket(Uint8List packet) {
     if (packet.length < 4) throw const FormatException('worker packet');
-    final length = ByteData.sublistView(packet).getUint32(0);
-    if (length > OrderDocumentExportLimits.metadataBytes ||
-        length > packet.length - 4) {
-      throw const FormatException('worker metadata');
+    final data = ByteData.sublistView(packet);
+    final first = data.getUint32(0);
+    var offset = 4;
+    var count = 1;
+    if (first == _sectionedPacket) {
+      if (packet.length < 8) throw const FormatException('worker packet');
+      count = data.getUint32(4);
+      if (count < 1 || count > (packet.length - 8) ~/ 5) {
+        throw const FormatException('worker metadata');
+      }
+      offset = 8;
     }
-    final metadata =
-        (jsonDecode(utf8.decode(Uint8List.sublistView(packet, 4, 4 + length)))
-                as Map)
-            .cast<String, dynamic>();
-    if (metadata['error'] == 'RESOURCE_LIMIT') {
-      throw StateError('单据PDF或ZIP超过100MiB资源预算，请缩小本批单据；未保存半件');
+    var metadataBytes = 0;
+    for (var index = 0; index < count; index++) {
+      final int length;
+      if (first == _sectionedPacket) {
+        if (offset > packet.length - 4) {
+          throw const FormatException('worker metadata');
+        }
+        length = data.getUint32(offset);
+        offset += 4;
+      } else {
+        length = first;
+      }
+      if (length > OrderDocumentExportLimits.metadataBytes ||
+          length > packet.length - offset ||
+          length > OrderDocumentExportLimits.sourceBytes - metadataBytes) {
+        throw const FormatException('worker metadata');
+      }
+      metadataBytes += length;
+      headers.add(Uint8List.sublistView(packet, offset, offset + length));
+      offset += length;
     }
-    successful = (metadata['successful'] as List)
-        .map((value) => (value as Map).cast<String, String>())
-        .toList(growable: false);
-    failed = (metadata['failed'] as List).cast<String>();
-    filename = metadata['filename'] as String;
-    bytes = Uint8List.sublistView(packet, 4 + length);
+    bytes = Uint8List.sublistView(packet, offset);
     if (bytes.length > OrderDocumentExportLimits.artifactBytes) {
       throw const FormatException('worker artifact');
     }
   }
-  late final List<Map<String, String>> successful;
-  late final List<String> failed;
-  late final String filename;
+  final headers = <Uint8List>[];
+  late final Uint8List bytes;
+}
+
+class OrderDocumentBundleResult {
+  OrderDocumentBundleResult.decode(Uint8List packet) {
+    final source = _BundlePacket(packet);
+    for (final header in source.headers) {
+      _append(header);
+    }
+    bytes = source.bytes;
+  }
+
+  OrderDocumentBundleResult._();
+
+  static Future<OrderDocumentBundleResult> decodeComplete(
+    Uint8List packet, {
+    required bool Function() stillCurrent,
+  }) async {
+    final work = UiWorkBudget(
+      isCurrent: stillCurrent,
+      maxItems: 1,
+      debugLabel: 'order-pdf-worker-receipt',
+    );
+    work.ensureCurrent();
+    final source = _BundlePacket(packet);
+    final result = OrderDocumentBundleResult._();
+    for (final header in source.headers) {
+      result._append(header);
+      await work.checkpoint();
+    }
+    work.ensureCurrent();
+    result.bytes = source.bytes;
+    return result;
+  }
+
+  void _append(Uint8List header) {
+    final metadata = (jsonDecode(utf8.decode(header)) as Map)
+        .cast<String, dynamic>();
+    if (metadata['error'] == 'RESOURCE_LIMIT') {
+      throw StateError('单据PDF或ZIP超过100MiB资源预算，请缩小本批单据；未保存半件');
+    }
+    final sectionName = metadata['filename'] as String;
+    if (_filename != null && _filename != sectionName) {
+      throw const FormatException('worker artifact identity');
+    }
+    _filename = sectionName;
+    successful.addAll(
+      (metadata['successful'] as List)
+          .map((value) => (value as Map).cast<String, String>())
+          .toList(growable: false),
+    );
+    failed.addAll((metadata['failed'] as List).cast<String>());
+  }
+
+  final successful = <Map<String, String>>[];
+  final failed = <String>[];
+  String? _filename;
+  String get filename => _filename ?? '';
   late final Uint8List bytes;
 }

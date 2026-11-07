@@ -50,10 +50,10 @@ public class FulfillmentWorkbenchExportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
             @RequestParam Map<String, String> params,
             @Valid @RequestBody ExportPasswordRequest body) {
-        var payload = queries.exportPurchase(status, keyword, exception, dateFrom, dateTo,
+        java.util.function.Supplier<com.uten.imp.common.export.ExportPayload> source = () -> queries.exportPurchase(status, keyword, exception, dateFrom, dateTo,
                 FulfillmentWorkbenchTableQuery.from(sort, order, params, issuedFrom, issuedTo, needFrom, needTo),
                 exportLimits.exportMaxRows());
-        return download(payload, body, "purchase");
+        return download(source, body, "purchase");
     }
 
     @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
@@ -73,16 +73,17 @@ public class FulfillmentWorkbenchExportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate needTo,
             @RequestParam Map<String, String> params,
             @Valid @RequestBody ExportPasswordRequest body) {
-        var payload = queries.exportSubcontract(status, keyword, exception, dateFrom, dateTo,
+        java.util.function.Supplier<com.uten.imp.common.export.ExportPayload> source = () -> queries.exportSubcontract(status, keyword, exception, dateFrom, dateTo,
                 FulfillmentWorkbenchTableQuery.from(sort, order, params, issuedFrom, issuedTo, needFrom, needTo),
                 exportLimits.exportMaxRows());
-        return download(payload, body, "subcontract");
+        return download(source, body, "subcontract");
     }
 
-    private ResponseEntity<byte[]> download(com.uten.imp.common.export.ExportPayload payload,
+    private ResponseEntity<byte[]> download(java.util.function.Supplier<com.uten.imp.common.export.ExportPayload> source,
             ExportPasswordRequest body, String department) {
-        byte[] bytes = downloads.protect(xlsx.build(payload.columns(), payload.rows(), body.columnProjection(), "view_" + department),
-                body.password());
+        var sourceWorkbook = xlsx.buildSource(source, body.columnProjection(), "view_" + department);
+        var payload = sourceWorkbook.payload();
+        byte[] bytes = downloads.protect(sourceWorkbook.bytes(), body.password());
         currentUser.get().ifPresent(user -> audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "export_" + department + "_tasks", department + "_workbench", payload.total() + "rows", "success"));
         return ResponseEntity.ok()

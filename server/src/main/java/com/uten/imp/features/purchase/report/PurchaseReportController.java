@@ -230,8 +230,9 @@ public class PurchaseReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(report, allParams, sort, order);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_purchase");
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(report, allParams, sort, order), body.columnProjection(), "view_purchase");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

@@ -114,13 +114,13 @@ public class GoodsBomController {
     /** 产品配件清单加密 Excel 导出（密码走 body，与主档导出同一套）。 */
     @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
     @PostMapping("/export")
-    @com.uten.imp.common.export.LegacyExportRows(GoodsBomFileLimits.MAX_ROWS)
     @PreAuthorize("hasAuthority('goods:export')")
     public ResponseEntity<byte[]> export(@PathVariable UUID id,
                                          @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.exportPayload(id);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(),
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.exportPayload(id),
                 GoodsBomExportProjection.forImportTemplate(body.columnProjection()), "view_master");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods_bom", "master_data", String.valueOf(payload.total()), "success"));

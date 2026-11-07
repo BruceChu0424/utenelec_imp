@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit;
 
 /** Bounded JSONL spool permits exact full-section width calculation without retaining result rows. */
 final class StreamingPdfDocumentWriter implements StreamingDocumentWriter {
-    private static final long MAX_CELLS=60_000;
     private final Path directory;
     private final ExportTemporaryBudget budget;
     private final String password;
@@ -70,7 +69,6 @@ final class StreamingPdfDocumentWriter implements StreamingDocumentWriter {
             nextCheckpoint=now+TimeUnit.SECONDS.toNanos(1);
         }
     }
-    private static ApiException tooManyCells(){return new ApiException(ErrorCode.VALIDATION_FAILED,"PDF 明细较多，请缩小范围或下载 Excel");}
 
     @Override public void begin(DocumentPageSink.Header header) {
         writable();
@@ -78,9 +76,7 @@ final class StreamingPdfDocumentWriter implements StreamingDocumentWriter {
             if(document!=null)throw new IllegalStateException("Document header already supplied");
             checkpoint();
             rowBudget.begin(header);
-            int primaryColumns=header.sections().stream().filter(DocumentPageSink.Section::primary).findFirst().orElseThrow().columns().size();
             if(header.expectedPrimaryRows()>=0)LegacyExportBudget.requireRows(header.expectedPrimaryRows());
-            if(header.expectedPrimaryRows()>MAX_CELLS/primaryColumns)throw tooManyCells();
             document=header;
             for(var section:header.sections())sections.put(section.id(),new DiskSection(section));
         }catch(IOException error){failed=true;throw new UncheckedIOException(error);}
@@ -96,7 +92,6 @@ final class StreamingPdfDocumentWriter implements StreamingDocumentWriter {
             rowBudget.accept(page);
             if(section.definition.primary())LegacyExportBudget.requireRows(primaryRows+page.rows().size());
             long nextCells=cells+(long)section.columns().size()*page.rows().size();
-            if(nextCells>MAX_CELLS)throw tooManyCells();
             for(var values:page.rows()) {
                 checkpoint();Map<String,Object> projected=new LinkedHashMap<>();
                 for(var column:section.columns()) {

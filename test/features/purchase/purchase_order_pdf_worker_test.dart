@@ -76,13 +76,11 @@ void main() {
         ], stillCurrent: () => true),
         throwsStateError,
       );
-      await expectLater(
-        encodePurchaseOrderBundleInput(
-          List.generate(101, _paper),
-          stillCurrent: () => true,
-        ),
-        throwsStateError,
+      final complete = await encodePurchaseOrderBundleInput(
+        List.generate(1201, _paper),
+        stillCurrent: () => true,
       );
+      expect(jsonDecode(complete.payload) as List, hasLength(1201));
       final out = PurchaseOrderZipOutput(8);
       out.writeBytes(List.filled(8, 1));
       expect(out.length, 8);

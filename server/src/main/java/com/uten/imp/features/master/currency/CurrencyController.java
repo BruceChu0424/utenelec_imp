@@ -121,11 +121,12 @@ public class CurrencyController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
                 new CurrencyQueryFilter(keyword, nullFields, code, name, status)
                         .withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order,
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_currency");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_currency");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_currency", "master_data", String.valueOf(payload.total()), "success"));

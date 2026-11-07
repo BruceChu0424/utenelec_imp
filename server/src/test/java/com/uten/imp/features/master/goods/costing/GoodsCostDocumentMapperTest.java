@@ -13,6 +13,26 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 class GoodsCostDocumentMapperTest {
+    @Test void frozenMaterialSelectionExportsEveryPathPastTheFormerFiveThousandBoundary() throws Exception {
+        var mapper = new ObjectMapper().findAndRegisterModules();
+        com.fasterxml.jackson.databind.node.ObjectNode root = mapper.valueToTree(snapshot());
+        var calculation = root.withObject("/calculation");
+        var template = calculation.path("lines").get(0).deepCopy();
+        var lines = calculation.putArray("lines");
+        var paths = new java.util.ArrayList<String>();
+        for (int index=0; index<5001; index++) {
+            var line = (com.fasterxml.jackson.databind.node.ObjectNode) template.deepCopy();
+            String path="root/"+index;
+            line.put("path",path);
+            lines.add(line); paths.add(path);
+        }
+        var frozen = mapper.treeToValue(root, GoodsCostContracts.Snapshot.class);
+        var document = GoodsCostDocumentMapper.map(frozen,"MATERIAL",paths,null);
+        assertThat(document.sections().getFirst().rows()).hasSize(5001);
+        assertThat(document.sections().getFirst().rows().getLast()).containsEntry("rowKey","root/5000");
+        paths.add("root/missing");
+        assertThatThrownBy(() -> GoodsCostDocumentMapper.map(frozen,"MATERIAL",paths,null)).hasMessageContaining("选中物料");
+    }
     @Test void selectedSameNameFeesUseFrozenIdentityAndBothFilesKeepExactAmount() throws Exception {
         var mapper = new ObjectMapper().findAndRegisterModules();
         com.fasterxml.jackson.databind.node.ObjectNode root = mapper.valueToTree(snapshot());

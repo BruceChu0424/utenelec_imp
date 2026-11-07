@@ -85,10 +85,11 @@ public class UnitController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String dimension,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
                 new UnitQueryFilter(keyword, nullFields, code, name, status, dimension),
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_unit");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_unit");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_unit", "master_data", String.valueOf(payload.total()), "success"));

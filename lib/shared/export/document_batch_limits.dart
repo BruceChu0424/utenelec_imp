@@ -1,3 +1,3 @@
-/// Existing workbench contract shared with its injected document exporter.
-/// The server independently enforces the same request contract.
-const maxWorkbenchDocumentExport = 100;
+/// Internal proof-request size. The server independently enforces this bound;
+/// a complete document export may contain any number of these read batches.
+const orderDocumentAuthorizationBatchSize = 100;

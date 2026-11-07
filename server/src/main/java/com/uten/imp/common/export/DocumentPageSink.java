@@ -42,18 +42,13 @@ public final class DocumentPageSink implements AutoCloseable {
         private boolean begun;
         public void begin(Header header) {
             if(begun)throw new IllegalStateException("Document row budget already started");
-            if(header.expectedPrimaryRows()>ExportDocument.MAX_SECTION_ROWS)throw tooMany();
             header.sections().forEach(section->counts.put(section.id(),0L));begun=true;
         }
         public void accept(Page page) {
             Long previous=counts.get(page.sectionId());
             if(!begun||previous==null)throw new IllegalStateException("Document section is unknown");
-            long next=previous+page.rows().size();
-            if(next>ExportDocument.MAX_SECTION_ROWS)throw tooMany();
+            long next=Math.addExact(previous,page.rows().size());
             counts.put(page.sectionId(),next);
-        }
-        private static com.uten.imp.common.web.ApiException tooMany() {
-            return new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"单次导出每个分表最多 50000 行，请缩小范围");
         }
     }
 

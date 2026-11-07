@@ -151,7 +151,7 @@ public class GoodsActualCostSnapshotService implements com.uten.imp.application.
         private final java.util.ArrayList<Map<String,Object>> batch=new java.util.ArrayList<>(100);private long seen;
         private Pages(DocumentPageSink.Consumer sink,String id,int maximum,long expected){this.sink=sink;this.id=id;this.maximum=maximum;this.expected=expected;}
         @Override public void accept(Map<String,Object> row){
-            if(++seen>maximum)throw new ApiException(ErrorCode.VALIDATION_FAILED,"实际成本单个分表超过50000行完整文件边界，请缩小期间或选择工单");
+            if(++seen>maximum)throw new ApiException(ErrorCode.VALIDATION_FAILED,"实际成本来源未完整返回，请核查原始来源后重试");
             batch.add(row);if(batch.size()==100)flush();
         }
         private void flush(){ExportOperationCheckpoint.check();sink.accept(new DocumentPageSink.Page(id,List.copyOf(batch)));batch.clear();}

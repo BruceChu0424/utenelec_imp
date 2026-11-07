@@ -79,7 +79,7 @@ final class GoodsActualCostStreamReader {
         Long rows=db.execute("SELECT count(*) FROM (SELECT 1 FROM ("+sql.substring(0,order)+") projected LIMIT :preflightLimit) bounded",
                 args,statement->{statement.setQueryTimeout(60);try(var result=statement.executeQuery()){result.next();return result.getLong(1);}});
         ExportOperationCheckpoint.check();
-        if(rows!=null&&rows>maximum)throw com.uten.imp.common.export.LegacyExportBudget.tooManyRows();
+        if(rows!=null&&rows>maximum)throw tooMany(maximum);
     }
 
     private final class Read implements StreamingRead {
@@ -159,5 +159,5 @@ final class GoodsActualCostStreamReader {
     }
     static final String INDEXED_INPUTS=indexed(INPUTS_SQL,true),INDEXED_OUTPUTS=indexed(OUTPUTS_SQL,false);
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
-    private static ApiException tooMany(int maximum){return maximum<ExportDocument.MAX_SECTION_ROWS?com.uten.imp.common.export.LegacyExportBudget.tooManyRows():invalid("实际成本单个分表超过50000行完整文件边界，请缩小期间或选择工单");}
+    private static ApiException tooMany(int maximum){return invalid("实际成本读取未能完整返回，请核查原始来源后重试");}
 }

@@ -112,10 +112,11 @@ public class ReferenceMethodController {
             @RequestParam(required = false) String dueRule,
             @RequestParam(required = false) Set<String> nullFields,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.exportSettlementAdmin(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.exportSettlementAdmin(
                 new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields, keyword),
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_settlement_method");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_settlement_method");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_settlement_method", "master_data", String.valueOf(payload.total()), "success"));

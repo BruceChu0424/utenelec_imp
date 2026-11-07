@@ -27,7 +27,7 @@ class ExportRateLimitInterceptorTest {
         var request = postRequest(); var response = mock(HttpServletResponse.class);
         assertTrue(interceptor.preHandle(request, response, new Object()));
         assertTrue(LegacyExportBudget.active());
-        assertThrows(ApiException.class, () -> LegacyExportBudget.requireRows(501));
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> LegacyExportBudget.requireRows(1201));
         interceptor.afterCompletion(request, response, new Object(), new IllegalArgumentException("synthetic malformed body"));
         org.junit.jupiter.api.Assertions.assertFalse(LegacyExportBudget.active());
         interceptor.afterCompletion(request, response, new Object(), null);
@@ -48,6 +48,7 @@ class ExportRateLimitInterceptorTest {
         assertTrue(interceptor.preHandle(request, response, handler));
         org.junit.jupiter.api.Assertions.assertEquals(2000, LegacyExportBudget.maximumRows(100000));
         LegacyExportBudget.requireRows(2000);
+        assertThrows(ApiException.class,()->LegacyExportBudget.requireRows(2001));
         interceptor.afterCompletion(request, response, handler, null);
     }
 

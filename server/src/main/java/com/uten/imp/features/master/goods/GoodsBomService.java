@@ -547,18 +547,21 @@ public class GoodsBomService {
     /** 整树展开导出({@link #EXPORT_COLUMNS})。层级只用级联序号表达(1 / 3.1 / 3.1.1)，不再加缩进与子层星号标记。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload exportPayload(UUID goodsId) {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        Set<UUID> path = new java.util.HashSet<>();
-        path.add(goodsId);
-        expandForExport(goodsId, 0, path, "", rows, new HashMap<>());
         List<ExportColumn> columns = canViewStock() ? EXPORT_COLUMNS
                 : EXPORT_COLUMNS.stream().filter(column -> !"stockQty".equals(column.key())).toList();
-        return new ExportPayload(columns, rows, rows.size());
+        boolean streaming = com.uten.imp.common.export.ExportPageSink.current() != null;
+        List<Map<String, Object>> rows = streaming ? null : new ArrayList<>();
+        var batches = streaming ? new com.uten.imp.common.export.ExportRowBatches(columns, 0) : null;
+        Set<UUID> path = new java.util.HashSet<>();
+        path.add(goodsId);
+        expandForExport(goodsId, 0, path, "", streaming ? batches : rows::add, new HashMap<>());
+        int total = streaming ? batches.finish() : rows.size();
+        return new ExportPayload(columns, streaming ? List.of() : rows, total);
     }
 
     /** DFS 平铺 BOM 树：[path] = 当前展开路径上的货品（含根，环路防护）；[prefix] = 级联序号前缀。 */
     private void expandForExport(UUID goodsId, int depth, Set<UUID> path, String prefix,
-                                 List<Map<String, Object>> rows, Map<UUID, List<BomItemView>> cache) {
+                                 java.util.function.Consumer<Map<String, Object>> rows, Map<UUID, List<BomItemView>> cache) {
         if (depth >= GoodsBomFileLimits.MAX_LEVELS) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "BOM 层级超过完整导出上限，请从下层组件分别导出");
         }
@@ -568,10 +571,7 @@ public class GoodsBomService {
             if (v.getComponentCode() == null || v.getComponentCode().isBlank()) {
                 throw new ApiException(ErrorCode.FORBIDDEN, "存在不可见或未编号的组件，无法完整导出，请联系管理员核对权限和货品资料");
             }
-            if (rows.size() >= GoodsBomFileLimits.MAX_ROWS) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "BOM 展开超过 " + GoodsBomFileLimits.MAX_ROWS
-                        + " 行完整导出上限，请从下层组件分别导出");
-            }
+            com.uten.imp.common.export.ExportOperationCheckpoint.check();
             String seq = prefix.isEmpty() ? String.valueOf(i + 1) : prefix + "." + (i + 1);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("seq", seq);
@@ -595,7 +595,7 @@ public class GoodsBomService {
             row.put("qty", v.getQty());
             row.put("actualQty", v.getUsage().actualQty());
             row.put("summary", v.getSummary());
-            rows.add(row);
+            rows.accept(row);
             if (v.isHasChildren()) {
                 if (path.contains(v.getComponentGoodsId())) {
                     throw new ApiException(ErrorCode.CONFLICT, "BOM 里的组件互相套用形成循环，无法完整导出，请先检查组件结构");

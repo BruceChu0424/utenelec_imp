@@ -59,6 +59,9 @@ class ExportPasswordRequestValidationTest {
         for (Class<?> controller : controllers) {
             boolean foundExportBody = false;
             for (var method : controller.getDeclaredMethods()) {
+                // A streaming lambda may capture the already-validated body; only MVC handlers decode request bodies.
+                if(!org.springframework.core.annotation.AnnotatedElementUtils.hasAnnotation(method,
+                        org.springframework.web.bind.annotation.RequestMapping.class))continue;
                 for (Parameter parameter : method.getParameters()) {
                     // 客户/供应商导出的请求体还带手机/电话/银行账号筛选 (security-19), 同样必须 @Valid。
                     if (parameter.getType() == ExportPasswordRequest.class

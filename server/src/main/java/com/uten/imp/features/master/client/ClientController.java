@@ -221,15 +221,16 @@ public class ClientController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ContactExportRequest body) {
-        ExportPayload payload = service.export(new ClientQueryFilter(categoryId, body.sensitive().keyword(), nullFields,
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new ClientQueryFilter(categoryId, body.sensitive().keyword(), nullFields,
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 ownerEmployeeId, legalPerson, linkman,
                 body.sensitive().mobile(), body.sensitive().phone(), body.sensitive().phone2(),
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, false).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body.sensitive().columnSearch())), sort, order,
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_client");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_client");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_client", "master_data", String.valueOf(payload.total()), "success"));

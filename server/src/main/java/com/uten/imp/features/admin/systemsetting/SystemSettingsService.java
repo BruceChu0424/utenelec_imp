@@ -123,6 +123,7 @@ public class SystemSettingsService {
         Map<String, String> values = rows.values().stream()
                 .collect(Collectors.toMap(SystemSetting::getKey, SystemSetting::getValue));
         return Arrays.stream(SystemSettingKey.values())
+                .filter(k -> k != SystemSettingKey.EXPORT_MAX_ROWS)
                 .sorted(Comparator.comparing((SystemSettingKey k) -> k.category().ordinal())
                         .thenComparingInt(SystemSettingKey::sortOrder))
                 .filter(k -> rows.containsKey(k.key()))

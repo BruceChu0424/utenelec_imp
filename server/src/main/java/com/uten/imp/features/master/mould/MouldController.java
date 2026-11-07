@@ -101,11 +101,12 @@ public class MouldController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String manufacturer,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new MouldQueryFilter(categoryId, keyword,
                 nullFields, code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)),
-                exportLimits.exportMaxRows(),request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order"));
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");
+                exportLimits.exportMaxRows(),request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order")), body.columnProjection(), "master_mould");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_mould", "master_data", String.valueOf(payload.total()), "success"));

@@ -245,15 +245,16 @@ public class GoodsController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields,
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), sort, order,
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(),
+                exportLimits.exportMaxRows()),
                 GoodsExportProjection.forImportTemplate(body.columnProjection()), "master_goods");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods", "master_data", String.valueOf(payload.total()), "success"));

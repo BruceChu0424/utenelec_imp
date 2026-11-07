@@ -52,11 +52,18 @@ class MasterExportSourceTest {
                 .containsEntry("value",new BigDecimal("12345678901234567890.000100")).containsEntry("original","=1+1");
         verify(em,never()).clear(); // The bounded compatibility path does not own the caller's persistence context.
     }
-    @Test void largeCompatibilityRejectsBeforeMappingInsteadOfReturningFirstFiveHundred() {
+    @Test void largeCompatibilityIncludesEveryRowAfterFiveHundredEvenWithAnOldConfiguredLimit() {
         AtomicInteger mapped=new AtomicInteger();
-        assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,(page,size)->legacyPage(page,size,501),item->{mapped.incrementAndGet();return row(item);}))
-                .isInstanceOf(ApiException.class).hasMessageContaining("后台导出任务");
-        assertThat(mapped).hasValue(0);
+        try(var operation=new LegacyExportBudget(1).open()) {
+            var result=MasterExportSource.exportEntities(em,columns,500,(page,size)->legacyPage(page,size,1201),item->{mapped.incrementAndGet();return row(item);});
+            assertThat(result.total()).isEqualTo(1201);
+            assertThat(result.rows()).extracting(values->values.get("_platformRecordId"))
+                    .containsExactlyElementsOf(IntStream.range(0,1201).boxed().toList());
+            assertThat(result.rows().getLast()).containsEntry("value",new BigDecimal("12345678901234567890.000100"))
+                    .containsEntry("unknown",null).containsEntry("original","=1+1");
+        }
+        assertThat(mapped).hasValue(1201);
+        verify(em,never()).clear();
     }
     @Test void exportCannotDiscardPendingWritesFromAnOuterWriteTransaction() {
         TransactionSynchronizationManager.setActualTransactionActive(true);

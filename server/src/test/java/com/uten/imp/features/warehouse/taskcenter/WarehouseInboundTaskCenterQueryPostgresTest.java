@@ -1096,9 +1096,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
             assertThat(mapper.valueToTree(ownerDetail).path("receiptProgress").path("stockedQty").isTextual()).isTrue();
             var nonOwner=service(rights,WarehouseTaskScope.ALL,false).list(filter).items().getFirst();
             assertThat(nonOwner.actionData()).containsEntry("canViewSupplierReturn",false);
-            var settings=mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class);
-            when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(500);
-            var exported=new WarehouseTaskCenterExportService(null,query,settings).inbound(filter);
+            var exported=new WarehouseTaskCenterExportService(null,query).inbound(filter);
             assertThat(exported.rows().getFirst()).containsEntry("stockedQty",new java.math.BigDecimal(stocked.actionData().get("stockedQty").toString()));
             execute("UPDATE supplier_return_tasks SET status='COMPLETED' WHERE id=:id","id",task);
             execute("UPDATE procurement_arrival_exceptions SET status='CLOSED' WHERE id=:id","id",exception);

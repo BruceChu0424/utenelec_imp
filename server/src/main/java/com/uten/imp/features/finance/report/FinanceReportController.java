@@ -507,8 +507,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(report, allParams, sort, order);
-        return exportResponse(report,payload,body.password(),body.columnProjection());
+        return exportResponse(report, () -> service.export(report, allParams, sort, order),body.password(),body.columnProjection());
     }
 
     @com.uten.imp.common.web.JsonBodyLimit(16 * 1024 * 1024)
@@ -519,13 +518,14 @@ public class FinanceReportController {
             @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
             @Valid @RequestBody com.uten.imp.features.master.dto.ContactExportRequest body) {
         var parameters=FinanceReportHeaderRequest.withContactBody(allParams,body.sensitive());
-        ExportPayload payload=service.export(report,parameters,sort,order);
-        return exportResponse(report,payload,body.password(),body.columnProjection());
+        return exportResponse(report, () -> service.export(report,parameters,sort,order),body.password(),body.columnProjection());
     }
 
-    private ResponseEntity<byte[]> exportResponse(String report,ExportPayload payload,String password,
+    private ResponseEntity<byte[]> exportResponse(String report,java.util.function.Supplier<ExportPayload> source,String password,
             com.uten.imp.common.export.TableColumnProjection projection) {
-        byte[] xlsx = xlsxExport.build(payload, projection, "view_finance");
+        var sourceWorkbook = xlsxExport.buildSource(source, projection, "view_finance");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, password);
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

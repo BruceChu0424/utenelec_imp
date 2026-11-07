@@ -134,16 +134,19 @@ class StreamingDocumentWriterTest {
         }finally{logger.detachAppender(captured);captured.stop();}
         assertNoSheetTemps();
     }
-    @Test void unknownCountDocumentsStopAtTheOriginalSectionBoundaryInBothWriters()throws Exception {
+    @Test void completeDocumentsPassFiftyThousandRowsAndCancellationStillPreventsPublicationInBothWriters()throws Exception {
         var column=List.of(new ExportColumn("q","数量",ExportColumn.QTY));
         var header=new DocumentPageSink.Header("未知总数",List.of(),List.of(new DocumentPageSink.Section("main","数据",column,true,false)));
         var page=new DocumentPageSink.Page("main",Collections.nCopies(200,Map.<String,Object>of("q",1)));
         for(boolean pdf:List.of(false,true)) {
             try(var writer=pdf?new TabularPdfExportService().openDocumentStream(directory):new XlsxExportService().openDocumentStream(directory)) {
                 writer.begin(header);
-                for(int index=0;index<ExportDocument.MAX_SECTION_ROWS/200;index++)writer.accept(page);
-                assertEquals(ExportDocument.MAX_SECTION_ROWS,writer.primaryRowCount());
-                assertThrows(com.uten.imp.common.web.ApiException.class,()->writer.accept(new DocumentPageSink.Page("main",List.of(Map.of("q",1)))));
+                for(int index=0;index<250;index++)writer.accept(page);
+                writer.accept(new DocumentPageSink.Page("main",List.of(Map.of("q",1))));
+                assertEquals(50_001,writer.primaryRowCount());
+                Thread.currentThread().interrupt();
+                try{assertThrows(java.util.concurrent.CancellationException.class,()->writer.accept(new DocumentPageSink.Page("main",List.of(Map.of("q",1)))));}
+                finally{Thread.interrupted();}
                 assertThrows(IllegalStateException.class,()->writer.finish(new ByteArrayOutputStream()));
             }
             try(var files=Files.list(directory)){assertTrue(files.findAny().isEmpty());}

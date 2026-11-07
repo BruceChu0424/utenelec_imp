@@ -254,13 +254,12 @@ public final class ReportQueryKit {
     public static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
     /**
-     * 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。
+     * 有界分批(size=500)读取全部行；不按结果行数或页数截断。列取首页 columns 映射为 ExportColumn。
      * 2026-09-16 从六个报表服务收敛（六份循环体逐字一致；各包 ReportTableResponse 是独立类型，
      * 经 total/exportColumns/rows 三个取数函数适配，exportColumns 返回 null 表示无列——与原
      * {@code r.columns() != null} 判断等价）。
      *
-     * @param maxRows 导出行数上限 (系统设置 export_max_rows, 调用方经 ExportLimitPort 读取后传入;
-     *                本类不依赖系统设置模块, 保持 common 不反向依赖 features)
+     * @param maxRows 旧调用方的兼容参数，不限制完整结果；资源由流式写入和文件预算约束。
      */
     public static <T> ExportPayload paginateAll(int maxRows,
                                                 BiFunction<Integer, Integer, T> loader,
@@ -273,14 +272,15 @@ public final class ReportQueryKit {
             Function<T,List<ExportColumn>> exportColumns,Function<T,List<Map<String,Object>>> rows,
             Function<T,Map<String,Object>> documentMetadata) {
         requireExportRowCount(maxRows, 0);
-        final int size = Math.min(500, Math.max(1, com.uten.imp.common.export.LegacyExportBudget.maximumRows(maxRows)));
+        final int size = 500;
         var sink = com.uten.imp.common.export.ExportPageSink.current();
         List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
         List<ExportColumn> cols = null;
         Map<String,Object> metadata=null;
         int seen = 0;
+        long expected = -1;
         try (var ignored = ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
-            for (int page = 1; page <= 2000; page++) {
+            for (int page = 1; ; page = Math.incrementExact(page)) {
                 com.uten.imp.common.export.LegacyExportBudget.checkpoint();
                 T r;
                 try (var firstCount = ReportReadPlan.open(com.uten.imp.common.export.LegacyExportBudget.active() && page == 1
@@ -288,6 +288,10 @@ public final class ReportQueryKit {
                     r = loader.apply(page, size);
                 }
                 long reported = total.applyAsLong(r);
+                if (reported >= 0) {
+                    if (expected < 0) expected = reported;
+                    else if (reported != expected) throw new IllegalStateException("Export source count changed");
+                }
                 Map<String,Object> pageMetadata=documentMetadata.apply(r);if(pageMetadata==null)pageMetadata=Map.of();
                 if(metadata==null)metadata=new LinkedHashMap<>(pageMetadata);
                 else if(!metadata.equals(pageMetadata))throw new IllegalStateException("Document metadata changed during export");
@@ -297,54 +301,28 @@ public final class ReportQueryKit {
                     if (first != null) cols = first;
                 }
                 List<Map<String, Object>> pageRows = rows.apply(r);
+                if (pageRows.size() > size) throw new IllegalStateException("Export source batch grew");
                 requireExportRowCount(maxRows, (long) seen + pageRows.size());
-                seen += pageRows.size();
+                seen = Math.addExact(seen, pageRows.size());
+                if (expected >= 0 && (seen > expected || (pageRows.size() < size && seen < expected)))
+                    throw new IllegalStateException("Export source is incomplete");
                 // Check every batch, including unknown counts and rows committed during legacy reads.
                 if (sink == null) all.addAll(pageRows);
                 else sink.accept(new ExportPayload(cols == null ? List.of() : cols, pageRows, seen).withDocumentMetadata(metadata));
-                if (pageRows.size() < size || (reported >= 0 && seen >= reported)) {
+                if (pageRows.size() < size || (expected >= 0 && seen == expected)) {
                     return new ExportPayload(cols == null ? List.of() : cols,
                             sink == null ? all : List.of(), seen).withDocumentMetadata(metadata);
                 }
             }
         }
-        // Never publish a silently truncated workbook when a loader violates its paging contract.
-        throw tooManyRows(maxRows);
     }
-    /**
-     * 主档导出的分页收集 (每页 100 行, 与列表接口的页大小上限一致): 首页 total 超过
-     * {@code maxRows} 直接拒绝; 导出过程中行数增长越过上限同样拒绝, 不产出半截文件。
-     * 2026-09-23 从货品/客户/供应商/账户/币种五份复制的循环收敛 (audit-retention-settings-11)。
-     */
-    public static <T> List<Map<String, Object>> collectPages(
-            int maxRows,
-            BiFunction<Integer, Integer, PageResponse<T>> loader,
-            Function<T, Map<String, Object>> mapper) {
-        requireExportRowCount(maxRows, 0);
-        final int size = 100;
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (int page = 1; ; page++) {
-            com.uten.imp.common.export.LegacyExportBudget.checkpoint();
-            PageResponse<T> r = loader.apply(page, size);
-            if (page == 1) requireExportRowCount(maxRows, r.getTotal());
-            for (T item : r.getItems()) {
-                rows.add(mapper.apply(item));
-            }
-            requireExportRowCount(maxRows, rows.size());
-            if (r.getItems().size() < size || rows.size() >= r.getTotal()) {
-                return rows;
-            }
-        }
-    }
-
     /** Shared by paged readers and calculated-row emitters; -1 is an unknown count. */
     public static void requireExportRowCount(int maxRows, long rows) {
-        if (maxRows < 1 || rows > maxRows) throw tooManyRows(maxRows);
+        if (rows < -1) throw new IllegalStateException("Export source count is invalid");
+        // Compatibility argument only: export_max_rows no longer truncates or rejects a complete result.
+        // Internal batch sizes, writer resource budgets and explicit single-document contracts remain bounded.
         com.uten.imp.common.export.LegacyExportBudget.requireRows(rows);
     }
 
-    private static ApiException tooManyRows(int maxRows) {
-        return new ApiException(ErrorCode.VALIDATION_FAILED,
-                "导出数据超过 " + maxRows + " 行上限 (系统设置「导出行数上限」)，请收窄筛选条件或分批导出");
-    }
+
 }

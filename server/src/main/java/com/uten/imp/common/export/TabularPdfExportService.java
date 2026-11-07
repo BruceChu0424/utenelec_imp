@@ -92,7 +92,6 @@ public class TabularPdfExportService {
                 Path cache=scratch;
                 try(var pdf=org.apache.pdfbox.Loader.loadPDF(source.toFile(),()->new org.apache.pdfbox.io.ScratchFile(
                         org.apache.pdfbox.io.MemoryUsageSetting.setupTempFileOnly(ExportResourceLimits.SHEET_TEMP_BYTES).setTempDir(cache.toFile())))) {
-                    if(pdf.getNumberOfPages()>250)throw new IOException("PDF page limit exceeded");
                     protectDocument(pdf,password);
                     try(var file=Files.newOutputStream(target,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)) {
                         created=true;pdf.save(ExportTemporaryBudget.artifactOutput(file,parent,LegacyExportBudget::checkpoint));
@@ -157,8 +156,6 @@ public class TabularPdfExportService {
             Map<String,Object> values=rows.next();
             do {
                 checkpoint.run();
-                if (pdf.getNumberOfPages() >= 250) throw new com.uten.imp.common.web.ApiException(
-                        com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "PDF 超过 250 页，请缩小范围或下载 Excel");
                 PDPage page = new PDPage(PAPER);
                 pdf.addPage(page);
                 try (PDPageContentStream stream = new PDPageContentStream(pdf, page)) {

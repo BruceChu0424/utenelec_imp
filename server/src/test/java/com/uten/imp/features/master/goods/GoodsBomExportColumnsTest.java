@@ -2,6 +2,7 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPageSink;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.TxSessionVars;
@@ -153,7 +154,7 @@ class GoodsBomExportColumnsTest {
     }
 
     @Test
-    void lastSupportedLevelIsIncludedAndSharedDagExpansionIsBounded() {
+    void lastSupportedLevelAndEveryPathOfTheSharedDagAreExported() {
         Goods root = goods("ROOT", "根");
         List<Goods> parents = List.of(root);
         List<UUID> withChildren = new java.util.ArrayList<>();
@@ -168,8 +169,54 @@ class GoodsBomExportColumnsTest {
             parents = List.of(first, second);
         }
         when(bomRepo.findGoodsWithOperationalRows(anyCollection())).thenReturn(withChildren);
-        var error = assertThrows(com.uten.imp.common.web.ApiException.class, () -> service.exportPayload(root.getId()));
-        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("2000 行"));
+        ExportPayload payload = service.exportPayload(root.getId());
+        assertEquals((1 << (GoodsBomFileLimits.MAX_LEVELS + 1)) - 2, payload.total());
+        assertEquals(payload.total(), payload.rows().size());
+        assertEquals(String.join(".", java.util.Collections.nCopies(GoodsBomFileLimits.MAX_LEVELS, "2")),
+                payload.rows().getLast().get("seq"));
+    }
+
+    @Test
+    void completeRecipeCanExceedTheIndependentTwoThousandRowImportBoundary() {
+        Goods root = wideRecipe(2001);
+        ExportPayload payload = service.exportPayload(root.getId());
+        assertEquals(2001, payload.total());
+        assertEquals(2001, payload.rows().size());
+        assertEquals("2001", payload.rows().getLast().get("seq"));
+        assertEquals("COMP-2001", payload.rows().getLast().get("code"));
+        assertEquals(2000, GoodsBomFileLimits.MAX_ROWS, "The independent import contract remains unchanged");
+    }
+
+    @Test
+    void largeRecipeEmitsBoundedBatchesWithoutRetainingTheFlattenedRows() {
+        Goods root = wideRecipe(5001);
+        var sizes = new java.util.ArrayList<Integer>();
+        var received = new java.util.concurrent.atomic.AtomicInteger();
+        var last = new java.util.concurrent.atomic.AtomicReference<Map<String,Object>>();
+        try (var sink = ExportPageSink.open(page -> {
+            org.junit.jupiter.api.Assertions.assertTrue(page.rows().size() <= 500);
+            sizes.add(page.rows().size()); received.addAndGet(page.rows().size());
+            if (!page.rows().isEmpty()) last.set(page.rows().getLast());
+        })) {
+            ExportPayload payload = service.exportPayload(root.getId());
+            assertEquals(5001, payload.total());
+            org.junit.jupiter.api.Assertions.assertTrue(payload.rows().isEmpty());
+        }
+        assertEquals(5001, received.get());
+        assertEquals(11, sizes.size());
+        assertEquals(1, sizes.getLast());
+        assertEquals("5001", last.get().get("seq"));
+        assertEquals("COMP-5001", last.get().get("code"));
+    }
+
+    private Goods wideRecipe(int count) {
+        Goods root = goods("ROOT-WIDE", "完整组装");
+        List<GoodsBomItem> items = java.util.stream.IntStream.rangeClosed(1, count)
+                .mapToObj(index -> bomRow(root, goods("COMP-" + index, "组件" + index), "1.000000000000000001"))
+                .toList();
+        when(goodsRepo.findById(root.getId())).thenReturn(Optional.of(root));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(root.getId())).thenReturn(items);
+        return root;
     }
 
     @Test

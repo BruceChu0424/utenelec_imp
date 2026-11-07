@@ -1,5 +1,6 @@
 // 采购任务工作台「进行中」段批量导出单据的实现级测试：
 // 单份直存 PDF、多份打包 zip、部分失败不打断其余单据并汇总提示、进度回调。
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -68,6 +69,8 @@ class _FakeApi extends ApiClient {
     this.rejectedIds = const {},
     this.missingProof = false,
     this.proofFailure = false,
+    this.proofFailureAt,
+    this.onAuthorize,
     this.module = 'purchase',
   }) : super(Dio());
 
@@ -76,6 +79,8 @@ class _FakeApi extends ApiClient {
   final Set<String> pendingIds;
   final Set<String> rejectedIds;
   final bool missingProof, proofFailure;
+  final int? proofFailureAt;
+  final void Function(int batch)? onAuthorize;
   final List<String> paths = [];
   final List<Object?> authorizations = [];
 
@@ -88,7 +93,10 @@ class _FakeApi extends ApiClient {
   }) async {
     expectSync(path, '/$module/orders/print-authorization');
     authorizations.add(body);
-    if (proofFailure) throw ApiException('CONFLICT', '采购单已修改，请重新导出');
+    onAuthorize?.call(authorizations.length);
+    if (proofFailure || authorizations.length == proofFailureAt) {
+      throw ApiException('CONFLICT', '采购单已修改，请重新导出');
+    }
     return {};
   }
 
@@ -129,6 +137,7 @@ Future<void> _run(
   bool Function()? stillCurrent,
   VoidCallback? beforeConfirm,
   VoidCallback? duringGenerate,
+  Future<Uint8List> Function(PrintPdfRequest request)? generate,
   ThemeData? theme,
   double textScale = 1,
 }) async {
@@ -170,10 +179,15 @@ Future<void> _run(
     stillCurrent: stillCurrent,
     // Business/caller regressions use the pure worker handler; a separate test
     // exercises the real isolate/worker lifecycle and responsiveness.
-    generate: (PrintPdfRequest request) {
-      duringGenerate?.call();
-      return request.binaryRenderer!(request.binaryPayload!, request.fontBytes);
-    },
+    generate:
+        generate ??
+        (PrintPdfRequest request) {
+          duringGenerate?.call();
+          return request.binaryRenderer!(
+            request.binaryPayload!,
+            request.fontBytes,
+          );
+        },
   );
   await tester.pumpAndSettle();
   expect(find.text('确认导出$label'), findsOneWidget);
@@ -258,6 +272,118 @@ void main() {
     }
   });
 
+  for (final subcontract in [false, true]) {
+    testWidgets(
+      '${subcontract ? 'subcontract' : 'purchase'} exports all 501 originals in one file with bounded proof requests',
+      (tester) async {
+        final api = _FakeApi(
+          const {},
+          module: subcontract ? 'subcontract' : 'purchase',
+        );
+        final documents = List.generate(
+          501,
+          (index) => (id: 'order-${index + 1}', number: 'DOC-${index + 1}'),
+        );
+        final saved = <String, Uint8List>{};
+        final progress = <int>[];
+        final totals = <int>[];
+        final authorizationCountsAtSave = <int>[];
+        await _run(
+          tester,
+          api: api,
+          subcontract: subcontract,
+          documents: documents,
+          onProgress: (done, total) {
+            totals.add(total);
+            progress.add(done);
+          },
+          saver: (bytes, name, {stillCurrent}) async {
+            authorizationCountsAtSave.add(api.authorizations.length);
+            saved[name] = bytes;
+            return name;
+          },
+        );
+        final notifications = ProviderScope.containerOf(
+          tester.element(find.byType(Scaffold)),
+        ).read(appNotificationProvider);
+        expect(
+          api.paths,
+          hasLength(501),
+          reason: notifications
+              .map((notification) => notification.message)
+              .join('; '),
+        );
+        expect(totals.toSet(), {501});
+        expect(progress, List.generate(501, (index) => index + 1));
+        final batches = api.authorizations.map(
+          (request) => (request! as Map)['documents'] as List,
+        );
+        expect(batches.map((batch) => batch.length), [
+          100,
+          100,
+          100,
+          100,
+          100,
+          1,
+        ]);
+        expect(
+          batches.expand((batch) => batch).map((proof) => (proof as Map)['id']),
+          documents.map((document) => document.id),
+        );
+        expect(
+          saved,
+          hasLength(1),
+          reason: notifications
+              .map((notification) => notification.message)
+              .join('; '),
+        );
+        expect(authorizationCountsAtSave, [6]);
+        expect(saved.keys.single, contains('(501份).zip'));
+        final files = ZipDecoder().decodeBytes(saved.values.single).files;
+        expect(files, hasLength(501));
+        expect(files.map((file) => file.name).toSet(), hasLength(501));
+        expect(
+          files.every((file) => _isPdf(Uint8List.fromList(file.content))),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final retire in [false, true]) {
+    testWidgets(
+      'later proof-batch ${retire ? 'retirement' : 'failure'} prevents publishing any file',
+      (tester) async {
+        var current = true;
+        final api = _FakeApi(
+          const {},
+          proofFailureAt: retire ? null : 2,
+          onAuthorize: (batch) {
+            if (retire && batch == 2) current = false;
+          },
+        );
+        var saves = 0;
+        await _run(
+          tester,
+          api: api,
+          documents: List.generate(
+            201,
+            (index) => (id: 'order-${index + 1}', number: 'DOC-${index + 1}'),
+          ),
+          stillCurrent: () => current,
+          saver: (bytes, name, {stillCurrent}) async {
+            saves++;
+            return name;
+          },
+        );
+        expect(api.authorizations, hasLength(2));
+        expect(saves, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('a failing order never blocks the rest and reports its number', (
     tester,
   ) async {
@@ -297,6 +423,52 @@ void main() {
         return name;
       },
     );
+    expect(saves, 0);
+  });
+
+  testWidgets('an omitted worker receipt cannot publish an incomplete export', (
+    tester,
+  ) async {
+    final api = _FakeApi(const {});
+    var saves = 0;
+    await _run(
+      tester,
+      api: api,
+      documents: const [
+        (id: 'order-1', number: 'CD-1'),
+        (id: 'order-2', number: 'CD-2'),
+      ],
+      generate: (_) async {
+        final metadata = utf8.encode(
+          jsonEncode({
+            'successful': [
+              {
+                'id': 'order-1',
+                'contentDigest': 'a' * 64,
+                'filename': 'one.pdf',
+              },
+            ],
+            'failed': <String>[],
+            'filename': 'one.pdf',
+          }),
+        );
+        final packet = Uint8List(4 + metadata.length + 5);
+        ByteData.sublistView(packet).setUint32(0, metadata.length);
+        packet.setRange(4, 4 + metadata.length, metadata);
+        packet.setRange(
+          4 + metadata.length,
+          packet.length,
+          utf8.encode('%PDF-'),
+        );
+        return packet;
+      },
+      saver: (bytes, name, {stillCurrent}) async {
+        saves++;
+        return name;
+      },
+    );
+    expect(api.paths, hasLength(2));
+    expect(api.authorizations, isEmpty);
     expect(saves, 0);
   });
 

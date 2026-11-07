@@ -85,10 +85,11 @@ public class ColorController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String remark,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(
+        var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
                 new ColorQueryFilter(keyword, nullFields, code, name, status, remark),
-                exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_color");
+                exportLimits.exportMaxRows()), body.columnProjection(), "master_color");
+        ExportPayload payload = sourceWorkbook.payload();
+        byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_color", "master_data", String.valueOf(payload.total()), "success"));

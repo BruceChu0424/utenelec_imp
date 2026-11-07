@@ -20,6 +20,18 @@ import static org.mockito.Mockito.when;
 
 class SystemSettingsServiceRetentionValidationTest {
 
+    @org.junit.jupiter.api.Test
+    void retiredExportRowSettingIsHiddenWhileHistoricalStoredValuesRemain() {
+        var repository = mock(SystemSettingRepository.class);
+        var oldExportSetting = new SystemSetting();
+        oldExportSetting.setKey("export_max_rows");
+        oldExportSetting.setValue("500");
+        when(repository.findAll()).thenReturn(List.of(oldExportSetting));
+        var service = new SystemSettingsService(repository, mock(AuditService.class), mock(TxSessionVars.class));
+        assertTrue(service.list().isEmpty());
+        org.junit.jupiter.api.Assertions.assertEquals("500", oldExportSetting.getValue());
+    }
+
     @ParameterizedTest
     @CsvSource({
             "audit_hot_retention_months,0,1 至 120",

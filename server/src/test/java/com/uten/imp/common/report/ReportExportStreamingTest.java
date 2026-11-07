@@ -30,13 +30,16 @@ class ReportExportStreamingTest {
         assertEquals(100000,seen.get());assertEquals(201,batches.get());
         assertEquals(ReportReadPlan.ALL,ReportReadPlan.current());assertNull(ExportPageSink.current());
     }
-    @Test void rejectsGrowthPastTheLimitBeforeEmittingTheOffendingPage() {
-        var emitted=new AtomicInteger();
-        try(var sink=ExportPageSink.open(payload -> emitted.addAndGet(payload.rows().size()))) {
-            assertThrows(ApiException.class,() -> ReportQueryKit.paginateAll(700,
-                    (p,size) -> page(p,size,800),Page::total,ignored -> COLUMNS,Page::rows));
+    @Test void streamsEveryIdentityPastTheOldConfiguredLimitWithBoundedBatches() {
+        var identities=new ArrayList<Object>();var sizes=new ArrayList<Integer>();
+        try(var sink=ExportPageSink.open(payload -> {
+            payload.rows().forEach(row->identities.add(row.get("id")));sizes.add(payload.rows().size());
+        })) {
+            var result=ReportQueryKit.paginateAll(700,(p,size)->page(p,size,1201),Page::total,ignored->COLUMNS,Page::rows);
+            assertEquals(1201,result.total());assertTrue(result.rows().isEmpty());
         }
-        assertEquals(500,emitted.get());assertNull(ExportPageSink.current());
+        assertEquals(IntStream.range(0,1201).boxed().toList(),identities);
+        assertEquals(List.of(500,500,201),sizes);assertNull(ExportPageSink.current());
     }
     @Test void failedPageDoesNotLeakReadOrOutputScopesAndNeverReturnsPartialSuccess() {
         try(var prior=ReportReadPlan.open(new ReportReadPlan(true,false,true))) {

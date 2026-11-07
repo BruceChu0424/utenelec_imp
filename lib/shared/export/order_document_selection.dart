@@ -1,5 +1,3 @@
-import 'document_batch_limits.dart';
-
 typedef ExportOrderDocument = ({String id, String number});
 
 /// Validate every selected row before deduplicating whole documents. A row
@@ -29,8 +27,6 @@ orderDocumentSelection<T>({
     issue = emptyMessage;
   } else if (unsupported) {
     issue = unsupportedMessage;
-  } else if (documents.length > maxWorkbenchDocumentExport) {
-    issue = '一次最多导出 $maxWorkbenchDocumentExport 份单据，请分批选择';
   } else {
     issue = null;
   }

@@ -17,7 +17,7 @@ class LegacyExportBudgetTest {
     @Test void aWholeOperationOwnsOneSlotAndAlwaysReleasesItAfterFailure() {
         var budget = new LegacyExportBudget(1);
         var first = budget.open();
-        assertThat(LegacyExportBudget.maximumRows(100000)).isEqualTo(500);
+        assertThat(LegacyExportBudget.maximumRows(100000)).isEqualTo(100000);
         assertThat(LegacyExportBudget.maximumRows(100)).isEqualTo(100);
         CompletableFuture.runAsync(() -> assertThatThrownBy(budget::open)
                 .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.RATE_LIMITED))).join();
@@ -47,51 +47,77 @@ class LegacyExportBudgetTest {
     private record Page(long total, List<Map<String, Object>> rows) { }
     private static final List<ExportColumn> COLUMNS = List.of(new ExportColumn("value", "原始值", ExportColumn.TEXT));
 
-    @Test void largeKnownTotalsRefuseBeforeRowProjectionAndMetadataHeavyWork() {
+    @Test void largeKnownTotalsReadEveryBoundedBatchWithOnlyTheFirstCount() {
         var calls = new AtomicInteger(); var projections = new AtomicInteger();
         try (var operation = new LegacyExportBudget(1).open()) {
-            assertThatThrownBy(() -> ReportQueryKit.paginateAll(100000, (page, size) -> {
+            var result=ReportQueryKit.paginateAll(100000, (page, size) -> {
                 calls.incrementAndGet();
-                assertThat(page).isEqualTo(1); assertThat(size).isEqualTo(500);
-                assertThat(ReportReadPlan.current().includeCount()).isTrue();
+                assertThat(size).isEqualTo(500);
+                assertThat(ReportReadPlan.current().includeCount()).isEqualTo(page==1);
                 assertThat(ReportReadPlan.current().includeFacets()).isFalse();
                 assertThat(ReportReadPlan.current().includeTotals()).isFalse();
-                return new Page(100000, List.of());
-            }, Page::total, ignored -> COLUMNS, value -> { projections.incrementAndGet(); return value.rows(); }))
-                    .isInstanceOfSatisfying(ApiException.class, error -> {
-                        assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
-                        assertThat(error.getMessage()).contains("后台导出任务");
-                    });
+                return new Page(1201,java.util.stream.IntStream.range((page-1)*size,Math.min(page*size,1201))
+                        .mapToObj(index->Map.<String,Object>of("value",index)).toList());
+            }, Page::total, ignored -> COLUMNS, value -> { projections.incrementAndGet(); return value.rows(); });
+            assertThat(result.total()).isEqualTo(1201);
+            assertThat(result.rows()).extracting(row->row.get("value"))
+                    .containsExactlyElementsOf(java.util.stream.IntStream.range(0,1201).boxed().toList());
         }
-        assertThat(calls.get()).isEqualTo(1); assertThat(projections.get()).isZero();
+        assertThat(calls.get()).isEqualTo(3); assertThat(projections.get()).isEqualTo(3);
         assertThat(ReportReadPlan.current()).isSameAs(ReportReadPlan.ALL);
     }
 
-    @Test void unknownTotalsCannotPublishTheFirstFiveHundredOfALargerResult() {
+    @Test void unknownTotalsIncludeTheRowsAfterTheFirstFiveHundred() {
         var calls = new AtomicInteger();
         List<Map<String, Object>> first = java.util.stream.IntStream.range(0, 500)
                 .mapToObj(index -> Map.<String, Object>of("value", index)).toList();
         try (var operation = new LegacyExportBudget(1).open()) {
-            assertThatThrownBy(() -> ReportQueryKit.paginateAll(100000, (page, size) -> {
+            var result=ReportQueryKit.paginateAll(100000, (page, size) -> {
                 calls.incrementAndGet();
                 if (page > 1) assertThat(ReportReadPlan.current().includeCount()).isFalse();
                 return new Page(-1, page == 1 ? first : List.of(Map.of("value", 500)));
-            }, Page::total, ignored -> COLUMNS, Page::rows))
-                    .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+            }, Page::total, ignored -> COLUMNS, Page::rows);
+            assertThat(result.rows()).hasSize(501).endsWith(Map.of("value",500));
+            assertThat(result.total()).isEqualTo(501);
         }
         assertThat(calls.get()).isEqualTo(2);
         assertThat(LegacyExportBudget.active()).isFalse();
     }
 
-    @Test void smallResultsPreserveExactRawValuesAndTheConfiguredSmallerLimit() {
+    @Test void anOldConfiguredRowLimitDoesNotChangeCompleteOutputOrBoundedBatchSize() {
         try (var operation = new LegacyExportBudget(1).open()) {
             var result = ReportQueryKit.paginateAll(100, (page, size) -> {
-                assertThat(size).isEqualTo(100);
-                return new Page(1, List.of(Map.of("value", "001234.000000000000000001")));
+                assertThat(size).isEqualTo(500);
+                return new Page(501,java.util.stream.IntStream.range((page-1)*size,Math.min(page*size,501))
+                        .mapToObj(index->Map.<String,Object>of("value","001234.000000000000000001","id",index)).toList());
             }, Page::total, ignored -> COLUMNS, Page::rows);
-            assertThat(result.rows()).containsExactly(Map.of("value", "001234.000000000000000001"));
-            assertThatThrownBy(() -> ReportQueryKit.requireExportRowCount(100, 101))
-                    .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getMessage()).contains("100 行上限"));
+            assertThat(result.rows()).hasSize(501);
+            assertThat(result.rows().getLast()).containsEntry("value","001234.000000000000000001").containsEntry("id",500);
         }
+    }
+
+    @Test void incompleteOrDriftingTotalsFailBeforeAnyCompleteResultIsReturned() {
+        var first=java.util.stream.IntStream.range(0,500).mapToObj(i->Map.<String,Object>of("value",i)).toList();
+        for(boolean drift:List.of(false,true))try(var operation=new LegacyExportBudget(1).open()) {
+            assertThatThrownBy(()->ReportQueryKit.paginateAll(100000,(page,size)->new Page(page==2&&drift?502:501,page==1?first:List.of()),
+                    Page::total,ignored->COLUMNS,Page::rows)).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining(drift?"count changed":"incomplete");
+        }
+        assertThat(LegacyExportBudget.active()).isFalse();
+        assertThat(ReportReadPlan.current()).isSameAs(ReportReadPlan.ALL);
+    }
+
+    @Test void interruptionAfterTheFirstFiveHundredRetiresTheReadAndReleasesItsSlot() {
+        var budget=new LegacyExportBudget(1);
+        try(var operation=budget.open()) {
+            assertThatThrownBy(()->ReportQueryKit.paginateAll(100000,(page,size)->{
+                if(page==2)Thread.currentThread().interrupt();
+                return new Page(501,java.util.stream.IntStream.range((page-1)*size,Math.min(page*size,501))
+                        .mapToObj(index->Map.<String,Object>of("value",index)).toList());
+            },Page::total,ignored->COLUMNS,Page::rows)).isInstanceOf(java.util.concurrent.CancellationException.class);
+        }finally{Thread.interrupted();}
+        assertThat(LegacyExportBudget.active()).isFalse();
+        assertThat(ReportReadPlan.current()).isSameAs(ReportReadPlan.ALL);
+        try(var retry=budget.open()){LegacyExportBudget.requireRows(1201);}
     }
 }

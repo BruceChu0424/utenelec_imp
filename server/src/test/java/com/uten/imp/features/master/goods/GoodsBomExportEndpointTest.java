@@ -2,6 +2,7 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPageSink;
 import com.uten.imp.common.export.ExportTableProjectionService;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.XlsxExportService;
@@ -36,6 +37,37 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 打整个导出链（Controller 收口补列 → 共享投影校验/别名 → xlsx 落盘）。
  */
 class GoodsBomExportEndpointTest {
+
+    @Test
+    void fullRecipeOverTwoThousandRowsStreamsThroughTheExistingDownloadEndpoint() throws Exception {
+        GoodsBomService service = mock(GoodsBomService.class);
+        when(service.exportPayload(any(UUID.class))).thenAnswer(call -> {
+            var sink = java.util.Objects.requireNonNull(ExportPageSink.current());
+            for (int first = 1; first <= 2001; first += 500) {
+                var rows = java.util.stream.IntStream.range(first, Math.min(2002, first + 500))
+                        .mapToObj(index -> Map.<String,Object>of("seq", Integer.toString(index), "code", "COMP-" + index,
+                                "name", "组件" + index, "qty", new BigDecimal("1.000000000000000001"),
+                                "componentGoodsId", new UUID(1, index).toString())).toList();
+                sink.accept(new ExportPayload(GoodsBomService.EXPORT_COLUMNS, rows, Math.min(2001, first + 499)));
+            }
+            return new ExportPayload(GoodsBomService.EXPORT_COLUMNS, List.of(), 2001);
+        });
+        var controller = new GoodsBomController(service, writer(), new WorkbookDownloadService(),
+                mock(AuditService.class), mock(SecurityContextCurrentUser.class));
+        byte[] downloaded = MockMvcBuilders.standaloneSetup(controller).build().perform(
+                post("/api/master/goods/{id}/bom/export", UUID.randomUUID())
+                        .contentType("application/json").content("{\"password\":\"\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(downloaded))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(2001, sheet.getLastRowNum());
+            assertEquals("2001", sheet.getRow(2001).getCell(0).getStringCellValue());
+            assertEquals("COMP-2001", sheet.getRow(2001).getCell(1).getStringCellValue());
+            int quantity = -1;
+            for (Cell cell : sheet.getRow(0)) if (cell.getStringCellValue().equals("设计使用数量")) quantity = cell.getColumnIndex();
+            assertEquals("1.000000000000000001", sheet.getRow(2001).getCell(quantity).getStringCellValue());
+        }
+    }
 
     @Test
     void theExactProjectionTodayGoodsBomTableSendsExportsTheWholeRecipe() throws Exception {

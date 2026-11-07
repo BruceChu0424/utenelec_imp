@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/pump_until.dart';
 
 final _identity = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'A'),
@@ -34,6 +35,7 @@ class _Api extends ApiClient {
   final List<String> actions;
   final String sourceDocType;
   final posts = <String>[];
+  int listReads = 0;
   Completer<AuthenticatedRequestScope>? nextCapture;
 
   @override
@@ -52,6 +54,7 @@ class _Api extends ApiClient {
   }) async {
     if (path.endsWith('/initial-basic-unit')) return {'allowed': true};
     if (path != '/rd-tasks') return const {};
+    listReads++;
     return {
       'items': [
         {
@@ -68,8 +71,8 @@ class _Api extends ApiClient {
           'allowedActions': actions,
         },
       ],
-      'page': 1,
-      'size': 20,
+      'page': query?['page'] ?? 1,
+      'size': query?['size'] ?? 20,
       'total': 1,
       'totalPages': 1,
     };
@@ -201,7 +204,12 @@ void main() {
     container.read(_identity.notifier).state = const AuthenticatedScope(
       userId: 'A',
     );
-    await tester.pumpAndSettle();
+    await pumpUntil(
+      tester,
+      () => api.listReads > 1 && find.text('RD-UNIT-1').evaluate().isNotEmpty,
+      reason: 'The latest reader must receive a fresh task list',
+    );
+    expect(find.text('处理中…'), findsNothing);
     expect(find.text('核对基本单位'), findsNothing);
     await tester.tap(find.text('RD-UNIT-1'));
     await tester.pumpAndSettle();

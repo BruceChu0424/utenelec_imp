@@ -243,7 +243,9 @@ class _RdTaskListPanel extends ConsumerStatefulWidget {
 class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     with ScopedPagedReadViewMixin<_RdTaskListPanel> {
   @override
-  Future<void> onReadViewResumed() => _load();
+  Future<void> onReadViewResumed() async {
+    if (ref.read(authenticatedScopeProvider) != null) await _load();
+  }
 
   int _unitOperationRevision = 0;
   bool _openingUnit = false;
@@ -538,7 +540,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     _priorityFilter = null;
     _invalidateUnitOperation();
     final rejection = scopedPagedReadRejection;
-    final version = ++_requestId;
+    ++_requestId;
     setState(() {
       _tableRows.update(const []);
       _data = null;
@@ -548,11 +550,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
       _error = rejection?.message;
       _loading = false;
     });
-    if (rejection == null && ref.read(authenticatedScopeProvider) != null) {
-      Future<void>.microtask(() {
-        if (mounted && version == _requestId) _load();
-      });
-    }
   }
 
   Future<void> _load({bool useCache = false}) async {

@@ -122,8 +122,7 @@ class SubcontractAcceptedLossAnalysisEndToEndTest extends SubcontractFullChainTe
         UUID waste=h.db.queryForObject("SELECT waste_id FROM subcontract_short_delivery_cases WHERE id=?",UUID.class,shortCase);
         amount(materialQty.subtract(new BigDecimal(receivedQty)).toPlainString(),h.db.queryForObject("SELECT SUM(qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,waste));
         amount(materialQty.subtract(new BigDecimal(ordered)).toPlainString(),h.db.queryForObject("SELECT SUM(standard_qty) FROM subcontract_waste_items WHERE waste_id=?",BigDecimal.class,waste));
-        String childNeed=new BigDecimal(remaining).multiply(new BigDecimal("1.1")).toPlainString();
-        assertAnalysis(c,receivedQty,childNeed,remaining,childNeed);
+        assertAnalysis(c,receivedQty,remaining,remaining,remaining);
         UUID action=h.db.queryForObject("SELECT action_id FROM preplan_aggregate_batches WHERE id=?",UUID.class,batch.batchId());
         amount(receivedQty,h.db.queryForObject("SELECT fn_preplan_action_received_qty(?)",BigDecimal.class,action));
         assertFinalLossSource(c,shortCase,new BigDecimal(ordered).subtract(new BigDecimal(receivedQty)).multiply(BigDecimal.TEN).toPlainString());
@@ -138,6 +137,7 @@ class SubcontractAcceptedLossAnalysisEndToEndTest extends SubcontractFullChainTe
             ReflectionTestUtils.invokeMethod(h.fixture,"stageSubcontractKitUntilApproval",nextOrder,nextKit);
             finance.submit("SUBCONTRACT",nextOrder);h.fixture.loginAs(reviewer);h.fixture.approvePendingFinance("SUBCONTRACT",nextOrder);
             h.fixture.loginAs(w.superAdminUserId());
+            String childNeed=new BigDecimal(remaining).multiply(new BigDecimal("1.1")).toPlainString();
             assertAnalysis(c,receivedQty,childNeed,"0",childNeed);
         }
         assertAll("Every analysis phase preserves actual receipts, material budgets and private source demand",analysisChecks);

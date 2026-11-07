@@ -3,15 +3,13 @@ package com.uten.imp.features.production.analysis;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/** Material preparation budget; finished output and the original BOM edge keep their own units. */
-record SubcontractMaterialSupplyRequirement(BigDecimal lossPercent,
-        BigDecimal frozenOutputQty, BigDecimal frozenMaterialQty) {
+/** Baseline BOM preparation with any approved, source-specific subcontract supply commitment. */
+record SubcontractMaterialSupplyRequirement(BigDecimal frozenOutputQty, BigDecimal frozenMaterialQty) {
     static final SubcontractMaterialSupplyRequirement NONE = new SubcontractMaterialSupplyRequirement(
-            BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+            BigDecimal.ZERO, BigDecimal.ZERO);
 
     SubcontractMaterialSupplyRequirement {
-        if (lossPercent == null || lossPercent.signum() < 0 || lossPercent.compareTo(new BigDecimal("100")) > 0
-                || frozenOutputQty == null || frozenOutputQty.signum() < 0
+        if (frozenOutputQty == null || frozenOutputQty.signum() < 0
                 || frozenMaterialQty == null || frozenMaterialQty.signum() < 0) {
             throw new IllegalArgumentException("Invalid subcontract material preparation basis");
         }
@@ -27,8 +25,8 @@ record SubcontractMaterialSupplyRequirement(BigDecimal lossPercent,
         frozen=frozen.max(MaterialConsumptionMath.required(frozenOutput,bomQty,
                 consumptionBasis,basisOutputQty,allowPartialPackage));
         BigDecimal remaining = output.subtract(frozenOutput);
-        BigDecimal supplyUnitQty = bomQty.multiply(BigDecimal.ONE.add(lossPercent.movePointLeft(2)));
-        return frozen.add(MaterialConsumptionMath.required(remaining, supplyUnitQty,
+        // The master allowance is a ceiling. Only a real approved order freezes extra supply.
+        return frozen.add(MaterialConsumptionMath.required(remaining, bomQty,
                 consumptionBasis, basisOutputQty, allowPartialPackage));
     }
 }

@@ -41,6 +41,7 @@
   "targetPcAcceptance": false,
   "rules": [
     "Finished target Q remains unchanged; loss upper bound p prepares up to Q*(1+p/100) material at the frozen base BOM.",
+    "Material analysis uses base BOM demand for output without an approved subcontract material commitment. Preserve the exact source-specific frozen quantity once the order is approved; the master loss allowance alone never creates a planning shortage.",
     "The operator supplies actual receipt quantity; never initialize it from a theoretical capacity.",
     "With sufficient own material, receipts between Q and Q*(1+p/100) are normal; partial deliveries preserve their unfulfilled target.",
     "Consume base BOM against new actual receipt quantities. Reported waste and returns remain independent facts.",

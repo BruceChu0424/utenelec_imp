@@ -1933,20 +1933,14 @@ public class MaterialAnalysisService {
         // 已有节点沿用快照锁定的用量，只按当前路线重新选择(ADR-129 §2.5)。
         BomUsageContext usageContext = bomUsageContext(analysisId);
         List<BomNode> nodes = frozenDelivery ? frozenDeliveryNodes(analysisId, sources) : loadBomTrees(sources, usageContext);
-        Map<String,BomNode> supplyParents=nodes.stream().collect(Collectors.toMap(
-                node->nodeRef(node.analysisItemId(),node.nodeKey()),node->node));
-        Map<UUID,SourceLine> supplySources=sources.stream().collect(Collectors.toMap(SourceLine::analysisItemId,source->source));
-        List<SubcontractSupplyTarget> supplyTargets=nodes.stream().filter(node->{
-            if(node.deliveryContext())return false;
-            if(node.depth()==1)return "SUBCONTRACT".equals(supplySources.get(node.analysisItemId()).rootRoute());
-            String parentKey=nodeRef(node.analysisItemId(),node.parentNodeKey());
-            BomNode parent=supplyParents.get(parentKey);
-            return parent!=null&&"SUBCONTRACT".equals(usageContext.routes().getOrDefault(parentKey,parent.suggestion()));
-        }).map(node->new SubcontractSupplyTarget(nodeRef(node.analysisItemId(),node.nodeKey()),node.parentGoodsId())).toList();
-        List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies=SubcontractComponentCustodyProjection.supplyForAnalysis(em,analysisId);
-        Map<String,SubcontractMaterialSupplyRequirement> supplyRules=subcontractSupplyRules(supplyTargets,subcontractSupplies);
-        nodes=nodes.stream().map(node->node.withSupplyRequirement(supplyRules.getOrDefault(
-                nodeRef(node.analysisItemId(),node.nodeKey()),SubcontractMaterialSupplyRequirement.NONE))).toList();
+        List<SubcontractComponentCustodyProjection.ChildCoverage> subcontractSupplies =
+                SubcontractComponentCustodyProjection.supplyForAnalysis(em, analysisId);
+        Map<String, SubcontractMaterialSupplyRequirement> supplyRules = subcontractSupplyRules(subcontractSupplies);
+        if (!supplyRules.isEmpty()) {
+            nodes = nodes.stream().map(node -> node.deliveryContext() ? node : node.withSupplyRequirement(
+                    supplyRules.getOrDefault(nodeRef(node.analysisItemId(), node.nodeKey()),
+                            SubcontractMaterialSupplyRequirement.NONE))).toList();
+        }
         Map<UUID, SourceLine> sourcesById = sources.stream()
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<String,List<BigDecimal>> plannedBatches = plannedMaterialBatches(analysisId, overlay);
@@ -1994,7 +1988,6 @@ public class MaterialAnalysisService {
         return new RefreshTree(sources, sourcesById, nodes, usageContext.routes(),subcontractSupplies);
     }
 
-    private record SubcontractSupplyTarget(String nodeRef,UUID parentGoodsId) { }
     /** First-level edges belong to their original source; deeper edges keep their real parent. */
     static UUID materialParentGoodsId(MaterialRow row, SourceLine source) {
         return row.depth() == 1 ? source.goodsId() : row.parentGoodsId();
@@ -2016,25 +2009,12 @@ public class MaterialAnalysisService {
         return List.copyOf(result);
     }
 
-    private Map<String,SubcontractMaterialSupplyRequirement> subcontractSupplyRules(
-            List<SubcontractSupplyTarget> targets,List<SubcontractComponentCustodyProjection.ChildCoverage> supplies) {
-        if(targets.isEmpty())return Map.of();
-        Set<UUID> parentGoods=targets.stream().map(SubcontractSupplyTarget::parentGoodsId).collect(Collectors.toSet());
-        Map<UUID,BigDecimal> losses=new HashMap<>();
-        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery(
-                "SELECT id,COALESCE(subcontract_allowed_loss_pct,0) FROM goods WHERE id IN (:ids)")
-                .setParameter("ids",parentGoods)))losses.put(uuid(row[0]),decimal(row[1]));
-        Map<String,SubcontractComponentCustodyProjection.ChildCoverage> byNode=supplies.stream().collect(Collectors.toMap(
-                row->nodeRef(row.analysisItemId(),row.childNodeKey()),row->row));
-        Map<String,SubcontractMaterialSupplyRequirement> result=new HashMap<>();
-        for(SubcontractSupplyTarget target:targets) {
-            var supply=byNode.get(target.nodeRef());
-            result.put(target.nodeRef(),new SubcontractMaterialSupplyRequirement(
-                    losses.getOrDefault(target.parentGoodsId(),BigDecimal.ZERO),
-                    supply==null?BigDecimal.ZERO:supply.frozenParentOutputQty(),
-                    supply==null?BigDecimal.ZERO:supply.requiredQty()));
-        }
-        return Map.copyOf(result);
+    static Map<String, SubcontractMaterialSupplyRequirement> subcontractSupplyRules(
+            List<SubcontractComponentCustodyProjection.ChildCoverage> supplies) {
+        // Custody supplies prove the approved order's exact source and direct child path.
+        return supplies.stream().collect(Collectors.toUnmodifiableMap(
+                row -> nodeRef(row.analysisItemId(), row.childNodeKey()),
+                row -> new SubcontractMaterialSupplyRequirement(row.frozenParentOutputQty(), row.requiredQty())));
     }
 
     private List<BomNode> frozenDeliveryNodes(UUID analysisId, List<SourceLine> sources) {
@@ -5113,19 +5093,17 @@ public class MaterialAnalysisService {
         }).toList();
         var budgetFacts=new MaterialPreparationBudgetReader(em).read(analysisId,header.warehouseId(),materials,selectedWarehouseIds,aliasCoverage.outgoing(),pendingPrivateMake);
         Map<String,String> preparationWireKeys=new HashMap<>();
-        List<SubcontractComponentCustodyProjection.ChildCoverage> detailSupply=SubcontractComponentCustodyProjection.supplyForAnalysis(em,analysisId);
-        List<SubcontractSupplyTarget> detailSupplyTargets=materialRows.stream().filter(row->{
-            if(row.deliveryContext()||row.depth()==0)return false;
-            if(row.depth()==1)return "SUBCONTRACT".equals(sourcesById.get(row.analysisItemId()).rootRoute());
-            MaterialRow parent=materialRowsByNode.get(new MaterialNodeIdentity(row.analysisItemId(),row.parentNodeKey()));
-            return parent!=null&&"SUBCONTRACT".equals(parent.confirmedRoute()!=null?parent.confirmedRoute():parent.suggestion());
-        }).map(row->new SubcontractSupplyTarget(nodeRef(row.analysisItemId(),row.nodeKey()),
-                materialParentGoodsId(row,sourcesById.get(row.analysisItemId())))).toList();
-        Map<String,SubcontractMaterialSupplyRequirement> detailSupplyRules=subcontractSupplyRules(detailSupplyTargets,detailSupply);
+        List<SubcontractComponentCustodyProjection.ChildCoverage> detailSupply =
+                SubcontractComponentCustodyProjection.supplyForAnalysis(em, analysisId);
+        Map<String, SubcontractMaterialSupplyRequirement> detailSupplyRules = subcontractSupplyRules(detailSupply);
         Map<String,FormalCoverageRule> budgetRules=materialRows.stream().collect(Collectors.toMap(row->nodeRef(row.analysisItemId(),row.nodeKey()),
-                row->new FormalCoverageRule(row.requiredQty(),output->detailSupplyRules.getOrDefault(
-                        nodeRef(row.analysisItemId(),row.nodeKey()),SubcontractMaterialSupplyRequirement.NONE)
-                        .required(output,row.bomQty(),row.consumptionBasis(),row.basisOutputQty(),row.allowPartialPackage()))));
+                row -> {
+                    var rule = row.deliveryContext() ? SubcontractMaterialSupplyRequirement.NONE
+                            : detailSupplyRules.getOrDefault(nodeRef(row.analysisItemId(), row.nodeKey()),
+                                    SubcontractMaterialSupplyRequirement.NONE);
+                    return new FormalCoverageRule(row.requiredQty(), output -> rule.required(output, row.bomQty(),
+                            row.consumptionBasis(), row.basisOutputQty(), row.allowPartialPackage()));
+                }));
         Map<String,BigDecimal> formalPrivate=new HashMap<>(formalCoverageQuantities(formalMaterialCoverage(analysisId,header.warehouseId()),budgetRules));
         // 委外领料覆盖(ADR-143 §4.5)：与刷新同一套逐种覆盖与封顶；带专属交接的草稿已在精确归属里，只补其余部分。
         formalCoverageQuantities(subcontractChildCoverage(detailSupply),budgetRules).forEach((key,covered)->{

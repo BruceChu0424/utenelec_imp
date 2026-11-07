@@ -847,7 +847,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         assertThat(fact[0]).isEqualByComparingTo("0");
         assertThat(fact[2]).isEqualByComparingTo("101.46");
         assertThat(fact[3]).isEqualByComparingTo("98.5049");
-        var rule=new SubcontractMaterialSupplyRequirement(new BigDecimal("3"),fact[3],fact[2]);
+        var rule=new SubcontractMaterialSupplyRequirement(fact[3],fact[2]);
         assertThat(rule.required(fact[3],BigDecimal.ONE,"PER_UNIT",BigDecimal.ONE,true)).isEqualByComparingTo("101.46");
     }
 
@@ -882,7 +882,7 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         BigDecimal[] fact=preparation(w.analysis,child);
         assertThat(fact[0]).isEqualByComparingTo("100");
         assertThat(fact[3]).isEqualByComparingTo("0");
-        var rule=new SubcontractMaterialSupplyRequirement(new BigDecimal("10"),fact[3],fact[2]);
+        var rule=new SubcontractMaterialSupplyRequirement(fact[3],fact[2]);
         assertThat(rule.required(BigDecimal.ZERO,BigDecimal.ONE,"PER_UNIT",BigDecimal.ONE,true)).isEqualByComparingTo("0");
     }
 

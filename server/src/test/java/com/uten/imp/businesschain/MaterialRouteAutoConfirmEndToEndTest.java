@@ -113,7 +113,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertEquals(0,refreshed.autoConfirmedRouteCount());
     }
 
-    @Test void rootSubcontractSourcesKeepDistinctParentLossesForTheSameChildAtExactPrecision(){
+    @Test void unapprovedRootSubcontractSourcesUseExactBomDemandDespiteDifferentMasterLossAllowances(){
         var w=fixture.seedWorld("root-subcontract-parent-loss");fixture.loginAs(w.superAdminUserId());
         UUID first=UUID.randomUUID(),second=UUID.randomUUID(),child=UUID.randomUUID();
         fixture.insertGoods(first,"RSLA-"+first,"一级委外来源甲","委外",w.unitId(),w.unitLegacy());
@@ -132,8 +132,10 @@ class MaterialRouteAutoConfirmEndToEndTest {
                     &&firstSource.equals(row.analysisLineId())).findFirst().orElseThrow();
             MaterialView secondChild=actual.flatMaterials().stream().filter(row->child.equals(row.goodsId())
                     &&secondSource.equals(row.analysisLineId())).findFirst().orElseThrow();
-            assertEquals(0,new BigDecimal("228.4375").compareTo(firstChild.requiredQty()));
-            assertEquals(0,new BigDecimal("236.4063").compareTo(secondChild.requiredQty()));
+            assertEquals(0,new BigDecimal("212.5").compareTo(firstChild.requiredQty()));
+            assertEquals(0,new BigDecimal("212.5").compareTo(secondChild.requiredQty()));
+            assertEquals(0,new BigDecimal("212.5").compareTo(firstChild.netShortageQty()));
+            assertEquals(0,new BigDecimal("212.5").compareTo(secondChild.netShortageQty()));
             assertEquals(0,new BigDecimal("2.125").compareTo(firstChild.bomQty()));
             assertEquals(0,new BigDecimal("2.125").compareTo(secondChild.bomQty()));
             assertEquals("SUBCONTRACT_OUTBOUND",firstChild.usageReason());

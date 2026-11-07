@@ -95,10 +95,18 @@ class SubcontractMaterialAnalysisSupplyEndToEndTest extends SubcontractFullChain
         return h.db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?", String.class, segment);
     }
 
-    @Test void initialMaximumLossBudgetManufactures1100AndActual1050Fulfills1000With50Public() {
+    @Test void baseShortageIs1000BeforeApprovalAndFrozen1100SupplyCanDeliver1050() {
         var c=h.createWithChildAndLoss("1000","10");
         MaterialView child=child(c);
-        amount("1000",child.sourceRequiredQty());amount("1",child.bomQty());amount("1100",child.requiredQty());
+        amount("1000",child.sourceRequiredQty());amount("1",child.bomQty());amount("1000",child.requiredQty());
+        amount("0",child.preparationAvailableQty());
+        amount("1000",child.shortageQty());
+        amount("1000",child.netShortageQty());
+        amount("1000",child.planningUncoveredQty());
+        MaterialView refreshedChild=material(refresh(c),c.child());
+        amount("1000",refreshedChild.netShortageQty());
+        amount("1000",refreshedChild.planningUncoveredQty());
+
         UUID plan=issue(c,"1100").plans().getFirst().planId();
         produce(c,plan);
         UUID item=order(c,"10");

@@ -442,7 +442,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     private long transactionProvenanceCalls() {
         return jdbc.queryForObject("""
                 SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
-                WHERE schemaname='public' AND funcname='fn_imported_business_document'
+                WHERE schemaname='public' AND funcname='fn_imported_business_document_row'
                 """, Long.class);
     }
 

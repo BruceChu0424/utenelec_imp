@@ -186,6 +186,10 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // This two-column privilege/RLS sink must be public so the real
+            // canonical lifetime catalog/refresh discovers it. It is not a
+            // business-schema stub and only this exact fixture owns the name.
+            "com/uten/imp/common/mastercode/GoodsIdentifierReuseSafetyPostgresTest.java#uten_goods_usage_privilege_probe",
             // Private transaction/HTTP rollback sinks, not ERP relations.
             "com/uten/imp/common/finance/BusinessPrecisionHttpPostgresTest.java#precision_http_probe",
             "com/uten/imp/common/finance/BusinessPrecisionSqlPostgresTest.java#precision_transaction_probe",

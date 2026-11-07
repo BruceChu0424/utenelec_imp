@@ -257,6 +257,125 @@ class GoodsIdentifierReuseSafetyPostgresTest {
         }
     }
 
+    @Test
+    void recordedOldNewAndRepeatedJsonReferencesDoNotRepeatTheirPermanentWriter() throws Exception {
+        UUID a=createGoods(code()),b=createGoods(code());costingRoot=createGoods(code());
+        try(Connection c=connection()) {
+            insertBusinessJson(c,a);insertBusinessJson(c,b);
+            c.setAutoCommit(false);update(c,"SET LOCAL track_functions='all'");
+            long capture=functionCalls(c,"fn_capture_goods_code_use()");
+            long note=functionCalls(c,"fn_note_goods_code_use(uuid,text)");
+            long proof=functionCalls(c,"fn_goods_code_use_recorded(jsonb,jsonb,text[])");
+            long facts=number(c,"SELECT count(*) FROM goods_code_usage_facts");
+            UUID sheet=UUID.randomUUID(),actor=UUID.randomUUID();
+            update(c,"INSERT INTO goods_cost_sheets(id,sheet_no,goods_id,name,input,calculation,created_by,updated_by) VALUES(?,?,?,'permanent proof','{}',jsonb_build_object('lines',jsonb_build_array(jsonb_build_object('goodsId',CAST(? AS text)),jsonb_build_object('goodsId',CAST(? AS text)),jsonb_build_object('goodsId',CAST(? AS text)))),?,?)",
+                    sheet,sheet.toString(),costingRoot,a,b,a,actor,actor);
+            update(c,"UPDATE goods_cost_sheets SET name='same referenced identities' WHERE id=?",sheet);
+            update(c,"UPDATE goods_cost_sheets SET goods_id=goods_id WHERE id=?",sheet);
+            assertEquals(0,functionCalls(c,"fn_capture_goods_code_use()")-capture);
+            assertEquals(0,functionCalls(c,"fn_note_goods_code_use(uuid,text)")-note);
+            assertEquals(3,functionCalls(c,"fn_goods_code_use_recorded(jsonb,jsonb,text[])")-proof);
+            assertEquals(facts,number(c,"SELECT count(*) FROM goods_code_usage_facts"));
+            assertTrue(recorded(c,a));assertTrue(recorded(c,b));c.rollback();
+        }
+    }
+
+    @Test
+    void anotherUncommittedFirstUseCannotSupplyThisWritersPermanentProof() throws Exception {
+        UUID goods=createGoods(code());costingRoot=createGoods(code());
+        try(Connection owner=connection()) {
+            owner.setAutoCommit(false);insertBusinessJson(owner,goods);
+            assertTrue(recorded(owner,goods));
+            try(Connection observer=connection()) {assertFalse(recorded(observer,goods));}
+            try(RunningQuery contender=start(c->insertBusinessJson(c,goods))) {
+                awaitBlocked(contender);owner.rollback();
+                assertEquals("OK",contender.result().get(10,TimeUnit.SECONDS));
+            }
+        }
+        try(Connection c=connection()) {
+            assertTrue(recorded(c,goods));
+            assertEquals(1,number(c,"SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?",goods));
+        }
+    }
+
+    @Test
+    void savepointRollbackRetiresTheProofBeforeAnotherRealReference() throws Exception {
+        UUID goods=createGoods(code());costingRoot=createGoods(code());
+        try(Connection c=connection()) {
+            c.setAutoCommit(false);var before=c.setSavepoint();insertBusinessJson(c,goods);
+            assertTrue(recorded(c,goods));c.rollback(before);assertFalse(recorded(c,goods));
+            insertBusinessJson(c,goods);c.commit();assertTrue(recorded(c,goods));
+            assertEquals(1,number(c,"SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?",goods));
+        }
+    }
+
+    @Test
+    void proofKeepsTheOriginalMetadataPrivilegesRlsAndReferenceFreeWrites() throws Exception {
+        UUID known=createGoods(code()),fresh=createGoods(code());costingRoot=createGoods(code());
+        String role="usage_proof_"+UUID.randomUUID().toString().replace("-","");
+        try(Connection c=connection()) {
+            insertBusinessJson(c,known);c.setAutoCommit(false);
+            try {
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE ROLE %I NOLOGIN",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE TABLE uten_goods_usage_privilege_probe(id integer PRIMARY KEY,goods_id uuid REFERENCES goods(id))");
+                update(c,"SELECT fn_refresh_goods_code_usage_tracking()");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT USAGE ON SCHEMA public TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT SELECT,INSERT,UPDATE,DELETE ON uten_goods_usage_privilege_probe TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT SELECT,UPDATE ON goods TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT SELECT ON goods_code_reuse_releases TO %I",role);
+                // A genuine first-use fact retains its original fn_audit write.
+                // Isolate only the facts privileges under test, not an unrelated
+                // missing audit sink/sequence grant in this synthetic DB role.
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT INSERT ON audit_log TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA public TO %I",role);
+                assertEquals(0,number(c,"SELECT has_table_privilege(?,'public.goods_code_usage_facts','SELECT')::int",role));
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                update(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(1,NULL)");
+                denied(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(2,?)",known);
+                update(c,"RESET ROLE");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT SELECT ON goods_code_usage_facts TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                update(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(3,?)",known);
+                update(c,"RESET ROLE");
+                update(c,"REVOKE EXECUTE ON FUNCTION public.fn_note_goods_code_use(uuid,text) FROM PUBLIC");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                denied(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(7,?)",known);
+                update(c,"RESET ROLE");
+                update(c,"GRANT EXECUTE ON FUNCTION public.fn_note_goods_code_use(uuid,text) TO PUBLIC");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                denied(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(4,?)",fresh);
+                update(c,"RESET ROLE");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"GRANT INSERT ON goods_code_usage_facts TO %I",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                update(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(5,?)",fresh);
+                assertTrue(recorded(c,fresh));update(c,"RESET ROLE");
+                update(c,"ALTER TABLE goods_code_usage_facts ENABLE ROW LEVEL SECURITY");
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE POLICY usage_proof_hidden_select ON goods_code_usage_facts FOR SELECT TO %I USING(false)",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"CREATE POLICY usage_proof_denied_insert ON goods_code_usage_facts FOR INSERT TO %I WITH CHECK(false)",role);
+                com.uten.imp.support.PostgresFixtureDdl.execute(c,"SET LOCAL ROLE %I",role);
+                assertFalse(recorded(c,known));
+                denied(c,"INSERT INTO uten_goods_usage_privilege_probe VALUES(6,?)",known);
+                update(c,"RESET ROLE");
+                assertEquals(1,number(c,"SELECT count(*) FROM goods_code_usage_facts WHERE goods_id=?",fresh));
+                assertEquals(1,number(c,"SELECT count(*) FROM uten_goods_usage_privilege_probe WHERE id=1 AND goods_id IS NULL"));
+            } finally {c.rollback();}
+        }
+    }
+
+    private static void denied(Connection c,String sql,Object...values) throws SQLException {
+        var before=c.setSavepoint();
+        try {assertEquals("42501",assertThrows(SQLException.class,()->update(c,sql,values)).getSQLState());}
+        finally {c.rollback(before);}
+    }
+
+    private static boolean recorded(Connection c,UUID goods) throws SQLException {
+        try(var q=query(c,"SELECT fn_goods_code_use_recorded(NULL,jsonb_build_object('goods_id',CAST(? AS text)),ARRAY['U:goods_id'])",goods);
+            var rows=q.executeQuery()) {assertTrue(rows.next());return rows.getBoolean(1);}
+    }
+    private static long functionCalls(Connection c,String signature) throws SQLException {
+        return number(c,"SELECT COALESCE(pg_stat_get_xact_function_calls(CAST(? AS regprocedure)),0)",signature);
+    }
+
     private UUID createGoods(String code) throws SQLException {
         UUID id = UUID.randomUUID();
         try (Connection c = connection()) { insertGoods(c, id, code); }

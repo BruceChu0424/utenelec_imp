@@ -279,14 +279,18 @@ class MasterReferenceCatalogCoverageTest {
         }
         assertThat(unclassifiedJson).as("New business JSON identity columns need lifetime tracking or an explicit covered/configuration classification").isEmpty();
         try (Connection connection = connection(); var statement = connection.createStatement(); var rows = statement.executeQuery("""
-                SELECT target.table_name,target.column_name,target.kind,t.tgargs
+                SELECT target.table_name,target.column_name,target.kind,t.tgargs,events.flag
                 FROM fn_goods_code_usage_columns() target
+                CROSS JOIN (VALUES(4),(16),(8)) events(flag)
                 LEFT JOIN pg_class c ON c.relname=target.table_name AND c.relnamespace='public'::regnamespace
-                LEFT JOIN pg_trigger t ON t.tgrelid=c.oid AND t.tgname='trg_track_goods_code_usage' AND NOT t.tgisinternal
+                LEFT JOIN pg_trigger t ON t.tgrelid=c.oid AND NOT t.tgisinternal
+                  AND t.tgfoid='public.fn_capture_goods_code_use()'::regprocedure
+                  AND (t.tgtype&events.flag)<>0 AND (t.tgtype&3)=1
+                  AND t.tgenabled IN('O','A') AND NOT t.tgdeferrable
                 """)) {
             while (rows.next()) {
                 byte[] args = rows.getBytes(4);
-                assertThat(args).as("Missing lifetime tracking trigger on %s", rows.getString(1)).isNotNull();
+                assertThat(args).as("Missing lifetime tracking trigger on %s event flag %s", rows.getString(1),rows.getInt(5)).isNotNull();
                 assertThat(new String(args, java.nio.charset.StandardCharsets.UTF_8)).contains(rows.getString(3) + ":" + rows.getString(2));
             }
         }

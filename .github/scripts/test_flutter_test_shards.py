@@ -83,12 +83,37 @@ class FlutterEvidenceTests(unittest.TestCase):
             report = {"schema_version": runner.VERSION, "source": SOURCE, "source_after": SOURCE, "ci": CI, "mode": mode,
                       "plan_hash": plan["plan_hash"], "shard": shard["id"], "files": shard["files"],
                       "command": ["flutter", *options, runner.file_reporter_option(shard["id"]), *shard["files"]],
+                      "command_prefix": ["flutter"],
                       "sdk": {"frameworkVersion": runner.FLUTTER_VERSION}, "exit_code": 0, "complete": True,
                       "machine_sha256": runner.sha256(raw), "stdout_sha256": runner.sha256(directory / "stdout.log"), "stderr_sha256": runner.sha256(directory / "stderr.log"),
                       "results": runner.parse_events(raw, shard["files"], self.root, skips, mode)}
             if mode == "chrome":
+                prefix, tool, _ = self.isolated_tool()
+                report.update(command_prefix=prefix,
+                              command=[*prefix, *options, runner.file_reporter_option(shard["id"]), *shard["files"]],
+                              isolated_tool=tool)
+                report["sdk"]["frameworkRevision"] = runner.web_tools.SDK_REVISION
                 report["worker"] = {**runner.verify_worker(self.root), "verified_after": True}
             runner.write_json(directory / "report.json", report)
+
+    def isolated_tool(self, *unused):
+        tools = runner.web_tools
+        sdk = self.root / "sdk"
+        private = self.root / "build/flutter-ci-tools/protocol"
+        dart = sdk / ("bin/cache/dart-sdk/bin/dart.exe" if os.name == "nt" else "bin/cache/dart-sdk/bin/dart")
+        prefix = [str(dart), "--packages=" + str(private / "package_config.json"), str(private / "flutter_tools_private.snapshot")]
+        inputs = {"version": tools.VERSION, "sdk_revision": tools.SDK_REVISION, "sdk_root": str(sdk),
+                  "sdk_source_normalized_sha256": tools.SDK_SOURCE_SHA256,
+                  "bootstrap_sha256": tools.sha256(tools.__file__),
+                  "asset_fragment_sha256": tools.sha256(tools.ASSET_FRAGMENT),
+                  "patched_source_sha256": "5" * 64,
+                  "sdk_inputs": {"packages/flutter_tools/" + tools.SDK_SOURCE: tools.SDK_SOURCE_SHA256,
+                                 "packages/flutter_tools/.dart_tool/package_config.json": "2" * 64}}
+        evidence = {"kind": "isolated-pinned-web-test-tools", "inputs": inputs,
+                    "files": {"package_config.json": "3" * 64, "flutter_tools_private.snapshot": "4" * 64,
+                              "framework/" + tools.SDK_SOURCE: "5" * 64},
+                    "command_prefix": prefix, "sdk_inputs_after": inputs["sdk_inputs"], "sdk_unchanged": True}
+        return prefix, evidence, dict(os.environ)
 
     def native_process_output(self, command, options, raw):
         reporter = [argument for argument in command if argument.startswith("--file-reporter=")]
@@ -489,12 +514,14 @@ class FlutterEvidenceTests(unittest.TestCase):
         def process(command, **options):
             if "--version" in command:
                 return subprocess.CompletedProcess(command, 0, json.dumps({"frameworkVersion": runner.FLUTTER_VERSION}), "")
-            self.assertEqual([*runner.BROWSER_OPTIONS, runner.file_reporter_option("browser"), *plan["browser_files"]], command[1:])
+            self.assertEqual([*runner.BROWSER_OPTIONS, runner.file_reporter_option("browser"), *plan["browser_files"]], command[3:])
             raw = "\n".join(json.dumps(row) for row in events(plan["browser_files"], self.root, "chrome")) + "\n"
             self.native_process_output(command, options, raw)
             (self.root / runner.WORKER_PATH).write_text("tampered", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0)
-        with patch.object(runner.subprocess, "run", side_effect=process):
+        with patch.object(runner.subprocess, "run", side_effect=process), \
+                patch.object(runner.web_tools, "prepare", side_effect=self.isolated_tool), \
+                patch.object(runner.web_tools, "confirm_sdk_unchanged"):
             report = runner.run_browser(plan, self.reports, root=self.root)
         self.assertFalse(report["complete"])
         self.assertIn("worker", report["error"])
@@ -573,7 +600,8 @@ class FlutterWorkflowTests(unittest.TestCase):
         self.assertEqual(("test/shared/drafts/form_draft_storage_browser_test.dart", "test/shared/drafts/form_draft_history_browser_test.dart",
                           "test/device_audit_receipt_storage_web_test.dart", "test/features/production/models/material_quantity_apportionment_test.dart",
                           "test/attachments/attachment_media_preview_browser_test.dart", "test/core/web_update_bridge_browser_test.dart",
-                          "test/features/warehouse/subcontract_actual_receipt_browser_test.dart"), runner.BROWSER_FILES)
+                          "test/features/warehouse/subcontract_actual_receipt_browser_test.dart",
+                          "test/support/audit_font_asset_loader_test.dart"), runner.BROWSER_FILES)
         self.assertIn("flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json", browser)
         self.assertIn("name: flutter-test-results-browser", browser)
         self.assertIn("path: build/flutter-ci-reports/", browser)

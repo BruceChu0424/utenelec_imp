@@ -276,6 +276,7 @@ jobs:
       - name: Verify complete Flutter planning, machine reporting and safe extraction
         run: |
           python3 -m unittest discover -s .github/scripts -p 'test_flutter_test_shards.py' -v
+          python3 -m unittest discover -s .github/scripts -p 'test_isolated_flutter_web_tools.py' -v
           python3 -m unittest discover -s .github/scripts -p 'test_safe_artifact_extract.py' -v
           python3 -m unittest discover -s .github/scripts -p 'test_release_gate.py' -v
       - name: Plan every Flutter test file into eight complete partitions

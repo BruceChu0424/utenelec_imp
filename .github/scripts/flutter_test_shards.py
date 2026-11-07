@@ -25,9 +25,10 @@ import time
 from urllib.parse import unquote, urlsplit
 
 from backend_test_shards import digest, read_json, source_identity, write_json
+import isolated_flutter_web_tools as web_tools
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = 3
+VERSION = 4
 FLUTTER_VERSION = "3.44.2"
 PROTOCOL_VERSION = "0.1.1"
 SHARDS = 8
@@ -58,6 +59,7 @@ BROWSER_FILES = (
     "test/attachments/attachment_media_preview_browser_test.dart",
     "test/core/web_update_bridge_browser_test.dart",
     "test/features/warehouse/subcontract_actual_receipt_browser_test.dart",
+    "test/support/audit_font_asset_loader_test.dart",
 )
 # The pinned SDK loader emits no LoadSuite at all for this library selector.
 # This is platform metadata, not a parser/count of test declarations. Unknown
@@ -397,14 +399,17 @@ def run_browser(plan, output, flutter="flutter", root=ROOT):
 def _run_cohort(plan, number, files, options, mode, output, flutter, root):
     directory = report_directory(output, number, root)
     directory.mkdir(parents=True, exist_ok=False)
-    command = [shutil.which(flutter) or flutter, *options, file_reporter_option(number), *files]
+    executable = shutil.which(flutter) or flutter
+    prefix = [executable]
+    command = [*prefix, *options, file_reporter_option(number), *files]
     record = {"schema_version": VERSION, "source": plan["source"], "plan_hash": plan["plan_hash"],
-              "ci": ci_identity(), "mode": mode, "shard": number, "files": files, "command": command, "exit_code": None, "complete": False}
+              "ci": ci_identity(), "mode": mode, "shard": number, "files": files, "command": command,
+              "command_prefix": prefix, "exit_code": None, "complete": False}
     started = time.monotonic()
     try:
         if mode == "chrome":
             record["worker"] = verify_worker(root)
-        version = subprocess.run([command[0], "--version", "--machine"], cwd=root,
+        version = subprocess.run([executable, "--version", "--machine"], cwd=root,
                                  capture_output=True, text=True, encoding="utf-8", check=False)
         payload = version.stdout[version.stdout.find("{"):] if "{" in version.stdout else ""
         sdk = json.loads(payload)
@@ -412,11 +417,20 @@ def _run_cohort(plan, number, files, options, mode, output, flutter, root):
             raise ValueError("Flutter executable does not match the pinned SDK")
         record["sdk"] = {key: sdk.get(key) for key in ("frameworkVersion", "frameworkRevision", "dartSdkVersion")}
         with (directory / "stdout.log").open("xb") as stdout, (directory / "stderr.log").open("xb") as stderr:
-            process = subprocess.run(command, cwd=root, stdout=stdout, stderr=stderr, check=False)
+            environment = None
+            if mode == "chrome":
+                prefix, evidence, environment = web_tools.prepare(
+                    executable, sdk, Path(root) / "build/flutter-ci-tools", stdout, stderr)
+                record["isolated_tool"] = evidence
+                record["command_prefix"] = prefix
+                command = [*prefix, *options, file_reporter_option(number), *files]
+                record["command"] = command
+            process = subprocess.run(command, cwd=root, env=environment, stdout=stdout, stderr=stderr, check=False)
         record["exit_code"] = process.returncode
         record["stdout_sha256"] = sha256(directory / "stdout.log")
         record["stderr_sha256"] = sha256(directory / "stderr.log")
         if mode == "chrome":
+            web_tools.confirm_sdk_unchanged(record["isolated_tool"])
             if verify_worker(root) != record["worker"]:
                 raise ValueError("codec worker changed during Chrome execution")
             record["worker"]["verified_after"] = True
@@ -444,6 +458,16 @@ def _verify_cohort(plan, reports, shard, options, mode, root):
     if any(path.is_symlink() or not path.is_file() for path in directory.iterdir()):
         raise ValueError("linked/special Flutter evidence file")
     report = read_json(directory / "report.json")
+    prefix = report.get("command_prefix")
+    if (not isinstance(prefix, list) or not prefix
+            or not all(isinstance(value, str) and value for value in prefix)):
+        raise ValueError("Flutter report lacks its exact command prefix")
+    if mode == "chrome":
+        web_tools.validate_evidence(report.get("isolated_tool"), prefix)
+        if report.get("sdk", {}).get("frameworkRevision") != web_tools.SDK_REVISION:
+            raise ValueError("Chrome SDK revision changed")
+    elif len(prefix) != 1 or report.get("isolated_tool") is not None:
+        raise ValueError("Unexpected tool prefix in VM report")
     if (type(report.get("schema_version")) is not int or report.get("schema_version") != VERSION or report.get("source") != plan["source"]
             or report.get("source_after") != plan["source"] or report.get("plan_hash") != plan["plan_hash"]
             or report.get("ci") != plan.get("ci")
@@ -451,7 +475,7 @@ def _verify_cohort(plan, reports, shard, options, mode, root):
             or type(report.get("exit_code")) is not int or report.get("exit_code") != 0 or report.get("complete") is not True
             or report.get("sdk", {}).get("frameworkVersion") != plan["flutter_version"]
             or not isinstance(report.get("command"), list)
-            or report["command"][1:] != [*options, file_reporter_option(shard["id"]), *shard["files"]]
+            or report["command"] != [*prefix, *options, file_reporter_option(shard["id"]), *shard["files"]]
             or not isinstance(report["command"][0], str)
             or report.get("machine_sha256") != sha256(directory / "machine.jsonl")
             or report.get("stdout_sha256") != sha256(directory / "stdout.log")

@@ -147,7 +147,7 @@ void _appendQuantityRegressionTests() {
       await tester.enterText(_appendQty('m-p'), '500');
       await tester.pump(const Duration(milliseconds: 400));
       expect(previews.last['typedOutputs'], [
-        {'materialLineId': 'm-p', 'qty': 500.0},
+        {'materialLineId': 'm-p', 'qty': '500', 'orderMethod': 'ORDER_ALL'},
       ]);
       await tester.enterText(_appendQty('m-p'), '1000');
       await tester.pump(const Duration(milliseconds: 400));
@@ -164,7 +164,7 @@ void _appendQuantityRegressionTests() {
       await tester.pump(const Duration(milliseconds: 1500));
       await tester.pumpAndSettle();
       expect(previews.last['typedOutputs'], [
-        {'materialLineId': 'm-p', 'qty': 1000.0},
+        {'materialLineId': 'm-p', 'qty': '1000', 'orderMethod': 'ORDER_ALL'},
       ]);
       expect(_qtyText(tester, _orderQty('m-pc')), '${proof.output + 1000}');
       expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '5000 个');

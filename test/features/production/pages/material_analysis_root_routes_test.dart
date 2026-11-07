@@ -466,6 +466,8 @@ void main() {
           'departmentId': 'workshop',
           'workshopName': '装配车间',
           'workerId': 'worker',
+          'quantityMode': 'COVERAGE_TOTAL',
+          'orderMethod': 'ORDER_ALL',
         },
       ]);
       expect((issueRequest.data as Map<String, dynamic>)['approveNow'], isTrue);

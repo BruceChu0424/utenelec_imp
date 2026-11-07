@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/material_order_method.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
@@ -49,10 +51,13 @@ void main() {
       );
       expect(inactiveCheckbox, findsOneWidget);
       expect(tester.widget<Checkbox>(inactiveCheckbox).onChanged, isNull);
-      await _selectAndOpenQuantity(tester);
-      // 页里默认 0(缺口已被现货覆盖，0 = 交接现货，合法值)，现货交接提示进总结弹窗。
-      expect(find.textContaining('现货交接'), findsOneWidget);
-      expect(find.textContaining('交接已分配现货，不新增订货'), findsOneWidget);
+      await _openQuantity(tester);
+      expect(tester.widget<TextField>(_seedQty()).controller!.text, '10');
+      expect(
+        tester.widget<UtenDropdownField>(_orderMethod()).value,
+        'AVAILABLE_ONLY',
+      );
+      await _openConfirmation(tester);
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
@@ -70,8 +75,10 @@ void main() {
         'quantities': [
           {
             'actionGroupKey': 'root-action',
-            'qty': 0.0,
+            'qty': 10.0,
             'safetyReplenishmentQty': 0.0,
+            'quantityMode': 'COVERAGE_TOTAL',
+            'orderMethod': 'AVAILABLE_ONLY',
           },
         ],
       });
@@ -99,8 +106,23 @@ void main() {
           ),
         );
         await _openBuy(tester);
-        await _selectAndOpenQuantity(tester);
-        expect(tester.widget<TextField>(_seedQty()).controller!.text, '7');
+        await _openQuantity(tester);
+        expect(tester.widget<TextField>(_seedQty()).controller!.text, '10');
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('material-analysis-net-shortage-root-line'),
+            ),
+            matching: find.text('7 件'),
+          ),
+          findsOneWidget,
+        );
+        await selectMaterialOrderMethod(
+          tester,
+          _orderMethod(),
+          'AVAILABLE_THEN_ORDER',
+        );
+        await _openConfirmation(tester);
         expect(find.text('确认下单 1 种？'), findsOneWidget);
         await tester.tap(
           find.descendant(
@@ -115,8 +137,10 @@ void main() {
         expect(quantities, [
           {
             'actionGroupKey': 'root-action',
-            'qty': 7.0,
+            'qty': 10.0,
             'safetyReplenishmentQty': 0.0,
+            'quantityMode': 'COVERAGE_TOTAL',
+            'orderMethod': 'AVAILABLE_THEN_ORDER',
           },
         ]);
       },
@@ -306,7 +330,7 @@ Future<void> _openBuy(WidgetTester tester) async {
 
 /// 勾选根供给行 → 点「提交采购需求」→ 进「核对并下单」页(2026-09-22 起外层桶表
 /// 只读，数量只在那一页看 / 改) → 点页里的「下单」→ 弹数量确认。
-Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
+Future<void> _openQuantity(WidgetTester tester) async {
   final row = find.byKey(const ValueKey('row:NODE|root-action|root-line'));
   final checkbox = find.descendant(of: row, matching: find.byType(Checkbox));
   await tester.ensureVisible(checkbox);
@@ -320,6 +344,9 @@ Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
     find.byKey(const Key('material-preparation-order-page')),
     findsOneWidget,
   );
+}
+
+Future<void> _openConfirmation(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('material-preparation-order-submit')));
   await tester.pumpAndSettle();
   expect(find.byType(AlertDialog), findsOneWidget);
@@ -328,6 +355,10 @@ Future<void> _selectAndOpenQuantity(WidgetTester tester) async {
 /// 「核对并下单」页里根供给行的数量框。
 Finder _seedQty() => find.byKey(
   const ValueKey('material-analysis-order-qty-NODE|root-action|root-line'),
+);
+
+Finder _orderMethod() => find.byKey(
+  const ValueKey('material-analysis-order-method-NODE|root-action|root-line'),
 );
 
 Future<void> _openRootDetails(WidgetTester tester) async {
@@ -562,12 +593,16 @@ Map<String, dynamic> _analysis({
       'unitName': '件',
       'level': 0,
       'path': ['销售根产品'],
-      'requiredQty': requiredQty,
+      'sourceRequiredQty': 10,
+      'requiredQty': 10,
       'availableQty': allocated,
-      'allocatedAvailableQty': allocated,
+      'allocatedAvailableQty': 10 - requiredQty + allocated,
       'shortageQty': requiredQty - allocated,
       'demandSupplyGapQty': requiredQty - allocated,
       'additionalSupplyRecommendedQty': requiredQty - allocated,
+      'planningUncoveredQty': requiredQty - allocated,
+      'netShortageQty': requiredQty - allocated,
+      'preparationAvailableQty': allocated,
       'sourceSuggestion': 'BUY',
       'sourceConfirmed': 'BUY',
       'routeConfirmed': true,

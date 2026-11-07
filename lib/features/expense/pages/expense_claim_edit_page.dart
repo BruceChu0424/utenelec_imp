@@ -41,7 +41,7 @@ import '../../../shared/auth/sensitive_write.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/rmb_amount.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
@@ -1270,52 +1270,18 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
       ExpenseEditableItems(
         controller: _grid,
         editable: columnEditingEnabled,
-        footer: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: _totalCard(theme),
+        footer: UtenTotalsSummaryBar(
+          rowCount: _grid.rows.length,
+          entries: [
+            UtenTotalEntry(
+              l10n.expenseFlowTotal,
+              '${financeExactMoneyDisplay(_totalText)} 元',
+            ),
+          ],
         ),
       ),
     ],
   );
-
-  /// 合计卡：小写（tabular）+ 人民币大写（打印报销单同款口径）。
-  Widget _totalCard(ThemeData theme) {
-    final capital = rmbCapital(_totalText ?? '');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          spacing: UtenSpacing.s16,
-          runSpacing: UtenSpacing.s8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              '${l10n.expenseFlowTotal} (${_items.length})',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            Text(
-              '${financeExactMoneyDisplay(_totalText)} 元',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.primary,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          '${l10n.expenseFlowCapital}: $capital',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
 
   String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

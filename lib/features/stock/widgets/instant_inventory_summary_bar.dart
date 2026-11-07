@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_totals_summary_bar.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/instant_inventory_summary.dart';
 
@@ -24,31 +23,23 @@ class InstantInventorySummaryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-      child: Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s4,
-        children: [
-          UtenTotalEntryView(
-            entry: UtenTotalEntry(
-              '合计库存重量',
-              loading
-                  ? '统计更新中…'
-                  : hasError
-                  ? '统计暂不可用'
-                  : summary.weightText(weightDisplay),
-            ),
-          ),
-          TextButton.icon(
-            key: const Key('instant-inventory-summary-details'),
-            onPressed: loading || hasError ? null : onDetails,
-            icon: const Icon(Icons.insights_outlined, size: 18),
-            label: const Text('查看详情'),
-          ),
-        ],
+    return UtenTotalsSummaryBar(
+      compact: true,
+      entries: [
+        UtenTotalEntry(
+          '合计库存重量',
+          loading
+              ? '统计更新中…'
+              : hasError
+              ? '统计暂不可用'
+              : summary.weightText(weightDisplay),
+        ),
+      ],
+      trailing: TextButton.icon(
+        key: const Key('instant-inventory-summary-details'),
+        onPressed: loading || hasError ? null : onDetails,
+        icon: const Icon(Icons.insights_outlined, size: 18),
+        label: const Text('查看详情'),
       ),
     );
   }

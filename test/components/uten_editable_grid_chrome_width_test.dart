@@ -1,6 +1,5 @@
 // 表格输入格「装饰宽度」契约（B2-b/B2-d/B2-f，2026-09-11 补测）：
-//  1. chromeWidth 会加到自适应列宽上——格内有预填 ⓘ / 状态图标的列必须多留 44，
-//     否则「人民币」这类默认值被图标压到省略号（此前汇率/税率列只算了下拉箭头 20）；
+//  1. chromeWidth 计入表体，随后取表体和表头较宽的一项；
 //  2. 列头 ⓘ 走统一的 UtenColumnHintIcon：点按弹说明、长按被吞掉，
 //     不会 arm 列头的拖拽隐藏/排序手势。
 import 'package:flutter/material.dart';
@@ -30,10 +29,12 @@ Future<double> _cellWidth(
   WidgetTester tester, {
   required double chromeWidth,
   String? headerInfo,
+  String value = '人民币',
 }) async {
   cellMaxWidth = null;
+  await tester.pumpWidget(const SizedBox.shrink());
   final controller = UtenEditableGridController<_CurrencyRow>(
-    initial: [_CurrencyRow()],
+    initial: [_CurrencyRow(value)],
   );
   addTearDown(controller.dispose);
   await tester.pumpWidget(
@@ -56,9 +57,21 @@ Future<double> _cellWidth(
                   cellBuilder: (context, row) => LayoutBuilder(
                     builder: (context, constraints) {
                       cellMaxWidth = constraints.maxWidth;
-                      return TextField(
-                        controller: row.currency,
-                        decoration: const InputDecoration(isDense: true),
+                      return Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              row.currency.text,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (chromeWidth > 0)
+                            SizedBox(
+                              width: chromeWidth,
+                              child: const Icon(Icons.info_outline),
+                            ),
+                        ],
                       );
                     },
                   ),
@@ -81,14 +94,16 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final narrow = await _cellWidth(tester, chromeWidth: 0);
-    final wide = await _cellWidth(tester, chromeWidth: 44);
+    const value = '美元 USD 结算账户';
+    final narrow = await _cellWidth(tester, chromeWidth: 0, value: value);
+    final wide = await _cellWidth(tester, chromeWidth: 44, value: value);
 
-    expect(
-      wide - narrow,
-      closeTo(44, 0.5),
-      reason: 'chromeWidth 必须整体加到列宽上，不能被量宽逻辑吞掉',
-    );
+    expect(wide - narrow, closeTo(44, 0.5), reason: '表体最宽时，图标位应完整计入');
+
+    final headerWidth = await _cellWidth(tester, chromeWidth: 0, value: '元');
+    final chromeWidth = await _cellWidth(tester, chromeWidth: 44, value: '元');
+    expect(chromeWidth, greaterThan(headerWidth));
+    expect(chromeWidth - headerWidth, lessThan(44));
   });
 
   testWidgets('列头 ⓘ：点按弹说明，长按不触发列头手势', (tester) async {

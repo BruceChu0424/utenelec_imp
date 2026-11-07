@@ -368,6 +368,20 @@ class _MaterialAnalysisBucketPageState
       label: '物料名称',
       width: 220,
       value: _rowGoodsName,
+      measureValueOf: (row) =>
+          '${_rowGoodsName(row) ?? row.id}|${row.product != null}',
+      measureWidthOf: (context, row, scaler) =>
+          utenTableCellTextWidth(
+            _rowGoodsName(row) ?? row.id,
+            style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+            textScaler: scaler,
+            textDirection: Directionality.of(context),
+          ) +
+          (row.product == null
+              ? 0
+              : MaterialTopLevelBadge.widthOf(context, textScaler: scaler) +
+                    UtenSpacing.s4),
+      measureWidthScope: 'material-bucket-goods',
       cellBuilderHandlesSemantics: true,
       // 顶层成品行名称后挂红色「顶层」小框；采购/委外桶的物料行没有 product，
       // 这些表照旧只出身份格。
@@ -410,6 +424,7 @@ class _MaterialAnalysisBucketPageState
     key: 'route',
     label: _host._l10n.materialRoute,
     width: 132,
+    minimumWidthOf: (_) => 48,
     info:
         '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
         '自制 = 自己车间生产。在这里改并确认后，本行会立刻移到对应的入口，'
@@ -1184,6 +1199,13 @@ class _MaterialAnalysisBucketPageState
         width: 260,
         info: host._l10n.materialSupplyProgressHint,
         value: (row) => _rowProgress(theme, row).label,
+        measureWidthOf: (context, row, scaler) =>
+            MaterialAnalysisPreparationCell.contentWidthOf(
+              context,
+              _rowProgress(theme, row).label ?? '—',
+              scaler,
+            ),
+        measureWidthScope: 'material-bucket-progress',
         cellColor: (context, row) =>
             _rowProgress(Theme.of(context), row).style.background,
         cellBuilderHandlesSemantics: true,
@@ -1226,6 +1248,7 @@ class _MaterialAnalysisBucketPageState
           key: 'shortageQty',
           label: '还需安排',
           width: 125,
+          minimumWidthOf: (_) => 48,
           type: 'number',
           value: (row) =>
               formatQtyWithUnit(_rowShortageQty(row), _rowUnitName(row)),
@@ -1345,6 +1368,23 @@ class MaterialTopLevelBadge extends StatelessWidget {
 /// @visibleForTesting 先例）。
 @visibleForTesting
 class MaterialAnalysisPreparationCell extends StatelessWidget {
+  static const double _iconWidth = 18;
+
+  static double contentWidthOf(
+    BuildContext context,
+    String label,
+    TextScaler scaler,
+  ) =>
+      utenTableCellTextWidth(
+        label,
+        style: (Theme.of(context).textTheme.bodyMedium ?? const TextStyle())
+            .copyWith(fontWeight: FontWeight.w700),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      ) +
+      _iconWidth +
+      UtenSpacing.s4;
+
   const MaterialAnalysisPreparationCell({
     super.key,
     required this.label,
@@ -1368,8 +1408,8 @@ class MaterialAnalysisPreparationCell extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(style.icon, size: 18, color: inherited.color),
-            const SizedBox(width: 4),
+            Icon(style.icon, size: _iconWidth, color: inherited.color),
+            const SizedBox(width: UtenSpacing.s4),
             Flexible(
               child: Text(
                 label,

@@ -76,6 +76,8 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 fixture.Login().GetAwaiter().GetResult(); var service = new UnitColumnsService(fixture.Session);
                 var source = Await(service.LoadAsync(new[] { ColumnServiceContractChecks.RecordId }, CancellationToken.None));
                 var window = new UnitColumnSettingsWindow(null, fixture.Session, source); var settings = Field<ObservableCollection<ColumnSettingRow>>(window, "rows");
+                check(settings[0].WidthText == "" && settings.Single(row => row.Key == "platform:" + ColumnServiceContractChecks.NumberId).WidthText == "185",
+                    "Only the explicitly saved width appears as a pixel value.");
                 settings[0].WidthText = "120.";
                 check(!Save(window).IsEnabled, "incomplete pixel text cannot become a valid numeric layout");
                 CloseAndWait(window);
@@ -89,6 +91,8 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 PumpUntil(() => restored.BusinessChanged && !restored.IsLoaded && restored.AppliedSnapshot != null);
                 check(restored.Result?.Outcome == MutationOutcome.Confirmed && restored.AppliedSnapshot.Projection.Columns[0].Width == 144,
                     "reviewed layout restore uses the actual native save and shared projection");
+                check(restored.AppliedSnapshot.Layout.Widths.Count == 2 && !restored.AppliedSnapshot.Layout.Widths.ContainsKey("name"),
+                    "Saving a layout keeps an unconfigured column in content-fit mode.");
                 check(fixture.Session.ListDraftsAsync(owner, CancellationToken.None).GetAwaiter().GetResult().Count == 0, "confirmed personal layout cleans only its own original draft");
             }
             using (var fixture = new ColumnServiceContractChecks.Fixture())

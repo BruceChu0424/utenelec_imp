@@ -22,7 +22,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private readonly GoodsReadService service;
         private readonly TextBox search = new TextBox { MinWidth = 230, VerticalContentAlignment = VerticalAlignment.Center };
         private readonly TreeView categories = new TreeView { BorderThickness = new Thickness(0) };
-        private readonly DataGrid rows = new DataGrid { IsReadOnly = true, AutoGenerateColumns = false,
+        private readonly DataGrid rows = new UtenDataGrid { IsReadOnly = true, AutoGenerateColumns = false,
             CanUserAddRows = false, CanUserDeleteRows = false, SelectionMode = DataGridSelectionMode.Single,
             HeadersVisibility = DataGridHeadersVisibility.Column, EnableRowVirtualization = true,
             EnableColumnVirtualization = true, GridLinesVisibility = DataGridGridLinesVisibility.Horizontal };
@@ -161,24 +161,24 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private void ConfigureColumns()
         {
             rows.Columns.Clear();
-            AddColumn("编码", "Code", 120); AddColumn("名称", "Name", 190); AddColumn("规格", "Spec", 140);
-            AddColumn("颜色", "ColorName", 90); AddColumn("单位", "UnitName", 70);
-            AddColumn("来源", "SourceType", 90); AddColumn("库存数量", "StockQuantity", 100);
+            AddColumn("编码", "Code"); AddColumn("名称", "Name"); AddColumn("规格", "Spec");
+            AddColumn("颜色", "ColorName"); AddColumn("单位", "UnitName");
+            AddColumn("来源", "SourceType"); AddColumn("库存数量", "StockQuantity");
             if (CanViewPrice)
             {
-                AddColumn("售价", "Price", 100);
+                AddColumn("售价", "Price");
                 var currencyStyle = new Style(typeof(TextBlock));
                 currencyStyle.Setters.Add(new Setter(TextBlock.FontWeightProperty, FontWeights.SemiBold));
                 currencyStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty,
                     new Binding("CurrencyColorRole") { Converter = new CurrencyBrushConverter() }));
                 rows.Columns.Add(new DataGridTextColumn { Header = "币种", Binding = new Binding("Currency"),
-                    Width = 100, ElementStyle = currencyStyle, CanUserSort = false, IsReadOnly = true });
+                    ElementStyle = currencyStyle, CanUserSort = false, IsReadOnly = true });
             }
-            if (Allowed("goods:discount:view")) AddColumn("折扣倍率", "Discount", 100);
+            if (Allowed("goods:discount:view")) AddColumn("折扣倍率", "Discount");
         }
-        private void AddColumn(string header, string binding, double width)
+        private void AddColumn(string header, string binding)
         {
-            rows.Columns.Add(new DataGridTextColumn { Header = header, Binding = new Binding(binding), Width = width,
+            rows.Columns.Add(new DataGridTextColumn { Header = header, Binding = new Binding(binding),
                 CanUserSort = false, IsReadOnly = true });
         }
         private bool Allowed(string permission)

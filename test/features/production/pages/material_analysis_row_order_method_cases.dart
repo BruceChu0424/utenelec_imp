@@ -291,6 +291,7 @@ void materialRowOrderMethodCases() {
         },
       );
       final method = _orderMethod('m-2');
+      final initialWidth = tester.getSize(method).width;
       await selectMaterialOrderMethod(tester, method, 'AVAILABLE_THEN_ORDER');
       final text = find.descendant(
         of: method,
@@ -301,11 +302,14 @@ void materialRowOrderMethodCases() {
         find.descendant(of: text, matching: find.byType(RichText)),
       );
       expect(paragraph.didExceedMaxLines, isFalse, reason: '$width宽视口不能截断下单方式');
-      expect(
-        tester.getSize(method).width,
-        closeTo(240, 0.5),
-        reason: '264列宽扣左右内边距与0.5网格线后保持固定宽度',
+      final methodWidth = tester.getSize(method).width;
+      expect(methodWidth, greaterThan(initialWidth));
+      expect(methodWidth, lessThan(240));
+      final arrow = find.descendant(
+        of: method,
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
       );
+      expect(tester.getSize(arrow).width, UtenDropdownField.flatArrowWidth);
       expect(tester.getSize(method).height, 28);
       if (width == 390) {
         final rect = tester.getRect(method);
@@ -335,7 +339,7 @@ void materialRowOrderMethodCases() {
     }
   });
 
-  testWidgets('逐行下单方式：固定尺寸紧随数量列且三路线文案明确', (tester) async {
+  testWidgets('逐行下单方式：按内容适配并紧随数量列，三路线文案明确', (tester) async {
     await _pump(
       tester,
       size: const Size(1440, 1000),
@@ -356,10 +360,6 @@ void materialRowOrderMethodCases() {
     );
     final keys = table.columns.map((column) => column.key).toList();
     expect(keys.indexOf('orderMethod'), keys.indexOf('orderQty') + 1);
-    expect(
-      table.columns.singleWhere((column) => column.key == 'orderMethod').width,
-      264,
-    );
     for (final entry in {'m-2': '采购', 'm-6': '车间', 'm-p': '委外'}.entries) {
       final field = _orderMethod(entry.key);
       final dropdown = tester.widget<UtenDropdownField>(field);
@@ -370,11 +370,7 @@ void materialRowOrderMethodCases() {
         '仅使用可用数量',
         '使用可用数量，不足再${entry.value}',
       ]);
-      expect(
-        tester.getSize(field).width,
-        closeTo(240, 0.5),
-        reason: '264列宽扣左右内边距与0.5网格线后保持固定宽度',
-      );
+      expect(tester.getSize(field).width, lessThan(240));
       expect(tester.getSize(field).height, 28);
     }
     expect(

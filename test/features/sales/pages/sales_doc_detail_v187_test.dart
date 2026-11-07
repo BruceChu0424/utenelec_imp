@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -55,6 +56,15 @@ void main() {
           expect(find.byType(BusinessAttachmentSection), findsNothing);
           if (attachmentGrant && expected) {
             expect(reference, findsOneWidget);
+            final detailsGrid = find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<SalesDocItem> &&
+                  widget.tableKey == 'sales.shipment.items',
+            );
+            expect(
+              tester.getTopLeft(reference).dy,
+              lessThan(tester.getTopLeft(detailsGrid).dy),
+            );
             await tester.ensureVisible(reference);
             await tester.pumpAndSettle();
             await tester.tap(find.text('资料与附件'));

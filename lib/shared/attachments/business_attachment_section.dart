@@ -36,6 +36,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
     required this.canView,
     required this.canManage,
     this.title = '相关文件',
+    this.info,
     this.categories,
     this.readOnlyNote,
     this.rowActionBuilder,
@@ -72,6 +73,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
        ownerType = '',
        ownerId = '',
        canView = true,
+       info = null,
        rowActionBuilder = null,
        showBusyOverlay = false,
        // 新建暂存区没有「只读」形态：无权管理时整区不渲染。
@@ -82,6 +84,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
   final bool canView;
   final bool canManage;
   final String title;
+  final String? info;
   final List<String>? categories;
   final PendingAttachmentController? draftController;
 
@@ -116,7 +119,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
   /// Upload/edit consumers retain their existing progress presentation.
   final bool showBusyOverlay;
 
-  /// [canManage]=false 时在区块下方给一句「为什么改不了 / 去哪儿改」。
+  /// 只读文件旁的提示图标解释查看和修改入口。
   /// 详情（审核）页统一用 [kReviewReadOnlyAttachmentNote]。
   final String? readOnlyNote;
 
@@ -195,40 +198,40 @@ class BusinessAttachmentSection extends ConsumerWidget {
               const SizedBox(height: UtenSpacing.s8),
               const Text('文件暂时无法读取，请重试；如果权限已调整，请刷新单据。'),
               TextButton.icon(
-                onPressed: () => ref.invalidate(provider),
+                onPressed: () async {
+                  if (ref.read(provider).isLoading) return;
+                  try {
+                    if (showBusyOverlay) {
+                      final pending = ref.refresh(provider.future);
+                      await pending;
+                    } else {
+                      await UtenBusyOverlay.run(
+                        context,
+                        title: '正在读取相关文件',
+                        action: () => ref.refresh(provider.future),
+                      );
+                    }
+                  } catch (_) {
+                    // The current provider reports the error in this card.
+                  }
+                },
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('重新读取'),
               ),
             ],
           ),
-          data: (files) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AttachmentSection(
-                ownerType: ownerType,
-                ownerId: ownerId,
-                attachments: files,
-                ownerCanUpload: canManage,
-                ownerCanDelete: canManage,
-                title: title,
-                emptyHint: canManage ? _emptyHint : '这张单据还没有相关文件。',
-                categories: categories,
-                onChanged: () => ref.invalidate(provider),
-                rowActionBuilder: rowActionBuilder,
-              ),
-              // 只读说明只在「确实有文件可看」时给：空单据下这句话只是噪音。
-              if (!canManage && readOnlyNote != null && files.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: Text(
-                    readOnlyNote!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-            ],
+          data: (files) => AttachmentSection(
+            ownerType: ownerType,
+            ownerId: ownerId,
+            attachments: files,
+            ownerCanUpload: canManage,
+            ownerCanDelete: canManage,
+            title: title,
+            info: !canManage && files.isNotEmpty ? readOnlyNote ?? info : info,
+            emptyHint: canManage ? _emptyHint : '这张单据还没有相关文件。',
+            categories: categories,
+            onChanged: () => ref.invalidate(provider),
+            rowActionBuilder: rowActionBuilder,
           ),
         ),
       ),

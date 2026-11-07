@@ -142,7 +142,7 @@ void main() {
 
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets(
-      'narrow large text total uses the $brightness error color and shared wrapping',
+      'narrow large text total uses white bold numbers and shared wrapping in $brightness',
       (tester) async {
         tester.view.physicalSize = const Size(375, 900);
         tester.view.devicePixelRatio = 1;
@@ -158,11 +158,10 @@ void main() {
         );
         final value = _bar(tester).entries.single.value;
         final amount = tester.widget<Text>(find.text(value));
-        final theme = Theme.of(
-          tester.element(find.byType(UtenTotalsSummaryBar)),
-        );
-        expect(amount.style!.color, theme.colorScheme.error);
-        expect(amount.style!.fontWeight, FontWeight.w600);
+        expect(amount.style!.color, Colors.white);
+        expect(amount.style!.fontWeight, FontWeight.w800);
+        final label = tester.widget<Text>(find.text('合计金额(人民币): '));
+        expect(amount.style!.fontSize, greaterThan(label.style!.fontSize!));
         expect(
           tester.widget<Wrap>(find.byType(Wrap).first).alignment,
           WrapAlignment.end,

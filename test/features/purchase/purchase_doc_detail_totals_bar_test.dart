@@ -1,7 +1,7 @@
 import '../../support/native_detail_reader_overrides.dart';
 // 采购单据详情页明细合计条（UtenTotalsSummaryBar）契约：
 //  - 明细表下渲染合计条；「合计数量」按 unitId 分组，不同单位绝不相加；
-//  - 「合计金额(币种)」标红，币种取表头币种名（不硬编码 ¥）；
+//  - 「合计金额(币种)」使用汇总白字，币种取表头币种名（不硬编码 ¥）；
 //  - 无商务金额权限 / 服务端脱敏时只剩数量项，金额项不渲染。
 //  - 人员字段（采购员等）显示服务端随单解析的「姓名(工号)」，不渲染裸 UUID
 //    （2026-10-17 口径；此前采购员直接显示 employees.id）。
@@ -161,7 +161,7 @@ void main() {
     expect(amount.value(row), '100.000000000000000001 美元');
   });
 
-  testWidgets('订货详情：合计数量按单位分组、合计金额标红且币种取表头', (tester) async {
+  testWidgets('订货详情：合计数量按单位分组、合计金额用白字且币种取表头', (tester) async {
     await _pumpDetail(
       tester,
       permissions: const {Perm.purchaseOrderPriceView},
@@ -178,7 +178,6 @@ void main() {
 
     expect(find.text('合计金额(美元): '), findsOneWidget);
     expect(find.textContaining('¥'), findsNothing);
-    final theme = Theme.of(tester.element(find.byType(UtenTotalsSummaryBar)));
     expect(
       tester
           .widget<Text>(
@@ -189,7 +188,7 @@ void main() {
           )
           .style
           ?.color,
-      theme.colorScheme.error,
+      Colors.white,
     );
     expect(find.text('合计(本币): '), findsOneWidget);
   });

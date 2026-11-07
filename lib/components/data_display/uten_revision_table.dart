@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../shared/search/retain_hierarchy_filter_context.dart';
+import '../inputs/uten_table_cell_auto_width.dart';
+import 'uten_status_cell_color.dart';
 
 enum UtenRevisionKind { unchanged, removed, added }
 
@@ -178,6 +180,15 @@ class UtenRevisionTable<T> extends StatelessWidget {
           ),
         );
     final interactiveKeys = cellBuilders?.keys.toSet() ?? const <String>{};
+    bool changed(UtenRevisionRow<T> row, String key) =>
+        row.kind == UtenRevisionKind.added && row.changedKeys.contains(key);
+    bool emphasized(UtenRevisionRow<T> row, String key) =>
+        changed(row, key) || highlightColumnKeys.contains(key);
+    String renderedValue(MasterColumnDef<T> column, UtenRevisionRow<T> row) {
+      final value = column.value(row.value) ?? '';
+      return value.isEmpty && changed(row, column.key) ? '未填写' : value;
+    }
+
     return MasterDataTableView<UtenRevisionRow<T>>(
       headerFilterScopeDescription: '命中修改前后任一侧时保留整组对照；汇总以当前单据为准。',
       filterContextRows: (all, matched) => retainMatchedPreorderGroups(
@@ -270,7 +281,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
           MasterColumnDef(
             key: column.key,
             label: column.label,
-            width: column.width,
+            width: interactiveKeys.contains(column.key) ? column.width : 0,
             type: column.type,
             filterFromRows: column.filterFromRows,
             columnSearchEnabled: column.columnSearchEnabled,
@@ -287,29 +298,43 @@ class UtenRevisionTable<T> extends StatelessWidget {
                 ? null
                 : (row) => column.exactValueOf!(row.value),
             value: (row) => column.value(row.value),
+            measureValueOf: interactiveKeys.contains(column.key)
+                ? null
+                : (row) {
+                    final value = renderedValue(column, row);
+                    return value.isEmpty
+                        ? ''
+                        : '${emphasized(row, column.key)}:$value';
+                  },
+            measureWidthOf: interactiveKeys.contains(column.key)
+                ? null
+                : (context, row, scaler) => utenTableCellTextWidth(
+                    renderedValue(column, row),
+                    style:
+                        (Theme.of(context).textTheme.bodyMedium ??
+                                const TextStyle())
+                            .copyWith(
+                              fontWeight: emphasized(row, column.key)
+                                  ? FontWeight.w800
+                                  : utenIsStatusOrProgressColumn(
+                                      column.key,
+                                      column.label,
+                                    )
+                                  ? FontWeight.w700
+                                  : null,
+                            ),
+                    textScaler: scaler,
+                  ),
+            measureWidthScope: 'revision-text',
             cellBuilder:
                 cellBuilders != null && cellBuilders!.containsKey(column.key)
                 ? (cellContext, row) =>
                       cellBuilders![column.key]!(cellContext, row)
                 : (cellContext, row) => Text(
-                    row.kind == UtenRevisionKind.added &&
-                            row.changedKeys.contains(column.key) &&
-                            (column.value(row.value)?.isEmpty ?? true)
-                        ? '未填写'
-                        : column.value(row.value) ?? '',
+                    renderedValue(column, row),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style:
-                        row.kind == UtenRevisionKind.added &&
-                            row.changedKeys.contains(column.key)
-                        ? TextStyle(
-                            color: utenRevisionForeground(
-                              cellContext,
-                              UtenRevisionKind.removed,
-                            ),
-                            fontWeight: FontWeight.w800,
-                          )
-                        : highlightColumnKeys.contains(column.key)
+                    style: emphasized(row, column.key)
                         ? TextStyle(
                             color: utenRevisionForeground(
                               cellContext,

@@ -1999,6 +1999,11 @@ class _ProductionFqcInspectionPageState
                             ),
                             const SizedBox(height: UtenSpacing.s12),
                           ],
+                          if (_buildAttachments(inspection)
+                              case final attachments?) ...[
+                            attachments,
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
                           if (_canDecide &&
                               _row != null &&
                               !_row!.completed) ...[
@@ -2006,7 +2011,6 @@ class _ProductionFqcInspectionPageState
                             const SizedBox(height: UtenSpacing.s12),
                           ] else
                             ..._readOnlyHint(theme, inspection),
-                          _buildAttachments(theme, inspection),
                           const SizedBox(height: UtenSpacing.s24),
                         ],
                       ),
@@ -2351,45 +2355,26 @@ class _ProductionFqcInspectionPageState
     const SizedBox(height: UtenSpacing.s12),
   ];
 
-  Widget _buildAttachments(
-    ThemeData theme,
-    ProductionFqcInspection inspection,
-  ) {
+  Widget? _buildAttachments(ProductionFqcInspection inspection) {
     final permissions = ref.watch(currentPermissionsProvider);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            BusinessAttachmentSection(
-              ownerType: 'PRODUCTION_QUALITY_INSPECTION',
-              ownerId: inspection.id,
-              canView: permissions.contains(
-                Perm.productionQualityInspectionView,
-              ),
-              canManage:
-                  _canDecide &&
-                  permissions.contains(
-                    Perm.productionQualityInspectionApprove,
-                  ) &&
-                  inspection.status == 'PENDING' &&
-                  inspection.passedQty == 0 &&
-                  inspection.failedQty == 0 &&
-                  inspection.remainingQty > 0,
-              title: '检验图片和文件',
-              categories: const ['检验照片', '检验报告', '其他证据'],
-            ),
-            if (permissions.contains(Perm.attachmentView)) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '请在登记检验结果前添加证据。登记结果后（包括部分检验），文件保留供查阅，不能替换或删除。',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ],
-        ),
-      ),
+    if (!permissions.contains(Perm.productionQualityInspectionView) ||
+        !permissions.contains(Perm.attachmentView)) {
+      return null;
+    }
+    return BusinessAttachmentSection(
+      ownerType: 'PRODUCTION_QUALITY_INSPECTION',
+      ownerId: inspection.id,
+      canView: true,
+      canManage:
+          _canDecide &&
+          permissions.contains(Perm.productionQualityInspectionApprove) &&
+          inspection.status == 'PENDING' &&
+          inspection.passedQty == 0 &&
+          inspection.failedQty == 0 &&
+          inspection.remainingQty > 0,
+      title: '检验图片和文件',
+      info: '请在登记检验结果前添加证据。登记结果后（包括部分检验），文件保留供查阅，不能替换或删除。',
+      categories: const ['检验照片', '检验报告', '其他证据'],
     );
   }
 }

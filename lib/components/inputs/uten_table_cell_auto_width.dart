@@ -4,6 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../../core/performance/ui_work_budget.dart';
 
+/// Fit the header and body independently. Each width is the measured content
+/// and its own chrome accounts for padding, icons and control insets.
+double utenTableColumnContentWidth({
+  required double headerWidth,
+  required double bodyWidth,
+  required double minimumWidth,
+  required double maximumWidth,
+  double headerChromeWidth = 0,
+  double bodyChromeWidth = 0,
+  double buffer = 0,
+}) =>
+    (math.max(headerWidth + headerChromeWidth, bodyWidth + bodyChromeWidth) +
+            buffer)
+        .ceilToDouble()
+        .clamp(minimumWidth, math.max(minimumWidth, maximumWidth));
+
 /// Single-line text geometry shared by a table and its rich display columns.
 /// Callers add only their actual control chrome; values and precision stay intact.
 double utenTableCellTextWidth(

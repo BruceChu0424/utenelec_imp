@@ -672,6 +672,18 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           emphasized: column.emphasized,
           info: column.info,
           headerFilterAction: column.headerFilterAction,
+          headerTrailingWidthOf: (context) =>
+              (column.headerTrailingWidthOf?.call(context) ?? 0) +
+              (_requiredColumn(column.key, fields)
+                  ? utenTableCellTextWidth(
+                      '*',
+                      style:
+                          Theme.of(context).textTheme.labelLarge ??
+                          const TextStyle(),
+                      textScaler: MediaQuery.textScalerOf(context),
+                      textDirection: Directionality.of(context),
+                    )
+                  : 0),
           headerTrailingBuilder: _requiredColumn(column.key, fields)
               ? (context) => Row(
                   mainAxisSize: MainAxisSize.min,

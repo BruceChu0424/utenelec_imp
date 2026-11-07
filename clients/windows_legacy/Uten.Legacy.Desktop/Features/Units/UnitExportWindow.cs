@@ -50,7 +50,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly IWorkbookSavePicker picker;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private readonly DispatcherTimer poll = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        private readonly DataGrid jobs = new DataGrid { Height = 220, SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false };
+        private readonly DataGrid jobs = new UtenDataGrid { Height = 220, SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false };
         private readonly PasswordBox password = new PasswordBox { MaxLength = 128 };
         private readonly Button create, refresh, reconcile, confirmOriginal, cancelJob, download, cancelDownload;
         private readonly TextBlock saved = new TextBlock { TextWrapping = TextWrapping.Wrap };
@@ -82,10 +82,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             selectedScope.Checked += (sender, args) => ChangeScope(true);
             scopeChoices.Children.Add(allScope); scopeChoices.Children.Add(selectedScope); Body.Children.Add(scopeChoices);
             jobs.Margin = new Thickness(0, Space("S12"), 0, Space("S12"));
-            jobs.Columns.Add(new DataGridTextColumn { Header = "创建时间", Binding = new Binding("Created"), Width = 190 });
-            jobs.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("State"), Width = 100 });
-            jobs.Columns.Add(new DataGridTextColumn { Header = "行数", Binding = new Binding("Rows"), Width = 80 });
-            jobs.Columns.Add(new DataGridTextColumn { Header = "任务编号", Binding = new Binding("Identity"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            jobs.Columns.Add(new DataGridTextColumn { Header = "创建时间", Binding = new Binding("Created") });
+            jobs.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("State") });
+            jobs.Columns.Add(new DataGridTextColumn { Header = "行数", Binding = new Binding("Rows") });
+            jobs.Columns.Add(new DataGridTextColumn { Header = "任务编号", Binding = new Binding("Identity") });
             Body.Children.Add(UtenSurfaces.Wrap(jobs, UtenSurfaceRole.Table));
             Body.Children.Add(new TextBlock { Text = "Excel 打开密码（可选，仅在下载时使用）", Margin = new Thickness(0, Space("S12"), 0, Space("S6")) });
             Body.Children.Add(password); saved.Margin = new Thickness(0, Space("S12"), 0, 0); Body.Children.Add(saved);

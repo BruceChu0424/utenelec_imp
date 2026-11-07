@@ -71,6 +71,9 @@ class UtenDropdownItem {
 
 /// outlined 单选下拉，Overlay 弹层样式对齐货品资料筛选下拉。
 class UtenDropdownField extends StatefulWidget {
+  /// Trailing arrow allocation of a flat table dropdown.
+  static const double flatArrowWidth = 16;
+
   const UtenDropdownField({
     super.key,
     this.label,
@@ -707,7 +710,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                       ? FloatingLabelBehavior.never
                       : null,
                   suffixIconConstraints: compact
-                      ? const BoxConstraints(minWidth: 20, minHeight: 20)
+                      ? const BoxConstraints(
+                          minWidth:
+                              UtenEditableGridCellSpec.dropdownChevronWidth,
+                          minHeight:
+                              UtenEditableGridCellSpec.dropdownChevronWidth,
+                        )
                       : null,
                   label: widget.label == null
                       ? null
@@ -740,7 +748,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                       : UtenFieldMessage.error(widget.errorMessage!),
                   suffixIcon: const Icon(
                     Icons.arrow_drop_down_rounded,
-                    size: 20,
+                    size: UtenEditableGridCellSpec.dropdownChevronWidth,
                   ),
                 ),
                 info: widget.info,
@@ -828,7 +836,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
               ),
               Icon(
                 Icons.arrow_drop_down_rounded,
-                size: 16,
+                size: UtenDropdownField.flatArrowWidth,
                 color: widget.enabled
                     ? theme.colorScheme.onSurfaceVariant
                     : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),

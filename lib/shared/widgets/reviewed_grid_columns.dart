@@ -17,6 +17,7 @@ List<EditableGridColumn<T>> reviewedGridColumns<T extends EditableGridRow>({
       key: column.key,
       label: column.label,
       width: column.width,
+      minimumWidthOf: column.minimumWidthOf,
       numeric: column.numeric,
       defaultVisible: column.defaultVisible,
       exportDefinition: column.exportDefinition,

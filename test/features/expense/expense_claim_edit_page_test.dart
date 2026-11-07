@@ -177,13 +177,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('差旅费'), findsOneWidget);
-    // 合计大写（银发〔1997〕393 号口径）。
+    // The on-screen footer uses numeric amounts. Print formatting has its own tests.
     await tester.drag(
       find.byKey(const Key('expense-edit-scroll')),
       const Offset(0, -350),
     );
     await tester.pumpAndSettle();
-    expect(find.textContaining('人民币叁佰元整'), findsOneWidget);
+    expect(find.text('报销合计: '), findsOneWidget);
+    expect(find.text('300.00 元'), findsOneWidget);
+    expect(find.textContaining('人民币叁佰元整'), findsNothing);
   });
 
   testWidgets('save posts PUT with edited title and items', (tester) async {

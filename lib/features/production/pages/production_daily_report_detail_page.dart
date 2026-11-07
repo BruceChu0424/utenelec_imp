@@ -1316,13 +1316,6 @@ class _ProductionDailyReportDetailPageState
                               widget.id,
                             ),
                             _headerCard(theme),
-                            if (_materialReviewSection()
-                                case final material?) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              material,
-                            ],
-                            // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
-                            // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
                             const SizedBox(height: UtenSpacing.s12),
                             BusinessAttachmentSection(
                               ownerType: 'PRODUCTION_DAILY_REPORT',
@@ -1337,6 +1330,11 @@ class _ProductionDailyReportDetailPageState
                               title: '附件（报工照片/检验记录）',
                               categories: const ['报工照片', '检验记录', '签认单', '其他'],
                             ),
+                            if (_materialReviewSection()
+                                case final material?) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              material,
+                            ],
                           ],
                         ),
                       ),

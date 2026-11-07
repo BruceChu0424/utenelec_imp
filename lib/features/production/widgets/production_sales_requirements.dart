@@ -86,13 +86,41 @@ class ProductionSalesRequirementsButton extends StatelessWidget {
   });
   final List<ProductionSalesRequirement> requirements;
 
+  static String measurementLabel(
+    List<ProductionSalesRequirement> requirements,
+    String actionLabel,
+  ) => requirements.any((row) => row.hasContent) ? actionLabel : '';
+
+  static double measureWidth(
+    BuildContext context,
+    List<ProductionSalesRequirement> requirements,
+    TextScaler scaler,
+  ) {
+    final label = measurementLabel(
+      requirements,
+      AppLocalizations.of(context).productionSalesRequirements,
+    );
+    return label.isEmpty
+        ? 0
+        : UtenTableCellAction.contentWidthOf(
+            context,
+            label,
+            textScaler: scaler,
+            hasIcon: true,
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!requirements.any((row) => row.hasContent)) return const Text('—');
     final l10n = AppLocalizations.of(context);
+    final label = measurementLabel(
+      requirements,
+      l10n.productionSalesRequirements,
+    );
+    if (label.isEmpty) return const Text('—');
     return UtenTableCellAction(
       icon: Icons.assignment_outlined,
-      label: l10n.productionSalesRequirements,
+      label: label,
       onPressed: () => showDialog<void>(
         context: context,
         builder: (context) => UtenAlertDialog(

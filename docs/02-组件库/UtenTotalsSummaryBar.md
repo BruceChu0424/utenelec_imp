@@ -5,24 +5,22 @@
 
 ## 一、用途
 
-单据审核/详情/编辑页「明细 → 汇总」的全站统一口径：与表体同宽、右对齐的「标签: 值」序列；
-关键金额（本单金额/合计金额）传 `danger: true` 标红，与审核详情页头部「本单金额」同色规则。
-财务订货审批审核详情、销售订单财务审核详情、采购/委外/销售/钱流单据详情与编辑页全部已接；
-各页原先手写的「合计 ¥…」文本已按同一组件替换（币种取表头币种名，**不硬编码 ¥**）。
+单据详情、审核、新建和编辑表格共用右对齐的圆角红底汇总。红底随内容适配宽度，标签采用 18px 白色粗体，数值采用 22px 白色粗体。关键金额传 `danger: true` 加强字重。财务表格与报销汇总以数字展示金额，币种沿用各单据口径。
 
 ## 二、API
 
 | 参数 | 说明 |
 |---|---|
 | `entries: List<UtenTotalEntry>` | 按展示顺序的合计项；`UtenTotalEntry(label, value, {danger})` |
-| `density` | 紧凑模式（嵌入卡片内字号略小） |
+| `density` | 兼容已有调用，字号由共享样式统一确定 |
 | `showDivider` | 顶部分隔线（默认 false）；嵌在已自带上边框的容器（编辑页底部操作条）传 false，避免双线 |
-| `compact` | 收紧纵向内边距（默认 false）。表格表尾槽位（`MasterDataTableView.summaryBar`）传 true：下方紧接翻页条（自带 8px 内边距），且 375px × 1.5 倍字号下这 8px 会把表体挤到溢出 |
+| `compact` | 收紧纵向外间距（默认 false），可用于表尾槽位 |
+| `trailing` | 可选的并排操作，位于红底汇总之外 |
 
 规则：
 - 值为空串或「—」（金额格式化的空值占位）的项**整体隐藏**，不会出现「折合人民币: —」；
 - 每一项用 `Wrap` 保留标签和值，窄屏也允许项内换行；标签用半角冒号；
-  长币种名和长金额保持完整文字，不使用 `FittedBox` 抵消字号放大；空值隐藏、分单位和分币种汇总以及关键金额标红规则保持；
+  长币种名和长金额按当前字号完整换行，空值按项隐藏，数量和金额分别按单位和币种汇总；
 - **合计数量不得跨单位相加**：调用方按单位分组（`groupMeasurementTotals` / `measurementTotalsText`），多单位显示「12 个 · 3 箱」。
 
 ## 三、用法
@@ -92,7 +90,7 @@ UtenTotalsSummaryBar(
 | 销售单据编辑 `sales_doc_edit_page.dart` | `UtenEditableGrid.footer`（`sales-edit-totals`） | 数量 / 总金额(币种)🔴 | 免费客户出货显示「不收费（货款 0）」 |
 | 钱流单据编辑 `finance_doc_edit_page.dart` | 底部操作条（`finance-edit-totals`） | 合计金额(币种)🔴 | 费用/收入/转账/分摊；收付款另有专用汇总卡 |
 
-🔴 = `danger: true`（error 色 + 加粗）。
+🔴 = `danger: true`（关键金额采用更重的字重）。
 
 ### 报表 / 列表表格表尾（2026-09-11，服务端合计）
 
@@ -139,7 +137,7 @@ UtenTotalsSummaryBar(
 
 ## 七、回归
 
-- [`finance_review_totals_bar_test.dart`](../../test/features/finance/finance_review_totals_bar_test.dart)（两张审核详情：分组不相加、标红、销售无本币项、缺单位落桶）
+- [`finance_review_totals_bar_test.dart`](../../test/features/finance/finance_review_totals_bar_test.dart)（两张审核详情：分组不相加、共用白字、销售无本币项、缺单位落桶）
 - [`purchase_doc_detail_totals_bar_test.dart`](../../test/features/purchase/purchase_doc_detail_totals_bar_test.dart)
 - [`sales_doc_detail_totals_bar_test.dart`](../../test/features/sales/pages/sales_doc_detail_totals_bar_test.dart)
 - [`sales_doc_edit_v187_test.dart`](../../test/features/sales/pages/sales_doc_edit_v187_test.dart)（编辑页表尾合计条无 `¥`）

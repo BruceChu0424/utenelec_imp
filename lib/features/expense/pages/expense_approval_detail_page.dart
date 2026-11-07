@@ -40,7 +40,6 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/auth/sensitive_write.dart';
@@ -459,27 +458,6 @@ class _ExpenseApprovalDetailPageState
                       const SizedBox(height: UtenSpacing.s16),
                       ExpenseApprovalProgress(claim: claim),
                       const SizedBox(height: UtenSpacing.s20),
-                      ExpenseSubmissionChangeSummary(claim: claim),
-                      _itemsSection(theme, claim),
-                      const SizedBox(height: UtenSpacing.s20),
-                      _sectionTitle(theme, '发票登记'),
-                      const SizedBox(height: UtenSpacing.s8),
-                      ExpenseInvoiceSection(
-                        claim: claim,
-                        editable: false,
-                        canVerify: ref
-                            .watch(expenseActionEligibilityProvider)
-                            .canVerifyInvoice(claim),
-                        stickyHeaderPinned: _invoicePinned,
-                      ),
-                      const SizedBox(height: UtenSpacing.s20),
-                      if (claim.applicationKind != null) ...[
-                        FinanceNativeOriginalSection(
-                          ownerType: 'EXPENSE_CLAIM',
-                          ownerId: claim.id,
-                        ),
-                        const SizedBox(height: UtenSpacing.s20),
-                      ],
                       _sectionTitle(
                         theme,
                         '附件 / 发票影像 (${claim.attachments.length})',
@@ -511,6 +489,27 @@ class _ExpenseApprovalDetailPageState
                           ownerCanDelete: _canPay,
                           onChanged: () =>
                               ref.invalidate(expenseDetailProvider(claim.id)),
+                        ),
+                        const SizedBox(height: UtenSpacing.s20),
+                      ],
+                      ExpenseSubmissionChangeSummary(claim: claim),
+                      _itemsSection(theme, claim),
+                      const SizedBox(height: UtenSpacing.s20),
+                      _sectionTitle(theme, '发票登记'),
+                      const SizedBox(height: UtenSpacing.s8),
+                      ExpenseInvoiceSection(
+                        claim: claim,
+                        editable: false,
+                        canVerify: ref
+                            .watch(expenseActionEligibilityProvider)
+                            .canVerifyInvoice(claim),
+                        stickyHeaderPinned: _invoicePinned,
+                      ),
+                      const SizedBox(height: UtenSpacing.s20),
+                      if (claim.applicationKind != null) ...[
+                        FinanceNativeOriginalSection(
+                          ownerType: 'EXPENSE_CLAIM',
+                          ownerId: claim.id,
                         ),
                         const SizedBox(height: UtenSpacing.s20),
                       ],
@@ -924,7 +923,6 @@ class _Hero extends StatelessWidget {
         ),
       ],
       details: [
-        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmountText)),
         if (claim.remark != null && claim.remark!.trim().isNotEmpty)
           UtenSummaryField(label: '备注', value: claim.remark),
       ],

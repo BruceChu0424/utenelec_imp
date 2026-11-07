@@ -39,7 +39,7 @@ import '../inputs/uten_field_hint_icon.dart';
 // - Excel 交互：表头全左对齐；每个单元格右竖线分隔；按住列右边界竖线左右拖拽调宽窄
 //   （复用 MasterDataTableView 的 grip 范式，下限 48 防拖没）。
 // - 列宽随内容自动加宽：实际输入/选择控件自动报告可见内容所需宽度；textOf
-//   （+listenableOf）另提供初始估宽及未挂载行的补充。只增不减、封顶480；
+//   （+listenableOf）提供默认内容宽度及未挂载行的补充。默认适配完成后只增不减、封顶480；
 //   用户手动拖拽后锁宽，双击列边界重置恢复自动。
 // - "添加行"(加1) + "添加多行"(对话框填 N，1-50)；行尾删除。
 // - 表头体系与 MasterDataTableView 共用同一份实现（2026-09-05 收敛，见
@@ -183,10 +183,13 @@ class EditableGridColumn<T extends EditableGridRow> {
 
   final String key;
   final String label;
+
+  /// Initial width and fallback for cells without measurable display values.
   final double width;
 
   /// Presentation floor for a control or identity column; business values are unaffected.
   final double Function(BuildContext context)? minimumWidthOf;
+
   final Widget Function(BuildContext context, T row) cellBuilder;
 
   /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 读页面时给本列底色/状态值附上含义。
@@ -234,8 +237,8 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// `(r) => r.remark.text`、货品列 `(r) => r.goods?.name ?? ''`、只读主档列
   /// `(r) => colorEntries[r.colorId] ?? ''`。
   ///
-  /// 提供后该列参与自动加宽：初始行/整批换行时量前若干行最宽文本撑列（只增不减，
-  /// 封顶 480，超出后单元内滚动）；同时提供 [listenableOf] 则敲字/换值实时加宽。
+  /// 初始行量前若干行的文本以适配默认宽度。后续新增行、换值和输入只加宽，封顶
+  /// 480；同时提供 [listenableOf] 则敲字/换值实时加宽。
   /// 用户手动拖过的列锁定用户宽度，不再自动加宽。null 时仍由公共单元格层
   /// 按实际输入控件自动加宽；纯文本列则保留既有列宽。
   final String Function(T row)? textOf;
@@ -1894,15 +1897,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// （如切 docType）时随列宽一起重置。与 MasterDataTableView._manualResized
   /// 同款语义（那边按下标存、这边列有 key 按 key 存）。
   final Set<String> _manualResized = {};
+  final Set<String> _fittedDefaultWidthKeys = {};
 
   /// 自动加宽待重算标记：初始行 / 行集变化时置 true，build 里量完清掉。
   bool _autoGrowDirty = true;
   int _autoGrowGeneration = 0;
 
   /// 上次量宽的字号系数与文字样式快照：敲字监听回调里拿不到 BuildContext，
-  /// 复用 build 时捕获的（bodyLarge + tabular 数字，覆盖 TextField/Text 两种单元）。
+  /// 复用 build 时捕获的（bodyMedium + tabular 数字，覆盖 TextField/Text 两种单元）。
   TextScaler? _lastScaler;
-  List<double>? _lastChromeWidths;
+  List<({double header, double body})>? _lastChromeWidths;
   TextStyle _measureStyle = const TextStyle();
 
   /// 已挂自动加宽监听的行快照：按对象身份比对，行集变化才拆线重挂
@@ -1922,10 +1926,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// MasterDataTableView 自动适配同款取舍；更靠后的行靠"边输入边加宽"兜底）。
   static const int _autoGrowSampleSize = 200;
 
-  /// 单元横向装饰总宽：格 Padding(8×2) + 输入框 contentPadding(10×2，
-  /// UtenEditableGridCellSpec.contentPadding)。只读 Text 单元实为 32（8+8×2），
-  /// 按 36 量略偏宽——只增不减语义下偏宽无害。
-  static const double _cellChromeX = 36;
+  static const double _cellChromeX = UtenSpacing.s8 * 2;
 
   // —— 表头最小可读宽（2026-09-11）——
   // 此前只按单元内容量宽，表头标签从不参与：声明宽偏窄的列（如「缺口 ⓘ」）
@@ -1933,14 +1934,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 表头左右内边距（与 [_headerLabel] / GridHeaderFilterCell 同值）。
   static const double _headerPadX = UtenSpacing.s12;
 
-  /// 表头筛选下拉箭头（18）+ 与标签的间距。
-  static const double _headerArrowWidth = 22;
-
-  /// 表头 ⓘ 说明图标命中区（UtenFieldHintIcon dense = 28）。
-  static const double _headerInfoIconWidth = 28;
+  static const double _pinIconWidth = 18;
 
   /// 表头量宽富余（防贴边省略号）。
-  static const double _headerBuffer = 6;
+  static const double _fitBuffer = 2;
 
   /// 加宽富余：一次加到位后预留几个字符的余量，避免每敲一个字都触发布局。
   static const double _autoGrowBuffer = 24;
@@ -2070,10 +2067,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
         _pinnedColumnKeys.retainAll(newKeys);
         _pinOriginIndex.removeWhere((key, _) => !newKeys.contains(key));
         _manualResized.retainAll(newKeys);
+        _fittedDefaultWidthKeys.retainAll(newKeys);
         _columnFilters.removeWhere((key, _) => !newKeys.contains(key));
         _columnSearches.removeWhere((key, _) => !newKeys.contains(key));
       } else {
         _manualResized.clear();
+        _fittedDefaultWidthKeys.clear();
         _columnOrder = _columns.map((column) => column.key).toList();
         _hiddenColumnKeys.clear();
         _pinnedColumnKeys.clear();
@@ -2109,6 +2108,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       widget.controller.addListener(_publishProjection);
       _visibleRowsAll = null; // 可见行缓存按旧控制器修订号记的，作废。
       _autoGrowDirty = true;
+      _fittedDefaultWidthKeys.clear();
+      _pendingInputWidths.clear();
       _rewireAutoGrowListeners(force: true);
       // A new document/data source must not inherit the previous controller's
       // live query merely because both use the same table preference key.
@@ -2415,6 +2416,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _pinnedColumnKeys
         ..clear()
         ..addAll(r.pinned);
+      _autoGrowDirty = true;
     });
     _notifyColumnSettingsChanged();
   }
@@ -2514,6 +2516,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     // 撤掉已失效的表头筛选值(本监听只挂在 rowsListenable 上，勾选不会进来)。
     if (_rewireAutoGrowListeners()) {
       _autoGrowDirty = true;
+      _pendingInputWidths.clear();
       _pruneColumnFilters();
     }
     _scheduleStickyUpdate();
@@ -2557,14 +2560,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
     BuildContext context,
     EditableGridColumn<T> column,
   ) {
-    final requested = column.minimumWidthOf?.call(context) ?? _minColWidth;
-    return requested < _minColWidth ? _minColWidth : requested;
+    return utenTableColumnContentWidth(
+      headerWidth: 0,
+      bodyWidth: column.minimumWidthOf?.call(context) ?? 0,
+      headerChromeWidth: _headerChromeWidth(context, column),
+      minimumWidth: _minColWidth,
+      maximumWidth: double.infinity,
+    );
   }
 
   void _resetColumnWidth(int index) {
     setState(() {
       final column = _columns[index];
       _manualResized.remove(column.key);
+      _fittedDefaultWidthKeys.remove(column.key);
       final minimum = _minimumColumnWidth(context, column);
       _widths[index] = column.width < minimum ? minimum : column.width;
       _autoGrowDirty = true;
@@ -2654,11 +2663,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final scaler = _lastScaler;
     final textOf = col.textOf;
     if (scaler == null || textOf == null) return; // 首帧未量过，由 build 兜底。
+    // Keep the current editing allocation if a value changes during cold fit.
+    _fittedDefaultWidthKeys.add(col.key);
     final next = _growOnly(
       _widths[index],
-      _measureText(textOf(row), _measureStyle, scaler) +
-          _cellChromeX +
-          (col.chromeWidthOf?.call(context) ?? col.chromeWidth) +
+      _measureBodyWidth(
+            textOf(row),
+            col,
+            scaler,
+            _bodyChromeWidth(context, col),
+          ) +
           _autoGrowBuffer,
     );
     if (next > _widths[index]) {
@@ -2676,6 +2690,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (needed <= _widths[index] + 0.5 || _widths[index] >= _maxColWidth) {
       return;
     }
+    _fittedDefaultWidthKeys.add(key);
     final pending = _pendingInputWidths[key] ?? 0;
     if (needed > pending) _pendingInputWidths[key] = needed;
     if (_inputWidthGrowthScheduled) return;
@@ -2703,8 +2718,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  /// 首帧只确定表头/控件地板；原有前 [_autoGrowSampleSize] 行样本在真实布局帧之间
-  /// 逐格量宽。普通更新只增不减，字号变化回列定义基准重算，手动列宽始终优先。
+  /// 首帧保留控件的初始安全宽度，前 [_autoGrowSampleSize] 行在布局帧之间逐格量宽。
+  /// 一次发布默认适配结果。普通更新只增不减，手动列宽始终优先。
   void _ensureAutoFit(BuildContext context) => _profileEditableGridWork(
     'grid.auto-fit',
     () => _ensureAutoFitBody(context),
@@ -2718,34 +2733,47 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final scaler = MediaQuery.textScalerOf(context);
     final chromeWidths = [
       for (final column in _columns)
-        column.chromeWidthOf?.call(context) ?? column.chromeWidth,
+        (
+          header: _headerChromeWidth(context, column),
+          body: _bodyChromeWidth(context, column),
+        ),
     ];
     final chromeChanged =
         _lastChromeWidths != null &&
         !listEquals(_lastChromeWidths, chromeWidths);
+    final measureStyle =
+        (Theme.of(context).textTheme.bodyMedium ?? const TextStyle()).copyWith(
+          fontFeatures: const [FontFeature.tabularFigures()],
+        );
     final scaleChanged =
-        (_lastScaler != null && _lastScaler != scaler) || chromeChanged;
+        _lastScaler != null &&
+        (_lastScaler != scaler ||
+            _measureStyle != measureStyle ||
+            chromeChanged);
     if (_lastScaler == null || scaleChanged) _autoGrowDirty = true;
+    if (scaleChanged) {
+      _fittedDefaultWidthKeys.clear();
+      _pendingInputWidths.clear();
+    }
     _lastScaler = scaler;
     _lastChromeWidths = chromeWidths;
-    // TextField 单元默认 bodyLarge（16px），只读 Text 单元为 bodyMedium（14px）；
-    // 统一按 bodyLarge + tabular 数字量（偏宽不超过一档，只增不减下无害）。
-    _measureStyle = (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
-        .copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+    // Both table inputs and display text use the bodyMedium geometry.
+    _measureStyle = measureStyle;
     if (!_autoGrowDirty) return;
     _autoGrowDirty = false;
     final columns = _columns;
     final headerStyle = UtenTableHeader.textStyle(Theme.of(context));
+    final fittedHeaders = <double>[];
     for (var i = 0; i < columns.length && i < _widths.length; i++) {
       final col = columns[i];
+      final header = _headerNeededWidth(context, col, headerStyle, scaler);
+      fittedHeaders.add(header);
       if (_manualResized.contains(col.key)) continue;
-      var w = scaleChanged
+      final w = scaleChanged
           ? col.width.clamp(_minColWidth, double.infinity)
           : _widths[i];
       // 表头地板：所有列都参与（不限于提供 textOf 的列）——标签本身必须显示全。
-      w = _growOnly(w, _headerNeededWidth(col, headerStyle, scaler));
-      final minimum = _minimumColumnWidth(context, col);
-      _widths[i] = w < minimum ? minimum : w;
+      _widths[i] = w < header ? header : w;
     }
     _scheduleAutoFitData(
       generation: ++_autoGrowGeneration,
@@ -2753,7 +2781,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
       revision: widget.controller.rowsRevision,
       columns: columns,
       rows: widget.controller.rows,
-      chromeWidths: chromeWidths,
+      fittedWidths: fittedHeaders,
+      bodyChromeWidths: [for (final width in chromeWidths) width.body],
       scaler: scaler,
       style: _measureStyle,
     );
@@ -2765,7 +2794,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     required int revision,
     required List<EditableGridColumn<T>> columns,
     required List<T> rows,
-    required List<double> chromeWidths,
+    required List<double> fittedWidths,
+    required List<double> bodyChromeWidths,
     required TextScaler scaler,
     required TextStyle style,
   }) {
@@ -2775,7 +2805,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (sample == 0) return;
     // Keep time-sliced shaping off the presented geometry. Updating widths on
     // every slice relayouts every mounted row while the user is scrolling.
-    final fittedWidths = List<double>.of(_widths);
+    final columnsWithText = <String>{};
     var columnIndex = 0;
     var rowIndex = 0;
     void measure(Duration _) {
@@ -2801,15 +2831,21 @@ class _UtenEditableGridState<T extends EditableGridRow>
           rowIndex = 0;
           continue;
         }
-        final next = _growOnly(
-          fittedWidths[columnIndex],
-          _measureText(read(rows[rowIndex]), style, scaler) +
-              _cellChromeX +
-              chromeWidths[columnIndex] +
-              _autoGrowBuffer,
-        );
+        final text = read(rows[rowIndex]);
         cells++;
-        fittedWidths[columnIndex] = next;
+        if (text.isNotEmpty) {
+          columnsWithText.add(column.key);
+          final needed = _measureBodyWidth(
+            text,
+            column,
+            scaler,
+            bodyChromeWidths[columnIndex],
+          );
+          fittedWidths[columnIndex] = _growOnly(
+            fittedWidths[columnIndex],
+            needed,
+          );
+        }
         if (++rowIndex >= sample) {
           columnIndex++;
           rowIndex = 0;
@@ -2823,11 +2859,17 @@ class _UtenEditableGridState<T extends EditableGridRow>
       }
       var changed = false;
       for (var i = 0; i < columns.length && i < _widths.length; i++) {
-        // A manual resize or live input may arrive during sampling. Respect
-        // those current widths instead of overwriting them with old geometry.
-        if (_manualResized.contains(columns[i].key)) continue;
-        final next = _growOnly(_widths[i], fittedWidths[i]);
-        if (next <= _widths[i]) continue;
+        final column = columns[i];
+        if (_manualResized.contains(column.key)) continue;
+        // A live input may arrive during sampling. An editor with no loaded
+        // values retains its initial geometry until it has a measurable value.
+        final fitDefault =
+            columnsWithText.contains(column.key) &&
+            _fittedDefaultWidthKeys.add(column.key);
+        final next = fitDefault
+            ? fittedWidths[i]
+            : _growOnly(_widths[i], fittedWidths[i]);
+        if ((next - _widths[i]).abs() <= 0.5) continue;
         _widths[i] = next;
         changed = true;
       }
@@ -2840,41 +2882,66 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 该列表头完整显示所需宽度：标签（含必填星号）+ 左右内边距 + 下拉箭头 / ⓘ 图标。
   double _headerNeededWidth(
+    BuildContext context,
     EditableGridColumn<T> col,
     TextStyle headerStyle,
     TextScaler scaler,
   ) {
     final label = col.required ? '${col.label} *' : col.label;
-    return _measureText(label, headerStyle, scaler) +
-        _headerPadX * 2 +
-        (col.filterValueOf != null || col.supportsKeywordSearch
-            ? _headerArrowWidth
-            : 0) +
-        (col.headerInfo != null ? _headerInfoIconWidth : 0) +
-        _headerBuffer;
+    return utenTableColumnContentWidth(
+      headerWidth: utenTableCellTextWidth(
+        label,
+        style: headerStyle,
+        textScaler: scaler,
+      ),
+      bodyWidth: 0,
+      headerChromeWidth: _headerChromeWidth(context, col),
+      minimumWidth: _minimumColumnWidth(context, col),
+      maximumWidth: _maxColWidth,
+      buffer: _fitBuffer,
+    );
   }
+
+  double _headerChromeWidth(BuildContext context, EditableGridColumn<T> col) =>
+      _headerPadX * 2 +
+      (col.filterValueOf != null || col.supportsKeywordSearch
+          ? GridHeaderFilterCell.arrowWidth
+          : 0) +
+      (col.headerInfo != null ? UtenColumnHintIcon.widthOf(context) : 0) +
+      (_pinnedColumnKeys.contains(col.key)
+          ? _pinIconWidth + UtenSpacing.s4
+          : 0);
+
+  double _bodyChromeWidth(BuildContext context, EditableGridColumn<T> col) =>
+      _cellChromeX +
+      UtenEditableGridCellSpec.contentPadding.horizontal +
+      (col.chromeWidthOf?.call(context) ?? col.chromeWidth);
+
+  double _measureBodyWidth(
+    String text,
+    EditableGridColumn<T> col,
+    TextScaler scaler,
+    double chromeWidth,
+  ) => utenTableColumnContentWidth(
+    headerWidth: 0,
+    bodyWidth: utenTableCellTextWidth(
+      text,
+      style: utenIsStatusOrProgressColumn(col.key, col.label)
+          ? _measureStyle.copyWith(fontWeight: FontWeight.w700)
+          : _measureStyle,
+      textScaler: scaler,
+    ),
+    bodyChromeWidth: chromeWidth,
+    minimumWidth: _minColWidth,
+    maximumWidth: _maxColWidth,
+    buffer: _fitBuffer,
+  );
 
   /// 只增不减：needed 不超 current 时不变；超过则封顶 [_maxColWidth]。
   /// current ≥ 上限时保持（列定义初始宽本身超限时尊重初始宽，不自动收窄）。
   double _growOnly(double current, double needed) {
     if (needed <= current || current >= _maxColWidth) return current;
     return needed.clamp(current, _maxColWidth);
-  }
-
-  /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
-  /// [textScaler] 必须传当前生效的字号系数——单元文字渲染会自动吃该缩放，
-  /// 量宽不带则按 1.0 量偏窄（与 MasterDataTableView._measureText 同款实现）。
-  double _measureText(String text, TextStyle style, TextScaler textScaler) {
-    if (text.isEmpty) return 0;
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    final w = tp.width;
-    tp.dispose();
-    return w;
   }
 
   double get _totalWidth =>
@@ -4184,7 +4251,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final Widget? pinLeading = _pinnedColumnKeys.contains(column.key)
         ? Icon(
             Icons.push_pin_rounded,
-            size: 18,
+            size: _pinIconWidth,
             color: theme.colorScheme.primary,
           )
         : null;

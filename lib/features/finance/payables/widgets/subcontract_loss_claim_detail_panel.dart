@@ -329,6 +329,20 @@ class _SubcontractLossClaimDetailPanelState
         children: [
           _summaryCard(theme, detail.summary),
           const SizedBox(height: UtenSpacing.s12),
+          BusinessAttachmentSection(
+            ownerType: 'SUBCONTRACT_LOSS_CASE',
+            ownerId: detail.summary.id,
+            title: '损耗和责任凭证',
+            canView:
+                !detail.summary.priceMasked &&
+                permissions.contains(Perm.subcontractLossClaimView) &&
+                permissions.contains(Perm.financeViewAll),
+            canManage:
+                permissions.contains(Perm.subcontractLossClaimReview) &&
+                const {'OPEN', 'DISPUTED'}.contains(detail.summary.status),
+            categories: const ['损耗说明', '责任确认', '图片', '其他'],
+          ),
+          const SizedBox(height: UtenSpacing.s12),
           Semantics(
             container: true,
             label: '超耗材料明细',
@@ -343,20 +357,6 @@ class _SubcontractLossClaimDetailPanelState
           else
             for (final resolution in detail.resolutions)
               _resolutionCard(theme, detail, resolution),
-          const SizedBox(height: UtenSpacing.s12),
-          BusinessAttachmentSection(
-            ownerType: 'SUBCONTRACT_LOSS_CASE',
-            ownerId: detail.summary.id,
-            title: '损耗和责任凭证',
-            canView:
-                !detail.summary.priceMasked &&
-                permissions.contains(Perm.subcontractLossClaimView) &&
-                permissions.contains(Perm.financeViewAll),
-            canManage:
-                permissions.contains(Perm.subcontractLossClaimReview) &&
-                const {'OPEN', 'DISPUTED'}.contains(detail.summary.status),
-            categories: const ['损耗说明', '责任确认', '图片', '其他'],
-          ),
           const SizedBox(height: UtenSpacing.s12),
           if (detail.events.isEmpty)
             const Text('暂无事件')

@@ -3725,6 +3725,20 @@ class _ProductionWorkshopTasksPageState
             ].whereType<String>().join(' / '),
           )
           .join('\n'),
+      measureValueOf: (task) =>
+          ProductionSalesRequirementsButton.measurementLabel(
+            task.salesRequirements,
+            AppLocalizations.of(context).productionSalesRequirements,
+          ),
+      measureWidthOf: (context, task, scaler) =>
+          ProductionSalesRequirementsButton.measureWidth(
+            context,
+            task.salesRequirements,
+            scaler,
+          ),
+      measureWidthScope: AppLocalizations.of(
+        context,
+      ).productionSalesRequirements,
       cellBuilder: (_, task) => ProductionSalesRequirementsButton(
         requirements: task.salesRequirements,
       ),

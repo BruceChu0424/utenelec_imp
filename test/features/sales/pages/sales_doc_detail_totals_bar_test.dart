@@ -1,7 +1,7 @@
 import '../../../support/native_detail_reader_overrides.dart';
 // 销售单据详情页明细合计条（UtenTotalsSummaryBar）契约：
 //  - 明细表下渲染合计条；「合计数量」按 unitId 分组，不同单位绝不相加；
-//  - 「合计金额(币种)」标红，币种取表头币种名（不硬编码 ¥）；
+//  - 「合计金额(币种)」使用汇总白字，币种取表头币种名（不硬编码 ¥）；
 //  - priceMasked（无 sales_order:price:view）时金额项整体不渲染，只剩数量；
 //  - 表宽超出卡片时合计条钉在表格**可视框**右缘(横滚到哪都看得见，不必拖到最右)。
 import 'package:dio/dio.dart';
@@ -18,7 +18,7 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
-  testWidgets('订货详情：合计数量按单位分组、合计金额标红且币种取表头', (tester) async {
+  testWidgets('订货详情：合计数量按单位分组、合计金额用白字且币种取表头', (tester) async {
     await _pumpDetail(tester, priceMasked: false);
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
@@ -29,7 +29,6 @@ void main() {
 
     expect(find.text('合计金额(美元): '), findsOneWidget);
     expect(find.textContaining('¥'), findsNothing);
-    final theme = Theme.of(tester.element(find.byType(UtenTotalsSummaryBar)));
     expect(
       tester
           .widget<Text>(
@@ -40,7 +39,7 @@ void main() {
           )
           .style
           ?.color,
-      theme.colorScheme.error,
+      Colors.white,
     );
     // 订单阶段本币事实按设计不落，合计条不出本币项。
     expect(find.text('合计(本币): '), findsNothing);

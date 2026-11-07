@@ -4,6 +4,7 @@ import '../../../support/native_detail_reader_overrides.dart';
 // 「进度追踪」按钮的替代口径——「展开查看全部进度」/「收起」；草稿单不渲染。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -113,6 +114,14 @@ void main() {
     // 折叠卡在明细表上方，默认只露标题 + 最新状态胶囊。
     expect(find.text('履约进度'), findsOneWidget);
     expect(find.textContaining('最新：财务审核通过'), findsOneWidget);
+    final progress = find.ancestor(
+      of: find.text('履约进度'),
+      matching: find.byType(UtenCollapsibleSection),
+    );
+    expect(
+      tester.getCenter(find.textContaining('最新：财务审核通过')).dx,
+      closeTo(tester.getCenter(progress).dx, 1),
+    );
     expect(find.text('展开查看全部进度'), findsOneWidget);
     // AnimatedCrossFade 折叠子树仍在树中但被裁剪，不可点。
     expect(find.text('销售下单').hitTestable(), findsNothing);

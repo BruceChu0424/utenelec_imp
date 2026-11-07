@@ -312,6 +312,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
         key: column.key,
         label: column.label,
         width: column.width,
+        minimumWidthOf: column.minimumWidthOf,
         numeric: column.numeric,
         defaultVisible: column.defaultVisible,
         exportDefinition: column.exportDefinition,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../features/basic_data/widgets/master_data_table_view.dart';
+import '../inputs/uten_table_cell_auto_width.dart';
 import 'uten_revision_table.dart';
 
 /// One business line occupies one display row. Only actual deletions strike
@@ -57,7 +58,7 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
           MasterColumnDef(
             key: column.key,
             label: column.label,
-            width: column.width,
+            width: 0,
             type: column.type,
             sortable: column.sortable,
             filterFromRows: column.filterFromRows,
@@ -90,7 +91,7 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
             MasterColumnDef(
               key: '_new_${column.key}',
               label: '新${column.label}',
-              width: column.width,
+              width: 0,
               type: column.type,
               sortable: column.sortable,
               filterFromRows: column.filterFromRows,
@@ -116,6 +117,17 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
                   row.after != null && row.changedKeys.contains(column.key)
                   ? column.value(row.after as T) ?? '未填写'
                   : '',
+              measureWidthOf: (context, row, scaler) => utenTableCellTextWidth(
+                row.after != null && row.changedKeys.contains(column.key)
+                    ? column.value(row.after as T) ?? '未填写'
+                    : '',
+                style:
+                    (Theme.of(context).textTheme.bodyMedium ??
+                            const TextStyle())
+                        .copyWith(fontWeight: FontWeight.w700),
+                textScaler: scaler,
+              ),
+              measureWidthScope: 'cell-revision-new-value',
               cellBuilder: (context, row) => Text(
                 row.after != null && row.changedKeys.contains(column.key)
                     ? column.value(row.after as T) ?? '未填写'

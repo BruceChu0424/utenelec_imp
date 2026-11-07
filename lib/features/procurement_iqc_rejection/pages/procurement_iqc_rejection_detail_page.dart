@@ -222,23 +222,6 @@ class _ProcurementIqcRejectionDetailPageState
             final facts = <Widget>[
               _buildSummary(detail.caseItem),
               const SizedBox(height: UtenSpacing.s12),
-              _buildReturnAndCredit(detail.caseItem),
-              if (detail.resolution != null) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _buildResolution(detail),
-              ],
-              if (detail.creditDocuments.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _buildCreditDocuments(detail),
-              ],
-              if (detail.replacementAllocations.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _buildAllocations(detail),
-              ],
-            ];
-            final workflow = <Widget>[
-              _buildActions(detail.caseItem),
-              const SizedBox(height: UtenSpacing.s12),
               BusinessAttachmentSection(
                 ownerType: 'PROCUREMENT_IQC_REJECTION',
                 ownerId: detail.caseItem.id,
@@ -256,6 +239,23 @@ class _ProcurementIqcRejectionDetailPageState
                 ),
                 categories: const ['退回凭证', '供应商确认', '其他'],
               ),
+              const SizedBox(height: UtenSpacing.s12),
+              _buildReturnAndCredit(detail.caseItem),
+              if (detail.resolution != null) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildResolution(detail),
+              ],
+              if (detail.creditDocuments.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildCreditDocuments(detail),
+              ],
+              if (detail.replacementAllocations.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                _buildAllocations(detail),
+              ],
+            ];
+            final workflow = <Widget>[
+              _buildActions(detail.caseItem),
               const SizedBox(height: UtenSpacing.s12),
               _buildEvents(detail),
             ];

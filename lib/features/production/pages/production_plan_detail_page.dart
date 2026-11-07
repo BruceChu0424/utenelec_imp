@@ -1259,6 +1259,11 @@ class _ProductionPlanDetailPageState
                             const LegacyContinuationNotice(
                               description: '继续办理前，请先核对剩余生产量、历史完工入库及真实来源。',
                             ),
+                          if (_attachmentReference()
+                              case final attachments?) ...[
+                            const SizedBox(height: UtenSpacing.s12),
+                            attachments,
+                          ],
                           if (_detail!.items.any(
                             (item) => item.salesRequirements.isNotEmpty,
                           )) ...[
@@ -1318,7 +1323,35 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  /// 参考区（信息层级第三层）：附件、溯源、执行单据入口、本批次关联单据、自制子计划。
+  Widget? _attachmentReference() {
+    final permissions = ref.watch(currentPermissionsProvider);
+    if (!permissions.contains(Perm.productionPlanView) ||
+        !permissions.contains(Perm.attachmentView)) {
+      return null;
+    }
+    final detail = _detail!;
+    final count = ref
+        .watch(
+          businessAttachmentsProvider((type: 'PRODUCTION_PLAN', id: detail.id)),
+        )
+        .value
+        ?.length;
+    return _referenceSection(
+      title: '附件',
+      count: count,
+      child: BusinessAttachmentSection(
+        ownerType: 'PRODUCTION_PLAN',
+        ownerId: detail.id,
+        canView: true,
+        canManage: false,
+        readOnlyNote: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+        title: '附件（图纸/样品图/排产确认）',
+        categories: const ['图纸', '样品图', '确认件', '其他'],
+      ),
+    );
+  }
+
+  /// 参考区（信息层级第三层）：溯源、执行单据入口、本批次关联单据、自制子计划。
   ///
   /// 这几块的共同点是「需要时才翻的旁证」——它们不推进本单的下一步动作，却因为
   /// 过去和执行子计划平铺在同一条流里，把真正要办事的地方顶到了屏幕之外。统一收进
@@ -1330,24 +1363,6 @@ class _ProductionPlanDetailPageState
   ///   卡片，卡片不渲染时会多出一段空白），这里统一由 sections 列表拼装，杜绝错位。
   List<Widget> _referenceSections(ThemeData theme) {
     final detail = _detail!;
-    final permissions = ref.watch(currentPermissionsProvider);
-    // 附件折叠头的出现条件与 BusinessAttachmentSection 自身完全一致（单据查看权 +
-    // 附件查看权）：无权的人不该看见一个永远空的「附件」标题，标题上的计数也因此
-    // 不会额外触发一次附件列表请求（复用同一个 provider 实例）。
-    final attachmentsVisible =
-        permissions.contains(Perm.productionPlanView) &&
-        permissions.contains(Perm.attachmentView);
-    final attachmentCount = attachmentsVisible
-        ? ref
-              .watch(
-                businessAttachmentsProvider((
-                  type: 'PRODUCTION_PLAN',
-                  id: detail.id,
-                )),
-              )
-              .value
-              ?.length
-        : null;
     final traceCount =
         detail.traceSalesOrders.length +
         detail.traceMaterialDraws.length +
@@ -1358,22 +1373,6 @@ class _ProductionPlanDetailPageState
 
     final sections = <Widget>[
       if (_subplanError != null) _subplanErrorCard(theme),
-      if (attachmentsVisible)
-        _referenceSection(
-          title: '附件',
-          count: attachmentCount,
-          // 详情=审核页，一律只读，增删回编辑页做（2026-09-11 用户要求，全站同改）。
-          child: BusinessAttachmentSection(
-            ownerType: 'PRODUCTION_PLAN',
-            ownerId: detail.id,
-            canView: permissions.contains(Perm.productionPlanView),
-            canManage: false,
-            readOnlyNote:
-                BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
-            title: '附件（图纸/样品图/排产确认）',
-            categories: const ['图纸', '样品图', '确认件', '其他'],
-          ),
-        ),
       if (_hasTraceability)
         _referenceSection(
           title: '溯源单据',

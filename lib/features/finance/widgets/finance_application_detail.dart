@@ -349,6 +349,30 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                     Text(
                       '出差地点：${payload['destination']}\n出差时间：${payload['travelStart']} 至 ${payload['travelEnd']}\n出差事由：${payload['travelPurpose']}',
                     ),
+                  BusinessAttachmentSection(
+                    ownerType: 'FINANCE_APPLICATION',
+                    ownerId: widget.applicationId,
+                    canView: true,
+                    canManage:
+                        actions['edit'] == true || actions['submit'] == true,
+                    title: '申请依据',
+                  ),
+                  if (expense.isNotEmpty)
+                    BusinessAttachmentSection(
+                      ownerType: 'EXPENSE_CLAIM',
+                      ownerId: data['source_id'].toString(),
+                      canView: true,
+                      canManage: false,
+                      title: '原报销凭证',
+                    ),
+                  if (actions['execute'] == true && !zeroPayroll)
+                    BusinessAttachmentSection(
+                      ownerType: 'FINANCE_APPLICATION_PAYMENT_PROOF',
+                      ownerId: widget.applicationId,
+                      canView: true,
+                      canManage: true,
+                      title: '实际银行付款回单/现金签收凭据',
+                    ),
                   if (financeApplicationRows(payload['lines']).isNotEmpty)
                     UtenCollapsibleSection(
                       title: '原申请款项',
@@ -377,14 +401,6 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                       financeApplicationColumn('decided_at', '办理时间', 210),
                       financeApplicationColumn('reason', '处理意见', 280),
                     ]),
-                  ),
-                  BusinessAttachmentSection(
-                    ownerType: 'FINANCE_APPLICATION',
-                    ownerId: widget.applicationId,
-                    canView: true,
-                    canManage:
-                        actions['edit'] == true || actions['submit'] == true,
-                    title: '申请依据',
                   ),
                   if (expense.isNotEmpty) ...[
                     UtenCollapsibleSection(
@@ -422,13 +438,6 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                         invoiceId: invoice.id,
                       ),
                     ),
-                    BusinessAttachmentSection(
-                      ownerType: 'EXPENSE_CLAIM',
-                      ownerId: data['source_id'].toString(),
-                      canView: true,
-                      canManage: false,
-                      title: '原报销凭证',
-                    ),
                   ],
                   if (isPayroll) ...[
                     UtenCollapsibleSection(
@@ -452,14 +461,6 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                         child: const Text('核对工资会计准备'),
                       ),
                   ],
-                  if (actions['execute'] == true && !zeroPayroll)
-                    BusinessAttachmentSection(
-                      ownerType: 'FINANCE_APPLICATION_PAYMENT_PROOF',
-                      ownerId: widget.applicationId,
-                      canView: true,
-                      canManage: true,
-                      title: '实际银行付款回单/现金签收凭据',
-                    ),
                   if (financeApplicationRows(data['executions']).isNotEmpty)
                     UtenCollapsibleSection(
                       title: '原执行及财务确认回执',

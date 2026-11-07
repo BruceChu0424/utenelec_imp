@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
@@ -87,6 +89,8 @@ void main() {
               ownerId: id,
               canView: canView,
               canManage: canManage,
+              readOnlyNote:
+                  BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
             ),
           ),
         ),
@@ -123,6 +127,14 @@ void main() {
         find.byType(AttachmentSection),
       );
       expect(section.ownerCanDelete, isFalse);
+      const note = BusinessAttachmentSection.kReviewReadOnlyAttachmentNote;
+      expect(find.text(note), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == note,
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -162,8 +174,10 @@ void main() {
       expect(find.textContaining('private server detail'), findsNothing);
       await tester.tap(find.text('重新读取'));
       await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
       files.pending[2].complete([]);
       await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
       expectAttachmentUploadAvailable(tester, available: true);
     },
   );

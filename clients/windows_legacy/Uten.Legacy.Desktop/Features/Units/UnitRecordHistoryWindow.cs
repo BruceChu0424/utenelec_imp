@@ -90,12 +90,12 @@ namespace Uten.Legacy.Desktop.Features.Units
             count.Margin = new Thickness(Space("S12"), 0, 0, 0); tableActions.Children.Add(count);
             Body.Children.Add(tableActions);
 
-            revisions.Columns.Add(Column("编号", "RecordCode", 105)); revisions.Columns.Add(Column("单位", "RecordName", 130));
-            revisions.Columns.Add(Column("动作", "ActionLabel", 90)); revisions.Columns.Add(Column("范围", "SourceLabel", 100));
-            revisions.Columns.Add(Column("操作人", "ActorName", 115)); revisions.Columns.Add(Column("时间", "RecordedAtDisplay", 165));
-            revisions.Columns.Add(Column("摘要", "Summary", 1, true)); Body.Children.Add(UtenSurfaces.Wrap(revisions, UtenSurfaceRole.Table));
+            revisions.Columns.Add(Column("编号", "RecordCode")); revisions.Columns.Add(Column("单位", "RecordName"));
+            revisions.Columns.Add(Column("动作", "ActionLabel")); revisions.Columns.Add(Column("范围", "SourceLabel"));
+            revisions.Columns.Add(Column("操作人", "ActorName")); revisions.Columns.Add(Column("时间", "RecordedAtDisplay"));
+            revisions.Columns.Add(Column("摘要", "Summary")); Body.Children.Add(UtenSurfaces.Wrap(revisions, UtenSurfaceRole.Table));
             detail.Margin = new Thickness(0, Space("S8"), 0, Space("S12")); Body.Children.Add(detail);
-            changes.Columns.Add(Column("字段", "Label", 170)); changes.Columns.Add(DiffColumn("修改前", "BeforeValue"));
+            changes.Columns.Add(Column("字段", "Label")); changes.Columns.Add(DiffColumn("修改前", "BeforeValue"));
             changes.Columns.Add(DiffColumn("修改后", "AfterValue")); Body.Children.Add(UtenSurfaces.Wrap(changes, UtenSurfaceRole.Table));
             before = ActionButton("恢复到修改前", () => { _ = RestoreAsync(true); });
             after = ActionButton("恢复到修改后", () => { _ = RestoreAsync(false); }, primary: true);
@@ -115,7 +115,8 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private static DataGridTextColumn DiffColumn(string label, string property)
         {
-            var column = Column(label, property, 1, true);
+            var column = Column(label, property);
+            column.Width = new DataGridLength(1, DataGridLengthUnitType.Star);
             var text = new Style(typeof(TextBlock)); text.Setters.Add(new Setter(TextBlock.TextWrappingProperty, TextWrapping.Wrap));
             column.ElementStyle = text;
             return column;

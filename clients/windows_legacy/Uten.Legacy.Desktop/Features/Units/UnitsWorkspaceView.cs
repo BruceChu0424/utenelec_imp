@@ -27,7 +27,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly UnitService service;
         private readonly UnitColumnsService columnsService;
         private readonly TextBox search = new TextBox { MinWidth = 220, ToolTip = "按单位编号或名称搜索" };
-        private readonly DataGrid rows = new DataGrid { SelectionMode = DataGridSelectionMode.Extended, SelectionUnit = DataGridSelectionUnit.FullRow,
+        private readonly DataGrid rows = new UtenDataGrid { SelectionMode = DataGridSelectionMode.Extended, SelectionUnit = DataGridSelectionUnit.FullRow,
             EnableRowVirtualization = true, EnableColumnVirtualization = true };
         private readonly TextBlock status = new TextBlock { TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         private readonly Button create = new Button { Content = "新增单位" };
@@ -161,9 +161,9 @@ namespace Uten.Legacy.Desktop.Features.Units
             Grid.SetRow(filterBar, 1); layout.Children.Add(filterBar);
             status.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
             status.Margin = new Thickness(0, 0, 0, Space("S8")); Grid.SetRow(status, 2); layout.Children.Add(status);
-            rows.Columns.Add(Column("编号", nameof(UnitRecord.Code), 120));
-            rows.Columns.Add(Column("单位名称", nameof(UnitRecord.Name), 1, stretch: true));
-            rows.Columns.Add(Column("状态", nameof(UnitRecord.Status), 72));
+            rows.Columns.Add(Column("编号", nameof(UnitRecord.Code)));
+            rows.Columns.Add(Column("单位名称", nameof(UnitRecord.Name)));
+            rows.Columns.Add(Column("状态", nameof(UnitRecord.Status)));
             rows.CanUserDeleteRows = false;
             rows.ContextMenu = new ContextMenu();
             rows.CanUserSortColumns = false; // The owning service orders by code; no invented page-only sorting.
@@ -177,10 +177,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             Grid.SetRow(footer, 4); layout.Children.Add(footer);
             Content = layout;
         }
-        private static DataGridTextColumn Column(string title, string property, double width, bool stretch = false)
+        private static DataGridTextColumn Column(string title, string property)
         {
             return new DataGridTextColumn { Header = title, Binding = new Binding(property) { TargetNullValue = "—" },
-                Width = new DataGridLength(width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel), IsReadOnly = true };
+                IsReadOnly = true };
         }
         private IList<FilterChoice> Choices(string field, string title, UnitFacetSet facets)
         {
@@ -538,8 +538,8 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private void ResetBaseColumns()
         {
-            rows.Columns.Clear(); rows.Columns.Add(Column("编号", nameof(UnitRecord.Code), 120));
-            rows.Columns.Add(Column("单位名称", nameof(UnitRecord.Name), 220)); rows.Columns.Add(Column("状态", nameof(UnitRecord.Status), 72));
+            rows.Columns.Clear(); rows.Columns.Add(Column("编号", nameof(UnitRecord.Code)));
+            rows.Columns.Add(Column("单位名称", nameof(UnitRecord.Name))); rows.Columns.Add(Column("状态", nameof(UnitRecord.Status)));
             rows.FrozenColumnCount = 3;
         }
         private void ApplyColumns()
@@ -551,7 +551,9 @@ namespace Uten.Legacy.Desktop.Features.Units
                 var binding = column.Key == "code" ? new Binding(nameof(UnitRecord.Code)) : column.Key == "name" ? new Binding(nameof(UnitRecord.Name))
                     : column.Key == "status" ? new Binding(nameof(UnitRecord.Status)) : new Binding(".") { Converter = new PlatformValueConverter(this, column.Key) };
                 binding.TargetNullValue = "—";
-                var shown = new DataGridTextColumn { Header = column.Label, Width = column.Width, Binding = binding, IsReadOnly = true, SortMemberPath = column.Key };
+                var shown = new DataGridTextColumn { Header = column.Label, Binding = binding, IsReadOnly = true, SortMemberPath = column.Key };
+                double width;
+                if (columnSnapshot.Layout.Widths.TryGetValue(column.Key, out width)) shown.Width = width;
                 var text = new Style(typeof(TextBlock));
                 text.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, column.Type == "number" ? TextAlignment.Right : TextAlignment.Left));
                 shown.ElementStyle = text; rows.Columns.Add(shown);

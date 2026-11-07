@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/shared/measurement/measurement_totals.dart';
 
 /// 明细表格下方的合计条——全站「明细 → 汇总（币种/总金额…）」统一口径。
 ///
-/// 视觉与 MasterDataTableView 同语言：与表体同宽、右对齐的「标签 值」序列；
-/// 关键金额传 [danger] 标红（与审核详情「本单金额」同色规则）。
+/// 在表格可见范围的右侧显示圆角红底汇总；宽度由汇总项决定。
 /// 值为 null/空字符串时该项整体隐藏（避免出现「合计 —」）。
 class UtenTotalsSummaryBar extends StatelessWidget {
   const UtenTotalsSummaryBar({
@@ -16,6 +16,7 @@ class UtenTotalsSummaryBar extends StatelessWidget {
     this.showDivider = false,
     this.compact = false,
     this.rowCount,
+    this.trailing,
   });
 
   /// 合计项（按展示顺序）。
@@ -43,6 +44,9 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   /// 数的是调用方表格里的行（编辑网格含未选货品的空行）。
   final int? rowCount;
 
+  /// Optional adjacent action, outside the amount background.
+  final Widget? trailing;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -55,7 +59,31 @@ class UtenTotalsSummaryBar extends StatelessWidget {
         (e) => e.value.trim().isNotEmpty && e.value.trim() != '—',
       ),
     ];
-    if (visible.isEmpty) return const SizedBox.shrink();
+    if (visible.isEmpty && trailing == null) return const SizedBox.shrink();
+    final summary = visible.isEmpty
+        ? null
+        : DecoratedBox(
+            decoration: const BoxDecoration(
+              color: UtenColors.errorText,
+              borderRadius: UtenRadius.smAll,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s8,
+                vertical: UtenSpacing.s4,
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: UtenSpacing.s16,
+                runSpacing: UtenSpacing.s4,
+                children: [
+                  for (final entry in visible)
+                    _UtenTotalEntryView(entry: entry),
+                ],
+              ),
+            ),
+          );
     return Container(
       width: double.infinity,
       padding: compact
@@ -68,46 +96,44 @@ class UtenTotalsSummaryBar extends StatelessWidget {
               ),
             )
           : null,
-      child: Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: UtenSpacing.s16,
-        runSpacing: UtenSpacing.s4,
-        children: [
-          // 一个完整段落保留标签与原始格式化值；长币种或金额也可自然换行。
-          // 不固定标签宽、不用 FittedBox 缩小金额。
-          for (final e in visible) UtenTotalEntryView(entry: e),
-        ],
-      ),
+      child: trailing == null
+          ? Align(alignment: AlignmentDirectional.centerEnd, child: summary)
+          : Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s4,
+              children: [?summary, trailing!],
+            ),
     );
   }
 }
 
-/// 单项汇总的公共文字入口，供带有详情按钮等专用表尾复用。
-/// 标签和数值都使用正常正文；完整保留长数值，不省略或缩小字号。
-class UtenTotalEntryView extends StatelessWidget {
-  const UtenTotalEntryView({super.key, required this.entry});
+/// Keeps the full value readable with the active text scaler.
+class _UtenTotalEntryView extends StatelessWidget {
+  const _UtenTotalEntryView({required this.entry});
 
   final UtenTotalEntry entry;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final normal = theme.textTheme.bodyLarge;
+    final heading =
+        Theme.of(context).textTheme.titleLarge ?? const TextStyle(fontSize: 18);
+    final labelStyle = heading.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w700,
+    );
     return Wrap(
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(
-          '${entry.label}: ',
-          style: normal?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-        ),
+        Text('${entry.label}: ', style: labelStyle),
         Text(
           entry.value,
           textAlign: TextAlign.end,
-          style: normal?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: entry.danger ? theme.colorScheme.error : null,
+          style: labelStyle.copyWith(
+            fontSize: (labelStyle.fontSize ?? 18) + 4,
+            fontWeight: entry.danger ? FontWeight.w800 : FontWeight.w700,
             fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
@@ -122,7 +148,7 @@ class UtenTotalEntry {
   final String label;
   final String value;
 
-  /// 关键金额标红（error 色）。
+  /// Adds emphasis to the primary amount.
   final bool danger;
 }
 

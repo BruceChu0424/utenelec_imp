@@ -426,6 +426,10 @@ class _FinanceAssetDetailSurfaceState
             const SizedBox(height: UtenSpacing.s20),
           FinanceAssetRevisionSection(detail: detail),
           _summaryGrid(detail.summary),
+          if (_attachmentSection(detail) case final attachments?) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            attachments,
+          ],
           const SizedBox(height: UtenSpacing.s20),
           _section(theme, '账簿与计划', _booksAndSchedule(theme, detail)),
           const SizedBox(height: UtenSpacing.s20),
@@ -801,11 +805,6 @@ class _FinanceAssetDetailSurfaceState
   }
 
   Widget _references(ThemeData theme, FinanceAssetDetail detail) {
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canViewFiles =
-        widget.capabilities.canView &&
-        permissions.contains(Perm.financeAssetView) &&
-        permissions.contains(Perm.financeViewAll);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -847,23 +846,30 @@ class _FinanceAssetDetailSurfaceState
               leading: const Icon(Icons.description_outlined),
               title: SelectableText(reference),
             ),
-        if (canViewFiles) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          BusinessAttachmentSection(
-            ownerType: widget.ledger == FinanceAssetLedger.fixedAsset
-                ? 'FINANCE_ASSET'
-                : 'FINANCE_DEFERRED_EXPENSE',
-            ownerId: detail.summary.id,
-            canView: canViewFiles,
-            canManage:
-                permissions.contains(Perm.financeAssetEdit) &&
-                _permitted('EDIT') &&
-                detail.summary.status == 'DRAFT',
-            title: '资产相关文件',
-            categories: const ['购置凭证', '验收文件', '其他凭证'],
-          ),
-        ],
       ],
+    );
+  }
+
+  Widget? _attachmentSection(FinanceAssetDetail detail) {
+    final permissions = ref.watch(currentPermissionsProvider);
+    if (!widget.capabilities.canView ||
+        !permissions.contains(Perm.financeAssetView) ||
+        !permissions.contains(Perm.financeViewAll) ||
+        !permissions.contains(Perm.attachmentView)) {
+      return null;
+    }
+    return BusinessAttachmentSection(
+      ownerType: widget.ledger == FinanceAssetLedger.fixedAsset
+          ? 'FINANCE_ASSET'
+          : 'FINANCE_DEFERRED_EXPENSE',
+      ownerId: detail.summary.id,
+      canView: true,
+      canManage:
+          permissions.contains(Perm.financeAssetEdit) &&
+          _permitted('EDIT') &&
+          detail.summary.status == 'DRAFT',
+      title: '资产相关文件',
+      categories: const ['购置凭证', '验收文件', '其他凭证'],
     );
   }
 }

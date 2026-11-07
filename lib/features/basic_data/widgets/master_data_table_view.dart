@@ -209,6 +209,7 @@ class MasterColumnDef<T> {
     this.facetCandidatesUseKeyword = false,
     this.headerFilterAction,
     this.headerTrailingBuilder,
+    this.headerTrailingWidthOf,
     this.cellColor,
     this.cellColorListenableOf,
     this.cellBuilder,
@@ -340,6 +341,9 @@ class MasterColumnDef<T> {
   final bool facetCandidatesUseKeyword;
   final MasterHeaderFilterAction? headerFilterAction;
   final WidgetBuilder? headerTrailingBuilder;
+
+  /// Width of a custom header control, excluding the resize handle inset.
+  final double Function(BuildContext context)? headerTrailingWidthOf;
 
   bool get supportsKeywordSearch => supportsColumnKeywordSearch(
     key: key,
@@ -2541,9 +2545,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 保证字号变大列也跟着变宽（与 floating_capsule_nav_bar 同款 textScaler 处理）。
   TextScaler? _lastScale;
   List<double> _lastColumnMinimums = const [];
+  List<double> _lastHeaderChrome = const [];
   List<Object> _lastRichWidthScopes = const [];
-  TextStyle? _lastRichWidthStyle;
-  int _richWidthStyleRevision = 0;
+  TextStyle? _lastWidthBodyStyle;
+  TextStyle? _lastWidthHeaderStyle;
+  TextDirection? _lastWidthDirection;
   List<double> _lastColumnPadding = const [];
   List<String> _widthColumnKeys = const [];
   final Set<String> _resetWidthKeys = {};
@@ -3047,17 +3053,38 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 列宽下限（自动适配与拖拽收窄共同下限，防止列被拖没）。
   static const double _minColWidth = 48;
 
-  double _minimumColumnWidth(BuildContext context, MasterColumnDef<T> column) {
+  double _minimumColumnWidth(
+    BuildContext context,
+    MasterColumnDef<T> column, {
+    double? headerChrome,
+  }) {
     final minimum = column.minimumWidthOf?.call(context) ?? _minColWidth;
     assert(minimum.isFinite && minimum >= 0);
     // Fixed header controls must also fit after a manual resize. In particular,
     // locally sorted server pages add guidance even without column.info.
-    final headerControls =
-        _cellPadX * 2 +
-        _headerIconAllowance +
-        (_headerInfo(column) != null ? _headerInfoWidth(context) : 0) +
-        (_presentationPinnedKeys.contains(column.key) ? _pinIconAllowance : 0);
+    final headerControls = headerChrome ?? _headerChromeWidth(context, column);
     return math.max(math.max(_minColWidth, minimum), headerControls);
+  }
+
+  double _headerChromeWidth(BuildContext context, MasterColumnDef<T> column) {
+    final key = column.key;
+    final hasMenu =
+        column.headerFilterAction != null ||
+        column.filterFromRows ||
+        column.sortable ||
+        _supportsColumnSearch(column) ||
+        widget.facetPageLoaders.containsKey(key) ||
+        widget.facets.containsKey(key) ||
+        (widget.nullCounts[key] ?? 0) > 0 ||
+        widget.filters[key] != null;
+    return _cellPadX * 2 +
+        (hasMenu ? _headerIconAllowance : 0) +
+        (_headerInfo(column) != null ? _headerInfoWidth(context) : 0) +
+        (_presentationPinnedKeys.contains(key) ? _pinIconAllowance : 0) +
+        (column.headerTrailingBuilder == null
+            ? 0
+            : (column.headerTrailingWidthOf?.call(context) ?? 0) +
+                  _gripHalf * 2);
   }
 
   String? _headerInfo(MasterColumnDef<T> column) {
@@ -3070,8 +3097,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   double _headerInfoWidth(BuildContext context) =>
-      UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
-      UtenSpacing.s4;
+      UtenColumnHintIcon.widthOf(context);
 
   double _columnHorizontalPadding(
     BuildContext context,
@@ -3822,34 +3848,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
     final textScaler = MediaQuery.textScalerOf(context);
     final scale = textScaler;
-    final hasRichWidth = _columns.any(
-      (column) => column.measureWidthOf != null,
-    );
-    var typographyChanged = false;
-    if (hasRichWidth) {
-      final style = Theme.of(context).textTheme.bodyMedium;
-      if (style != _lastRichWidthStyle &&
-          (style == null ||
-              _lastRichWidthStyle == null ||
-              _lastRichWidthStyle!.compareTo(style) ==
-                  RenderComparison.layout)) {
-        _richWidthStyleRevision++;
-        typographyChanged = true;
-      }
-      _lastRichWidthStyle = style;
+    final theme = Theme.of(context);
+    final bodyStyle = theme.textTheme.bodyMedium ?? const TextStyle();
+    final headerStyle = UtenTableHeader.textStyle(theme);
+    final direction = Directionality.of(context);
+    final typographyChanged =
+        direction != _lastWidthDirection ||
+        _lastWidthBodyStyle?.compareTo(bodyStyle) == RenderComparison.layout ||
+        _lastWidthHeaderStyle?.compareTo(headerStyle) ==
+            RenderComparison.layout;
+    _lastWidthBodyStyle = bodyStyle;
+    _lastWidthHeaderStyle = headerStyle;
+    _lastWidthDirection = direction;
+    if (typographyChanged) {
+      _widthsDirty = true;
+      _textMeasures.clear();
     }
-    final richContext = hasRichWidth
-        ? (
-            _richWidthStyleRevision,
-            Directionality.of(context),
-            UtenControlMetrics.minimumHitExtent(context, desktop: 48),
-          )
-        : null;
+    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 48);
     final richScopes = [
       for (final column in _columns)
         (
           column.measureWidthScope ?? column.measureWidthOf,
-          column.measureWidthOf == null ? null : richContext,
+          column.measureWidthOf == null ? null : hitExtent,
         ),
     ];
     if (!listEquals(richScopes, _lastRichWidthScopes)) {
@@ -3857,16 +3877,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _widthsDirty = true;
       _textMeasures.clear();
     }
+    final headerChrome = [
+      for (final column in _columns) _headerChromeWidth(context, column),
+    ];
     final minimums = [
-      for (final column in _columns) _minimumColumnWidth(context, column),
+      for (var i = 0; i < _columns.length; i++)
+        _minimumColumnWidth(
+          context,
+          _columns[i],
+          headerChrome: headerChrome[i],
+        ),
     ];
     final padding = [
       for (final column in _columns) _columnHorizontalPadding(context, column),
     ];
     if (!listEquals(minimums, _lastColumnMinimums) ||
+        !listEquals(headerChrome, _lastHeaderChrome) ||
         !listEquals(padding, _lastColumnPadding)) {
       _widthsDirty = true;
       _lastColumnMinimums = minimums;
+      _lastHeaderChrome = headerChrome;
       _lastColumnPadding = padding;
     }
     if (_lastScale != null && _lastScale != scale) {
@@ -3907,8 +3937,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
       final def = _columns[i];
       next[i] = _fitColumnWidth(
-        context,
-        def,
+        i,
         _measureColumn(context, def, sample, textScaler),
       );
       // Geometry updates (especially tree expansion) must not collapse an
@@ -3967,7 +3996,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final bodyStyle =
             Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
         // Status/progress values use the same bold geometry as their cells.
-        final style = utenIsStatusOrProgressColumn(def.key, def.label)
+        final style =
+            def.emphasized || utenIsStatusOrProgressColumn(def.key, def.label)
             ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
             : bodyStyle;
         width = _measureText(text, style, textScaler);
@@ -3980,28 +4010,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// Fit the widest loaded value and the complete header independently. Header
   /// icons do not add empty room to a body value that is already wider.
-  double _fitColumnWidth(
-    BuildContext context,
-    MasterColumnDef<T> def,
-    _ColumnTextMeasure measure,
-  ) {
-    final minimum = _minimumColumnWidth(context, def);
-    final maximum = math.max(minimum, _maxColWidth);
-    final padding = math.max(_cellPadX, _columnHorizontalPadding(context, def));
-    final header =
-        measure.header +
-        _headerIconAllowance +
-        (_headerInfo(def) != null ? _headerInfoWidth(context) : 0) +
-        (_presentationPinnedKeys.contains(def.key) ? _pinIconAllowance : 0);
-    final text = math.max(header, measure.body);
-    final measured = (text + padding * 2 + _autoFitBuffer).clamp(
-      minimum,
-      maximum,
+  double _fitColumnWidth(int index, _ColumnTextMeasure measure) {
+    final def = _columns[index];
+    final minimum = _lastColumnMinimums[index];
+    final measured = utenTableColumnContentWidth(
+      headerWidth: measure.header,
+      bodyWidth: measure.body,
+      minimumWidth: minimum,
+      maximumWidth: _maxColWidth,
+      headerChromeWidth: _lastHeaderChrome[index],
+      bodyChromeWidth: _lastColumnPadding[index] * 2,
+      buffer: _autoFitBuffer,
     );
-    if (def.cellBuilder == null || def.minimumWidthOf != null) return measured;
+    if (def.cellBuilder == null ||
+        def.minimumWidthOf != null ||
+        def.measureWidthOf != null) {
+      return measured;
+    }
     // A custom cell may contain multiple controls beyond its textual value.
     // Preserve its declared fallback until it supplies an actual minimum.
-    return math.max(measured, def.width.clamp(minimum, maximum));
+    return math.max(
+      measured,
+      def.width.clamp(minimum, math.max(minimum, _maxColWidth)),
+    );
   }
 
   /// 缓存尾部通过事件继续扫描；新量宽仍共享每帧预算，避免缓存命中也反复排帧。
@@ -4052,7 +4083,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 WidgetsBinding.instance.scheduleFrame();
               }
             });
-            final fitted = _fitColumnWidth(context, def, measure);
+            final fitted = _fitColumnWidth(i, measure);
             if (fitted > next[i] + 0.5) {
               next[i] = fitted;
             }
@@ -4164,7 +4195,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   double _measureText(String text, TextStyle style, TextScaler textScaler) {
     if (text.isEmpty) return 0;
     debugMasterTableMeasureTextCount++;
-    return utenTableCellTextWidth(text, style: style, textScaler: textScaler);
+    return utenTableCellTextWidth(
+      text,
+      style: style,
+      textScaler: textScaler,
+      textDirection: Directionality.of(context),
+    );
   }
 
   @override
@@ -8550,10 +8586,7 @@ class _FilterCellState extends State<_FilterCell> {
             // icon 统一放表头」）：非交互列此前静默丢弃 MasterColumnDef.info，
             // 领料汇总「应领数量」等列的列头说明一直没渲染。列宽量法已计入
             // _headerInfoWidth，这里只补渲染，不占额外量宽。
-            if (widget.info != null) ...[
-              const SizedBox(width: UtenSpacing.s4),
-              UtenColumnHintIcon(message: widget.info!),
-            ],
+            if (widget.info != null) UtenColumnHintIcon(message: widget.info!),
           ],
         ),
       );
@@ -8589,6 +8622,12 @@ class _FilterCellState extends State<_FilterCell> {
           s;
     }
 
+    final label = Text(
+      display,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: UtenTableHeader.textStyle(theme, highlighted: highlighted),
+    );
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
@@ -8617,24 +8656,15 @@ class _FilterCellState extends State<_FilterCell> {
               ],
               Expanded(
                 child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    display,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: UtenTableHeader.textStyle(
-                      theme,
-                      highlighted: highlighted,
-                    ),
-                  ),
+                  alignment: AlignmentDirectional.centerStart,
+                  child: widget.info == null
+                      ? label
+                      : UtenColumnHeaderInfo(
+                          label: label,
+                          message: widget.info!,
+                        ),
                 ),
               ),
-              // 列头说明 ⓘ：悬停出 Tooltip，点击（含手机）弹说明小窗——
-              // 自吞点击，不触发排序/筛选菜单。
-              if (widget.info != null) ...[
-                const SizedBox(width: UtenSpacing.s4),
-                UtenColumnHintIcon(message: widget.info!),
-              ],
               // 排序与筛选共用一个菜单入口；当前排序方向直接替换下拉箭头。
               if (interactive)
                 Icon(

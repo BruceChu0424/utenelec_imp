@@ -27,6 +27,90 @@ namespace Uten.Legacy.Tests
 {
     internal static class UiContractChecks
     {
+        internal static int RunTableContentFit()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            int checks = 0;
+            Action<bool, string> check = (value, message) =>
+            {
+                if (!value) throw new InvalidOperationException(message);
+                checks++;
+            };
+            var table = new UtenDataGrid();
+            var plain = new DataGridTemplateColumn { Header = "列", CellTemplate = TableContentTemplate("Text", 0) };
+            var withCellIcon = new DataGridTemplateColumn { Header = "列", CellTemplate = TableContentTemplate("Text", 28) };
+            var header = new DataGridTextColumn { Header = "状态" };
+            var withHeaderIcon = new DataGridTextColumn { Header = "状态", HeaderTemplate = TableContentTemplate(".", 20) };
+            var explicitWidth = new DataGridTextColumn { Header = "手动列宽", Width = 132 };
+            var input = new DataGridTemplateColumn { Header = "列宽（留空自适应）",
+                CellTemplate = new DataTemplate { VisualTree = new FrameworkElementFactory(typeof(TextBox)) } };
+            foreach (var column in new DataGridColumn[] { plain, withCellIcon, header, withHeaderIcon, explicitWidth, input })
+                table.Columns.Add(column);
+            var records = Enumerable.Range(0, 10000).Select(index =>
+                new TableFitRow { Text = index == 9999 ? "末行完整" : "等待计划下单" }).ToArray();
+            table.ItemsSource = records;
+            var window = new Window { Content = table, Width = 900, Height = 330, WindowStyle = WindowStyle.None,
+                Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+            try
+            {
+                window.Show(); Pump(window);
+                check(table.ColumnWidth.IsAuto && table.EnableRowVirtualization && table.EnableColumnVirtualization
+                    && ScrollViewer.GetCanContentScroll(table), "Uten tables default to content sizing and native virtualization.");
+                check(withCellIcon.ActualWidth - plain.ActualWidth >= 27, "Cell width includes the rendered icon and its gap.");
+                check(withHeaderIcon.ActualWidth - header.ActualWidth >= 19, "Header width includes the rendered icon and its gap.");
+                var cell = input.GetCellContent(records[0]);
+                var field = cell == null ? null : FindVisual<TextBox>(cell, editor => true);
+                check(field != null && field.ActualWidth >= input.ActualWidth - 25,
+                    "An empty editor fills the usable part of its content-fitted cell.");
+                check(table.Items.Count == records.Length && table.ItemContainerGenerator.ContainerFromIndex(9000) == null,
+                    "Measuring the table leaves offscreen rows virtualized and preserves every row.");
+                double wide = plain.ActualWidth;
+                window.Width = 240; Pump(window);
+                check(FindVisual<ScrollViewer>(table, scroll => scroll.ScrollableWidth > 0) != null
+                    && Math.Abs(withCellIcon.ActualWidth - plain.ActualWidth) >= 27,
+                    "Narrow windows keep content and icon widths and allow horizontal scrolling.");
+                table.ScrollIntoView(records.Last()); Pump(window);
+                check(table.ItemContainerGenerator.ContainerFromIndex(9999) != null,
+                    "The complete result can scroll to its last row.");
+                window.Width = 900;
+                table.ItemsSource = new[] { new TableFitRow { Text = "自制" } };
+                Pump(window);
+                check(plain.ActualWidth < wide - 20, "A new result shrinks automatic widths to fit its shorter content (previous "
+                    + wide + ", actual " + plain.ActualWidth + ", desired " + plain.Width.DesiredValue + ").");
+                check(explicitWidth.Width.IsAbsolute && explicitWidth.ActualWidth == 132, "Refitting leaves an explicit user width in place.");
+            }
+            finally { window.Content = null; window.Close(); }
+            return checks;
+        }
+
+        private static DataTemplate TableContentTemplate(string property, double iconWidth)
+        {
+            var row = new FrameworkElementFactory(typeof(StackPanel));
+            row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+            if (iconWidth > 0)
+            {
+                var icon = new FrameworkElementFactory(typeof(System.Windows.Shapes.Ellipse));
+                icon.SetValue(FrameworkElement.WidthProperty, iconWidth - 4);
+                icon.SetValue(FrameworkElement.HeightProperty, 12.0);
+                icon.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 4, 0));
+                icon.SetValue(System.Windows.Shapes.Shape.FillProperty, Brushes.Teal);
+                row.AppendChild(icon);
+            }
+            var text = new FrameworkElementFactory(typeof(TextBlock));
+            text.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(property));
+            row.AppendChild(text);
+            return new DataTemplate { VisualTree = row };
+        }
+
+        private sealed class TableFitRow
+        {
+            public string Text { get; set; }
+        }
+
         internal static void RunEntryPageScrollbars()
         {
             if (Application.Current == null)

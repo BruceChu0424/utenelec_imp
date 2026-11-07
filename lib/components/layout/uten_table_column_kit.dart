@@ -24,6 +24,7 @@
 // （如「至少留一列」「必填列锁定」）与「松手隐藏」回调。
 
 import '../inputs/uten_dropdown_scroll_scope.dart';
+import '../inputs/uten_table_cell_spec.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -167,6 +168,9 @@ class UtenColumnHeaderInfo extends StatelessWidget {
 /// 不触发列换位/移除拖拽（换位改成按下即拖之后，这层隔离更要紧）。
 class UtenColumnHintIcon extends StatelessWidget {
   const UtenColumnHintIcon({super.key, required this.message});
+
+  static double widthOf(BuildContext context) =>
+      UtenEditableGridCellSpec.heightOf(context);
 
   /// 说明文案（悬停/点按弹出）。
   final String message;

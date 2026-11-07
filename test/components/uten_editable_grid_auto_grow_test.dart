@@ -1,5 +1,5 @@
 // UtenEditableGrid 列宽随内容自动加宽的行为测试：
-// - 初始短内容不撑宽（保持列定义初始宽）；
+// - 初始短内容收敛到实际默认列宽；
 // - 敲入长内容自动加宽、封顶 480；删短内容只增不减；
 // - 初始行 / 整批换行（replaceAll/addRow）整体量宽兜底；
 // - 手动拖拽（含缩小）后锁定用户宽度，不再随内容自动加宽。
@@ -71,10 +71,69 @@ Widget _wrap(UtenEditableGrid<_NoteRow> grid) => MaterialApp(
 const _long = '很长很长的备注内容凭空变长'; // 12 个全角字 ×8 = 96 字，必超 480 封顶
 
 void main() {
-  testWidgets('初始短内容不撑宽，保持列定义初始宽', (tester) async {
+  testWidgets('初始短内容按内容收窄并保留原编辑控件', (tester) async {
     final c = UtenEditableGridController<_NoteRow>(initial: [_NoteRow('ab')]);
     await tester.pumpWidget(_wrap(_grid(c)));
     expect(cellMaxWidth, closeTo(_colWidth - _cellPadX, 0.5));
+    final editable = tester.state<EditableTextState>(find.byType(EditableText));
+    await tester.pumpAndSettle();
+    expect(cellMaxWidth, inInclusiveRange(48 - _cellPadX, 90));
+    expect(
+      tester.state<EditableTextState>(find.byType(EditableText)),
+      same(editable),
+    );
+  });
+
+  testWidgets('默认列宽为图标及间距留出空间', (tester) async {
+    final c = UtenEditableGridController<_NoteRow>(
+      initial: [_NoteRow('Status text')],
+    );
+    const iconWidth = 24.0;
+    const gap = 6.0;
+    await tester.pumpWidget(
+      _wrap(
+        UtenEditableGrid<_NoteRow>(
+          controller: c,
+          showAddRow: false,
+          columns: [
+            for (final withIcon in [false, true])
+              EditableGridColumn<_NoteRow>(
+                key: 'status-$withIcon',
+                label: '状态',
+                width: 300,
+                textOf: (row) => row.note.text,
+                chromeWidth: withIcon ? iconWidth + gap : 0,
+                cellBuilder: (_, row) => Row(
+                  key: ValueKey('status-row-$withIcon'),
+                  children: [
+                    if (withIcon) ...[
+                      const Icon(Icons.schedule, size: iconWidth),
+                      const SizedBox(width: gap),
+                    ],
+                    Flexible(
+                      child: Text(
+                        row.note.text,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final withoutIcon = tester
+        .getSize(find.byKey(const ValueKey('status-row-false')))
+        .width;
+    final withIcon = tester
+        .getSize(find.byKey(const ValueKey('status-row-true')))
+        .width;
+    expect(withIcon, closeTo(withoutIcon + iconWidth + gap, .5));
+    expect(withIcon, lessThan(300 - _cellPadX));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('敲入长内容自动加宽到封顶；删短后只增不减', (tester) async {
@@ -134,7 +193,7 @@ void main() {
 
     final locked = cellMaxWidth!;
     expect(locked, lessThan(initial)); // 缩小生效
-    expect(locked, greaterThan(48 - _cellPadX)); // 下限 48 防拖没
+    expect(locked, closeTo(48 - _cellPadX, 0.5)); // 下限 48 防拖没
 
     // 添加业务列仍保留用户手调列宽，新列不能把旧列宽全部重置。
     await tester.pumpWidget(_wrap(_grid(c, withExtraColumn: true)));

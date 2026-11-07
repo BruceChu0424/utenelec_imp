@@ -134,7 +134,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         protected static DataGrid HistoryTable(double height)
         {
-            var table = new DataGrid { Height = height, SelectionMode = DataGridSelectionMode.Single,
+            var table = new UtenDataGrid { Height = height, SelectionMode = DataGridSelectionMode.Single,
                 SelectionUnit = DataGridSelectionUnit.FullRow, CanUserSortColumns = false,
                 EnableRowVirtualization = true, EnableColumnVirtualization = true };
             ScrollViewer.SetCanContentScroll(table, true);
@@ -142,9 +142,8 @@ namespace Uten.Legacy.Desktop.Features.Units
             VirtualizingPanel.SetVirtualizationMode(table, VirtualizationMode.Recycling);
             return table;
         }
-        protected static DataGridTextColumn Column(string label, string property, double width, bool stretch = false)
-        { return new DataGridTextColumn { Header = label, Binding = new Binding(property) { TargetNullValue = "—" }, IsReadOnly = true,
-            Width = new DataGridLength(width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel) }; }
+        protected static DataGridTextColumn Column(string label, string property)
+        { return new DataGridTextColumn { Header = label, Binding = new Binding(property) { TargetNullValue = "—" }, IsReadOnly = true }; }
         protected TextBlock Note(string text)
         { return new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S8"), 0, Space("S8")) }; }
         protected bool Confirm(string title, string message)
@@ -174,12 +173,12 @@ namespace Uten.Legacy.Desktop.Features.Units
             : base(parent, session, "本人最近10次操作与撤回", 920)
         {
             this.preferRedo = preferRedo;
-            operations.Columns.Add(Column("操作", "Label", 1, true)); operations.Columns.Add(Column("状态", "StateLabel", 90));
-            operations.Columns.Add(Column("影响项", "AffectedCount", 80)); operations.Columns.Add(Column("时间", "CreatedAtDisplay", 165));
+            operations.Columns.Add(Column("操作", "Label")); operations.Columns.Add(Column("状态", "StateLabel"));
+            operations.Columns.Add(Column("影响项", "AffectedCount")); operations.Columns.Add(Column("时间", "CreatedAtDisplay"));
             Body.Children.Add(UtenSurfaces.Wrap(operations, UtenSurfaceRole.Table));
             summary.Margin = new Thickness(0, Space("S12"), 0, Space("S12")); Body.Children.Add(summary);
             Body.Children.Add(Note("最近30条撤回与取消撤回事件"));
-            events.Columns.Add(Column("动作", "ActionLabel", 100)); events.Columns.Add(Column("操作", "Label", 1, true)); events.Columns.Add(Column("时间", "CreatedAtDisplay", 165));
+            events.Columns.Add(Column("动作", "ActionLabel")); events.Columns.Add(Column("操作", "Label")); events.Columns.Add(Column("时间", "CreatedAtDisplay"));
             Body.Children.Add(UtenSurfaces.Wrap(events, UtenSurfaceRole.Table));
             refresh = ActionButton("刷新", () => { _ = ReloadAsync(); });
             undo = ActionButton("撤回所选操作", () => { _ = ApplyAsync(false); }, primary: !preferRedo);

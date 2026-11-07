@@ -36,7 +36,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
         private readonly UnitColumnsService service;
         private UnitColumnsSnapshot current, applied;
         private readonly ObservableCollection<ColumnSettingRow> rows = new ObservableCollection<ColumnSettingRow>();
-        private readonly DataGrid table = new DataGrid { Height = 250, SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false };
+        private readonly DataGrid table = new UtenDataGrid { Height = 250, SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false };
         private readonly ListBox catalog = new ListBox { Height = 160, DisplayMemberPath = "Name", BorderThickness = new Thickness(0) };
         private readonly TextBox search = new TextBox { MinWidth = 230, MaxLength = 80 };
         private readonly Button add, create, delete, review;
@@ -64,12 +64,12 @@ namespace Uten.Legacy.Desktop.Features.Columns
                     { var row = rows.FirstOrDefault(item => item.Key == pair.Key); if (row != null && pair.Value is string) row.WidthText = (string)pair.Value; }
                 useRestoredRaw = true;
             }
-            table.Columns.Add(new DataGridTextColumn { Header = "列名", Binding = new Binding("Label"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-            table.Columns.Add(new DataGridTextColumn { Header = "类型", Binding = new Binding("TypeLabel"), Width = 110 });
+            table.Columns.Add(new DataGridTextColumn { Header = "列名", Binding = new Binding("Label") });
+            table.Columns.Add(new DataGridTextColumn { Header = "类型", Binding = new Binding("TypeLabel") });
             table.Columns.Add(ToggleColumn("显示", "Visible")); table.Columns.Add(ToggleColumn("固定", "Pinned"));
             var widthFactory = new FrameworkElementFactory(typeof(TextBox)); widthFactory.SetBinding(TextBox.TextProperty, new Binding("WidthText") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
             widthFactory.SetValue(StyleProperty, FindResource("Uten.CompactInput")); widthFactory.SetValue(MinHeightProperty, FindResource("Uten.Height.Cell"));
-            table.Columns.Add(new DataGridTemplateColumn { Header = "列宽（像素）", CellTemplate = new DataTemplate { VisualTree = widthFactory }, Width = 150 });
+            table.Columns.Add(new DataGridTemplateColumn { Header = "列宽（留空自适应）", CellTemplate = new DataTemplate { VisualTree = widthFactory } });
             table.ItemsSource = rows;
             Body.Children.Add(new TextBlock { Text = "编号、单位名称、状态始终显示并固定在前。自设列可调整顺序、显隐和固定位置；屏幕、预览打印与下载共用此表头。", TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, Space("S12")) });
@@ -100,7 +100,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
         {
             var factory = new FrameworkElementFactory(typeof(CheckBox)); factory.SetBinding(CheckBox.IsCheckedProperty, new Binding(property) { Mode = BindingMode.TwoWay });
             factory.SetBinding(IsEnabledProperty, new Binding("CanToggle")); factory.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
-            return new DataGridTemplateColumn { Header = label, Width = 75, CellTemplate = new DataTemplate { VisualTree = factory } };
+            return new DataGridTemplateColumn { Header = label, CellTemplate = new DataTemplate { VisualTree = factory } };
         }
         private void PopulateRows(UnitColumnLayout layout)
         {
@@ -116,7 +116,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 {
                     var column = baseColumns[key]; double width;
                     var row = new ColumnSettingRow { Key = key, Label = column.Label, TypeLabel = column.PlatformId == null ? "系统列" : current.Definitions[column.PlatformId].TypeLabel,
-                        WidthText = (layout.Widths.TryGetValue(key, out width) ? width : column.Width).ToString(CultureInfo.InvariantCulture), Visible = !layout.Hidden.Contains(key), Pinned = layout.Pinned.Contains(key) };
+                        WidthText = layout.Widths.TryGetValue(key, out width) ? width.ToString(CultureInfo.InvariantCulture) : "", Visible = !layout.Hidden.Contains(key), Pinned = layout.Pinned.Contains(key) };
                     row.PropertyChanged += OnRowChanged; rows.Add(row);
                 }
             }
@@ -151,13 +151,23 @@ namespace Uten.Legacy.Desktop.Features.Columns
         {
             var widths = new Dictionary<string, double>(StringComparer.Ordinal);
             foreach (var row in rows)
-            { double width; if (!TryCompleteWidth(row.WidthText, out width)) throw new FormatException("列宽需为48至2000的完整像素数。"); widths.Add(row.Key, width); }
+            {
+                if (String.IsNullOrEmpty(row.WidthText)) continue;
+                double width;
+                if (!TryCompleteWidth(row.WidthText, out width)) throw new FormatException("列宽需留空或填写48至2000的完整像素数。");
+                widths.Add(row.Key, width);
+            }
             return new UnitColumnLayout(rows.Select(row => row.Key), rows.Where(row => !row.Visible).Select(row => row.Key), rows.Where(row => row.Pinned).Select(row => row.Key), widths, addedIds);
         }
         private string BuildPreferenceBody()
         {
             var widths = new Dictionary<string, object>(StringComparer.Ordinal);
-            foreach (var row in rows) { double value; widths[row.Key] = TryCompleteWidth(row.WidthText, out value) ? (object)value : row.WidthText; }
+            foreach (var row in rows)
+            {
+                if (String.IsNullOrEmpty(row.WidthText)) continue;
+                double value;
+                widths[row.Key] = TryCompleteWidth(row.WidthText, out value) ? (object)value : row.WidthText;
+            }
             return ColumnJson.Serialize(new Dictionary<string, object> { ["order"] = rows.Select(row => row.Key).ToArray(), ["hidden"] = rows.Where(row => !row.Visible).Select(row => row.Key).ToArray(),
                 ["pinned"] = rows.Where(row => row.Pinned).Select(row => row.Key).ToArray(), ["widths"] = widths, ["added"] = addedIds.Where(current.Definitions.ContainsKey).Select(id => current.Definitions[id].ToDictionary(false)).ToArray(),
                 ["sortColumn"] = null, ["sortAscending"] = true, ["hasQueryPreferences"] = false });

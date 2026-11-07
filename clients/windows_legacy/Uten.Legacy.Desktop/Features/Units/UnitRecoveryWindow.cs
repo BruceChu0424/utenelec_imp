@@ -42,10 +42,10 @@ namespace Uten.Legacy.Desktop.Features.Units
         public UnitRecoveryWindow(Window parent, SessionCoordinator session) : base(parent, "本机草稿与提交记录", 820)
         {
             this.session = session; owner = session.CaptureMutationOwner();
-            drafts.Columns.Add(Column("操作", "Action", 100)); drafts.Columns.Add(Column("单位", "Target", 1, true));
-            drafts.Columns.Add(Column("保存时间", "Time", 150));
-            journal.Columns.Add(Column("操作", "Action", 100)); journal.Columns.Add(Column("单位", "Target", 1, true));
-            journal.Columns.Add(Column("结果", "State", 110)); journal.Columns.Add(Column("提交时间", "Time", 150));
+            drafts.Columns.Add(Column("操作", "Action")); drafts.Columns.Add(Column("单位", "Target"));
+            drafts.Columns.Add(Column("保存时间", "Time"));
+            journal.Columns.Add(Column("操作", "Action")); journal.Columns.Add(Column("单位", "Target"));
+            journal.Columns.Add(Column("结果", "State")); journal.Columns.Add(Column("提交时间", "Time"));
             Body.Children.Add(new TextBlock { Text = "本机草稿", FontWeight = FontWeights.SemiBold });
             Body.Children.Add(UtenSurfaces.Wrap(drafts, UtenSurfaceRole.Table));
             Body.Children.Add(new TextBlock { Text = "提交记录", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, Space("S16"), 0, Space("S8")) });
@@ -60,9 +60,9 @@ namespace Uten.Legacy.Desktop.Features.Units
             Loaded += async (sender, args) => await ReloadAsync();
         }
         private static DataGrid Table()
-        { return new DataGrid { Height = 160, Margin = new Thickness(0, 8, 0, 0), SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false }; }
-        private static DataGridTextColumn Column(string title, string property, double width, bool stretch = false)
-        { return new DataGridTextColumn { Header = title, Binding = new Binding(property), Width = new DataGridLength(width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel) }; }
+        { return new UtenDataGrid { Height = 160, Margin = new Thickness(0, 8, 0, 0), SelectionMode = DataGridSelectionMode.Single, CanUserSortColumns = false }; }
+        private static DataGridTextColumn Column(string title, string property)
+        { return new DataGridTextColumn { Header = title, Binding = new Binding(property) }; }
         private static bool IsUnitAction(MutationAction action)
         { return action != MutationAction.Unknown && Enum.IsDefined(typeof(MutationAction), action) && action.ToString().StartsWith("Unit", StringComparison.Ordinal); }
         private static bool IsFormDraft(MutationAction action)

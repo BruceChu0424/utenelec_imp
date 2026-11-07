@@ -22,7 +22,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly UnitReadOwner owner;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private readonly Button confirm, close;
-        private readonly DataGrid results = new DataGrid { Height = 240, Visibility = Visibility.Collapsed,
+        private readonly DataGrid results = new UtenDataGrid { Height = 240, Visibility = Visibility.Collapsed,
             CanUserSortColumns = false, SelectionMode = DataGridSelectionMode.Single };
         private readonly Border resultSurface;
         private bool ended, retired, submitting, attempted;
@@ -46,9 +46,9 @@ namespace Uten.Legacy.Desktop.Features.Units
                 Body.Children.Add(new TextBlock { Text = String.Join("、", shown) + (command.Ids.Count > 8 ? " 等" : ""),
                     TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S12"), 0, Space("S12")) });
             }
-            results.Columns.Add(new DataGridTextColumn { Header = "单位", Binding = new Binding("DisplayName"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-            results.Columns.Add(new DataGridTextColumn { Header = "结果", Binding = new Binding("ResultText"), Width = 90 });
-            results.Columns.Add(new DataGridTextColumn { Header = "原因", Binding = new Binding(nameof(UnitBatchDisplay.Reason)), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            results.Columns.Add(new DataGridTextColumn { Header = "单位", Binding = new Binding("DisplayName") });
+            results.Columns.Add(new DataGridTextColumn { Header = "结果", Binding = new Binding("ResultText") });
+            results.Columns.Add(new DataGridTextColumn { Header = "原因", Binding = new Binding(nameof(UnitBatchDisplay.Reason)), MaxWidth = 420 });
             resultSurface = UtenSurfaces.Wrap(results, UtenSurfaceRole.Table); resultSurface.Visibility = Visibility.Collapsed;
             Body.Children.Add(resultSurface);
             close = ActionButton("取消", () => Close());

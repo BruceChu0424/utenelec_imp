@@ -1541,14 +1541,20 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               const SizedBox(height: UtenSpacing.s12),
                               _timelineSection(theme),
                             ],
+                            if (_cfg.attachmentOwnerType != null &&
+                                !_cfg.type.isShipment) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              _readOnlyDocumentAttachments(),
+                            ],
+                            if (_shipmentAttachmentReferences()
+                                case final attachments?) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              attachments,
+                            ],
                             if (!_detail!.historyReadOnly &&
                                 _cfg.type == SalesDocType.order &&
                                 _detail!.financeConfirmed) ...[
                               const SizedBox(height: UtenSpacing.s12),
-                              Text(
-                                '产品进度与分批发货',
-                                style: theme.textTheme.titleMedium,
-                              ),
                               SalesPlanProgressPanel(
                                 orderId: widget.id,
                                 canShip:
@@ -1564,11 +1570,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                                 _detail!.shipments.isNotEmpty) ...[
                               const SizedBox(height: UtenSpacing.s12),
                               _shipmentsCard(theme),
-                            ],
-                            if (_cfg.attachmentOwnerType != null &&
-                                !_cfg.type.isShipment) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              _readOnlyDocumentAttachments(),
                             ],
                             if (_isQuote &&
                                 _detail!
@@ -2359,34 +2360,26 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     categories: const ['合同', '客户确认', '图片', '其他'],
   );
 
-  Widget? _withShipmentAttachmentReferences(Widget? totals) {
+  Widget? _shipmentAttachmentReferences() {
     if (!_cfg.type.isShipment ||
         _cfg.attachmentOwnerType == null ||
         !_canReadDocumentAttachments ||
-        !ref.read(currentPermissionsProvider).contains(Perm.attachmentView)) {
-      return totals;
+        !ref.watch(currentPermissionsProvider).contains(Perm.attachmentView)) {
+      return null;
     }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ?totals,
-        const SizedBox(height: UtenSpacing.s16),
-        UtenCollapsibleSection(
-          key: const ValueKey('shipment-attachments-reference'),
-          title: '资料与附件',
-          expanded: _attachmentReferencesExpanded,
-          initiallyExpanded: false,
-          titleTrailing: const UtenFieldHintIcon(
-            info: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
-          ),
-          onExpandedChanged: (next) =>
-              setState(() => _attachmentReferencesExpanded = next),
-          child: _attachmentReferencesExpanded
-              ? _readOnlyDocumentAttachments()
-              : const SizedBox.shrink(),
-        ),
-      ],
+    return UtenCollapsibleSection(
+      key: const ValueKey('shipment-attachments-reference'),
+      title: '资料与附件',
+      expanded: _attachmentReferencesExpanded,
+      initiallyExpanded: false,
+      titleTrailing: const UtenFieldHintIcon(
+        info: BusinessAttachmentSection.kReviewReadOnlyAttachmentNote,
+      ),
+      onExpandedChanged: (next) =>
+          setState(() => _attachmentReferencesExpanded = next),
+      child: _attachmentReferencesExpanded
+          ? _readOnlyDocumentAttachments()
+          : const SizedBox.shrink(),
     );
   }
 
@@ -2691,69 +2684,64 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             // 明细下合计条（summaryBarInline 随表体滚动）：数量按单位分组；
             // 价格脱敏时不出金额项。
             summaryBarInline: !_cfg.type.isShipment || items.isNotEmpty,
-            summaryBar: _withShipmentAttachmentReferences(
-              items.isNotEmpty
-                  ? UtenTotalsSummaryBar(
-                      key: const Key('sales-detail-totals'),
-                      density: true,
-                      compact: true,
-                      rowCount: items.length,
-                      entries: [
-                        UtenTotalEntry(
-                          '合计数量',
-                          exactMeasurementTotalsText(
-                            items.map(
-                              (it) => ExactMeasuredAmount(
-                                value:
-                                    it.exactDecimals['qty'] ??
-                                    it.qty?.toString(),
-                                unitId: it.unitId,
-                                unitName: names.unit(it.unitId),
-                              ),
+            summaryBar: items.isNotEmpty
+                ? UtenTotalsSummaryBar(
+                    key: const Key('sales-detail-totals'),
+                    density: true,
+                    compact: true,
+                    rowCount: items.length,
+                    entries: [
+                      UtenTotalEntry(
+                        '合计数量',
+                        exactMeasurementTotalsText(
+                          items.map(
+                            (it) => ExactMeasuredAmount(
+                              value:
+                                  it.exactDecimals['qty'] ?? it.qty?.toString(),
+                              unitId: it.unitId,
+                              unitName: names.unit(it.unitId),
                             ),
                           ),
                         ),
-                        if (!masked) ...[
-                          UtenTotalEntry(
-                            utenAmountTotalLabel(
-                              _cfg.hasCurrency
-                                  ? financeCurrencyDisplayLabel(
-                                      name: names.currency(_detail!.currencyId),
-                                    )
-                                  : null,
-                            ),
-                            financeExactMoneyDisplay(
-                              _detail!.exactDecimals['totalOriginal'] ??
-                                  financeExactDecimal(_detail!.totalOriginal) ??
-                                  financeExactSumTexts(
-                                    items.map(
-                                      (it) =>
-                                          it.exactDecimals['amountOriginal'] ??
-                                          financeExactDecimal(
-                                            it.amountOriginal,
-                                          ),
-                                    ),
-                                  ),
-                            ),
-                            danger: true,
+                      ),
+                      if (!masked) ...[
+                        UtenTotalEntry(
+                          utenAmountTotalLabel(
+                            _cfg.hasCurrency
+                                ? financeCurrencyDisplayLabel(
+                                    name: names.currency(_detail!.currencyId),
+                                  )
+                                : null,
                           ),
-                          // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
-                          // 也只出「订单金额(订单币种)」。历史脏数据带 totalLocal 的订单
-                          // 会把本币合计漏出来，故显式按单据类型门控（非订单单据照常出
-                          // 本币合计）。
-                          if (!isOrder)
-                            UtenTotalEntry(
-                              '合计(本币)',
-                              financeExactMoneyDisplay(
-                                _detail!.exactDecimals['totalLocal'] ??
-                                    financeExactDecimal(_detail!.totalLocal),
-                              ),
+                          financeExactMoneyDisplay(
+                            _detail!.exactDecimals['totalOriginal'] ??
+                                financeExactDecimal(_detail!.totalOriginal) ??
+                                financeExactSumTexts(
+                                  items.map(
+                                    (it) =>
+                                        it.exactDecimals['amountOriginal'] ??
+                                        financeExactDecimal(it.amountOriginal),
+                                  ),
+                                ),
+                          ),
+                          danger: true,
+                        ),
+                        // 销售订单阶段本币事实按设计为空（不落 totalLocal）；订单表头卡
+                        // 也只出「订单金额(订单币种)」。历史脏数据带 totalLocal 的订单
+                        // 会把本币合计漏出来，故显式按单据类型门控（非订单单据照常出
+                        // 本币合计）。
+                        if (!isOrder)
+                          UtenTotalEntry(
+                            '合计(本币)',
+                            financeExactMoneyDisplay(
+                              _detail!.exactDecimals['totalLocal'] ??
+                                  financeExactDecimal(_detail!.totalLocal),
                             ),
-                        ],
+                          ),
                       ],
-                    )
-                  : null,
-            ),
+                    ],
+                  )
+                : null,
             // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容末尾
             //（最后一行数据之下），不钉在区块底部/按钮上方。
           ),
@@ -2910,37 +2898,25 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
+        padding: EdgeInsets.fromLTRB(
           UtenSpacing.s12,
           UtenSpacing.s4,
           UtenSpacing.s12,
-          UtenSpacing.s12,
+          _timelineExpanded ? UtenSpacing.s12 : UtenSpacing.s4,
         ),
         child: UtenCollapsibleSection(
           title: '履约进度',
           expanded: _timelineExpanded,
           onExpandedChanged: (value) =>
               setState(() => _timelineExpanded = value),
-          titleTrailing: _latestStatusChip(theme),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _timelineExpanded ? '收起' : '展开查看全部进度',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Icon(
-                _timelineExpanded
-                    ? Icons.unfold_less_rounded
-                    : Icons.unfold_more_rounded,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-            ],
+          headerCenter: _latestStatusChip(theme),
+          trailing: Text(
+            _timelineExpanded ? '收起' : '展开查看全部进度',
+            textAlign: TextAlign.end,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           child: _timelineBody(theme),
         ),
@@ -2985,19 +2961,23 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   /// 折叠态常驻的最新状态胶囊（与时间线最新节点同色系，置顶的未开始阶段不抢「最新」）。
   Widget _latestStatusChip(ThemeData theme) {
     final (text, color) = _latestStatus(theme);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(UtenRadius.md),
-      ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w700,
+    return Tooltip(
+      message: text,
+      excludeFromSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(UtenRadius.md),
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );

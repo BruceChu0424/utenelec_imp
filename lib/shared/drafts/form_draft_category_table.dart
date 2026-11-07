@@ -505,6 +505,7 @@ class _FormDraftCategoryTableState<T>
             facetSearchEnabled: column.facetSearchEnabled,
             headerFilterAction: column.headerFilterAction,
             headerTrailingBuilder: column.headerTrailingBuilder,
+            headerTrailingWidthOf: column.headerTrailingWidthOf,
             emphasized: column.emphasized,
             aiSensitive: column.aiSensitive,
             exportable: column.exportable,

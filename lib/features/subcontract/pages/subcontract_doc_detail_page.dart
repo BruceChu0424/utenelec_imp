@@ -796,23 +796,6 @@ class _SubcontractDocDetailPageState
                                 _shortDeliveryHoldBanner(theme),
                               ],
                               const SizedBox(height: UtenSpacing.s12),
-                              // 全链路进度(ADR-143 §4.6)含履约扩展端点；仅持财务审批任务 view
-                              // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
-                              // 每个委外任务的时间线(含结案核销)由服务端判定。
-                              if (canViewOrderProgress)
-                                SubcontractOrderProgressSection(
-                                  orderId: _detail!.id,
-                                )
-                              else
-                                Text(
-                                  '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                            ],
-                            if (widget.docType == SubcontractDocType.order) ...[
-                              const SizedBox(height: UtenSpacing.s12),
                               BusinessAttachmentSection(
                                 ownerType: 'SUBCONTRACT_ORDER',
                                 ownerId: _detail!.id,
@@ -832,6 +815,19 @@ class _SubcontractDocDetailPageState
                                     .kReviewReadOnlyAttachmentNote,
                                 categories: const ['合同', '加工要求', '图片', '其他'],
                               ),
+                              const SizedBox(height: UtenSpacing.s12),
+                              // 点名审核员可看主订货详情，完整履约进度仍需订货查看权限。
+                              if (canViewOrderProgress)
+                                SubcontractOrderProgressSection(
+                                  orderId: _detail!.id,
+                                )
+                              else
+                                Text(
+                                  '当前为财务审批任务视角；完整委外履约进度需委外订货查看权限。',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
                             ],
                           ],
                         ),
@@ -1656,25 +1652,31 @@ class _SubcontractDocDetailPageState
   Widget _materialsCard(ThemeData theme) {
     final materials = _detail!.materials;
     final frozenCount = materials.where((m) => m.frozen).length;
-    String text(String? value) => value == null || value.isEmpty ? '—' : value;
-    Widget cell(String value, {bool right = false, bool header = false}) =>
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s6,
-          ),
-          child: Align(
-            alignment: right
-                ? AlignmentDirectional.centerEnd
-                : AlignmentDirectional.centerStart,
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: header ? theme.textTheme.labelMedium : null,
-            ),
-          ),
-        );
+    String display(String? value) =>
+        value == null || value.isEmpty ? '—' : value;
+    MasterColumnDef<SubcontractOrderMaterialLine> column(
+      String key,
+      String label,
+      String? Function(SubcontractOrderMaterialLine) valueOf, {
+      bool numeric = false,
+    }) => MasterColumnDef(
+      key: key,
+      label: label,
+      width: 0,
+      type: numeric ? 'number' : 'text',
+      columnSearchEnabled: false,
+      value: (material) => display(valueOf(material)),
+      cellBuilder: numeric
+          ? (_, material) => Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                display(valueOf(material)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            )
+          : null,
+    );
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -1704,53 +1706,39 @@ class _SubcontractDocDetailPageState
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 320),
             child: SingleChildScrollView(
-              child: Table(
-                border: TableBorder.all(
-                  color: theme.colorScheme.outlineVariant,
-                  width: 0.6,
-                ),
-                columnWidths: const {
-                  0: FlexColumnWidth(1.4),
-                  1: FlexColumnWidth(2.4),
-                  2: FlexColumnWidth(1.1),
-                  3: FlexColumnWidth(1.05),
-                  4: FlexColumnWidth(1.2),
-                  5: FlexColumnWidth(1.3),
-                  6: FlexColumnWidth(1.3),
-                  7: FlexColumnWidth(0.95),
-                },
-                children: [
-                  TableRow(
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                    ),
-                    children: [
-                      cell('所属成品', header: true),
-                      cell('物料名称', header: true),
-                      cell('物料编号', header: true),
-                      cell('颜色', header: true),
-                      cell('单位', header: true),
-                      cell('单耗', header: true, right: true),
-                      cell('需发量', header: true, right: true),
-                      cell('已发量', header: true, right: true),
-                    ],
+              child: MasterDataTableView<SubcontractOrderMaterialLine>(
+                embedded: true,
+                showColumnChooser: false,
+                columns: [
+                  column(
+                    'orderLine',
+                    '所属成品',
+                    (m) =>
+                        m.orderLineNo == null ? null : '第 ${m.orderLineNo} 行',
                   ),
-                  for (final m in materials)
-                    TableRow(
-                      children: [
-                        cell(
-                          m.orderLineNo == null ? '—' : '第 ${m.orderLineNo} 行',
-                        ),
-                        cell(text(m.goodsName)),
-                        cell(text(m.goodsCode)),
-                        cell(text(m.colorName)),
-                        cell(text(m.unitName)),
-                        cell(text(m.bomUnitQty), right: true),
-                        cell(text(m.plannedQty), right: true),
-                        cell(m.frozen ? text(m.issuedQty) : '—', right: true),
-                      ],
-                    ),
+                  column('goodsName', '物料名称', (m) => m.goodsName),
+                  column('goodsCode', '物料编号', (m) => m.goodsCode),
+                  column('colorName', '颜色', (m) => m.colorName),
+                  column('unitName', '单位', (m) => m.unitName),
+                  column('unitQty', '单耗', (m) => m.bomUnitQty, numeric: true),
+                  column(
+                    'plannedQty',
+                    '需发量',
+                    (m) => m.plannedQty,
+                    numeric: true,
+                  ),
+                  column(
+                    'issuedQty',
+                    '已发量',
+                    (m) => m.frozen ? m.issuedQty : null,
+                    numeric: true,
+                  ),
                 ],
+                items: materials,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
               ),
             ),
           ),

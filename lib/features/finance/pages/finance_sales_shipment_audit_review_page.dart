@@ -1261,6 +1261,8 @@ class _FinanceSalesShipmentAuditReviewPageState
                           UtenSummaryField(label: '备注', value: d.remark),
                       ],
                     ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _attachments(theme, d),
                     ShipmentFinanceChangeSummary(
                       previous: info.previousCommercialSnapshot,
                       current: info.commercialSnapshot,
@@ -1293,8 +1295,6 @@ class _FinanceSalesShipmentAuditReviewPageState
                         onRead: _readCustomerReceiptReference,
                       ),
                     ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _attachments(theme, d),
                     if (d.shipmentWorkflow.financeRejected)
                       _rejectRecordCard(theme, d),
                   ],

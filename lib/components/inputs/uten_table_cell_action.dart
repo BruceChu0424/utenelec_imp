@@ -10,6 +10,7 @@
 
 import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
+import 'uten_table_cell_auto_width.dart';
 
 /// 单元格内联文字动作：主色文字（可带 14px 前置图标），高度=单行文本。
 ///
@@ -17,6 +18,36 @@ import '../../core/theme/uten_tokens.dart';
 /// 文字样式继承宿主格 DefaultTextStyle（MDTV 读表是 bodySmall），保持与
 /// 同行其它文本格同字号同高；超宽省略号 + Tooltip 兜底。
 class UtenTableCellAction extends StatelessWidget {
+  static const double _iconSize = 14;
+  static const double _iconGap = UtenSpacing.s4;
+  static const double _horizontalPadding = UtenSpacing.s4;
+
+  /// Full width of a single-line action, before the host cell's own padding.
+  static double contentWidthOf(
+    BuildContext context,
+    String label, {
+    required TextScaler textScaler,
+    bool hasIcon = false,
+    TextStyle? style,
+  }) => utenTableColumnContentWidth(
+    headerWidth: 0,
+    bodyWidth: utenTableCellTextWidth(
+      label,
+      style:
+          style ??
+          (TextButtonTheme.of(context).style?.textStyle?.resolve({}) ??
+                  Theme.of(context).textTheme.labelLarge ??
+                  const TextStyle())
+              .copyWith(fontWeight: FontWeight.w600),
+      textScaler: textScaler,
+      textDirection: Directionality.of(context),
+    ),
+    bodyChromeWidth:
+        _horizontalPadding * 2 + (hasIcon ? _iconSize + _iconGap : 0),
+    minimumWidth: UtenControlMetrics.minimumHitExtent(context, desktop: 0),
+    maximumWidth: double.infinity,
+  );
+
   const UtenTableCellAction({
     super.key,
     required this.label,
@@ -77,8 +108,8 @@ class UtenTableCellAction extends StatelessWidget {
         : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
+              Icon(icon, size: _iconSize, color: color),
+              const SizedBox(width: _iconGap),
               Flexible(child: content),
             ],
           );
@@ -90,7 +121,7 @@ class UtenTableCellAction extends StatelessWidget {
         minimumSize: Size.square(
           UtenControlMetrics.minimumHitExtent(context, desktop: 0),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: _horizontalPadding),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,
       ),

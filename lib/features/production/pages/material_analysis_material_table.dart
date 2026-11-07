@@ -2182,13 +2182,15 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'status',
       label: _l10n.materialProgress,
-      width: 230,
-      minimumWidthOf: (_) => 72,
+      width: 72,
       info:
           '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
           '入库)；点击状态可看全程明细。还没确认供应方式且仍有缺口的行显示'
           '「待维护货品来源」；库存已覆盖的行显示「本层库存已齐」。',
       value: _materialTableStatusText,
+      measureValueOf: _materialTableStatusMeasureKey,
+      measureWidthOf: _materialTableStatusWidth,
+      measureWidthScope: 'material-preparation-status',
       cellBuilderHandlesSemantics: true,
       cellColor: (context, row) {
         if (row.contextOnly) return null;
@@ -2218,6 +2220,9 @@ abstract class _MaterialAnalysisMaterialTableState
       cellHorizontalPaddingOf: (context) =>
           UtenControlMetrics.usesTouchTargets(context) ? UtenSpacing.s12 : 7,
       value: _materialTableHandleText,
+      measureValueOf: _materialTableHandleDisplayText,
+      measureWidthOf: _materialTableHandleWidth,
+      measureWidthScope: 'material-preparation-handle',
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableHandleCell(theme, row),
     ),
@@ -2286,6 +2291,18 @@ abstract class _MaterialAnalysisMaterialTableState
             ].whereType<String>().join(' / '),
           )
           .join('\n'),
+      measureValueOf: (row) =>
+          ProductionSalesRequirementsButton.measurementLabel(
+            _salesRequirementsForRow(row),
+            _l10n.productionSalesRequirements,
+          ),
+      measureWidthOf: (context, row, scaler) =>
+          ProductionSalesRequirementsButton.measureWidth(
+            context,
+            _salesRequirementsForRow(row),
+            scaler,
+          ),
+      measureWidthScope: _l10n.productionSalesRequirements,
       cellBuilder: (_, row) => ProductionSalesRequirementsButton(
         requirements: _salesRequirementsForRow(row),
       ),
@@ -2309,8 +2326,8 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'route',
       label: _l10n.materialRoute,
-      width: 140,
-      minimumWidthOf: (_) => 116,
+      width: 72,
+      minimumWidthOf: (_) => 48,
       value: _materialTableRouteText,
       cellColor: (_, row) {
         final route = _materialTableRoute(row);
@@ -2422,7 +2439,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'netShortageQty',
       label: _l10n.materialShortage,
       info:
-          '需要数量保留原始订单/BOM基线。委外直属物料的当前缺口与默认备料量已计入生效的供料损耗上限，委外件自身的订货数量仍是成品目标。已完工表示既有任务结束，新的缺口仍可继续追加。',
+          '按实际需要量扣减已覆盖供给。委外直属物料按 BOM 计算，已审核委外订单锁定的供料量单独计入备料；货品档案里的允许损耗比例只用于确定上限。已完工的任务如有新的缺口仍可追加。',
       width: 145,
       minimumWidthOf: (_) => 72,
       type: 'number',
@@ -2447,7 +2464,10 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialToSupply,
       width: 165,
       minimumWidthOf: _materialQuantityMinimumWidth,
-      measureValueOf: (row) => _materialQuantityMeasureText(row, append: false),
+      measureValueOf: (row) => _materialQuantityMeasureKey(row, append: false),
+      measureWidthOf: (context, row, scaler) =>
+          _materialQuantityContentWidth(context, row, scaler, append: false),
+      measureWidthScope: 'material-preparation-quantity',
       type: 'number',
       value: (row) => _materialTableOrderQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: false),
@@ -2458,12 +2478,13 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'orderMethod',
       label: '下单方式',
-      width: 264,
-      minimumWidthOf: (_) => 264,
+      width: 110,
       exportable: false,
       info:
           '下单数量默认等于需要数量。可用数量充足时默认仅使用可用数量，有缺口时默认全部下单。也可选择先使用可用数量，再为不足部分采购、委外或下达车间。',
       value: _materialTableOrderMethodLabel,
+      measureWidthOf: _materialOrderMethodWidth,
+      measureWidthScope: 'material-preparation-order-method',
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableOrderMethodCell(row),
     ),
@@ -2522,7 +2543,10 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialAdditionalOrder,
       width: 158,
       minimumWidthOf: _materialQuantityMinimumWidth,
-      measureValueOf: (row) => _materialQuantityMeasureText(row, append: true),
+      measureValueOf: (row) => _materialQuantityMeasureKey(row, append: true),
+      measureWidthOf: (context, row, scaler) =>
+          _materialQuantityContentWidth(context, row, scaler, append: true),
+      measureWidthScope: 'material-preparation-append-quantity',
       type: 'number',
       info:
           '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
@@ -2545,6 +2569,10 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 132,
       minimumWidthOf: (_) => 72,
       value: _materialTableOwningWarehouseText,
+      measureValueOf: (row) =>
+          '${_materialTableOwningWarehouseText(row)}|${_materialTableWarehouseHasEditIcon(row)}',
+      measureWidthOf: _materialTableWarehouseWidth,
+      measureWidthScope: 'material-preparation-owning-warehouse',
       info:
           '这个货品归哪个仓管。任何入库都会自动把它更新为最新入库仓（与即时库存'
           '同一事实源）；点单元格可直接改主档。',
@@ -3017,6 +3045,28 @@ abstract class _MaterialAnalysisMaterialTableState
     return name == null || name.isEmpty ? '—' : name;
   }
 
+  static const double _materialWarehouseEditIconWidth = 16;
+
+  bool _materialTableWarehouseHasEditIcon(_MaterialTableRow row) =>
+      !row.contextOnly &&
+      !row.isAggregateSource &&
+      (_materialTableOwningWarehouseRef(row).goodsId?.isNotEmpty ?? false);
+
+  double _materialTableWarehouseWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler,
+  ) =>
+      utenTableCellTextWidth(
+        _materialTableOwningWarehouseText(row) ?? '—',
+        style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      ) +
+      (_materialTableWarehouseHasEditIcon(row)
+          ? _materialWarehouseEditIconWidth + UtenSpacing.s4
+          : 0);
+
   /// 所属仓库格: 有货品身份的行点开仓库面板直接改主档; 只读上下文行与取不到
   /// 货品的行(孤儿节点、缺 goodsId 的聚合行)退化为纯文本, 不做成点不动的假按钮。
   /// V590 起改完之外的每一次入库也会自动把它回写成最新入库仓。
@@ -3033,11 +3083,7 @@ abstract class _MaterialAnalysisMaterialTableState
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
     );
-    final goodsId = _materialTableOwningWarehouseRef(row).goodsId;
-    if (row.contextOnly ||
-        row.isAggregateSource ||
-        goodsId == null ||
-        goodsId.isEmpty) {
+    if (!_materialTableWarehouseHasEditIcon(row)) {
       return Tooltip(message: text, child: label);
     }
     return Tooltip(
@@ -3049,11 +3095,12 @@ abstract class _MaterialAnalysisMaterialTableState
           label: '所属仓库 $text',
           button: true,
           child: Row(
+            spacing: UtenSpacing.s4,
             children: [
               Expanded(child: label),
               Icon(
                 Icons.edit_outlined,
-                size: 16,
+                size: _materialWarehouseEditIconWidth,
                 color: foreground.withValues(alpha: 0.6),
               ),
             ],
@@ -5750,6 +5797,39 @@ abstract class _MaterialAnalysisMaterialTableState
     return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
   }
 
+  String _materialTableHandleDisplayText(_MaterialTableRow row) =>
+      switch (_materialTableHandleText(row)) {
+        '可调拨' || '暂不可办理' => '调拨',
+        final label? => label,
+        null => '—',
+      };
+
+  double _materialTableHandleWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler,
+  ) {
+    final label = _materialTableHandleDisplayText(row);
+    final text = utenTableCellTextWidth(
+      label,
+      style: Theme.of(context).textTheme.bodySmall ?? const TextStyle(),
+      textScaler: scaler,
+      textDirection: Directionality.of(context),
+    );
+    return label == '调拨'
+        ? math.max(
+            UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+            text +
+                _materialTransferIconWidth +
+                UtenSpacing.s4 +
+                2 * UtenSpacing.s8 +
+                2,
+          )
+        : text;
+  }
+
+  static const double _materialTransferIconWidth = 14;
+
   Widget _materialTableHandleCell(ThemeData theme, _MaterialTableRow row) {
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.actionCell(aggregate);
@@ -5866,7 +5946,7 @@ abstract class _MaterialAnalysisMaterialTableState
               expanded: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(icon, size: 14, color: color),
+                  Icon(icon, size: _materialTransferIconWidth, color: color),
                   const SizedBox(width: UtenSpacing.s4),
                   Flexible(
                     child: Text(
@@ -6356,20 +6436,36 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
-  String? _materialQuantityMeasureText(
+  String? _materialQuantityDisplayText(_MaterialTableRow row, bool append) =>
+      append
+      ? _materialTableAppendQtyText(row)
+      : _materialTableOrderQtyText(row);
+
+  String _materialQuantityMeasureKey(
     _MaterialTableRow row, {
     required bool append,
+  }) =>
+      '${_materialQuantityDisplayText(row, append)}|${_materialTableUnitText(row)}';
+
+  double _materialQuantityContentWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler, {
+    required bool append,
   }) {
-    final value = append
-        ? _materialTableAppendQtyText(row)
-        : _materialTableOrderQtyText(row);
-    if (value == null || value == '—') return value;
-    final unit = _materialTableUnitText(row);
-    if (unit == null || unit.isEmpty) return value;
-    // This string is only shaped by MasterDataTableView's bounded width batches.
-    // Reserve a readable numeric editor plus its insets, independently of the unit.
-    final digits = value.length < 7 ? '0000.00' : value;
-    return '$digits    $unit';
+    final value = _materialQuantityDisplayText(row, append);
+    if (value == null || value == '—') return 0;
+    final unit = _materialTableUnitText(row) ?? '';
+    final style = Theme.of(context).textTheme.bodySmall ?? const TextStyle();
+    double width(String text) => utenTableCellTextWidth(
+      text,
+      style: style,
+      textScaler: scaler,
+      textDirection: Directionality.of(context),
+    );
+    return math.max(_materialQuantityGeometry(context).digits, width(value)) +
+        UtenEditableGridCellSpec.contentPaddingOf(context).horizontal +
+        (unit.isEmpty ? 0 : UtenSpacing.s4 + width(unit));
   }
 
   /// 数量输入框：填错 / 填少了当场描红(RequiredCellFrame 订阅控制器 + 估算 tick，
@@ -6797,13 +6893,27 @@ abstract class _MaterialAnalysisMaterialTableState
     return _orderMethodLabel(choices.single, _materialTableRoute(row));
   }
 
+  double _materialOrderMethodWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler,
+  ) {
+    final label = _materialTableOrderMethodLabel(row);
+    return utenTableCellTextWidth(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        ) +
+        (label == '—' ? 0 : UtenDropdownField.flatArrowWidth);
+  }
+
   Widget _materialTableOrderMethodCell(_MaterialTableRow row) {
     final groups = _materialTableOrderMethodGroups(row).toList(growable: false);
     if (groups.isEmpty) return const Text('—');
     final choices = groups.map(_preparationOrderMethod).toSet();
     final route = _materialTableRoute(row);
     return SizedBox(
-      width: 240,
       height: 28,
       child: UtenDropdownField(
         key: ValueKey(
@@ -7900,6 +8010,71 @@ abstract class _MaterialAnalysisMaterialTableState
         : _materialStatus(Theme.of(context), group).label;
   }
 
+  ProductionMaterialAnalysisMaterial? _materialStatusBorrowSource(
+    _MaterialTableRow row,
+  ) {
+    if (row.contextOnly ||
+        row.aggregate != null ||
+        (row.product != null &&
+            (!_rootExternalSupplyRow(row) || row.product!.remainingQty <= 0))) {
+      return null;
+    }
+    final material = row.group?.representative;
+    if (material == null ||
+        (material.borrowRefs.isEmpty &&
+            material.crossReallocationRefs.isEmpty)) {
+      return null;
+    }
+    return material;
+  }
+
+  String _materialTableStatusMeasureKey(_MaterialTableRow row) => [
+    _materialTableStatusText(row),
+    row.contextOnly,
+    ..._borrowBadgeLabels(_materialStatusBorrowSource(row)),
+  ].join('|');
+
+  double _materialTableStatusWidth(
+    BuildContext context,
+    _MaterialTableRow row,
+    TextScaler scaler,
+  ) {
+    final label = _materialTableStatusText(row) ?? '—';
+    final theme = Theme.of(context);
+    if (row.contextOnly) {
+      return utenTableCellTextWidth(
+        label,
+        style: theme.textTheme.bodySmall ?? const TextStyle(),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      );
+    }
+    final statusWidth = MaterialAnalysisPreparationCell.contentWidthOf(
+      context,
+      label,
+      scaler,
+    );
+    final labels = _borrowBadgeLabels(_materialStatusBorrowSource(row));
+    if (labels.isEmpty) return statusWidth;
+    final badgeWidth = labels
+        .map(
+          (label) => MaterialAnalysisBorrowBadgeContent.contentWidthOf(
+            context,
+            label,
+            scaler,
+          ),
+        )
+        .reduce(math.max);
+    // The status and badge group use equal flexible slots. Within the badge
+    // group each entry also gets an equal slot, so preserve the largest one.
+    return math.max(
+              statusWidth,
+              labels.length * badgeWidth + (labels.length - 1) * UtenSpacing.s8,
+            ) *
+            2 +
+        UtenSpacing.s8;
+  }
+
   /// 按物料汇总行的进度（2026-10-09 用户口径「应该和顶层那里的显示一样」）：
   /// 与产品视图/分桶页同一 flowStage 词表（页面契约 §6、ADR-102「同一进度」）。
   /// 合并口径取各来源路径里**最落后的一步**：有真实单据阶段的路径按其链内
@@ -8079,10 +8254,13 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     // 借用徽章与状态文字同一行（2026-10-06 行高统一口径：徽章单行省略号，
     // 全量明细在行详情与悬浮里）。
+    final borrowSource = _materialStatusBorrowSource(row);
+    if (borrowSource == null) return result;
     return Row(
+      spacing: UtenSpacing.s8,
       children: [
         Flexible(child: result),
-        Expanded(child: _borrowBadges(theme, group.representative)),
+        Expanded(child: _borrowBadges(theme, borrowSource)),
       ],
     );
   }

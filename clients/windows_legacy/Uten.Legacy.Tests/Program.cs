@@ -116,9 +116,16 @@ namespace Uten.Legacy.Tests
                         + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
+                if (args.Length == 1 && args[0] == "--table-fit-contracts")
+                {
+                    int tableFit = RunUi(UiContractChecks.RunTableContentFit);
+                    Console.WriteLine("PASS native table content fit; assertions=" + tableFit + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--ui-contracts-only")
                 {
                     RunUi(UiContractChecks.Run);
+                    RunUi(UiContractChecks.RunTableContentFit);
                     Console.WriteLine("PASS UI shell/draft/review fixtures");
                     int historyUi = RunUi(UnitHistoryContractChecks.RunUi);
                     int printUi = RunUi(NativePrintContractChecks.Run);
@@ -149,6 +156,7 @@ namespace Uten.Legacy.Tests
                 int outcomes = UpdateOutcomeContractChecks.Run();
                 Console.WriteLine("PASS goods/downloads/publish/units/updater contracts");
                 RunUi(UiContractChecks.Run);
+                RunUi(UiContractChecks.RunTableContentFit);
                 RunUi(DateRangeDialogChecks.Run);
                 int historyUiAssertions = RunUi(UnitHistoryContractChecks.RunUi);
                 int printAssertions = RunUi(NativePrintContractChecks.Run);

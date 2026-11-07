@@ -41,6 +41,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/inputs/uten_filter_field_theme.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';

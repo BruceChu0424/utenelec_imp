@@ -42,7 +42,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
         private UnitReadOwner rowOwner;
         private readonly string recordId, focusColumnId;
         private readonly ObservableCollection<PlatformValueTarget> targets = new ObservableCollection<PlatformValueTarget>();
-        private readonly DataGrid table = new DataGrid { Height = 330, CanUserSortColumns = false, SelectionMode = DataGridSelectionMode.Single };
+        private readonly DataGrid table = new UtenDataGrid { Height = 330, CanUserSortColumns = false, SelectionMode = DataGridSelectionMode.Single };
         private readonly TextBlock hint = new TextBlock { TextWrapping = TextWrapping.Wrap };
         private readonly Button review;
         private readonly Dictionary<string, string> recoveredTargets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -80,15 +80,15 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 useRestoredRaw = true; Populate(null);
             }
             hint.Margin = new Thickness(0, 0, 0, Space("S12")); Body.Children.Add(hint);
-            table.Columns.Add(new DataGridTextColumn { Header = "字段", Binding = new Binding("Label"), Width = 170 });
-            table.Columns.Add(new DataGridTextColumn { Header = "当前值", Binding = new Binding("CurrentText"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            table.Columns.Add(new DataGridTextColumn { Header = "字段", Binding = new Binding("Label") });
+            table.Columns.Add(new DataGridTextColumn { Header = "当前值", Binding = new Binding("CurrentText"), MaxWidth = 360 });
             var choose = new FrameworkElementFactory(typeof(CheckBox)); choose.SetBinding(CheckBox.IsCheckedProperty, new Binding("UseDraft") { Mode = BindingMode.TwoWay }); choose.SetBinding(IsEnabledProperty, new Binding("Editable"));
-            table.Columns.Add(new DataGridTemplateColumn { Header = "采用草稿目标", Width = 110, Visibility = restoredDraft == null ? Visibility.Collapsed : Visibility.Visible, CellTemplate = new DataTemplate { VisualTree = choose } });
+            table.Columns.Add(new DataGridTemplateColumn { Header = "采用草稿目标", Visibility = restoredDraft == null ? Visibility.Collapsed : Visibility.Visible, CellTemplate = new DataTemplate { VisualTree = choose } });
             var input = new FrameworkElementFactory(typeof(TextBox)); input.SetBinding(TextBox.TextProperty, new Binding("TargetText") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
             input.SetBinding(IsEnabledProperty, new Binding("CanType")); input.SetValue(TextBox.MaxLengthProperty, 2000); input.SetValue(StyleProperty, FindResource("Uten.CompactInput")); input.SetValue(MinHeightProperty, FindResource("Uten.Height.Cell"));
-            table.Columns.Add(new DataGridTemplateColumn { Header = "目标值", Width = new DataGridLength(1, DataGridLengthUnitType.Star), CellTemplate = new DataTemplate { VisualTree = input } });
+            table.Columns.Add(new DataGridTemplateColumn { Header = "目标值", MinWidth = 160, MaxWidth = 360, CellTemplate = new DataTemplate { VisualTree = input } });
             var empty = new FrameworkElementFactory(typeof(CheckBox)); empty.SetBinding(CheckBox.IsCheckedProperty, new Binding("Clear") { Mode = BindingMode.TwoWay }); empty.SetBinding(IsEnabledProperty, new Binding("CanEdit"));
-            table.Columns.Add(new DataGridTemplateColumn { Header = "清空", Width = 60, CellTemplate = new DataTemplate { VisualTree = empty } });
+            table.Columns.Add(new DataGridTemplateColumn { Header = "清空", CellTemplate = new DataTemplate { VisualTree = empty } });
             table.ItemsSource = targets; Body.Children.Add(UtenSurfaces.Wrap(table, UtenSurfaceRole.Table));
             review = ActionButton("核对并采用当前字段版本", () => { _ = ReviewAsync(); }); review.Visibility = restoredDraft == null ? Visibility.Collapsed : Visibility.Visible;
             if (restoredDraft != null) Loaded += async (sender, args) => await LoadRecoveredRowAsync();

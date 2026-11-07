@@ -7,6 +7,30 @@ Color _crossReallocationSourceColor(ThemeData theme) =>
 
 @visibleForTesting
 class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
+  static const double _iconWidth = 16;
+  static const double _chipPadding = UtenSpacing.s8;
+
+  static double contentWidthOf(
+    BuildContext context,
+    String label,
+    TextScaler scaler,
+  ) =>
+      utenTableCellTextWidth(
+        label,
+        style: _textStyle(Theme.of(context)),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      ) +
+      _iconWidth +
+      UtenSpacing.s4 +
+      2 * _chipPadding +
+      2;
+
+  static TextStyle _textStyle(ThemeData theme) =>
+      (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(
+        fontWeight: FontWeight.w700,
+      );
+
   const MaterialAnalysisBorrowBadgeContent({
     super.key,
     required this.icon,
@@ -24,16 +48,13 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
     return ExcludeSemantics(
       child: Text.rich(
         TextSpan(
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w700,
-          ),
+          style: _textStyle(theme).copyWith(color: color),
           children: [
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Padding(
                 padding: const EdgeInsets.only(right: UtenSpacing.s4),
-                child: Icon(icon, size: 16, color: color),
+                child: Icon(icon, size: _iconWidth, color: color),
               ),
             ),
             TextSpan(text: label),
@@ -54,6 +75,22 @@ abstract class _MaterialAnalysisBorrowState
   // 路径。只改分析软分配与齐套投影；服务端逐笔留痕（谁、多少、从哪到哪、
   // 原因、时间），借出/借入双方行上都可见，正式下达前可撤销。
 
+  String _borrowBadgeLabel(MaterialBorrowRef ref) => ref.qty <= 0
+      ? '调拨申请 ${_qty(ref.requestedQty)} 件暂未生效'
+      : ref.isInbound
+      ? '已调入 ${_qty(ref.qty)} 件 · 来自 ${ref.counterpartProduct ?? '其它产品'}'
+      : '已被调走 ${_qty(ref.qty)} 件 · 调给 ${ref.counterpartProduct ?? '其它产品'}';
+
+  List<String> _borrowBadgeLabels(
+    ProductionMaterialAnalysisMaterial? material,
+  ) => material == null
+      ? const []
+      : [
+          for (final ref in material.borrowRefs) _borrowBadgeLabel(ref),
+          for (final ref in material.crossReallocationRefs)
+            _crossReallocationChipLabel(ref),
+        ];
+
   /// 借用双向徽标：借出方显示"已被调走 · 调给 X"，借入方显示"已调入 ·
   /// 来自 Y"。生效数为 0 时显示"暂未生效"，避免把申请量当成已调量。
   Widget _borrowBadges(
@@ -72,11 +109,7 @@ abstract class _MaterialAnalysisBorrowState
           : inbound
           ? theme.colorScheme.primary
           : theme.colorScheme.tertiary;
-      final label = !effective
-          ? '调拨申请 ${_qty(ref.requestedQty)} 件暂未生效'
-          : inbound
-          ? '已调入 ${_qty(ref.qty)} 件 · 来自 ${ref.counterpartProduct ?? '其它产品'}'
-          : '已被调走 ${_qty(ref.qty)} 件 · 调给 ${ref.counterpartProduct ?? '其它产品'}';
+      final label = _borrowBadgeLabel(ref);
       chips.add(
         Semantics(
           label: label,
@@ -85,7 +118,7 @@ abstract class _MaterialAnalysisBorrowState
               'material-borrow-ref-${ref.direction}-${material.materialLineId}-${ref.borrowId}',
             ),
             padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
+              horizontal: MaterialAnalysisBorrowBadgeContent._chipPadding,
               vertical: UtenSpacing.s4,
             ),
             decoration: BoxDecoration(
@@ -119,7 +152,7 @@ abstract class _MaterialAnalysisBorrowState
               '${material.materialLineId}-${allocation.id}',
             ),
             padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s8,
+              horizontal: MaterialAnalysisBorrowBadgeContent._chipPadding,
               vertical: UtenSpacing.s4,
             ),
             decoration: BoxDecoration(

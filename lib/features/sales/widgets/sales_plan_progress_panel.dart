@@ -33,6 +33,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -383,6 +384,17 @@ String _supplySources(OrderPlanProgressLine line) {
 }
 
 class _ProgressList extends ConsumerWidget {
+  static const double _progressTrackWidth = UtenSpacing.s48;
+  static const double _progressGap = UtenSpacing.s8;
+  static const double _progressCellPadding = UtenSpacing.s8;
+  static const String _progressActionLabel = '查看进度';
+
+  static String _preparationLabel(OrderPlanProgressLine line) =>
+      '${_fmt(line.preparation?.preparedQty)} / ${_fmt(line.preparation?.targetQty ?? line.qty)}';
+
+  static String _availableLabel(OrderPlanProgressLine line) =>
+      '${_qtyWithUnit(line.availableShipmentQty, line.unitName)}${line.isBomDelivery ? ' (可建备货)' : ''}';
+
   const _ProgressList({
     required this.lines,
     required this.canShip,
@@ -446,14 +458,28 @@ class _ProgressList extends ConsumerWidget {
         label: '备货进度',
         info: '已备货包含订单的合格库存和已发净量；采购、委外、现货与自产均可备货。核销量不计入备货目标。',
         width: 160,
+        minimumWidthOf: (_) =>
+            _progressTrackWidth + _progressGap + _progressCellPadding * 2,
+        cellHorizontalPaddingOf: (_) => _progressCellPadding,
         // 此格是「已入库 / 订货」文本，不把分子当成百分比排序或汇总。
         filterFromRows: true,
         facetSearchEnabled: true,
-        value: (line) =>
-            '${_fmt(line.preparation?.preparedQty)} / ${_fmt(line.preparation?.targetQty ?? line.qty)}',
+        value: _preparationLabel,
+        measureWidthOf: (context, line, scaler) =>
+            _progressTrackWidth +
+            _progressGap +
+            utenTableCellTextWidth(
+              _preparationLabel(line),
+              style:
+                  (Theme.of(context).textTheme.bodySmall ?? const TextStyle())
+                      .copyWith(fontWeight: FontWeight.w700),
+              textScaler: scaler,
+            ),
+        measureWidthScope: 'sales-preparation-progress',
         cellBuilder: (context, line) => Row(
           children: [
-            Expanded(
+            SizedBox(
+              width: _progressTrackWidth,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(UtenRadius.xs),
                 child: LinearProgressIndicator(
@@ -468,13 +494,17 @@ class _ProgressList extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: _progressGap),
             // 2026-10-06 全站表格行高统一：进度格改单层 Row（条 + 数量同排），
             // 不再上下两层撑高读行。
-            Text(
-              '${_fmt(line.preparation?.preparedQty)} / ${_fmt(line.preparation?.targetQty ?? line.qty)}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
+            Flexible(
+              child: Text(
+                _preparationLabel(line),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -490,21 +520,21 @@ class _ProgressList extends ConsumerWidget {
       MasterColumnDef(
         key: 'goodsCode',
         label: '编号',
-        width: 130,
+        width: 0,
         value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
       ),
       MasterColumnDef(
         key: 'colorName',
         label: '颜色',
-        width: 96,
+        width: 0,
         value: (line) => UtenGoodsAttributeCell.text(line.colorName),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
       ),
       MasterColumnDef(
         key: 'spec',
         label: '规格',
-        width: 120,
+        width: 0,
         value: (line) => UtenGoodsAttributeCell.text(line.spec),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
       ),
@@ -565,8 +595,18 @@ class _ProgressList extends ConsumerWidget {
         info:
             '整装显示已扣除办理中出货的合格实物量；按BOM交付显示服务端可创建备货单上限，不代表散件已齐套或可出库。最终加工、库存及出库由仓库核对。',
         value: (line) => _qtyWithUnit(line.availableShipmentQty, line.unitName),
+        measureValueOf: _availableLabel,
+        measureWidthOf: (context, line, scaler) => utenTableCellTextWidth(
+          _availableLabel(line),
+          style: (Theme.of(context).textTheme.bodyMedium ?? const TextStyle())
+              .copyWith(fontWeight: FontWeight.w700),
+          textScaler: scaler,
+        ),
+        measureWidthScope: 'sales-available-shipment',
         cellBuilder: (context, line) => Text(
-          '${_qtyWithUnit(line.availableShipmentQty, line.unitName)}${line.isBomDelivery ? ' (可建备货)' : ''}',
+          _availableLabel(line),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.error,
@@ -586,9 +626,16 @@ class _ProgressList extends ConsumerWidget {
         key: 'detail',
         label: '进度来源',
         width: 110,
-        value: (_) => '查看进度',
+        value: (_) => _progressActionLabel,
+        measureWidthOf: (context, _, scaler) =>
+            UtenTableCellAction.contentWidthOf(
+              context,
+              _progressActionLabel,
+              textScaler: scaler,
+            ),
+        measureWidthScope: _progressActionLabel,
         cellBuilder: (context, line) => UtenTableCellAction(
-          label: '查看进度',
+          label: _progressActionLabel,
           onPressed: busy
               ? null
               : () => _showLineProgress(context, theme, line, canViewPlan),

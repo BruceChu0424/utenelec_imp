@@ -13,6 +13,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
+import '../../core/responsive/breakpoint.dart';
 import '../feedback/uten_motion.dart';
 import 'uten_collapsible_content.dart';
 
@@ -38,6 +39,9 @@ class UtenCollapsibleSection extends StatefulWidget {
     /// 紧贴标题文字右侧的附加组件（如待办总数徽章）。
     /// 与 [trailing] 不同：它紧跟标题文字，不会被挤到行尾。
     this.titleTrailing,
+
+    /// Current status centered in the header, with a second row on compact widths.
+    this.headerCenter,
   });
 
   final String title;
@@ -47,6 +51,7 @@ class UtenCollapsibleSection extends StatefulWidget {
   final ValueChanged<bool>? onExpandedChanged;
   final Widget? trailing;
   final Widget? titleTrailing;
+  final Widget? headerCenter;
   final Widget child;
 
   @override
@@ -95,57 +100,7 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
               onTap: _toggle,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                child: Row(
-                  children: [
-                    if (widget.accentColor != null) ...[
-                      Container(
-                        width: 4,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          color: widget.accentColor,
-                          borderRadius: BorderRadius.circular(UtenRadius.xs),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              widget.title,
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          // 紧贴标题文字的附加组件（如待办总数徽章）
-                          if (widget.titleTrailing != null) ...[
-                            const SizedBox(width: 8),
-                            widget.titleTrailing!,
-                          ],
-                        ],
-                      ),
-                    ),
-                    // 附加组件（如拖动排序手柄），在 chevron 左侧
-                    if (widget.trailing != null) ...[
-                      widget.trailing!,
-                      const SizedBox(width: 4),
-                    ],
-                    // 与全站展开箭头同一口径: 收起时朝下(点开往下展开), 展开后朝上。
-                    AnimatedRotation(
-                      turns: isExpanded ? 0.5 : 0,
-                      duration: duration,
-                      curve: UtenAnim.standard,
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
+                child: _header(theme, isExpanded, duration),
               ),
             ),
           ),
@@ -158,6 +113,95 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _header(ThemeData theme, bool expanded, Duration duration) {
+    final title = Row(
+      children: [
+        if (widget.accentColor != null) ...[
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(
+              color: widget.accentColor,
+              borderRadius: BorderRadius.circular(UtenRadius.xs),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Flexible(
+          child: Text(
+            widget.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        // 紧贴标题文字的附加组件（如待办总数徽章）
+        if (widget.titleTrailing != null) ...[
+          const SizedBox(width: 8),
+          widget.titleTrailing!,
+        ],
+      ],
+    );
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        // 附加组件（如拖动排序手柄），在 chevron 左侧
+        if (widget.trailing != null) ...[
+          Flexible(child: widget.trailing!),
+          const SizedBox(width: 4),
+        ],
+        // 与全站展开箭头同一口径: 收起时朝下(点开往下展开), 展开后朝上。
+        AnimatedRotation(
+          turns: expanded ? 0.5 : 0,
+          duration: duration,
+          curve: UtenAnim.standard,
+          child: Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    final center = widget.headerCenter;
+    if (center == null) {
+      return Row(
+        children: [
+          Expanded(child: title),
+          actions,
+        ],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (breakpointForWidth(constraints.maxWidth).isCompact) {
+          return Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(child: title),
+                  Expanded(child: actions),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              Center(child: center),
+            ],
+          );
+        }
+        return Row(
+          spacing: UtenSpacing.s8,
+          children: [
+            Expanded(child: title),
+            Expanded(flex: 2, child: Center(child: center)),
+            Expanded(child: actions),
+          ],
+        );
+      },
     );
   }
 }

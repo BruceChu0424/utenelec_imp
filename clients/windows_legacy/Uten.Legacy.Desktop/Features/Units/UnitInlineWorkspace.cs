@@ -21,7 +21,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly UnitInlineWorkspaceModel model;
         private readonly InlinePreservationGuard guard;
         private readonly DispatcherTimer debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        private readonly DataGrid table = new DataGrid { IsReadOnly = false, CanUserAddRows = false,
+        private readonly DataGrid table = new UtenDataGrid { IsReadOnly = false, CanUserAddRows = false,
             AutoGenerateColumns = false, CanUserSortColumns = false, SelectionMode = DataGridSelectionMode.Single };
         private readonly TextBlock status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         private readonly StackPanel review = new StackPanel();
@@ -61,14 +61,13 @@ namespace Uten.Legacy.Desktop.Features.Units
             status.Margin = new Thickness(0, Space("S8"), 0, 0); status.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
             DockPanel.SetDock(status, Dock.Bottom); layout.Children.Add(status);
             table.Columns.Add(Editor("单位编号", nameof(UnitInlineRow.Code), 140));
-            table.Columns.Add(Editor("单位名称", nameof(UnitInlineRow.Name), 220, true));
+            var nameColumn = Editor("单位名称", nameof(UnitInlineRow.Name), 220);
+            nameColumn.Width = new DataGridLength(1, DataGridLengthUnitType.Star);
+            table.Columns.Add(nameColumn);
             table.Columns.Add(StatusColumn());
             table.Columns.Add(new DataGridTextColumn { Header = "保存结果", IsReadOnly = true, Binding = new Binding(nameof(UnitInlineRow.Message)),
-                Width = new DataGridLength(220), MinWidth = 160 });
+                MaxWidth = 420 });
             table.ItemsSource = model.Rows;
-            var cells = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
-            cells.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
-            table.CellStyle = cells;
             layout.Children.Add(UtenSurfaces.Wrap(table, UtenSurfaceRole.Table));
             Content = layout;
             guard = new InlinePreservationGuard(parent, () => { _ = PreserveAndFinishAsync(); });
@@ -112,7 +111,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (!model.IsOwnerCurrent) RetireOwner();
         }
         private double Space(string name) { return (double)FindResource("Uten.Space." + name); }
-        private DataGridTemplateColumn Editor(string label, string property, double width, bool stretch = false)
+        private DataGridTemplateColumn Editor(string label, string property, double minWidth)
         {
             var input = new FrameworkElementFactory(typeof(TextBox)) { Name = "InlineEditor" };
             input.SetBinding(TextBox.TextProperty, new Binding(property) { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
@@ -143,8 +142,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             readOnly.Setters.Add(new Setter(VisibilityProperty, Visibility.Collapsed, "InlineEditor"));
             readOnly.Setters.Add(new Setter(VisibilityProperty, Visibility.Visible, "InlineReadOnly"));
             template.Triggers.Add(readOnly);
-            return new DataGridTemplateColumn { Header = label, CellTemplate = template, MinWidth = width,
-                Width = new DataGridLength(stretch ? 1 : width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel) };
+            return new DataGridTemplateColumn { Header = label, CellTemplate = template, MinWidth = minWidth, MaxWidth = 420 };
         }
         private DataGridTemplateColumn StatusColumn()
         {
@@ -156,7 +154,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             input.SetResourceReference(Control.FontSizeProperty, "Uten.FontSize.Compact");
             input.SetValue(Control.PaddingProperty, (Thickness)FindResource("Uten.Padding.Filter"));
             input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "状态");
-            return new DataGridTemplateColumn { Header = "状态", Width = 120, CellTemplate = new DataTemplate { VisualTree = input } };
+            return new DataGridTemplateColumn { Header = "状态", MinWidth = 84, CellTemplate = new DataTemplate { VisualTree = input } };
         }
         private static DependencyProperty SelectorSelectedItemProperty() { return System.Windows.Controls.Primitives.Selector.SelectedItemProperty; }
         private void CompositionStarted(object sender, TextCompositionEventArgs args)

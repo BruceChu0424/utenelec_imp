@@ -27,6 +27,8 @@ class GridHeaderFilterBucket {
 }
 
 class GridHeaderFilterCell extends StatefulWidget {
+  static const double arrowWidth = 18;
+
   const GridHeaderFilterCell({
     super.key,
     required this.label,
@@ -254,6 +256,22 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
           .followedBy([s])
           .first;
     }
+    final label = Text.rich(
+      TextSpan(
+        text: display,
+        style: headerStyle,
+        children: widget.requiredStar
+            ? [
+                TextSpan(
+                  text: ' *',
+                  style: headerStyle.copyWith(color: theme.colorScheme.error),
+                ),
+              ]
+            : null,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
@@ -269,27 +287,16 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                 const SizedBox(width: UtenSpacing.s4),
               ],
               Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    text: display,
-                    style: headerStyle,
-                    children: widget.requiredStar
-                        ? [
-                            TextSpan(
-                              text: ' *',
-                              style: headerStyle.copyWith(
-                                color: theme.colorScheme.error,
-                              ),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: widget.headerInfo == null
+                      ? label
+                      : UtenColumnHeaderInfo(
+                          label: label,
+                          message: widget.headerInfo!,
+                        ),
                 ),
               ),
-              if (widget.headerInfo != null)
-                UtenColumnHintIcon(message: widget.headerInfo!),
               if (widget.sortActive)
                 Icon(
                   widget.sortAscending
@@ -300,7 +307,7 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                 ),
               Icon(
                 Icons.arrow_drop_down_rounded,
-                size: 18,
+                size: GridHeaderFilterCell.arrowWidth,
                 color: highlighted
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant,

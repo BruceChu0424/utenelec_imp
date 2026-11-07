@@ -120,7 +120,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(reads, isNotEmpty);
     expect(reads.every((index) => index >= 2000), isTrue);
-    expect(width, closeTo(104, .5));
+    expect(
+      width,
+      inInclusiveRange(48 - 16, 90),
+      reason: 'Only the replacement short values should fit.',
+    );
     expect(controller.length, 20);
     expect(tester.takeException(), isNull);
   });

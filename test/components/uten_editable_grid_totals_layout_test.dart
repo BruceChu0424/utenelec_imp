@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 
 class _Row extends EditableGridRow {}
 
@@ -48,7 +49,7 @@ void main() {
     final add = tester.getRect(find.text('添加行'));
     final total = tester.getRect(find.text('987654321.123456789'));
     expect((add.center.dy - total.center.dy).abs(), lessThan(10));
-    expect(total.right, closeTo(1200, 1));
+    expect(total.right, closeTo(1200 - UtenSpacing.s8, 1));
     expect(total.left, greaterThan(add.right));
     for (var i = 0; i < 15; i++) {
       await tester.ensureVisible(find.text('添加行'));
@@ -72,7 +73,7 @@ void main() {
       final add = tester.getRect(find.text('添加行'));
       final total = tester.getRect(find.text('987654321.123456789'));
       expect(total.top, greaterThan(add.bottom));
-      expect(total.right, closeTo(size.$1, 1));
+      expect(total.right, closeTo(size.$1 - UtenSpacing.s8, 1));
       expect(total.left, greaterThanOrEqualTo(0));
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());

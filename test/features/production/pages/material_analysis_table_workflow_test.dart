@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/table_cell_geometry.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -198,9 +199,16 @@ void main() {
       final harness = await _pump(tester);
       final source = find.byKey(const ValueKey('material-route-readonly-m-1'));
       expect(_route('m-1'), findsNothing);
+      final navigator = Navigator.of(tester.element(source));
       for (var attempt = 0; attempt < 5; attempt++) {
-        await tester.tap(source);
-        await tester.pump();
+        await tester.tap(source.hitTestable());
+        await tester.pumpAndSettle();
+        // Row activation may open read-only details. Close it so every tap
+        // reaches the source cell instead of the overlay.
+        if (navigator.canPop()) {
+          navigator.pop();
+          await tester.pumpAndSettle();
+        }
       }
       expect(harness.writes, isEmpty);
       final tree = tester.widget<UtenTreeTableCell>(
@@ -325,6 +333,26 @@ void main() {
           const Offset(0, -700),
         );
         await tester.pumpAndSettle();
+      } else {
+        final status = find.byKey(
+          const ValueKey('material-preparation-status-MATERIAL|m-1'),
+        );
+        final label = tester
+            .widget<MaterialAnalysisPreparationCell>(status)
+            .label;
+        final paragraph = find.descendant(
+          of: status,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is RichText && widget.text.toPlainText() == label,
+          ),
+        );
+        expect(
+          tester.renderObject<RenderParagraph>(paragraph).didExceedMaxLines,
+          isFalse,
+        );
+        expect(tableCellWidth(tester, status), lessThan(220));
+        expect(tableCellWidth(tester, find.text('下单方式').first), lessThan(240));
       }
       expect(tester.takeException(), isNull);
       if (Platform.environment['UTEN_CAPTURE_MATERIAL_UI'] == '1') {

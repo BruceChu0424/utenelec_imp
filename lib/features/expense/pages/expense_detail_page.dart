@@ -31,7 +31,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -332,6 +331,24 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                             const SizedBox(height: UtenSpacing.s16),
                             ExpenseApprovalProgress(claim: claim),
                             const SizedBox(height: UtenSpacing.s16),
+                            _attachments(claim),
+                            if (claim.status == ExpenseClaimStatus.paid) ...[
+                              const SizedBox(height: UtenSpacing.s16),
+                              AttachmentSection(
+                                ownerType: 'EXPENSE_PAYMENT_PROOF',
+                                ownerId: claim.id,
+                                title: AppLocalizations.of(
+                                  context,
+                                ).expenseFlowPaymentProofs,
+                                attachments: claim.paymentProofs,
+                                ownerCanUpload: false,
+                                ownerCanDelete: false,
+                                onChanged: () => ref.invalidate(
+                                  expenseDetailProvider(claim.id),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: UtenSpacing.s16),
                             ExpenseSubmissionChangeSummary(claim: claim),
                             _itemsSection(context, claim),
                             const SizedBox(height: UtenSpacing.s16),
@@ -348,29 +365,11 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                                 stickyHeaderPinned: _invoicePinned,
                               ),
                             ),
-                            const SizedBox(height: UtenSpacing.s16),
                             if (claim.applicationKind != null) ...[
+                              const SizedBox(height: UtenSpacing.s16),
                               FinanceNativeOriginalSection(
                                 ownerType: 'EXPENSE_CLAIM',
                                 ownerId: claim.id,
-                              ),
-                              const SizedBox(height: UtenSpacing.s16),
-                            ],
-                            _attachments(claim),
-                            if (claim.status == ExpenseClaimStatus.paid) ...[
-                              const SizedBox(height: UtenSpacing.s16),
-                              AttachmentSection(
-                                ownerType: 'EXPENSE_PAYMENT_PROOF',
-                                ownerId: claim.id,
-                                title: AppLocalizations.of(
-                                  context,
-                                ).expenseFlowPaymentProofs,
-                                attachments: claim.paymentProofs,
-                                ownerCanUpload: false,
-                                ownerCanDelete: false,
-                                onChanged: () => ref.invalidate(
-                                  expenseDetailProvider(claim.id),
-                                ),
                               ),
                             ],
                             const SizedBox(height: UtenSpacing.s16),
@@ -750,10 +749,6 @@ class _HeroCard extends StatelessWidget {
                     '${claim.approvedByName ?? '—'} · ${_fmtDateTime(claim.approvedAt!)}',
               ),
           ],
-        ),
-        UtenSummaryField(
-          label: AppLocalizations.of(context).expenseFlowCapital,
-          value: rmbCapital(claim.totalAmountText),
         ),
       ],
       notices: [

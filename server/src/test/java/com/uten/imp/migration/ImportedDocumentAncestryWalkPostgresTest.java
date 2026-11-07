@@ -1,5 +1,6 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.testsupport.TestFlyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,7 +15,9 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -234,10 +237,25 @@ class ImportedDocumentAncestryWalkPostgresTest {
     }
 
     @Test void migratedNativeRowCallersTargetPhysicalRelationsWithNonNullUuidIdentity() throws Exception {
-        var pattern=java.util.regex.Pattern.compile("\\(SELECT \\* FROM ([a-z_][a-z_0-9]*) archive_origin WHERE NULLIF\\(to_jsonb\\(archive_origin\\)->>'legacy_id',''\\) IS NULL AND NULLIF\\(to_jsonb\\(archive_origin\\)->>'legacy_import_run_id',''\\) IS NULL AND NOT fn_imported_business_document_row\\('([a-z_][a-z_0-9]*)',to_jsonb\\(archive_origin\\)\\)\\)");
-        java.util.Set<String> tables=new java.util.TreeSet<>();int occurrences=0;
-        try(var files=Files.walk(Path.of("src/main/java"))) {for(Path file:files.filter(path->path.toString().endsWith(".java")).toList()) {var matcher=pattern.matcher(Files.readString(file));while(matcher.find()){assertThat(matcher.group(2)).isEqualTo(matcher.group(1));tables.add(matcher.group(1));occurrences++;}}}
+        var pattern = Pattern.compile(
+                "ImportedBusinessDocumentScope\\s*\\.\\s*(?:nativeTable|nativeRowsByKey|nativePredicate)"
+                        + "\\s*\\(\\s*\"([a-z_][a-z_0-9]*)\"");
+        var tables = new TreeSet<String>();
+        int occurrences = 0;
+        try (var files = Files.walk(Path.of("src/main/java"))) {
+            for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                var caller = pattern.matcher(Files.readString(file));
+                while (caller.find()) {
+                    tables.add(caller.group(1));
+                    occurrences++;
+                }
+            }
+        }
         assertThat(tables).isNotEmpty().doesNotContain("platform_record_fields");
+        for (String table : tables) {
+            assertThat(ImportedBusinessDocumentScope.nativePredicate(table, "archive_origin"))
+                    .endsWith("NOT fn_imported_business_document_row('" + table + "',to_jsonb(archive_origin))");
+        }
         try(var connection=owner();var query=connection.prepareStatement("SELECT c.relkind,a.attnotnull,a.atttypid='uuid'::regtype,EXISTS(SELECT 1 FROM pg_index pk WHERE pk.indrelid=c.oid AND pk.indisprimary AND pk.indnkeyatts=1 AND pk.indkey[0]=a.attnum) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='id' AND NOT a.attisdropped WHERE n.nspname='public' AND c.relname=?")) {for(String table:tables){query.setString(1,table);try(var result=query.executeQuery()){assertThat(result.next()).as(table).isTrue();assertThat(result.getString(1)).isIn("r","p");assertThat(result.getBoolean(2)).as(table+" id NOT NULL").isTrue();assertThat(result.getBoolean(3)).as(table+" id UUID").isTrue();assertThat(result.getBoolean(4)).as(table+" unique primary identity").isTrue();}}}
         System.out.println("ORIGIN-ROW-CATALOG physicalTables="+tables.size()+" verifiedCompleteRowCallers="+occurrences);
     }

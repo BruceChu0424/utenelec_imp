@@ -468,7 +468,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 Map.entry("idx_stock_storage_claim_dimension", "CREATE INDEX idx_stock_storage_claim_dimension ON public.stock_reservations USING btree (goods_id, color_id, id) INCLUDE (warehouse_id, order_item_id, qty, consumed_qty, released_qty) WHERE ((NOT is_deleted) AND (status = 0))"),
                 Map.entry("idx_goods_currency_id", "CREATE INDEX idx_goods_currency_id ON public.goods USING btree (currency_id) WHERE (NOT is_deleted)"))
                 .forEach((name, definition) -> assertNull(expectedIndexes.put(name, definition)));
-        applyReviewedPostV995Declarations(expectedTables,expectedIndexes);
+        applyReviewedDeclarations(expectedTables, expectedIndexes, "V996..V1071", 134, 316, 0);
+        applyReviewedDeclarations(expectedTables, expectedIndexes, "V1072..V1113", 6, 32, 1);
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {
@@ -540,21 +541,30 @@ class DailyReportMaterialReviewMigrationPostgresTest {
     private static void insertV3(UUID report,String snapshot,String decisions){db.update("INSERT INTO production_daily_report_commands(actor_user_id,idempotency_key,request_hash,report_id,created_by,command_kind,approval_protocol_version,reviewed_row_version,material_review_fingerprint,material_review_snapshot,material_decisions) VALUES(?,?,repeat('b',64),?,?,'APPROVE',3,0,repeat('b',64),CAST(? AS jsonb),CAST(? AS jsonb))",actor,"new-v3-migration-"+UUID.randomUUID(),report,actor,snapshot,decisions);}
     private static List<String> tables(){return db.queryForList("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",String.class);}
     /** Frozen owning DDL declarations; never derive expectations from the catalog under test. */
-    private static void applyReviewedPostV995Declarations(TreeSet<String> expectedTables,
-                                                         Map<String,String> expectedIndexes) throws Exception {
+    private static void applyReviewedDeclarations(TreeSet<String> expectedTables,
+                                                  Map<String,String> expectedIndexes,
+                                                  String range, int tableCount, int indexCount,
+                                                  int removedIndexCount) throws Exception {
         var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
         com.fasterxml.jackson.databind.JsonNode declared;
-        try(var input=DailyReportMaterialReviewMigrationPostgresTest.class.getResourceAsStream(
-                "/migration/daily-forward-schema-v996-v1071.json")) {
+        String file = "/migration/daily-forward-schema-"
+                + range.toLowerCase(java.util.Locale.ROOT).replace("..", "-") + ".json";
+        try(var input=DailyReportMaterialReviewMigrationPostgresTest.class.getResourceAsStream(file)) {
             assertNotNull(input);declared=mapper.readTree(input);
         }
-        assertEquals("V996..V1071",declared.path("reviewedRange").asText());
-        assertEquals(134,declared.path("tables").size());
-        assertEquals(316,declared.path("indexes").size());
+        assertEquals(range,declared.path("reviewedRange").asText());
+        assertEquals(tableCount,declared.path("tables").size());
+        assertEquals(indexCount,declared.path("indexes").size());
+        assertEquals(removedIndexCount,declared.path("removedIndexes").size());
         Map<String,String> sources=new TreeMap<>();
         for(var table:declared.path("tables").properties()) {
             assertReviewedDeclaration(table.getValue(),sources);
             assertTrue(expectedTables.add(table.getKey()),"Declared table must be a genuine addition: "+table.getKey());
+        }
+        for(var index:declared.path("removedIndexes").properties()) {
+            var rule=index.getValue();assertReviewedDeclaration(rule,sources);
+            assertEquals(rule.path("definition").asText(),expectedIndexes.remove(index.getKey()),
+                    "Declared removal must match the original index: "+index.getKey());
         }
         for(var index:declared.path("indexes").properties()) {
             var rule=index.getValue();assertReviewedDeclaration(rule,sources);

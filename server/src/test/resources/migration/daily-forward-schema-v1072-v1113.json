@@ -1,0 +1,301 @@
+{
+  "reviewedRange": "V1072..V1113",
+  "tables": {
+    "preplan_physical_stock_claim_allocations": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE TABLE preplan_physical_stock_claim_allocations (\n id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,\n stock_reservation_id uuid PRIMARY KEY REFERENCES stock_reservations(id),\n command_id uuid NOT NULL REFERENCES preplan_physical_stock_claim_commands(id),\n material_id uuid NOT NULL REFERENCES production_material_analysis_materials(id),\n qty numeric(18,4) NOT NULL CHECK(qty>0), created_at timestamptz NOT NULL DEFAULT now()\n)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_claim_commands": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE TABLE preplan_physical_stock_claim_commands (\n id uuid PRIMARY KEY, analysis_id uuid NOT NULL REFERENCES production_material_analyses(id),\n idempotency_key text NOT NULL UNIQUE, request_hash text NOT NULL CHECK(request_hash ~ '^[0-9a-f]{64}$'),\n created_at timestamptz NOT NULL DEFAULT now(), created_by uuid NOT NULL REFERENCES users(id)\n)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_formalizations": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE TABLE preplan_physical_stock_formalizations (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n source_reservation_id uuid NOT NULL REFERENCES stock_reservations(id),\n source_analysis_id uuid NOT NULL REFERENCES production_material_analyses(id),\n source_material_id uuid NOT NULL REFERENCES production_material_analysis_materials(id),\n target_reservation_id uuid NOT NULL REFERENCES stock_reservations(id),\n package_id uuid NOT NULL REFERENCES production_planning_packages(id),\n demand_id uuid NOT NULL REFERENCES production_material_demands(id),\n qty numeric(18,4) NOT NULL CHECK(qty>0), idempotency_key text NOT NULL UNIQUE,\n created_at timestamptz NOT NULL DEFAULT now(), created_by uuid REFERENCES users(id),\n restored_at timestamptz, restored_by uuid REFERENCES users(id),\n CHECK((restored_at IS NULL)=(restored_by IS NULL))\n)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_sales_stock_adoptions": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE TABLE preplan_sales_stock_adoptions (\n    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n    adoption_sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE,\n    analysis_id uuid NOT NULL REFERENCES production_material_analyses(id),\n    analysis_item_id uuid NOT NULL REFERENCES production_material_analysis_items(id),\n    root_material_id uuid NOT NULL REFERENCES production_material_analysis_materials(id),\n    reservation_id uuid NOT NULL REFERENCES stock_reservations(id),\n    qty_base numeric(18,4) NOT NULL CHECK(qty_base>0),\n    idempotency_key text NOT NULL UNIQUE,\n    created_at timestamptz NOT NULL DEFAULT now(),\n    created_by uuid NOT NULL REFERENCES users(id)\n)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "summary_read_domains": {
+      "migration": "V1095__transactional_complete_summary_read_revisions.sql",
+      "declaration": "CREATE TABLE summary_read_domains (\n domain text PRIMARY KEY,epoch uuid NOT NULL DEFAULT gen_random_uuid(),\n compacted_markers numeric(40,0) NOT NULL DEFAULT 0 CHECK(compacted_markers>=0)\n)",
+      "sourceSha256": "ff4a0c7abb8e83d39d314ce7a777b28d7db303d5fbdb4fbe6a8c764b651a25ce"
+    },
+    "summary_read_markers": {
+      "migration": "V1095__transactional_complete_summary_read_revisions.sql",
+      "declaration": "CREATE TABLE summary_read_markers (\n domain text NOT NULL,transaction_id bigint NOT NULL,\n PRIMARY KEY(domain,transaction_id)\n)",
+      "sourceSha256": "ff4a0c7abb8e83d39d314ce7a777b28d7db303d5fbdb4fbe6a8c764b651a25ce"
+    }
+  },
+  "indexes": {
+    "finance_chart_imports_review_request_id_key": {
+      "migration": "V1090__finance_chart_import_original_intents.sql",
+      "declaration": "ADD COLUMN review_request_id uuid UNIQUE REFERENCES finance_chart_manual_operations(request_id) DEFERRABLE INITIALLY DEFERRED",
+      "kind": "ALTER TABLE implicit unique index",
+      "table": "finance_chart_imports",
+      "definition": "CREATE UNIQUE INDEX finance_chart_imports_review_request_id_key ON public.finance_chart_imports USING btree (review_request_id)",
+      "sourceSha256": "b70abe9ee059cda8d669034d258a4af33a72768e73afbd060ff9a823e9acc0d7"
+    },
+    "idx_finance_chart_import_actor_recent": {
+      "migration": "V1090__finance_chart_import_original_intents.sql",
+      "declaration": "CREATE INDEX idx_finance_chart_import_actor_recent ON finance_chart_imports(actor_id,created_at DESC,id)",
+      "kind": "CREATE INDEX",
+      "table": "finance_chart_imports",
+      "definition": "CREATE INDEX idx_finance_chart_import_actor_recent ON public.finance_chart_imports USING btree (actor_id, created_at DESC, id)",
+      "sourceSha256": "b70abe9ee059cda8d669034d258a4af33a72768e73afbd060ff9a823e9acc0d7"
+    },
+    "idx_preplan_physical_claim_actor": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_claim_actor ON preplan_physical_stock_claim_commands(created_by)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_claim_commands",
+      "definition": "CREATE INDEX idx_preplan_physical_claim_actor ON public.preplan_physical_stock_claim_commands USING btree (created_by)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_claim_analysis": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_claim_analysis ON preplan_physical_stock_claim_commands(analysis_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_claim_commands",
+      "definition": "CREATE INDEX idx_preplan_physical_claim_analysis ON public.preplan_physical_stock_claim_commands USING btree (analysis_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_claim_command": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_claim_command ON preplan_physical_stock_claim_allocations(command_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_claim_allocations",
+      "definition": "CREATE INDEX idx_preplan_physical_claim_command ON public.preplan_physical_stock_claim_allocations USING btree (command_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_claim_material": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_claim_material ON preplan_physical_stock_claim_allocations(material_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_claim_allocations",
+      "definition": "CREATE INDEX idx_preplan_physical_claim_material ON public.preplan_physical_stock_claim_allocations USING btree (material_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_actor": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_actor ON preplan_physical_stock_formalizations(created_by)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_actor ON public.preplan_physical_stock_formalizations USING btree (created_by)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_analysis": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_analysis ON preplan_physical_stock_formalizations(source_analysis_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_analysis ON public.preplan_physical_stock_formalizations USING btree (source_analysis_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_demand": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_demand ON preplan_physical_stock_formalizations(demand_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_demand ON public.preplan_physical_stock_formalizations USING btree (demand_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_material": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_material ON preplan_physical_stock_formalizations(source_material_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_material ON public.preplan_physical_stock_formalizations USING btree (source_material_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_package": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_package ON preplan_physical_stock_formalizations(package_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_package ON public.preplan_physical_stock_formalizations USING btree (package_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_source": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_source ON preplan_physical_stock_formalizations(source_reservation_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_source ON public.preplan_physical_stock_formalizations USING btree (source_reservation_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_formal_target": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_formal_target ON preplan_physical_stock_formalizations(target_reservation_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_formal_target ON public.preplan_physical_stock_formalizations USING btree (target_reservation_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_physical_restore_actor": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_physical_restore_actor ON preplan_physical_stock_formalizations(restored_by)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE INDEX idx_preplan_physical_restore_actor ON public.preplan_physical_stock_formalizations USING btree (restored_by)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "idx_preplan_sales_stock_adoption_actor": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_sales_stock_adoption_actor ON preplan_sales_stock_adoptions(created_by)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE INDEX idx_preplan_sales_stock_adoption_actor ON public.preplan_sales_stock_adoptions USING btree (created_by)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "idx_preplan_sales_stock_adoption_analysis": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_sales_stock_adoption_analysis ON preplan_sales_stock_adoptions(analysis_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE INDEX idx_preplan_sales_stock_adoption_analysis ON public.preplan_sales_stock_adoptions USING btree (analysis_id)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "idx_preplan_sales_stock_adoption_item": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_sales_stock_adoption_item ON preplan_sales_stock_adoptions(analysis_item_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE INDEX idx_preplan_sales_stock_adoption_item ON public.preplan_sales_stock_adoptions USING btree (analysis_item_id)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "idx_preplan_sales_stock_adoption_reservation": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_sales_stock_adoption_reservation ON preplan_sales_stock_adoptions(reservation_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE INDEX idx_preplan_sales_stock_adoption_reservation ON public.preplan_sales_stock_adoptions USING btree (reservation_id)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "idx_preplan_sales_stock_adoption_root": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "CREATE INDEX idx_preplan_sales_stock_adoption_root ON preplan_sales_stock_adoptions(root_material_id)",
+      "kind": "CREATE INDEX",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE INDEX idx_preplan_sales_stock_adoption_root ON public.preplan_sales_stock_adoptions USING btree (root_material_id)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "idx_supplier_advance_party_date": {
+      "migration": "V1085__supplier_advance_statement_replay.sql",
+      "declaration": "CREATE INDEX idx_supplier_advance_party_date ON finance_supplier_advances(supplier_id,effective_date,payment_id)",
+      "kind": "CREATE INDEX",
+      "table": "finance_supplier_advances",
+      "definition": "CREATE INDEX idx_supplier_advance_party_date ON public.finance_supplier_advances USING btree (supplier_id, effective_date, payment_id)",
+      "sourceSha256": "0bd0ea851205453f7e4ba9b644e0913d0047738c5ab65ed5c9b02366984bfe65"
+    },
+    "preplan_physical_stock_claim_allocations_id_key": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_claim_allocations",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_claim_allocations_id_key ON public.preplan_physical_stock_claim_allocations USING btree (id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_claim_allocations_pkey": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "stock_reservation_id uuid PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_claim_allocations",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_claim_allocations_pkey ON public.preplan_physical_stock_claim_allocations USING btree (stock_reservation_id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_claim_commands_idempotency_key_key": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "idempotency_key text NOT NULL UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_claim_commands",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_claim_commands_idempotency_key_key ON public.preplan_physical_stock_claim_commands USING btree (idempotency_key)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_claim_commands_pkey": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "id uuid PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_claim_commands",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_claim_commands_pkey ON public.preplan_physical_stock_claim_commands USING btree (id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_formalizations_idempotency_key_key": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "idempotency_key text NOT NULL UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_formalizations_idempotency_key_key ON public.preplan_physical_stock_formalizations USING btree (idempotency_key)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_physical_stock_formalizations_pkey": {
+      "migration": "V1109__preplan_public_physical_stock_adoption.sql",
+      "declaration": "id uuid PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_physical_stock_formalizations",
+      "definition": "CREATE UNIQUE INDEX preplan_physical_stock_formalizations_pkey ON public.preplan_physical_stock_formalizations USING btree (id)",
+      "sourceSha256": "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb"
+    },
+    "preplan_sales_stock_adoptions_adoption_sequence_key": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "adoption_sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE UNIQUE INDEX preplan_sales_stock_adoptions_adoption_sequence_key ON public.preplan_sales_stock_adoptions USING btree (adoption_sequence)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "preplan_sales_stock_adoptions_idempotency_key_key": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "idempotency_key text NOT NULL UNIQUE",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE UNIQUE INDEX preplan_sales_stock_adoptions_idempotency_key_key ON public.preplan_sales_stock_adoptions USING btree (idempotency_key)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "preplan_sales_stock_adoptions_pkey": {
+      "migration": "V1108__same_sales_source_stock_adoption.sql",
+      "declaration": "id uuid PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "preplan_sales_stock_adoptions",
+      "definition": "CREATE UNIQUE INDEX preplan_sales_stock_adoptions_pkey ON public.preplan_sales_stock_adoptions USING btree (id)",
+      "sourceSha256": "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a"
+    },
+    "summary_read_domains_pkey": {
+      "migration": "V1095__transactional_complete_summary_read_revisions.sql",
+      "declaration": "domain text PRIMARY KEY",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "summary_read_domains",
+      "definition": "CREATE UNIQUE INDEX summary_read_domains_pkey ON public.summary_read_domains USING btree (domain)",
+      "sourceSha256": "ff4a0c7abb8e83d39d314ce7a777b28d7db303d5fbdb4fbe6a8c764b651a25ce"
+    },
+    "summary_read_markers_pkey": {
+      "migration": "V1095__transactional_complete_summary_read_revisions.sql",
+      "declaration": "PRIMARY KEY(domain,transaction_id)",
+      "kind": "CREATE TABLE implicit unique index",
+      "table": "summary_read_markers",
+      "definition": "CREATE UNIQUE INDEX summary_read_markers_pkey ON public.summary_read_markers USING btree (domain, transaction_id)",
+      "sourceSha256": "ff4a0c7abb8e83d39d314ce7a777b28d7db303d5fbdb4fbe6a8c764b651a25ce"
+    },
+    "uq_finance_chart_import_root_content": {
+      "migration": "V1090__finance_chart_import_original_intents.sql",
+      "declaration": "CREATE UNIQUE INDEX uq_finance_chart_import_root_content ON finance_chart_imports(actor_id,sha256)\n    WHERE parent_import_id IS NULL",
+      "kind": "CREATE INDEX",
+      "table": "finance_chart_imports",
+      "definition": "CREATE UNIQUE INDEX uq_finance_chart_import_root_content ON public.finance_chart_imports USING btree (actor_id, sha256) WHERE (parent_import_id IS NULL)",
+      "sourceSha256": "b70abe9ee059cda8d669034d258a4af33a72768e73afbd060ff9a823e9acc0d7"
+    }
+  },
+  "removedIndexes": {
+    "finance_chart_imports_actor_id_sha256_key": {
+      "migration": "V1090__finance_chart_import_original_intents.sql",
+      "declaration": "ALTER TABLE finance_chart_imports DROP CONSTRAINT finance_chart_imports_actor_id_sha256_key",
+      "definition": "CREATE UNIQUE INDEX finance_chart_imports_actor_id_sha256_key ON public.finance_chart_imports USING btree (actor_id, sha256)",
+      "sourceSha256": "b70abe9ee059cda8d669034d258a4af33a72768e73afbd060ff9a823e9acc0d7"
+    }
+  }
+}

@@ -2237,18 +2237,20 @@ class _ProductionWorkshopTasksPageState
   Future<void> _openTaskDetail(ProductionExecutionWorkbenchSegment task) async {
     if (_navigating || _loading) return;
     final segmentId = task.segmentId;
+    final ownerCurrent = captureReadOwner(ref);
     final action = await showDialog<String>(
       context: context,
       builder: (dialogContext) => ValueListenableBuilder<int>(
         valueListenable: _taskDetailRevision,
         builder: (dialogContext, revision, child) => Consumer(
           builder: (dialogContext, dialogRef, _) {
+            dialogRef.watch(exportContextEpochProvider);
             dialogRef.watch(currentPermissionsProvider);
             dialogRef.watch(isSuperAdminProvider);
             dialogRef.watch(formDraftCategoryProvider(_draftScope));
-            final task = {
-              for (final row in _items) row.segmentId: row,
-            }[segmentId];
+            final task = ownerCurrent()
+                ? {for (final row in _items) row.segmentId: row}[segmentId]
+                : null;
             if (task == null) {
               return UtenAlertDialog(
                 showCloseButton: true,
@@ -2423,7 +2425,7 @@ class _ProductionWorkshopTasksPageState
         ),
       ),
     );
-    if (!mounted || action == null) return;
+    if (action == null || !ownerCurrent()) return;
     final current = {
       for (final row in _tableRows.items) row.segmentId: row,
     }[task.segmentId];

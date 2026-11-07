@@ -186,7 +186,7 @@ void main() {
     },
   );
 
-  testWidgets('FQC列表实时加授审批即可操作，收回后立即只读且不重读业务行', (tester) async {
+  testWidgets('FQC 授权后读取审核池，撤权立即隐藏其他来源并重新读取本人范围', (tester) async {
     final api = _FqcApi();
     await _pumpPage(
       tester,
@@ -198,6 +198,8 @@ void main() {
     );
     expect(_taskTable(tester).selectable, isFalse);
     final reads = api.listQueries.length;
+    expect(find.text('FQC-其他来源'), findsNothing);
+    api.showPoolRows = true;
     container.read(_fqcPermissions.notifier).state = {
       Perm.productionQualityInspectionView,
       Perm.productionQualityInspectionApprove,
@@ -205,12 +207,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(_taskTable(tester).selectable, isTrue);
     expect(api.capabilityCalls, 1);
+    expect(api.listQueries.length, reads + 1);
+    expect(find.text('FQC-其他来源'), findsOneWidget);
+    final ownerRead = Completer<void>();
+    api.showPoolRows = false;
+    api.listReadGate = ownerRead;
     container.read(_fqcPermissions.notifier).state = {
       Perm.productionQualityInspectionView,
     };
+    await tester.pump();
+    expect(find.text('FQC-其他来源'), findsNothing);
+    expect(_taskTable(tester).selectable, isFalse);
+    ownerRead.complete();
     await tester.pumpAndSettle();
     expect(_taskTable(tester).selectable, isFalse);
-    expect(api.listQueries.length, reads);
+    expect(find.text(_reportNo), findsOneWidget);
+    expect(find.text('FQC-其他来源'), findsNothing);
+    expect(api.listQueries.length, reads + 2);
+    expect(api.capabilityCalls, 1);
     expect(api.decisionBody, isNull);
     expect(api.batchBody, isNull);
   });
@@ -763,6 +777,8 @@ class _FqcApi extends ApiClient {
   final bool pageSpecificRows;
   bool duplicateSecondPage = false;
   bool changedReadScope = false;
+  bool showPoolRows = false;
+  Completer<void>? listReadGate;
 
   /// 额外给待检队列塞一行「先入库后检」的成品（带登记库位与已上架位置）。
   final bool includeStocked;
@@ -896,6 +912,10 @@ class _FqcApi extends ApiClient {
     }
     final effectiveQuery = Map<String, dynamic>.from(query ?? const {});
     listQueries.add(effectiveQuery);
+    if (listReadGate case final gate?) {
+      listReadGate = null;
+      await gate.future;
+    }
     if (failReloadAfterDecision && decided) {
       throw DioException(
         requestOptions: RequestOptions(path: path),
@@ -905,7 +925,11 @@ class _FqcApi extends ApiClient {
     requestedPage = (effectiveQuery['page'] as num?)?.toInt() ?? 1;
     final status = effectiveQuery['status']?.toString() ?? 'ACTIVE';
     final keyword = effectiveQuery['keyword']?.toString().toLowerCase() ?? '';
-    final source = _itemsFor(status);
+    final source = [
+      ..._itemsFor(status),
+      if (showPoolRows && status == 'ACTIVE')
+        {..._stockedInspection, 'reportNo': 'FQC-其他来源'},
+    ];
     final fullScope = totalPages > 1 && status == 'ACTIVE' && source.isNotEmpty
         ? [
             for (var index = 0; index < totalPages * 40; index++)

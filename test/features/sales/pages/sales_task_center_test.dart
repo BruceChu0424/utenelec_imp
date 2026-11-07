@@ -2,6 +2,7 @@
 // 大类按权限显隐、各大类=原独立页整页嵌入、历史其它出货预选历史段、
 // 路由守卫 = 五类单据查看权限任一。
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +112,51 @@ void main() {
     expect(find.text('历史其它出货'), findsNothing);
     // 进页面不预选大类：引导空态，不发请求。
     expect(find.text('在上方选择分类后开始浏览'), findsOneWidget);
+  });
+
+  testWidgets('黄色先到时等待报价红数，最终选择有待办的类别', (tester) async {
+    final quoteCounts = Completer<Map<String, int>>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(_FakeApi()),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.salesOrderView,
+            Perm.salesQuoteView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          documentStatusCountsProvider.overrideWith(
+            (ref, scope) => scope.kind == DraftDocKind.salesQuote
+                ? quoteCounts.future
+                : Future.value(const {}),
+          ),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              entries: {BadgeEntry.salesOrderInFlight: (0, 1)},
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: SalesTaskCenterPage(),
+        ),
+      ),
+    );
+    UtenFilterToolbar<String> toolbar() => tester.widget(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFilterToolbar<String> &&
+            widget.segmentsKey == const Key('sales-task-center-groups'),
+      ),
+    );
+    await tester.pump();
+    expect(toolbar().selected, isEmpty);
+    quoteCounts.complete({'ACTIONABLE_DRAFT': 2, 'DRAFT': 2});
+    await tester.pumpAndSettle();
+    expect(toolbar().selected, {'quotes'});
   });
 
   testWidgets('全权限六大类；报价单大类嵌入列表页', (tester) async {

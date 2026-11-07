@@ -786,6 +786,12 @@ class _FinanceAssetPostingPanelState
           value: (row) => formatFinanceDecimal(row.amount),
         ),
         MasterColumnDef(
+          key: 'currency',
+          label: '币种',
+          width: 80,
+          value: (_) => '人民币',
+        ),
+        MasterColumnDef(
           key: 'message',
           label: '说明',
           width: 220,

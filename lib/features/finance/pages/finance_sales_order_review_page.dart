@@ -1,5 +1,4 @@
 import '../../../shared/sales_review/sales_review_permissions.dart';
-import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
@@ -900,24 +899,12 @@ class _FinanceSalesOrderReviewPageState
                                 _review!,
                                 canViewMoneySummary: canViewMoneySummary,
                               ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              if (widget.managerReview &&
-                                  _review!.managerHistory.isNotEmpty)
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(
-                                      UtenSpacing.s12,
-                                    ),
-                                    child: UtenProgressTimeline(
-                                      events: _review!.managerHistory,
-                                    ),
-                                  ),
-                                ),
                               if (_review!
                                       .revisionDiff
                                       ?.headerChanges
                                       .isNotEmpty ==
                                   true) ...[
+                                const SizedBox(height: UtenSpacing.s12),
                                 UtenRevisionFields(
                                   changes: [
                                     for (final change
@@ -935,20 +922,21 @@ class _FinanceSalesOrderReviewPageState
                                       ),
                                   ],
                                 ),
-                                const SizedBox(height: UtenSpacing.s12),
                               ],
                               // 销售在订单上上传的合同/确认件（2026-09-09）：财务确认前
                               // 可直接查看（图片/PDF/文本内嵌预览），不再切回销售详情页。
-                              BusinessAttachmentSection(
-                                ownerType: 'SALES_ORDER',
-                                ownerId: _review!.orderId,
-                                // 前端展示门=attachment:view；行级可读性由服务端策略复核。
-                                canView: ref
-                                    .watch(currentPermissionsProvider)
-                                    .contains(Perm.attachmentView),
-                                canManage: false,
-                                title: '销售附件（合同/客户确认/图片）',
-                              ),
+                              if (permissions.contains(
+                                Perm.attachmentView,
+                              )) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                BusinessAttachmentSection(
+                                  ownerType: 'SALES_ORDER',
+                                  ownerId: _review!.orderId,
+                                  canView: true,
+                                  canManage: false,
+                                  title: '销售附件（合同/客户确认/图片）',
+                                ),
+                              ],
                               if (_review!.financeRejected) ...[
                                 const SizedBox(height: UtenSpacing.s12),
                                 _rejectRecordCard(theme, _review!),
@@ -1321,10 +1309,15 @@ class _FinanceSalesOrderReviewPageState
   /// 合计条走 summaryBar 槽位 + summaryBarInline（表内脚注：跟在最后一行数据
   /// 之下随表体滚动，不再钉在表体外的底部）。
   Widget _itemsCard(ThemeData theme, SalesOrderFinanceReview r) {
+    final orderCurrency = financeCurrencyText(
+      name: r.currencyName,
+      code: r.currencyCode,
+      fallback: '—',
+    );
     if (r.revisionDiff != null) {
       return SalesOrderRevisionTable(
         diff: r.revisionDiff!,
-        currencyLabel: r.currencyLabel,
+        currencyLabel: orderCurrency,
         summaryBar: _itemsSummary(r),
       );
     }
@@ -1449,6 +1442,12 @@ class _FinanceSalesOrderReviewPageState
                 currencyName: r.currencyName,
                 currencyCode: r.currencyCode,
               ),
+            ),
+            MasterColumnDef(
+              key: 'currency',
+              label: '币种',
+              width: 80,
+              value: (_) => orderCurrency,
             ),
             if (l10n != null && hasQuote) ...[
               MasterColumnDef(

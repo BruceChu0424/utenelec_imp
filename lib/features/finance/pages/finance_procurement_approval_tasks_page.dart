@@ -1166,6 +1166,13 @@ class _FinanceProcurementApprovalTasksPageState
         currencyName: task.currencyName,
       ),
     ),
+    MasterColumnDef(
+      key: 'currency',
+      label: '币种',
+      width: 90,
+      value: (task) =>
+          financeCurrencyText(name: task.currencyName, fallback: '—'),
+    ),
     // 待审 case 的缺省折算汇率（已批→快照→1 缺省链的快照档）：批量通过不填
     // 汇率时即按它折算。
     MasterColumnDef(

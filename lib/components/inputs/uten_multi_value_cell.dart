@@ -21,6 +21,28 @@ String utenMultiValueSummaryOf(List<String> values, {int maxShown = 1}) {
 
 /// 表格多值单元格：格内 1 个 +「等 N 个」，点击弹窗列全部，可选逐条「查看详情」。
 class UtenMultiValueCell extends StatelessWidget {
+  static List<String> _distinctValues(List<String> values) =>
+      values.where((value) => value.isNotEmpty).toSet().toList();
+
+  static String summaryLabelOf(List<String> values, {int maxShown = 1}) =>
+      utenMultiValueSummaryOf(_distinctValues(values), maxShown: maxShown);
+
+  /// Width of the on-screen summary, excluding the table cell's own padding.
+  static double contentWidthOf(
+    BuildContext context,
+    List<String> values,
+    TextScaler textScaler, {
+    int maxShown = 1,
+  }) {
+    final label = summaryLabelOf(values, maxShown: maxShown);
+    if (label.isEmpty) return 0;
+    return UtenTableCellAction.contentWidthOf(
+      context,
+      label,
+      textScaler: textScaler,
+    );
+  }
+
   const UtenMultiValueCell({
     super.key,
     required this.values,
@@ -57,7 +79,7 @@ class UtenMultiValueCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final distinct = values.where((value) => value.isNotEmpty).toSet().toList();
+    final distinct = _distinctValues(values);
     if (distinct.isEmpty) {
       return Text(
         emptyText,
@@ -66,6 +88,7 @@ class UtenMultiValueCell extends StatelessWidget {
     }
     return UtenTableCellAction(
       label: utenMultiValueSummaryOf(distinct, maxShown: maxShown),
+      alignment: AlignmentDirectional.centerStart,
       tooltip: distinct.join('、'),
       onPressed: enabled ? () => _openList(context, distinct) : null,
     );

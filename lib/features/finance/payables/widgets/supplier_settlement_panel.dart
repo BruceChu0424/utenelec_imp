@@ -261,18 +261,6 @@ class _SupplierSettlementPanelState
       ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
     ),
     MasterColumnDef(
-      key: 'currencyCode',
-      label: '币种',
-      width: 80,
-      columnSearchEnabled: true,
-      value: (item) =>
-          financeCurrencyDisplayLabel(
-            name: item.currencyName,
-            code: item.currencyCode,
-          ) ??
-          '原币',
-    ),
-    MasterColumnDef(
       key: 'periodStart',
       label: '月份',
       width: 100,
@@ -339,6 +327,16 @@ class _SupplierSettlementPanelState
       sortable: true,
       exactValueOf: (item) => item.closingBalanceOriginal,
       value: (item) => item.closingBalanceOriginal,
+    ),
+    MasterColumnDef(
+      key: 'currencyCode',
+      label: '币种',
+      width: 80,
+      columnSearchEnabled: true,
+      value: (item) => financeCurrencyDisplayLabel(
+        name: item.currencyName,
+        code: item.currencyCode,
+      ),
     ),
     MasterColumnDef(
       key: 'lineCount',
@@ -778,6 +776,15 @@ class _SupplierSettlementDetailPanelState
                 width: 120,
                 type: 'money',
                 value: (row) => row.closingBalanceOriginal,
+              ),
+              MasterColumnDef(
+                key: 'currency',
+                label: '币种',
+                width: 80,
+                value: (_) => financeCurrencyDisplayLabel(
+                  name: summary.currencyName,
+                  code: summary.currencyCode,
+                ),
               ),
               MasterColumnDef(
                 key: 'dueDate',

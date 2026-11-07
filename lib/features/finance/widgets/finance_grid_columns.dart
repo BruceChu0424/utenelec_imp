@@ -18,7 +18,7 @@ import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../core/utils/currency_display.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/finance_doc_config.dart';
@@ -290,7 +290,22 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   bool showReceiptReconciliation = true,
   TextEditingController? bankReferenceController,
   Map<FinanceGridRow, Map<String, String?>>? reviewBaseline,
+  String? documentCurrencyId,
 }) {
+  final documentCurrencyColumn = _financeCurrencyColumn(
+    'currency',
+    type == FinanceDocType.payment ? '付款币种' : '币种',
+    (row) {
+      final id = type == FinanceDocType.payment
+          ? row.currencyId ?? documentCurrencyId
+          : documentCurrencyId;
+      return financeCurrencyText(
+        name: id == null ? null : names.currency(id),
+        code: type == FinanceDocType.payment ? row.currencyCode : null,
+        fallback: '—',
+      );
+    },
+  );
   final columns = switch (mode) {
     ItemMode.settle =>
       type == FinanceDocType.receipt
@@ -301,9 +316,12 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
               showReconciliation: showReceiptReconciliation,
               bankReferenceController: bankReferenceController,
             )
-          : _settleColumns(),
-    ItemMode.allocate => _allocateColumns(context, names, type),
-    ItemMode.transfer => _transferColumns(names),
+          : [..._settleColumns(), documentCurrencyColumn],
+    ItemMode.allocate => [
+      ..._allocateColumns(context, names, type),
+      documentCurrencyColumn,
+    ],
+    ItemMode.transfer => [..._transferColumns(names), documentCurrencyColumn],
   };
   if (reviewBaseline == null) return columns;
   return [
@@ -400,6 +418,21 @@ Map<String, String?> financeGridReviewValues(
   'bankReference': bankReference?.text,
 };
 
+EditableGridColumn<FinanceGridRow> _financeCurrencyColumn(
+  String key,
+  String label,
+  String Function(FinanceGridRow) valueOf, {
+  bool required = false,
+}) => EditableGridColumn<FinanceGridRow>(
+  key: key,
+  label: label,
+  width: 90,
+  required: required,
+  textOf: valueOf,
+  filterValueOf: valueOf,
+  cellBuilder: (_, row) => Text(valueOf(row)),
+);
+
 // ===== settle：核销单据号（只读）+ 本次金额（录入）=====
 List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   BuildContext context,
@@ -493,28 +526,6 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           Text(row.prepaymentAppliedOriginal ?? '0.00'),
     ),
     EditableGridColumn<FinanceGridRow>(
-      key: 'currency',
-      label: '应收币种',
-      width: 110,
-      required: true,
-      filterValueOf: (row) =>
-          financeCurrencyDisplayLabel(
-            name: names.currency(row.currencyId),
-            code: row.currencyCode,
-          ) ??
-          '原币',
-      // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
-      // 财务只填写到账汇率，避免选择其它币别后必然被服务端拒绝。
-      cellBuilder: (context, row) => Text(
-        financeCurrencyDisplayLabel(
-              name: names.currency(row.currencyId),
-              code: row.currencyCode,
-            ) ??
-            '原币',
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      ),
-    ),
-    EditableGridColumn<FinanceGridRow>(
       key: 'exchangeRate',
       label: '批次汇率',
       width: 190,
@@ -570,6 +581,16 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         ),
       ),
     ),
+    _financeCurrencyColumn(
+      'currency',
+      '应收币种',
+      (row) => financeCurrencyText(
+        name: row.currencyId == null ? null : names.currency(row.currencyId),
+        code: row.currencyCode,
+        fallback: '—',
+      ),
+      required: true,
+    ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amountLocal',
       label: financeEntryText(context, 'convertedCnyColumn'),
@@ -585,6 +606,11 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         valueListenable: row.localAmountExactNotifier,
         builder: (_, value, _) => Text(financeExactMoneyDisplay(value)),
       ),
+    ),
+    _financeCurrencyColumn(
+      'localCurrency',
+      '本位币',
+      (_) => financeCurrencyText(name: names.baseCurrencyName, fallback: '—'),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'balanceAfter',
@@ -641,6 +667,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     'balanceOriginal',
     'amount',
     'amountLocal',
+    'localCurrency',
     'balanceAfter',
     'bankReference',
     'remark',

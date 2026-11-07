@@ -1117,10 +1117,7 @@ public class ProductionExecutionWorkbenchService {
 
     /**
      * Product identity is goods/color/unit, independent of planned quantities or segment count.
-     * 2026-11-04 用户口径（V1057 顶层产品）：两路事实源都只认顶层产品——段一路只取
-     * 锚定到根分析行的顶层计划段（PLAN 根全量，与 v_…_roots.root_progress_rollup 同
-     * 一先例）；分析行一路只取根分析行，锚点子件行（MAKE_COMPONENT）与挂父行的子层
-     * 行不再是「产品」，不进已完成/未完成统计。
+     * 顶层分析来源和执行段复用根视图的顶层口径。段明细仍覆盖所有子计划。
      */
     private static String rootProductCompletionSelect(String selectedRoots) {
         return """
@@ -1128,35 +1125,20 @@ public class ProductionExecutionWorkbenchService {
                 %s
                 ), product_completion_facts AS (
                     SELECT task.root_type, task.root_id,
-                           segment.product_goods_id, segment.product_color_id, segment.product_unit_id,
+                           task.product_goods_id, task.product_color_id, task.product_unit_id,
                            task.segment_status = 'COMPLETED' AS completed
                     FROM selected_roots root
-                    JOIN v_production_execution_workbench_segments task
+                    JOIN v_production_workbench_top_level_segments task
                       ON task.root_type = root.root_type AND task.root_id = root.root_id
-                    JOIN production_execution_segments segment ON segment.id = task.segment_id
-                    JOIN production_plans top_plan
-                      ON top_plan.id = task.plan_id AND top_plan.is_deleted = FALSE
-                    LEFT JOIN production_material_analysis_items top_item
-                      ON top_item.analysis_id = top_plan.material_analysis_id
-                     AND top_item.id = top_plan.material_analysis_item_id
-                     AND top_item.is_deleted = FALSE
-                     AND top_item.parent_analysis_material_id IS NULL
-                     AND top_item.source_type <> 'MAKE_COMPONENT'
-                    WHERE task.segment_status NOT IN ('CANCELLED', 'REVERSED')
-                      AND segment.product_goods_id IS NOT NULL
-                      AND (task.root_type = 'PLAN' OR top_item.id IS NOT NULL)
                     UNION ALL
                     SELECT root.root_type, root.root_id,
-                           source.goods_id, source.color_id, source.unit_id,
+                           item.goods_id, item.color_id, item.unit_id,
                            source.remaining_fulfillment_qty <= 0 AS completed
                     FROM selected_roots root
+                    JOIN v_production_workbench_top_level_analysis_items item
+                      ON root.root_type = 'ANALYSIS' AND item.analysis_id = root.root_id
                     JOIN v_production_analysis_workbench_item_progress source
-                      ON root.root_type = 'ANALYSIS' AND source.analysis_id = root.root_id
-                    JOIN production_material_analysis_items source_item
-                      ON source_item.id = source.analysis_item_id
-                     AND source_item.is_deleted = FALSE
-                     AND source_item.parent_analysis_material_id IS NULL
-                     AND source_item.source_type <> 'MAKE_COMPONENT'
+                      ON source.analysis_id = item.analysis_id AND source.analysis_item_id = item.id
                 ), product_completion_states AS (
                     SELECT root_type, root_id,
                            product_goods_id, product_color_id, product_unit_id,

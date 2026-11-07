@@ -56,6 +56,9 @@ enum ExpenseCategory {
 }
 
 /// 报销项
+/// Reimbursement and invoice amounts are recorded in renminbi.
+const expenseClaimCurrencyName = '人民币';
+
 class ExpenseItem {
   const ExpenseItem({
     required this.id,

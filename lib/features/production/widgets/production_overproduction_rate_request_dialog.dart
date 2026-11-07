@@ -6,6 +6,7 @@ import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -176,11 +177,13 @@ class _RateRequestEditorState
       return;
     }
     final percentage = double.tryParse(_rate.text.trim());
-    if (percentage == null ||
-        !percentage.isFinite ||
-        percentage < 0 ||
-        _reason.text.trim().isEmpty) {
-      setState(() => _error = '请填写不小于 0 的申请比例和申请原因');
+    if (percentage == null || !percentage.isFinite || percentage < 0) {
+      setState(() => _error = '请填写不小于 0 的申请比例');
+      return;
+    }
+    final reason = _reason.text.trim();
+    if (reason.isNotEmpty && (reason.length < 2 || reason.length > 500)) {
+      setState(() => _error = '申请原因选填，填写时需 2 至 500 字');
       return;
     }
     setState(() {
@@ -192,12 +195,18 @@ class _RateRequestEditorState
     final wasUncertain = _uncertain;
     try {
       _uncertain = true;
-      final request = await runFormDraftSubmission(() {
-        dispatched = true;
-        return ref
-            .read(productionOverproductionRateRepositoryProvider)
-            .submit(_source, percentage / 100, _reason.text.trim());
-      });
+      final request = await runFormDraftSubmission(
+        () => UtenBusyOverlay.run(
+          context,
+          title: '正在提交超产比例申请',
+          action: () {
+            dispatched = true;
+            return ref
+                .read(productionOverproductionRateRepositoryProvider)
+                .submit(_source, percentage / 100, reason);
+          },
+        ),
+      );
       await completeFormDraft();
       if (mounted) await _close(request);
     } on ApiException catch (error) {
@@ -243,9 +252,13 @@ class _RateRequestEditorState
       _error = null;
     });
     try {
-      final refreshed = await ref
-          .read(productionOverproductionRateRepositoryProvider)
-          .context(_source.segmentId);
+      final refreshed = await UtenBusyOverlay.run(
+        context,
+        title: '正在核对当前超产比例',
+        action: () => ref
+            .read(productionOverproductionRateRepositoryProvider)
+            .context(_source.segmentId),
+      );
       if (refreshed.segmentId != _source.segmentId) {
         throw const FormatException('工单来源不一致');
       }
@@ -284,8 +297,6 @@ class _RateRequestEditorState
               Text(
                 '${_source.segmentCode ?? '当前工单'} · 当前有效 ${productionRateText(_source.effectiveRate)}',
               ),
-              const SizedBox(height: 12),
-              const Text('提交后由计划部审批；审批通过前继续按当前有效比例执行。'),
               if (_source.pendingRequestId != null)
                 TextButton(
                   onPressed: _working ? null : _viewPending,
@@ -304,6 +315,7 @@ class _RateRequestEditorState
                 ),
                 decoration: const UtenInputDecoration(
                   InputDecoration(labelText: '申请比例', suffixText: '%'),
+                  info: '提交后由计划部审批，审批通过前仍按当前有效比例执行。',
                 ),
               ),
               const SizedBox(height: 12),
@@ -313,7 +325,9 @@ class _RateRequestEditorState
                 minLines: 2,
                 maxLines: 4,
                 decoration: const UtenInputDecoration(
-                  InputDecoration(labelText: '申请原因'),
+                  InputDecoration(labelText: '申请原因（选填）'),
+                  info: '可以留空。需要说明工艺或备货情况时，填写 2 至 500 字供计划部参考。',
+                  useFieldNameHint: false,
                 ),
               ),
               if (_error != null) ...[
@@ -334,7 +348,7 @@ class _RateRequestEditorState
         ),
         TextButton(
           onPressed: _working || _uncertain ? null : _refreshContext,
-          child: Text(_refreshing ? '正在核对' : '重新核对当前比例'),
+          child: const Text('重新核对当前比例'),
         ),
         FilledButton(
           onPressed:
@@ -344,7 +358,7 @@ class _RateRequestEditorState
                   _source.pendingRequestId != null
               ? null
               : _submit,
-          child: Text(_busy ? '正在提交' : '提交申请'),
+          child: const Text('提交申请'),
         ),
       ],
     ),

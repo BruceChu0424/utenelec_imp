@@ -76,6 +76,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final columns = tester
+          .widget<UtenEditableGrid<ExpenseGridRow>>(
+            find.byType(UtenEditableGrid<ExpenseGridRow>),
+          )
+          .columns
+          .map((column) => column.key)
+          .toList();
+      expect(columns[columns.indexOf('amount') + 1], 'currency');
+      expect(find.text(expenseClaimCurrencyName), findsWidgets);
       expect(grid.length, 2000);
       expect(grid.mountedRowCount, lessThan(100));
       expect(grid.rows.last.description.text, '费用 1999');

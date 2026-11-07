@@ -33,5 +33,7 @@ public record QuoteFinanceListItem(
         String financeConfirmedByName,
         String convertedOrderNo,
         String claimedByName,
-        boolean claimedByMe) {
+        boolean claimedByMe,
+        String currencyName,
+        String currencyCode) {
 }

@@ -118,7 +118,8 @@ public class FinanceReconciliationService {
         return new FinanceReconciliationListItem(r.getId(), r.getBillNo(), r.getSourceDocType(),
                 r.getSourceDocId(), r.getAccountId(), r.getCheckNo(), r.getCounterpartName(),
                 r.getInAmount(), r.getOutAmount(), r.getBillDate(), r.getSettledDate(),
-                r.getSourceRemark(), r.getLegacyBstyle(), r.getEntryKind(), r.getReversalOfId());
+                r.getSourceRemark(), r.getLegacyBstyle(), r.getEntryKind(), r.getReversalOfId(),
+                r.getAccountCurrencyId());
     }
 
     private static void requireAmountAccount(FinanceReconciliationQueryFilter f,String sort) {

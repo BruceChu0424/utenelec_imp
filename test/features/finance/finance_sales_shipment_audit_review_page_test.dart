@@ -139,6 +139,7 @@ void main() {
         'financeAudit': 0,
         'salesConfirmed': true,
         'warehouseWorkStatus': 'PENDING_PICK',
+        'currencyId': 'currency-usd',
         'items': [
           {
             'id': 'recorded',
@@ -161,6 +162,11 @@ void main() {
     );
     final price = table.columns.singleWhere((column) => column.key == 'price');
     final qty = table.columns.singleWhere((column) => column.key == 'qty');
+    final currency = table.columns.singleWhere(
+      (column) => column.key == 'currency',
+    );
+    expect(table.columns.indexOf(currency), table.columns.indexOf(amount) + 1);
+    expect(currency.value(table.items.first), '美元');
     expect(amount.value(table.items.first), contains('150.1234'));
     expect(amount.value(table.items.last), '—');
     expect(price.value(table.items.first), contains('0.0000000001'));

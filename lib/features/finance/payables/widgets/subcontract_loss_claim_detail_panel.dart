@@ -346,7 +346,7 @@ class _SubcontractLossClaimDetailPanelState
           Semantics(
             container: true,
             label: '超耗材料明细',
-            child: _linesTable(detail.lines),
+            child: _linesTable(detail.lines, detail.summary.currencyLabel),
           ),
           const SizedBox(height: UtenSpacing.s12),
           if (detail.resolutions.isEmpty)
@@ -383,7 +383,7 @@ class _SubcontractLossClaimDetailPanelState
             label: '账面损失',
             value: financeMoneyWithUnitSuffix(
               summary.lossBookValueLocal,
-              currencyName: '人民币',
+              currencyName: summary.currencyLabel,
               fullCurrencyName: true,
             ),
             emphasis: true,
@@ -392,7 +392,7 @@ class _SubcontractLossClaimDetailPanelState
             label: '索赔额',
             value: financeMoneyWithUnitSuffix(
               summary.claimAmountLocal,
-              currencyName: '人民币',
+              currencyName: summary.currencyLabel,
               fullCurrencyName: true,
             ),
             emphasis: true,
@@ -420,7 +420,7 @@ class _SubcontractLossClaimDetailPanelState
     );
   }
 
-  Widget _linesTable(List<SubcontractLossClaimLine> lines) =>
+  Widget _linesTable(List<SubcontractLossClaimLine> lines, String? currency) =>
       MasterDataTableView<SubcontractLossClaimLine>(
         expensiveRowMounts: false,
         tableKey: 'finance.subcontractLoss.valuation',
@@ -500,6 +500,12 @@ class _SubcontractLossClaimDetailPanelState
               width: 130,
               type: 'money',
               value: (row) => row.lossBookValueLocal,
+            ),
+            MasterColumnDef(
+              key: 'currency',
+              label: '币种',
+              width: 80,
+              value: (_) => currency,
             ),
           ],
         ],

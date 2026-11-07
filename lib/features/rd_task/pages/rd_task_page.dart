@@ -91,17 +91,17 @@ enum _RdTaskSeg {
 }
 
 class RdTaskPage extends ConsumerStatefulWidget {
-  const RdTaskPage({super.key, this.initialTab = 0});
+  const RdTaskPage({super.key, this.initialTab});
 
-  /// 旧入口的 Tab 序号(0 = 未完成, 1 = 已完成); 未完成落在「待处理」段。
-  final int initialTab;
+  /// 旧入口显式指定时 0 为待处理、1 为历史单据，普通入口按徽章选择。
+  final int? initialTab;
 
   @override
   ConsumerState<RdTaskPage> createState() => _RdTaskPageState();
 }
 
 class _RdTaskPageState extends ConsumerState<RdTaskPage> {
-  late _RdTaskSeg _seg;
+  _RdTaskSeg? _seg;
   final _searchController = TextEditingController();
   String _keyword = '';
   final _panelKey = GlobalKey<_RdTaskListPanelState>();
@@ -109,7 +109,11 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
   @override
   void initState() {
     super.initState();
-    _seg = widget.initialTab == 1 ? _RdTaskSeg.done : _RdTaskSeg.pending;
+    _seg = switch (widget.initialTab) {
+      0 => _RdTaskSeg.pending,
+      1 => _RdTaskSeg.done,
+      _ => null,
+    };
   }
 
   @override
@@ -120,6 +124,7 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
 
   @override
   Widget build(BuildContext context) {
+    final seg = _seg;
     // 红 = 待处理(OPEN): 没人开工, 轮到研发动手。
     // 黄 = 进行中(IN_PROGRESS): 已认领在做, 此刻不用催。
     //
@@ -199,26 +204,30 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
                     label: _RdTaskSeg.done.label,
                   ),
                 ],
-                selected: {_seg},
+                autoSelectBadgeReady: ref.watch(
+                  badgeSummaryProvider.select((summary) => summary.loaded),
+                ),
+                autoSelectBadgeFallback: _RdTaskSeg.pending,
+                selected: seg == null ? const {} : {seg},
                 onSelectionChanged: (value) => setState(() => _seg = value),
               ),
             ),
             Expanded(
-              child: _seg == _RdTaskSeg.draft
-                  ? UtenContentContainer.wide(
-                      child: FormDraftCategoryList(
-                        scope: const FormDraftCategoryScope(
-                          module: BadgeModule.rd,
-                        ),
-                        search: _keyword,
-                        showSearch: false,
-                      ),
-                    )
-                  : _RdTaskListPanel(
-                      key: _panelKey,
-                      seg: _seg,
-                      keyword: _keyword,
-                    ),
+              child: switch (seg) {
+                null => const UtenFilterPlaceholder(message: '请选择任务分类'),
+                _RdTaskSeg.draft => UtenContentContainer.wide(
+                  child: FormDraftCategoryList(
+                    scope: const FormDraftCategoryScope(module: BadgeModule.rd),
+                    search: _keyword,
+                    showSearch: false,
+                  ),
+                ),
+                _ => _RdTaskListPanel(
+                  key: _panelKey,
+                  seg: seg,
+                  keyword: _keyword,
+                ),
+              },
             ),
           ],
         ),

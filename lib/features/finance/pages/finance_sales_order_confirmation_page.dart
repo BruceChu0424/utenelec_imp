@@ -1173,6 +1173,16 @@ class _FinanceSalesOrderConfirmationPageState
       type: 'money',
       value: _orderAmount,
     ),
+    MasterColumnDef(
+      key: 'currency',
+      label: '币种',
+      width: 80,
+      value: (item) => financeCurrencyText(
+        name: item.currencyName,
+        code: item.currencyCode,
+        fallback: '—',
+      ),
+    ),
     // 2026-09-27 用户口径(ADR-128)：客户应收与订单同一币种，才看得出还差多少。
     MasterColumnDef(
       key: 'clientBalance',

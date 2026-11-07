@@ -135,52 +135,58 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'failed request preserves typed values and never applies pending rate',
-    (tester) async {
-      final source = ProductionOverproductionRateContext({
-        'segmentId': 'segment',
-        'segmentCode': 'ZX-1',
-        'effectiveRate': 0.1,
-        'rateVersion': 7,
-        'canSubmit': true,
-      });
-      final repository = _FailingRepository();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            productionOverproductionRateRepositoryProvider.overrideWithValue(
-              repository,
-            ),
-          ],
-          child: MaterialApp(
-            home: Builder(
-              builder: (context) => Scaffold(
-                body: TextButton(
-                  onPressed: () =>
-                      showProductionRateRequestDialog(context, source),
-                  child: const Text('申请'),
+  for (final reason in ['', '本批工艺需要']) {
+    testWidgets(
+      'failed request preserves input with optional reason: ${reason.isNotEmpty}',
+      (tester) async {
+        final source = ProductionOverproductionRateContext({
+          'segmentId': 'segment',
+          'segmentCode': 'ZX-1',
+          'effectiveRate': 0.1,
+          'rateVersion': 7,
+          'canSubmit': true,
+        });
+        final repository = _FailingRepository();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              productionOverproductionRateRepositoryProvider.overrideWithValue(
+                repository,
+              ),
+            ],
+            child: MaterialApp(
+              home: Builder(
+                builder: (context) => Scaffold(
+                  body: TextButton(
+                    onPressed: () =>
+                        showProductionRateRequestDialog(context, source),
+                    child: const Text('申请'),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.tap(find.text('申请'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).at(0), '15');
-      await tester.enterText(find.byType(TextField).at(1), '本批工艺需要');
-      await tester.tap(find.text('提交申请'));
-      await tester.pumpAndSettle();
-      expect(repository.rate, 0.15);
-      expect(repository.version, 7);
-      expect(source.effectiveRate, 0.1);
-      expect(find.text('15'), findsOneWidget);
-      expect(find.text('比例版本已变化，请刷新'), findsOneWidget);
-      expect(find.textContaining('当前有效 10%'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        );
+        await tester.tap(find.text('申请'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).at(0), '15');
+        if (reason.isNotEmpty) {
+          await tester.enterText(find.byType(TextField).at(1), reason);
+        }
+        expect(find.text('申请原因（选填）'), findsOneWidget);
+        await tester.tap(find.text('提交申请'));
+        await tester.pumpAndSettle();
+        expect(repository.rate, 0.15);
+        expect(repository.version, 7);
+        expect(repository.reason, reason);
+        expect(source.effectiveRate, 0.1);
+        expect(find.text('15'), findsOneWidget);
+        expect(find.text('比例版本已变化，请刷新'), findsOneWidget);
+        expect(find.textContaining('当前有效 10%'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final pending in [false, true]) {
     testWidgets(
@@ -292,6 +298,7 @@ class _FailingRepository extends ProductionOverproductionRateRepository {
   _FailingRepository() : super(ApiClient(Dio()));
   double? rate;
   int? version;
+  String? reason;
   @override
   Future<ProductionOverproductionRateRequest> submit(
     ProductionOverproductionRateContext context,
@@ -300,6 +307,7 @@ class _FailingRepository extends ProductionOverproductionRateRepository {
   ) async {
     this.rate = rate;
     version = context.rateVersion;
+    this.reason = reason;
     throw ApiException('CONFLICT', '比例版本已变化，请刷新');
   }
 }

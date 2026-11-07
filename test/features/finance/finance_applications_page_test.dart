@@ -76,6 +76,8 @@ class _Api extends ApiClient {
             'application_no': 'FK20261104${query?['page']}-$index',
             'kindLabel': '付款申请',
             'title': index == 0 ? '样例付款' : '分页样例-$index',
+            'amount_original': '20.00',
+            if (index == 0) 'currency_name': '美元',
             'status': 'PENDING',
           },
       ],
@@ -157,6 +159,13 @@ void main() {
         find.byType(MasterDataTableView<Map<String, dynamic>>),
       );
       expect(table.items, hasLength(90));
+      final columns = table.columns.map((column) => column.key).toList();
+      expect(columns[columns.indexOf('amount_original') + 1], 'currency');
+      final currency = table.columns.singleWhere(
+        (column) => column.key == 'currency',
+      );
+      expect(currency.value(table.items[0]), '美元');
+      expect(currency.value(table.items[1]), isNull);
       expect(
         api.queries
             .lastWhere((query) => query.path == financeApplicationsApi)

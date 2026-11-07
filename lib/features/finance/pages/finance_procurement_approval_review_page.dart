@@ -47,6 +47,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -1367,6 +1368,17 @@ class _FinanceProcurementApprovalReviewPageState
   Widget _itemsCard(ThemeData theme, FinanceProcurementApprovalReview r) {
     final revisions = procurementRevisionRows(r.previousItems, r.items);
     final comparing = r.previousItems.isNotEmpty;
+    final previousItems = r.previousItems.toSet();
+    String? originalCurrency(FinanceProcurementReviewLine item) {
+      final previous = previousItems.contains(item);
+      final header = previous ? r.previousHeaderSnapshot : r.headerSnapshot;
+      return financeCurrencyDisplayLabel(name: item.currencyName) ??
+          financeCurrencyDisplayLabel(
+            name: header['currencyName']?.toString(),
+          ) ??
+          (previous ? null : financeCurrencyDisplayLabel(name: r.currencyName));
+    }
+
     final rateText = _effectiveRateText(r);
     final hasUnknown = [
       ...r.previousItems,
@@ -1594,12 +1606,6 @@ class _FinanceProcurementApprovalReviewPageState
                         value: (_) => r.supplierName,
                       ),
                       MasterColumnDef(
-                        key: 'currency',
-                        label: '币种',
-                        width: 100,
-                        value: (_) => r.currencyName,
-                      ),
-                      MasterColumnDef(
                         key: 'taxRate',
                         label: '税率(%)',
                         width: 100,
@@ -1711,9 +1717,9 @@ class _FinanceProcurementApprovalReviewPageState
                         value: (it) => it.totalAmountInput == null
                             ? financeMoneyWithUnitSuffix(
                                 it.price,
-                                currencyName: r.currencyName,
+                                currencyName: originalCurrency(it),
                               )
-                            : '${financeMoneyWithUnitSuffix(it.price, currencyName: r.currencyName)}（参考）',
+                            : '${financeMoneyWithUnitSuffix(it.price, currencyName: originalCurrency(it))}（参考）',
                       ),
                       MasterColumnDef(
                         key: 'amountOriginal',
@@ -1722,8 +1728,14 @@ class _FinanceProcurementApprovalReviewPageState
                         type: 'money',
                         value: (it) => financeMoneyWithUnitSuffix(
                           it.amountOriginal,
-                          currencyName: r.currencyName,
+                          currencyName: originalCurrency(it),
                         ),
+                      ),
+                      MasterColumnDef(
+                        key: 'currency',
+                        label: '币种',
+                        width: 100,
+                        value: originalCurrency,
                       ),
                       // 汇率 = case 级记账汇率：未批 case 在本列单元格填写（全列同步），
                       // 实时重算折合人民币列/合计/快照卡；已批只读财务落定值。行单位
@@ -1828,6 +1840,7 @@ class _FinanceProcurementApprovalReviewPageState
   Set<String> _visibleChangedKeys(Set<String> fields) => {
     ...fields,
     if (fields.contains('unitName')) 'qty',
+    if (fields.contains('currencyName')) 'currency',
   };
 
   /// 审批历史卡：逐轮 提交/驳回/通过 事件与原因。

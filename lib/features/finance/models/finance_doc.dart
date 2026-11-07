@@ -854,6 +854,7 @@ class ReconciliationItem {
     this.sourceDocType,
     this.sourceDocId,
     this.accountId,
+    this.accountCurrencyId,
     this.checkNo,
     this.counterpartName,
     this.inAmount,
@@ -872,6 +873,7 @@ class ReconciliationItem {
   final String? sourceDocType;
   final String? sourceDocId;
   final String? accountId;
+  final String? accountCurrencyId;
   final String? checkNo;
   final String? counterpartName;
   final double? inAmount;
@@ -891,6 +893,7 @@ class ReconciliationItem {
         sourceDocType: json['sourceDocType'] as String?,
         sourceDocId: json['sourceDocId'] as String?,
         accountId: json['accountId'] as String?,
+        accountCurrencyId: json['accountCurrencyId'] as String?,
         checkNo: json['checkNo'] as String?,
         counterpartName: json['counterpartName'] as String?,
         inAmount: (json['inAmount'] as num?)?.toDouble(),

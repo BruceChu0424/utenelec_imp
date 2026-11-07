@@ -108,10 +108,15 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: RouteName.productionSchedule,
     name: 'production-schedule',
-    // 深链预选大类段（2026-09-03 分类范式：默认不选，路由偏好例外）：
-    // 默认「待排产」，?tab=progress 预选「进行中」。
+    // Only explicit deep links preselect a segment. The ordinary entry
+    // selects from the toolbar's current badge counts.
     builder: (_, state) => ProductionBoardPage(
-      initialTab: state.uri.queryParameters['tab'] == 'progress' ? 1 : 0,
+      fallbackToPending: true,
+      initialTab: switch (state.uri.queryParameters['tab']) {
+        'pending' => 0,
+        'progress' => 1,
+        _ => null,
+      },
     ),
   ),
   // 2026-10-19 同页双路由收口：/production/progress 与 /production/schedule 自

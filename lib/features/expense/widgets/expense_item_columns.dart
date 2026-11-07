@@ -36,4 +36,10 @@ final expenseItemColumns = <MasterColumnDef<ExpenseItem>>[
       financeExactMoneyDisplay(item.amountText),
     ),
   ),
+  MasterColumnDef(
+    key: 'currency',
+    label: '币种',
+    width: 80,
+    value: (_) => expenseClaimCurrencyName,
+  ),
 ];

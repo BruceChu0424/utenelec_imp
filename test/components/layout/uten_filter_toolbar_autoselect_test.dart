@@ -90,7 +90,8 @@ void main() {
 
     testWidgets('计数异步到位时等到位才选；红优先于黄', (tester) async {
       String? picked;
-      int? doingCount;
+      int? todoCount;
+      var ready = false;
       late StateSetter setStateHost;
       await tester.pumpWidget(
         _host(
@@ -98,12 +99,18 @@ void main() {
             builder: (context, setState) {
               setStateHost = setState;
               return UtenFilterToolbar<String>(
+                autoSelectBadgeReady: ready,
                 segments: [
-                  const UtenFilterSegment(value: 'todo', label: '待办'),
                   UtenFilterSegment(
+                    value: 'todo',
+                    label: '待办',
+                    count: todoCount,
+                    countForm: UtenSegmentCountForm.actionable,
+                  ),
+                  const UtenFilterSegment(
                     value: 'doing',
                     label: '进行中',
-                    count: doingCount,
+                    count: 4,
                     countForm: UtenSegmentCountForm.inProgress,
                   ),
                 ],
@@ -115,12 +122,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // 黄数为 null（加载中）不选。
+      // 已有黄色进行中，红色计数的来源还在加载。
       expect(picked, isNull);
 
-      setStateHost(() => doingCount = 4);
+      setStateHost(() {
+        todoCount = 2;
+        ready = true;
+      });
       await tester.pumpAndSettle();
-      expect(picked, 'doing');
+      expect(picked, 'todo');
     });
 
     testWidgets('选中一旦发生不再自动改选', (tester) async {

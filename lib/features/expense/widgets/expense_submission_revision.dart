@@ -379,6 +379,12 @@ class ExpenseSubmissionItemTable extends StatelessWidget {
         type: 'money',
         value: (row) => row['amount']?.toString(),
       ),
+      MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 80,
+        value: (_) => expenseClaimCurrencyName,
+      ),
     ],
     summaryBar: UtenTotalsSummaryBar(
       rowCount: (revision.current['items'] as List).length,

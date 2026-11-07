@@ -93,6 +93,28 @@ class SalesOrderRevisionTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rows = salesOrderRevisionRows(diff);
+    final beforeLines = {
+      for (final row in rows)
+        if (row.kind == UtenRevisionKind.removed) row.value,
+    };
+    final currencyChange = diff.headerChanges
+        .where((change) => change.field == '币种')
+        .firstOrNull;
+    String snapshotCurrency(String? value) => financeCurrencyText(
+      name: value == '未填写' || value == '未设置' ? null : value,
+      fallback: '—',
+    );
+    final beforeCurrency = snapshotCurrency(
+      currencyChange?.beforeValue ??
+          (diff.baselineComplete ? currencyLabel : null),
+    );
+    final afterCurrency = snapshotCurrency(
+      currencyChange?.afterValue ?? currencyLabel,
+    );
+    String currencyOf(SalesOrderRevisionLine line) =>
+        beforeLines.contains(line) ? beforeCurrency : afterCurrency;
+
     final fields = <(String, String, double)>[
       ('颜色', '颜色', 90),
       // Quantity retains its unit inside the cell, matching entry and ordinary review.
@@ -140,7 +162,7 @@ class SalesOrderRevisionTable extends StatelessWidget {
             key: const Key('sales-order-revision-table'),
             primary: true,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-            rows: salesOrderRevisionRows(diff),
+            rows: rows,
             cellBuilders: cellBuilders,
             columns:
                 canonicalSalesColumns<MasterColumnDef<SalesOrderRevisionLine>>([
@@ -186,10 +208,16 @@ class SalesOrderRevisionTable extends StatelessWidget {
                             : key == '单价' || key == '原币金额'
                             ? financeMoneyWithUnitSuffix(
                                 row.values[key],
-                                currencyName: currencyLabel,
+                                currencyName: currencyOf(row),
                               )
                             : row.values[key] ?? '—',
                       ),
+                  MasterColumnDef(
+                    key: 'currency',
+                    label: '币种',
+                    width: 80,
+                    value: currencyOf,
+                  ),
                   ...businessReadOnlyColumns<SalesOrderRevisionLine>(
                     allRows,
                     columnsOf: (row) => row.extraColumns,

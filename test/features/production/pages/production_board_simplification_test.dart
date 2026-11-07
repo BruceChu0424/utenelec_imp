@@ -10,8 +10,10 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
+import 'package:uten_imp/features/production/production_routes.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -151,7 +153,8 @@ void main() {
     final requests = <RequestOptions>[];
     await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
+    final router = _scheduleRouter();
+    final badges = FixedBadgeSummaryNotifier(BadgeSummary.empty);
     addTearDown(router.dispose);
 
     await tester.pumpWidget(
@@ -165,15 +168,17 @@ void main() {
           ),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionOverview,
+            Perm.productionPlanView,
           }),
           sharedPreferencesProvider.overrideWithValue(preferences),
-          fixedBadgeSummaryOverride(
-            badgeSummaryFixture(facts: {BadgeFact.productionExecution: 7}),
-          ),
+          badgeSummaryProvider.overrideWith(() => badges),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
     );
+    await tester.pumpAndSettle();
+    expect(requests, isEmpty);
+    badges.emit(badgeSummaryFixture(facts: {BadgeFact.productionExecution: 7}));
     await tester.pumpAndSettle();
 
     // 在办批次数: 黄色进行中徽章。既不是红色(没人在等调度员动手), 也不是中性
@@ -209,6 +214,53 @@ void main() {
     expect(
       requests.map((request) => request.path),
       isNot(contains('/production/execution-workbench/count')),
+    );
+    expect(
+      requests.map((request) => request.path),
+      contains('/production/execution-workbench'),
+    );
+    expect(
+      requests.map((request) => request.path),
+      isNot(contains('/production/schedule/pending')),
+    );
+
+    router.go('${RouteName.productionSchedule}?tab=pending');
+    await tester.pumpAndSettle();
+    expect(
+      requests.map((request) => request.path),
+      contains('/production/schedule/pending'),
+    );
+  });
+
+  testWidgets('普通生产入口在徽章确认全空后恢复待排产默认段', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final requests = <RequestOptions>[];
+    final router = _scheduleRouter();
+    addTearDown(router.dispose);
+    final badges = FixedBadgeSummaryNotifier(BadgeSummary.empty);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionPlanRepositoryProvider.overrideWithValue(
+            _planRepository(requests),
+          ),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionPlanView,
+          }),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(requests, isEmpty);
+    badges.emit(badgeSummaryFixture());
+    await tester.pumpAndSettle();
+    expect(
+      requests.map((request) => request.path),
+      contains('/production/schedule/pending'),
     );
   });
 
@@ -326,6 +378,15 @@ void main() {
 
 GoRouter _router() => GoRouter(
   routes: [GoRoute(path: '/', builder: (_, _) => const ProductionBoardPage())],
+);
+
+GoRouter _scheduleRouter() => GoRouter(
+  initialLocation: RouteName.productionSchedule,
+  routes: [
+    productionRoutes.whereType<GoRoute>().singleWhere(
+      (route) => route.path == RouteName.productionSchedule,
+    ),
+  ],
 );
 
 ProductionPlanRepository _planRepository(

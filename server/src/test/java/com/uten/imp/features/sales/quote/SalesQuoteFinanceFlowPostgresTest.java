@@ -347,9 +347,14 @@ class SalesQuoteFinanceFlowPostgresTest {
 
         // 财务可读: 列表 + 核价页 + 普通详情(不脱敏)。
         loginAs(f.finance());
-        assertThat(finance.list("pending", null, 1, 100).getItems())
-                .anyMatch(item -> item.id().equals(quoteId));
         QuoteFinanceReviewDto review = finance.review(quoteId);
+        assertThat(finance.list("pending", null, 1, 100).getItems())
+                .filteredOn(item -> item.id().equals(quoteId))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.currencyName()).isNotBlank().isEqualTo(review.currencyName());
+                    assertThat(item.currencyCode()).isNotBlank();
+                });
         assertThat(review.lines().getFirst().salesProposedDiscount()).isEqualByComparingTo("0.95");
         assertThat(review.lines().getFirst().unitId()).isEqualTo(unitOf(listed));
         assertThat(review.financeActions()).containsExactly("edit", "return", "confirm");

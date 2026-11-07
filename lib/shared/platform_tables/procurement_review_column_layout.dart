@@ -1,5 +1,7 @@
 /// Finance reads identity, quantity, price and accounting terms in that order.
 /// Source references and notes follow the values being approved.
+const financeProcurementReviewLayoutVersion = 2;
+
 const financeProcurementReviewColumnKeys = <String>[
   'lineNo',
   'goods',
@@ -11,8 +13,8 @@ const financeProcurementReviewColumnKeys = <String>[
   'allowedLossPct',
   'giftQty',
   'price',
-  'currency',
   'amountOriginal',
+  'currency',
   'exchangeRate',
   'amountLocal',
   'taxRate',
@@ -22,6 +24,28 @@ const financeProcurementReviewColumnKeys = <String>[
   'sourceApplicationNos',
   'remark',
 ];
+
+/// Move the former default placement without disturbing custom or pinned columns.
+List<String> migrateFinanceProcurementReviewCurrencyOrder(
+  List<String> order,
+  Set<String> pinned,
+) {
+  final currency = order.indexOf('currency');
+  if (currency <= 0 ||
+      currency + 1 >= order.length ||
+      order[currency - 1] != 'price' ||
+      order[currency + 1] != 'amountOriginal' ||
+      pinned.contains('currency') ||
+      pinned.contains('amountOriginal')) {
+    return order;
+  }
+  return [
+    ...order.take(currency),
+    'amountOriginal',
+    'currency',
+    ...order.skip(currency + 2),
+  ];
+}
 
 List<T> financeProcurementReviewColumns<T>(
   List<T> columns, {

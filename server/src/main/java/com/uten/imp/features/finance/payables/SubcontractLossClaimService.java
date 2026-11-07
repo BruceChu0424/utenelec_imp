@@ -321,7 +321,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         LossFilters filters = lossFilters(supplierId, status, keyword, wasteBillNo);
         String from = " FROM subcontract_loss_cases loss"
                 + " JOIN suppliers supplier ON supplier.id=loss.supplier_id";
-        Query data = em.createNativeQuery(summarySelect() + from + filters.where()
+        Query data = em.createNativeQuery(summarySelect() + from
+                + " LEFT JOIN currencies currency ON currency.id=loss.currency_id" + filters.where()
                 + " " + lossOrderBy(sort, order, filters.params().containsKey("keyword"))
                 + " LIMIT :limit OFFSET :offset");
         bind(data, filters.params());
@@ -1149,6 +1150,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         List<Object[]> rows = em.createNativeQuery(summarySelect()
                         + " FROM subcontract_loss_cases loss"
                         + " JOIN suppliers supplier ON supplier.id=loss.supplier_id"
+                        + " LEFT JOIN currencies currency ON currency.id=loss.currency_id"
                         + " WHERE loss.id=:id AND COALESCE(loss.is_deleted,FALSE)=FALSE")
                 .setParameter("id", id).getResultList();
         if (rows.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "委外超耗责任单不存在");
@@ -1287,7 +1289,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                        supplier.code,supplier.name,loss.status,
                        loss.actual_loss_qty,loss.allowed_loss_qty,loss.excess_loss_qty,
                        (SELECT value.loss_book_value_local FROM v_subcontract_loss_case_value value WHERE value.case_id=loss.id),loss.claim_amount_local,
-                       loss.row_version,loss.created_at
+                       loss.row_version,loss.created_at,currency.name,currency.code
                 """;
     }
 
@@ -1297,7 +1299,9 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 NativeValueConverters.text(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), quantity(row[7]), quantity(row[8]),
                 quantity(row[9]), priceMasked ? null : moneyText(row[10]),
                 priceMasked ? null : moneyText(row[11]),
-                ((Number) row[12]).longValue(), NativeValueConverters.text(row[13]), priceMasked);
+                ((Number) row[12]).longValue(), NativeValueConverters.text(row[13]), priceMasked,
+                priceMasked ? null : NativeValueConverters.text(row[14]),
+                priceMasked ? null : NativeValueConverters.text(row[15]));
     }
 
     private boolean canViewFinanceAmounts() {

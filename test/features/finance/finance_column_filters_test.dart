@@ -111,6 +111,16 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        final listFinder = find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<dynamic>,
+        );
+        final list = tester.widget<MasterDataTableView<dynamic>>(listFinder);
+        final keys = list.columns.map((column) => column.key).toList();
+        expect(keys[keys.indexOf('amountLocal') + 1], 'localCurrency');
+        expect(
+          find.descendant(of: listFinder, matching: find.text('人民币')),
+          findsOneWidget,
+        );
         final amountHeader = tester.getRect(
           find.byKey(const ValueKey('master-column-filter-amountLocal')),
         );
@@ -439,6 +449,12 @@ class _FinanceFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/currencies/dict') {
+      return const [
+        {'id': 'currency-cny', 'name': '人民币', 'baseCurrency': true},
+        {'id': 'currency-usd', 'name': '美元'},
+      ];
+    }
     if (path.contains('accounts')) {
       return const [
         {

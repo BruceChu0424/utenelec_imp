@@ -38,6 +38,7 @@ class _Api extends ApiClient {
           'billNo': 'TEST-HEADER-1',
           'billDate': '2026-10-11',
           'status': status,
+          'currencyId': 'currency-usd',
           'closed': false,
           'allowedActions': ['VIEW'],
           'items': [
@@ -62,7 +63,12 @@ class _Api extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => [];
+  }) async => path == '/master/currencies/dict'
+      ? const [
+          {'id': 'currency-usd', 'name': '美元'},
+          {'id': 'currency-cny', 'name': '人民币', 'baseCurrency': true},
+        ]
+      : [];
 
   @override
   Future<Map<String, dynamic>> post(
@@ -192,16 +198,24 @@ void main() {
         type: type,
       );
       if (type == FinanceDocType.payment) {
-        expect(create.map((column) => column.label), ['应付单号', '本次付款(原币)']);
+        expect(create.map((column) => column.label), [
+          '应付单号',
+          '本次付款(原币)',
+          '付款币种',
+        ]);
         expect(detail['bill'], create.first.label);
-        expect(detail['amountOriginal'], create.last.label);
+        expect(detail['amountOriginal'], create[1].label);
         expect(table.columns.map((column) => column.key), [
           'bill',
           'amountOriginal',
+          'currency',
           'amountLocal',
+          'localCurrency',
           'appliedAmountLocal',
           'exchangeDiff',
         ]);
+        expect(table.columns[2].value(table.items.single), '美元');
+        expect(table.columns[4].value(table.items.single), '人民币');
         expect(
           table.columns
               .singleWhere((column) => column.key == 'amountOriginal')
@@ -216,8 +230,25 @@ void main() {
           '数量',
           '单价',
           '金额',
+          '币种',
         ]);
-        expect(detail.values, create.map((column) => column.label));
+        expect(detail.keys, [
+          if (type == FinanceDocType.expense) 'postingPurpose',
+          'style',
+          'department',
+          'qty',
+          'price',
+          'priceCurrency',
+          'amount',
+          'localCurrency',
+        ]);
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'priceCurrency')
+              .value(table.items.single),
+          '美元',
+        );
+        expect(table.columns.last.value(table.items.single), '人民币');
         if (type == FinanceDocType.expense) {
           expect(detail['postingPurpose'], '支出类型');
           expect(

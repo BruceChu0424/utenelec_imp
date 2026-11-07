@@ -106,6 +106,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255), is_hidden BOOLEAN NOT NULL DEFAULT FALSE, hidden_at TIMESTAMPTZ);
                 CREATE TABLE v_production_execution_workbench_segments(
                     segment_id uuid PRIMARY KEY, plan_id uuid, root_type text DEFAULT 'PLAN', root_id uuid,
+                    root_plan_id uuid,
                     plan_no text DEFAULT 'PLAN-001', segment_code text, segment_no integer,
                     sales_order_nos text DEFAULT 'SO-001', workshop_department_id uuid,
                     workshop_name text DEFAULT 'Assembly', responsible_employee_id uuid,
@@ -243,6 +244,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         int start = migration.lastIndexOf("CREATE OR REPLACE VIEW v_production_material_clearance AS");
         assertThat(start).isGreaterThanOrEqualTo(0);
         jdbc.execute(migration.substring(start, migration.indexOf(';', start) + 1));
+        String topLevel = Files.readString(Path.of("src/main/resources/db/migration/V1120__execution_workbench_actual_top_level_products.sql"));
+        jdbc.execute(topLevel.substring(0, topLevel.indexOf("CREATE OR REPLACE VIEW v_production_execution_workbench_roots AS")));
         jdbc.update("INSERT INTO departments(id) VALUES (?), (?)", WORKSHOP, OTHER_WORKSHOP);
         jdbc.update("INSERT INTO employees(id, department_id) VALUES (?, ?)", EMPLOYEE, WORKSHOP);
         jdbc.update("INSERT INTO production_plans(id, bill_no, status, maker_id) VALUES (?, 'PLAN-001', 1, ?)", PLAN, EMPLOYEE);
@@ -293,9 +296,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,responsible_employee_id) VALUES (?, ?,?,?,?,?)", new UUID(0, number), status,PLAN,PLAN,workshop,EMPLOYEE);
         jdbc.update("""
                 INSERT INTO v_production_execution_workbench_segments(
-                    segment_id, plan_id, root_id, segment_code, segment_no, workshop_department_id,
-                    segment_status, preparation_status, reportable, issued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, new UUID(0, number), PLAN, PLAN, "WORK-" + number, number, workshop, status, preparation, reportable, reportable);
+                    segment_id, plan_id, root_id, root_plan_id, segment_code, segment_no, workshop_department_id,
+                    segment_status, preparation_status, reportable, issued) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, new UUID(0, number), PLAN, PLAN, PLAN, "WORK-" + number, number, workshop, status, preparation, reportable, reportable);
     }
     @BeforeEach
     void createService() {
@@ -883,6 +886,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     void productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages() {
         UUID root = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
         List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?,'PLAN-TOP',1,?)", root, EMPLOYEE);
         jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,product_count,segment_count,completed_count,root_progress_ratio) VALUES (?,?,8,12,9,0.22680412371134020619)", root, EMPLOYEE);
         try {
             for (int product = 0; product < 8; product++) {
@@ -912,6 +916,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThatThrownBy(() -> service.group("PLAN", root)).isInstanceOf(ApiException.class);
         } finally {
             removeCompletionSegments(root, segments);
+            jdbc.update("DELETE FROM production_plans WHERE id=?", root);
         }
     }
 
@@ -921,6 +926,10 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         UUID colorA = UUID.randomUUID(), colorB = UUID.randomUUID();
         UUID unitA = UUID.randomUUID(), unitB = UUID.randomUUID();
         List<UUID> segments = new java.util.ArrayList<>();
+        UUID childPlan = UUID.randomUUID();
+        for (UUID planId : List.of(root, childPlan)) {
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?,?,1,?)", planId, planId.toString(), EMPLOYEE);
+        }
         jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id) VALUES (?,?)", root, EMPLOYEE);
         try {
             addCompletionSegment(segments, root, goods, colorA, unitA, "COMPLETED");
@@ -928,11 +937,14 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             addCompletionSegment(segments, root, goods, colorB, unitA, "IN_PROGRESS");
             addCompletionSegment(segments, root, goods, colorA, unitB, "COMPLETED");
             addCompletionSegment(segments, root, goods, null, unitA, "WAITING");
+            addCompletionSegment(segments, root, UUID.randomUUID(), colorA, unitA, "READY", childPlan);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET root_plan_id=? WHERE plan_id=?", root, childPlan);
             var detail = service.group("PLAN", root);
             assertThat(detail.completedProductCount()).isEqualTo(2);
             assertThat(detail.unfinishedProductCount()).isEqualTo(2);
         } finally {
             removeCompletionSegments(root, segments);
+            jdbc.update("DELETE FROM production_plans WHERE id IN (?,?)", root, childPlan);
         }
     }
 
@@ -946,14 +958,13 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         List<UUID> plans = new java.util.ArrayList<>(List.of(topPlan));
         jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_type,root_id,owner_employee_id) VALUES ('ANALYSIS',?,?)", root, EMPLOYEE);
         try {
-            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", makeItem, root, makeGoods);
             jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id,material_analysis_id,material_analysis_item_id) VALUES (?, 'PLAN-TOP', 1, ?, ?, ?)", topPlan, EMPLOYEE, root, makeItem);
             addCompletionSegment(segments, root, makeGoods, color, unit, "COMPLETED", topPlan);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=?", root);
             // Stock handoff, completed manufacture and partially received purchase are
             // three product identities. Absence of a work order never implies completion.
             for (Object[] source : List.of(new Object[]{stockGoods, UUID.randomUUID()}, new Object[]{makeGoods, makeItem}, new Object[]{purchaseGoods, UUID.randomUUID()})) {
-                jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,is_deleted) VALUES (?,?,?,FALSE)", source[1], root, source[0]);
+                jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,color_id,unit_id,is_deleted) VALUES (?,?,?,?,?,FALSE)", source[1], root, source[0], color, unit);
                 jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,0,0)",
                         root, source[1], source[0], color, unit);
             }
@@ -984,6 +995,17 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     root, childItem, componentGoods, color, unit);
             jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id) VALUES (?, 'PLAN-CHILD', 1, ?)", childPlan, EMPLOYEE);
             addCompletionSegment(segments, root, componentGoods, color, unit, "IN_PROGRESS", childPlan);
+            UUID aggregateGoods = UUID.randomUUID(), aggregateItem = UUID.randomUUID(), aggregatePlan = UUID.randomUUID();
+            plans.add(aggregatePlan);
+            jdbc.update("INSERT INTO production_material_analysis_items(id,analysis_id,goods_id,color_id,unit_id,source_type,is_deleted) VALUES (?,?,?,?,?,'AGGREGATE_MAKE',FALSE)",
+                    aggregateItem, root, aggregateGoods, color, unit);
+            jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,5,5)",
+                    root, aggregateItem, aggregateGoods, color, unit);
+            jdbc.update("INSERT INTO production_plans(id,bill_no,status,maker_id,material_analysis_id,material_analysis_item_id) VALUES (?,'PLAN-AGGREGATE',1,?,?,?)",
+                    aggregatePlan, EMPLOYEE, root, aggregateItem);
+            addCompletionSegment(segments, root, aggregateGoods, color, unit, "IN_PROGRESS", aggregatePlan);
+            // A segment with a top anchor and another product identity is not a top product.
+            addCompletionSegment(segments, root, UUID.randomUUID(), color, unit, "IN_PROGRESS", topPlan);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=? AND segment_status='IN_PROGRESS'", root);
             var childless = service.group("ANALYSIS", root);
             assertThat(childless.completedProductCount()).isEqualTo(2);
@@ -998,7 +1020,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
 
     private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
                                               UUID color, UUID unit, String status) {
-        addCompletionSegment(segments, root, goods, color, unit, status, PLAN);
+        addCompletionSegment(segments, root, goods, color, unit, status, root);
     }
 
     /** planId 即段的归属计划：锚定到根分析行（顶层计划）或普通未锚定计划（子层段）。 */
@@ -1008,8 +1030,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         segments.add(segment);
         jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,product_goods_id,product_color_id,product_unit_id,workshop_department_id,responsible_employee_id) VALUES (?,?,?,?,?,?,?,?,?)",
                 segment, status, planId, PLAN, goods, color, unit, WORKSHOP, EMPLOYEE);
-        jdbc.update("INSERT INTO v_production_execution_workbench_segments(segment_id,plan_id,root_id,segment_status,workshop_department_id,product_goods_id,planned_qty,inbound_qty) VALUES (?,?,?,?,?,?,1000,1)",
-                segment, planId, root, status, WORKSHOP, goods);
+        jdbc.update("INSERT INTO v_production_execution_workbench_segments(segment_id,plan_id,root_id,root_plan_id,segment_status,workshop_department_id,product_goods_id,planned_qty,inbound_qty) VALUES (?,?,?,?,?,?,?,1000,1)",
+                segment, planId, root, planId, status, WORKSHOP, goods);
     }
 
     private static void removeCompletionSegments(UUID root, List<UUID> segments) {

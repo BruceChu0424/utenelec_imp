@@ -54,6 +54,7 @@ class _FakeRepo implements SalesQuoteFinanceReviewRepository {
     'lineCount': 3,
     'pricePendingCount': needsPrice,
     'totalOriginal': '1234.5',
+    'currencyName': '人民币',
     'clientFileCurrency': 'USD',
     'statusBucket': 'PENDING_FINANCE',
     'reviewRevision': 2,
@@ -140,6 +141,7 @@ Future<_FakeRepo> _pump(
   Size size = const Size(1600, 1000),
   _FakeRepo? repository,
   bool controlledEpoch = false,
+  int pendingCount = 2,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -180,7 +182,9 @@ Future<_FakeRepo> _pump(
         }),
         isSuperAdminProvider.overrideWithValue(false),
         fixedBadgeSummaryOverride(
-          badgeSummaryFixture(entries: {BadgeEntry.financeQuoteReview: (2, 0)}),
+          badgeSummaryFixture(
+            entries: {BadgeEntry.financeQuoteReview: (pendingCount, 0)},
+          ),
         ),
       ],
       child: MaterialApp.router(
@@ -353,6 +357,16 @@ void main() {
     expect(find.text('销售改后重新提交 · 你正在核价'), findsWidgets);
     // 报价金额恒本币：金额带「元」后缀（2026-10-10 口径）。
     expect(find.text('1234.50 元'), findsWidgets);
+  });
+
+  testWidgets('没有待核价时自动读取已退回，未预先加载待核价表格', (tester) async {
+    final repo = await _pump(tester, pendingCount: 0);
+    expect(repo.calls, [
+      (SalesQuoteFinanceState.returned, 1, null),
+      (SalesQuoteFinanceState.returned, 100, null),
+    ]);
+    expect(find.text('XB-r1'), findsOneWidget);
+    expect(find.text('XB-p1'), findsNothing);
   });
 
   testWidgets('switching tabs queries the server state and explains rows', (

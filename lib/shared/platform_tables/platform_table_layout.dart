@@ -171,8 +171,9 @@ class PlatformTableLayoutNotifier
         ? salesOrderColumnLayoutVersion
         : _instantInventory
         ? instantInventoryColumnLayoutVersion
-        : _financeReview ||
-              _materialPreparation ||
+        : _financeReview
+        ? financeProcurementReviewLayoutVersion
+        : _materialPreparation ||
               _financeEntry ||
               _arrivalRegistration ||
               _dailyReportItems
@@ -218,13 +219,19 @@ class PlatformTableLayoutNotifier
         layoutVersion: instantInventoryColumnLayoutVersion,
       );
     }
-    if (_financeReview && decoded.layoutVersion < 1) {
+    if (_financeReview &&
+        decoded.layoutVersion < financeProcurementReviewLayoutVersion) {
       return decoded.copyWith(
-        order: financeProcurementReviewColumns(
-          decoded.order,
-          keyOf: (key) => key,
-        ),
-        layoutVersion: 1,
+        order: decoded.layoutVersion < 1
+            ? financeProcurementReviewColumns(
+                decoded.order,
+                keyOf: (key) => key,
+              )
+            : migrateFinanceProcurementReviewCurrencyOrder(
+                decoded.order,
+                decoded.pinned,
+              ),
+        layoutVersion: financeProcurementReviewLayoutVersion,
       );
     }
     if (_financeEntry && decoded.layoutVersion < 1) {

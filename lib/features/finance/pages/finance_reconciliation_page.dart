@@ -294,6 +294,13 @@ class _FinanceReconciliationPageState
         ),
       ),
       MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 80,
+        columnSearchEnabled: false,
+        value: (it) => names.currency(it.accountCurrencyId),
+      ),
+      MasterColumnDef(
         key: 'sourceDocType',
         columnSearchEnabled: false,
         facetSearchEnabled: true,

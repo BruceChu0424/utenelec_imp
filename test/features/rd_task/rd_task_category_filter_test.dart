@@ -11,6 +11,8 @@ import 'package:uten_imp/features/rd_task/pages/rd_task_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
+
 void main() {
   testWidgets('类别表头查询其他页的任务，清除后保持工作阶段', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
@@ -24,6 +26,7 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(preferences),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(const {Perm.rdTaskView}),
+          fixedBadgeSummaryOverride(),
         ],
         child: const MaterialApp(
           locale: Locale('zh'),

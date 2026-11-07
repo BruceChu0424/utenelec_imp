@@ -115,7 +115,7 @@ void main() {
             'qty': '2.0000',
           },
         ],
-        header: {'shipAddr': '原地址'},
+        header: {'shipAddr': '原地址', 'currencyId': 'currency-usd'},
       );
       final now = _snapshot(
         [
@@ -127,7 +127,7 @@ void main() {
             'qty': '3.0000',
           },
         ],
-        header: {'shipAddr': '新地址'},
+        header: {'shipAddr': '新地址', 'currencyId': 'currency-eur'},
       );
       await tester.pumpWidget(
         MaterialApp(
@@ -140,6 +140,9 @@ void main() {
                     previous: old,
                     current: now,
                     embedded: false,
+                    describe: (key, value) => key == 'currencyId'
+                        ? (value == 'currency-usd' ? '美元' : '欧元')
+                        : value.toString(),
                   ),
                 ),
               ],
@@ -157,7 +160,17 @@ void main() {
       );
       expect(price.value(table.rows[0].value), '1234567890123.4567');
       expect(price.value(table.rows[1].value), '1234567890123.4568');
-      expect(table.rows[1].changedKeys, containsAll(['qty', 'price']));
+      final currency = table.columns.singleWhere(
+        (column) => column.key == 'currencyId',
+      );
+      final keys = table.columns.map((column) => column.key).toList();
+      expect(keys.indexOf('currencyId'), keys.indexOf('amountOriginal') + 1);
+      expect(currency.value(table.rows[0].value), '美元');
+      expect(currency.value(table.rows[1].value), '欧元');
+      expect(
+        table.rows[1].changedKeys,
+        containsAll(['qty', 'price', 'currencyId']),
+      );
       expect(table.rows[1].changedKeys, isNot(contains('goodsId')));
       final changedQuantity = tester.widget<Text>(find.text('3.0000'));
       expect(changedQuantity.style?.fontWeight, FontWeight.w800);
@@ -169,7 +182,7 @@ void main() {
       expect(find.text('原地址'), findsOneWidget);
       expect(find.text('新地址'), findsOneWidget);
       expect(find.textContaining('以前：'), findsNothing);
-      expect(find.byType(UtenRevisionStrike), findsNWidgets(2));
+      expect(find.byType(UtenRevisionStrike), findsNWidgets(3));
       expect(tester.takeException(), isNull);
     },
   );

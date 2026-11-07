@@ -1346,6 +1346,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   ) {
     final theme = Theme.of(context);
     final editable = _editable;
+    final quoteCurrency = financeCurrencyText(
+      name: review.currencyName,
+      fallback: review.baseCurrency ? '人民币' : '—',
+    );
+    String quoteMoney(String? amount) =>
+        financeMoneyWithUnitSuffix(amount, currencyName: quoteCurrency);
     final hasFile = review.lines.any(
       (l) =>
           l.clientPrice != null ||
@@ -1530,11 +1536,10 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           width: 190,
           type: 'money',
           info: l10n.quoteFinanceColDealPriceInfo,
-          value: (line) =>
-              financeLocalMoneyWithUnitSuffix(_drafts[line.itemId]?.deal.text),
+          value: (line) => quoteMoney(_drafts[line.itemId]?.deal.text),
           cellBuilderHandlesSemantics: true,
           cellBuilder: (context, line) =>
-              _dealCell(context, l10n, line, editable),
+              _dealCell(context, l10n, line, editable, quoteCurrency),
         ),
         MasterColumnDef(
           key: 'discount',
@@ -1556,7 +1561,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             // 没改的行即服务端金额，改过的行为预览(填错时为空)。
             final draft = _drafts[line.itemId];
             final amount = draft == null ? line.amount : draft.amountPreview;
-            return financeLocalMoneyWithUnitSuffix(amount);
+            return quoteMoney(amount);
           },
           cellBuilder: (_, line) {
             final draft = _drafts[line.itemId];
@@ -1564,10 +1569,16 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             return UtenReviewInputCell(
               before: line.amount,
               after: amount,
-              beforeLabel: financeLocalMoneyWithUnitSuffix(line.amount),
-              child: Text(financeLocalMoneyWithUnitSuffix(amount)),
+              beforeLabel: quoteMoney(line.amount),
+              child: Text(quoteMoney(amount)),
             );
           },
+        ),
+        MasterColumnDef(
+          key: 'currency',
+          label: '币种',
+          width: 80,
+          value: (_) => quoteCurrency,
         ),
         if (hasFile)
           MasterColumnDef(
@@ -1717,6 +1728,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     AppLocalizations l10n,
     SalesQuoteFinanceLine line,
     bool editable,
+    String quoteCurrency,
   ) {
     final draft = _drafts[line.itemId];
     if (draft == null) return const Text('—');
@@ -1754,7 +1766,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
                 isDense: true,
                 labelText: l10n.quoteFinanceColDealPrice,
                 hintText: draft.unpriced ? l10n.quoteFinanceNoListPrice : null,
-                suffixText: '元',
+                suffixText: switch (quoteCurrency) {
+                  '人民币' => '元',
+                  '—' => null,
+                  _ => quoteCurrency,
+                },
                 error: utenFieldError(
                   draft.error == QuoteFinanceLineError.discount
                       ? null
@@ -1766,8 +1782,10 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         : Text(
             draft.deal.text.isEmpty
                 ? l10n.quoteFinanceNoListPrice
-                // 成交单价恒本币：带「元」后缀（与输入格 suffixText 对称）。
-                : financeLocalMoneyWithUnitSuffix(draft.deal.text),
+                : financeMoneyWithUnitSuffix(
+                    draft.deal.text,
+                    currencyName: quoteCurrency,
+                  ),
           );
     return Semantics(
       textField: editable,

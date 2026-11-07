@@ -481,6 +481,12 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
         financeLocalMoneyWithUnitSuffix(claim.totalAmount.toStringAsFixed(2)),
   ),
   MasterColumnDef(
+    key: 'currency',
+    label: '币种',
+    width: 80,
+    value: (_) => expenseClaimCurrencyName,
+  ),
+  MasterColumnDef(
     key: 'submittedAt',
     label: '提交时间',
     width: 150,

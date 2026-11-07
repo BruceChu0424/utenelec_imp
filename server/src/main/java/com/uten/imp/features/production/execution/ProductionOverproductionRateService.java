@@ -251,11 +251,12 @@ public class ProductionOverproductionRateService {
         if(request==null || request.segmentId()==null || request.expectedRateVersion()==null
                 || request.expectedRateVersion()<0)throw validation("调整申请缺少任务或当前比例版本");
         BigDecimal requested=rate(request.requestedRate());
-        String reason=reason(request.reason(),true);
+        String reason=reason(request.reason(),false);
+        if (reason != null && reason.length() < 2) throw validation("申请原因选填，填写时需2至500字");
         String key=key(request.idempotencyKey());
         UUID actor=currentUser.requireId();
         String hash=CanonicalFingerprint.sha256(List.of("PRODUCTION-RATE-SUBMIT-V1",request.segmentId().toString(),
-                request.expectedRateVersion().toString(),requested.stripTrailingZeros().toPlainString(),reason));
+                request.expectedRateVersion().toString(),requested.stripTrailingZeros().toPlainString(),reason==null?"":reason));
         commandLock("SUBMIT",actor,key);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id,request_hash FROM production_overproduction_rate_requests

@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_group_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../support/table_cell_geometry.dart';
 
 // 2026-09-05 起进行中面板是计划部统筹视角：不提供报工入口与「只看我的车间」
 // 筛选；双击批次直达物料分析页（ANALYSIS 根，携带 analysisId seed）或生产
@@ -126,6 +128,18 @@ void main() {
     expect(find.text('GA-1 等 3 个'), findsOneWidget);
     expect(find.text('白色 等 3 个'), findsOneWidget);
     expect(find.text('面板B'), findsNothing);
+    for (final label in ['面板A 等 3 个', 'GA-1 等 3 个', '白色 等 3 个']) {
+      final text = find.text(label);
+      expect(
+        tester.getRect(text).left,
+        closeTo(
+          tester.getRect(tableCellFrame(text)).left +
+              UtenSpacing.s12 +
+              UtenSpacing.s4,
+          1,
+        ),
+      );
+    }
 
     await tester.tap(find.text('GA-1 等 3 个'));
     await tester.pumpAndSettle();

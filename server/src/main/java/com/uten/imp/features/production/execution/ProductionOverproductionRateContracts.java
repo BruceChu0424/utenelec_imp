@@ -19,7 +19,7 @@ public final class ProductionOverproductionRateContracts {
             @NotNull UUID segmentId,
             @NotNull @PositiveOrZero Long expectedRateVersion,
             @NotNull @DecimalMin("0") @Digits(integer=3,fraction=6) BigDecimal requestedRate,
-            @NotBlank @Size(min=2,max=500) String reason,
+            @Size(max=500) String reason,
             @NotBlank @Size(min=8,max=128) String idempotencyKey) {}
 
     public record DecisionRequest(

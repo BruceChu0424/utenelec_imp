@@ -301,6 +301,12 @@ class _SubcontractLossClaimPanelState
         type: 'money',
         value: (item) => item.claimAmountLocal,
       ),
+      MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 80,
+        value: (item) => item.currencyLabel,
+      ),
     ],
     MasterColumnDef(
       key: 'createdAt',

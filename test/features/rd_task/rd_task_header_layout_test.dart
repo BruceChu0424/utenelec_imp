@@ -10,6 +10,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/rd_task/pages/rd_task_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -37,6 +38,39 @@ class _RdApi extends ApiClient {
 }
 
 void main() {
+  testWidgets('只有黄色徽章时直接读进行中，后到的红数不抢选', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _RdApi();
+    final badges = FixedBadgeSummaryNotifier(
+      badgeSummaryFixture(entries: {BadgeEntry.rdTaskCenter: (0, 1)}),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue({Perm.rdTaskView}),
+          isSuperAdminProvider.overrideWithValue(false),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: RdTaskPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(api.queries.map((query) => query['status']), ['in_progress']);
+    badges.emit(
+      badgeSummaryFixture(entries: {BadgeEntry.rdTaskCenter: (2, 1)}),
+    );
+    await tester.pumpAndSettle();
+    expect(api.queries.map((query) => query['status']), ['in_progress']);
+  });
+
   for (final width in [1400.0, 834.0, 375.0]) {
     testWidgets('研发四分段共用分类右侧搜索，宽度$width与大字适应空间', (tester) async {
       SharedPreferences.setMockInitialValues({});

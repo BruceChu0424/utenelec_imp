@@ -32,7 +32,7 @@ List<String> salesDocumentDefaultColumns({required bool order}) => [
   'price',
   'discount',
   'amount',
-  if (order) 'currency',
+  'currency',
   'remark',
 ];
 

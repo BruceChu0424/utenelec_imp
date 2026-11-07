@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../../core/utils/currency_display.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -349,6 +350,13 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
   Widget build(BuildContext context) {
     final editable = !_saving && _sent == null && formDraftIdentityIsCurrent;
     final currencies = financeApplicationRows(_references['currencies']);
+    final selectedCurrency = currencies
+        .where((row) => row['id']?.toString() == _currency)
+        .firstOrNull;
+    final currencyLabel = financeCurrencyDisplayLabel(
+      name: selectedCurrency?['name']?.toString(),
+      code: selectedCurrency?['code']?.toString(),
+    );
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
@@ -545,6 +553,9 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                         ignoring: !editable,
                         child: UtenEditableGrid<_RequestRow>(
                           controller: _grid,
+                          defaultColumnOrderAnchors: const {
+                            'currency': 'amount',
+                          },
                           createBlankRow: () =>
                               _RequestRow({}, markFormDraftChanged),
                           showAddRow: editable,
@@ -598,6 +609,13 @@ class _ApplicationEditState extends ConsumerState<FinanceApplicationEditPage>
                                       decimal: true,
                                     ),
                               ),
+                            ),
+                            EditableGridColumn(
+                              key: 'currency',
+                              label: '币种',
+                              width: 80,
+                              textOf: (_) => currencyLabel ?? '',
+                              cellBuilder: (_, _) => Text(currencyLabel ?? '—'),
                             ),
                           ],
                         ),

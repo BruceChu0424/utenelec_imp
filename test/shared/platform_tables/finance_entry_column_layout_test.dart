@@ -49,4 +49,39 @@ void main() {
     expect(layout.pinned, {'remark'});
     expect(layout.layoutVersion, 0);
   });
+  test('procurement review moves only the old default currency slot', () {
+    final notifier = PlatformTableLayoutNotifier(
+      'finance.procurement.review.purchase.items',
+    );
+    final migrated = notifier.decode({
+      'order': [
+        'price',
+        'currency',
+        'amountOriginal',
+        'exchangeRate',
+        'remark',
+      ],
+      'layoutVersion': 1,
+      'pinned': ['price'],
+      'hidden': ['remark'],
+      'widths': {'currency': 110.0},
+    })!;
+    expect(migrated.order, [
+      'price',
+      'amountOriginal',
+      'currency',
+      'exchangeRate',
+      'remark',
+    ]);
+    expect(migrated.pinned, {'price'});
+    expect(migrated.hidden, {'remark'});
+    expect(migrated.widths, {'currency': 110.0});
+    expect(migrated.layoutVersion, notifier.defaultValue.layoutVersion);
+
+    final customized = migrated.copyWith(
+      order: ['currency', 'price', 'amountOriginal'],
+      layoutVersion: 1,
+    );
+    expect(notifier.decode(customized.toJson())!.order, customized.order);
+  });
 }

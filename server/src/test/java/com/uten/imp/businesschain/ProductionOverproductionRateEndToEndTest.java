@@ -202,6 +202,19 @@ class ProductionOverproductionRateEndToEndTest {
         assertEquals(2L,rates.context(segment).requestGeneration());
     }
 
+    @Test void optionalReasonPersistsNullAndNormalizesBlankReplay(){
+        String key="rate-optional-reason-"+UUID.randomUUID();
+        var rate=new BigDecimal(".15");
+        assertThrows(ApiException.class,()->rates.submit(new SubmitRequest(segment,0L,rate,"短",key)));
+        RequestView pending=rates.submit(new SubmitRequest(segment,0L,rate,null,key));
+        assertNull(pending.reason());
+        assertEquals(pending.id(),rates.submit(new SubmitRequest(segment,0L,rate,"   ",key)).id());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_overproduction_rate_requests WHERE id=? AND reason IS NULL",Integer.class,pending.id()));
+        assertThrows(ApiException.class,()->rates.decide(pending.id(),new DecisionRequest(0L,"rate-return-no-reason-"+UUID.randomUUID(),null),false));
+        assertEquals("APPROVED",rates.decide(pending.id(),new DecisionRequest(0L,"rate-approve-no-reason-"+UUID.randomUUID(),null),true).status());
+        assertRate(".15");
+    }
+
     @Test void ordinaryReportPermissionCannotSubmitOrApproveARateChange(){
         var administrator=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         var limited=new AuthUser(administrator.getId(),administrator.getEmployeeId(),administrator.getUsername(),

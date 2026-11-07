@@ -653,6 +653,12 @@ class _FinanceAssetLedgerPanelState
             value: (item) => formatFinanceDecimal(item.displayedBalance),
           ),
           MasterColumnDef(
+            key: 'currency',
+            label: '币种',
+            width: 80,
+            value: (_) => '人民币',
+          ),
+          MasterColumnDef(
             key: 'startPeriod',
             label: '开始期间',
             width: 110,

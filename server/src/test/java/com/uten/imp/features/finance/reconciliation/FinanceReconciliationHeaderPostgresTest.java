@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.reconciliation;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationListItem;
 import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationQueryFilter;
 import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
@@ -29,7 +30,10 @@ class FinanceReconciliationHeaderPostgresTest {
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());db=new JdbcTemplate(source);
         MigratedProjectionSchema.createCurrentTables(db,"finance_reconciliations");
         var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(source);factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
-        factory.setManagedTypes(PersistenceManagedTypes.of(FinanceReconciliation.class.getName()));factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
+        factory.setManagedTypes(PersistenceManagedTypes.of(FinanceReconciliation.class.getName()));
+        factory.setJpaPropertyMap(Map.of(
+                "hibernate.hbm2ddl.auto","none",
+                "hibernate.physical_naming_strategy","org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"));
         factory.afterPropertiesSet();emf=factory.getObject();
     }
     @AfterAll static void stop() {
@@ -45,10 +49,17 @@ class FinanceReconciliationHeaderPostgresTest {
         UUID original=seed(account,"2026-09-30T15:59:59Z","0","90071992547409.1234","PAYMENT","POSTING",payment,null);
         UUID income=seed(account,"2026-09-30T16:00:00Z","90071992547409.1234","0","RECEIPT","POSTING",UUID.randomUUID(),null);
         UUID reversal=seed(account,"2026-10-31T15:59:59Z","90071992547409.1234","0","PAYMENT","REVERSAL",payment,original);
+        UUID frozenCurrency=UUID.randomUUID();
+        db.update("UPDATE finance_reconciliations SET account_currency_id=? WHERE id IN (?,?)",
+                frozenCurrency,original,reversal);
         seed(account,"2026-10-31T16:00:00Z","90071992547409.1234","0","RECEIPT","POSTING",UUID.randomUUID(),null);
         seed(other,"2026-10-15T00:00:00Z","90071992547409.1234","0","RECEIPT","POSTING",UUID.randomUUID(),null);
         seed(account,"2026-10-15T00:00:00Z",null,"0","RECEIPT","POSTING",UUID.randomUUID(),null);
         var service=new FinanceReconciliationService(mock(FinanceReconciliationRepository.class),em);
+        var reversedRow=em.find(FinanceReconciliation.class,reversal);
+        FinanceReconciliationListItem projected=
+                ReflectionTestUtils.invokeMethod(service,"toList",reversedRow);
+        assertThat(projected.getAccountCurrencyId()).isEqualTo(frozenCurrency);
         var columns=Map.of("billDate","2026-10","counterpartName","对方%_","inAmount",">=90071992547409.1234");
         var filter=new FinanceReconciliationQueryFilter(null,account,null,null,null,null,null,null,null).withColumns(columns,null);
         Specification<FinanceReconciliation> spec=ReflectionTestUtils.invokeMethod(service,"reconciliationSpec",filter);

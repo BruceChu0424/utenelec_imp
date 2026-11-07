@@ -25,11 +25,13 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/features/finance/pages/finance_quote_review_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_order_review_page.dart';
 import 'package:uten_imp/features/sales/pages/sales_manager_review_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
@@ -161,6 +163,9 @@ class _Api extends ApiClient {
         'reviewRejected': false,
         'managerReversible': reverseAvailable,
         'managerDecisions': [if (reversalDecision != null) reversalDecision],
+        'managerHistory': [
+          {'seq': 1, 'title': '负责人审核进度记录', 'state': 'CURRENT'},
+        ],
         'items': <Map<String, dynamic>>[],
         'qtyChanges': <Map<String, dynamic>>[],
         'commercialChanges': <Map<String, dynamic>>[],
@@ -738,7 +743,11 @@ void main() {
       tester,
       api,
       '/sales/manager-review/orders/order-1',
-      {Perm.salesOrderManagerView, Perm.salesOrderManagerReject},
+      {
+        Perm.salesOrderManagerView,
+        Perm.salesOrderManagerReject,
+        Perm.attachmentView,
+      },
     );
     expect(claims.leases['order-1']?.targetType, 'SALES_ORDER_MANAGER_REVIEW');
     expect(
@@ -754,6 +763,13 @@ void main() {
       isNull,
     );
     expect(find.text('销售负责人订货审核'), findsOneWidget);
+    expect(find.text('负责人审核进度记录'), findsNothing);
+    final summary = find.byKey(const ValueKey('sales-order-summary-order-1'));
+    final attachments = find.byType(BusinessAttachmentSection);
+    expect(
+      tester.getTopLeft(attachments).dy - tester.getBottomLeft(summary).dy,
+      greaterThanOrEqualTo(UtenSpacing.s12),
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();

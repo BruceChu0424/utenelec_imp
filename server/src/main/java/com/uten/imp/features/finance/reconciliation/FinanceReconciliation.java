@@ -50,6 +50,10 @@ public class FinanceReconciliation extends SoftDeletableEntity {
     @Column(name = "account_id")
     private UUID accountId;
 
+    /** Currency frozen with the original account posting or reversal. */
+    @Column(name = "account_currency_id", insertable = false, updatable = false)
+    private UUID accountCurrencyId;
+
     /** CheckNo 支票号/发票号。 */
     @Column(name = "check_no")
     private String checkNo;

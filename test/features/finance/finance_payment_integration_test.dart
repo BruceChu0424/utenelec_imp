@@ -455,8 +455,10 @@ void main() {
     final item = table.items.single;
     expect(columns['amountOriginal']?.label, '本次付款(原币)');
     expect(columns['amountOriginal']?.value(item), '50.00');
+    expect(columns['currency']?.value(item), '美元');
     expect(columns['amountLocal']?.label, '付款本币');
     expect(columns['amountLocal']?.value(item), '360.00');
+    expect(columns['localCurrency']?.value(item), '人民币');
     expect(columns['appliedAmountLocal']?.label, '核销账面本币');
     expect(columns['appliedAmountLocal']?.value(item), '350.00');
     expect(columns['exchangeDiff']?.label, '汇兑差额');
@@ -855,7 +857,7 @@ class _PaymentApi extends MasterSummaryStreamTestApi {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
         {'id': 'currency-eur', 'name': '欧元'},
-        {'id': 'currency-cny', 'name': '人民币'},
+        {'id': 'currency-cny', 'name': '人民币', 'baseCurrency': true},
       ];
     }
     if (path == '/master/reference-methods/finance') {

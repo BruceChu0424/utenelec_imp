@@ -3112,6 +3112,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                       defaultColumnOrderAnchors: {
                                         if (_cfg.type == FinanceDocType.expense)
                                           'postingPurpose': null,
+                                        'currency': 'amount',
+                                        if (isReceipt)
+                                          'localCurrency': 'amountLocal',
                                       },
                                       stickyHeaderPinned: _gridPinned,
                                       columns: financeGridColumns(
@@ -3119,6 +3122,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                         context: context,
                                         names: names,
                                         type: _cfg.type,
+                                        documentCurrencyId: _currencyId,
                                         bankReferenceController: isReceipt
                                             ? _bankReference
                                             : null,

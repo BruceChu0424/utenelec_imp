@@ -319,10 +319,11 @@ void main() {
       expect(grid.controller.rows.single.remark.text, '行备注');
       expect(grid.columns.map((column) => column.key), [
         'appliedBillNo',
-        'currency',
         'balanceOriginal',
         'amount',
+        'currency',
         'amountLocal',
+        'localCurrency',
         'balanceAfter',
         'bankReference',
         'remark',
@@ -951,6 +952,16 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<FinanceDocItem>>(
+        find.byType(MasterDataTableView<FinanceDocItem>),
+      );
+      final keys = table.columns.map((column) => column.key).toList();
+      expect(keys[keys.indexOf('amountOriginal') + 1], 'currency');
+      expect(keys[keys.indexOf('amountLocal') + 1], 'localCurrency');
+      expect(
+        table.columns[keys.indexOf('localCurrency')].value(table.items.single),
+        '人民币',
+      );
       expect(find.text('360.00'), findsWidgets);
       expect(find.text('冲减应收账面金额(人民币)'), findsWidgets);
       expect(find.text('汇兑差额(人民币)'), findsOneWidget);
@@ -1349,7 +1360,7 @@ class _ReceiptApi extends ApiClient {
     if (path == '/master/currencies/dict') {
       return const [
         {'id': 'currency-usd', 'name': '美元'},
-        {'id': 'currency-cny', 'name': '人民币'},
+        {'id': 'currency-cny', 'name': '人民币', 'baseCurrency': true},
       ];
     }
     if (path == '/master/reference-methods/finance') {

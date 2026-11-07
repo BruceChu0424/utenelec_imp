@@ -11,8 +11,8 @@
 //   小类行默认 [enabled]=false 置灰，选中大类后才由页面解锁；
 // - 进页面默认选中（2026-10-04 用户口径，[autoSelectBadge]）：
 //   计数到位后若有「红色待办徽章 > 0」的分类段就直接选中它（第一条红段）；
-//   没有红再看「黄色在办徽章 > 0」的段（红的计数还有 null 未到齐时先等，
-//   不提前跳黄）；红黄都没有才保持默认不选。用户一旦选中过任何分段（手动
+//   没有红再看「黄色在办徽章 > 0」的段（分批读取通过 readiness 等待各计数到位）；
+//   红黄都没有才保留页面自己的初始规则。用户一旦选中过任何分段（手动
 //   或自动），本条不再自动改选。小类行同样适用：大类解锁 + 计数到位后
 //   自动选中带红徽章的小类；
 // - 完整互斥的主分类不追加冗余「全部」；二级筛选需保留显式清除入口
@@ -92,6 +92,8 @@ class UtenFilterToolbar<T> extends StatefulWidget {
     this.onSelectionChanged,
     this.enabled = true,
     this.autoSelectBadge = true,
+    this.autoSelectBadgeReady = true,
+    this.autoSelectBadgeFallback,
     this.segmentsKey,
     this.searchKey,
     this.searchHint,
@@ -128,6 +130,13 @@ class UtenFilterToolbar<T> extends StatefulWidget {
   /// （自动或手动）永不再次自动改选。视图切换类工具条恒有选中项，本开关自然
   /// 空转；个别不想要默认选中的页面显式传 false 关闭。
   final bool autoSelectBadge;
+
+  /// Counts that arrive from independent sources can settle together before
+  /// default selection. A missing count in a settled snapshot still means zero.
+  final bool autoSelectBadgeReady;
+
+  /// Existing page default used once after a settled snapshot has no badges.
+  final T? autoSelectBadgeFallback;
 
   /// 分段按钮 key（页面既有测试/语义锚点透传，如 iqc-type-segments）。
   final Key? segmentsKey;
@@ -203,10 +212,16 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
       _everSelected = true;
       return;
     }
-    final best = _bestBadgeSegment(widget.segments);
-    if (best == null) return;
+    if (!widget.autoSelectBadgeReady) return;
+    final value =
+        _bestBadgeSegment(widget.segments)?.value ??
+        widget.autoSelectBadgeFallback;
+    if (value == null ||
+        !widget.segments.any((segment) => segment.value == value)) {
+      return;
+    }
     _everSelected = true;
-    onChanged(best.value);
+    onChanged(value);
   }
 
   /// 红 → 黄 的默认选中判序（2026-10-04 用户口径）：
@@ -292,6 +307,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
               // 单选：点击已选段不会回调，这里恒非空。
               // 整条置灰时各分段 disabled，不会进入此回调。
               if (selection.isNotEmpty) {
+                _everSelected = true;
                 widget.onSelectionChanged?.call(selection.first);
               }
             },

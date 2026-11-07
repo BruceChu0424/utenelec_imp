@@ -125,6 +125,12 @@ public class FinanceApplicationService {
     @Transactional(readOnly=true)
     public Map<String,Object> detail(UUID id){var actor=roles.staff();var app=row(id,false);readable(app,actor);var capabilities=actions(app,actor);var out=new LinkedHashMap<String,Object>(app);for(String key:List.of("requested_payload","source_snapshot","previous_source_snapshot","payroll_instruction"))if(out.get(key)!=null)out.put(key,decode(out.get(key).toString()));
         if(out.get("amount_original") instanceof BigDecimal amount)out.put("amount_original",amount.toPlainString());
+        if (app.get("currency_id") != null) {
+            var currency = db.queryForList(
+                    "SELECT name AS currency_name, code AS currency_code FROM currencies WHERE id=?",
+                    app.get("currency_id"));
+            if (!currency.isEmpty()) out.putAll(currency.getFirst());
+        }
         out.put("kindLabel",title(kind(app.get("kind").toString())));out.put("nodes",db.queryForList("SELECT submission_round,step_no,role_key,label_snapshot,action,assignees::text,status,decided_by,decided_name_snapshot,decided_at,reason FROM finance_application_nodes WHERE application_id=? ORDER BY submission_round,step_no",id));
         out.put("events",db.queryForList("SELECT event_type,submission_round,step_no,actor_name_snapshot,detail::text,occurred_at FROM finance_application_events WHERE application_id=? ORDER BY occurred_at,id",id));out.put("executions",db.queryForList("SELECT id,submission_round,doc_type,doc_id,state,result::text,paid_name_snapshot,paid_at,confirmed_name_snapshot,confirmed_at,reversed_name_snapshot,reversed_at FROM finance_application_executions WHERE application_id=? ORDER BY paid_at,id",id));
         if("EXPENSE_CLAIM".equals(app.get("source_kind"))){var nativeDetail=expenses.optionalDetail((UUID)app.get("source_id"));if(nativeDetail.isPresent())out.put("expenseClaim",nativeDetail.get());else out.put("expenseClaimUnavailable",true);}
@@ -168,8 +174,18 @@ public class FinanceApplicationService {
         String filter=switch(queue){case "mine"->" AND a.status IN('DRAFT','SUBMITTED','REVIEWING','REJECTED','REVERSED','APPROVED','EXECUTED') AND fn_canonical_employee_identity(a.applicant_id)=fn_canonical_employee_identity(?)";case "pending"->" AND a.status IN('SUBMITTED','REVIEWING') AND EXISTS(SELECT 1 FROM finance_application_nodes n CROSS JOIN LATERAL jsonb_array_elements(n.assignees) p WHERE n.application_id=a.id AND n.submission_round=a.submission_round AND n.step_no=a.current_step AND n.status='PENDING' AND fn_canonical_employee_identity((p->>'employeeId')::uuid)=fn_canonical_employee_identity(?))";case "payment"->" AND a.status IN('APPROVED','EXECUTED') AND ?";default->" AND a.status IN('ARCHIVED','CONFIRMED') AND ?";};
         List<Object> args=new ArrayList<>(readScope.arguments());args.add(queue.equals("mine")||queue.equals("pending")?actor.getEmployeeId():queue.equals("payment")?operational:true);
         String term=Objects.toString(search,"").strip();if(term.length()>200)throw invalid("查询内容过长");if(!term.isEmpty()){filter+=" AND (position(lower(?) in lower(a.application_no))>0 OR position(lower(?) in lower(a.title))>0 OR position(lower(?) in lower(a.applicant_name_snapshot))>0)";args.addAll(List.of(term,term,term));}
-        String where=" FROM finance_applications a WHERE "+scope+filter;Long total=db.queryForObject("SELECT count(*)"+where,Long.class,args.toArray());
-        args.add(size);args.add((page-1)*size);var rows=db.queryForList("SELECT a.id,a.application_no,a.kind,a.applicant_name_snapshot,a.department_name_snapshot,a.title,a.requested_date,a.amount_original::text,a.currency_id,a.status,a.current_step,a.row_version,a.created_at,(SELECT label_snapshot FROM finance_application_nodes n WHERE n.application_id=a.id AND n.submission_round=a.submission_round AND n.step_no=a.current_step) AS current_label"+where+" ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?",args.toArray());for(var row:rows)row.put("kindLabel",title(kind(row.get("kind").toString())));
+        String where = " WHERE " + scope + filter;
+        Long total = db.queryForObject("SELECT count(*) FROM finance_applications a" + where, Long.class, args.toArray());
+        args.add(size);args.add((page-1)*size);
+        var rows = db.queryForList("""
+                SELECT a.id,a.application_no,a.kind,a.applicant_name_snapshot,a.department_name_snapshot,a.title,
+                       a.requested_date,a.amount_original::text,a.currency_id,currency.name AS currency_name,
+                       currency.code AS currency_code,a.status,a.current_step,a.row_version,a.created_at,
+                       (SELECT label_snapshot FROM finance_application_nodes n WHERE n.application_id=a.id
+                         AND n.submission_round=a.submission_round AND n.step_no=a.current_step) AS current_label
+                  FROM finance_applications a LEFT JOIN currencies currency ON currency.id=a.currency_id
+                """ + where + " ORDER BY a.created_at DESC,a.id DESC LIMIT ? OFFSET ?", args.toArray());
+        for(var row:rows)row.put("kindLabel",title(kind(row.get("kind").toString())));
         return Map.of("rows",rows,"total",total,"page",page,"size",size);
     }
 

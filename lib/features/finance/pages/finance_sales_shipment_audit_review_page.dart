@@ -1571,6 +1571,12 @@ class _FinanceSalesShipmentAuditReviewPageState
                       ),
               ),
               MasterColumnDef(
+                key: 'currency',
+                label: '币种',
+                width: 90,
+                value: (_) => names.currency(d.currencyId),
+              ),
+              MasterColumnDef(
                 key: 'remark',
                 label: '备注',
                 width: 160,

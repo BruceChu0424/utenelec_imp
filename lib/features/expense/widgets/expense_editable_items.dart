@@ -140,6 +140,7 @@ class ExpenseEditableItems extends StatelessWidget {
   Widget build(BuildContext context) => UtenEditableGrid<ExpenseGridRow>(
     controller: controller,
     tableKey: 'expense.claim.items',
+    defaultColumnOrderAnchors: const {'currency': 'amount'},
     platformBinding: PlatformTableBinding<ExpenseGridRow>(
       tableKey: 'expense.claim.items',
       scope: 'expense_claim_item',
@@ -257,6 +258,13 @@ class ExpenseEditableItems extends StatelessWidget {
             ),
           ),
         ),
+      ),
+      EditableGridColumn<ExpenseGridRow>(
+        key: 'currency',
+        label: '币种',
+        width: 80,
+        textOf: (_) => expenseClaimCurrencyName,
+        cellBuilder: (_, _) => const Text(expenseClaimCurrencyName),
       ),
     ],
   );

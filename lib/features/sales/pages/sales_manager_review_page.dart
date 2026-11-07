@@ -24,6 +24,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/complete_paged_snapshot.dart';
 import '../../../shared/paging/read_view_activity.dart';
@@ -599,6 +600,12 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         label: '单据日期',
         width: 110,
         value: (r) => r.billDate,
+      ),
+      MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 80,
+        value: (r) => financeCurrencyText(name: r.currency, fallback: '—'),
       ),
       MasterColumnDef(
         key: 'amount',

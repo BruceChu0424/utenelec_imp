@@ -56,7 +56,7 @@ const kQuoteFinanceListRefreshKey = 'finance:quote-review';
 class FinanceQuoteReviewListPage extends ConsumerStatefulWidget {
   const FinanceQuoteReviewListPage({super.key, this.initialState});
 
-  /// 深链预选分段(?state=pending|confirmed|returned)；缺省 = 待核价。
+  /// 深链预选分段(?state=pending|confirmed|returned)。缺省按徽章选择。
   final String? initialState;
 
   @override
@@ -71,6 +71,7 @@ class _FinanceQuoteReviewListPageState
   Future<void> onReadViewResumed() => _load(1, forceCounts: true);
 
   late SalesQuoteFinanceState _state;
+  bool _selectionResolved = false;
   PagedResult<SalesQuoteFinanceListItem>? _result;
   final _tableRows = MasterDataTableRowsController<SalesQuoteFinanceListItem>();
   bool _loading = false;
@@ -84,6 +85,7 @@ class _FinanceQuoteReviewListPageState
 
   /// 「已退回」段全量张数(黄色进行中)；null = 尚未取到，不渲染。
   int? _returnedCount;
+  bool _returnedCountReady = false;
   String? _hostLocation;
 
   @override
@@ -94,8 +96,17 @@ class _FinanceQuoteReviewListPageState
       (state) => state.query == widget.initialState,
       orElse: () => SalesQuoteFinanceState.pending,
     );
+    _selectionResolved = _state.query == widget.initialState;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load(1);
+      if (!mounted) return;
+      if (_selectionResolved) {
+        _load(1);
+      } else if (ref.read(
+            badgeEntryTodoProvider(BadgeEntry.financeQuoteReview),
+          ) ==
+          0) {
+        _loadReturnedCount(_requestVersion);
+      }
     });
   }
 
@@ -120,6 +131,7 @@ class _FinanceQuoteReviewListPageState
       _result = null;
       _acceptedQuery = null;
       _returnedCount = null;
+      _returnedCountReady = false;
       _activeItem = null;
       _loading = false;
       _error =
@@ -148,7 +160,12 @@ class _FinanceQuoteReviewListPageState
     int page, {
     bool useCache = false,
     bool forceCounts = false,
+    bool skipCounts = false,
   }) async {
+    if (!_selectionResolved) {
+      await _loadReturnedCount(_requestVersion, force: forceCounts);
+      return;
+    }
     final cacheQuery = _cacheQuery;
     final repo = ref.read(salesQuoteFinanceReviewRepositoryProvider);
     final state = _state;
@@ -163,7 +180,8 @@ class _FinanceQuoteReviewListPageState
       _loading = true;
       _error = null;
     });
-    if (_state != SalesQuoteFinanceState.confirmed &&
+    if (!skipCounts &&
+        _state != SalesQuoteFinanceState.confirmed &&
         (_state != SalesQuoteFinanceState.returned || _keyword.isNotEmpty)) {
       unawaited(_loadReturnedCount(version, force: forceCounts));
     }
@@ -195,6 +213,7 @@ class _FinanceQuoteReviewListPageState
         }
         if (_state == SalesQuoteFinanceState.returned && _keyword.isEmpty) {
           _returnedCount = result.total;
+          _returnedCountReady = true;
         }
       });
     } on ApiException catch (error) {
@@ -242,10 +261,19 @@ class _FinanceQuoteReviewListPageState
             fetch: () =>
                 repo.list(state: SalesQuoteFinanceState.returned, size: 1),
           );
-      if (current()) setState(() => _returnedCount = page.total);
+      if (current()) {
+        setState(() {
+          _returnedCount = page.total;
+          _returnedCountReady = true;
+          if (!_selectionResolved) _error = null;
+        });
+      }
     } catch (error) {
-      if (current() && error is ApiException && nativeReadAccessDenied(error)) {
+      if (!current()) return;
+      if (error is ApiException && nativeReadAccessDenied(error)) {
         _retireDeniedRead(error);
+      } else {
+        setState(() => _returnedCountReady = true);
       }
       // 计数失败静默：分段不显示数字，不影响列表。
     }
@@ -266,15 +294,17 @@ class _FinanceQuoteReviewListPageState
   }
 
   void _switchState(SalesQuoteFinanceState next) {
-    if (next == _state) return;
+    if (_selectionResolved && next == _state) return;
+    final countAlreadyRead = !_selectionResolved && _returnedCountReady;
     ++_requestVersion;
     setState(() {
+      _selectionResolved = true;
       _state = next;
       _result = null;
       _error = null;
       _activeItem = null;
     });
-    _load(1);
+    _load(1, skipCounts: countAlreadyRead);
   }
 
   void _applyKeyword(String value) {
@@ -370,6 +400,9 @@ class _FinanceQuoteReviewListPageState
     final pendingCount = ref.watch(
       badgeEntryTodoProvider(BadgeEntry.financeQuoteReview),
     );
+    final badgesLoaded = ref.watch(
+      badgeSummaryProvider.select((summary) => summary.loaded),
+    );
     return UtenFilterToolbar<SalesQuoteFinanceState>(
       segmentsKey: const Key('quote-finance-tabs'),
       searchKey: const Key('quote-finance-search'),
@@ -392,11 +425,17 @@ class _FinanceQuoteReviewListPageState
           label: '历史单据',
         ),
       ],
-      selected: {_state},
+      autoSelectBadgeReady:
+          _error == null &&
+          (pendingCount > 0 || (badgesLoaded && _returnedCountReady)),
+      autoSelectBadgeFallback: SalesQuoteFinanceState.pending,
+      selected: _selectionResolved ? {_state} : const {},
       onSelectionChanged: _switchState,
       searchHint: l10n.quoteFinanceSearchHint,
       initialSearchValue: _keyword,
-      onSearchInputChanged: (_) => ++_requestVersion,
+      onSearchInputChanged: (_) {
+        if (_selectionResolved) ++_requestVersion;
+      },
       onSearchChanged: _applyKeyword,
     );
   }
@@ -429,49 +468,55 @@ class _FinanceQuoteReviewListPageState
           const SizedBox(height: UtenSpacing.s12),
         ],
       ),
-      body: MasterDataTableView<SalesQuoteFinanceListItem>(
-        rowsController: _tableRows,
-        expensiveRowMounts: false,
-        tableKey:
-            'features.finance.pages.finance_quote_review_list_page.FinanceQuoteReviewListPageState._desktop.1',
-        key: const Key('quote-finance-desktop-table'),
-        primary: true,
-        // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
-        columns: _columns(l10n),
-        items: result.items,
-        facets: const {},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
-        onRowTap: _open,
-        onSelectionChanged: (item) => setState(() => _activeItem = item),
-        onSelectionCleared: () => setState(() => _activeItem = null),
-        rowMenuBuilder: (item) => [
-          UtenMenuItem(
-            label: _taskDrafts(item).isEmpty ? l10n.quoteFinanceOpen : '继续填写核价',
-            icon: Icons.price_check_rounded,
-            onTap: () => _open(item),
-          ),
-        ],
-        rowColor: (item) => _rowColor(theme, item),
-        isLoading: _loading,
-        error: result.items.isEmpty ? _error : null,
-        onRetry: () => _load(_tableRows.visiblePage ?? result.page),
-        emptyMessage: _emptyMessage(l10n),
-        currentPage: result.page,
-        totalPages: result.totalPages,
-        paginationScope: (_state, _keyword),
-        onPageChange: _navigatePage,
-        toolbarActions: [
-          UtenButton(
-            key: const Key('quote-finance-open-selected'),
-            size: UtenButtonSize.large,
-            icon: Icons.price_check_rounded,
-            onPressed: _activeItem == null ? null : () => _open(_activeItem!),
-            child: Text(l10n.quoteFinanceOpen),
-          ),
-        ],
-      ),
+      body: !_selectionResolved && _error == null
+          ? const UtenFilterPlaceholder()
+          : MasterDataTableView<SalesQuoteFinanceListItem>(
+              rowsController: _tableRows,
+              expensiveRowMounts: false,
+              tableKey:
+                  'features.finance.pages.finance_quote_review_list_page.FinanceQuoteReviewListPageState._desktop.1',
+              key: const Key('quote-finance-desktop-table'),
+              primary: true,
+              // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
+              columns: _columns(l10n),
+              items: result.items,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              onRowTap: _open,
+              onSelectionChanged: (item) => setState(() => _activeItem = item),
+              onSelectionCleared: () => setState(() => _activeItem = null),
+              rowMenuBuilder: (item) => [
+                UtenMenuItem(
+                  label: _taskDrafts(item).isEmpty
+                      ? l10n.quoteFinanceOpen
+                      : '继续填写核价',
+                  icon: Icons.price_check_rounded,
+                  onTap: () => _open(item),
+                ),
+              ],
+              rowColor: (item) => _rowColor(theme, item),
+              isLoading: _loading,
+              error: result.items.isEmpty ? _error : null,
+              onRetry: () => _load(_tableRows.visiblePage ?? result.page),
+              emptyMessage: _emptyMessage(l10n),
+              currentPage: result.page,
+              totalPages: result.totalPages,
+              paginationScope: (_state, _keyword),
+              onPageChange: _navigatePage,
+              toolbarActions: [
+                UtenButton(
+                  key: const Key('quote-finance-open-selected'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.price_check_rounded,
+                  onPressed: _activeItem == null
+                      ? null
+                      : () => _open(_activeItem!),
+                  child: Text(l10n.quoteFinanceOpen),
+                ),
+              ],
+            ),
     );
   }
 
@@ -520,6 +565,16 @@ class _FinanceQuoteReviewListPageState
       value: (item) => '${item.lineCount}',
     ),
     MasterColumnDef(
+      key: 'currency',
+      label: '币种',
+      width: 80,
+      value: (item) => financeCurrencyText(
+        name: item.currencyName,
+        code: item.currencyCode,
+        fallback: '—',
+      ),
+    ),
+    MasterColumnDef(
       key: 'totalOriginal',
       label: l10n.quoteFinanceColAmount,
       width: 170,
@@ -528,10 +583,13 @@ class _FinanceQuoteReviewListPageState
     ),
   ];
 
-  /// 报价金额按本币(报价只允许本币)；服务端十进制原文，不经过 double。
-  /// 金额带「元」后缀（2026-10-10 口径）。
+  /// 使用单据币种和服务端十进制原文。
   String _amountText(SalesQuoteFinanceListItem item) =>
-      financeLocalMoneyWithUnitSuffix(item.totalOriginal);
+      financeMoneyWithUnitSuffix(
+        item.totalOriginal,
+        currencyName: item.currencyName,
+        currencyCode: item.currencyCode,
+      );
 
   String _statusText(AppLocalizations l10n, SalesQuoteFinanceListItem item) {
     final drafts = _taskDrafts(item);

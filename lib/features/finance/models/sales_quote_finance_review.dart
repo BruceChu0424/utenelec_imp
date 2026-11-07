@@ -68,6 +68,8 @@ class SalesQuoteFinanceListItem {
     this.pricePendingCount = 0,
     this.totalOriginal,
     this.clientFileCurrency,
+    this.currencyName,
+    this.currencyCode,
     this.statusBucket,
     this.reviewRevision = 0,
     this.resubmitted = false,
@@ -97,6 +99,8 @@ class SalesQuoteFinanceListItem {
 
   /// 客户文件里的币种(如 USD); 报价本身按本币。
   final String? clientFileCurrency;
+  final String? currencyName;
+  final String? currencyCode;
   final String? statusBucket;
   final int reviewRevision;
 
@@ -125,6 +129,8 @@ class SalesQuoteFinanceListItem {
         pricePendingCount: _int(json['pricePendingCount']) ?? 0,
         totalOriginal: _text(json['totalOriginal']),
         clientFileCurrency: _text(json['clientFileCurrency']),
+        currencyName: _text(json['currencyName']),
+        currencyCode: _text(json['currencyCode']),
         statusBucket: _text(json['statusBucket'])?.toUpperCase(),
         reviewRevision: _int(json['reviewRevision']) ?? 0,
         resubmitted: json['resubmitted'] == true,

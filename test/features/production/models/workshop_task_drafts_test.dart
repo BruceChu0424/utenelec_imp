@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/workshop_task_drafts.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
+import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
 
 FormDraft _draft(String route, [Map<String, dynamic> data = const {}]) =>
     FormDraft(
@@ -14,6 +15,16 @@ FormDraft _draft(String route, [Map<String, dynamic> data = const {}]) =>
     );
 
 void main() {
+  test('toolbar draft page retains task recovery after a row disappears', () {
+    final scope = formDraftsPageCategories['workshop-new']!.scope;
+    final unknown = _draft(
+      '/production/workshop-tasks/draw-request?segmentIds=a',
+      {formDraftUnknownSubmissionKey: true},
+    );
+    expect(scope.matches(unknown), isTrue);
+    expect(scope.matches(_draft('/production/daily-reports/new')), isTrue);
+  });
+
   test(
     'material selection preserves unsent ranges and prioritizes unknown commands',
     () {

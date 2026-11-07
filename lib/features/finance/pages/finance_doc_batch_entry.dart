@@ -1441,6 +1441,10 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             columnEditingEnabled: !frozen,
                             controller: _grid,
                             selectable: true,
+                            defaultColumnOrderAnchors: const {
+                              'entryCurrency': 'amount',
+                              'exchangeRate': 'entryCurrency',
+                            },
                             stickyHeaderPinned: _gridPinned,
                             columns: financeEntryColumns(
                               context: context,

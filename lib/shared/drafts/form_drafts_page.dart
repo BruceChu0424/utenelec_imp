@@ -74,11 +74,10 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
   ),
   'workshop-new': FormDraftsPageCategory(
     id: 'workshop-new',
-    hubTitle: '车间新建单据',
-    scope: FormDraftCategoryScope(
-      module: BadgeModule.workshop,
-      excludeTaskDrafts: true,
-    ),
+    hubTitle: '车间',
+    // Include task drafts whose row has already left the workbench, such as
+    // a submission that reached the server before its response was lost.
+    scope: FormDraftCategoryScope(module: BadgeModule.workshop),
   ),
   'quality': FormDraftsPageCategory(
     id: 'quality',

@@ -18,13 +18,12 @@ import '../../../core/router/page_navigation_session.dart';
 //  （时间段/全部，未选时间不发请求），选定后按开单日期范围加载。
 //
 // 2026-09-03 起统一「分类分段」范式（ADR-066，原 AppBar 下 TabBar 退役）：
-// 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导，后台只准备授权工作首屏
-//（路由深链 initialTab 预选例外：/production/schedule 预选待排产、
-// /production/schedule?tab=progress 预选进行中）。各分段保留自己的细化筛选
+// 大类行 = 草稿/待排产/进行中/历史记录 + 页级搜索。默认先选红徽章、再选黄徽章；
+// 显式路由深链 ?tab=pending 或 ?tab=progress 预选对应分段。各分段保留自己的细化筛选
 //（待排产：表头排序/状态值筛选；进行中：车间/排序）。
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
-// 路由：/production/schedule → 预选待排产；/production/schedule?tab=progress → 预选进行中
+// 路由：/production/schedule → 按徽章自动选中；?tab=progress → 预选进行中
 //（2026-10-19 同页双路由收口：旧 /production/progress 深链重定向到 ?tab=progress；
 // 生产 Hub 只剩一张「生产调度与进度」卡进 /production/schedule，进行中靠深链预选）。
 // 待排产表 2026-09-10（V545）起加「已排」列：部分排产的行按剩余未排量继续留在本段，
@@ -91,10 +90,17 @@ import '../../../shared/drafts/form_draft_store.dart';
 import '../models/production_plan.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
-  const ProductionBoardPage({super.key, this.initialTab});
+  const ProductionBoardPage({
+    super.key,
+    this.initialTab,
+    this.fallbackToPending = false,
+  });
 
-  /// 深链预选大类：0=待排产、1=进行中；null = 不预选（引导占位）。
+  /// 深链预选大类：0=待排产、1=进行中；null 时按徽章自动选择。
   final int? initialTab;
+
+  /// The normal schedule route retains its pending queue as the zero-badge default.
+  final bool fallbackToPending;
 
   @override
   ConsumerState<ProductionBoardPage> createState() =>
@@ -127,11 +133,21 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   @override
   void initState() {
     super.initState();
-    _segment = switch (widget.initialTab) {
-      0 => 'pending',
-      1 => 'progress',
-      _ => null,
-    };
+    _segment = _linkedSegment;
+  }
+
+  String? get _linkedSegment => switch (widget.initialTab) {
+    0 => 'pending',
+    1 => 'progress',
+    _ => null,
+  };
+
+  @override
+  void didUpdateWidget(covariant ProductionBoardPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialTab != oldWidget.initialTab) {
+      _segment = _linkedSegment ?? _segment;
+    }
   }
 
   @override
@@ -147,6 +163,15 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     // null/0 一律不渲染。
     final pendingCount = ref.watch(productionPendingCountProvider).count;
     final ongoingCount = ref.watch(productionExecutionGroupCountProvider);
+    final badgesReady =
+        !widget.fallbackToPending ||
+        ref.watch(badgeSummaryProvider.select((summary) => summary.loaded));
+    final pendingFallback =
+        widget.fallbackToPending &&
+        (ref.watch(isSuperAdminProvider) ||
+            ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.productionPlanView));
     return UtenRefreshScope(
       controller: _refreshController,
       child: Scaffold(
@@ -186,6 +211,10 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     children: [
                       // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
                       UtenFilterToolbar<String>(
+                        autoSelectBadgeReady: badgesReady,
+                        autoSelectBadgeFallback: pendingFallback
+                            ? 'pending'
+                            : null,
                         trailing: segment == 'history'
                             ? UtenHistoryTimeFilter(
                                 key: const Key('production-board-history-time'),

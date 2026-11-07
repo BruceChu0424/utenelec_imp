@@ -213,6 +213,12 @@ void main() {
     final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
       find.byKey(const Key('finance-shipment-audit-table')),
     );
+    final keys = table.columns.map((column) => column.key).toList();
+    expect(keys.indexOf('currency'), keys.indexOf('totalOriginal') - 1);
+    final currency = table.columns.singleWhere(
+      (column) => column.key == 'currency',
+    );
+    expect(currency.value(table.items.single), '美金');
     expect(table.items.single.shipmentWorkflow.financeReviewPending, isTrue);
     expect(table.selectable, isFalse);
     expect(table.batchActionsBuilder, isNull);

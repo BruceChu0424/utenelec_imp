@@ -347,6 +347,15 @@ class _ProductionExecutionGroupPanelState
           '本组全部顶层产品的名称（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情，双击行打开批次详情。与右侧编号/颜色列各自独立聚合，不逐项对应。',
       value: (row) =>
           _productNames(row).isEmpty ? '—' : _productNames(row).join('、'),
+      measureValueOf: (row) =>
+          UtenMultiValueCell.summaryLabelOf(_productNames(row)),
+      measureWidthOf: (context, row, scaler) =>
+          UtenMultiValueCell.contentWidthOf(
+            context,
+            _productNames(row),
+            scaler,
+          ),
+      measureWidthScope: 'execution-group-product-names',
       cellBuilder: (context, row) => UtenMultiValueCell(
         values: _productNames(row),
         title: '产品名称',
@@ -363,6 +372,15 @@ class _ProductionExecutionGroupPanelState
           '本组全部顶层产品的货品编码（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情。与名称列不逐项对应。',
       value: (row) =>
           _productCodes(row).isEmpty ? '—' : _productCodes(row).join('、'),
+      measureValueOf: (row) =>
+          UtenMultiValueCell.summaryLabelOf(_productCodes(row)),
+      measureWidthOf: (context, row, scaler) =>
+          UtenMultiValueCell.contentWidthOf(
+            context,
+            _productCodes(row),
+            scaler,
+          ),
+      measureWidthScope: 'execution-group-product-codes',
       cellBuilder: (context, row) => UtenMultiValueCell(
         values: _productCodes(row),
         title: '货品编码',
@@ -378,6 +396,15 @@ class _ProductionExecutionGroupPanelState
       info: '本组全部顶层产品的颜色（子件和子层不并入）；格内显示首个 +「等 N 个」，点击单元格弹出全部。与名称列不逐项对应。',
       value: (row) =>
           _productColors(row).isEmpty ? '—' : _productColors(row).join('、'),
+      measureValueOf: (row) =>
+          UtenMultiValueCell.summaryLabelOf(_productColors(row)),
+      measureWidthOf: (context, row, scaler) =>
+          UtenMultiValueCell.contentWidthOf(
+            context,
+            _productColors(row),
+            scaler,
+          ),
+      measureWidthScope: 'execution-group-product-colors',
       cellBuilder: (context, row) => UtenMultiValueCell(
         values: _productColors(row),
         title: '颜色',

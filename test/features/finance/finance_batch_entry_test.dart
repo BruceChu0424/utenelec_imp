@@ -993,6 +993,12 @@ void registerFinanceBatchEntryTests({bool browserDomOnly = false}) {
             'amount',
           ]),
         );
+        final keys = table.columns.map((column) => column.key).toList();
+        final amountIndex = keys.indexOf('amount');
+        expect(keys.sublist(amountIndex + 1, amountIndex + 3), [
+          'entryCurrency',
+          'exchangeRate',
+        ]);
         if (type == FinanceDocType.payment || type == FinanceDocType.receipt) {
           expect(
             table.columns.map((column) => column.key),

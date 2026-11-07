@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
@@ -72,5 +73,44 @@ void main() {
       ),
     );
     expect(rows.single.kind, UtenRevisionKind.unchanged);
+  });
+
+  testWidgets('修订对照按各自的冻结币种展示修改前后金额', (tester) async {
+    const before = SalesOrderRevisionLine(
+      itemId: 'changed',
+      values: {'原币金额': '10'},
+    );
+    const after = SalesOrderRevisionLine(
+      itemId: 'changed',
+      values: {'原币金额': '20'},
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SalesOrderRevisionTable(
+            currencyLabel: '港币',
+            diff: SalesOrderRevisionDiff(
+              beforeItems: [before],
+              afterItems: [after],
+              changedItemIds: {'changed'},
+              headerChanges: [
+                SalesOrderCommercialChange(
+                  field: '币种',
+                  beforeValue: '美元',
+                  afterValue: '港币',
+                  changedByName: '',
+                  changedAt: '',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('10.00 美元'), findsOneWidget);
+    expect(find.text('20.00 港币'), findsOneWidget);
+    expect(find.text('美元'), findsOneWidget);
+    expect(find.text('港币'), findsOneWidget);
   });
 }

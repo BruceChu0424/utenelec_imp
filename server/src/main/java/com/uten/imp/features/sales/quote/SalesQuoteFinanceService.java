@@ -113,6 +113,7 @@ public class SalesQuoteFinanceService {
                 LEFT JOIN employees seller ON seller.id = o.seller_id
                 LEFT JOIN employees maker ON maker.id = o.maker_id
                 LEFT JOIN employees confirmer ON confirmer.id = o.finance_confirmed_by
+                LEFT JOIN currencies currency ON currency.id = o.currency_id
                 WHERE o.is_deleted = FALSE AND""" + " " + statePredicate + "\n" + keywordFilter;
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
@@ -133,7 +134,8 @@ public class SalesQuoteFinanceService {
                         WHERE l.quote_id = o.id AND l.action = 'SUBMIT') > 1,
                        o.finance_returned_at, o.finance_confirmed_at, COALESCE(confirmer.full_name, ''),
                        (SELECT so.bill_no FROM sales_orders so
-                        WHERE so.source_quote_id = o.id AND so.is_deleted = FALSE LIMIT 1)
+                        WHERE so.source_quote_id = o.id AND so.is_deleted = FALSE LIMIT 1),
+                       currency.name, currency.code
                 """ + from + orderBy + " LIMIT :lim OFFSET :off");
         if (!normalizedKeyword.isEmpty()) rowsQuery.setParameter("keyword", normalizedKeyword);
         rowsQuery.setParameter("lim", sz);
@@ -159,7 +161,7 @@ public class SalesQuoteFinanceService {
                     NativeValueConverters.toOffsetDateTime(r[16]),
                     blankToNull((String) r[17]), (String) r[18],
                     claim == null ? null : claim.claimedByName(),
-                    claim != null && claim.claimedByMe()));
+                    claim != null && claim.claimedByMe(), (String) r[19], (String) r[20]));
         }
         return new PageResponse<>(items, p, sz, total, totalPages);
     }

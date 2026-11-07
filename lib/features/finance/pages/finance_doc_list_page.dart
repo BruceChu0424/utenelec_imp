@@ -37,6 +37,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
@@ -639,6 +640,14 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         value: (it) => financeExactMoneyDisplay(
           it.amountLocalText ?? financeDecimalText(it.amountLocal),
         ),
+      ),
+      MasterColumnDef(
+        key: 'localCurrency',
+        label: '本位币',
+        width: 90,
+        columnSearchEnabled: false,
+        value: (_) =>
+            financeCurrencyText(name: names.baseCurrencyName, fallback: '—'),
       ),
       MasterColumnDef(
         key: 'recordOrigin',

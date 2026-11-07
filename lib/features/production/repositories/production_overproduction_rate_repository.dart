@@ -145,21 +145,24 @@ class ProductionOverproductionRateRepository {
     ProductionOverproductionRateContext context,
     double rate,
     String reason,
-  ) async => ProductionOverproductionRateRequest(
-    await api.post(
-      '$_base/requests',
-      body: {
-        'segmentId': context.segmentId,
-        'expectedRateVersion': context.rateVersion,
-        'requestedRate': rate,
-        'reason': reason,
-        'idempotencyKey': businessIdempotencyKey(
-          'production-rate-request',
-          '${context.segmentId}|${context.rateVersion}|${context.requestGeneration}|$rate|$reason',
-        ),
-      },
-    ),
-  );
+  ) async {
+    final note = reason.trim();
+    return ProductionOverproductionRateRequest(
+      await api.post(
+        '$_base/requests',
+        body: {
+          'segmentId': context.segmentId,
+          'expectedRateVersion': context.rateVersion,
+          'requestedRate': rate,
+          if (note.isNotEmpty) 'reason': note,
+          'idempotencyKey': businessIdempotencyKey(
+            'production-rate-request',
+            '${context.segmentId}|${context.rateVersion}|${context.requestGeneration}|$rate|$note',
+          ),
+        },
+      ),
+    );
+  }
 
   Future<ProductionOverproductionRateRequest> decide(
     ProductionOverproductionRateRequest request, {

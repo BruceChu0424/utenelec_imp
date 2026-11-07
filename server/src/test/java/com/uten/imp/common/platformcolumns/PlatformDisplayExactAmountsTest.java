@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,13 +17,15 @@ class PlatformDisplayExactAmountsTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test void reconciliationRetainsExactAmountsBesideTheCompatibleNumericFields() throws Exception {
+        var currencyId = UUID.randomUUID();
         var row = new FinanceReconciliationListItem(null, null, null, null, null, null, null,
-                EXACT, null, null, null, null, null, null, null);
+                EXACT, null, null, null, null, null, null, null, currencyId);
         var json = mapper.readTree(mapper.writeValueAsString(row));
         assertThat(json.get("inAmount").isNumber()).isTrue();
         assertThat(json.get("inAmountExact").isTextual()).isTrue();
         assertThat(json.get("inAmountExact").asText()).isEqualTo(EXACT.toPlainString());
         assertThat(json.get("outAmountExact").isNull()).isTrue();
+        assertThat(json.get("accountCurrencyId").asText()).isEqualTo(currencyId.toString());
     }
 
     @Test void authorizedWorkshopCostsHaveExactStringsAndMaskedCostsStayNull() throws Exception {

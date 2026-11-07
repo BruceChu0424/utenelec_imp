@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/ui/human_error_message.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/retain_read_snapshot.dart';
@@ -74,6 +75,23 @@ MasterColumnDef<Map<String, dynamic>> financeApplicationColumn(
   value: (r) => r[key]?.toString() ?? '',
   filterFromRows: filters,
   columnSearchEnabled: filters,
+);
+
+String? financeApplicationCurrencyLabel(Map<String, dynamic> row) =>
+    financeCurrencyDisplayLabel(
+      name: row['currency_name']?.toString(),
+      code: row['currency_code']?.toString(),
+    );
+
+MasterColumnDef<Map<String, dynamic>> financeApplicationCurrencyColumn({
+  String? Function(Map<String, dynamic>) value =
+      financeApplicationCurrencyLabel,
+}) => MasterColumnDef(
+  key: 'currency',
+  label: '币种',
+  width: 80,
+  value: value,
+  columnSearchEnabled: false,
 );
 
 /// One existing Uten table shell for the six original application paths.
@@ -403,6 +421,11 @@ class _FinanceApplicationsState extends ConsumerState<FinanceApplicationsPage>
                 160,
                 filters: false,
               ),
+              financeApplicationCurrencyColumn(
+                value: (row) => row['amount_original'] == null
+                    ? null
+                    : financeApplicationCurrencyLabel(row),
+              ),
               MasterColumnDef(
                 key: 'status',
                 label: '状态',
@@ -627,12 +650,19 @@ class _ApplicationSourcePickerState
                   columns: [
                     financeApplicationColumn('code', '编号', 190, filters: false),
                     financeApplicationColumn('name', '名称', 300, filters: false),
-                    financeApplicationColumn(
-                      'amount',
-                      '原币金额',
-                      160,
-                      filters: false,
-                    ),
+                    if (const {
+                      'EXPENSE_CLAIM',
+                      'PAYROLL_BATCH',
+                      'SUPPLIER_AP',
+                    }.contains(widget.kind)) ...[
+                      financeApplicationColumn(
+                        'amount',
+                        '原币金额',
+                        160,
+                        filters: false,
+                      ),
+                      financeApplicationCurrencyColumn(),
+                    ],
                   ],
                   items: current ? _rows : [],
                   facets: const {},

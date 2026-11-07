@@ -1154,6 +1154,7 @@ void main() {
       final withChanges = FinanceProcurementApprovalReview.fromJson({
         ...json,
         'orderType': type,
+        'previousHeaderSnapshot': {'currencyName': '欧元'},
         'previousItems': [original],
         'items': [
           {
@@ -1190,6 +1191,16 @@ void main() {
         '10000',
         '12000',
       ]);
+      final currency = table.columns.singleWhere(
+        (column) => column.key == 'currency',
+      );
+      final amount = table.columns.singleWhere(
+        (column) => column.key == 'amountOriginal',
+      );
+      expect(currency.value(table.rows.first.value), '欧元');
+      expect(currency.value(table.rows.last.value), '美元');
+      expect(amount.value(table.rows.first.value), '10000.00 欧元');
+      expect(amount.value(table.rows.last.value), '12000.00 美元');
       expect(table.rows.every((row) => row.value.goodsName == '铜线'), isTrue);
       expect(table.rows.every((row) => row.value.unitName == '公斤'), isTrue);
       expect(find.text('修改后待复核'), findsOneWidget);
@@ -1410,8 +1421,8 @@ void main() {
       'qty',
       'allowedOverReceiptPct',
       'price',
-      'currency',
       'amountOriginal',
+      'currency',
       'exchangeRate',
       'amountLocal',
       'taxRate',

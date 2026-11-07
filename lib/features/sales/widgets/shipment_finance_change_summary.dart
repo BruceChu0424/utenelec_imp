@@ -123,6 +123,17 @@ String _display(
   return describe?.call(key, value) ?? value.toString();
 }
 
+Iterable<Map<String, dynamic>> _itemsWithCurrency(
+  Map<String, dynamic> snapshot,
+) sync* {
+  final currencyId = (snapshot['header'] as Map)['currencyId'];
+  for (final row in (snapshot['items'] as List).cast<Map<String, dynamic>>()) {
+    yield currencyId is String && currencyId.isNotEmpty
+        ? {...row, 'currencyId': currencyId}
+        : row;
+  }
+}
+
 /// Stable UUIDs prevent duplicate goods from being merged. Decimal text remains
 /// intact rather than passing through binary floating point.
 List<UtenRevisionRow<Map<String, dynamic>>> shipmentFinanceRevisionRows(
@@ -133,21 +144,23 @@ List<UtenRevisionRow<Map<String, dynamic>>> shipmentFinanceRevisionRows(
   final now = _snapshot(current);
   if (old == null || now == null) return const [];
   final remaining = {
-    for (final row in (now['items'] as List).cast<Map<String, dynamic>>())
-      row['id'] as String: row,
+    for (final row in _itemsWithCurrency(now)) row['id'] as String: row,
   };
   final rows = <UtenRevisionRow<Map<String, dynamic>>>[];
-  for (final before in (old['items'] as List).cast<Map<String, dynamic>>()) {
+  for (final before in _itemsWithCurrency(old)) {
     final after = remaining.remove(before['id']);
+    final keys = {...before.keys, ...?after?.keys}..remove('lineNo');
+    // A legacy snapshot may omit currency. Only compare known currencies.
+    if (before['currencyId'] == null || after?['currencyId'] == null) {
+      keys.remove('currencyId');
+    }
     final changed =
         after == null ||
-        {...before.keys, ...after.keys}
-            .where((key) => key != 'lineNo')
-            .any(
-              (key) =>
-                  _comparisonValue(key, before[key]) !=
-                  _comparisonValue(key, after[key]),
-            );
+        keys.any(
+          (key) =>
+              _comparisonValue(key, before[key]) !=
+              _comparisonValue(key, after[key]),
+        );
     rows.add(
       UtenRevisionRow(
         value: changed ? before : after,
@@ -166,10 +179,9 @@ List<UtenRevisionRow<Map<String, dynamic>>> shipmentFinanceRevisionRows(
           kind: UtenRevisionKind.added,
           label: '修改后',
           changedKeys: {
-            for (final key in {...before.keys, ...after.keys})
-              if (key != 'lineNo' &&
-                  _comparisonValue(key, before[key]) !=
-                      _comparisonValue(key, after[key]))
+            for (final key in keys)
+              if (_comparisonValue(key, before[key]) !=
+                  _comparisonValue(key, after[key]))
                 switch (key) {
                   'goodsNameSnapshot' => 'goodsId',
                   'goodsCodeSnapshot' => 'goodsCode',
@@ -302,6 +314,7 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
       'price',
       'discount',
       'amountOriginal',
+      'currencyId',
       if (changedSources.isNotEmpty) 'orderItemId',
       ...changedFields,
       for (final row in rows)
@@ -342,6 +355,8 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
             type: _moneyKeys.contains(key) ? 'money' : 'text',
             value: (row) => priceMasked && _moneyKeys.contains(key)
                 ? '***'
+                : key == 'currencyId'
+                ? _display(key, row[key], describe ?? (_, _) => '—')
                 : key == 'goodsId' && row['goodsNameSnapshot'] != null
                 ? row['goodsNameSnapshot'].toString()
                 : key == 'goodsCode'

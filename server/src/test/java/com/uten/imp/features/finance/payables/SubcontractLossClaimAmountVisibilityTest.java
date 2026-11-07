@@ -42,7 +42,7 @@ class SubcontractLossClaimAmountVisibilityTest {
                 UUID.randomUUID(), UUID.randomUUID(), "SW-1", UUID.randomUUID(),
                 "S-1", "供应商", "AWAITING_FULFILLMENT",
                 new BigDecimal("5"), new BigDecimal("1"), new BigDecimal("4"),
-                new BigDecimal("40"), new BigDecimal("30"), 2L, OffsetDateTime.now()
+                new BigDecimal("40"), new BigDecimal("30"), 2L, OffsetDateTime.now(), "人民币", "CNY"
         };
 
         SubcontractLossClaimContracts.CaseSummary summary =
@@ -54,6 +54,8 @@ class SubcontractLossClaimAmountVisibilityTest {
         assertThat(new BigDecimal(summary.excessLossQty())).isEqualByComparingTo("4");
         assertNull(summary.lossBookValueLocal());
         assertNull(summary.claimAmountLocal());
+        assertNull(summary.currencyName());
+        assertNull(summary.currencyCode());
     }
 
     @Test
@@ -64,11 +66,13 @@ class SubcontractLossClaimAmountVisibilityTest {
                 "S-1", "供应商", "AWAITING_FULFILLMENT",
                 new BigDecimal("5"), BigDecimal.ONE, new BigDecimal("4"),
                 new BigDecimal("40.000000000000000000000000000001"),
-                new BigDecimal("30.000000000000000000000001"), 2L, OffsetDateTime.now()
+                new BigDecimal("30.000000000000000000000001"), 2L, OffsetDateTime.now(), "人民币", "CNY"
         };
         SubcontractLossClaimContracts.CaseSummary summary =
                 ReflectionTestUtils.invokeMethod(service, "summary", (Object) row);
         assertThat(summary.priceMasked()).isFalse();
+        assertThat(summary.currencyName()).isEqualTo("人民币");
+        assertThat(summary.currencyCode()).isEqualTo("CNY");
         assertThat(new BigDecimal(summary.lossBookValueLocal()))
                 .isEqualByComparingTo("40.000000000000000000000000000001");
         assertThat(new BigDecimal(summary.claimAmountLocal()))
@@ -103,7 +107,7 @@ class SubcontractLossClaimAmountVisibilityTest {
         when(commercialPriceVisibility.canViewFinance()).thenReturn(visible);
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
             String sql=call.getArgument(0);Query query=mock(Query.class);when(query.setParameter(anyString(),any())).thenReturn(query);
-            Object[] summary={UUID.randomUUID(),UUID.randomUUID(),"SW-UNIT",UUID.randomUUID(),"S-UNIT","匿名加工商","AWAITING_FULFILLMENT",new BigDecimal("3"),new BigDecimal("2"),BigDecimal.ONE,new BigDecimal("0.4"),new BigDecimal("27.000000000000000000000001"),1L,OffsetDateTime.now()};
+            Object[] summary={UUID.randomUUID(),UUID.randomUUID(),"SW-UNIT",UUID.randomUUID(),"S-UNIT","匿名加工商","AWAITING_FULFILLMENT",new BigDecimal("3"),new BigDecimal("2"),BigDecimal.ONE,new BigDecimal("0.4"),new BigDecimal("27.000000000000000000000001"),1L,OffsetDateTime.now(),"人民币","CNY"};
             Object[] line={UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"G-UNIT","匿名材料",null,null,UUID.randomUUID(),new BigDecimal("3"),new BigDecimal("2"),BigDecimal.ONE,total,new BigDecimal("0.4"),"VALUED"};
             List<Object[]> rows=sql.contains("FROM subcontract_loss_case_lines line")?java.util.Collections.singletonList(line):sql.contains("FROM subcontract_loss_cases loss")?java.util.Collections.singletonList(summary):List.of();
             when(query.getResultList()).thenReturn(rows);return query;

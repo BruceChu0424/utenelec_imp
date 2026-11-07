@@ -44,7 +44,15 @@ public class FinanceApplicationReferences {
         return switch(kind){
             case "EXPENSE_CLAIM"->{
                 roles.require(actor,"expense:apply");
-                yield new SourceQuery("SELECT id,claim_no AS code,title AS name,total_amount::text AS amount,status,created_at FROM expense_claims WHERE NOT is_deleted AND applicant_id=fn_canonical_employee_identity(?) AND status IN('DRAFT','REJECTED') AND (claim_no ILIKE ? ESCAPE '!' OR title ILIKE ? ESCAPE '!')","created_at DESC,id",new Object[]{actor.getEmployeeId(),like,like});
+                yield new SourceQuery("""
+                    SELECT id,claim_no AS code,title AS name,total_amount::text AS amount,status,created_at,
+                           currency.currency_name,currency.currency_code
+                      FROM expense_claims
+                      LEFT JOIN (SELECT min(name) AS currency_name,min(code) AS currency_code FROM currencies
+                                   WHERE is_base_currency AND NOT is_deleted HAVING count(*)=1) currency ON true
+                     WHERE NOT is_deleted AND applicant_id=fn_canonical_employee_identity(?)
+                       AND status IN('DRAFT','REJECTED') AND (claim_no ILIKE ? ESCAPE '!' OR title ILIKE ? ESCAPE '!')
+                    ""","created_at DESC,id",new Object[]{actor.getEmployeeId(),like,like});
             }
             case "TRAVEL_APPLICATION"->{
                 roles.require(actor,"expense:apply");
@@ -60,7 +68,16 @@ public class FinanceApplicationReferences {
             }
             case "PAYROLL_BATCH"->{
                 roles.require(actor,"payroll:generate");
-                yield new SourceQuery("SELECT id,concat(payroll_year,'-',lpad(payroll_month::text,2,'0')) AS code,concat(headcount,'人 工资批次') AS name,net_income::text AS amount,status,payroll_year,payroll_month FROM payroll_batches WHERE status IN('APPROVED','PUBLISHED') AND (? OR generated_by=fn_canonical_employee_identity(?)) AND concat(payroll_year,'-',lpad(payroll_month::text,2,'0')) ILIKE ? ESCAPE '!'","payroll_year DESC,payroll_month DESC,id",new Object[]{roles.has(actor,"payroll:view:all"),actor.getEmployeeId(),like});
+                yield new SourceQuery("""
+                    SELECT id,concat(payroll_year,'-',lpad(payroll_month::text,2,'0')) AS code,
+                           concat(headcount,'人 工资批次') AS name,net_income::text AS amount,status,
+                           payroll_year,payroll_month,currency.currency_name,currency.currency_code
+                      FROM payroll_batches
+                      LEFT JOIN (SELECT min(name) AS currency_name,min(code) AS currency_code FROM currencies
+                                   WHERE is_base_currency AND status='使用' AND NOT is_deleted HAVING count(*)=1) currency ON true
+                     WHERE status IN('APPROVED','PUBLISHED') AND (? OR generated_by=fn_canonical_employee_identity(?))
+                       AND concat(payroll_year,'-',lpad(payroll_month::text,2,'0')) ILIKE ? ESCAPE '!'
+                    ""","payroll_year DESC,payroll_month DESC,id",new Object[]{roles.has(actor,"payroll:view:all"),actor.getEmployeeId(),like});
             }
             case "SUPPLIER"->{
                 roles.require(actor,FinanceApplicationPermissions.APPLY);
@@ -69,7 +86,15 @@ public class FinanceApplicationReferences {
             case "SUPPLIER_AP"->{
                 roles.require(actor,"ar_ap_ledger:view","finance:view:all");
                 if(supplier==null||currency==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请先选择供应商和明确原币");
-                yield new SourceQuery("SELECT id,bill_no AS code,concat(bill_date,' ',business_type) AS name,amount_balance_original::text AS amount,bill_date FROM ar_ap_ledger WHERE NOT is_deleted AND status=1 AND direction='AP' AND open_item_kind='PAYABLE' AND supplier_id=? AND currency_id=? AND amount_balance_original>0 AND bill_no ILIKE ? ESCAPE '!'","bill_date,id",new Object[]{supplier,currency,like});
+                yield new SourceQuery("""
+                    SELECT ledger.id,ledger.bill_no AS code,concat(ledger.bill_date,' ',ledger.business_type) AS name,
+                           ledger.amount_balance_original::text AS amount,ledger.bill_date,
+                           currency.name AS currency_name,currency.code AS currency_code
+                      FROM ar_ap_ledger ledger LEFT JOIN currencies currency ON currency.id=ledger.currency_id
+                     WHERE NOT ledger.is_deleted AND ledger.status=1 AND ledger.direction='AP'
+                       AND ledger.open_item_kind='PAYABLE' AND ledger.supplier_id=? AND ledger.currency_id=?
+                       AND ledger.amount_balance_original>0 AND ledger.bill_no ILIKE ? ESCAPE '!'
+                    ""","bill_date,id",new Object[]{supplier,currency,like});
             }
             default->throw new ApiException(ErrorCode.VALIDATION_FAILED,"原始来源类型不存在");
         };

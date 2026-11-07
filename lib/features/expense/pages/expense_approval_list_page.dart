@@ -45,6 +45,7 @@ import '../../../core/network/read_scope_revision.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
+import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
 import '../providers/expense_counts_provider.dart';
 import '../providers/expense_action_eligibility.dart';
@@ -612,6 +613,12 @@ class _ExpenseApprovalListPageState
       width: 110,
       type: 'money',
       value: (claim) => financeExactMoneyDisplay(claim.totalAmountText),
+    ),
+    MasterColumnDef(
+      key: 'currency',
+      label: '币种',
+      width: 80,
+      value: (_) => expenseClaimCurrencyName,
     ),
     MasterColumnDef(
       key: 'yearMonth',

@@ -20,6 +20,69 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProductionWorkbenchSourceFulfillmentPostgresTest {
     @Test
+    void rootProductsAndProgressIgnoreAggregateAnchorsWrongIdentityAndLinkedPlans() throws Exception {
+        try (Fixture fixture = fixture()) {
+            UUID product = fixture.product("10", "0", "0", "0", "MAKE");
+            UUID rework = fixture.product("2", "0", "0", "0", "MAKE");
+            UUID aggregate = fixture.product("100", "0", "0", "0", "MAKE");
+            UUID actualGoods = fixture.identifyProduct(product, "A01", "销售顶层", "蓝色");
+            fixture.identifyProduct(rework, "A02", "返工半成品", "灰色");
+            UUID aggregateGoods = fixture.identifyProduct(aggregate, "A03", "同料汇总子件", "红色");
+            fixture.db.update("UPDATE production_material_analysis_items SET source_type='REWORK' WHERE id=?", rework);
+            fixture.db.update("UPDATE production_material_analysis_items SET source_type='AGGREGATE_MAKE' WHERE id=?", aggregate);
+
+            UUID topPlan = fixture.plan(product, "10");
+            UUID childPlan = fixture.plan(product, "99");
+            UUID aggregatePlan = fixture.plan(aggregate, "100");
+            fixture.workbenchSegment("ANALYSIS", fixture.analysis, topPlan, topPlan, actualGoods, product, "10", "5");
+            fixture.workbenchSegment("ANALYSIS", fixture.analysis, topPlan, topPlan, aggregateGoods, aggregate, "90", "90");
+            fixture.workbenchSegment("ANALYSIS", fixture.analysis, childPlan, topPlan, actualGoods, product, "99", "99");
+            fixture.workbenchSegment("ANALYSIS", fixture.analysis, aggregatePlan, aggregatePlan, aggregateGoods, aggregate, "100", "100");
+
+            var root = fixture.db.queryForMap("""
+                    SELECT product_count, product_code_preview, product_name_preview, product_colors_all,
+                           jsonb_array_length(product_entries) AS entry_count, root_planned_qty,
+                           root_inbound_qty, segment_count
+                    FROM v_production_execution_workbench_roots WHERE root_id=?
+                    """, fixture.analysis);
+            assertThat(root).containsEntry("product_count", 2).containsEntry("entry_count", 2)
+                    .containsEntry("product_code_preview", "A01 / A02")
+                    .containsEntry("segment_count", 4);
+            assertThat(root.get("product_name_preview").toString()).contains("销售顶层", "返工半成品").doesNotContain("同料汇总子件");
+            assertThat(root.get("product_colors_all").toString()).contains("蓝色", "灰色").doesNotContain("红色");
+            assertThat((BigDecimal) root.get("root_planned_qty")).isEqualByComparingTo("10");
+            assertThat((BigDecimal) root.get("root_inbound_qty")).isEqualByComparingTo("5");
+        }
+    }
+
+    @Test
+    void legacyPlanRootKeepsItsDirectProductsAndOmitsLinkedSubplanProducts() throws Exception {
+        try (Fixture fixture = fixture()) {
+            UUID topItem = fixture.product("1", "0", "0", "0", "MAKE");
+            UUID childItem = fixture.product("1", "0", "0", "0", "MAKE");
+            UUID topGoods = fixture.identifyProduct(topItem, "TOP", "旧计划顶层", "蓝色");
+            UUID childGoods = fixture.identifyProduct(childItem, "SUB", "旧计划子件", "红色");
+            UUID topPlan = UUID.randomUUID(), childPlan = UUID.randomUUID();
+            for (UUID plan : new UUID[]{topPlan, childPlan}) {
+                fixture.db.update("INSERT INTO production_plans(id,bill_no,status,is_deleted) VALUES (?,?,0,FALSE)",
+                        plan, plan.toString());
+            }
+            fixture.db.update("INSERT INTO subplan_links(plan_id,subplan_id,is_deleted) VALUES (?,?,FALSE)", topPlan, childPlan);
+            fixture.workbenchSegment("PLAN", topPlan, topPlan, topPlan, topGoods, topItem, "10", "4");
+            fixture.workbenchSegment("PLAN", topPlan, childPlan, topPlan, childGoods, childItem, "90", "80");
+            var root = fixture.db.queryForMap("""
+                    SELECT product_count, product_name_preview, product_colors_all, root_planned_qty,
+                           root_inbound_qty, segment_count
+                    FROM v_production_execution_workbench_roots WHERE root_id=?
+                    """, topPlan);
+            assertThat(root).containsEntry("product_count", 1).containsEntry("product_name_preview", "旧计划顶层")
+                    .containsEntry("product_colors_all", "蓝色").containsEntry("segment_count", 2);
+            assertThat((BigDecimal) root.get("root_planned_qty")).isEqualByComparingTo("10");
+            assertThat((BigDecimal) root.get("root_inbound_qty")).isEqualByComparingTo("4");
+        }
+    }
+
+    @Test
     void qualifiedStockWithoutWorkOrderDoesNotKeepEightCompletedProductsPending() throws Exception {
         try (Fixture fixture = fixture()) {
             for (int i = 0; i < 8; i++) fixture.completedMakeProduct();
@@ -472,8 +535,12 @@ class ProductionWorkbenchSourceFulfillmentPostgresTest {
                     "v_workshop_direct_source_allocations", "production_workshop_direct_transfer_items",
                     "v_production_execution_workbench_segments", "execution_segment_sales_allocations",
                     "sales_order_items", "sales_orders", "goods", "units", "colors");
-            Path direct = Path.of("src/main/resources/db/migration/V864__production_workbench_source_fulfillment_progress.sql");
-            db.execute(Files.readString(Files.exists(direct) ? direct : Path.of("server").resolve(direct)));
+            for (String migration : new String[]{
+                    "V864__production_workbench_source_fulfillment_progress.sql",
+                    "V1120__execution_workbench_actual_top_level_products.sql"}) {
+                Path direct = Path.of("src/main/resources/db/migration", migration);
+                db.execute(Files.readString(Files.exists(direct) ? direct : Path.of("server").resolve(direct)));
+            }
             return new Fixture(lease, connection, db);
         } catch (Exception failure) {
             connection.close();
@@ -506,6 +573,30 @@ class ProductionWorkbenchSourceFulfillmentPostgresTest {
                     item, analysis, goods, unit, new BigDecimal(requested), new BigDecimal(submitted), new BigDecimal(approved), new BigDecimal(fulfilled), root);
             db.update("INSERT INTO production_material_analysis_materials(id,analysis_id,analysis_item_id,per_product_qty,confirmed_route,active) VALUES(?,?,?,1,?,TRUE)", root, analysis, item, route);
             return item;
+        }
+
+        private UUID identifyProduct(UUID item, String code, String name, String colorName) {
+            UUID goods = db.queryForObject("SELECT goods_id FROM production_material_analysis_items WHERE id=?", UUID.class, item);
+            UUID color = UUID.randomUUID();
+            db.update("UPDATE goods SET code=?,name=? WHERE id=?", code, name, goods);
+            db.update("INSERT INTO colors(id,name) VALUES (?,?)", color, colorName);
+            db.update("UPDATE production_material_analysis_items SET color_id=? WHERE id=?", color, item);
+            return goods;
+        }
+
+        private void workbenchSegment(String rootType, UUID rootId, UUID plan, UUID rootPlan, UUID goods,
+                                      UUID colorSource, String planned, String inbound) {
+            UUID segment = UUID.randomUUID();
+            UUID color = db.queryForObject("SELECT color_id FROM production_material_analysis_items WHERE id=?", UUID.class, colorSource);
+            db.update("INSERT INTO production_execution_segments(id,plan_id,product_goods_id,product_color_id,product_unit_id,is_deleted) VALUES (?,?,?,?,?,FALSE)",
+                    segment, plan, goods, color, unit);
+            db.update("""
+                    INSERT INTO v_production_execution_workbench_segments(
+                        segment_id,plan_id,root_type,root_id,root_plan_id,segment_status,product_goods_id,
+                        product_code,product_name,product_color_name,product_unit_name,planned_qty,planned_inbound_qty)
+                    SELECT ?,?,?,?,?,'IN_PROGRESS',goods.id,goods.code,goods.name,color.name,'piece',?,?
+                    FROM goods JOIN colors color ON color.id=? WHERE goods.id=?
+                    """, segment, plan, rootType, rootId, rootPlan, new BigDecimal(planned), new BigDecimal(inbound), color, goods);
         }
 
         private Component component(UUID parent, String requested, String required, String path, UUID sameGoods) {

@@ -1,3 +1,4 @@
+import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/models/paged_result.dart';
 
 BigInt? financeDecimalUnits(String? raw, {int scale = 4}) {
@@ -112,6 +113,8 @@ class SubcontractLossClaimSummary {
     this.excessLossQty,
     this.lossBookValueLocal,
     this.claimAmountLocal,
+    this.currencyName,
+    this.currencyCode,
     required this.version,
     this.createdAt,
     this.priceMasked = true,
@@ -129,9 +132,15 @@ class SubcontractLossClaimSummary {
   final String? excessLossQty;
   final String? lossBookValueLocal;
   final String? claimAmountLocal;
+  final String? currencyName;
+  final String? currencyCode;
   final int version;
   final String? createdAt;
   final bool priceMasked;
+
+  String? get currencyLabel => priceMasked
+      ? null
+      : financeCurrencyDisplayLabel(name: currencyName, code: currencyCode);
 
   String get statusLabel => subcontractLossClaimStatusLabel(status);
   bool get canReview => status == 'OPEN' || status == 'DISPUTED';
@@ -152,6 +161,8 @@ class SubcontractLossClaimSummary {
         excessLossQty: _text(json['excessLossQty']),
         lossBookValueLocal: _text(json['lossBookValueLocal']),
         claimAmountLocal: _text(json['claimAmountLocal']),
+        currencyName: _text(json['currencyName']),
+        currencyCode: _text(json['currencyCode']),
         version: _intValue(json['version']),
         createdAt: _text(json['createdAt']),
         priceMasked: json['priceMasked'] != false,

@@ -57,7 +57,9 @@ public final class SubcontractLossClaimContracts {
             String claimAmountLocal,
             long version,
             String createdAt,
-            boolean priceMasked) {}
+            boolean priceMasked,
+            String currencyName,
+            String currencyCode) {}
 
     public record CaseLine(
             UUID id,

@@ -71,6 +71,65 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
           : null,
     ),
   );
+  final currencyColumn = EditableGridColumn<FinanceGridRow>(
+    key: 'entryCurrency',
+    label: '币种',
+    width: 145,
+    required: true,
+    textOf: (row) => names.currency(row.entry.currencyId),
+    listenableOf: (row) => row.entry,
+    cellBuilder: (_, row) => ListenableBuilder(
+      listenable: row.entry,
+      builder: (_, _) => UtenDropdownField(
+        dense: true,
+        hintText: '选择币种',
+        info: financeEntryRequiresBaseCurrency(config)
+            ? '这类单据按本位币入账；历史原币输入保留，不能作为新的外币入账。'
+            : null,
+        value: row.entry.currencyId,
+        enabled: row.appliedLedgerId == null && row.entry.salesOrderId == null,
+        items: [
+          for (final currency in financeEntryCurrencyChoices(
+            config,
+            names,
+          ).entries)
+            UtenDropdownItem(value: currency.key, label: currency.value),
+          if (row.entry.currencyId != null &&
+              !financeEntryCurrencyChoices(
+                config,
+                names,
+              ).containsKey(row.entry.currencyId))
+            UtenDropdownItem(
+              value: row.entry.currencyId,
+              label: names.currency(row.entry.currencyId),
+              enabled: false,
+              visible: false,
+            ),
+        ],
+        onChanged: (value) => changeCurrency(row, value),
+      ),
+    ),
+  );
+  final exchangeRateColumn = EditableGridColumn<FinanceGridRow>(
+    key: 'exchangeRate',
+    label: '汇率',
+    width: 125,
+    numeric: true,
+    required: true,
+    textOf: (row) => row.exchangeRate.text,
+    listenableOf: (row) => row.exchangeRate,
+    cellBuilder: (_, row) => ListenableBuilder(
+      listenable: row.entry,
+      builder: (_, _) => TextField(
+        controller: row.exchangeRate,
+        readOnly: names.currencyIsBase(row.entry.currencyId) == true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '汇率'),
+        ),
+      ),
+    ),
+  );
   return [
     if (config.hasParty)
       picker(
@@ -94,7 +153,11 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
     ),
     // The cash amount is an essential entry fact. Keep it in the first screen;
     // optional quantity/price inputs retain their original shared calculator.
-    if (config.isAllocate) ...details.where((column) => column.key == 'amount'),
+    if (config.isAllocate) ...[
+      ...details.where((column) => column.key == 'amount'),
+      currencyColumn,
+      exchangeRateColumn,
+    ],
     if (!config.isTransfer)
       EditableGridColumn<FinanceGridRow>(
         key: 'entryMethod',
@@ -129,66 +192,6 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
           ),
         ),
       ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'entryCurrency',
-      label: '币种',
-      width: 145,
-      required: true,
-      textOf: (row) => names.currency(row.entry.currencyId),
-      listenableOf: (row) => row.entry,
-      cellBuilder: (_, row) => ListenableBuilder(
-        listenable: row.entry,
-        builder: (_, _) => UtenDropdownField(
-          dense: true,
-          hintText: '选择币种',
-          info: financeEntryRequiresBaseCurrency(config)
-              ? '这类单据按本位币入账；历史原币输入保留，不能作为新的外币入账。'
-              : null,
-          value: row.entry.currencyId,
-          enabled:
-              row.appliedLedgerId == null && row.entry.salesOrderId == null,
-          items: [
-            for (final currency in financeEntryCurrencyChoices(
-              config,
-              names,
-            ).entries)
-              UtenDropdownItem(value: currency.key, label: currency.value),
-            if (row.entry.currencyId != null &&
-                !financeEntryCurrencyChoices(
-                  config,
-                  names,
-                ).containsKey(row.entry.currencyId))
-              UtenDropdownItem(
-                value: row.entry.currencyId,
-                label: names.currency(row.entry.currencyId),
-                enabled: false,
-                visible: false,
-              ),
-          ],
-          onChanged: (value) => changeCurrency(row, value),
-        ),
-      ),
-    ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'exchangeRate',
-      label: '汇率',
-      width: 125,
-      numeric: true,
-      required: true,
-      textOf: (row) => row.exchangeRate.text,
-      listenableOf: (row) => row.exchangeRate,
-      cellBuilder: (_, row) => ListenableBuilder(
-        listenable: row.entry,
-        builder: (_, _) => TextField(
-          controller: row.exchangeRate,
-          readOnly: names.currencyIsBase(row.entry.currencyId) == true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, labelText: '汇率'),
-          ),
-        ),
-      ),
-    ),
     if (config.isClient && canPrepay)
       EditableGridColumn<FinanceGridRow>(
         key: 'entryKind',
@@ -234,11 +237,12 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       if (config.type != FinanceDocType.receipt) balanceColumn,
     ],
     for (final column in details)
-      if (column.key != 'remark' &&
-          !(config.isAllocate && column.key == 'amount') &&
-          (config.isAllocate || config.isTransfer
-              ? !{'exchangeRate', 'amountLocal'}.contains(column.key)
-              : column.key == 'amount'))
+      if (!config.isAllocate && column.key == 'amount') ...[
+        column,
+        currencyColumn,
+        exchangeRateColumn,
+      ] else if (!{'remark', 'amount', 'currency'}.contains(column.key) &&
+          !config.isSettle)
         column,
     if (config.isSettle) ...[
       EditableGridColumn<FinanceGridRow>(

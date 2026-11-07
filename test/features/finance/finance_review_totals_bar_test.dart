@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/finance_claim_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/table_cell_geometry.dart';
 
 void main() {
   testWidgets('订货审批审核详情：合计数量按单位分组，合计金额用白字，折合人民币可见', (tester) async {
@@ -60,6 +61,12 @@ void main() {
 
     expect(find.text('合计金额: '), findsOneWidget);
     expect(_valueColor(tester, '2400.00 美元'), Colors.white);
+    final amountHeader = tableCellFrame(find.text('总金额(订单币种)'));
+    final currencyHeader = tableCellFrame(find.text('币种'));
+    expect(
+      tester.getRect(currencyHeader).left,
+      closeTo(tester.getRect(amountHeader).right, 1),
+    );
     // 销售阶段本币事实为空，合计条整体隐藏该项。
     expect(find.text('折合人民币: '), findsNothing);
   });

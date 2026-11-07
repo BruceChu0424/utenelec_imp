@@ -37,6 +37,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
+import '../models/expense_item.dart';
 import '../models/expense_invoice.dart';
 import '../models/expense_guided_values.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
@@ -416,6 +417,12 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     type: 'money',
     sortable: true,
     value: (invoice) => financeExactMoneyDisplay(invoice.totalAmountText),
+  ),
+  MasterColumnDef(
+    key: 'currency',
+    label: '币种',
+    width: 80,
+    value: (_) => expenseClaimCurrencyName,
   ),
   MasterColumnDef(
     key: 'verificationRemark',

@@ -383,6 +383,9 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                           '申请原币金额',
                           190,
                         ),
+                        financeApplicationCurrencyColumn(
+                          value: (_) => financeApplicationCurrencyLabel(data),
+                        ),
                       ]),
                     ),
                   UtenCollapsibleSection(
@@ -426,6 +429,9 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                           financeApplicationColumn('date', '日期', 130),
                           financeApplicationColumn('description', '说明', 300),
                           financeApplicationColumn('amountExact', '金额原文', 160),
+                          financeApplicationCurrencyColumn(
+                            value: (_) => expenseClaimCurrencyName,
+                          ),
                         ],
                       ),
                     ),
@@ -452,6 +458,9 @@ class _DetailState extends ConsumerState<FinanceApplicationDetail> {
                           180,
                         ),
                         financeApplicationColumn('netIncome', '原实发工资', 180),
+                        financeApplicationCurrencyColumn(
+                          value: (_) => financeApplicationCurrencyLabel(data),
+                        ),
                       ]),
                     ),
                     if (actions['preparePayroll'] == true)

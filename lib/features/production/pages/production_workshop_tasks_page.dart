@@ -45,7 +45,6 @@ import '../delivery_processing/delivery_processing_tasks_button.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
-import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -309,18 +308,22 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) async {
     if (_rateLoadingSegment != null || !_canOpenRateRequest) return;
-    if (await _resumeLocalOperation(
-      [task],
-      {'/production/overproduction-rate-requests/new'},
-    )) {
-      return;
-    }
-    if (!mounted) return;
     setState(() => _rateLoadingSegment = task.segmentId);
     try {
-      final source = await ref
-          .read(productionOverproductionRateRepositoryProvider)
-          .context(task.segmentId);
+      if (await _resumeLocalOperation(
+        [task],
+        {'/production/overproduction-rate-requests/new'},
+      )) {
+        return;
+      }
+      if (!mounted) return;
+      final source = await UtenBusyOverlay.run(
+        context,
+        title: '正在核对当前超产比例',
+        action: () => ref
+            .read(productionOverproductionRateRepositoryProvider)
+            .context(task.segmentId),
+      );
       if (!mounted) return;
       if (source.pendingRequestId != null) {
         await _navigation.push(
@@ -2912,10 +2915,7 @@ class _ProductionWorkshopTasksPageState
                 'dateTo': ChinaDateTime.formatDate(_historyTime.range!.end),
             },
           ),
-          const FormDraftsAppBarButton(
-            categoryId: 'workshop-new',
-            label: '新建草稿',
-          ),
+          const FormDraftsAppBarButton(categoryId: 'workshop-new'),
           if (canOpenMaterialBin)
             TextButton(
               key: const Key('workshop-material-bin-entry'),
@@ -2936,15 +2936,11 @@ class _ProductionWorkshopTasksPageState
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-            // 2026-11-04 上滑先把表格钉顶（同任务中心范式）：草稿恢复提示、
-            // 分类行与错误提示进折叠头随页滚走，表格工具条+表头钉在页面顶部。
+            // 分类行与错误提示随折叠头滚走，表格工具条和表头钉在页面顶部。
             child: UtenCollapsingHeaderScrollView(
               collapsingHeader: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const TaskDraftRecoveryNotice(
-                    scope: FormDraftCategoryScope(module: BadgeModule.workshop),
-                  ),
                   // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
                   // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
                   // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；

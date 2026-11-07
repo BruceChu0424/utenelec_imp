@@ -670,6 +670,18 @@ void main() {
           'attempt',
         ]),
       );
+      expect(
+        columnKeys.indexOf('currency'),
+        columnKeys.indexOf('totalOriginal') + 1,
+      );
+      expect(
+        columnKeys.indexOf('exchangeRate'),
+        columnKeys.indexOf('currency') + 1,
+      );
+      final currency = table.columns.singleWhere(
+        (column) => column.key == 'currency',
+      );
+      expect(table.items.map(currency.value), ['美元', '人民币']);
       // ADR-128 → 2026-10-10 后缀口径：订货金额数值后自动带币种单位，折合人民
       // 币另列带「元」；明细行数/超收损耗%/汇率对齐详情页，仓库/货品只进详情页。
       expect(find.text('169.0845 美元'), findsOneWidget);

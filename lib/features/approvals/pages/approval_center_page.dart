@@ -165,13 +165,6 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
     final summaryLoaded = ref.watch(
       badgeSummaryProvider.select((value) => value.loaded),
     );
-    // 与任务中心「默认不选、点击后加载」范式一致：计数到位后只自动选中
-    // 真有待办/在办的分类；红黄皆无保持未选（占位引导态），不再兜底选第一组。
-    if (_group != 'history' && !groups.contains(_group) && summaryLoaded) {
-      _group =
-          groups.where((key) => count(key) > 0).firstOrNull ??
-          groups.where((key) => inProgress(key) > 0).firstOrNull;
-    }
     final group = (_group == 'history' || groups.contains(_group))
         ? _group
         : null;
@@ -182,6 +175,7 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
     final active = history ? historyKind : group;
     final categoryBar = UtenFilterToolbar<String>(
       segmentsKey: const Key('approval-center-categories'),
+      autoSelectBadgeReady: summaryLoaded,
       segments: [
         for (final key in groups)
           UtenFilterSegment(

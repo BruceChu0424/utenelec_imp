@@ -26,7 +26,7 @@ import static org.mockito.ArgumentMatchers.*;
 class FinanceApplicationReferencePagingPostgresTest {
     static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine").withReuse(false);
     static JdbcTemplate db;
-    static final String[] TABLES={"expense_claims","finance_applications","business_applications","payroll_batches","suppliers","ar_ap_ledger","employee_identity_aliases","payment_styles","finance_chart_codes","finance_chart_code_styles","finance_report_line_bindings","finance_auxiliary_items","gl_vouchers","gl_entries","finance_gl_entry_allocations"};
+    static final String[] TABLES={"expense_claims","finance_applications","business_applications","payroll_batches","suppliers","ar_ap_ledger","currencies","employee_identity_aliases","payment_styles","finance_chart_codes","finance_chart_code_styles","finance_report_line_bindings","finance_auxiliary_items","gl_vouchers","gl_entries","finance_gl_entry_allocations"};
     static final UUID EMPLOYEE=UUID.randomUUID(),OTHER=UUID.randomUUID(),CURRENCY=UUID.randomUUID(),SUPPLIER=UUID.randomUUID();
     FinanceApplicationReferences references;SecurityContextCurrentUser current;
     @BeforeAll static void start(){PG.start();db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));MigratedProjectionSchema.createCurrentTables(db,TABLES);MigratedProjectionSchema.createCurrentFunctions(db,"fn_canonical_employee_identity","fn_finance_gl_voucher_is_booked","fn_finance_payroll_wage_style_allowed","fn_finance_payroll_employee_settlement_style_allowed");}
@@ -57,12 +57,16 @@ class FinanceApplicationReferencePagingPostgresTest {
         assertEquals(250,keys(all).size());assertEquals(125,all.stream().map(r->r.get("id")).distinct().count());assertEquals(100,((List<?>)references.sources("TRAVEL_APPLICATION","",null,null).get("items")).size());
     }
     @Test void payrollAndPayablePagesRetainTheirOriginalOwnerCurrencyAndEligibility(){
+        insert("currencies",row("id",UUID.randomUUID(),"code","CNY","name","人民币","is_base_currency",true,"status","使用","is_deleted",false));
+        insert("currencies",row("id",CURRENCY,"code","USD","name","美元","is_base_currency",false,"status","使用","is_deleted",false));
         for(int i=0;i<125;i++)for(UUID owner:List.of(EMPLOYEE,OTHER))insert("payroll_batches",row("id",UUID.randomUUID(),"payroll_year",2026,"payroll_month",10,"headcount",1,"net_income",new BigDecimal("1.0001"),"status","APPROVED","generated_by",owner));
         assertEquals(125,references.sourcesPage("PAYROLL_BATCH","",null,null,1,100).getTotal());
+        assertEquals("CNY",references.sourcesPage("PAYROLL_BATCH","",null,null,1,100).getItems().getFirst().get("currency_code"));
         login(Set.of("payroll:generate","payroll:view:all","ar_ap_ledger:view","finance:view:all"));assertEquals(250,references.sourcesPage("PAYROLL_BATCH","",null,null,1,100).getTotal());
         for(int i=0;i<125;i++)insert("ar_ap_ledger",row("id",UUID.randomUUID(),"bill_no",String.format("AP%03d",i),"bill_date",LocalDate.of(2026,10,1),"business_type","PURCHASE","status",1,"direction","AP","open_item_kind","PAYABLE","supplier_id",SUPPLIER,"currency_id",CURRENCY,"amount_balance_original",new BigDecimal("1.0001"),"is_deleted",false));
         insert("ar_ap_ledger",row("id",UUID.randomUUID(),"bill_no","FOREIGN","bill_date",LocalDate.now(),"status",1,"direction","AP","open_item_kind","PAYABLE","supplier_id",OTHER,"currency_id",CURRENCY,"amount_balance_original",BigDecimal.ONE,"is_deleted",false));
         var result=references.sourcesPage("SUPPLIER_AP","",SUPPLIER,CURRENCY,2,100);assertEquals(125,result.getTotal());assertEquals(25,result.getItems().size());assertEquals(0,new BigDecimal(result.getItems().getFirst().get("amount").toString()).compareTo(new BigDecimal("1.0001")));
+        assertEquals("USD",result.getItems().getFirst().get("currency_code"));
         assertThrows(ApiException.class,()->references.sourcesPage("SUPPLIER_AP","",null,CURRENCY,1,100));
     }
 

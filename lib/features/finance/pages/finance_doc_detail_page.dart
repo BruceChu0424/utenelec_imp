@@ -1208,7 +1208,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款），
   /// 不再是卡片式拼凑行；核销/分摊/转账三类列口径不变。
   Widget _itemsCard(ThemeData theme, FinanceNameService names) {
-    final items = _detail!.items;
+    final detail = _detail!;
+    final items = detail.items;
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
@@ -1224,18 +1225,31 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
     }
     final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
     final cnyReceiptAccount =
-        names.accountIsBaseCurrency(
-          _detail!.accountId ?? _detail!.outAccountId,
-        ) ==
+        names.accountIsBaseCurrency(detail.accountId ?? detail.outAccountId) ==
         true;
     final isVersionedReceipt =
         _cfg.type == FinanceDocType.receipt &&
-        (_detail!.settlementAuthorityVersion ?? 0) >= 1;
+        (detail.settlementAuthorityVersion ?? 0) >= 1;
     final receiptLocalColumnLabel = isVersionedReceipt
         ? '分配折算毛额(人民币)'
         : cnyReceiptAccount
         ? '本批人民币实际入账'
         : '本批本位币折算(人民币)';
+    MasterColumnDef<FinanceDocItem> currencyColumn(
+      String key,
+      String label,
+      String? Function(FinanceDocItem) nameOf,
+    ) => MasterColumnDef(
+      key: key,
+      label: label,
+      width: 90,
+      value: (item) => financeCurrencyText(name: nameOf(item), fallback: '—'),
+    );
+    final localCurrency = currencyColumn(
+      'localCurrency',
+      '本位币',
+      (_) => names.baseCurrencyName,
+    );
     final columns = <MasterColumnDef<FinanceDocItem>>[
       if (_cfg.type == FinanceDocType.receipt) ...[
         MasterColumnDef(
@@ -1244,12 +1258,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           info: '保存时从本批应收固定的原始来源；历史没有该快照时保留原应收编号，不推造出货单号。',
           width: 180,
           value: (it) => it.appliedSourceDocNo ?? it.appliedBillNo,
-        ),
-        MasterColumnDef(
-          key: 'currency',
-          label: '应收币种',
-          width: 150,
-          value: (it) => names.currency(it.currencyId),
         ),
         MasterColumnDef(
           key: 'amountOriginal',
@@ -1261,6 +1269,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           width: _cfg.isClient ? 180 : 130,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
+        ),
+        currencyColumn(
+          'currency',
+          '应收币种',
+          (it) => names.currency(it.currencyId),
         ),
         MasterColumnDef(
           key: 'exchangeRate',
@@ -1278,6 +1291,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
+        localCurrency,
         if (!isVersionedReceipt) ...[
           MasterColumnDef(
             key: 'writeOffAmount',
@@ -1342,6 +1356,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
         ),
+        currencyColumn(
+          'currency',
+          '付款币种',
+          (it) => names.currency(it.currencyId ?? detail.currencyId),
+        ),
         MasterColumnDef(
           key: 'amountLocal',
           label: '付款本币',
@@ -1349,6 +1368,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
+        localCurrency,
         MasterColumnDef(
           key: 'appliedAmountLocal',
           label: '核销账面本币',
@@ -1399,6 +1419,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.priceText),
         ),
+        if (names.currencyIsBase(detail.currencyId) != true)
+          currencyColumn(
+            'priceCurrency',
+            '单价币种',
+            (_) => names.currency(detail.currencyId),
+          ),
         MasterColumnDef(
           key: 'amount',
           label: '金额',
@@ -1406,6 +1432,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
+        localCurrency,
       ] else if (_cfg.isTransfer) ...[
         MasterColumnDef(
           key: 'inAccount',
@@ -1429,6 +1456,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountLocalText),
         ),
+        localCurrency,
       ],
     ];
     if (_cfg.type == FinanceDocType.receipt) {

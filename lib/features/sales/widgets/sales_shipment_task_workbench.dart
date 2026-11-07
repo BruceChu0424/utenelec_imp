@@ -1246,6 +1246,13 @@ class _SalesShipmentTaskWorkbenchState
       width: 150,
       value: (item) => names.warehouse(item.warehouseId),
     ),
+    if (_isFinance)
+      MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 90,
+        value: (item) => names.currency(item.currencyId),
+      ),
     MasterColumnDef(
       key: 'totalOriginal',
       label: '出货金额',

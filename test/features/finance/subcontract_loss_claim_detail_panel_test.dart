@@ -34,6 +34,8 @@ void main() {
           Perm.financeViewAll,
         },
       );
+      expect(find.text('币种'), findsOneWidget);
+      expect(find.text('人民币'), findsOneWidget);
       await tester.tap(find.text('责任决定'));
       await tester.pumpAndSettle();
       final dropdown = tester.widget<UtenDropdownField>(
@@ -364,6 +366,9 @@ const _summaryBase = <String, dynamic>{
   'excessLossQty': '7.0000',
   'lossBookValueLocal': '70.0000',
   'claimAmountLocal': '100.0000',
+  'currencyName': '人民币',
+  'currencyCode': 'CNY',
+  'priceMasked': false,
   'version': 4,
 };
 

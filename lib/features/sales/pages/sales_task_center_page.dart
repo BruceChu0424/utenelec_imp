@@ -96,27 +96,40 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
 
     // 各单据大类的红数 = 草稿(+财务已退回)，与原 hub 单据卡徽章同口径同源
     //（documentStatusCounts 一次分桶；无权限返回空表 → 段不挂数）。
-    final shipmentCounts = ref
-        .watch(
-          effectiveDocumentStatusCountsProvider(
-            const DocumentStatusScope(DraftDocKind.salesShipment),
-          ),
-        )
-        .value;
-    final quoteCounts = ref
-        .watch(
-          effectiveDocumentStatusCountsProvider(
-            const DocumentStatusScope(DraftDocKind.salesQuote),
-          ),
-        )
-        .value;
-    final returnCounts = ref
-        .watch(
-          effectiveDocumentStatusCountsProvider(
-            const DocumentStatusScope(DraftDocKind.salesReturn),
-          ),
-        )
-        .value;
+    final shipmentRead = canOpen(SalesRoutePath.list('shipments'))
+        ? ref.watch(
+            effectiveDocumentStatusCountsProvider(
+              const DocumentStatusScope(DraftDocKind.salesShipment),
+            ),
+          )
+        : null;
+    final quoteRead = canOpen(SalesRoutePath.list('quotes'))
+        ? ref.watch(
+            effectiveDocumentStatusCountsProvider(
+              const DocumentStatusScope(DraftDocKind.salesQuote),
+            ),
+          )
+        : null;
+    final returnRead = canOpen(SalesRoutePath.list('returns'))
+        ? ref.watch(
+            effectiveDocumentStatusCountsProvider(
+              const DocumentStatusScope(DraftDocKind.salesReturn),
+            ),
+          )
+        : null;
+    final shipmentCounts = shipmentRead?.value;
+    final quoteCounts = quoteRead?.value;
+    final returnCounts = returnRead?.value;
+    final badgesLoaded = ref.watch(
+      badgeSummaryProvider.select((summary) => summary.loaded),
+    );
+    final countsReady =
+        badgesLoaded &&
+        [
+          shipmentRead,
+          quoteRead,
+          returnRead,
+        ].nonNulls.every((read) => read.hasValue || !read.isLoading);
     // This slice has its own read permission and status scope. Warm it beside
     // the parent counts rather than waiting for its embedded page to mount.
     ref.watch(
@@ -232,6 +245,7 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
       children: [
         UtenFilterToolbar<String>(
           segmentsKey: const Key('sales-task-center-groups'),
+          autoSelectBadgeReady: countsReady,
           segments: [
             for (final g in groups)
               UtenFilterSegment(

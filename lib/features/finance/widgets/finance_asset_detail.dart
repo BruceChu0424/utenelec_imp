@@ -684,6 +684,12 @@ class _FinanceAssetDetailSurfaceState
                 value: (row) => row.period,
               ),
               MasterColumnDef(
+                key: 'currency',
+                label: '币种',
+                width: 80,
+                value: (_) => '人民币',
+              ),
+              MasterColumnDef(
                 key: 'openingBalance',
                 label: '期初',
                 width: 120,

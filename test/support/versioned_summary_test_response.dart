@@ -7,6 +7,7 @@ Map<String, dynamic> versionedSummaryTestResponse(
   Map<String, dynamic>? query, {
   String revision = 'fixture-snapshot',
   String dataVersion = 'fixture-domain',
+  String scopeVersion = 'fixture-authority',
 }) {
   final page = query?['page'] as int? ?? 1;
   final size = query?['size'] as int? ?? 100;
@@ -20,7 +21,7 @@ Map<String, dynamic> versionedSummaryTestResponse(
     'total': items.length,
     'totalPages': (items.length + size - 1) ~/ size,
     'scope': query?['scope'] ?? 'all',
-    'readScopeVersion': 'fixture-authority',
+    'readScopeVersion': scopeVersion,
     'readSnapshotRevision': revision,
     'readDataVersion': dataVersion,
   };

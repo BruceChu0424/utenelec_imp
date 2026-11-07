@@ -784,6 +784,12 @@ BEGIN
         ('sales_delivery_processing_events','EMPTY'),
         ('sales_delivery_warehouse_actions','EMPTY'),
         ('sales_shipment_delivery_components','EMPTY'),
+        -- V1108/V1109 business decisions and replay receipts must be empty before first import.
+        -- Exact supplemental evidence: docs/数据迁移/evidence/2026-11-06-bootstrap-stock-adoption-1112-classification.tsv.
+        ('preplan_sales_stock_adoptions','EMPTY'),
+        ('preplan_physical_stock_claim_commands','EMPTY'),
+        ('preplan_physical_stock_claim_allocations','EMPTY'),
+        ('preplan_physical_stock_formalizations','EMPTY'),
         ('summary_read_domains','SEED_OR_ADMIN'),
         ('summary_read_markers','SEED_OR_ADMIN');
     SELECT string_agg(table_row.relname,', ' ORDER BY table_row.relname)

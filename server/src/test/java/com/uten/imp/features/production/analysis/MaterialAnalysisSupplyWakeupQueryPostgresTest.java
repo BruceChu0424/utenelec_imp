@@ -2,6 +2,7 @@ package com.uten.imp.features.production.analysis;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.support.ProcurementReceiptFixtureSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -298,11 +299,13 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         var actual=(List<MaterialAnalysisSupplyWakeupService.AnalysisTarget>)selector.invoke(service,arguments);
         String current=lastSql;
         String dimension=dimension(current).replaceAll("\\s+"," ").trim();
-        // Preserve the original golden hash after undoing only the approved full-row classifier entry change.
-        String originalEntryDimension=dimension.replaceAll(
-                "fn_imported_business_document_row\\('([a-z_][a-z_0-9]*)',to_jsonb\\(archive_origin\\)\\)",
-                "fn_imported_business_document('$1',archive_origin.id)");
-        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(originalEntryDimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged apart from the approved row entry");
+        // Keep the original golden hash after translating the indexed keys and full-row classifier to the reviewed forms.
+        String originalEntryDimension=dimension
+                .replace("archive_origin.legacy_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL")
+                .replace("archive_origin.legacy_import_run_id IS NULL", "NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL")
+                .replaceAll("fn_imported_business_document_row\\('([a-z_][a-z_0-9]*)',to_jsonb\\(archive_origin\\)\\)",
+                        "fn_imported_business_document('$1',archive_origin.id)");
+        if (DIMENSION_HASHES.containsKey(method)) assertEquals(DIMENSION_HASHES.get(method),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(originalEntryDimension.getBytes(StandardCharsets.UTF_8))),"reviewed actual-warehouse source UNION predicates are unchanged apart from the indexed origin check");
         if(DIMENSION_HASHES.containsKey(method))assertReviewedNativeOriginDelta(method,dimension);
         var oldRows=(List<Object[]>)bind(em.createNativeQuery(oldQuery(current)),params).getResultList();
         var old=oldRows.stream().map(row->new MaterialAnalysisSupplyWakeupService.AnalysisTarget((UUID)row[0],(UUID)row[1])).toList();
@@ -320,7 +323,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         };
         for(var entry:projections.entrySet()) {
             String table=entry.getKey();
-            String reviewed="(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document_row('"+table+"',to_jsonb(archive_origin)))";
+            String reviewed=ImportedBusinessDocumentScope.nativeTable(table);
             assertEquals(entry.getValue(),original.split(java.util.regex.Pattern.quote(reviewed),-1).length-1,"exact approved native-source projection count");
             original=original.replace(reviewed,table);
         }

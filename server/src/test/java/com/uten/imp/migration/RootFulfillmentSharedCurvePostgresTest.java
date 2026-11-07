@@ -1,10 +1,13 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -31,28 +34,19 @@ class RootFulfillmentSharedCurvePostgresTest {
     @BeforeEach void baseline()throws Exception {
         db=DriverManager.getConnection(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         sql("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-        sql("""
-            CREATE TABLE production_material_analyses(id uuid PRIMARY KEY,is_deleted boolean NOT NULL DEFAULT false,status text NOT NULL DEFAULT 'ACTIVE');
-            CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,per_product_qty numeric);
-            CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,
-              root_material_id uuid,requested_qty numeric NOT NULL,submitted_qty numeric NOT NULL DEFAULT 0,
-              approved_qty numeric NOT NULL DEFAULT 0,delivery_plan_snapshot jsonb,root_fulfilled_qty numeric NOT NULL DEFAULT 0,
-              ready_now_qty numeric NOT NULL DEFAULT 0,ready_by_date_qty numeric NOT NULL DEFAULT 0,
-              ready_start_qty numeric NOT NULL DEFAULT 0,ready_finish_qty numeric NOT NULL DEFAULT 0,
-              ready_ship_qty numeric NOT NULL DEFAULT 0,updated_at timestamptz DEFAULT now());
-            CREATE TABLE stock_reservations(id uuid PRIMARY KEY,qty numeric NOT NULL,released_qty numeric NOT NULL DEFAULT 0,
-              consumed_qty numeric NOT NULL DEFAULT 0,is_deleted boolean NOT NULL DEFAULT false);
-            CREATE TABLE preplan_sales_stock_adoptions(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,
-              analysis_item_id uuid NOT NULL,root_material_id uuid NOT NULL,reservation_id uuid NOT NULL,
-              qty_base numeric NOT NULL,adoption_sequence bigint GENERATED ALWAYS AS IDENTITY);
-            CREATE TABLE preplan_root_output_events(id uuid PRIMARY KEY,analysis_item_id uuid NOT NULL,
-              event_kind text NOT NULL,qty_base numeric NOT NULL);
-            CREATE TABLE sales_delivery_fulfillment_allocations(id uuid PRIMARY KEY,analysis_item_id uuid NOT NULL);
-            CREATE TABLE sales_delivery_fulfillment_events(id uuid PRIMARY KEY,allocation_id uuid NOT NULL,
-              event_type text NOT NULL,order_qty numeric NOT NULL);
-            """);
+        var jdbc = new JdbcTemplate(new SingleConnectionDataSource(db, true));
+        MigratedProjectionSchema.createCurrentTables(jdbc,
+                "production_material_analyses", "production_material_analysis_materials",
+                "production_material_analysis_items", "stock_reservations",
+                "preplan_sales_stock_adoptions", "preplan_root_output_events",
+                "sales_delivery_fulfillment_allocations", "sales_delivery_fulfillment_events");
         String original=resource("V1056__delivery_original_order_stock_claims.sql");
-        sql(original.substring(0,original.indexOf("CREATE TABLE sales_delivery_order_claims")));
+        // Reinstall V1056's own credit column and CHECK, which the catalog projection omits.
+        sql("ALTER TABLE preplan_root_output_events DROP COLUMN qty_source");
+        String capture = "FOR EACH ROW EXECUTE FUNCTION fn_capture_root_output_source_credit();";
+        int captureEnd = original.indexOf(capture);
+        assertTrue(captureEnd >= 0, "V1056 credit capture trigger must be installed");
+        sql(original.substring(0, captureEnd + capture.length()));
         sql(function(resource("V1108__same_sales_source_stock_adoption.sql"),"fn_preplan_adopted_sales_stock_base"));
         String old=resource("V478__analysis_root_supply_fulfillment.sql");
         sql(function(old,"fn_project_root_output_quantity"));
@@ -71,9 +65,9 @@ class RootFulfillmentSharedCurvePostgresTest {
     @Test void nonemptyBomKeepsOriginalDeliveryLedgerAndIgnoresFinishedProductDelta()throws Exception {
         World w=world("BOM","10","3");
         UUID allocation=UUID.randomUUID();
-        update("INSERT INTO sales_delivery_fulfillment_allocations VALUES(?,?)",allocation,w.item());
-        update("INSERT INTO sales_delivery_fulfillment_events VALUES(?,?, 'FULFILL',6)",UUID.randomUUID(),allocation);
-        update("INSERT INTO sales_delivery_fulfillment_events VALUES(?,?, 'REVERSE',1)",UUID.randomUUID(),allocation);
+        update("INSERT INTO sales_delivery_fulfillment_allocations(id,analysis_item_id) VALUES(?,?)",allocation,w.item());
+        update("INSERT INTO sales_delivery_fulfillment_events(id,allocation_id,event_type,order_qty) VALUES(?,?, 'FULFILL',6)",UUID.randomUUID(),allocation);
+        update("INSERT INTO sales_delivery_fulfillment_events(id,allocation_id,event_type,order_qty) VALUES(?,?, 'REVERSE',1)",UUID.randomUUID(),allocation);
         output(w,"FULFILL","3");
         amount("5",base(w));amount("0",scalar("SELECT qty_source FROM preplan_root_output_events WHERE analysis_item_id=?",w.item()));
         String oldRows=sourceRows(w);
@@ -137,14 +131,14 @@ class RootFulfillmentSharedCurvePostgresTest {
     private World world(String mode,String requested,String perProduct)throws Exception {
         World w=new World(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID());
         update("INSERT INTO production_material_analyses(id) VALUES(?)",w.analysis());
-        update("INSERT INTO production_material_analysis_materials VALUES(?,?)",w.root(),decimal(perProduct));
+        update("INSERT INTO production_material_analysis_materials(id,per_product_qty) VALUES(?,?)",w.root(),decimal(perProduct));
         update("INSERT INTO production_material_analysis_items(id,analysis_id,root_material_id,requested_qty,delivery_plan_snapshot) VALUES(?,?,?,?,jsonb_build_object('mode',?::text))",
                 w.item(),w.analysis(),w.root(),decimal(requested),mode);
         return w;
     }
     private void adopt(World w,String qty)throws Exception {
         update("INSERT INTO stock_reservations(id,qty) VALUES(?,?)",w.reservation(),decimal(qty));
-        update("INSERT INTO preplan_sales_stock_adoptions(id,analysis_id,analysis_item_id,root_material_id,reservation_id,qty_base) VALUES(?,?,?,?,?,?)",
+        update("INSERT INTO preplan_sales_stock_adoptions(id,analysis_id,analysis_item_id,root_material_id,reservation_id,qty_base,adoption_sequence) VALUES(?,?,?,?,?,?,1)",
                 UUID.randomUUID(),w.analysis(),w.item(),w.root(),w.reservation(),decimal(qty));
     }
     private UUID output(World w,String kind,String qty)throws Exception {

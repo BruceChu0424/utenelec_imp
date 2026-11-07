@@ -28,7 +28,7 @@ from backend_test_shards import digest, read_json, source_identity, write_json
 import isolated_flutter_web_tools as web_tools
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = 4
+VERSION = 5
 FLUTTER_VERSION = "3.44.2"
 PROTOCOL_VERSION = "0.1.1"
 SHARDS = 8
@@ -37,6 +37,7 @@ REPORT_ROOT = "build/flutter-ci-reports"
 WORKER_PATH = "test/.uten-ci-codec-worker.js"
 WORKER_SOURCE = "web/uten_data_codec_worker.js"
 BROWSER_CONTRACT = "contracts/subcontract-actual-receipt/v1.json"
+MASTER_REFERENCE_CONTRACT = "contracts/business-master-references/v1.json"
 
 
 def subcontract_browser_contract_define(root=ROOT):
@@ -48,9 +49,20 @@ def subcontract_browser_contract_define(root=ROOT):
     return "--dart-define=SUBCONTRACT_RECEIPT_CONTRACT_BASE64=" + base64.b64encode(content).decode("ascii")
 
 
+def master_reference_browser_contract_define(root=ROOT):
+    content = (Path(root) / MASTER_REFERENCE_CONTRACT).read_bytes()
+    contract = json.loads(content.decode("utf-8-sig"))
+    if (not isinstance(contract, dict) or contract.get("version") != 1
+            or not isinstance(contract.get("goods"), dict) or not contract["goods"]
+            or not isinstance(contract.get("cases"), list) or not contract["cases"]):
+        raise ValueError("invalid shared master reference browser contract")
+    return "--dart-define=BUSINESS_MASTER_REFERENCE_CONTRACT_BASE64=" + base64.b64encode(content).decode("ascii")
+
+
 BROWSER_OPTIONS = (*COMMAND_OPTIONS, "--platform", "chrome",
                    "--dart-define=UTEN_DATA_CODEC_WORKER_PATH=/.uten-ci-codec-worker.js",
-                   subcontract_browser_contract_define())
+                   subcontract_browser_contract_define(),
+                   master_reference_browser_contract_define())
 BROWSER_FILES = (
     "test/shared/drafts/form_draft_storage_browser_test.dart",
     "test/shared/drafts/form_draft_history_browser_test.dart",
@@ -60,6 +72,8 @@ BROWSER_FILES = (
     "test/core/web_update_bridge_browser_test.dart",
     "test/features/warehouse/subcontract_actual_receipt_browser_test.dart",
     "test/support/audit_font_asset_loader_test.dart",
+    "test/support/canonical_contract_text_test.dart",
+    "test/support/master_summary_stream_fixture_test.dart",
 )
 # The pinned SDK loader emits no LoadSuite at all for this library selector.
 # This is platform metadata, not a parser/count of test declarations. Unknown

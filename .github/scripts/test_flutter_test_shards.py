@@ -568,6 +568,31 @@ class FlutterWorkflowTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "shared subcontract browser contract"):
                 runner.subcontract_browser_contract_define(root)
 
+    def test_master_reference_browser_define_preserves_the_canonical_permission_vectors(self):
+        prefix = "--dart-define=BUSINESS_MASTER_REFERENCE_CONTRACT_BASE64="
+        values = [value[len(prefix):] for value in runner.BROWSER_OPTIONS if value.startswith(prefix)]
+        self.assertEqual(1, len(values))
+        self.assertEqual((runner.ROOT / runner.MASTER_REFERENCE_CONTRACT).read_bytes(),
+                         base64.b64decode(values[0], validate=True))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaises(FileNotFoundError):
+                runner.master_reference_browser_contract_define(root)
+            fixture = root / runner.MASTER_REFERENCE_CONTRACT
+            fixture.parent.mkdir(parents=True)
+            for invalid in ({"version": 1, "goods": {}, "cases": [{}]},
+                            {"version": 1, "goods": {"name": "货品"}, "cases": []},
+                            {"version": 2, "goods": {"id": "real"}, "cases": [{}]}):
+                fixture.write_text(json.dumps(invalid), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "shared master reference browser contract"):
+                    runner.master_reference_browser_contract_define(root)
+            # Preserve the supplied UTF-8/newline bytes, independently of how
+            # JSON validation represents the same document in memory.
+            canonical = b'\xef\xbb\xbf' + '{"version":1,"goods":{"name":"货品"},"cases":[{"grants":[]}]}\r\n'.encode("utf-8")
+            fixture.write_bytes(canonical)
+            encoded = runner.master_reference_browser_contract_define(root)[len(prefix):]
+            self.assertEqual(canonical, base64.b64decode(encoded, validate=True))
+
     def test_complete_vm_inventory_has_eight_non_fail_fast_partitions_and_four_workers(self):
         plan, shards = self.job("frontend-plan"), self.job("frontend-shards")
         self.assertIn("flutter_test_shards.py plan --output build/flutter-ci-plan --shards 8", plan)

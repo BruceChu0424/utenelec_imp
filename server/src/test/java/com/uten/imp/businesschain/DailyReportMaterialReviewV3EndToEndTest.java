@@ -172,6 +172,9 @@ class DailyReportMaterialReviewV3EndToEndTest {
         var draw=draws.submit(new com.uten.imp.features.production.execution.ProductionDrawRequest.SubmitRequest(items,"v3-mixed-draw-"+segment,drawPreview.fingerprint()));
         chain.loginAs(world.superAdminUserId());var issue=new com.uten.imp.features.stock.dto.StockDocIssueBatchRequest();
         issue.setIdempotencyKey("v3-mixed-issue-"+segment);issue.setDocIds(draw.documentIds());beans.getBean(com.uten.imp.features.stock.StockDocService.class).issueFullBatch(issue);
+        InventoryValueWorkTestSupport.drainProductionPhase(
+                beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class), db,
+                List.of(id(c, "parent")), List.of(segment), id(c, "leaf"), id(c, "workshop"));
         chain.loginAs(worker);beans.getBean(com.uten.imp.features.production.execution.ProductionExecutionSegmentService.class)
                 .start(plan,segment,new com.uten.imp.features.production.execution.SegmentTransitionRequest(version(segment),"v3-mixed-start-"+segment));
         var save=new DailyReportSaveRequest();save.setIdempotencyKey("v3-mixed-report-"+UUID.randomUUID());save.setBillDate(com.uten.imp.common.time.BusinessTime.today());

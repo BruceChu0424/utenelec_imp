@@ -84,6 +84,9 @@ class AggregateRetainedBatchCurveEndToEndTest {
         h.receive(c,c.material(),"200");refresh(c);
         startWithAvailable(child,"200");
         receive(c,child,c.child(),"40","80");
+        InventoryValueWorkTestSupport.drainProductionPhase(
+                beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class), h.db,
+                List.of(c.child(), c.common()), List.of(segment(child)), c.world().warehouseId(), c.workshop());
         amount("40",h.db.queryForObject("SELECT COALESCE(SUM(received_qty),0) FROM fn_preplan_aggregate_retained_private_sources(?)",BigDecimal.class,c.analysis()));
         amount("60",h.db.queryForObject("SELECT COALESCE(SUM(pending_qty),0) FROM fn_preplan_aggregate_retained_private_sources(?)",BigDecimal.class,c.analysis()));
 

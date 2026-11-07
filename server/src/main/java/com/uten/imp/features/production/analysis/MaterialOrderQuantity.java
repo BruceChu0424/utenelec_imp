@@ -22,6 +22,14 @@ final class MaterialOrderQuantity {
         return "AVAILABLE_ONLY".equals(method);
     }
 
+    /** Legacy quantities order only the new external shortage; their existing root-stock
+     * handover is independent. Explicit coverage totals bound both operations. */
+    static BigDecimal existingRootStockCeiling(BigDecimal requested,String mode,BigDecimal required) {
+        if(mode==null)return required;
+        if(!"COVERAGE_TOTAL".equals(mode))throw new ApiException(ErrorCode.VALIDATION_FAILED,"下单数量口径不正确");
+        return requested;
+    }
+
     static BigDecimal physicalClaimCeiling(BigDecimal requested,String mode,BigDecimal required,BigDecimal uncoveredBeforeShared) {
         if(mode==null)return requested;
         if(!"COVERAGE_TOTAL".equals(mode))throw new ApiException(ErrorCode.VALIDATION_FAILED,"下单数量口径不正确");

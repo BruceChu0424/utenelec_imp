@@ -156,7 +156,8 @@ public class MaterialAnalysisCommandService {
         for(ActionGroup group:groups) {
             SupplyQuantityInput input=beforeStockInputs.get(group.groupKey());
             for(MaterialView row:group.materials())if(row.level()==0) {
-                BigDecimal limit=input==null?row.requiredQty():input.qty();
+                BigDecimal limit=input==null?row.requiredQty():MaterialOrderQuantity.existingRootStockCeiling(
+                        input.qty(),input.quantityMode(),row.requiredQty());
                 rootStockLimits.put(row.materialLineId(),limit);
                 if(!MaterialOrderQuantity.skipClaims(input==null?null:input.orderMethod(),request.skipClaims()))
                     publicStockLimits.put(row.materialLineId(),limit.subtract(sourceStockBefore.getOrDefault(row.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO));

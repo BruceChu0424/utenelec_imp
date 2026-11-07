@@ -626,7 +626,9 @@ class FlutterWorkflowTests(unittest.TestCase):
                           "test/device_audit_receipt_storage_web_test.dart", "test/features/production/models/material_quantity_apportionment_test.dart",
                           "test/attachments/attachment_media_preview_browser_test.dart", "test/core/web_update_bridge_browser_test.dart",
                           "test/features/warehouse/subcontract_actual_receipt_browser_test.dart",
-                          "test/support/audit_font_asset_loader_test.dart"), runner.BROWSER_FILES)
+                          "test/support/audit_font_asset_loader_test.dart",
+                          "test/support/canonical_contract_text_test.dart",
+                          "test/support/master_summary_stream_fixture_test.dart"), runner.BROWSER_FILES)
         self.assertIn("flutter_test_shards.py browser --plan build/flutter-ci-plan/plan.json", browser)
         self.assertIn("name: flutter-test-results-browser", browser)
         self.assertIn("path: build/flutter-ci-reports/", browser)

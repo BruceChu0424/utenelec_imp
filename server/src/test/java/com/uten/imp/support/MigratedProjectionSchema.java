@@ -222,6 +222,7 @@ public final class MigratedProjectionSchema {
                 "fn_imported_business_document",
                 "fn_imported_document_registry_proven",
                 "fn_imported_document_registry_sync",
+                "fn_imported_document_registry_forget",
                 "fn_guard_imported_business_document_archive",
                 "fn_guard_imported_business_document_truncate");
         for (String table : guardedTables) {

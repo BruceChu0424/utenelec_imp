@@ -1,12 +1,17 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.history.ImportedBusinessDocumentScope;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Field;
+import java.util.Locale;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real schema and source-set equivalence, sharing the streaming HTTP test's migrated database. */
 class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSupport {
     @MockitoSpyBean GoodsRepository goodsRepository;
+    @Autowired DocNumberService numbers;
 
     @Test
     @Transactional
@@ -23,22 +29,26 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
         // The migrated database owner is the same maintenance identity accepted
         // by the original import guard. Never spoof app.legacy_import or disable a trigger.
         assertThat(jdbc.queryForObject("SELECT fn_imported_business_document_maintenance_allowed()",Boolean.class)).isTrue();
-        String tag="ORIGIN-"+UUID.randomUUID();
+        String tag=("ORIGIN-"+UUID.randomUUID()).toUpperCase(Locale.ROOT);
         UUID unit=UUID.randomUUID(),goods=UUID.randomUUID();
-        jdbc.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,'使用')",unit,tag,tag);
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,'使用')",unit,tag+"-UNIT",tag);
         long sequence=jdbc.queryForObject("SELECT COALESCE(max(code_sequence),0)+1 FROM goods",Long.class);
         jdbc.update("INSERT INTO goods(id,code,name,status,unit_id,code_sequence,auto_created) VALUES(?,?,?,'使用',?,?,false)",goods,tag,tag,unit,sequence);
         UUID nativeHeader=UUID.randomUUID(),zeroHeader=UUID.randomUUID(),minusHeader=UUID.randomUUID();
-        for(UUID id:List.of(nativeHeader,zeroHeader,minusHeader)) {
-            Integer legacy=id.equals(nativeHeader)?null:id.equals(zeroHeader)?0:-1;
-            jdbc.update("INSERT INTO purchase_requests(id,legacy_id,bill_no,bill_date) VALUES(?,?,?,DATE '2026-11-06')",id,legacy,tag+id);
-        }
         UUID nativeItem=UUID.randomUUID(),zeroInherited=UUID.randomUUID(),minusInherited=UUID.randomUUID();
         var headers=List.of(nativeHeader,zeroHeader,minusHeader);
         var items=List.of(nativeItem,zeroInherited,minusInherited);
+        var billDate=BusinessTime.today();
         for(int index=0;index<items.size();index++) {
-            jdbc.update("INSERT INTO purchase_request_items(id,request_id,bill_no,bill_date,goods_id,unit_id,qty) VALUES(?,?,?,DATE '2026-11-06',?,?,1)",
-                    items.get(index),headers.get(index),tag+index,goods,unit);
+            Integer legacy=switch(index){case 1->0;case 2->-1;default->null;};
+            String billNo=numbers.nextNumber(DocNumberPrefix.PURCHASE_REQUEST);
+            jdbc.update("INSERT INTO purchase_requests(id,legacy_id,bill_no,bill_date) VALUES(?,?,?,?)",
+                    headers.get(index),legacy,billNo,billDate);
+            jdbc.update("""
+                    INSERT INTO purchase_request_items(id,request_id,bill_no,bill_date,line_no,goods_id,unit_id,qty,
+                        goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
+                    VALUES(?,?,?,?,1,?,?,1,?,?,'MASTER_AT_SAVE')
+                    """,items.get(index),headers.get(index),billNo,billDate,goods,unit,tag,tag);
         }
         assertThat(jdbc.queryForList("SELECT id FROM purchase_requests WHERE id IN (?,?,?)",UUID.class,nativeHeader,zeroHeader,minusHeader)).hasSize(3);
         assertThat(jdbc.queryForList("SELECT id FROM purchase_request_items WHERE id IN (?,?,?) AND legacy_id IS NULL",UUID.class,nativeItem,zeroInherited,minusInherited)).hasSize(3);

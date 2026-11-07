@@ -16,6 +16,8 @@ import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
 import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseDetail;
+import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseRow;
+import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.Counts;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.ArrivalDecisionRequest;
@@ -29,6 +31,7 @@ import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.Co
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService;
 import com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
+import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,6 +42,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -48,6 +52,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -308,9 +313,12 @@ class SubcontractComponentReturnLegEndToEndTest {
         assertEquals("BELOW_FLOOR", refreshed.get("severity"));
         qty("950", (BigDecimal) refreshed.get("delivered_qty"), "累计回厂");
         qty("50",(BigDecimal)refreshed.get("shortfall_qty"),"真实短交未被预算抹掉");
+        assertEquals(w.employeeId(), refreshed.get("owner_employee_id"));
         assertEquals(overdue,shortDeliveries.stockInHoldReason(second.receiptId())!=null);
         assertEquals(overdue,orders.detail(ordered.orderId()).getShortDeliveryHold()!=null);
-        assertEquals(overdue?1:0, shortDeliveries.list("PENDING", null, null, ordered.orderId(), null, null, 1, 20).getTotal());
+        assertOrderTasks("PENDING", ordered.orderId(), overdue ? List.of(caseId) : List.of());
+        assertOrderTasks("WAITING", ordered.orderId(), overdue ? List.of() : List.of(caseId));
+        assertEquals(new Counts(overdue ? 1 : 0, 0, overdue ? 0 : 1), owningBadgeCounts());
         assertEquals(0, shortDeliveries.list("TOLERANT", null, null, ordered.orderId(), null, null, 1, 20).getTotal());
         assertEquals(overdue,shortDeliveries.detail(caseId).row().overdue());
         drainOutbox("SUBCONTRACT_SHORT_DELIVERY_%");
@@ -369,8 +377,9 @@ class SubcontractComponentReturnLegEndToEndTest {
                 """, ordered.orderId()), "保留首次订货批准");
         assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_item_id=?",ordered.itemId()));
         assertNull(settled.get("qty_change_log_id"));
-        assertEquals(0, shortDeliveries.counts().pending() + shortDeliveries.counts().waiting(),
-                "结完之后待判定/分批等待两段都不再挂这张单");
+        assertOrderTasks("PENDING", ordered.orderId(), List.of());
+        assertOrderTasks("WAITING", ordered.orderId(), List.of());
+        assertEquals(new Counts(0, 0, 0), owningBadgeCounts(), "结案后该负责人的徽章消失");
         assertEquals(0, count("""
                 SELECT COUNT(*) FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? AND status IN ('PENDING_OWNER','WAITING_MORE')
@@ -802,6 +811,29 @@ class SubcontractComponentReturnLegEndToEndTest {
                 SELECT * FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? ORDER BY detected_at DESC LIMIT 1
                 """, itemId);
+    }
+
+    private void assertOrderTasks(String segment, UUID orderId, List<UUID> caseIds) {
+        var page = shortDeliveries.list(segment, null, null, orderId, null, null, 1, 20);
+        assertEquals(caseIds.size(), page.getTotal());
+        assertEquals(caseIds, page.getItems().stream().map(CaseRow::id).toList());
+    }
+
+    private Counts owningBadgeCounts() {
+        var context = SecurityContextHolder.getContext();
+        var original = context.getAuthentication();
+        var administrator = (AuthUser) original.getPrincipal();
+        // Shared fixtures can leave valid open work for other owners. Read the
+        // actual badge with this employee's decision permissions and own scope.
+        var owner = new AuthUser(administrator.getId(), administrator.getEmployeeId(), administrator.getLoginAccount(),
+                Set.of(SubcontractShortDeliveryService.VIEW_AUTHORITY, SubcontractShortDeliveryService.DECIDE_AUTHORITY),
+                administrator.isMustChangePassword(), administrator.isAccountNonLocked(), false);
+        context.setAuthentication(new UsernamePasswordAuthenticationToken(owner, null, owner.getAuthorities()));
+        try {
+            return shortDeliveries.counts();
+        } finally {
+            context.setAuthentication(original);
+        }
     }
 
     private CaseDetail acceptShortDelivery(Map<String,Object> currentCase,String note) {

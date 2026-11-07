@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.mould;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
@@ -59,7 +58,6 @@ public class MouldController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('mould:view')")
@@ -104,7 +102,7 @@ public class MouldController {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new MouldQueryFilter(categoryId, keyword,
                 nullFields, code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)),
-                exportLimits.exportMaxRows(),request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order")), body.columnProjection(), "master_mould");
+                request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order")), body.columnProjection(), "master_mould");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

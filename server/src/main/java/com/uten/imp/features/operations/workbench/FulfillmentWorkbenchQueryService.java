@@ -559,8 +559,7 @@ public class FulfillmentWorkbenchQueryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "系统导出行数上限无效，请检查系统设置");
         }
         boolean subcontract = "SUBCONTRACT".equals(department);
-        return com.uten.imp.common.report.ReportQueryKit.paginateAll(maxRows,
-                (page,size)->queryRows(department,status,keyword,exception,dateFrom,dateTo,page,size,table,null,true),
+        return com.uten.imp.common.report.ReportQueryKit.paginateAll((page,size)->queryRows(department,status,keyword,exception,dateFrom,dateTo,page,size,table,null,true),
                 FulfillmentWorkbenchPage::total,ignored->subcontract ? subcontractExportColumns() : purchaseExportColumns(),
                 page->page.items().stream().map(row -> subcontract ? subcontractExportRow(row) : purchaseExportRow(row)).toList());
     }

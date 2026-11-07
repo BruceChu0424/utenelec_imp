@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.goods;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -65,7 +64,6 @@ public class GoodsController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('goods:view')")
@@ -250,8 +248,7 @@ public class GoodsController {
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), sort, order,
-                exportLimits.exportMaxRows()),
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)).withReferences(colorRef, unitRef), sort, order),
                 GoodsExportProjection.forImportTemplate(body.columnProjection()), "master_goods");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();

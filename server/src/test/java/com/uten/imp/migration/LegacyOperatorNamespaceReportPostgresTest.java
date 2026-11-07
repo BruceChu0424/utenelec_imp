@@ -142,8 +142,8 @@ class LegacyOperatorNamespaceReportPostgresTest {
                 mock(FinanceStatementService.class), mock(FinanceCostService.class),
                 mock(GlReportService.class), mock(FixedAssetService.class),
                 new com.uten.imp.features.finance.report.PartyMonthlySummaryService(em));
-        var purchase = new PurchaseReportService(em, mock(SystemSettingsService.class));
-        var production = new ProductionReportService(em, mock(SystemSettingsService.class));
+        var purchase = new PurchaseReportService(em);
+        var production = new ProductionReportService(em);
         switch (report) {
             case "financePayment" -> finance.paymentSummary(null,null,null,null,null,null,Map.of(),1,50,null,null);
             case "financeExpense" -> finance.expenseSummary(null,null,null,null,null,null,Map.of(),1,50,null,null);

@@ -4,8 +4,6 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.features.stock.dto.InstantInventoryRow;
@@ -35,7 +33,7 @@ import static org.mockito.Mockito.when;
 class StockReportCostVisibilityTest {
 
     private final EntityManager entityManager = mock(EntityManager.class);
-    private final SystemSettingsService settings = mock(SystemSettingsService.class);
+
     private final StockQueryService stockQueryService = mock(StockQueryService.class);
     private final StockCostMasker costMasker = mock(StockCostMasker.class);
     private StockReportService service;
@@ -43,8 +41,8 @@ class StockReportCostVisibilityTest {
     @BeforeEach
     void setUp() {
         service = new StockReportService(
-                entityManager, settings, stockQueryService, costMasker);
-        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100000);
+                entityManager, stockQueryService, costMasker);
+
         when(stockQueryService.instantInventoryRows(
                 any(StockQueryService.InstantInventoryFilter.class), anyInt(), anyInt(), isNull(), isNull()))
                 .thenReturn(new PageResponse<>(List.of(

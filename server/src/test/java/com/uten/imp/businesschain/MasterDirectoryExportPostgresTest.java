@@ -56,7 +56,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         master=new MasterReportExportSource(context.getBean(GoodsService.class),context.getBean(ClientService.class),
                 context.getBean(SupplierService.class),context.getBean(AccountService.class),context.getBean(CurrencyService.class),
                 context.getBean(ColorService.class),context.getBean(UnitService.class),context.getBean(MouldService.class),
-                context.getBean(WarehouseService.class),context.getBean(ReferenceMethodService.class),objectMapper,validator,()->100_000);
+                context.getBean(WarehouseService.class),context.getBean(ReferenceMethodService.class),objectMapper,validator);
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
     void exporter(String report,String... extra){

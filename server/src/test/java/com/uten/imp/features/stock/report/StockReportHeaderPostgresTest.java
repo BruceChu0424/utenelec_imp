@@ -1,7 +1,5 @@
 package com.uten.imp.features.stock.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.support.MigratedProjectionSchema;
@@ -41,9 +39,8 @@ class StockReportHeaderPostgresTest {
         db.execute("TRUNCATE stock_document_items,stock_documents,warehouses,clients,departments,employees,goods,colors,units");
         em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
-        var settings=mock(SystemSettingsService.class);
-        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);
-        service=new StockReportService(em,settings,mock(StockQueryService.class),mock(StockCostMasker.class));
+
+        service=new StockReportService(em,mock(StockQueryService.class),mock(StockCostMasker.class));
     }
 
     @Test void everyDeclaredPhysicalHeaderExecutesAcrossAllFourteenReportsAndRejectsUndeclaredCostColumns() {

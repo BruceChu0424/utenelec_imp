@@ -2,7 +2,6 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.*;
@@ -294,13 +293,12 @@ class GoodsExportImportTemplateTest {
 
     private static byte[] downloadFromSystemExporter() throws Exception {
         GoodsService goods = mock(GoodsService.class);
-        when(goods.export(any(), nullable(String.class), nullable(String.class), eq(10000)))
+        when(goods.export(any(), nullable(String.class), nullable(String.class)))
                 .thenReturn(new ExportPayload(COLUMNS, ROWS, 1));
-        ExportLimitPort limits = mock(ExportLimitPort.class);
-        when(limits.exportMaxRows()).thenReturn(10000);
+
         var controller = new GoodsController(goods, writer(), new WorkbookDownloadService(),
                 mock(AuditService.class), mock(SecurityContextCurrentUser.class),
-                mock(AuditDetailViewRecorder.class), limits);
+                mock(AuditDetailViewRecorder.class));
         return MockMvcBuilders.standaloneSetup(controller).build().perform(
                 post("/api/master/goods/export").contentType("application/json").content("""
                 {"columnProjection":{"scope":"master_goods","columns":[

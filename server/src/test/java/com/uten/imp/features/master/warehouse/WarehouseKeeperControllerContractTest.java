@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.warehouse;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -72,7 +71,7 @@ class WarehouseKeeperControllerContractTest {
         var controller = new WarehouseController(
                 mock(WarehouseService.class),mock(WarehouseKeeperService.class),mock(AuditDetailViewRecorder.class),
                 mock(XlsxExportService.class),mock(WorkbookDownloadService.class),mock(AuditService.class),
-                mock(SecurityContextCurrentUser.class),mock(ExportLimitPort.class),scopes);
+                mock(SecurityContextCurrentUser.class),scopes);
 
         assertThat(controller.myScope()).isSameAs(physical);
         assertThat(controller.myScope(false)).isSameAs(physical);

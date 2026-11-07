@@ -226,7 +226,7 @@ class GoodsClientGoodsNameServiceTest {
         doReturn(new PageResponse<>(List.of(item), 1, 100, 1, 1))
                 .when(exporting).list(isNull(), anyInt(), anyInt(), anyString(), anyString());
 
-        var result = exporting.export(null, "code", "asc", 100);
+        var result = exporting.export(null, "code", "asc");
         // 文件列序：系统标识、组装信息ID、编号、货品名称、类别，随后客户名称组。
         // 客户型号仍紧跟自有型号之后。
         assertThat(result.columns()).extracting(ExportColumn::key)
@@ -252,7 +252,7 @@ class GoodsClientGoodsNameServiceTest {
         when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of());
         doReturn(new PageResponse<>(List.of(item), 1, 100, 1, 1))
                 .when(exporting).list(isNull(), anyInt(), anyInt(), anyString(), anyString());
-        var payload = exporting.export(null, "code", "asc", 100);
+        var payload = exporting.export(null, "code", "asc");
         assertThat(payload.columns()).filteredOn(column -> column.key().equals("price"))
                 .singleElement().satisfies(column -> assertThat(column.type()).isEqualTo(ExportColumn.EXACT_NUMBER));
         assertThat(payload.rows().getFirst()).containsEntry("price", new java.math.BigDecimal("99999999999999.1234567890"));

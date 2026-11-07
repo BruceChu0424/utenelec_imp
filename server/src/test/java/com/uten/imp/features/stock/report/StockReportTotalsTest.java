@@ -1,6 +1,5 @@
 package com.uten.imp.features.stock.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
 import jakarta.persistence.EntityManager;
@@ -32,7 +31,7 @@ import static org.mockito.Mockito.when;
 class StockReportTotalsTest {
 
     private final EntityManager em = mock(EntityManager.class);
-    private final SystemSettingsService settings = mock(SystemSettingsService.class);
+
     private final StockQueryService stockQueryService = mock(StockQueryService.class);
     private final StockCostMasker costMasker = mock(StockCostMasker.class);
 
@@ -114,7 +113,7 @@ class StockReportTotalsTest {
     }
 
     private StockReportService service() {
-        return new StockReportService(em, settings, stockQueryService, costMasker);
+        return new StockReportService(em, stockQueryService, costMasker);
     }
 
     private Query emptyQuery() {

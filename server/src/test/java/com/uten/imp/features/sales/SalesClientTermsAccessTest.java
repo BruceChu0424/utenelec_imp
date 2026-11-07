@@ -2,7 +2,6 @@ package com.uten.imp.features.sales;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.features.master.reference.BusinessMasterReferenceAccess;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.XlsxExportService;
@@ -341,7 +340,7 @@ class SalesClientTermsAccessTest {
         ReferenceMethodController referenceMethodController(ControllerDependencies dependencies) {
             return new ReferenceMethodController(dependencies.referenceService,
                     mock(XlsxExportService.class), mock(WorkbookDownloadService.class),
-                    mock(AuditService.class), mock(SecurityContextCurrentUser.class), mock(ExportLimitPort.class));
+                    mock(AuditService.class), mock(SecurityContextCurrentUser.class));
         }
 
         @Bean
@@ -349,7 +348,7 @@ class SalesClientTermsAccessTest {
             return new CurrencyController(dependencies.currencyService,
                     mock(XlsxExportService.class), mock(WorkbookDownloadService.class),
                     mock(AuditService.class), mock(SecurityContextCurrentUser.class),
-                    mock(AuditDetailViewRecorder.class), mock(ExportLimitPort.class));
+                    mock(AuditDetailViewRecorder.class));
         }
     }
 }

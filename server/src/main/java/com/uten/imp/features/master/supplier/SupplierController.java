@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.supplier;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -60,7 +59,6 @@ public class SupplierController {
     private final AuditService audit;
     private final AuditDetailViewRecorder viewAudit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('supplier:view')")
@@ -207,8 +205,7 @@ public class SupplierController {
                 body.sensitive().mobile(), body.sensitive().phone(), body.sensitive().phone2(),
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId,
                 website, shipVia, shipAddress).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body.sensitive().columnSearch())), sort, order,
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_supplier");
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body.sensitive().columnSearch())), sort, order), body.columnProjection(), "master_supplier");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

@@ -107,8 +107,11 @@ class StreamingPdfDocumentTest {
         try(var document=Loader.loadPDF(complete.toFile())) {
             assertTrue(document.getNumberOfPages()>250);
             var text=new PDFTextStripper().getText(document);
-            var identities=java.util.regex.Pattern.compile("产品-([0-9]{4})").matcher(text).results().map(match->Integer.parseInt(match.group(1))).toList();
-            assertEquals(IntStream.range(0,8000).boxed().toList(),identities);
+            var identities = java.util.regex.Pattern.compile("产品-([0-9]{4})")
+                    .matcher(text).results().map(match -> match.group(1)).toList();
+            var expected = IntStream.range(0, 8000)
+                    .mapToObj(index -> String.format(java.util.Locale.ROOT, "%04d", index)).toList();
+            assertEquals(expected, identities);
         }
         Path protectedCopy=directory.resolve("complete-8000-protected.pdf");
         new TabularPdfExportService().protect(complete,protectedCopy,"1");

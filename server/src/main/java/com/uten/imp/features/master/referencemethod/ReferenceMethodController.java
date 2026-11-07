@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.referencemethod;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
@@ -42,7 +41,6 @@ public class ReferenceMethodController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
     @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS)
@@ -113,8 +111,7 @@ public class ReferenceMethodController {
             @RequestParam(required = false) Set<String> nullFields,
             @Valid @RequestBody ExportPasswordRequest body) {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.exportSettlementAdmin(
-                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields, keyword),
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_settlement_method");
+                new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields, keyword)), body.columnProjection(), "master_settlement_method");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

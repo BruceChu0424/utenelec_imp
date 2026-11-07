@@ -221,7 +221,7 @@ public class AuditQueryService {
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
-    public ExportPayload export(AuditSearchCriteria criteria, int maxRows) {
+    public ExportPayload export(AuditSearchCriteria criteria) {
         validateInvestigationScope(criteria);
         // An explicit old online snapshot remains a filter. RR provides the new
         // export view; no inferred maximum ID is used as a completeness watermark.

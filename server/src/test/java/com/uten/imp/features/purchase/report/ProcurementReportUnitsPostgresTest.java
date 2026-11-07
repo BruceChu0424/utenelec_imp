@@ -1,6 +1,5 @@
 package com.uten.imp.features.purchase.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.subcontract.report.SubcontractReportService;
 import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.support.MigratedProjectionSchema;
@@ -52,9 +51,8 @@ class ProcurementReportUnitsPostgresTest {
                 "suppliers","warehouses","employees","departments","legacy_departments","goods","colors","units","currencies","material_categories","stock_balances");
         EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         visibility=mock(CommercialPriceVisibility.class);when(visibility.canViewPurchaseReport()).thenReturn(true);when(visibility.canViewSubcontractReport()).thenReturn(true);
-        var settings=mock(SystemSettingsService.class);
-        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);
-        purchase=new PurchaseReportService(em,settings);subcontract=new SubcontractReportService(em,settings);
+
+        purchase=new PurchaseReportService(em);subcontract=new SubcontractReportService(em);
         ReflectionTestUtils.setField(purchase,"commercialPriceVisibility",visibility);ReflectionTestUtils.setField(subcontract,"commercialPriceVisibility",visibility);
         db.update("INSERT INTO units(id,name) VALUES (?,'个')",UNIT);db.update("INSERT INTO currencies(id,code,name) VALUES (?,'USD','USD'),(?,'CNY','人民币')",USD,CNY);
         db.update("INSERT INTO goods(id,code,name,unit_id) VALUES (?,'REPORT-GOODS','测试货品',?)",GOODS,UNIT);

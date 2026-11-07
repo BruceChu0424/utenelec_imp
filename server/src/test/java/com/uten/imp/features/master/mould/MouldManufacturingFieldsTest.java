@@ -76,7 +76,7 @@ class MouldManufacturingFieldsTest {
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getQty()).isEqualTo("1+1");
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getTqty()).isEqualByComparingTo("2");
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getCategoryName()).isEqualTo("Q7系列");
-        var export = service.export(filter, 100);
+        var export = service.export(filter);
         assertThat(export.columns()).anyMatch(column -> "manufacturer".equals(column.key()));
         assertThat(export.columns()).anyMatch(column -> "qty".equals(column.key()) && "模数".equals(column.label()));
         assertThat(export.columns()).anyMatch(column -> "tqty".equals(column.key()) && "套数".equals(column.label()));

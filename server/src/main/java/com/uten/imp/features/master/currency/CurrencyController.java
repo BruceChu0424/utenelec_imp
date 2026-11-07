@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.currency;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -62,7 +61,6 @@ public class CurrencyController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('currency:view')")
@@ -123,8 +121,7 @@ public class CurrencyController {
             @Valid @RequestBody ExportPasswordRequest body) {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
                 new CurrencyQueryFilter(keyword, nullFields, code, name, status)
-                        .withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order,
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_currency");
+                        .withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order), body.columnProjection(), "master_currency");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

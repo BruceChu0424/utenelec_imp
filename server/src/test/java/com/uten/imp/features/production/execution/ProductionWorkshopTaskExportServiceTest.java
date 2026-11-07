@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.execution;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.application.port.WorkshopTaskExportContract;
 import com.uten.imp.common.export.*;
 import com.uten.imp.common.web.*;
@@ -19,8 +18,8 @@ import static org.mockito.Mockito.*;
 
 class ProductionWorkshopTaskExportServiceTest {
     final ProductionExecutionWorkbenchService reader = mock(ProductionExecutionWorkbenchService.class);
-    final ExportLimitPort limits = () -> 2000;
-    final ProductionWorkshopTaskExportService exports = new ProductionWorkshopTaskExportService(reader, limits);
+
+    final ProductionWorkshopTaskExportService exports = new ProductionWorkshopTaskExportService(reader);
     final UUID workshop = UUID.randomUUID();
     @BeforeEach void login() {
         var actor = user(Set.of("production_execution:view", "production_report:export"));

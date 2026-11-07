@@ -124,15 +124,13 @@ public class CurrencyService {
      * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（exchangeRate）。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(CurrencyQueryFilter f, String sort, String order, int maxRows) {
+    public ExportPayload export(CurrencyQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "币种名称", ExportColumn.TEXT),
                 new ExportColumn("exchangeRate", "参考汇率", ExportColumn.NUMBER),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size, sort, order), c -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size, sort, order), c -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", c.getId());
                     row.put("code", c.getCode());

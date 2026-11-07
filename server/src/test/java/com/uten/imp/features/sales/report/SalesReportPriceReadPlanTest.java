@@ -1,6 +1,5 @@
 package com.uten.imp.features.sales.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
 import jakarta.persistence.EntityManager;
@@ -39,7 +38,7 @@ class SalesReportPriceReadPlanTest {
         var access = mock(SalesDocumentAccessPolicy.class);
         when(access.nativeReadScope(anyString(), anyString())).thenReturn(new SalesDocumentAccessPolicy.NativeReadScope("1=1", null, Set.of()));
         var prices = mock(SalesPriceMasker.class);when(prices.canView()).thenReturn(false);
-        return new Fixture(new SalesReportService(em, mock(SystemSettingsService.class), prices, access), sql);
+        return new Fixture(new SalesReportService(em, prices, access), sql);
     }
 
     @Test void hiddenOrderPricesCannotDriveTheSortOrAnyMetadataPredicate() {

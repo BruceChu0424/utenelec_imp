@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,7 @@ import static org.mockito.Mockito.when;
 class ProductionReportTotalsTest {
 
     private final EntityManager em = mock(EntityManager.class);
-    private final SystemSettingsService settings = mock(SystemSettingsService.class);
+
 
     @Test
     void planDetailTotalsPlannedAndFinishedQuantitiesGroupedByHiddenUnitColumn() {
@@ -70,7 +69,7 @@ class ProductionReportTotalsTest {
     }
 
     private ProductionReportService service() {
-        return new ProductionReportService(em, settings);
+        return new ProductionReportService(em);
     }
 
     private Query emptyQuery() {

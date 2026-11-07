@@ -2,8 +2,6 @@ package com.uten.imp.features.stock.report;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.features.stock.dto.InstantInventoryRow;
@@ -33,10 +31,10 @@ class StockReportWarehouseInventoryScopeTest {
     @CsvSource(value = {"true,true", "TRUE,true", "false,false", "NULL,false"}, nullValues = "NULL")
     void exportPreservesWarehouseScopeAndOwningWarehouseColumnAcrossPages(String related, boolean expectedRelated) {
         UUID warehouse = UUID.randomUUID();
-        var settings = mock(SystemSettingsService.class);
+
         var query = mock(StockQueryService.class);
-        var service = new StockReportService(mock(EntityManager.class), settings, query, mock(StockCostMasker.class));
-        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);
+        var service = new StockReportService(mock(EntityManager.class), query, mock(StockCostMasker.class));
+
         var row = mock(InstantInventoryRow.class);
         UUID goods = UUID.randomUUID();
         UUID color = UUID.randomUUID();

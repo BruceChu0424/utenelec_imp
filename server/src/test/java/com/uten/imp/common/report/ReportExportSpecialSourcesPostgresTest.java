@@ -133,7 +133,7 @@ class ReportExportSpecialSourcesPostgresTest {
                     new com.uten.imp.features.finance.report.PartyMonthlySummaryService(session));
             var costs=mock(StockCostMasker.class);when(costs.canView()).thenReturn(true);
             var query=new StockQueryService(mock(com.uten.imp.features.stock.StockBalanceRepository.class),session,costs);
-            stock=new StockReportService(session,settings,query,costs);
+            stock=new StockReportService(session,query,costs);
             TransactionSynchronizationManager.setActualTransactionActive(true);
             TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
             TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ);

@@ -150,7 +150,7 @@ class MasterNumericHeadersPostgresTest {
         var zeroOnly=service.list(filter.withColumnSearch(Map.of("lossRate","0")),1,20,null,null);
         assertThat(zeroOnly.getItems()).extracting(com.uten.imp.features.master.supplier.dto.SupplierListItem::getId).containsExactly(zero);
         assertThat(service.list(filter.withColumnSearch(Map.of()),1,20,"lossRate","asc").getItems().getLast().getId()).isEqualTo(unknown);
-        assertThat(service.export(filter,"lossRate","desc",50).rows()).hasSize(2);
+        assertThat(service.export(filter,"lossRate","desc").rows()).hasSize(2);
     }
 
     @Test void mouldAndClientNumericHeadersUseTheirOwnColumnsAndDoNotTreatTheMouldCavityFormulaAsANumber() {

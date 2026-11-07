@@ -710,7 +710,7 @@ public class GoodsService {
      * 左侧树表达，平铺导出需要它携带树上下文，且货品导入必填类别列（导出改完可直接导回）。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(GoodsQueryFilter f, String sort, String order, int maxRows) {
+    public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
         Map<UUID, String> categoryPath = categoryPathMap();
         boolean showPrice = canViewPrice();
         boolean showDiscount = canViewDiscount();
@@ -750,9 +750,7 @@ public class GoodsService {
         // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
         cols.add(new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER));
         cols.add(new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size, sort, order), g -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size, sort, order), g -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
                     row.put("clientGoodsName", g.getClientGoodsName());

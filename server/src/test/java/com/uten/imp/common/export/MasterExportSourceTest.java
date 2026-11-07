@@ -46,7 +46,7 @@ class MasterExportSourceTest {
     }
 
     @Test void smallCompatibilityKeepsEveryExactValueAndRealCount() {
-        var result = MasterExportSource.exportEntities(em,columns,1000,(page,size)->legacyPage(page,size,201),MasterExportSourceTest::row);
+        var result = MasterExportSource.exportEntities(em,columns,(page,size)->legacyPage(page,size,201),MasterExportSourceTest::row);
         assertThat(result.total()).isEqualTo(201); assertThat(result.rows()).hasSize(201);
         assertThat(result.rows().getLast()).containsEntry("_platformRecordId",200).containsEntry("unknown",null)
                 .containsEntry("value",new BigDecimal("12345678901234567890.000100")).containsEntry("original","=1+1");
@@ -55,7 +55,7 @@ class MasterExportSourceTest {
     @Test void largeCompatibilityIncludesEveryRowAfterFiveHundredEvenWithAnOldConfiguredLimit() {
         AtomicInteger mapped=new AtomicInteger();
         try(var operation=new LegacyExportBudget(1).open()) {
-            var result=MasterExportSource.exportEntities(em,columns,500,(page,size)->legacyPage(page,size,1201),item->{mapped.incrementAndGet();return row(item);});
+            var result=MasterExportSource.exportEntities(em,columns,(page,size)->legacyPage(page,size,1201),item->{mapped.incrementAndGet();return row(item);});
             assertThat(result.total()).isEqualTo(1201);
             assertThat(result.rows()).extracting(values->values.get("_platformRecordId"))
                     .containsExactlyElementsOf(IntStream.range(0,1201).boxed().toList());
@@ -68,7 +68,7 @@ class MasterExportSourceTest {
     @Test void exportCannotDiscardPendingWritesFromAnOuterWriteTransaction() {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.setCurrentTransactionReadOnly(false);
-        assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+        assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,
                 (page,size)->legacyPage(page,size,1),MasterExportSourceTest::row))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("write transaction");
         verifyNoInteractions(em);
@@ -79,7 +79,7 @@ class MasterExportSourceTest {
             assertThat(page.rows()).hasSize(100); emitted.addAndGet(page.rows().size());
             assertThat(page.total()).isEqualTo(emitted.get());
         })) {
-            var result=MasterExportSource.exportEntities(em,columns,100_000,fixture::page,MasterExportSourceTest::row);
+            var result=MasterExportSource.exportEntities(em,columns,fixture::page,MasterExportSourceTest::row);
             assertThat(result.rows()).isEmpty(); assertThat(result.total()).isEqualTo(100_000);
         }
         assertThat(emitted).hasValue(100_000); assertThat(fixture.closed).isTrue();
@@ -90,7 +90,7 @@ class MasterExportSourceTest {
     @Test void sinkFailureClosesCursorAndRestoresOrdinaryListMode() {
         snapshot(); var fixture=cursor(500); AtomicInteger pages=new AtomicInteger();
         try(var ignored=ExportPageSink.open(page->{if(pages.incrementAndGet()==2)throw new IllegalStateException("disk fixture");})) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,fixture::page,MasterExportSourceTest::row))
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,fixture::page,MasterExportSourceTest::row))
                     .isInstanceOf(IllegalStateException.class).hasMessage("disk fixture");
         }
         assertThat(fixture.closed).isTrue();
@@ -102,7 +102,7 @@ class MasterExportSourceTest {
     @Test void aMutableFilterCannotChangeBetweenBatchesWhileKeepingTheSameCount() {
         snapshot(); var fixture=cursor(250); Map<String,Object> filter=new LinkedHashMap<>(Map.of("code","original"));
         try(var ignored=ExportPageSink.open(page->filter.put("code","changed"))) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,
                     (page,size)->fixture.page(page,size,filter),MasterExportSourceTest::row))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("conditions changed");
         }
@@ -110,12 +110,12 @@ class MasterExportSourceTest {
     }
     @Test void cancellationAndMissingSnapshotNeverLeaveAnActiveSource() {
         try(var ignored=ExportPageSink.open(page->{})) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,(page,size)->legacyPage(page,size,1),MasterExportSourceTest::row))
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,(page,size)->legacyPage(page,size,1),MasterExportSourceTest::row))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("repeatable-read");
         }
         snapshot(); var fixture=cursor(500);
         try(var ignored=ExportPageSink.open(page->Thread.currentThread().interrupt())) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,fixture::page,MasterExportSourceTest::row))
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,fixture::page,MasterExportSourceTest::row))
                     .isInstanceOf(CancellationException.class);
         }
         assertThat(fixture.closed).isTrue();
@@ -133,7 +133,7 @@ class MasterExportSourceTest {
             emitted.addAndGet(page.rows().size());
             requested.clear();
         })) {
-            var result=MasterExportSource.exportEntities(em,columns,1000,
+            var result=MasterExportSource.exportEntities(em,columns,
                     (page,size)->fixture.page(page,size,new ProjectionFilter("original",
                             new TableColumnProjection(projection.tableKey(),projection.scope(),projection.columns()))),
                     MasterExportSourceTest::row);
@@ -150,7 +150,7 @@ class MasterExportSourceTest {
                 List.of(new TableColumnProjection.Column("value",null,null,null,null))));
         try(var ignored=ExportPageSink.open(page->projection.set(new TableColumnProjection("report","view_sales",
                 List.of(new TableColumnProjection.Column("other",null,null,null,null)))))) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,
                     (page,size)->fixture.page(page,size,new ProjectionFilter("original",projection.get())),
                     MasterExportSourceTest::row))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("conditions changed");
@@ -162,7 +162,7 @@ class MasterExportSourceTest {
     @Test void explicitProjectionSupportDoesNotAdmitUnknownMutableObjects() {
         snapshot(); var fixture=cursor(1);
         try(var ignored=ExportPageSink.open(page->{})) {
-            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,
                     (page,size)->fixture.page(page,size,new Object()),MasterExportSourceTest::row))
                     .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unsupported master filter identity");
         }

@@ -66,7 +66,7 @@ class ProcurementReportColumnSearchTest {
             statements.add(call.getArgument(0));
             return query;
         });
-        var service = new SubcontractReportService(em, null);
+        var service = new SubcontractReportService(em);
         var visibility = mock(CommercialPriceVisibility.class);
         ReflectionTestUtils.setField(service, "commercialPriceVisibility", visibility);
         assertThatThrownBy(()->service.execute(List.of(ReportColumn.number("qty","数量"), ReportColumn.money("amount","金额")),

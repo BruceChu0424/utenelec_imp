@@ -80,7 +80,7 @@ class AccountCurrencyHeaderPostgresTest {
         assertThat(two.getItems().getFirst().getBalanceCurrentText()).isEqualTo("90071992547409.1234");
         assertThat(service.list(filter.withColumnSearch(Map.of("balanceCurrent","90071992547409.1234")),1,20,null,null).getItems())
                 .extracting(com.uten.imp.features.master.account.dto.AccountListItem::getId).containsExactly(first);
-        assertThat(service.export(filter,"balanceCurrent","desc",20).rows()).hasSize(2);
+        assertThat(service.export(filter,"balanceCurrent","desc").rows()).hasSize(2);
     }
     @Test void currencyHeadersKeepSixDecimalRatesAndUseTheSameExportScopeWithoutSummingRates() {
         UUID first=currency("C-01","123456789012.123456",false),second=currency("C-02","123456789012.123457",false);
@@ -94,7 +94,7 @@ class AccountCurrencyHeaderPostgresTest {
         assertThat(page.getItems().getFirst().getId()).isEqualTo(first);
         assertThat(page.getItems().getFirst().getExchangeRateText()).isEqualTo("123456789012.123456");
         assertThat(service.list(filter.withColumnSearch(Map.of("exchangeRate","123456789012.123456")),1,20,null,null).getTotal()).isEqualTo(1);
-        assertThat(service.export(filter,"exchangeRate","desc",20).rows()).hasSize(2);
+        assertThat(service.export(filter,"exchangeRate","desc").rows()).hasSize(2);
     }
     @Test void accountCurrencyCandidatesAreCompleteAndKeepDeletedReferencedCurrencyNames() {
         UUID last=null;

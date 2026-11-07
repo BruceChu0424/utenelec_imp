@@ -139,7 +139,7 @@ class StockFinanceReportLineIdentityTest {
             var settings=mock(SystemSettingsService.class);when(settings.readInt(any())).thenReturn(50_000);
             finance=new FinanceReportService(em,access,settings,mock(FinanceStatementService.class),mock(FinanceCostService.class),
                     mock(GlReportService.class),mock(FixedAssetService.class),mock(PartyMonthlySummaryService.class));
-            stock=new StockReportService(em,settings,mock(StockQueryService.class),mock(StockCostMasker.class));
+            stock=new StockReportService(em,mock(StockQueryService.class),mock(StockCostMasker.class));
         }
         Rows financeRows(String report) {
             var value=switch(report) {

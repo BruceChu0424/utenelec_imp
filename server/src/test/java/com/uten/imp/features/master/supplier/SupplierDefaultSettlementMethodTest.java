@@ -72,7 +72,7 @@ class SupplierDefaultSettlementMethodTest {
         assertThat(mapper.valueToTree(rows.get(1)).path("defaultSettlementMethodName").asText(null)).isNull();
         assertThat(mapper.valueToTree(rows.get(2)).path("defaultSettlementMethodName").asText(null)).isNull();
         verify(names).setParameter("ids", Set.of(method, missing));
-        var exported = service.export(filter, null, null, 100);
+        var exported = service.export(filter, null, null);
         assertThat(exported.rows().getFirst().get("priceStyle")).isEqualTo("Local UAT Net30");
         assertThat(exported.rows().get(1).get("priceStyle")).isNull();
         assertThat(exported.rows().get(2).get("priceStyle")).isNull();

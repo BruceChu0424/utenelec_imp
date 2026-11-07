@@ -46,14 +46,14 @@ final class GoodsActualCostStreamReader {
             List<InputLine> inspected=new ArrayList<>(FETCH);
             cursor(INDEXED_INPUTS,args,maximum,resource,row->{
                 InputLine line=input(row);math.accept(line);inspected.add(line);
-                if(math.gapCount>maximum)throw tooMany(maximum);
+                if(math.gapCount>maximum)throw tooMany();
                 if(inspected.size()==FETCH){inspect(inspector,inspected);inspected.clear();}
             });
             if(!inspected.isEmpty())inspect(inspector,inspected);
             cursor(INDEXED_OUTPUTS,args,maximum,resource,row->math.accept(output(row)));
         }
         math.finish();
-        if(math.gapCount>maximum)throw tooMany(maximum);
+        if(math.gapCount>maximum)throw tooMany();
         List<Revision> selected=List.of();
         var revisionIds=math.objects().stream().map(CostObject::revisionId).filter(Objects::nonNull).distinct().toList();
         if(!revisionIds.isEmpty()) {
@@ -79,7 +79,7 @@ final class GoodsActualCostStreamReader {
         Long rows=db.execute("SELECT count(*) FROM (SELECT 1 FROM ("+sql.substring(0,order)+") projected LIMIT :preflightLimit) bounded",
                 args,statement->{statement.setQueryTimeout(60);try(var result=statement.executeQuery()){result.next();return result.getLong(1);}});
         ExportOperationCheckpoint.check();
-        if(rows!=null&&rows>maximum)throw tooMany(maximum);
+        if(rows!=null&&rows>maximum)throw tooMany();
     }
 
     private final class Read implements StreamingRead {
@@ -122,7 +122,7 @@ final class GoodsActualCostStreamReader {
             var mapper=new ColumnMapRowMapper();int count=0;
             try(var rows=statement.executeQuery()){
                 while(rows.next()){
-                    if(++count>maximum)throw tooMany(maximum);
+                    if(++count>maximum)throw tooMany();
                     consumer.accept(mapper.mapRow(rows,count-1));
                     if(count%FETCH==0)ExportOperationCheckpoint.check();
                 }
@@ -159,5 +159,5 @@ final class GoodsActualCostStreamReader {
     }
     static final String INDEXED_INPUTS=indexed(INPUTS_SQL,true),INDEXED_OUTPUTS=indexed(OUTPUTS_SQL,false);
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
-    private static ApiException tooMany(int maximum){return invalid("实际成本读取未能完整返回，请核查原始来源后重试");}
+    private static ApiException tooMany(){return invalid("实际成本读取未能完整返回，请核查原始来源后重试");}
 }

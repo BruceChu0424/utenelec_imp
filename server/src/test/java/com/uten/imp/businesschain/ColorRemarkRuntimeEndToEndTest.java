@@ -95,7 +95,7 @@ class ColorRemarkRuntimeEndToEndTest {
         var filter=new ColorQueryFilter(null,Set.of(),created.getCode(),null,null,"second note");
         assertEquals("second note",colors.list(filter,1,20).getItems().getFirst().getRemark());
         assertTrue(colors.dict().stream().anyMatch(item->item.getId().equals(id)&&"second note".equals(item.getRemark())));
-        var exported=colors.export(filter,100);
+        var exported=colors.export(filter);
         assertEquals(java.util.List.of("code","name","status","remark"),exported.columns().stream().map(column->column.key()).toList());
         assertEquals("second note",exported.rows().getFirst().get("remark"));
         assertTrue(colors.facets().getRemark().stream().anyMatch(bucket->"second note".equals(bucket.getValue())));

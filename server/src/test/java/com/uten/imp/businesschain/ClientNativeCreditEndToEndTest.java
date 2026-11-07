@@ -80,7 +80,7 @@ class ClientNativeCreditEndToEndTest {
         assertThat(json.readTree(rounded.getContentAsString()).path("items").findValuesAsText("id")).doesNotContain(world.clientId().toString());
         fixture.loginAs(world.superAdminUserId());
         var filter=json.convertValue(Map.of(),ClientQueryFilter.class).withColumnSearch(Map.of("credit",credit,"creditFloor",tiny));
-        var exported=clients.export(filter,"creditFloor","asc",20);
+        var exported=clients.export(filter,"creditFloor","asc");
         try(var book=new XSSFWorkbook(new ByteArrayInputStream(xlsx.build(exported.columns(),exported.rows())))){
             var sheet=book.getSheetAt(0);var formatter=new DataFormatter();int creditColumn=-1,floorColumn=-1;
             for(var cell:sheet.getRow(0)){if(cell.getStringCellValue().startsWith("信用额度")){creditColumn=cell.getColumnIndex();}if("铺底额".equals(cell.getStringCellValue()))floorColumn=cell.getColumnIndex();}

@@ -31,11 +31,11 @@ public final class MasterExportSource {
     }
 
     /** A worker's ExportPageSink consumes each immutable DTO batch before the next is read. */
-    public static <T> ExportPayload exportEntities(EntityManager em, List<ExportColumn> columns, int maxRows,
+    public static <T> ExportPayload exportEntities(EntityManager em, List<ExportColumn> columns,
             BiFunction<Integer, Integer, PageResponse<T>> loader, Function<T, Map<String,Object>> mapper) {
         Objects.requireNonNull(em); Objects.requireNonNull(loader); Objects.requireNonNull(mapper);
         List<ExportColumn> frozenColumns = List.copyOf(columns);
-        ReportQueryKit.requireExportRowCount(maxRows, 0);
+        ReportQueryKit.requireExportRowCount(0);
         if (TransactionSynchronizationManager.isActualTransactionActive()
                 && !TransactionSynchronizationManager.isCurrentTransactionReadOnly())
             throw new IllegalStateException("A master export cannot join a write transaction");
@@ -44,7 +44,7 @@ public final class MasterExportSource {
         BoundedMasterReadSource.Session cursor = sink != null || TransactionSynchronizationManager.isActualTransactionActive()
                 ? BoundedMasterReadSource.open(em, MasterExportSource::interrupted, total -> {
                     MasterExportSelection.requireComplete(total);
-                    ReportQueryKit.requireExportRowCount(maxRows, total);
+                    ReportQueryKit.requireExportRowCount(total);
                 }) : null;
         try {
             List<Map<String,Object>> collected = sink == null ? new ArrayList<>() : null;
@@ -59,7 +59,7 @@ public final class MasterExportSource {
                     expected = result.getTotal();
                     if (expected < 0) throw new IllegalStateException("Master export requires its initial count");
                     MasterExportSelection.requireComplete(expected);
-                    ReportQueryKit.requireExportRowCount(maxRows, expected);
+                    ReportQueryKit.requireExportRowCount(expected);
                 } else if (result.getTotal() != expected) {
                     throw new IllegalStateException("Master export source count changed");
                 }
@@ -69,7 +69,7 @@ public final class MasterExportSource {
                     rows.add(Collections.unmodifiableMap(new LinkedHashMap<>(mapper.apply(item))));
                 }
                 seen = Math.addExact(seen, rows.size());
-                ReportQueryKit.requireExportRowCount(maxRows, seen);
+                ReportQueryKit.requireExportRowCount(seen);
                 if (seen > expected || (rows.isEmpty() && seen < expected))
                     throw new IllegalStateException("Master export source is incomplete");
                 if (sink == null) collected.addAll(rows);

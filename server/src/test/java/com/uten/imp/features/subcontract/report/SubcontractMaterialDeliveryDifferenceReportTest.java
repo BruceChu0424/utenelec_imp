@@ -60,7 +60,7 @@ class SubcontractMaterialDeliveryDifferenceReportTest {
         String select;
         String from;
         WhereBuilder where;
-        CapturingService() { super(null, null); }
+        CapturingService() { super(null); }
         @Override public ReportTableResponse execute(List<ReportColumn> columns, String select, String from,
                 WhereBuilder where, String orderBy, List<FacetSpec> specs, Map<String, String> facets,
                 int page, int size, String sort, String order) {

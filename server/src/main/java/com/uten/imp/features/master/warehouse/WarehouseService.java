@@ -111,7 +111,7 @@ public class WarehouseService {
      * 仓库量级个位数，一次带回按仓库分组、「、」连接，无负责人显示「—」）。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(WarehouseQueryFilter f, int maxRows) {
+    public ExportPayload export(WarehouseQueryFilter f) {
         Map<UUID, String> keepersByWarehouse = new LinkedHashMap<>();
         for (WarehouseKeeperAssignment a : keeperService.assignments()) {
             keepersByWarehouse.merge(a.warehouseId(), a.name(),
@@ -126,9 +126,7 @@ public class WarehouseService {
                 new ExportColumn("accountable", "核算", ExportColumn.TEXT),
                 new ExportColumn("keepers", "负责人", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size), w -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size), w -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", w.getId());
                     row.put("code", w.getCode());

@@ -99,8 +99,6 @@ class AuditControllerSecurityTest {
     @MockitoBean
     private AuditQueryService auditQuery;
     @MockitoBean
-    private AuditRuntimeSettings runtimeSettings;
-    @MockitoBean
     private XlsxExportService xlsxExport;
     @MockitoBean
     private WorkbookDownloadService workbookDownload;
@@ -123,11 +121,9 @@ class AuditControllerSecurityTest {
         when(auditQuery.actors(any(), anyInt(), anyInt()))
                 .thenReturn(new PageResponse<>(List.of(), 1, 20, 0, 0));
         when(auditQuery.export(
-                any(AuditSearchCriteria.class),
-                anyInt()))
+                any(AuditSearchCriteria.class)))
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
         when(auditQuery.detail(42L)).thenReturn(org.mockito.Mockito.mock(AuditLogDetail.class));
-        when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
         when(xlsxExport.buildSource(any(), isNull(), eq("view_admin"))).thenAnswer(call ->
                 new XlsxExportService.SourceWorkbook(call.<java.util.function.Supplier<ExportPayload>>getArgument(0).get(), new byte[]{1}));
         when(workbookDownload.protect(any(byte[].class), anyString())).thenReturn(new byte[]{9});
@@ -276,7 +272,7 @@ class AuditControllerSecurityTest {
 
         ArgumentCaptor<AuditSearchCriteria> exportCaptor =
                 ArgumentCaptor.forClass(AuditSearchCriteria.class);
-        verify(auditQuery).export(exportCaptor.capture(), eq(1_000));
+        verify(auditQuery).export(exportCaptor.capture());
         assertEquals("user", exportCaptor.getValue().actorScope());
         assertEquals("goods", exportCaptor.getValue().targetType());
         assertEquals("database", exportCaptor.getValue().eventSource());
@@ -297,8 +293,7 @@ class AuditControllerSecurityTest {
                 .andExpect(content().bytes(new byte[]{9}));
 
         verify(auditQuery).export(
-                any(AuditSearchCriteria.class),
-                eq(1_000));
+                any(AuditSearchCriteria.class));
         verify(xlsxExport).buildSource(any(), isNull(), eq("view_admin"));
         verify(workbookDownload).protect(eq(new byte[]{1}), eq(EXPORT_PROBE_SECRET));
         verifyNoInteractions(sessionTableExport);

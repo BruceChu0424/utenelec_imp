@@ -69,7 +69,7 @@ class ProcurementReportDifferenceFilterTest {
 
     private static class CapturingPurchase extends PurchaseReportService {
         Captured captured;
-        CapturingPurchase() { super(null, null); }
+        CapturingPurchase() { super(null); }
         @Override
         public com.uten.imp.features.purchase.report.ReportTableResponse execute(
                 List<com.uten.imp.features.purchase.report.ReportColumn> columns,
@@ -94,7 +94,7 @@ class ProcurementReportDifferenceFilterTest {
 
     private static class CapturingSubcontract extends SubcontractReportService {
         Captured captured;
-        CapturingSubcontract() { super(null, null); }
+        CapturingSubcontract() { super(null); }
         @Override
         public com.uten.imp.features.subcontract.report.ReportTableResponse execute(
                 List<com.uten.imp.features.subcontract.report.ReportColumn> columns,

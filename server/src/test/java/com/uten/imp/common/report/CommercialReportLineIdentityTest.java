@@ -1,7 +1,6 @@
 package com.uten.imp.common.report;
 
 import com.uten.imp.common.export.*;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
 import com.uten.imp.features.sales.report.SalesReportService;
@@ -81,19 +80,18 @@ class CommercialReportLineIdentityTest {
     private record Rows(List<String> columns,List<Map<String,Object>> rows) { }
     private static final class Fixture {
         final EntityManager em=mock(EntityManager.class);
-        final SystemSettingsService settings=mock(SystemSettingsService.class);
+
         final SalesReportService sales;
         final PurchaseReportService purchase;
         String lastSql;
         boolean produceRows=true;
         Fixture() {
-            when(settings.readInt(any())).thenReturn(50_000);
             var access=mock(SalesDocumentAccessPolicy.class);
             when(access.nativeReadScope(anyString(),anyString())).thenReturn(
                     new SalesDocumentAccessPolicy.NativeReadScope("1=1",null,Set.of()));
             var prices=mock(SalesPriceMasker.class);when(prices.canView()).thenReturn(true);
-            sales=new SalesReportService(em,settings,prices,access);
-            purchase=new PurchaseReportService(em,settings);
+            sales=new SalesReportService(em,prices,access);
+            purchase=new PurchaseReportService(em);
             var commercial=mock(CommercialPriceVisibility.class);when(commercial.canViewPurchaseReport()).thenReturn(true);
             ReflectionTestUtils.setField(purchase,"commercialPriceVisibility",commercial);
             when(em.createNativeQuery(anyString())).thenAnswer(call->{

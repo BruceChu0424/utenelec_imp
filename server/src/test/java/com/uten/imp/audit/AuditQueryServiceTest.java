@@ -2,6 +2,7 @@ package com.uten.imp.audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.export.ExportPageSink;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -425,7 +426,7 @@ class AuditQueryServiceTest {
                 .thenReturn(new PageImpl<>(List.of(log)));
 
         installExportFixture(service,repository);
-        ExportPayload payload = service.export(criteria(null), 100);
+        ExportPayload payload = service.export(criteria(null));
 
         assertEquals(1, payload.total());
         assertEquals("admin(档案不可用)", payload.rows().getFirst().get("actor"));
@@ -492,7 +493,7 @@ class AuditQueryServiceTest {
                 .thenReturn(new PageImpl<>(List.of(succeeded, httpFailed)));
 
         installExportFixture(service,repository);
-        ExportPayload payload = service.export(criteria(null), 100);
+        ExportPayload payload = service.export(criteria(null));
 
         assertEquals("成功", payload.rows().get(0).get("outcome"));
         assertEquals("失败", payload.rows().get(1).get("outcome"));
@@ -532,7 +533,7 @@ class AuditQueryServiceTest {
                 .thenReturn(new PageImpl<>(List.of(anonymous)));
 
         installExportFixture(service,repository);
-        ExportPayload payload = service.export(criteria(null), 100);
+        ExportPayload payload = service.export(criteria(null));
 
         assertEquals("未识别访问", payload.rows().getFirst().get("actor"));
         assertEquals("未识别访问", payload.rows().getFirst().get("actorType"));
@@ -573,7 +574,7 @@ class AuditQueryServiceTest {
         AuditLogRow row = service.query(criteria(null), 1, 20).getItems().getFirst();
         AuditLogDetail detail = service.detail(9L);
         installExportFixture(service,repository);
-        ExportPayload payload = service.export(criteria(null), 100);
+        ExportPayload payload = service.export(criteria(null));
         Map<String, Object> exported = payload.rows().getFirst();
 
         assertEquals("张三(*******1111)", row.getActorDisplay());
@@ -628,23 +629,6 @@ class AuditQueryServiceTest {
         log.setStatusCode(statusCode);
         log.setCreatedAt(OffsetDateTime.parse("2026-08-01T00:00:00Z"));
         return log;
-    }
-
-    @Test
-    void exportRejectsTheRequestBeforeLoadingRowsWhenOverConfiguredLimit() {
-        AuditLogRepository repository = mock(AuditLogRepository.class);
-        AuditQueryService service = new AuditQueryService(
-                repository, new AuditEventInterpreter(), emptyActorDirectory());
-        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(101L);
-
-        installExportFixture(service,repository);
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> service.export(criteria(null), 100));
-
-        assertTrue(error.getMessage().contains("超过单次导出上限 100 条"));
-        verify(repository, never()).findAll(
-                Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class));
     }
 
     @Test
@@ -864,7 +848,7 @@ class AuditQueryServiceTest {
         assertEquals(0, service.query(system, 1, 20).getTotal());
         assertEquals(0, service.summary(system).total());
         installExportFixture(service,repository);
-        assertEquals(0, service.export(system, 100).total());
+        assertEquals(0, service.export(system).total());
     }
 
     @Test
@@ -918,20 +902,38 @@ class AuditQueryServiceTest {
     }
 
     @Test
-    void exportHardCapsConfiguredLimitAtTenThousandRows() {
+    void exportDeliversEveryAuditRowAcrossTheFormerLimits() {
         AuditLogRepository repository = mock(AuditLogRepository.class);
         AuditQueryService service = new AuditQueryService(
                 repository, new AuditEventInterpreter(), emptyActorDirectory());
-        when(repository.findMaxId()).thenReturn(9L);
-        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn(10_001L);
+        int total = 10_001;
+        when(repository.count(Mockito.<Specification<AuditLog>>notNull())).thenReturn((long) total);
+        var reader = mock(AuditExportProjectionReader.class);
+        org.mockito.Mockito.doAnswer(call -> {
+            java.util.function.Consumer<List<AuditLog>> consume = call.getArgument(2);
+            for (int start = 0; start < total; start += 100) {
+                var batch = new java.util.ArrayList<AuditLog>();
+                for (int index = start; index < Math.min(total, start + 100); index++) {
+                    var row = exportRow("success", 200);
+                    row.setId((long) index + 1);
+                    batch.add(row);
+                }
+                consume.accept(batch);
+            }
+            return null;
+        }).when(reader).read(any(), eq((long) total), any());
+        service.setExportReader(reader);
 
-        installExportFixture(service,repository);
-        ApiException error = assertThrows(
-                ApiException.class,
-                () -> service.export(criteria(null), 100_000));
-
-        assertTrue(error.getMessage().contains("单次导出上限 10000 条"));
-        verify(repository, never()).findAll(Mockito.<Specification<AuditLog>>notNull(), any(Pageable.class));
+        var pages = new java.util.ArrayList<ExportPayload>();
+        try (var sink = ExportPageSink.open(pages::add)) {
+            var result = service.export(criteria(null));
+            assertEquals(total, result.total());
+            assertTrue(result.rows().isEmpty());
+        }
+        assertEquals(101, pages.size());
+        assertEquals(total, pages.stream().mapToInt(page -> page.rows().size()).sum());
+        assertEquals(total, pages.getLast().total());
+        assertEquals((long) total, pages.getLast().rows().getFirst().get("auditId"));
     }
 
     private static AuditSearchCriteria criteria(String riskLevel) {

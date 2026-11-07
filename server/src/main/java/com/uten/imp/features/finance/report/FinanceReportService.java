@@ -2639,7 +2639,7 @@ public class FinanceReportService {
                     new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
                     List.of(), Math.toIntExact(result.total())).withDocumentMetadata(result.documentMetadata());
         }
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),

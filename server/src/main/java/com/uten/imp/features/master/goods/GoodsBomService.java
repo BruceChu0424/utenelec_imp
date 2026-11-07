@@ -552,7 +552,7 @@ public class GoodsBomService {
                 : EXPORT_COLUMNS.stream().filter(column -> !"stockQty".equals(column.key())).toList();
         boolean streaming = com.uten.imp.common.export.ExportPageSink.current() != null;
         List<Map<String, Object>> rows = streaming ? null : new ArrayList<>();
-        var batches = streaming ? new com.uten.imp.common.export.ExportRowBatches(columns, 0) : null;
+        var batches = streaming ? new com.uten.imp.common.export.ExportRowBatches(columns) : null;
         Set<UUID> path = new java.util.HashSet<>();
         path.add(goodsId);
         expandForExport(goodsId, 0, path, "", streaming ? batches : rows::add, new HashMap<>());

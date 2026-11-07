@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.color;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
@@ -56,7 +55,6 @@ public class ColorController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('color:view')")
@@ -86,8 +84,7 @@ public class ColorController {
             @RequestParam(required = false) String remark,
             @Valid @RequestBody ExportPasswordRequest body) {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
-                new ColorQueryFilter(keyword, nullFields, code, name, status, remark),
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_color");
+                new ColorQueryFilter(keyword, nullFields, code, name, status, remark)), body.columnProjection(), "master_color");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

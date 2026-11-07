@@ -77,7 +77,7 @@ public class GlReportService {
     }
 
     public ReportTableResponse exportInCurrentSnapshot(String report, LocalDate dateTo, int year, int month, int maximum) {
-        ReportQueryKit.requireExportRowCount(maximum, 0);
+        ReportQueryKit.requireExportRowCount(0);
         return exportSnapshot(report, dateTo, year, month, maximum);
     }
 
@@ -87,7 +87,7 @@ public class GlReportService {
     }
     public ReportTableResponse exportInCurrentSnapshot(String report,LocalDate dateTo,int year,int month,int maximum,
             com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
-        ReportQueryKit.requireExportRowCount(maximum,0);return exportSnapshot(report,dateTo,year,month,maximum,options);
+        ReportQueryKit.requireExportRowCount(0);return exportSnapshot(report,dateTo,year,month,maximum,options);
     }
 
     private ReportTableResponse exportSnapshot(String report, LocalDate dateTo, int year, int month, Integer maximum) {

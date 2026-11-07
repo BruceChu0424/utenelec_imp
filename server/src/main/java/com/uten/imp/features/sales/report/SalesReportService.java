@@ -11,8 +11,6 @@ import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -75,7 +73,6 @@ public class SalesReportService {
             +"THEN MIN(unit_id::text)::uuid END AS unit_id ";
 
     private final EntityManager em;
-    private final SystemSettingsService settings;
     private final com.uten.imp.features.sales.order.SalesPriceMasker priceMasker;
     private final SalesDocumentAccessPolicy accessPolicy;
 
@@ -942,7 +939,7 @@ public class SalesReportService {
             case "OTHER_SHIPMENT/summary" -> (pg, sz) -> summary(DOC_OTHER_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),

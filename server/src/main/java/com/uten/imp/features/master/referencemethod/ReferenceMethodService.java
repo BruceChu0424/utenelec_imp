@@ -200,7 +200,7 @@ public class ReferenceMethodService {
      * 列集与前端结算方式表格一致：编号 / 名称 / 状态 / 系统角色 / 到期基准 / 到期规则 / 账期口径。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload exportSettlementAdmin(SettlementMethodAdminQueryFilter f, int maxRows) {
+    public ExportPayload exportSettlementAdmin(SettlementMethodAdminQueryFilter f) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "名称", ExportColumn.TEXT),
@@ -209,7 +209,7 @@ public class ReferenceMethodService {
                 new ExportColumn("termsBase", "到期基准", ExportColumn.TEXT),
                 new ExportColumn("dueRule", "到期规则", ExportColumn.TEXT),
                 new ExportColumn("terms", "账期口径", ExportColumn.TEXT));
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, maxRows,
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 (page,size) -> settlementAdminPage(f,page,size), m -> {
             boolean lockedBySystemRole = m.systemRole() != null && !m.systemRole().isEmpty();
             Map<String, Object> row = new LinkedHashMap<>();

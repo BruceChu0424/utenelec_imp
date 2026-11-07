@@ -335,7 +335,7 @@ class EmployeeNameResolverBatchPostgresTest {
                     mock(com.uten.imp.features.master.clientcategory.ClientCategoryRepository.class), session,
                     projection, codes, access, employees, names);
             var filter = mock(com.uten.imp.features.master.client.dto.ClientQueryFilter.class);
-            if (export) return service.export(filter, null, null, owners.size() + 1).rows().stream()
+            if (export) return service.export(filter, null, null).rows().stream()
                     .map(row -> (String) row.get("ownerEmployeeName")).toList();
             var result = service.list(filter, 1, 100, null, null);
             assertThat(result.getTotal()).isEqualTo(owners.size());
@@ -359,7 +359,7 @@ class EmployeeNameResolverBatchPostgresTest {
                 mock(com.uten.imp.features.master.suppliercategory.SupplierCategoryRepository.class), session,
                 projection, codes, employees, names);
         var filter = mock(com.uten.imp.features.master.supplier.dto.SupplierQueryFilter.class);
-        if (export) return service.export(filter, null, null, owners.size() + 1).rows().stream()
+        if (export) return service.export(filter, null, null).rows().stream()
                 .map(row -> (String) row.get("ownerEmployeeName")).toList();
         var result = service.list(filter, 1, 100, null, null);
         assertThat(result.getTotal()).isEqualTo(owners.size());

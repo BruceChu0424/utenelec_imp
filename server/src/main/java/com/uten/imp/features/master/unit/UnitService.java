@@ -322,14 +322,12 @@ public class UnitService {
      * 列集与日常单位资料一致：名称 / 编号 / 状态。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(UnitQueryFilter f, int maxRows) {
+    public ExportPayload export(UnitQueryFilter f) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "单位名称", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size), u -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size), u -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", u.getId());
                     row.put("code", u.getCode());

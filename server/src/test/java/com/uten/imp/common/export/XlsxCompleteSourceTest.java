@@ -85,7 +85,12 @@ class XlsxCompleteSourceTest {
                         if (text != null) text.append(ch, start, length);
                     }
                     @Override public void endElement(String uri, String local, String name) {
-                        if (name.equals("t")) { if (lastValue.contentEquals(text)) lastSeen.set(true); text = null; }
+                        if (name.equals("t")) {
+                            if (lastValue.contentEquals(text)) {
+                                lastSeen.set(true);
+                            }
+                            text = null;
+                        }
                     }
                 };
                 try(var input=zip.getInputStream(entry)) { factory.newSAXParser().parse(input, handler); }

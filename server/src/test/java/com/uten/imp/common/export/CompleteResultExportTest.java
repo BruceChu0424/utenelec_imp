@@ -17,7 +17,7 @@ class CompleteResultExportTest {
     @Test void compatibilityExportKeepsEveryRowBeyondFiveHundredAndTheFormerConfiguredLimit() {
         var calls = new AtomicInteger();
         try (var operation = new LegacyExportBudget(1).open()) {
-            var result = ReportQueryKit.paginateAll(500, (page, size) -> {
+            var result = ReportQueryKit.paginateAll((page, size) -> {
                 calls.incrementAndGet();
                 assertThat(size).isEqualTo(500);
                 return new Page(1201, IntStream.range((page - 1) * size, Math.min(1201, page * size))

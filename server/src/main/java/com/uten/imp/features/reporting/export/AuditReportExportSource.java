@@ -1,6 +1,5 @@
 package com.uten.imp.features.reporting.export;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.*;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
@@ -16,9 +15,8 @@ public class AuditReportExportSource {
             "keyword","targetType","targetId","eventSource","requestId","operationKind","dateFrom","dateTo","snapshotId","activityOnly");
     private final AuditQueryService activity;
     private final AuditSessionTableExportService sessions;
-    private final ExportLimitPort limits;
-    public AuditReportExportSource(AuditQueryService activity,AuditSessionTableExportService sessions,ExportLimitPort limits) {
-        this.activity=activity;this.sessions=sessions;this.limits=limits;
+    public AuditReportExportSource(AuditQueryService activity,AuditSessionTableExportService sessions) {
+        this.activity=activity;this.sessions=sessions;
     }
     public static void authorize(AuthUser user) {
         if(user.isVisitor()||user.isMustChangePassword()||!user.isAccountNonLocked()||user.getImpersonatedBy()!=null
@@ -40,8 +38,8 @@ public class AuditReportExportSource {
     public ExportPayload read(ReportExportRequest request) {
         CurrentAuthorityGuard.requireAll("audit_log:view","audit_log:export");
         var criteria=criteria(request);
-        return "sessions".equals(request.report())?sessions.export(criteria.actorId(),criteria.dateFrom(),criteria.dateTo(),criteria.snapshotId(),limits.exportMaxRows())
-                :activity.export(criteria,limits.exportMaxRows());
+        return "sessions".equals(request.report())?sessions.export(criteria.actorId(),criteria.dateFrom(),criteria.dateTo(),criteria.snapshotId())
+                :activity.export(criteria);
     }
     private static ApiException invalid(){return new ApiException(ErrorCode.VALIDATION_FAILED,"审计导出筛选参数无效");}
 }

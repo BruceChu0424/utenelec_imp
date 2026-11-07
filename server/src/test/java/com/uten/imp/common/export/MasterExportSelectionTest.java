@@ -53,7 +53,7 @@ class MasterExportSelectionTest {
     @Test void staleSelectionFailsBeforeMappingAndNeverFallsBackToAll() {
         var em = mock(EntityManager.class);
         try (var ignored = MasterExportSelection.open(List.of(UUID.randomUUID(), UUID.randomUUID()))) {
-            assertThatThrownBy(() -> MasterExportSource.exportEntities(em, List.of(), 100000,
+            assertThatThrownBy(() -> MasterExportSource.exportEntities(em, List.of(),
                     (page, size) -> new com.uten.imp.common.web.PageResponse<>(List.of("one"), page, size, 1, 1),
                     item -> { throw new AssertionError("must reject before mapping"); }))
                     .isInstanceOf(ApiException.class).hasMessageContaining("当前筛选及权限范围");

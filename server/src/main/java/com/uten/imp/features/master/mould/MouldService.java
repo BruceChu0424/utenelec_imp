@@ -169,11 +169,11 @@ public class MouldService {
      * 模具类型无数据源（表格恒"—"）不带；实际字段及真实系列分类名称同源导出。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(MouldQueryFilter f, int maxRows) {
-        return export(f,maxRows,null,null);
+    public ExportPayload export(MouldQueryFilter f) {
+        return export(f,null,null);
     }
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(MouldQueryFilter f, int maxRows,String sort,String order) {
+    public ExportPayload export(MouldQueryFilter f,String sort,String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),
                 new ExportColumn("name", "模具名称", ExportColumn.TEXT),
@@ -185,9 +185,7 @@ public class MouldService {
                 new ExportColumn("manufacturer", "制造商", ExportColumn.TEXT),
                 new ExportColumn("remark", "备注", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size,sort,order), m -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size,sort,order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());

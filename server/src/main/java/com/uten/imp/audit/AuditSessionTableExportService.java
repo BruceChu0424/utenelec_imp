@@ -27,12 +27,12 @@ public class AuditSessionTableExportService {
         new ExportColumn("credential","凭证状态","text"));
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('audit_log:view') and hasAuthority('audit_log:export')")
-    public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot,int maxRows) {
-        return export(actor,from,to,snapshot,maxRows,AuditSessionHeaderQuery.EMPTY);
+    public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot) {
+        return export(actor,from,to,snapshot,AuditSessionHeaderQuery.EMPTY);
     }
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize("hasAuthority('audit_log:view') and hasAuthority('audit_log:export')")
-    public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot,int maxRows,AuditSessionHeaderQuery headers) {
+    public ExportPayload export(UUID actor,LocalDate from,LocalDate to,Long snapshot,AuditSessionHeaderQuery headers) {
         final int size=100;
         ExportOperationCheckpoint.check();
         var first=headers.active() ? query.sessionsForExport(actor,from,to,1,size,snapshot,null,headers)

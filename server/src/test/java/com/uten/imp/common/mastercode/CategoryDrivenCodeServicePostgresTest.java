@@ -228,7 +228,7 @@ class CategoryDrivenCodeServicePostgresTest {
             assertEquals("Q7系列", pageOne.getItems().getFirst().getCategoryName());
             assertEquals(second, pageTwo.getItems().getFirst().getId());
             assertEquals("Q7开关子系列", pageTwo.getItems().getFirst().getCategoryName());
-            var exported = mouldService.export(filter, 100);
+            var exported = mouldService.export(filter);
             assertEquals(2, exported.rows().size());
             assertEquals(java.util.Set.of("Q7系列", "Q7开关子系列"), exported.rows().stream()
                     .map(row -> row.get("categoryName")).collect(java.util.stream.Collectors.toSet()));

@@ -3,7 +3,6 @@ package com.uten.imp.features.reporting.export;
 import com.uten.imp.features.master.export.MasterReportExportSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.account.AccountService;
@@ -46,7 +45,7 @@ class MasterReportExportSourceTest {
     final MouldService moulds=mock(MouldService.class);
     final WarehouseService warehouses=mock(WarehouseService.class);
     final ReferenceMethodService references=mock(ReferenceMethodService.class);
-    final ExportLimitPort limits=mock(ExportLimitPort.class);
+
     final AtomicReference<Object> decoded=new AtomicReference<>();
     final ExportPayload payload=new ExportPayload(List.of(),List.of(),0);
     MasterReportExportSource source;
@@ -55,19 +54,19 @@ class MasterReportExportSourceTest {
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
     @BeforeEach void source(){
         source=new MasterReportExportSource(goods,clients,suppliers,accounts,currencies,colors,units,moulds,warehouses,
-                references,new ObjectMapper(),validators.getValidator(),limits);
-        when(limits.exportMaxRows()).thenReturn(100_000);
+                references,new ObjectMapper(),validators.getValidator());
+
         org.mockito.stubbing.Answer<ExportPayload> capture=call->{decoded.set(call.getArgument(0));return payload;};
-        doAnswer(capture).when(goods).export(any(),any(),any(),anyInt());
-        doAnswer(capture).when(clients).export(any(),any(),any(),anyInt());
-        doAnswer(capture).when(suppliers).export(any(),any(),any(),anyInt());
-        doAnswer(capture).when(accounts).export(any(),any(),any(),anyInt());
-        doAnswer(capture).when(currencies).export(any(),any(),any(),anyInt());
-        doAnswer(capture).when(colors).export(any(),anyInt());
-        doAnswer(capture).when(units).export(any(),anyInt());
-        doAnswer(capture).when(moulds).export(any(),anyInt());
-        doAnswer(capture).when(warehouses).export(any(),anyInt());
-        doAnswer(capture).when(references).exportSettlementAdmin(any(),anyInt());
+        doAnswer(capture).when(goods).export(any(),any(),any());
+        doAnswer(capture).when(clients).export(any(),any(),any());
+        doAnswer(capture).when(suppliers).export(any(),any(),any());
+        doAnswer(capture).when(accounts).export(any(),any(),any());
+        doAnswer(capture).when(currencies).export(any(),any(),any());
+        doAnswer(capture).when(colors).export(any());
+        doAnswer(capture).when(units).export(any());
+        doAnswer(capture).when(moulds).export(any());
+        doAnswer(capture).when(warehouses).export(any());
+        doAnswer(capture).when(references).exportSettlementAdmin(any());
     }
     private static ReportExportRequest request(String report,String filter){
         return new ReportExportRequest(UUID.randomUUID(),"master",report,Map.of("filter",filter),null,null,null);
@@ -133,7 +132,7 @@ class MasterReportExportSourceTest {
         doAnswer(call->{
             assertThat(com.uten.imp.common.export.MasterExportSelection.current()).containsExactly(id);
             throw new IllegalStateException("fixture cancellation");
-        }).when(moulds).export(any(),anyInt());
+        }).when(moulds).export(any());
         assertThatThrownBy(()->source.read(selected)).hasMessage("fixture cancellation");
         assertThat(com.uten.imp.common.export.MasterExportSelection.current()).isNull();
     }

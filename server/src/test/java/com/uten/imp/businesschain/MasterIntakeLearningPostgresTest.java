@@ -895,12 +895,12 @@ class MasterIntakeLearningPostgresTest {
         assertThat(byEmail.getItems()).extracting(item -> item.getId()).containsExactly(sunas);
 
         // 三个导入身份列固定在前，货品名称后紧跟类别；客户货品名称与英文名称仍相邻。
-        var goodsExport = goodsService.export(goodsFilter("double socket " + tag.toLowerCase(Locale.ROOT)), null, null, 100);
+        var goodsExport = goodsService.export(goodsFilter("double socket " + tag.toLowerCase(Locale.ROOT)), null, null);
         List<String> goodsLabels = goodsExport.columns().stream().map(column -> column.label()).toList();
         assertThat(goodsLabels).startsWith("系统标识","组装信息ID","编号","货品名称","类别", "客户货品名称", "英文名称");
         assertThat(goodsExport.rows()).singleElement().satisfies(row ->
                 assertThat(row).containsEntry("nameEn", "Double Socket " + tag));
-        var clientExport = clientService.export(clientFilter("sunas resource " + tag.toLowerCase(Locale.ROOT)), null, null, 100);
+        var clientExport = clientService.export(clientFilter("sunas resource " + tag.toLowerCase(Locale.ROOT)), null, null);
         List<String> clientLabels = clientExport.columns().stream().map(column -> column.label()).toList();
         assertThat(clientLabels.indexOf("外文名称")).isEqualTo(clientLabels.indexOf("客户全称") + 1);
         assertThat(clientExport.rows()).singleElement().satisfies(row ->

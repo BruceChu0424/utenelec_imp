@@ -1,6 +1,5 @@
 package com.uten.imp.features.sales.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.production.report.ProductionReportService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
@@ -57,9 +56,9 @@ class SalesReportUnitsPostgresTest {
         EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var policy=mock(SalesDocumentAccessPolicy.class);when(policy.nativeReadScope(anyString(),anyString()))
                 .thenReturn(new SalesDocumentAccessPolicy.NativeReadScope("o.owner_employee_id IN (:salesOwners)","salesOwners",Set.of(OWNER)));
-        prices=mock(SalesPriceMasker.class);sales=new SalesReportService(em,mock(SystemSettingsService.class),prices,policy);
-        production=new ProductionReportService(em,mock(SystemSettingsService.class));
-        stock=new StockReportService(em,mock(SystemSettingsService.class),mock(StockQueryService.class),mock(StockCostMasker.class));
+        prices=mock(SalesPriceMasker.class);sales=new SalesReportService(em,prices,policy);
+        production=new ProductionReportService(em);
+        stock=new StockReportService(em,mock(StockQueryService.class),mock(StockCostMasker.class));
         db.update("INSERT INTO clients(id,name) VALUES (?,'客户名')",CLIENT);
         db.update("INSERT INTO units(id,name) VALUES (?,'个'),(?,'箱')",EACH,BOX);
         db.update("INSERT INTO currencies(id,name,code) VALUES (?,'美金','002')",USD);
@@ -205,9 +204,8 @@ class SalesReportUnitsPostgresTest {
                 var access=mock(SalesDocumentAccessPolicy.class);
                 when(access.nativeReadScope(anyString(),anyString())).thenReturn(new SalesDocumentAccessPolicy.NativeReadScope(
                         "o.owner_employee_id IN (:salesOwners)","salesOwners",Set.of(OWNER)));
-                var settings=mock(SystemSettingsService.class);
-                when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100_000);
-                var service=new SalesReportService(session,settings,prices,access);
+
+                var service=new SalesReportService(session,prices,access);
                 org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
                 org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
                 org.springframework.transaction.support.TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);

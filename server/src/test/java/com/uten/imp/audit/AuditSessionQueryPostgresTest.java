@@ -336,7 +336,7 @@ class AuditSessionQueryPostgresTest {
         assertEquals(3,first.total());
         assertEquals(newer,first.items().getFirst().sessionId());
         assertEquals(older,last.items().getFirst().sessionId());
-        var exported = sessionExport.export(actor,day,day,filtered.snapshotAuditId(),100,headers);
+        var exported = sessionExport.export(actor,day,day,filtered.snapshotAuditId(),headers);
         assertEquals(1,exported.total());
         assertEquals(1,exported.rows().size());
         assertEquals(2L,exported.rows().getFirst().get("operations"));
@@ -361,7 +361,7 @@ class AuditSessionQueryPostgresTest {
         var filtered = base.withHeaderFilters(java.util.Map.of("device", "AUDIT%_DEVICE", "change", "recorded"));
         assertEquals(1,eventQueries.query(filtered,1,1).getTotal());
         assertEquals(1,eventQueries.summary(filtered).total());
-        assertEquals(1,eventQueries.export(filtered,100).total());
+        assertEquals(1,eventQueries.export(filtered).total());
         assertEquals(1,eventQueries.query(base.withHeaderFilters(java.util.Map.of("change","unrecorded")),1,1).getTotal());
     }
 

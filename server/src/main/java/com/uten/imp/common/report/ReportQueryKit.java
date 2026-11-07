@@ -259,19 +259,18 @@ public final class ReportQueryKit {
      * 经 total/exportColumns/rows 三个取数函数适配，exportColumns 返回 null 表示无列——与原
      * {@code r.columns() != null} 判断等价）。
      *
-     * @param maxRows 旧调用方的兼容参数，不限制完整结果；资源由流式写入和文件预算约束。
      */
-    public static <T> ExportPayload paginateAll(int maxRows,
+    public static <T> ExportPayload paginateAll(
                                                 BiFunction<Integer, Integer, T> loader,
                                                 ToLongFunction<T> total,
                                                 Function<T, List<ExportColumn>> exportColumns,
                                                 Function<T, List<Map<String, Object>>> rows) {
-        return paginateAll(maxRows,loader,total,exportColumns,rows,ignored->Map.of());
+        return paginateAll(loader,total,exportColumns,rows,ignored->Map.of());
     }
-    public static <T> ExportPayload paginateAll(int maxRows,BiFunction<Integer,Integer,T> loader,ToLongFunction<T> total,
+    public static <T> ExportPayload paginateAll(BiFunction<Integer,Integer,T> loader,ToLongFunction<T> total,
             Function<T,List<ExportColumn>> exportColumns,Function<T,List<Map<String,Object>>> rows,
             Function<T,Map<String,Object>> documentMetadata) {
-        requireExportRowCount(maxRows, 0);
+        requireExportRowCount(0);
         final int size = 500;
         var sink = com.uten.imp.common.export.ExportPageSink.current();
         List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
@@ -295,14 +294,14 @@ public final class ReportQueryKit {
                 Map<String,Object> pageMetadata=documentMetadata.apply(r);if(pageMetadata==null)pageMetadata=Map.of();
                 if(metadata==null)metadata=new LinkedHashMap<>(pageMetadata);
                 else if(!metadata.equals(pageMetadata))throw new IllegalStateException("Document metadata changed during export");
-                requireExportRowCount(maxRows, reported);
+                requireExportRowCount(reported);
                 if (cols == null) {
                     List<ExportColumn> first = exportColumns.apply(r);
                     if (first != null) cols = first;
                 }
                 List<Map<String, Object>> pageRows = rows.apply(r);
                 if (pageRows.size() > size) throw new IllegalStateException("Export source batch grew");
-                requireExportRowCount(maxRows, (long) seen + pageRows.size());
+                requireExportRowCount((long) seen + pageRows.size());
                 seen = Math.addExact(seen, pageRows.size());
                 if (expected >= 0 && (seen > expected || (pageRows.size() < size && seen < expected)))
                     throw new IllegalStateException("Export source is incomplete");
@@ -317,9 +316,8 @@ public final class ReportQueryKit {
         }
     }
     /** Shared by paged readers and calculated-row emitters; -1 is an unknown count. */
-    public static void requireExportRowCount(int maxRows, long rows) {
+    public static void requireExportRowCount(long rows) {
         if (rows < -1) throw new IllegalStateException("Export source count is invalid");
-        // Compatibility argument only: export_max_rows no longer truncates or rejects a complete result.
         // Internal batch sizes, writer resource budgets and explicit single-document contracts remain bounded.
         com.uten.imp.common.export.LegacyExportBudget.requireRows(rows);
     }

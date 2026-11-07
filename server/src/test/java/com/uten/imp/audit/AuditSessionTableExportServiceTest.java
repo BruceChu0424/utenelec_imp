@@ -24,7 +24,7 @@ class AuditSessionTableExportServiceTest {
         when(row.actorDisplay()).thenReturn("员工");when(row.operationCount()).thenReturn(4L);
         when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(new AuditSessionPageResponse(Collections.nCopies(100,row),1,100,101,2,99));
         when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(new AuditSessionPageResponse(List.of(row),2,100,101,2,99));
-        var result=service.export(actor,from,to,99L,1000);
+        var result=service.export(actor,from,to,99L);
         assertThat(result.columns()).extracting(ExportColumn::key).containsExactly("actor","login","status","device","operations","failures","postLogout","logout","credential");
         assertThat(result.rows()).hasSize(101);
         assertThat(result.rows().getFirst()).containsEntry("operations",4L).containsEntry("actor","员工");
@@ -38,7 +38,7 @@ class AuditSessionTableExportServiceTest {
                     assertThat(call.<Long>getArgument(6)).isEqualTo(page==1?null:1201L);
                     return response(page,1201,99);
                 });
-        var result=service.export(actor,from,to,99L,10);
+        var result=service.export(actor,from,to,99L);
         assertThat(result.total()).isEqualTo(1201);
         assertThat(result.rows()).extracting(row->row.get("sessionId"))
                 .containsExactlyElementsOf(IntStream.range(0,1201).mapToObj(index->new UUID(1,index)).toList());
@@ -48,7 +48,7 @@ class AuditSessionTableExportServiceTest {
 
     @Test void anIncompleteFirstBatchFailsBeforeRequestingAnyContinuation() {
         when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(new AuditSessionPageResponse(List.of(),1,100,21,2,99));
-        assertThatThrownBy(()->service.export(actor,from,to,99L,10)).isInstanceOfSatisfying(ApiException.class,
+        assertThatThrownBy(()->service.export(actor,from,to,99L)).isInstanceOfSatisfying(ApiException.class,
                 error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT)).hasMessageContaining("未完整返回");
         verify(query,times(1)).sessionsForExport(eq(actor),eq(from),eq(to),anyInt(),anyInt(),nullable(Long.class),nullable(Long.class));
     }
@@ -60,7 +60,7 @@ class AuditSessionTableExportServiceTest {
             var stable=response(2,101,99);
             when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(new AuditSessionPageResponse(
                     stable.items(),2,100,snapshotDrift?101:102,2,snapshotDrift?100:99));
-            assertThatThrownBy(()->service.export(actor,from,to,99L,10)).isInstanceOfSatisfying(ApiException.class,
+            assertThatThrownBy(()->service.export(actor,from,to,99L)).isInstanceOfSatisfying(ApiException.class,
                     error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT)).hasMessageContaining("范围已变化");
             verify(query).sessionsForExport(actor,from,to,2,100,99L,101L);
         }
@@ -76,14 +76,14 @@ class AuditSessionTableExportServiceTest {
             reset(query);
             when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(response(1,101,99));
             when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(page);
-            assertThatThrownBy(()->service.export(actor,from,to,99L,10)).isInstanceOf(ApiException.class).hasMessageContaining("未完整返回");
+            assertThatThrownBy(()->service.export(actor,from,to,99L)).isInstanceOf(ApiException.class).hasMessageContaining("未完整返回");
         }
     }
 
     @Test void cancellationAfterAStreamedBatchStopsReadsAndDoesNotReturnPartialSuccess() {
         when(query.sessionsForExport(actor,from,to,1,100,99L,null)).thenReturn(response(1,1201,99));
         try(var sink=ExportPageSink.open(page->{assertThat(page.rows()).hasSize(100);Thread.currentThread().interrupt();})) {
-            try{assertThatThrownBy(()->service.export(actor,from,to,99L,10)).isInstanceOf(CancellationException.class);}
+            try{assertThatThrownBy(()->service.export(actor,from,to,99L)).isInstanceOf(CancellationException.class);}
             finally{Thread.interrupted();}
         }
         assertThat(ExportPageSink.current()).isNull();
@@ -93,7 +93,7 @@ class AuditSessionTableExportServiceTest {
     @Test void theFirstAuthoritativeSnapshotIsFrozenEvenWhenTheCallerDidNotSupplyOne() {
         when(query.sessionsForExport(actor,from,to,1,100,null,null)).thenReturn(response(1,101,99));
         when(query.sessionsForExport(actor,from,to,2,100,99L,101L)).thenReturn(response(2,101,99));
-        assertThat(service.export(actor,from,to,null,10).rows()).hasSize(101);
+        assertThat(service.export(actor,from,to,null).rows()).hasSize(101);
         verify(query).sessionsForExport(actor,from,to,2,100,99L,101L);
     }
 

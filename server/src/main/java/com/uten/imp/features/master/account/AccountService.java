@@ -189,7 +189,7 @@ public class AccountService {
      * 整列不导出（与表格摘列同口径，不是空单元格）。accountType/币种按展示文字。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(AccountQueryFilter f, String sort, String order, int maxRows) {
+    public ExportPayload export(AccountQueryFilter f, String sort, String order) {
         boolean showBalance = hasAuthority("account:balance:view");
         List<ExportColumn> cols = new ArrayList<>();
         cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
@@ -201,9 +201,7 @@ public class AccountService {
             cols.add(new ExportColumn("balanceCurrent", "当前余额", ExportColumn.MONEY));
         }
         cols.add(new ExportColumn("status", "状态", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size, sort, order), a -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size, sort, order), a -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", a.getId());
                     row.put("code", a.getCode());

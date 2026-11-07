@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.execution;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.application.port.WorkshopTaskExportContract;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -20,7 +19,6 @@ import java.util.*;
 public class ProductionWorkshopTaskExportService {
     public static final String REPORT = WorkshopTaskExportContract.REPORT;
     private final ProductionExecutionWorkbenchService tasks;
-    private final ExportLimitPort limits;
     @Transactional(readOnly = true)
     public ExportPayload export(Map<String, String> p, String sort, String order) {
         CurrentAuthorityGuard.requireAll("production_execution:view", "production_report:export");
@@ -28,8 +26,7 @@ public class ProductionWorkshopTaskExportService {
         String status = p.get("status");
         UUID workshop = ReportQueryKit.parseUuid(p.get("workshopDepartmentId"));
         LocalDate from = ReportQueryKit.parseDate(p.get("dateFrom")), to = ReportQueryKit.parseDate(p.get("dateTo"));
-        return ReportQueryKit.paginateAll(limits.exportMaxRows(),
-                (page, size) -> tasks.workshopTasks(page, size, p.get("keyword"), status, workshop, from, to,
+        return ReportQueryKit.paginateAll((page, size) -> tasks.workshopTasks(page, size, p.get("keyword"), status, workshop, from, to,
                         p.get("preparationFilter"), p.get("routeFilter"), p.get("analysisNo"), p.get("segmentCode"), sort, order),
                 page -> page.getTotal(), page -> columns(status),
                 page -> page.getItems().stream().map(ProductionWorkshopTaskExportService::row).toList());

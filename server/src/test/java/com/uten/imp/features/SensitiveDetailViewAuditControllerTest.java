@@ -102,8 +102,7 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class),
-                mock(com.uten.imp.application.port.ExportLimitPort.class));
+                mock(SecurityContextCurrentUser.class));
         assertSame(client, clientController.detail(clientId));
         verify(audit).record(
                 "view_client_detail", "clients", clientId,
@@ -121,8 +120,7 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class),
-                mock(com.uten.imp.application.port.ExportLimitPort.class));
+                mock(SecurityContextCurrentUser.class));
         assertSame(supplier, supplierController.detail(supplierId));
         verify(audit).record(
                 "view_supplier_detail", "suppliers", supplierId,
@@ -140,8 +138,7 @@ class SensitiveDetailViewAuditControllerTest {
                 mock(WorkbookDownloadService.class),
                 mock(com.uten.imp.audit.AuditService.class),
                 audit,
-                mock(SecurityContextCurrentUser.class),
-                mock(com.uten.imp.application.port.ExportLimitPort.class));
+                mock(SecurityContextCurrentUser.class));
         assertSame(account, accountController.detail(accountId));
         verify(audit).record(
                 "view_account_detail", "accounts", accountId,

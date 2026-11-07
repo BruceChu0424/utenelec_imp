@@ -1,6 +1,5 @@
 package com.uten.imp.features.reporting.export;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.*;
 import com.uten.imp.common.export.*;
 import com.uten.imp.common.web.ApiException;
@@ -20,14 +19,14 @@ class SupplementalExportSourceTest {
     private void bind(Set<String> permissions){var user=user(permissions);SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));}
     private ReportExportRequest request(String domain,String report,Map<String,String> parameters){return new ReportExportRequest(UUID.randomUUID(),domain,report,parameters,null,null,null);}
     @Test void auditModesReuseTheirOriginalAuthoritiesAndTypedFilters() {
-        var activity=mock(AuditQueryService.class);var sessions=mock(AuditSessionTableExportService.class);var limits=mock(ExportLimitPort.class);
-        when(limits.exportMaxRows()).thenReturn(9876);bind(Set.of("audit_log:view","audit_log:export"));
-        var source=new AuditReportExportSource(activity,sessions,limits);
+        var activity=mock(AuditQueryService.class);var sessions=mock(AuditSessionTableExportService.class);
+        bind(Set.of("audit_log:view","audit_log:export"));
+        var source=new AuditReportExportSource(activity,sessions);
         var parameters=Map.of("actorId",ACTOR.toString(),"dateFrom","2026-10-01","dateTo","2026-10-26","snapshotId","9007199254740993","activityOnly","false");
         var query=request("audit","activity",parameters);var criteria=AuditReportExportSource.criteria(query);
         assertEquals(ACTOR,criteria.actorId());assertFalse(criteria.activityOnly());assertEquals(9007199254740993L,criteria.snapshotId());
-        source.read(query);verify(activity).export(criteria,9876);
-        source.read(request("audit","sessions",parameters));verify(sessions).export(ACTOR,criteria.dateFrom(),criteria.dateTo(),criteria.snapshotId(),9876);
+        source.read(query);verify(activity).export(criteria);
+        source.read(request("audit","sessions",parameters));verify(sessions).export(ACTOR,criteria.dateFrom(),criteria.dateTo(),criteria.snapshotId());
         assertDoesNotThrow(()->AuditReportExportSource.authorize(user(Set.of("audit_log:view","audit_log:export"))));
         assertThrows(ApiException.class,()->AuditReportExportSource.authorize(user(Set.of("audit_log:view"))));
     }

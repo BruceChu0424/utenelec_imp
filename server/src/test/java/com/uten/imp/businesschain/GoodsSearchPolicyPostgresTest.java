@@ -311,7 +311,7 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(limited,null,limited.getAuthorities()));
         try {
             var filter=new GoodsQueryFilter(null,Set.of(root),word,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,true,true,null,null,null,null,true);
-            var exported=service.export(filter,null,null,100);
+            var exported=service.export(filter,null,null);
             assertEquals(3,exported.total());
             assertTrue(exported.columns().stream().noneMatch(column->Set.of("price","discount").contains(column.key())));
             assertTrue(exported.rows().stream().noneMatch(row->row.containsKey("price")||row.containsKey("discount")));

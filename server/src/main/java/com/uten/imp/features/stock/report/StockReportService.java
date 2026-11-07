@@ -13,8 +13,6 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.measure.WeightUnit;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -78,7 +76,6 @@ public class StockReportService {
     private static final String AP = "COALESCE(em_ap.full_name || COALESCE('(' || em_ap.legacy_category || ')',''), o.approver_name_snapshot)";
 
     private final EntityManager em;
-    private final SystemSettingsService settings;
     private final StockQueryService stockQueryService;
     private final StockCostMasker costMasker;
 
@@ -433,7 +430,7 @@ public class StockReportService {
                     departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表 kind: " + kind);
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(StockReportService::exportColumn).toList(),
@@ -556,7 +553,7 @@ public class StockReportService {
             return new ReportTableResponse(columns, rows, Map.of(),
                     r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
@@ -633,7 +630,7 @@ public class StockReportService {
         }
             return new ExportPayload(cols, rows, -1);
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ExportPayload::total, ExportPayload::columns, ExportPayload::rows);
     }
 

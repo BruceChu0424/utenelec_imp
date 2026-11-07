@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.goods;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.*;
@@ -27,12 +26,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GoodsExportCompleteEndpointTest {
     @Test void theReportedGoodsEndpointExportsAll1201RowsWithTheOriginalFiltersAndOldSetting500() throws Exception {
         var goods = mock(GoodsService.class);
-        var limits = mock(ExportLimitPort.class);
-        when(limits.exportMaxRows()).thenReturn(500);
+
         var columns = List.of(new ExportColumn("code","编号",ExportColumn.TEXT),
                 new ExportColumn("goodsId","系统标识",ExportColumn.TEXT));
         UUID category = UUID.randomUUID();
-        when(goods.export(any(GoodsQueryFilter.class),eq("code"),eq("desc"),eq(500))).thenAnswer(call -> {
+        when(goods.export(any(GoodsQueryFilter.class),eq("code"),eq("desc"))).thenAnswer(call -> {
             GoodsQueryFilter filter = call.getArgument(0);
             assertThat(filter.categoryId()).isEqualTo(category);
             assertThat(filter.keyword()).isEqualTo("原筛选");
@@ -46,7 +44,7 @@ class GoodsExportCompleteEndpointTest {
             return new ExportPayload(columns,List.of(),1201);
         });
         var controller = new GoodsController(goods,new XlsxExportService(),new WorkbookDownloadService(),
-                mock(AuditService.class),mock(SecurityContextCurrentUser.class),mock(AuditDetailViewRecorder.class),limits);
+                mock(AuditService.class),mock(SecurityContextCurrentUser.class),mock(AuditDetailViewRecorder.class));
         ReflectionTestUtils.setField(controller,"request",new MockHttpServletRequest());
         byte[] bytes;
         try(var operation=new LegacyExportBudget(1).open()) {
@@ -62,6 +60,6 @@ class GoodsExportCompleteEndpointTest {
             assertThat(sheet.getRow(1201).getCell(0).getStringCellValue()).isEqualTo("GOOD-1200");
             assertThat(sheet.getRow(1201).getCell(1).getStringCellValue()).isEqualTo(new UUID(1,1200).toString());
         }
-        verify(goods,times(1)).export(any(GoodsQueryFilter.class),eq("code"),eq("desc"),eq(500));
+        verify(goods,times(1)).export(any(GoodsQueryFilter.class),eq("code"),eq("desc"));
     }
 }

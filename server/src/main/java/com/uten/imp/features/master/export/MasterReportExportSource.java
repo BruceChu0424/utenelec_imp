@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.TableColumnProjection;
 import com.uten.imp.common.web.ApiException;
@@ -56,7 +55,6 @@ public class MasterReportExportSource implements MasterReportExportPort {
     private final ReferenceMethodService references;
     private final ObjectMapper json;
     private final Validator validator;
-    private final ExportLimitPort limits;
 
     public static String permission(String report) { return MasterReportExportPort.permission(report); }
     public static String projectionScope(String report) { return MasterReportExportPort.projectionScope(report); }
@@ -76,19 +74,18 @@ public class MasterReportExportSource implements MasterReportExportPort {
     public ExportPayload read(ReportExportQuery request) {
         Object filter = filter(request);
         com.uten.imp.security.CurrentAuthorityGuard.requireAll(permission(request.report()));
-        int maxRows = limits.exportMaxRows();
         try (var ignored = com.uten.imp.common.export.MasterExportSelection.open(selection(request))) {
         return switch (request.report()) {
-            case "goods" -> goods.export((GoodsQueryFilter)filter, request.sort(), request.order(), maxRows);
-            case "client" -> clients.export((ClientQueryFilter)filter, request.sort(), request.order(), maxRows);
-            case "supplier" -> suppliers.export((SupplierQueryFilter)filter, request.sort(), request.order(), maxRows);
-            case "account" -> accounts.export((AccountQueryFilter)filter, request.sort(), request.order(), maxRows);
-            case "currency" -> currencies.export((CurrencyQueryFilter)filter, request.sort(), request.order(), maxRows);
-            case "color" -> colors.export((ColorQueryFilter)filter, maxRows);
-            case "unit" -> units.export((UnitQueryFilter)filter, maxRows);
-            case "mould" -> moulds.export((MouldQueryFilter)filter, maxRows);
-            case "warehouse" -> warehouses.export((WarehouseQueryFilter)filter, maxRows);
-            case "settlement_method" -> references.exportSettlementAdmin((SettlementMethodAdminQueryFilter)filter, maxRows);
+            case "goods" -> goods.export((GoodsQueryFilter)filter, request.sort(), request.order());
+            case "client" -> clients.export((ClientQueryFilter)filter, request.sort(), request.order());
+            case "supplier" -> suppliers.export((SupplierQueryFilter)filter, request.sort(), request.order());
+            case "account" -> accounts.export((AccountQueryFilter)filter, request.sort(), request.order());
+            case "currency" -> currencies.export((CurrencyQueryFilter)filter, request.sort(), request.order());
+            case "color" -> colors.export((ColorQueryFilter)filter);
+            case "unit" -> units.export((UnitQueryFilter)filter);
+            case "mould" -> moulds.export((MouldQueryFilter)filter);
+            case "warehouse" -> warehouses.export((WarehouseQueryFilter)filter);
+            case "settlement_method" -> references.exportSettlementAdmin((SettlementMethodAdminQueryFilter)filter);
             default -> throw invalid();
         };
         }

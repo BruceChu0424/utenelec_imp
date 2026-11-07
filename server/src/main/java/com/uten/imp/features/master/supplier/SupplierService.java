@@ -276,7 +276,7 @@ public class SupplierService {
      * 主结账方式与详情/列表同源，按 default_settlement_method_id 解析，不使用旧快照猜测。
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
-    public ExportPayload export(SupplierQueryFilter f, String sort, String order, int maxRows) {
+    public ExportPayload export(SupplierQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("name", "供应商简称", ExportColumn.TEXT),
                 new ExportColumn("description", "全称", ExportColumn.TEXT),
@@ -299,9 +299,7 @@ public class SupplierService {
                 new ExportColumn("website", "网址", ExportColumn.TEXT),
                 new ExportColumn("shipVia", "运输方式", ExportColumn.TEXT),
                 new ExportColumn("shipAddress", "送货地址", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
                     row.put("name", m.getName());

@@ -131,7 +131,7 @@ final class FinanceExpenseReports {
         }
         var filtered=filtered(operatingColumns(throughMonth),rows,options);
         if(maximum!=null) {
-            var sink=new com.uten.imp.common.export.ExportRowBatches(filtered.columns().stream().map(c->new com.uten.imp.common.export.ExportColumn(c.key(),c.label(),c.type(),null,c.unitLabel(),c.unitKey())).toList(),maximum);
+            var sink=new com.uten.imp.common.export.ExportRowBatches(filtered.columns().stream().map(c->new com.uten.imp.common.export.ExportColumn(c.key(),c.label(),c.type(),null,c.unitLabel(),c.unitKey())).toList());
             filtered.rows().forEach(sink);int total=sink.finish();return new ReportTableResponse(filtered.columns(),List.of(),Map.of(),1,500,total,ReportReadPlan.totalPages(total,500)).withColumnSearchKeys(filtered.columnSearchKeys());
         }
         var window=new ReportRowWindow(page,size);filtered.rows().forEach(window);

@@ -338,7 +338,7 @@ public class ClientService {
      * （启停走前导分组/行菜单），导出同步不带。
      */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public ExportPayload export(ClientQueryFilter f, String sort, String order, int maxRows) {
+    public ExportPayload export(ClientQueryFilter f, String sort, String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "客户编码", ExportColumn.TEXT),
                 new ExportColumn("name", "客户简称", ExportColumn.TEXT),
@@ -364,9 +364,7 @@ public class ClientService {
                 new ExportColumn("credit", "信用额度 / 旧库 Credit 快照", ExportColumn.MONEY),
                 new ExportColumn("creditFloor", "铺底额", ExportColumn.MONEY),
                 new ExportColumn("website", "网址", ExportColumn.TEXT));
-        // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
-        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
+        return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());

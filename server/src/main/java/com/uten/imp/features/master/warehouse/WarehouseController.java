@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.warehouse;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
@@ -65,7 +64,6 @@ public class WarehouseController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
     private final WarehouseDataScopeService dataScopeService;
 
     @GetMapping
@@ -105,8 +103,7 @@ public class WarehouseController {
             @Valid @RequestBody ExportPasswordRequest body) {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.export(new WarehouseQueryFilter(
                         keyword, nullFields, code, name, status, location, parentId, accountable,
-                        defective),
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_warehouse");
+                        defective)), body.columnProjection(), "master_warehouse");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

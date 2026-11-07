@@ -205,7 +205,7 @@ class UnitMassUnitCodeTest {
         List<UnitListItem> items = service().list(filter, 1, 20).getItems();
         assertThat(items).extracting(UnitListItem::getMassUnitCode).containsExactly("KG", null);
 
-        ExportPayload payload = service().export(filter, 1000);
+        ExportPayload payload = service().export(filter);
         assertThat(payload.columns()).extracting(column -> column.key()).containsExactly("code", "name", "status");
         assertThat(payload.rows()).allSatisfy(row -> assertThat(row).doesNotContainKeys("dimension", "massUnit"));
     }

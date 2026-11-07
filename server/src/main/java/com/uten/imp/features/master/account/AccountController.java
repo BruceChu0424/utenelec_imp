@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.account;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.WorkbookDownloadService;
@@ -62,7 +61,6 @@ public class AccountController {
     private final AuditService audit;
     private final AuditDetailViewRecorder viewAudit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('account:view')")
@@ -163,8 +161,7 @@ public class AccountController {
                 new AccountQueryFilter(body.sensitive().keyword() == null ? keyword : body.sensitive().keyword(),
                         nullFields, code, name, accountType, currencyId, status)
                         .withColumnSearch(headerSearches(body.sensitive().columnSearch())),
-                sort, order,
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_account");
+                sort, order), body.columnProjection(), "master_account");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

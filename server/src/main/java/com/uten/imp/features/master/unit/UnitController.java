@@ -1,6 +1,5 @@
 package com.uten.imp.features.master.unit;
 
-import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.export.ExportPayload;
@@ -56,7 +55,6 @@ public class UnitController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
-    private final ExportLimitPort exportLimits;
 
     @GetMapping
     @PreAuthorize("hasAuthority('unit:view')")
@@ -86,8 +84,7 @@ public class UnitController {
             @RequestParam(required = false) String dimension,
             @Valid @RequestBody ExportPasswordRequest body) {
         var sourceWorkbook = xlsxExport.buildSource(() -> service.export(
-                new UnitQueryFilter(keyword, nullFields, code, name, status, dimension),
-                exportLimits.exportMaxRows()), body.columnProjection(), "master_unit");
+                new UnitQueryFilter(keyword, nullFields, code, name, status, dimension)), body.columnProjection(), "master_unit");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] xlsx = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

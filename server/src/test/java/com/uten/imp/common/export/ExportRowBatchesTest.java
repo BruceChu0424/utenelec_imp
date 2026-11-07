@@ -17,7 +17,7 @@ class ExportRowBatchesTest {
     @Test void boundedBatchesKeepOrderAndEmitTheFinalPartialBatchExactlyOnce() {
         List<ExportPayload> pages = new ArrayList<>();
         try (var scope = ExportPageSink.open(pages::add)) {
-            var output = new ExportRowBatches(columns, 1001);
+            var output = new ExportRowBatches(columns);
             IntStream.range(0, 1001).forEach(value -> output.accept(Map.of("id", value)));
             assertThat(output.finish()).isEqualTo(1001);
             assertThatThrownBy(output::finish).isInstanceOf(IllegalStateException.class);
@@ -30,7 +30,7 @@ class ExportRowBatchesTest {
     @Test void calculatedRowsBeyondTheOldConfiguredLimitRemainCompleteAndOrdered() {
         List<ExportPayload> pages = new ArrayList<>();
         try (var scope = ExportPageSink.open(pages::add)) {
-            var output = new ExportRowBatches(columns, 500);
+            var output = new ExportRowBatches(columns);
             IntStream.range(0,1201).forEach(value->output.accept(Map.of("id",value)));
             assertThat(output.finish()).isEqualTo(1201);
         }
@@ -41,7 +41,7 @@ class ExportRowBatchesTest {
 
     @Test void cancellationAndUnknownSinkFailuresPoisonOutputRatherThanAllowingPartialSuccess() {
         try(var scope=ExportPageSink.open(page->{})) {
-            var output=new ExportRowBatches(columns,500);
+            var output=new ExportRowBatches(columns);
             IntStream.range(0,500).forEach(value->output.accept(Map.of("id",value)));
             Thread.currentThread().interrupt();
             try{assertThatThrownBy(()->output.accept(Map.of("id",500))).isInstanceOf(java.util.concurrent.CancellationException.class);}
@@ -49,7 +49,7 @@ class ExportRowBatchesTest {
             assertThatThrownBy(output::finish).isInstanceOf(IllegalStateException.class);
         }
         try (var scope = ExportPageSink.open(page -> { throw new IllegalStateException("write outcome unknown"); })) {
-            var output = new ExportRowBatches(columns, 500);
+            var output = new ExportRowBatches(columns);
             output.accept(Map.of("id", 1));
             assertThatThrownBy(output::finish).hasMessage("write outcome unknown");
             assertThatThrownBy(output::finish).hasMessage("Report output is already finished");

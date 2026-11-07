@@ -1,6 +1,5 @@
 package com.uten.imp.features.sales.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
 import com.uten.imp.security.OwnerVisibility;
@@ -33,7 +32,7 @@ import static org.mockito.Mockito.when;
 class SalesReportOwnerScopeTest {
 
     @Mock private EntityManager em;
-    @Mock private SystemSettingsService settings;
+
     @Mock private SalesPriceMasker priceMasker;
     @Mock private SalesDocumentAccessPolicy accessPolicy;
 
@@ -155,7 +154,7 @@ class SalesReportOwnerScopeTest {
     }
 
     private SalesReportService service() {
-        return new SalesReportService(em, settings, priceMasker, accessPolicy);
+        return new SalesReportService(em, priceMasker, accessPolicy);
     }
 
     private Query emptyQuery() {

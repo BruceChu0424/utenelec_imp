@@ -96,9 +96,11 @@ class ReportTablePdfPagesTest {
             writer.finish(output);
             try(var document=Loader.loadPDF(output.toByteArray())) {
                 String text=new PDFTextStripper().getText(document);
-                var identities=java.util.regex.Pattern.compile("ROW-([0-9]{5})").matcher(text).results()
-                        .map(match->Integer.parseInt(match.group(1))).toList();
-                assertThat(identities).containsExactlyElementsOf(IntStream.range(0,count).boxed().toList());
+                var identities = java.util.regex.Pattern.compile("ROW-([0-9]{5})")
+                        .matcher(text).results().map(match -> match.group(1)).toList();
+                var expected = IntStream.range(0, count)
+                        .mapToObj(index -> String.format(java.util.Locale.ROOT, "%05d", index)).toList();
+                assertThat(identities).containsExactlyElementsOf(expected);
                 for(int column=1;column<10;column++)assertThat(text).contains("原文"+column);
             }
         }

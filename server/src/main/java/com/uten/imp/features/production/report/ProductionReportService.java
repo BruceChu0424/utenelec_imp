@@ -11,8 +11,6 @@ import com.uten.imp.common.report.ReportQueryKit.WhereBuilder;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -58,7 +56,6 @@ public class ProductionReportService {
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final EntityManager em;
-    private final SystemSettingsService settings;
 
     // ======================== 通用执行器 ========================
 
@@ -413,7 +410,7 @@ public class ProductionReportService {
             case "plan/summary" -> (pg, sz) -> planSummary(billNo, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
-        return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
+        return ReportQueryKit.paginateAll(loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),

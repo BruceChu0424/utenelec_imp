@@ -203,7 +203,7 @@ class ReportExportQueuePostgresTest {
         var columns=List.of(new com.uten.imp.common.export.ExportColumn("qty","数量","qty"),new com.uten.imp.common.export.ExportColumn("note","原文","text"));
         record Batch(List<Map<String,Object>> rows) { }
         var outside=new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()));
-        org.mockito.Mockito.when(source.read(request)).thenAnswer(call -> com.uten.imp.common.report.ReportQueryKit.paginateAll(1000,(page,size) -> {
+        org.mockito.Mockito.when(source.read(request)).thenAnswer(call -> com.uten.imp.common.report.ReportQueryKit.paginateAll((page,size) -> {
             var rows=jdbc.queryForList("SELECT qty,note FROM b1_export_facts ORDER BY id LIMIT ? OFFSET ?",size,(page-1)*size);
             if(page==1) {
                 outside.update("UPDATE b1_export_facts SET note='晚提交更正' WHERE id=600");

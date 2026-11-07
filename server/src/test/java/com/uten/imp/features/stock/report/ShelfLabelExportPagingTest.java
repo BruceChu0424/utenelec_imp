@@ -2,8 +2,6 @@ package com.uten.imp.features.stock.report;
 
 import com.uten.imp.common.export.ExportPageSink;
 import com.uten.imp.common.export.ExportPayload;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.stock.StockCostMasker;
 import com.uten.imp.features.stock.StockQueryService;
 import com.uten.imp.features.stock.dto.ShelfLabelRow;
@@ -24,8 +22,7 @@ import static org.mockito.Mockito.*;
 class ShelfLabelExportPagingTest {
     @Test void completeShelfExportUsesThePagedAuthorityAndDoesNotRetainAllRowsInTheSinkMode() {
         var stock = mock(StockQueryService.class);
-        var settings = mock(SystemSettingsService.class);
-        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(100_000);
+
         UUID warehouse = UUID.randomUUID();
         when(stock.shelfLabelRowsPage(eq("A"), eq("物料"), eq(warehouse), eq(true), anyInt(), eq(500)))
                 .thenAnswer(call -> {
@@ -35,7 +32,7 @@ class ShelfLabelExportPagingTest {
                             new BigDecimal("1.000000000000000001"), false, 1, 1, true,
                             warehouse, "实际仓库", null, "WAREHOUSE_MASTER")).toList();
                 });
-        var service = new StockReportService(mock(EntityManager.class), settings, stock, mock(StockCostMasker.class));
+        var service = new StockReportService(mock(EntityManager.class), stock, mock(StockCostMasker.class));
         List<ExportPayload> pages = new ArrayList<>();
         ExportPayload result;
         try (var ignored = ExportPageSink.open(pages::add)) {
@@ -54,11 +51,11 @@ class ShelfLabelExportPagingTest {
     }
 
     @Test void exportCarriesHeaderScopeIntoTheOwningPagedReader() {
-        var stock=mock(StockQueryService.class);var settings=mock(SystemSettingsService.class);
-        when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(50_000);
+        var stock=mock(StockQueryService.class);
+
         var filters=Map.of("rack","A","level","2","status","启用");
         when(stock.shelfLabelRowsPage(null,null,null,true,1,500,filters)).thenReturn(List.of());
-        var service=new StockReportService(mock(EntityManager.class),settings,stock,mock(StockCostMasker.class));
+        var service=new StockReportService(mock(EntityManager.class),stock,mock(StockCostMasker.class));
         service.export("shelf-labels",Map.of("includeDisabled","true","f.rack","A","f.level","2","f.status","启用"),null,null);
         verify(stock).shelfLabelRowsPage(null,null,null,true,1,500,filters);
         verify(stock,never()).shelfLabelRowsPage(any(),any(),any(),anyBoolean(),anyInt(),anyInt());

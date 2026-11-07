@@ -22,7 +22,7 @@ class ReportExportStreamingTest {
             for(var row:payload.rows()) assertEquals(seen.getAndIncrement(),row.get("id"));
             batches.incrementAndGet();
         })) {
-            var result=ReportQueryKit.paginateAll(100000,(p,size) -> {
+            var result=ReportQueryKit.paginateAll((p,size) -> {
                 assertEquals(ReportReadPlan.ROWS_ONLY,ReportReadPlan.current());return page(p,size,100000);
             },Page::total,ignored -> COLUMNS,Page::rows);
             assertEquals(100000,result.total());assertTrue(result.rows().isEmpty());
@@ -35,7 +35,7 @@ class ReportExportStreamingTest {
         try(var sink=ExportPageSink.open(payload -> {
             payload.rows().forEach(row->identities.add(row.get("id")));sizes.add(payload.rows().size());
         })) {
-            var result=ReportQueryKit.paginateAll(700,(p,size)->page(p,size,1201),Page::total,ignored->COLUMNS,Page::rows);
+            var result=ReportQueryKit.paginateAll((p,size)->page(p,size,1201),Page::total,ignored->COLUMNS,Page::rows);
             assertEquals(1201,result.total());assertTrue(result.rows().isEmpty());
         }
         assertEquals(IntStream.range(0,1201).boxed().toList(),identities);
@@ -45,7 +45,7 @@ class ReportExportStreamingTest {
         try(var prior=ReportReadPlan.open(new ReportReadPlan(true,false,true))) {
             assertThrows(IllegalStateException.class,() -> {
                 try(var sink=ExportPageSink.open(payload -> {throw new IllegalStateException("disk unavailable");})) {
-                    ReportQueryKit.paginateAll(100,(p,size) -> page(p,size,1),Page::total,ignored -> COLUMNS,Page::rows);
+                    ReportQueryKit.paginateAll((p,size) -> page(p,size,1),Page::total,ignored -> COLUMNS,Page::rows);
                 }
             });
             assertEquals(new ReportReadPlan(true,false,true),ReportReadPlan.current());
@@ -55,7 +55,7 @@ class ReportExportStreamingTest {
     @Test void emptyAndNaturallyBoundedReportsStillEmitTheirColumns() {
         var batches=new ArrayList<ExportPayload>();
         try(var sink=ExportPageSink.open(batches::add)) {
-            var result=ReportQueryKit.paginateAll(100,(p,size) -> page(p,size,0),Page::total,ignored -> COLUMNS,Page::rows);
+            var result=ReportQueryKit.paginateAll((p,size) -> page(p,size,0),Page::total,ignored -> COLUMNS,Page::rows);
             assertEquals(0,result.total());assertEquals(COLUMNS,batches.getFirst().columns());
         }
     }

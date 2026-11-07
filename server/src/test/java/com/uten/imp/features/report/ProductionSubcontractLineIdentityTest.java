@@ -2,8 +2,6 @@ package com.uten.imp.features.report;
 
 import com.uten.imp.common.export.*;
 import com.uten.imp.common.report.ReportReadPlan;
-import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.production.report.ProductionReportService;
 import com.uten.imp.features.subcontract.report.SubcontractReportService;
 import jakarta.persistence.EntityManager;
@@ -25,7 +23,7 @@ class ProductionSubcontractLineIdentityTest {
 
     @Test void productionPhysicalPlanItemsRemainDistinctInListAndExportWithoutVisibleChanges() {
         var source=new Source(Mode.PHYSICAL);
-        var service=new ProductionReportService(source.em,settings());
+        var service=new ProductionReportService(source.em);
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
             var result=service.planDetail(null,null,null,null,null,null,Map.of(),1,50,"goodsName","asc");
             assertPhysicalRows(result.columns().stream().map(column->column.key()).toList(),result.rows());
@@ -38,7 +36,7 @@ class ProductionSubcontractLineIdentityTest {
     @ParameterizedTest @ValueSource(strings={"ORDER","RECEIPT","RETURN","MATERIAL_ISSUE","MATERIAL_RETURN"})
     void subcontractPhysicalItemsKeepTheirIdentityThroughMaskingAndExport(String kind) {
         var source=new Source(Mode.PHYSICAL);
-        var service=new SubcontractReportService(source.em,settings());
+        var service=new SubcontractReportService(source.em);
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
             var result=switch(kind) {
                 case "ORDER"->service.orderDetail(null,null,null,null,null,null,Map.of(),1,50,"goodsName","asc");
@@ -56,8 +54,8 @@ class ProductionSubcontractLineIdentityTest {
 
     @Test void documentSummariesRetainTheirHeaderGrainWithoutPhysicalLineProjection() {
         var source=new Source(Mode.HEADER);
-        var production=new ProductionReportService(source.em,settings());
-        var subcontract=new SubcontractReportService(source.em,settings());
+        var production=new ProductionReportService(source.em);
+        var subcontract=new SubcontractReportService(source.em);
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
             var plan=production.planSummary(null,null,null,null,null,Map.of(),1,50,null,null);
             assertEquals(1,plan.rows().size());assertEquals(HEADER.toString(),plan.rows().getFirst().get("__srcId"));
@@ -76,7 +74,7 @@ class ProductionSubcontractLineIdentityTest {
 
     @Test void inOutAggregationPublishesOnlyItsExistingGroupIdentityWithoutChangingGrouping() {
         var source=new Source(Mode.GROUP);
-        var service=new SubcontractReportService(source.em,settings());
+        var service=new SubcontractReportService(source.em);
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
             var result=service.inOutStatus(null,LocalDate.of(2026,10,1),LocalDate.of(2026,10,31),null,1,50);
             assertEquals(2,result.rows().size());
@@ -110,9 +108,6 @@ class ProductionSubcontractLineIdentityTest {
     private static TableColumnProjection projection(Map<String,String> selector) {
         return new TableColumnProjection("report-identity",null,List.of(
                 new TableColumnProjection.Column("goodsName","货品名称",180.0,"text",null)),List.of(selector));
-    }
-    private static SystemSettingsService settings() {
-        var settings=mock(SystemSettingsService.class);when(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);return settings;
     }
     private enum Mode { PHYSICAL, HEADER, GROUP }
     private static final class Source {

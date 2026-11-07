@@ -42,7 +42,6 @@ public class AuditController {
     private AuditSessionTableExportService sessionTableExport;
 
     private final AuditQueryService auditQuery;
-    private final AuditRuntimeSettings runtimeSettings;
     private final XlsxExportService xlsxExport;
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
@@ -184,8 +183,7 @@ public class AuditController {
                 : auditQuery.export(validated(new AuditSearchCriteria(
                 action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
-                dateFrom, dateTo, snapshotId, parseOptionalActorId(actorId), activityOnly)),
-                runtimeSettings.exportMaxRows()), body.columnProjection(), "view_admin");
+                dateFrom, dateTo, snapshotId, parseOptionalActorId(actorId), activityOnly))), body.columnProjection(), "view_admin");
         ExportPayload payload = sourceWorkbook.payload();
         byte[] workbook = sourceWorkbook.bytes();
         byte[] downloadBytes = workbookDownload.protect(workbook, body.password());
@@ -210,8 +208,8 @@ public class AuditController {
     private ExportPayload exportSessions(UUID actorId, LocalDate from, LocalDate to, Long snapshotId) {
         var headers = AuditSessionHeaderQuery.from(request);
         return headers.active()
-                ? sessionTableExport.export(actorId,from,to,snapshotId,runtimeSettings.exportMaxRows(),headers)
-                : sessionTableExport.export(actorId,from,to,snapshotId,runtimeSettings.exportMaxRows());
+                ? sessionTableExport.export(actorId,from,to,snapshotId,headers)
+                : sessionTableExport.export(actorId,from,to,snapshotId);
     }
 
     /** Records that an investigator checked this event against its local device receipt. */

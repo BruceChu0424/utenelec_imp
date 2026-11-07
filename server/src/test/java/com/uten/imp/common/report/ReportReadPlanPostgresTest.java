@@ -253,7 +253,7 @@ class ReportReadPlanPostgresTest {
              var sink = ExportPageSink.open(page -> {
                  batches.incrementAndGet();maxBatch.accumulateAndGet(page.rows().size(), Math::max);writer.accept(page);
              })) {
-            exported = ReportQueryKit.paginateAll(ROWS, (page, size) -> {
+            exported = ReportQueryKit.paginateAll((page, size) -> {
                 long pageStart = System.nanoTime();
                 try { return domain.read(page, size); }
                 catch (Exception failure) { throw new IllegalStateException(failure); }

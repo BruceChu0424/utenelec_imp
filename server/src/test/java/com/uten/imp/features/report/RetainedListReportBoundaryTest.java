@@ -1,6 +1,5 @@
 package com.uten.imp.features.report;
 
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.production.report.ProductionReportService;
 import com.uten.imp.features.purchase.report.PurchaseReportService;
 import com.uten.imp.features.subcontract.report.SubcontractReportService;
@@ -23,13 +22,13 @@ class RetainedListReportBoundaryTest {
 
     private EntityManager entityManager;
     private Query query;
-    private SystemSettingsService settings;
+
 
     @BeforeEach
     void setUp() {
         entityManager = mock(EntityManager.class);
         query = mock(Query.class);
-        settings = mock(SystemSettingsService.class);
+
         when(entityManager.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
@@ -37,25 +36,25 @@ class RetainedListReportBoundaryTest {
 
     @Test
     void aggregateListEndpointsClampOversizedAndNonPositiveLimits() {
-        new ProductionReportService(entityManager, settings)
+        new ProductionReportService(entityManager)
                 .monthly(null, null, null, Integer.MAX_VALUE);
-        new PurchaseReportService(entityManager, settings)
+        new PurchaseReportService(entityManager)
                 .monthly(null, null, null, Integer.MAX_VALUE);
-        new PurchaseReportService(entityManager, settings)
+        new PurchaseReportService(entityManager)
                 .pending(Integer.MAX_VALUE);
-        new SubcontractReportService(entityManager, settings)
+        new SubcontractReportService(entityManager)
                 .monthly(null, null, null, Integer.MAX_VALUE);
 
         verify(query, times(4)).setParameter("limit", 2000);
 
         clearInvocations(query);
-        new PurchaseReportService(entityManager, settings).pending(0);
+        new PurchaseReportService(entityManager).pending(0);
         verify(query).setParameter("limit", 1);
     }
 
     @Test
     void dailyDetailUsesLongOffsetAndClampsPageSize() {
-        new ProductionReportService(entityManager, settings).dailyDetail(
+        new ProductionReportService(entityManager).dailyDetail(
                 null, null, null, null, null,
                 Integer.MAX_VALUE, Integer.MAX_VALUE);
 

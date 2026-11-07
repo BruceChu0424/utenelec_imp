@@ -15,6 +15,7 @@ import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.CaseDetail;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalControlService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest.ArrivalLine;
 import com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService;
@@ -46,7 +47,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 接受损耗结案(自动损耗单 + 独立履约量 + 记损耗率，原订货不变) → 供应商汇总视图。
  */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
-// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractShortDeliveryEndToEndTest extends SubcontractFullChainTestContext {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -54,6 +54,7 @@ class SubcontractShortDeliveryEndToEndTest extends SubcontractFullChainTestConte
     @Autowired ProcurementFinanceApprovalService financeApproval;
     @Autowired SubcontractMaterialIssueService materialIssues;
     @Autowired WarehouseArrivalRegistrationService arrivals;
+    @Autowired ProcurementArrivalControlService arrivalControl;
     @Autowired SubcontractShortDeliveryService shortDeliveries;
     @Autowired FulfillmentWorkbenchQueryService workbench;
     @Autowired BusinessOutboxProcessor outbox;
@@ -223,13 +224,19 @@ class SubcontractShortDeliveryEndToEndTest extends SubcontractFullChainTestConte
         rate("17",db.queryForObject("SELECT received_qty FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
         assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,orderId),
                 "损耗确认不等于合格入库：第二批 5 件仍在质检，要等累计合格实收 17 加损耗 3 满足原订货 20 后关单");
-        assertEquals("CLOSED",db.queryForObject("SELECT status FROM inbound_expectations WHERE order_type='SUBCONTRACT' AND order_id=?",String.class,orderId));
+        // An unused normal receipt allowance can keep the persisted expectation
+        // open. It must not create a warehouse task without receivable material.
+        assertEquals(0,arrivalControl.expectations(1,20,"SUBCONTRACT",null,w.supplierId()).getTotal());
+        rate("17",db.queryForObject("""
+                SELECT item.accepted_qty FROM inbound_expectation_items item JOIN inbound_expectations expectation
+                  ON expectation.id=item.expectation_id WHERE expectation.order_type='SUBCONTRACT' AND expectation.order_id=?
+                """,BigDecimal.class,orderId));
         assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_qty_change_logs WHERE order_type='SUBCONTRACT' AND order_item_id=?",itemId));
         assertNull(db.queryForObject("SELECT qty_change_log_id FROM subcontract_short_delivery_cases WHERE id=?",UUID.class,caseId));
         assertEquals(0,count("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_type='SUBCONTRACT' AND order_id=? AND status='PENDING'",orderId),
                 "人工接受损耗也不伪造订货改量，超耗财务责任仍走独立损耗案件");
         assertEquals("OPEN",db.queryForObject("SELECT status FROM subcontract_loss_cases WHERE waste_id=?",String.class,accepted.row().wasteId()),
-                "超出允许损耗的 2 件转财务责任判定");
+                "真实材料损耗独立进入财务责任判定");
         rate("20",db.queryForObject("SELECT ordered_qty FROM subcontract_short_delivery_cases WHERE id=?",BigDecimal.class,caseId));
         assertEquals(List.of("DETECTED","WAIT_MORE_DECIDED","REDETECTED","ACCEPT_LOSS_DECIDED"),events(caseId));
         assertEquals(0,shortDeliveries.counts().pending());assertEquals(0,shortDeliveries.counts().waiting());

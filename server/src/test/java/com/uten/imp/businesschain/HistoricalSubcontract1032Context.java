@@ -9,6 +9,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.test.util.ReflectionTestUtils;
+import jakarta.persistence.EntityManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +44,7 @@ final class HistoricalSubcontract1032Context {
                 "--uten.bootstrap.admin-login="+FullChainEndToEndTest.SHARED_ADMIN_LOGIN,"--uten.bootstrap.admin-password="+FullChainEndToEndTest.SHARED_ADMIN_PASSWORD,
                 "--uten.audit.retention.enabled=false","--uten.reporting.materialized-view-refresh.enabled=false",
                 "--uten.production.readiness-reconcile.enabled=false","--uten.inventory.value-work.enabled=false",
+                "--uten.read-summary.compaction-enabled=false",
                 "--uten.features.goods-owner-scope-enabled=false","--uten.storage.provider=local","--uten.storage.uploads-enabled=true",
                 "--uten.storage.malware-scan.provider=test-only","--uten.storage.local-dir="+storage,"--uten.policy-intelligence.enabled=false"));
         var context=new SpringApplicationBuilder(UtenImpApplication.class,OriginalPriceTransport.class)
@@ -57,7 +61,7 @@ final class HistoricalSubcontract1032Context {
         assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_procurement_reference_price_matches(jsonb)') IS NULL",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_adopt_procurement_reference_price_policy(text,uuid,jsonb)') IS NULL",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name IN('purchase_order_items','subcontract_order_items') AND column_name='reference_price_precision_policy'",Integer.class)).isZero();
-        for(var entry:Map.of("subcontract_receipt_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty"),
+        for(var entry:Map.of("subcontract_receipt_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty","material_consumption_version"),
                 "subcontract_material_return_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty"),
                 "sales_order_items",List.of("delivery_plan","delivery_bom_snapshot"),
                 "finance_receipt_lines",List.of("requested_sales_order_id","applied_source_doc_type","applied_source_doc_id","applied_source_doc_no"),
@@ -70,6 +74,18 @@ final class HistoricalSubcontract1032Context {
     @TestConfiguration(proxyBeanMethods=false)
     @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="uten.tests.original-schema",havingValue="1032")
     static class OriginalPriceTransport {
+        @Bean static BeanPostProcessor original1032NativeSqlTransport() {
+            return new BeanPostProcessor() {
+                @Override public Object postProcessBeforeInitialization(Object bean,String beanName) {
+                    if(bean instanceof DataSource source)return HistoricalSubcontract1032SqlTransport.dataSource(source);
+                    if(bean instanceof com.uten.imp.features.subcontract.receipt.SubcontractReceiptService) {
+                        var actual=(EntityManager)Objects.requireNonNull(ReflectionTestUtils.getField(bean,"em"));
+                        ReflectionTestUtils.setField(bean,"em",HistoricalSubcontract1032SqlTransport.entityManager(actual));
+                    }
+                    return bean;
+                }
+            };
+        }
         @Bean @Primary ProcurementReferencePricePolicyService original1032PricePolicy(JdbcTemplate db,ObjectMapper json) {
             return new OriginalReferencePrice(db,json);
         }

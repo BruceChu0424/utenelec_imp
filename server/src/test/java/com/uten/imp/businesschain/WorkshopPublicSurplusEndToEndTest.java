@@ -752,6 +752,13 @@ class WorkshopPublicSurplusEndToEndTest {
     @Test
     void actualSupplementDefaultTenPercentKeepsOriginal100AndCreatesReviewed30WithOneMaterialPosting() {
         Case c=createStartedTask("wps-supplement-100-30",false,"100");
+        UUID massUnit = UUID.randomUUID();
+        db.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,?)",
+                massUnit, "SUPPLEMENT-WEIGHT-" + massUnit, "克", "使用");
+        db.update("INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,mass_unit_code,provenance) VALUES(?,'MASS','G','MANUAL_GOVERNANCE')",
+                massUnit);
+        db.update("UPDATE goods SET m_weight=125,m_weight_unit_id=? WHERE id=(SELECT product_goods_id FROM production_execution_segments WHERE id=?)",
+                massUnit, c.segment());
         var source=sources(c).getFirst();
         qty("0.10",source.allowedOverproductionRate());
         var request=reportRequest(c,source,"130","100");
@@ -768,6 +775,8 @@ class WorkshopPublicSurplusEndToEndTest {
         productionPlans.approve(created.planId());
         var approved=supplements.detail(created.id());assertEquals("APPROVED",approved.status());assertEquals("READY",approved.supplementSegmentStatus());
         assertNotNull(approved.proofId());assertNotNull(approved.reportContext());assertEquals(c.segment(),approved.sourceLine().executionSegmentId());
+        assertEquals("0.125", approved.sourceLine().goodsUnitWeightKgExact());
+        assertEquals("0.125", approved.inputSources().getFirst().sourceLine().goodsUnitWeightKgExact());
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,approved.supplementSegmentId()));
         request.getItems().getFirst().setSupplementProofId(approved.proofId());
         assertThrows(ApiException.class,()->reports.create(request));

@@ -419,22 +419,26 @@ public class ActualOutputSupplementService {
     private Map<String,Object> context(UUID segment,boolean lock) {
         return one("""
                 SELECT segment.*,plan.bill_no AS plan_no,plan.maker_id AS plan_maker_id,package.warehouse_id,
-                       item.product_no,goods.name AS goods_name,goods.code AS goods_code,goods.spec AS goods_spec,
+                       item.product_no,g.name AS goods_name,g.code AS goods_code,g.spec AS goods_spec,
+                       CASE WHEN NOT g.is_deleted AND NOT g.auto_created AND g.status IS DISTINCT FROM '禁用'
+                            THEN g.m_weight END AS goods_unit_weight,
+                       report_weight_profile.mass_unit_code AS goods_weight_mass_unit,
                        color.name AS color_name,unit.name AS unit_name,department.name AS workshop_name
                 FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id
                 JOIN production_plan_items item ON item.id=segment.source_plan_item_id
-                JOIN goods ON goods.id=segment.product_goods_id
+                JOIN goods g ON g.id=segment.product_goods_id
+                """+DailyReportWeightInputs.MASTER_WEIGHT_JOINS+"""
                 LEFT JOIN colors color ON color.id=segment.product_color_id LEFT JOIN units unit ON unit.id=segment.product_unit_id
                 LEFT JOIN departments department ON department.id=segment.workshop_department_id
                 WHERE segment.id=:id
                 """+(lock?" AND NOT segment.is_deleted AND NOT plan.is_deleted AND plan.status=1 AND NOT plan.is_canceled AND NOT plan.is_stopped AND package.status='CONFIRMED' AND NOT package.is_deleted AND segment.status IN('IN_PROGRESS','COMPLETED') FOR UPDATE OF segment":""),args("id",segment));
     }
     private com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine sourceLine(Map<String,Object> request) {
-        return sourceLine(request,null);
+        return sourceLine(request,null,context(uuid(request,"source_execution_segment_id"),false));
     }
-    private com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine sourceLine(Map<String,Object> request,UUID recoveryId) {
-        var c=context(uuid(request,"source_execution_segment_id"),false);
+    private com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine sourceLine(
+            Map<String,Object> request,UUID recoveryId,Map<String,Object> c) {
         var allocations=db.queryForList("""
                 SELECT allocation.sales_order_item_id,allocation.allocated_qty,order_header.bill_no AS order_no,item.qty AS order_qty,client.name AS client_name
                 FROM execution_segment_sales_allocations allocation JOIN sales_order_items item ON item.id=allocation.sales_order_item_id
@@ -472,7 +476,9 @@ public class ActualOutputSupplementService {
                 null,null,null,recoveryId,Objects.toString(recovery.get("disposition_code"),null),number(recovery,"available_qty"),
                 uuid(recovery,"source_inspection_id"),uuid(recovery,"source_report_item_id"),Objects.toString(recovery.get("source_report_no"),null),
                 Boolean.TRUE.equals(recovery.get("requires_material")),uuid(c,"plan_id"),recoveryId==null,
-                rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),BigDecimal.ZERO,BigDecimal.ZERO);
+                rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),BigDecimal.ZERO,BigDecimal.ZERO,
+                DailyReportWeightInputs.kgPerBaseUnit((BigDecimal)c.get("goods_unit_weight"),
+                        (String)c.get("goods_weight_mass_unit")));
     }
     /** Identity metadata for the authorized captured input, independent of current free quota. */
     private List<InputSource> inputSources(com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest input) {
@@ -484,7 +490,7 @@ public class ActualOutputSupplementService {
             var metadata=sourceLine(args("source_execution_segment_id",line.getExecutionSegmentId(),
                     "source_sales_allocation_id",line.getExecutionSegmentSalesAllocationId(),
                     "source_planned_qty",number(source,"planned_qty"),"prior_reported_qty",BigDecimal.ZERO,
-                    "original_report_qty",line.getQty()),line.getFqcRecoveryAuthorizationId());
+                    "original_report_qty",line.getQty()),line.getFqcRecoveryAuthorizationId(),source);
             if(!Objects.equals(metadata.planItemId(),line.getPlanItemId()) || !Objects.equals(metadata.orderItemId(),line.getSalesOrderItemId())
                     || !Objects.equals(metadata.goodsId(),line.getGoodsId()) || !Objects.equals(metadata.colorId(),line.getColorId())
                     || !Objects.equals(metadata.unitId(),line.getUnitId())

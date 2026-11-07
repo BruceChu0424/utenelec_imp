@@ -3,6 +3,7 @@ package com.uten.imp.features.sales.quote;
 import com.uten.imp.application.port.SalesQuoteFinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.SalesQuoteNoticePort;
 import com.uten.imp.application.port.TaskClaimMutationGuardPort;
+import com.uten.imp.common.finance.CurrencyDisplayLabel;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.util.KeywordSearch;
@@ -113,7 +114,10 @@ public class SalesQuoteFinanceService {
                 LEFT JOIN employees seller ON seller.id = o.seller_id
                 LEFT JOIN employees maker ON maker.id = o.maker_id
                 LEFT JOIN employees confirmer ON confirmer.id = o.finance_confirmed_by
-                LEFT JOIN currencies currency ON currency.id = o.currency_id
+                LEFT JOIN currencies currency ON currency.id = COALESCE(o.currency_id, (
+                    SELECT base.id FROM currencies base
+                    WHERE base.is_base_currency AND NOT base.is_deleted
+                ))
                 WHERE o.is_deleted = FALSE AND""" + " " + statePredicate + "\n" + keywordFilter;
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
@@ -161,7 +165,8 @@ public class SalesQuoteFinanceService {
                     NativeValueConverters.toOffsetDateTime(r[16]),
                     blankToNull((String) r[17]), (String) r[18],
                     claim == null ? null : claim.claimedByName(),
-                    claim != null && claim.claimedByMe(), (String) r[19], (String) r[20]));
+                    claim != null && claim.claimedByMe(),
+                    CurrencyDisplayLabel.of((String) r[19], (String) r[20]), (String) r[20]));
         }
         return new PageResponse<>(items, p, sz, total, totalPages);
     }
@@ -224,8 +229,7 @@ public class SalesQuoteFinanceService {
                         LEFT JOIN employees returner ON returner.id = CASE WHEN :manager THEN o.manager_rejected_by ELSE o.finance_returned_by END
                         LEFT JOIN employees confirmer ON confirmer.id = CASE WHEN :manager THEN o.manager_approved_by ELSE o.finance_confirmed_by END
                         WHERE o.id = :id
-                        """.formatted(com.uten.imp.common.finance.CurrencyDisplayLabel.sql("cur"),
-                                com.uten.imp.common.finance.CurrencyDisplayLabel.sql("base")))
+                        """.formatted(CurrencyDisplayLabel.sql("cur"), CurrencyDisplayLabel.sql("base")))
                 .setParameter("id", id).setParameter("manager", manager)
                 .getSingleResult();
         @SuppressWarnings("unchecked")

@@ -492,8 +492,12 @@ class CoverageTests(unittest.TestCase):
             "#oneBindingAndPortablePolicyWorkAfterRealCollectionRestartAndDatabaseRestore": "UTEN_RUN_MARKET_RUNTIME_SMOKE",
             "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
             "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
+            "com.uten.imp.businesschain.FinanceInteractiveUatHarnessTest"
+            "#serveActualAnonymousFinanceApplicationUntilTheManualStopMarker": "UTEN_FINANCE_INTERACTIVE_UAT",
             "com.uten.imp.features.finance.gl.FinanceAccountingWorkbookParserTest"
             "#privateSuppliedFilesAreReadOnlyOptionalEvidence": "UTEN_FINANCE_SOURCE_DIR",
+            "com.uten.imp.features.finance.report.FinanceTemplateSourceReaderTest"
+            "#privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns": "FINANCE_REAL_ASSET_FILE",
         }
         self.assertEqual(expected, runner.METHOD_OPTIONAL_GATES)
         for identity, gate in expected.items():
@@ -607,6 +611,7 @@ class CoverageTests(unittest.TestCase):
         sources.update((java / "features/master/goods/pricing").glob("*.java"))
         sources.update((java / "businesschain").glob("MaterialForecast*.java"))
         sources.add(java / "businesschain/SalesFinanceInteractiveUatHarnessTest.java")
+        sources.add(java / "businesschain/FinanceInteractiveUatHarnessTest.java")
         sources.update((java / "features/admin/systemsetting").glob("MaterialForecast*.java"))
         self.assertTrue(sources)
         environment, properties = {}, {}
@@ -674,6 +679,26 @@ class CoverageTests(unittest.TestCase):
             "privateSuppliedFilesAreReadOnlyOptionalEvidence",
         }, set(re.findall(r'@Test\b(?:(?![;{}]).)*?\bvoid\s+(\w+)\s*\(', parser_source, re.DOTALL)))
         environment[runner.FINANCE_SOURCE_REVIEW] = runner.FINANCE_SOURCE_ENV
+        asset_reader = java / "features/finance/report/FinanceTemplateSourceReaderTest.java"
+        reader_source = lexical.sub(lambda match: " " if match[0].startswith(("//", "/*")) else match[0],
+                                    asset_reader.read_text(encoding="utf-8"))
+        self.assertEqual([("EnabledIfEnvironmentVariable", "FINANCE_REAL_ASSET_FILE", ".+")],
+                         [row.groups() for row in condition.finditer(reader_source)])
+        self.assertEqual(1, len(re.findall(r'@(?:EnabledIfEnvironmentVariable|EnabledIfSystemProperty)\b', reader_source)))
+        self.assertRegex(reader_source,
+                         r'@Test\s+@EnabledIfEnvironmentVariable\(\s*named\s*=\s*"FINANCE_REAL_ASSET_FILE",\s*matches\s*=\s*"\.\+"\s*\)'
+                         r'\s+void\s+privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns\s*\(')
+        self.assertEqual(["FINANCE_REAL_ASSET_FILE"],
+                         re.findall(r'System\s*\.\s*getenv\s*\(\s*"([^"\\]+)"\s*\)', reader_source))
+        self.assertNotRegex(reader_source, r'@Disabled\w*\b|\bAssumptions\s*\.|\bassume(?:True|False|That)\s*\(')
+        self.assertEqual({
+            "sameWorkbookAttachmentsRequireExplicitSheetAndKeepEveryOriginalDigit",
+            "originalLeafOrderAndDuplicateUnitHeadersAreRetainedAndAChangedOrderIsRejected",
+            "materialOriginalTenColumnsAndHiddenSupplementalCachedFactsRetainCoordinatesWithoutExecutingFormulas",
+            "privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns",
+        }, set(re.findall(r'@Test\b(?:(?![;{}]).)*?\bvoid\s+(\w+)\s*\(', reader_source, re.DOTALL)))
+        environment["com.uten.imp.features.finance.report.FinanceTemplateSourceReaderTest"
+                    "#privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns"] = "FINANCE_REAL_ASSET_FILE"
         self.assertEqual(runner.METHOD_OPTIONAL_GATES, environment)
         self.assertEqual({runner.MATERIAL_PRODUCER_REVIEW:
                           {"named": runner.MATERIAL_PRODUCER_PROPERTY, "matches": ".+"}}, properties)

@@ -65,9 +65,13 @@ METHOD_OPTIONAL_GATES = {
     # an ordinary database regression cannot borrow this exact method's gate.
     "com.uten.imp.businesschain.SalesFinanceInteractiveUatHarnessTest"
     "#serveRealShipmentAndReceiptApplicationUntilOwnedStopMarker": "UTEN_SALES_FINANCE_INTERACTIVE_UAT",
-    # Only the local private-original evidence method needs these files.
-    # The four public/generated workbook parser tests remain mandatory.
+    "com.uten.imp.businesschain.FinanceInteractiveUatHarnessTest"
+    "#serveActualAnonymousFinanceApplicationUntilTheManualStopMarker": "UTEN_FINANCE_INTERACTIVE_UAT",
+    # Only the private-original evidence methods need local finance files.
+    # Public/generated workbook parser tests remain mandatory.
     FINANCE_SOURCE_REVIEW: FINANCE_SOURCE_ENV,
+    "com.uten.imp.features.finance.report.FinanceTemplateSourceReaderTest"
+    "#privateSeptemberWorkbookIncludesAllThreeOriginalSheetsAndHiddenColumns": "FINANCE_REAL_ASSET_FILE",
 }
 # Keep the preparation workflow contract named explicitly for its dedicated
 # mandatory CI step and the existing stricter negative regressions.

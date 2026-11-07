@@ -63,6 +63,65 @@ class MaterialAnalysisReservationPreviewEndToEndTest {
         qty("0",formal(c));
     }
 
+    @Test void approvingDraftGrowthAddsOnlyItsNewPrivateShare() {
+        Case c=create("draft-grow-approve","0","0");
+        commands.issueWorkshopPlans(c.analysis(),issue(c,false,line(c.first(),"40")));
+        AnalysisView after=assertParity(c,issue(c,true,line(c.first(),"40")));
+        UUID root=db.queryForObject("SELECT root_material_id FROM production_material_analysis_items WHERE id=?",UUID.class,c.first());
+        qty("80",material(after,root).preparationOwnedAvailableQty());
+        qty("20",material(after,root).planningUncoveredQty());
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,c.analysis()));
+        qty("0",formal(c));
+    }
+
+    @Test void publicSurplusDoesNotBecomePrivateManufacturingCoverage() {
+        Case c=create("private-public-split","0","0");
+        AnalysisView after=assertParity(c,issue(c,false,line(c.first(),"150")));
+        UUID root=db.queryForObject("SELECT root_material_id FROM production_material_analysis_items WHERE id=?",UUID.class,c.first());
+        qty("100",material(after,root).preparationOwnedAvailableQty());
+        qty("0",material(after,root).planningUncoveredQty());
+        qty("100",db.queryForObject("SELECT SUM(submitted_qty) FROM production_material_analysis_plan_links WHERE analysis_id=?",BigDecimal.class,c.analysis()));
+        qty("50",db.queryForObject("SELECT SUM(public_surplus_qty) FROM production_material_analysis_plan_links WHERE analysis_id=?",BigDecimal.class,c.analysis()));
+        qty("0",formal(c));
+    }
+
+    @Test void aNewChildAnchorProjectsItsFirstPrivatePlanWithoutInventingPersistedRows() {
+        var w=fixture.seedWorld("reservation-preview-first-child");fixture.loginAs(w.superAdminUserId());
+        UUID root=UUID.randomUUID(),child=UUID.randomUUID(),leaf=UUID.randomUUID();
+        fixture.insertGoods(root,"RP-NR-"+root,"首次子件根","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(child,"RP-NC-"+child,"首次子件","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(leaf,"RP-NL-"+leaf,"首次子件原料","采购",w.unitId(),w.unitLegacy());
+        fixture.insertBom(root,child,"1");fixture.insertBom(child,leaf,"1");
+        var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"rp-first-child-"+root,List.of(
+                new PreviewItem("OTHER",null,root,null,w.unitId(),"rp-first-child-source-"+root,"首次子件原始来源",
+                        BusinessTime.today().plusDays(10),new BigDecimal("100")))));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"rp-first-child-routes-"+root,
+                view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),
+                        row.goodsId().equals(leaf)?"BUY":"MAKE",null)).toList()));
+        UUID childMaterial=view.flatMaterials().stream().filter(row->row.goodsId().equals(child)).findFirst().orElseThrow().materialLineId();
+        UUID leafMaterial=view.flatMaterials().stream().filter(row->row.goodsId().equals(leaf)).findFirst().orElseThrow().materialLineId();
+        Case c=new Case(w,view.analysisId(),leaf,view.products().getFirst().analysisLineId(),null,leafMaterial,null);
+        var request=issue(c,false,new IssueWorkshopPlansRequest.IssuePlanLine(childMaterial,null,new BigDecimal("40"),null,null,null,null,null,null,null));
+        Map<String,Object> before=counts(c);
+        AnalysisView preview=readOnlyPreview(c,new PreviewIssuePlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),
+                request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),request.lines(),List.of()));
+        assertEquals(before,counts(c));
+        qty("100",material(preview,childMaterial).internalCommittedOutputQty());
+        qty("40",material(preview,childMaterial).preparationOwnedAvailableQty());
+        qty("60",material(preview,childMaterial).planningUncoveredQty());
+        AnalysisView after=commands.issueWorkshopPlans(c.analysis(),request).analysis();
+        UUID anchor=after.products().stream().filter(product->"MAKE_COMPONENT".equals(product.sourceType())).findFirst().orElseThrow().analysisLineId();
+        UUID newRoot=db.queryForObject("SELECT root_material_id FROM production_material_analysis_items WHERE id=?",UUID.class,anchor);
+        // A child anchor reuses its original material path and has no separate
+        // ROOT_SUPPLY identity. Compare every material, without excluding a row.
+        assertNull(newRoot);
+        assertEquals(List.of(),MaterialAnalysisPreviewParity.mismatches(preview,after,Set.of()));
+        qty("100",material(after,childMaterial).internalCommittedOutputQty());
+        qty("40",material(after,childMaterial).preparationOwnedAvailableQty());
+        qty("60",material(after,childMaterial).planningUncoveredQty());
+        qty("0",formal(c));
+    }
+
     @Test void quantityOnlyProjectionCreatesNoReservationOrPlan() {
         Case c=create("typed","120","20");
         AnalysisView view=analyses.detail(c.analysis());

@@ -114,6 +114,11 @@ final class MaterialPreparationBudgetReader {
     }
 
     Map<UUID, BigDecimal> privateMakePending(UUID analysisId) {
+        return privateMakePending(analysisId, Map.of());
+    }
+
+    Map<UUID, BigDecimal> privateMakePending(UUID analysisId,
+            Map<UUID, BigDecimal> projectedPrivatePending) {
         Map<UUID, BigDecimal> result = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH private_plans AS MATERIALIZED (
@@ -151,6 +156,7 @@ final class MaterialPreparationBudgetReader {
                       AND material.node_role='ROOT_SUPPLY'))
                 GROUP BY material.id
                 """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plan_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_report_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_reports"))).setParameter("analysis", analysisId))) result.put((UUID) row[0], nonnegative((BigDecimal) row[1]));
+        projectedPrivatePending.forEach((material, qty) -> result.merge(material, qty, BigDecimal::add));
         return Map.copyOf(result);
     }
 

@@ -11,6 +11,21 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class MaterialPreparationBudgetReaderTest {
+    @Test void previewPendingSharesJoinTheSameStoredPrivateBudgetWithoutChangingTheInputSnapshot() {
+        EntityManager em=mock(EntityManager.class); Query query=query();
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        UUID existing=UUID.randomUUID(),newAnchor=UUID.randomUUID();
+        when(query.getResultList()).thenReturn(Collections.singletonList(new Object[]{existing,new BigDecimal("4")}));
+        Map<UUID,BigDecimal> projected=Map.of(existing,new BigDecimal("2.5000"),newAnchor,new BigDecimal("3"));
+        var pending=new MaterialPreparationBudgetReader(em).privateMakePending(UUID.randomUUID(),projected);
+        assertThat(pending.get(existing)).isEqualByComparingTo("6.5");
+        assertThat(pending.get(newAnchor)).isEqualByComparingTo("3");
+        assertThat(projected.get(existing)).isEqualByComparingTo("2.5");
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class,
+                ()->pending.put(existing,BigDecimal.ZERO));
+        verify(em,times(1)).createNativeQuery(anyString());
+    }
+
     @Test void repeatedBomOccurrencesShareOnePoolAndCannotSpendPrivatePegs() {
         EntityManager em=mock(EntityManager.class);
         Query future=query(), own=query(), aliases=query();

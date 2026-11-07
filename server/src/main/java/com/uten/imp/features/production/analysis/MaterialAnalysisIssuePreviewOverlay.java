@@ -74,6 +74,7 @@ final class MaterialAnalysisIssuePreviewOverlay {
     private final Map<String, List<BigDecimal>> appendedBatches = new HashMap<>();
     private final Map<UUID, BigDecimal> grownPlanBatches = new HashMap<>();
     private final Map<UUID, BigDecimal> openPlanQtyBySource = new HashMap<>();
+    private final Map<UUID, BigDecimal> privateMakePendingByMaterial = new HashMap<>();
     private final List<PreviewPlanTransfer> transfers = new ArrayList<>();
     private final Map<UUID, MaterialDimension> transferDimensions = new HashMap<>();
     private final List<PreviewPublicReservation> publicReservations = new ArrayList<>();
@@ -140,6 +141,16 @@ final class MaterialAnalysisIssuePreviewOverlay {
     void addOpenPlanQty(UUID sourceId, BigDecimal baseQty) {
         requireMutable();
         openPlanQtyBySource.merge(sourceId, baseQty, BigDecimal::add);
+    }
+
+    /** Only the new demand-owned plan share, in the target material's base unit. */
+    void addPrivateMakePending(UUID materialId, BigDecimal baseQty) {
+        requireMutable();
+        privateMakePendingByMaterial.merge(materialId, baseQty, BigDecimal::add);
+    }
+
+    Map<UUID, BigDecimal> privateMakePendingByMaterial() {
+        return Map.copyOf(privateMakePendingByMaterial);
     }
 
     // ── 刷新投影结果 ───────────────────────────────────────────────────

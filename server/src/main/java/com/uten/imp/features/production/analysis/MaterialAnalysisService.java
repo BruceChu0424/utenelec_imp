@@ -4781,7 +4781,8 @@ public class MaterialAnalysisService {
                         stored.externalQty().add(projected.externalQty()))));
         Map<UUID, SourceLine> sourcesById = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId, source -> source));
-        Map<UUID,BigDecimal> pendingPrivateMake=new MaterialPreparationBudgetReader(em).privateMakePending(analysisId);
+        Map<UUID,BigDecimal> pendingPrivateMake=new MaterialPreparationBudgetReader(em)
+                .privateMakePending(analysisId, overlay.privateMakePendingByMaterial());
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
                 materialRows.stream().collect(Collectors.toMap(
                         MaterialRow::nodeIdentity, row -> row));
@@ -4954,9 +4955,16 @@ public class MaterialAnalysisService {
                     boolean sharedAnchor=anchor!=null&&SOURCE_AGGREGATE_MAKE.equals(anchor.sourceType());
                     BigDecimal anchorPlanned = (sharedAnchor||anchor==null?BigDecimal.ZERO:anchor.issuedPlanQty())
                             .add(aggregateCommitments.getOrDefault(row.id(),BigDecimal.ZERO));
+                    // Existing anchor source deltas are already in sourcesById.
+                    // A newly projected anchor has no source row yet; its quota
+                    // is distinct from the new plan's pending private share.
+                    BigDecimal newAnchorQuota = anchor == null
+                            ? overlay.internalCommitmentByNode().getOrDefault(
+                                    nodeRef(row.analysisItemId(),row.nodeKey()),BigDecimal.ZERO)
+                            : BigDecimal.ZERO;
                     BigDecimal internalCommitment = future.totalQty().subtract(future.externalQty())
                             .max(anchor == null || sharedAnchor ? BigDecimal.ZERO : anchor.requestedQty())
-                            .max(anchorPlanned);
+                            .max(anchorPlanned).max(newAnchorQuota);
                     // 本节点的计划产出量 = max(需求量, 本节点已下达的计划量)：顶层供给行
                     // 按来源行的计划产出(含公共备货产出, 换成基本单位)，其余行按自家锚点。
                     BigDecimal plannedOutput = row.requiredQty().max(anchorPlanned);
@@ -5667,10 +5675,12 @@ public class MaterialAnalysisService {
                 .collect(Collectors.toMap(SourceLine::analysisItemId, source -> source));
         // 分析行 → 其锚点父物料行的两种键: 计划产出(父节点键)与计划批次(顶层供给行按来源汇总)。
         Map<UUID, String[]> anchorParents = new HashMap<>();
+        Map<UUID, UUID> anchorMaterials = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id, parent.analysis_item_id || '|' || parent.node_key,
                        parent.analysis_item_id || '|'
-                           || CASE WHEN parent.node_role = 'ROOT_SUPPLY' THEN '' ELSE parent.node_key END
+                           || CASE WHEN parent.node_role = 'ROOT_SUPPLY' THEN '' ELSE parent.node_key END,
+                       parent.id
                 FROM production_material_analysis_items item
                 JOIN production_material_analysis_materials parent
                   ON parent.id = item.parent_analysis_material_id
@@ -5680,6 +5690,7 @@ public class MaterialAnalysisService {
                   AND item.source_type = 'MAKE_COMPONENT'
                 """).setParameter("analysisId", analysisId))) {
             anchorParents.put(uuid(row[0]), new String[] {string(row[1]), string(row[2])});
+            anchorMaterials.put(uuid(row[0]), uuid(row[3]));
         }
         List<UUID> newAnchorParents = seeds.stream().map(IssuePreviewSeed::newAnchorParentMaterialId)
                 .filter(Objects::nonNull).distinct().toList();
@@ -5701,6 +5712,9 @@ public class MaterialAnalysisService {
                 if (refs == null) throw conflict("候选物料节点不存在或路线未确认，请刷新后重试");
                 overlay.appendBatch(refs[1], seed.qty());
                 overlay.addPlannedOutput(refs[0], seed.qty());
+                // New MAKE_COMPONENT seeds use the parent material's base-unit
+                // quantity, matching createOrIncrementMakeDemand's source contract.
+                overlay.addPrivateMakePending(seed.newAnchorParentMaterialId(), seed.demandQty());
                 continue;
             }
             SourceLine source = sources.get(seed.lineId());
@@ -5709,6 +5723,14 @@ public class MaterialAnalysisService {
             overlay.addSourceQuantities(seed.lineId(), zero,
                     approveNow ? draftSubmitted.negate() : seed.demandQty(),
                     approveNow ? seed.demandQty().add(draftSubmitted) : zero, seed.surplusQty());
+            if (!SOURCE_AGGREGATE_MAKE.equals(source.sourceType())) {
+                UUID material = anchorMaterials.getOrDefault(seed.lineId(), source.rootMaterialLineId());
+                if (material != null) {
+                    // Moving a grown draft to approved does not create its old
+                    // submitted share again. Public surplus is never private.
+                    overlay.addPrivateMakePending(material, seed.demandQty().multiply(source.unitRate()));
+                }
+            }
             BigDecimal baseQty = seed.qty().multiply(source.unitRate());
             String[] parent = anchorParents.get(seed.lineId());
             if (seed.growPlanId() != null) overlay.growPlanBatch(seed.growPlanId(), baseQty);

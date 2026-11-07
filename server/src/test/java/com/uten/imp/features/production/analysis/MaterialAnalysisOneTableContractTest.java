@@ -46,7 +46,11 @@ class MaterialAnalysisOneTableContractTest {
         // Only the still-pending private share reduces planning work. Completed
         // output is already represented by physical/issued coverage; reusing a
         // plan's original quota would conceal a later genuine replenishment gap.
-        assertThat(service).contains("new MaterialPreparationBudgetReader(em).privateMakePending(analysisId)");
+        // The same pending-private reader also consumes the not-yet-persisted
+        // preview overlay; draft approval transfers and public surplus remain
+        // separate from the new demand-owned share.
+        assertThat(service.replaceAll("\\s+", "")).contains(
+                "newMaterialPreparationBudgetReader(em).privateMakePending(analysisId,overlay.privateMakePendingByMaterial())");
         assertThat(service).contains("BigDecimal committedPlan = pendingPrivateMake.getOrDefault(row.id(),BigDecimal.ZERO);");
         assertThat(service).doesNotContain("committedPlan = committedPlan.max(materialSource.committedPlanQty()");
         assertThat(service).contains(".multiply(materialSource.unitRate()).setScale(4, RoundingMode.DOWN));");

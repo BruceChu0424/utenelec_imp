@@ -194,7 +194,8 @@ public final class MigratedProjectionSchema {
 
     /** Installs the real current imported-document policy for explicitly modeled projection tables.
      * Source ownership FKs remain the fixture's responsibility; this is not a full-chain schema.
-     * Real marker triggers are essential: the production lookup rejects unregistered table names. */
+     * Real marker triggers are essential: the production lookup rejects unregistered table names.
+     * V1115 reads the maintained registry; projection fixtures register through the same guard. */
     public static void installImportedDocumentPolicy(JdbcTemplate target, String... guardedTables) {
         Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);
         for (String table : guardedTables) {
@@ -203,14 +204,24 @@ public final class MigratedProjectionSchema {
                 throw new IllegalArgumentException("Not a migrated imported-document relation: " + table);
             }
         }
+        // SQL-language readers validate their relation at creation time.
+        if (Boolean.TRUE.equals(target.queryForObject(
+                "SELECT to_regclass('public.imported_document_registry') IS NULL", Boolean.class))) {
+            createCurrentTables(target, "imported_document_registry");
+        }
         createCurrentFunctions(target,
                 "fn_imported_business_document_roots",
                 "fn_imported_business_document_maintenance_allowed",
                 "fn_imported_business_document_table",
                 "fn_imported_business_document_scope_table",
+                "fn_imported_business_document_direct_key",
+                "fn_imported_business_document_registered",
+                "fn_imported_business_document_judgment_changed",
                 "fn_imported_business_document_row_internal",
                 "fn_imported_business_document_row",
                 "fn_imported_business_document",
+                "fn_imported_document_registry_proven",
+                "fn_imported_document_registry_sync",
                 "fn_guard_imported_business_document_archive",
                 "fn_guard_imported_business_document_truncate");
         for (String table : guardedTables) {

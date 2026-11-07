@@ -58,8 +58,8 @@ class PurchaseRequestDecompositionPreviewTest {
         verify(fixture.em).createNativeQuery(sql.capture());
         assertThat(sql.getValue())
                 .contains("fn_procurement_order_reserves_source('PURCHASE', o.id)")
-                .contains("NOT fn_imported_business_document('purchase_request_items', i.id)")
-                .contains("NOT fn_imported_business_document('purchase_requests', r.id)")
+                .contains(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_request_items", "i"))
+                .contains(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_requests", "r"))
                 .doesNotContain("supplier_id", "price", "amount_original", "amount_local");
     }
 

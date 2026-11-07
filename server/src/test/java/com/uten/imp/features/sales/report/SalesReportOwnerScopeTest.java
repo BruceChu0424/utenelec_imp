@@ -101,7 +101,8 @@ class SalesReportOwnerScopeTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getValue().contains("JOIN (SELECT * FROM sales_orders archive_origin"));
-        assertTrue(sql.getValue().contains("NOT fn_imported_business_document_row('sales_orders',to_jsonb(archive_origin))) o ON o.id = i.order_id"));
+        assertTrue(sql.getValue().contains("NOT " + com.uten.imp.common.history.ImportedBusinessDocumentScope
+                .registeredSql("sales_orders", "archive_origin.id") + ") o ON o.id = i.order_id"));
         assertTrue(sql.getValue().contains("o.owner_employee_id IN (:salesOwners)"));
         assertTrue(sql.getValue().contains("o.currency_id"));
         assertTrue(sql.getValue().contains("i.amount_original"));

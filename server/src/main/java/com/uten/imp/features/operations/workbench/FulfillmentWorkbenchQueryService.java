@@ -61,6 +61,15 @@ public class FulfillmentWorkbenchQueryService {
     static final String PURCHASE_ITEM_ROWS = procurementItemRows("PURCHASE");
     static final String SUBCONTRACT_ITEM_ROWS = procurementItemRows("SUBCONTRACT");
 
+    /** Native decomposition tasks: neither the action document nor its plan is imported history. */
+    private static String nativeDecompositionTasks() {
+        return "(SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT "
+                + com.uten.imp.common.history.ImportedBusinessDocumentScope.scopedRegisteredSql(
+                        "archive_scope.action_doc_type", "archive_scope.action_doc_id")
+                + " AND NOT " + com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql(
+                        "production_plans", "archive_scope.plan_id") + ")";
+    }
+
     private static String procurementItemRows(String department) {
         boolean subcontract = "SUBCONTRACT".equals(department);
         return """
@@ -84,7 +93,7 @@ public class FulfillmentWorkbenchQueryService {
                     %s AS supplier_name,
                     ARRAY[v.goods_name::text] AS search_goods_names,
                     ARRAY[v.goods_code::text] AS search_goods_codes
-             FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v
+             FROM %s v
              LEFT JOIN %s current_order
                ON v.action_doc_type='%s_ORDER' AND current_order.id=v.action_doc_id
              LEFT JOIN suppliers supplier ON supplier.id=current_order.supplier_id
@@ -92,6 +101,7 @@ public class FulfillmentWorkbenchQueryService {
              LEFT JOIN warehouses parent_warehouse ON parent_warehouse.id=warehouse.parent_id
              WHERE v.department='%s')
             """.formatted(subcontract ? "COALESCE(supplier.name,v.supplier_name)" : "supplier.name",
+                nativeDecompositionTasks(),
                 subcontract ? "subcontract_orders" : "purchase_orders", department, department);
     }
     /**
@@ -208,7 +218,7 @@ public class FulfillmentWorkbenchQueryService {
                     NULL::text AS supplier_name,
                     array_remove(array_agg(DISTINCT v.goods_name::text), NULL) AS search_goods_names,
                     array_remove(array_agg(DISTINCT v.goods_code::text), NULL) AS search_goods_codes
-             FROM (SELECT * FROM v_fulfillment_workbench archive_scope WHERE NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) v
+             FROM (SELECT * FROM v_fulfillment_workbench archive_scope WHERE NOT %4$s) v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
              JOIN %1$s draw_doc ON draw_doc.id=mapping.document_id
@@ -269,7 +279,8 @@ public class FulfillmentWorkbenchQueryService {
                AND segment.status IN ('WAITING','READY','DISPATCHED')
                AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
                AND NOT plan.is_canceled AND NOT plan.is_stopped)
-            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"));
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"),
+                com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("production_plans", "archive_scope.plan_id"));
 
     private final EntityManager em;
     private final FulfillmentWorkbenchAccessPolicy accessPolicy;
@@ -775,9 +786,9 @@ public class FulfillmentWorkbenchQueryService {
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'WAITING_ORDER'),
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_REJECTED'),
                        COUNT(*) FILTER (WHERE decomposition.task_status = 'FINANCE_APPROVED')
-                FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) decomposition
+                FROM %s decomposition
                 WHERE decomposition.department = :department AND (%s)
-                """.formatted(String.join(" OR ", stages)));
+                """.formatted(nativeDecompositionTasks(), String.join(" OR ", stages)));
         query.setParameter("department", department);
         scopes.forEach(scope -> scope.bind(query));
         Object[] result = (Object[]) query.getSingleResult();
@@ -823,11 +834,11 @@ public class FulfillmentWorkbenchQueryService {
         NativeReadScope scope = accessPolicy.orderTaskScope(department, "task_order.maker_id", "task_order_owners");
         Query query = em.createNativeQuery("""
                 SELECT COUNT(*)
-                FROM (SELECT * FROM v_procurement_decomposition_tasks archive_scope WHERE NOT fn_imported_business_document(fn_imported_business_document_scope_table(archive_scope.action_doc_type),archive_scope.action_doc_id) AND NOT fn_imported_business_document('production_plans',archive_scope.plan_id)) decomposition
+                FROM %s decomposition
                 WHERE decomposition.department = :department
                   AND decomposition.task_status IN (%s)
                   AND %s
-                """.formatted(IN_PROGRESS_STATUS_SQL, ownedOrderExists(department, scope)));
+                """.formatted(nativeDecompositionTasks(), IN_PROGRESS_STATUS_SQL, ownedOrderExists(department, scope)));
         query.setParameter("department", department);
         scope.bind(query);
         return ((Number) query.getSingleResult()).longValue();

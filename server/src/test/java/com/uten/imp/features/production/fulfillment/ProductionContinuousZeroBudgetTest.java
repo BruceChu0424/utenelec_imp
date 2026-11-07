@@ -112,7 +112,8 @@ class ProductionContinuousZeroBudgetTest {
             assertTrue(compact.contains("'PRODUCTION_PLAN_ITEM'"));
         }
         for (String table : List.of(itemTable, headerTable)) {
-            assertTrue(compact.contains("NOTfn_imported_business_document_row('" + table + "',to_jsonb(archive_origin))"),
+            assertTrue(compact.contains("NOTEXISTS(SELECT1FROMimported_document_registryarchive_registryWHEREarchive_registry.table_name='"
+                            + table + "'ANDarchive_registry.row_id=archive_origin.id)"),
                     "receipt lineage must exclude imported " + table);
         }
         assertTrue(compact.contains("WHEREpeg.demand_id=:demandId")

@@ -308,12 +308,12 @@ final class ProductionJdbcMeasurement {
     static String queryLabel(String sql) {
         String normalized = sql.replaceAll("\\s+", " ").trim().toLowerCase(java.util.Locale.ROOT);
         // These complete standalone queries were added for V926 command/source
-        // provenance and returned history metadata. An ordinary business SELECT
-        // with an embedded provenance predicate must keep its existing label.
+        // provenance and returned history metadata (V1115 reads the registry). An ordinary
+        // business SELECT with an embedded provenance predicate must keep its existing label.
         String ids = "\\?(?:\\s*,\\s*\\?)*";
         if (normalized.matches("select fn_imported_business_document\\(\\?\\s*,\\s*\\?\\)"))
             return "archive.mutable_origin";
-        if (normalized.matches("select id,\\s*fn_imported_business_document\\(\\?\\s*,\\s*id\\) "
+        if (normalized.matches("select id,\\s*fn_imported_business_document_registered\\(\\?\\s*,\\s*id\\) "
                 + "from public\\.[a-z][a-z0-9_]* where id in \\(" + ids + "\\)"))
             return "archive.metadata_origin";
         if (normalized.matches("select id from public\\.[a-z][a-z0-9_]* where id in \\(" + ids

@@ -1,5 +1,6 @@
 package com.uten.imp.common.integrity;
 
+import com.uten.imp.common.history.ImportedBusinessDocumentScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities;
@@ -8,7 +9,8 @@ import jakarta.persistence.EntityManager;
 import java.util.Collection;
 import java.util.UUID;
 
-/** Shared origin boundary for receipt actions and actionable IQC/warehouse task projections. */
+/** Shared origin boundary for receipt actions and actionable IQC/warehouse task projections.
+ * Commands keep the authoritative walk; read projections use the V1115 registry. */
 public final class ProcurementReceiptOriginPolicy {
     private ProcurementReceiptOriginPolicy() { }
 
@@ -25,10 +27,14 @@ public final class ProcurementReceiptOriginPolicy {
     private static String historySql(String type){return "SELECT id FROM "+table(type)+" WHERE id IN(:ids) AND fn_imported_business_document(:table,id)";}
     public static String currentInspectionReceipt(String inspectionAlias) {
         if(!inspectionAlias.matches("[a-z][a-z0-9_]*"))throw new IllegalArgumentException("Invalid internal inspection alias");
+        // The registered verdict alone: correlated projection relations may not
+        // carry the typed legacy-key columns of the full receipt tables.
         return "(("+inspectionAlias+".receipt_type='PURCHASE' AND EXISTS(SELECT 1 FROM purchase_receipts current_receipt WHERE current_receipt.id="
-                +inspectionAlias+".receipt_id AND NOT fn_imported_business_document('purchase_receipts',current_receipt.id) AND current_receipt.is_deleted=FALSE)) OR ("
+                +inspectionAlias+".receipt_id AND NOT "+ImportedBusinessDocumentScope.registeredSql("purchase_receipts","current_receipt.id")
+                +" AND current_receipt.is_deleted=FALSE)) OR ("
                 +inspectionAlias+".receipt_type='SUBCONTRACT' AND EXISTS(SELECT 1 FROM subcontract_receipts current_receipt WHERE current_receipt.id="
-                +inspectionAlias+".receipt_id AND NOT fn_imported_business_document('subcontract_receipts',current_receipt.id) AND current_receipt.is_deleted=FALSE)))";
+                +inspectionAlias+".receipt_id AND NOT "+ImportedBusinessDocumentScope.registeredSql("subcontract_receipts","current_receipt.id")
+                +" AND current_receipt.is_deleted=FALSE)))";
     }
     private static String table(String type) {
         return switch(type){case "PURCHASE"->"purchase_receipts";case "SUBCONTRACT"->"subcontract_receipts";

@@ -442,28 +442,29 @@ class IqcDecideReportBatchPostgresTest {
             try {
                 beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
                 db.execute("SET LOCAL track_functions='all'");
-                long initial=originClassifierCalls();
+                long initial=originClassifierCalls(),initialLookups=registryLookups();
                 String explained=em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+sql)
                         .setParameter("actorId",((AuthUser)selected.actor().getPrincipal()).getId())
                         .setParameter("analysisId",selected.analysisId()).getSingleResult().toString();
-                long calls=originClassifierCalls()-initial;
+                long calls=originClassifierCalls()-initial,lookups=registryLookups()-initialLookups;
                 assertEquals(before,performanceFacts(),"Origin scoping must preserve every quality, funding and physical fact");
                 assertEquals(actionsBefore,db.queryForObject("SELECT md5(string_agg(to_jsonb(action)::text,'' ORDER BY action.id)) FROM preplan_supply_actions action WHERE analysis_id=?",String.class,selected.analysisId()),
                         "A resolved quality result awaiting warehouse confirmation must keep covering its original action");
                 // Four lifecycle predicates each prove at most the item/header pairs of these two physical rows.
                 long bound=receiptRows*16;
-                System.out.println("[decide-report] purchase projection originCalls="+calls+" bound="+bound
-                        +" selectedReceiptRows="+receiptRows);
+                System.out.println("[decide-report] purchase projection originWalks="+calls+" registryLookups="+lookups
+                        +" bound="+bound+" selectedReceiptRows="+receiptRows);
                 String directory=System.getProperty("uten.perf.quality-report-directory");
                 if(directory!=null){
                     var path=java.nio.file.Path.of(directory);java.nio.file.Files.createDirectories(path);
                     json.writerWithDefaultPrettyPrinter().writeValue(path.resolve("purchase-failure-projection.json").toFile(),
-                            Map.of("originCalls",calls,"originCallBound",bound,"selectedReceiptRows",receiptRows,
+                            Map.of("originWalks",calls,"registryLookups",lookups,"originCallBound",bound,"selectedReceiptRows",receiptRows,
                                     "plan",json.readTree(explained).get(0),"sourceIdentity",
                                     System.getProperty("uten.perf.source-identity","unspecified")));
                 }
-                assertTrue(calls>0&&calls<=bound,"Classify only physical item/header references of the selected analysis; calls="
-                        +calls+", bound="+bound);
+                assertEquals(0,calls,"V1115: the projection classifies origin through the registry, never the graph walk");
+                assertTrue(lookups>0&&lookups<=bound,"Classify only physical item/header references of the selected analysis; lookups="
+                        +lookups+", bound="+bound);
             } catch(java.io.IOException failure) {
                 throw new java.io.UncheckedIOException(failure);
             } finally { status.setRollbackOnly(); }
@@ -472,10 +473,18 @@ class IqcDecideReportBatchPostgresTest {
         assertEquals(before,performanceFacts());
     }
 
+    /** Authoritative graph walks (entry and walk) within the current transaction. */
     private long originClassifierCalls(){
         return db.queryForObject("""
                 SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
-                WHERE schemaname='public' AND funcname='fn_imported_business_document_row'
+                WHERE schemaname='public' AND funcname IN ('fn_imported_business_document_row','fn_imported_business_document_row_internal')
+                """,Long.class);
+    }
+
+    private long registryLookups(){
+        return db.queryForObject("""
+                SELECT COALESCE(sum(seq_scan+COALESCE(idx_scan,0)),0) FROM pg_stat_xact_user_tables
+                WHERE schemaname='public' AND relname='imported_document_registry'
                 """,Long.class);
     }
 

@@ -318,8 +318,8 @@ public class PurchaseRequestService {
                                 JOIN purchase_requests r ON r.id = i.request_id
                                 %s
                                 WHERE i.id IN (:itemIds)
-                                  AND NOT fn_imported_business_document('purchase_request_items', i.id)
-                                  AND NOT fn_imported_business_document('purchase_requests', r.id)
+                                  AND %s
+                                  AND %s
                                   AND i.is_deleted = FALSE
                                   AND r.status = 1
                                   AND r.is_deleted = FALSE
@@ -330,6 +330,8 @@ public class PurchaseRequestService {
                                   AND %s - %s - COALESCE(pending.pending_physical_qty,0) > 0
                                 ORDER BY i.id
                                 """.formatted(PENDING_ORDER_QUANTITY_JOIN,
+                                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_request_items", "i"),
+                                        com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("purchase_requests", "r"),
                                         com.uten.imp.features.purchase.common.PurchaseRequestQuantities.requiredSql("i"),
                                         com.uten.imp.features.purchase.common.PurchaseRequestQuantities.orderedSql("i")))
                         .setParameter("itemIds", itemIds));

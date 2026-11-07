@@ -57,7 +57,7 @@ class SalesOrderShippablePageTest {
         String rowSql = sql.getAllValues().get(1);
         String common = rowSql.substring(0, rowSql.indexOf(" ORDER BY o.client_id"));
         assertThat(sql.getAllValues().getFirst()).isEqualTo("SELECT COUNT(*) FROM (" + common + ") shippable_count");
-        assertThat(rowSql).contains("POSITION(", "o.finance_confirmed = true", "fn_imported_business_document", ", i.id LIMIT :shippableLimit OFFSET :shippableOffset");
+        assertThat(rowSql).contains("POSITION(", "o.finance_confirmed = true", "imported_document_registry", ", i.id LIMIT :shippableLimit OFFSET :shippableOffset");
     }
 
     @Test void emptyNormalizesThePageWithoutLoadingRowsOrPrices() {

@@ -39,7 +39,7 @@ public class RetainedRecordReader {
         if (!documents.isEmpty()) {
             if (!table.matches("[a-z][a-z0-9_]*")) throw new IllegalArgumentException("Invalid internal history table");
             @SuppressWarnings("unchecked")
-            List<Object[]> origins = em.createNativeQuery("SELECT id, fn_imported_business_document(:table,id) "
+            List<Object[]> origins = em.createNativeQuery("SELECT id, fn_imported_business_document_registered(:table,id) "
                     + "FROM public." + table + " WHERE id IN (:ids)")
                     .setParameter("table", table)
                     .setParameter("ids", documents.stream().map(DocumentRef::id).toList()).getResultList();

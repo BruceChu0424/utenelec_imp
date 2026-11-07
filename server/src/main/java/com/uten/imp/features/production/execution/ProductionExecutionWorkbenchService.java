@@ -42,13 +42,14 @@ public class ProductionExecutionWorkbenchService {
     /** 段级动作：在开工确认表里认料。 */
     static final String ACTION_CHOOSE = "CHOOSE";
     private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
-    /** The ongoing queue never inherits a historical-list originScope request. */
+    /** The ongoing queue never inherits a historical-list originScope request. Analyses are
+     * not archive documents (no V926 guard), so only plan roots can be imported history. */
     private static final String CURRENT_ROOT_PREDICATE = """
             (CASE root.root_type
-              WHEN 'PLAN' THEN NOT fn_imported_business_document('production_plans', root.root_id)
-              WHEN 'ANALYSIS' THEN NOT fn_imported_business_document('production_material_analyses', root.root_id)
+              WHEN 'PLAN' THEN NOT %s
+              WHEN 'ANALYSIS' THEN TRUE
               ELSE FALSE END)
-            """;
+            """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.registeredSql("production_plans", "root.root_id"));
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy productionAccess;
@@ -1462,12 +1463,12 @@ public class ProductionExecutionWorkbenchService {
                       AND producing.product_unit_rate>0
                       AND producing_plan.status=1 AND NOT producing_plan.is_deleted
                       AND NOT producing_plan.is_closed AND NOT producing_plan.is_canceled AND NOT producing_plan.is_stopped
-                      AND NOT fn_imported_business_document('production_plans',producing_plan.id)
+                      AND %s
                       AND producing_package.status='CONFIRMED' AND NOT producing_package.is_deleted
                       AND fn_workshop_direct_relationship_allows(producing.id,short_material.demand_id)
                     GROUP BY producing.source_plan_item_id
                 ) source_capacity
-                """;
+                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativePredicate("production_plans", "producing_plan"));
     }
 
     /** ADR-131：与领料命令入口、开工确认表同一个状态函数。 */

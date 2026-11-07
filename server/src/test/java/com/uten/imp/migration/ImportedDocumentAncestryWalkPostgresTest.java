@@ -72,6 +72,8 @@ class ImportedDocumentAncestryWalkPostgresTest {
                     END $runtime$;
                     """);
             sql.execute("GRANT SELECT,UPDATE ON fixture_origin_dag TO uten");
+            // V1115 production ACL: the runtime reads registered verdicts and never writes them.
+            sql.execute("GRANT SELECT ON imported_document_registry TO uten");
         }
     }
 
@@ -236,6 +238,168 @@ class ImportedDocumentAncestryWalkPostgresTest {
         try(var query=connection.createStatement();var rows=query.executeQuery("SELECT seq_scan+idx_scan FROM pg_stat_xact_user_tables WHERE relname='fixture_origin_dag'")){rows.next();return rows.getLong(1);}
     }
 
+    @Test void readPathClassifiesThroughTheRegistryWithZeroGraphWalks() throws Exception {
+        List<UUID> chain=graph(4);UUID leaf=chain.getFirst(),inherited=chain.getLast(),nativeId=graph(2).getLast();
+        try(var connection=owner();var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_id=211 WHERE id=?")) {
+            update.setObject(1,leaf);update.executeUpdate();
+            // V1115 maintenance contract: re-keying a source recomputes the rows that inherit from it.
+            try(var refresh=connection.prepareStatement("SELECT fn_refresh_imported_document_registry(?)")) {
+                refresh.setString(1,"fixture_origin_dag");refresh.executeQuery().close();
+            }
+        }
+        List<UUID> read=new ArrayList<>();
+        try(var runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",PASSWORD)) {
+            runtime.setAutoCommit(false);
+            long walks=walks(runtime);
+            try(var query=runtime.prepareStatement("SELECT node.id FROM fixture_origin_dag node WHERE node.id IN (?,?,?) AND "
+                    +ImportedBusinessDocumentScope.registeredSql("fixture_origin_dag","node.id"))) {
+                query.setObject(1,leaf);query.setObject(2,inherited);query.setObject(3,nativeId);
+                try(var rows=query.executeQuery()){while(rows.next())read.add(rows.getObject(1,UUID.class));}
+            }
+            assertThat(walks(runtime)-walks).as("read classification never walks the graph").isZero();
+            runtime.rollback();
+        }
+        assertThat(read).containsExactlyInAnyOrder(leaf,inherited);
+        try(var connection=owner()) {
+            for(UUID id:List.of(leaf,inherited,nativeId)) assertSame(connection,id,read.contains(id));
+        }
+    }
+
+    @Test void aRegisteredVerdictIsAnsweredWithoutWalkingAndAnUnregisteredOneStillWalks() throws Exception {
+        UUID imported=graph(1).getFirst();UUID inherited;
+        try(var connection=owner();var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_id=223 WHERE id=?")) {
+            update.setObject(1,imported);update.executeUpdate();
+        }
+        // A maintenance insert below an imported source is registered by the guard itself.
+        try(var connection=owner();var insert=connection.prepareStatement("INSERT INTO fixture_origin_dag(id,left_parent) VALUES (?,?)")) {
+            inherited=UUID.randomUUID();insert.setObject(1,inherited);insert.setObject(2,imported);insert.executeUpdate();
+        }
+        UUID nativeId=graph(3).getLast();
+        try(var connection=owner()) {
+            connection.setAutoCommit(false);
+            long before=xactCalls(connection,"fn_imported_business_document_row_internal");
+            assertThat(rowVerdict(connection,inherited)).isTrue();
+            assertThat(xactCalls(connection,"fn_imported_business_document_row_internal")-before).as("registry hit").isZero();
+            assertThat(rowVerdict(connection,nativeId)).isFalse();
+            assertThat(xactCalls(connection,"fn_imported_business_document_row_internal")-before).as("native rows keep the walk").isEqualTo(1);
+            connection.rollback();
+        }
+    }
+
+    @Test void runtimeUpdateWithUnchangedVerdictInputsWalksOnlyTheOldRow() throws Exception {
+        UUID node=graph(1).getFirst(),nativeParent=graph(2).getLast(),imported=graph(1).getFirst();
+        try(var connection=owner();var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_id=317 WHERE id=?")) {
+            update.setObject(1,imported);update.executeUpdate();
+        }
+        try(var runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",PASSWORD)) {
+            runtime.setAutoCommit(false);
+            long before=xactCalls(runtime,"fn_imported_business_document_row");
+            try(var update=runtime.prepareStatement("UPDATE fixture_origin_dag SET payload='verdict inputs unchanged' WHERE id=?")) {
+                update.setObject(1,node);assertThat(update.executeUpdate()).isEqualTo(1);
+            }
+            assertThat(xactCalls(runtime,"fn_imported_business_document_row")-before).as("OLD only").isEqualTo(1);
+            before=xactCalls(runtime,"fn_imported_business_document_row");
+            try(var update=runtime.prepareStatement("UPDATE fixture_origin_dag SET right_parent=? WHERE id=?")) {
+                update.setObject(1,nativeParent);update.setObject(2,node);assertThat(update.executeUpdate()).isEqualTo(1);
+            }
+            assertThat(xactCalls(runtime,"fn_imported_business_document_row")-before).as("changed FK input: OLD and NEW").isEqualTo(2);
+            runtime.commit();
+            // Pointing a native row at an imported source changes a verdict input and is still rejected.
+            try(var update=runtime.prepareStatement("UPDATE fixture_origin_dag SET left_parent=? WHERE id=?")) {
+                update.setObject(1,imported);update.setObject(2,node);
+                assertThatThrownBy(update::executeUpdate).isInstanceOf(SQLException.class)
+                        .extracting(error->((SQLException)error).getSQLState()).isEqualTo("55000");
+            }
+            runtime.rollback();
+            try(var update=runtime.prepareStatement("UPDATE fixture_origin_dag SET source_table='fixture_origin_dag',source_id=? WHERE id=?")) {
+                update.setObject(1,imported);update.setObject(2,node);
+                assertThatThrownBy(update::executeUpdate).isInstanceOf(SQLException.class)
+                        .extracting(error->((SQLException)error).getSQLState()).isEqualTo("55000");
+            }
+            runtime.rollback();
+        }
+        try(var connection=owner();var query=connection.prepareStatement("SELECT payload,right_parent FROM fixture_origin_dag WHERE id=?")) {
+            query.setObject(1,node);
+            try(var rows=query.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString(1)).isEqualTo("verdict inputs unchanged");
+                assertThat(rows.getObject(2,UUID.class)).isEqualTo(nativeParent);
+            }
+            assertSame(connection,node,false);
+        }
+    }
+
+    @Test void maintenanceWritesKeepEachRowsRegistrationAndTheRefreshRepairsInheritedFlips() throws Exception {
+        UUID keyed=UUID.randomUUID(),child=UUID.randomUUID(),nativeId=UUID.randomUUID();
+        try(var connection=owner();var sql=connection.createStatement()) {
+            try(var keyedInsert=connection.prepareStatement("INSERT INTO fixture_origin_dag(id,legacy_id) VALUES (?,401)");
+                var childInsert=connection.prepareStatement("INSERT INTO fixture_origin_dag(id,left_parent) VALUES (?,?)");
+                var nativeInsert=connection.prepareStatement("INSERT INTO fixture_origin_dag(id) VALUES (?)")) {
+                keyedInsert.setObject(1,keyed);keyedInsert.executeUpdate();
+                childInsert.setObject(1,child);childInsert.setObject(2,keyed);childInsert.executeUpdate();
+                nativeInsert.setObject(1,nativeId);nativeInsert.executeUpdate();
+            }
+            assertThat(registered(connection,keyed,child,nativeId)).containsExactlyInAnyOrder(keyed,child);
+            try(var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_id=NULL WHERE id=?")) {
+                update.setObject(1,keyed);update.executeUpdate();
+            }
+            // The re-keyed row itself is exact at once; its child keeps the old verdict
+            // (failing closed) until the maintenance contract recomputes the relation.
+            assertThat(registered(connection,keyed,child,nativeId)).containsExactly(child);
+            assertThat(classify(connection,child,false)).isTrue();
+            assertThat(classify(connection,child,true)).isFalse();
+            try(var refresh=connection.prepareStatement("SELECT fn_refresh_imported_document_registry(?)")) {
+                refresh.setString(1,"fixture_origin_dag");refresh.executeQuery().close();
+            }
+            assertThat(registered(connection,keyed,child,nativeId)).isEmpty();
+            assertSame(connection,child,false);
+            try(var update=connection.prepareStatement("UPDATE fixture_origin_dag SET legacy_import_run_id=? WHERE id=?")) {
+                update.setObject(1,UUID.randomUUID());update.setObject(2,nativeId);update.executeUpdate();
+            }
+            assertThat(registered(connection,keyed,child,nativeId)).containsExactly(nativeId);
+            try(var delete=connection.prepareStatement("DELETE FROM fixture_origin_dag WHERE id=?")) {
+                delete.setObject(1,nativeId);delete.executeUpdate();
+            }
+            assertThat(registered(connection,keyed,child,nativeId)).isEmpty();
+            sql.execute("CREATE TABLE fixture_origin_truncate(id uuid PRIMARY KEY,legacy_id integer)");
+            sql.execute("CREATE TRIGGER trg_00_imported_business_archive_only BEFORE INSERT OR UPDATE OR DELETE ON fixture_origin_truncate "
+                    +"FOR EACH ROW EXECUTE FUNCTION fn_guard_imported_business_document_archive()");
+            sql.execute("CREATE TRIGGER trg_00_imported_business_archive_truncate BEFORE TRUNCATE ON fixture_origin_truncate "
+                    +"FOR EACH STATEMENT EXECUTE FUNCTION fn_guard_imported_business_document_truncate()");
+            sql.execute("INSERT INTO fixture_origin_truncate VALUES (gen_random_uuid(),1),(gen_random_uuid(),2),(gen_random_uuid(),NULL)");
+            try(var count=sql.executeQuery("SELECT count(*) FROM imported_document_registry WHERE table_name='fixture_origin_truncate'")) {
+                count.next();assertThat(count.getLong(1)).isEqualTo(2);
+            }
+            sql.execute("TRUNCATE fixture_origin_truncate");
+            try(var count=sql.executeQuery("SELECT count(*) FROM imported_document_registry WHERE table_name='fixture_origin_truncate'")) {
+                count.next();assertThat(count.getLong(1)).isZero();
+            }
+        }
+        try(var runtime=DriverManager.getConnection(PG.getJdbcUrl(),"uten",PASSWORD);var sql=runtime.createStatement()) {
+            assertThatThrownBy(()->sql.execute("SELECT fn_refresh_imported_document_registry(NULL)"))
+                    .isInstanceOf(SQLException.class).extracting(error->((SQLException)error).getSQLState()).isEqualTo("42501");
+        }
+    }
+
+    private static boolean rowVerdict(Connection connection,UUID id) throws SQLException {
+        try(var query=connection.prepareStatement("SELECT fn_imported_business_document_row('fixture_origin_dag',to_jsonb(node)) FROM fixture_origin_dag node WHERE id=?")) {
+            query.setObject(1,id);try(var rows=query.executeQuery()){assertThat(rows.next()).isTrue();return rows.getBoolean(1);}
+        }
+    }
+
+    private static List<UUID> registered(Connection connection,UUID... ids) throws SQLException {
+        List<UUID> result=new ArrayList<>();
+        try(var query=connection.prepareStatement("SELECT row_id FROM imported_document_registry WHERE table_name='fixture_origin_dag' AND row_id=ANY(?)")) {
+            query.setArray(1,connection.createArrayOf("uuid",ids));
+            try(var rows=query.executeQuery()){while(rows.next())result.add(rows.getObject(1,UUID.class));}
+        }
+        return result;
+    }
+
+    private static long walks(Connection connection) throws SQLException {
+        return xactCalls(connection,"fn_imported_business_document_row_internal")+xactCalls(connection,"fn_imported_business_document_row");
+    }
+
     @Test void migratedNativeRowCallersTargetPhysicalRelationsWithNonNullUuidIdentity() throws Exception {
         var pattern = Pattern.compile(
                 "ImportedBusinessDocumentScope\\s*\\.\\s*(?:nativeTable|nativeRowsByKey|nativePredicate)"
@@ -254,7 +418,8 @@ class ImportedDocumentAncestryWalkPostgresTest {
         assertThat(tables).isNotEmpty().doesNotContain("platform_record_fields");
         for (String table : tables) {
             assertThat(ImportedBusinessDocumentScope.nativePredicate(table, "archive_origin"))
-                    .endsWith("NOT fn_imported_business_document_row('" + table + "',to_jsonb(archive_origin))");
+                    .endsWith("NOT " + ImportedBusinessDocumentScope.registeredSql(table, "archive_origin.id"))
+                    .doesNotContain("fn_imported_business_document");
         }
         try(var connection=owner();var query=connection.prepareStatement("SELECT c.relkind,a.attnotnull,a.atttypid='uuid'::regtype,EXISTS(SELECT 1 FROM pg_index pk WHERE pk.indrelid=c.oid AND pk.indisprimary AND pk.indnkeyatts=1 AND pk.indkey[0]=a.attnum) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='id' AND NOT a.attisdropped WHERE n.nspname='public' AND c.relname=?")) {for(String table:tables){query.setString(1,table);try(var result=query.executeQuery()){assertThat(result.next()).as(table).isTrue();assertThat(result.getString(1)).isIn("r","p");assertThat(result.getBoolean(2)).as(table+" id NOT NULL").isTrue();assertThat(result.getBoolean(3)).as(table+" id UUID").isTrue();assertThat(result.getBoolean(4)).as(table+" unique primary identity").isTrue();}}}
         System.out.println("ORIGIN-ROW-CATALOG physicalTables="+tables.size()+" verifiedCompleteRowCallers="+occurrences);

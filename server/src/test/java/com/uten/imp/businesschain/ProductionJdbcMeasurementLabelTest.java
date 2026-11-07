@@ -12,7 +12,7 @@ class ProductionJdbcMeasurementLabelTest {
     @Test void onlyCompleteStandaloneProvenanceQueriesGetTheThreeSafetyLabels() {
         assertEquals("archive.mutable_origin", label("SELECT fn_imported_business_document(?,?)"));
         assertEquals("archive.mutable_origin", label(" SELECT\nfn_imported_business_document(?, ?) "));
-        assertEquals("archive.metadata_origin", label("SELECT id, fn_imported_business_document(?,id) "
+        assertEquals("archive.metadata_origin", label("SELECT id, fn_imported_business_document_registered(?,id) "
                 + "FROM public.stock_documents WHERE id IN (?, ? , ?)"));
         assertEquals("archive.source_origin", label("SELECT id FROM public.subcontract_order_items "
                 + "WHERE id IN (?) AND fn_imported_business_document(?,id)"));
@@ -23,6 +23,9 @@ class ProductionJdbcMeasurementLabelTest {
                 "SELECT d.id,d.status FROM stock_documents d WHERE NOT fn_imported_business_document(?,d.id)",
                 "SELECT id FROM public.stock_documents WHERE id IN (?) AND fn_imported_business_document(?,id) AND status=1",
                 "SELECT id, fn_imported_business_document(?,id),amount_local FROM public.stock_documents WHERE id IN (?)",
+                "SELECT id, fn_imported_business_document_registered(?,id),amount_local FROM public.stock_documents WHERE id IN (?)",
+                // The retired authority-walk metadata shape is no longer a recognised standalone query.
+                "SELECT id, fn_imported_business_document(?,id) FROM public.stock_documents WHERE id IN (?)",
                 "SELECT fn_imported_business_document(?,?),count(*) FROM stock_documents",
                 "SELECT fn_imported_business_document(?,?) FROM stock_documents",
                 "WITH native AS (SELECT id FROM stock_documents WHERE NOT fn_imported_business_document(?,id)) SELECT * FROM native",
@@ -38,7 +41,7 @@ class ProductionJdbcMeasurementLabelTest {
                 "SELECT id FROM public.stock_documents WHERE id IN () AND fn_imported_business_document(?,id)",
                 "SELECT id FROM public.stock_documents WHERE id IN (?,42) AND fn_imported_business_document(?,id)",
                 "SELECT id FROM public.stock_documents WHERE id IN (?,current_setting('app.id')) AND fn_imported_business_document(?,id)",
-                "SELECT id, fn_imported_business_document(?,id) FROM public.stock_documents WHERE id IN (?) ORDER BY id")) {
+                "SELECT id, fn_imported_business_document_registered(?,id) FROM public.stock_documents WHERE id IN (?) ORDER BY id")) {
             assertFalse(label(sql).startsWith("archive."), sql);
         }
     }

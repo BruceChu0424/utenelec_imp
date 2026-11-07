@@ -57,7 +57,10 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
             var original=jdbc.queryForList("SELECT id FROM "+originalSource(table)+" source WHERE id IN (?,?,?)",UUID.class,ids.toArray());
             var optimized=jdbc.queryForList("SELECT id FROM "+ImportedBusinessDocumentScope.nativeTable(table)+" source WHERE id IN (?,?,?)",UUID.class,ids.toArray());
             assertThat(original).as("nonempty original native set: %s",table).containsExactly(ids.getFirst());
-            assertThat(optimized).as("typed direct prefilter still executes inherited-source authority: %s",table).containsExactlyElementsOf(original);
+            assertThat(optimized).as("the registry carries the inherited-source verdict: %s",table).containsExactlyElementsOf(original);
+            // Maintenance-identity inserts registered their own verdicts through the V1115 guard.
+            assertThat(jdbc.queryForList("SELECT row_id FROM imported_document_registry WHERE table_name=? AND row_id IN (?,?,?)",
+                    UUID.class,table,ids.get(0),ids.get(1),ids.get(2))).containsExactlyInAnyOrder(ids.get(1),ids.get(2));
         }
         for(UUID inherited:List.of(zeroInherited,minusInherited)) {
             assertThat(jdbc.queryForObject("SELECT fn_imported_business_document_row('purchase_request_items',to_jsonb(item)) FROM purchase_request_items item WHERE id=?",Boolean.class,inherited))
@@ -86,10 +89,11 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
         assertThat(newRows).containsExactlyElementsOf(oldRows);
     }
 
+    /** The pre-V1115 read: JSON direct keys plus the pure V933 walk, never the registry. */
     private static String originalSource(String table) {
         return "(SELECT * FROM "+table+" archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL "
                 +"AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL "
-                +"AND NOT fn_imported_business_document_row('"+table+"',to_jsonb(archive_origin)))";
+                +"AND NOT fn_imported_business_document_row_internal('"+table+"',to_jsonb(archive_origin),ARRAY[]::text[]))";
     }
 
     @Test
@@ -101,7 +105,7 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
         for(String table:tables) {
             String optimized=ImportedBusinessDocumentScope.nativeTable(table);
             String original=originalSource(table);
-            // EXCEPT compares actual identities, not just equal counts.
+            // EXCEPT compares actual identities, not just equal counts: registry predicate ≡ authority.
             Long difference=jdbc.queryForObject("SELECT count(*) FROM ((SELECT id FROM "+original
                     +" old_source EXCEPT SELECT id FROM "+optimized+" new_source) UNION ALL (SELECT id FROM "
                     +optimized+" new_source EXCEPT SELECT id FROM "+original+" old_source)) delta",Long.class);
@@ -114,5 +118,51 @@ class ImportedBusinessNativeSourcePostgresTest extends AuthSessionPostgresTestSu
                 if(!types.isEmpty()) assertThat(types.getFirst()).isIn("integer","uuid");
             }
         }
+    }
+
+    @Test
+    @Transactional
+    void everyGuardedUuidRowIsRegisteredExactlyWhenTheAuthorityClassifiesItImported() {
+        // A keyed import, an inherited child and an ordinary native row in one real chain.
+        UUID imported=UUID.randomUUID(),inherited=UUID.randomUUID(),nativeHeader=UUID.randomUUID();
+        UUID unit=UUID.randomUUID(),goods=UUID.randomUUID();String tag=("REG-"+UUID.randomUUID()).toUpperCase(Locale.ROOT);
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES(?,?,?,'使用')",unit,tag+"-UNIT",tag);
+        long sequence=jdbc.queryForObject("SELECT COALESCE(max(code_sequence),0)+1 FROM goods",Long.class);
+        jdbc.update("INSERT INTO goods(id,code,name,status,unit_id,code_sequence,auto_created) VALUES(?,?,?,'使用',?,?,false)",goods,tag,tag,unit,sequence);
+        var billDate=BusinessTime.today();
+        for(UUID header:List.of(imported,nativeHeader)) {
+            jdbc.update("INSERT INTO purchase_requests(id,legacy_id,bill_no,bill_date) VALUES(?,?,?,?)",
+                    header,header.equals(imported)?7:null,numbers.nextNumber(DocNumberPrefix.PURCHASE_REQUEST),billDate);
+        }
+        jdbc.update("""
+                INSERT INTO purchase_request_items(id,request_id,bill_no,bill_date,line_no,goods_id,unit_id,qty,
+                    goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
+                VALUES(?,?,'R',?,1,?,?,1,?,?,'MASTER_AT_SAVE')
+                """,inherited,imported,billDate,goods,unit,tag,tag);
+        var guarded=jdbc.queryForList("""
+                SELECT relation.relname::text FROM pg_trigger guard JOIN pg_class relation ON relation.oid=guard.tgrelid
+                JOIN pg_namespace ns ON ns.oid=relation.relnamespace
+                JOIN pg_attribute identity ON identity.attrelid=relation.oid AND identity.attname='id'
+                     AND NOT identity.attisdropped AND identity.atttypid='uuid'::regtype
+                WHERE ns.nspname='public' AND guard.tgname='trg_00_imported_business_archive_only' AND NOT guard.tgisinternal
+                ORDER BY 1
+                """,String.class);
+        assertThat(guarded).hasSizeGreaterThan(200).contains("purchase_requests","purchase_request_items","stock_movements");
+        for(String table:guarded) {
+            Long difference=jdbc.queryForObject("""
+                    SELECT count(*) FROM public.%1$s row_image
+                    WHERE fn_imported_business_document_row_internal('%1$s',to_jsonb(row_image),ARRAY[]::text[])
+                       <> EXISTS(SELECT 1 FROM imported_document_registry registry
+                                 WHERE registry.table_name='%1$s' AND registry.row_id=row_image.id)
+                    """.formatted(table),Long.class);
+            assertThat(difference).as("registry verdict of %s",table).isZero();
+        }
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM imported_document_registry registry
+                WHERE NOT EXISTS(SELECT 1 FROM pg_trigger guard WHERE guard.tgrelid=to_regclass('public.'||registry.table_name)
+                  AND guard.tgname='trg_00_imported_business_archive_only' AND NOT guard.tgisinternal)
+                """,Long.class)).as("no registration outside a guarded relation").isZero();
+        assertThat(jdbc.queryForList("SELECT row_id FROM imported_document_registry WHERE row_id IN (?,?,?)",
+                UUID.class,imported,inherited,nativeHeader)).containsExactlyInAnyOrder(imported,inherited);
     }
 }

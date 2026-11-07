@@ -730,9 +730,11 @@ public class PlatformColumnService {
         Map<String,Object> origins=new LinkedHashMap<>();origins.put("scope",adapter.scope());
         StringJoiner candidates=new StringJoiner(",");int originIndex=0;
         for(UUID id:ids){String key="origin"+originIndex++;origins.put(key,id);candidates.add("(CAST(:"+key+" AS uuid))");}
+        // A field write keeps the authoritative walk; browsing reads the maintained registry.
+        String verdict=write?"fn_imported_business_document":"fn_imported_business_document_registered";
         Set<UUID> importedIds=ids.isEmpty()?Set.of():new HashSet<>(jdbc.queryForList(
                 "SELECT id FROM (VALUES "+candidates+") candidates(id) WHERE "
-                +"fn_imported_business_document(fn_imported_business_document_scope_table(:scope),id)",origins,UUID.class));
+                +verdict+"(fn_imported_business_document_scope_table(:scope),id)",origins,UUID.class));
         var resolved=new LinkedHashMap<UUID,PlatformColumnResourceAdapter.RecordAccess>();
         for (var entry:access.entrySet()) {
             boolean imported=importedIds.contains(entry.getKey());

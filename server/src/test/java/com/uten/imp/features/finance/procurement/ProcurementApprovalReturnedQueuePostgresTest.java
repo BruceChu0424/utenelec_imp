@@ -19,8 +19,8 @@ class ProcurementApprovalReturnedQueuePostgresTest {
     static JdbcTemplate db;
     @BeforeAll static void start(){
         PG.start();db=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
-        MigratedProjectionSchema.createCurrentTables(db,"procurement_order_approval_cases","purchase_orders","subcontract_orders");
-        MigratedProjectionSchema.createCurrentFunctions(db,"fn_imported_business_document_roots","fn_imported_business_document_maintenance_allowed","fn_imported_business_document_table","fn_imported_business_document_scope_table","fn_imported_business_document_row_internal","fn_imported_business_document_row","fn_imported_business_document");
+        MigratedProjectionSchema.createCurrentTables(db,"procurement_order_approval_cases","purchase_orders","subcontract_orders","imported_document_registry");
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_imported_business_document_roots","fn_imported_business_document_maintenance_allowed","fn_imported_business_document_table","fn_imported_business_document_scope_table","fn_imported_business_document_direct_key","fn_imported_business_document_registered","fn_imported_business_document_row_internal","fn_imported_business_document_row","fn_imported_business_document");
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void empty(){db.update("DELETE FROM procurement_order_approval_cases");db.update("DELETE FROM purchase_orders");db.update("DELETE FROM subcontract_orders");}

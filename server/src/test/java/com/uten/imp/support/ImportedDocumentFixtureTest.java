@@ -117,7 +117,7 @@ class ImportedDocumentFixtureTest {
     @Test void wrongBoundTableAndUnknownDeletionHistoryAreRejected() {
         EntityManager base=mock(EntityManager.class);UUID id=UUID.randomUUID();
         var facts=new ImportedDocumentFixture().nativeId("sales_orders",id);
-        Query query=facts.query("SELECT id, fn_imported_business_document(:table,id) FROM public.sales_orders WHERE id IN (:ids)");
+        Query query=facts.query("SELECT id, fn_imported_business_document_registered(:table,id) FROM public.sales_orders WHERE id IN (:ids)");
         query.setParameter("table","purchase_orders").setParameter("ids",List.of(id));
         assertThatThrownBy(query::getResultList).isInstanceOf(AssertionError.class);
         assertThatThrownBy(()->facts.reader(base).detail(new DocumentHistoryMetadata(),"sales_orders",id,true,OffsetDateTime.now(),false))

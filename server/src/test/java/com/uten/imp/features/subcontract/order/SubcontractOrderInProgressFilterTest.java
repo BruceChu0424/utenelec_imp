@@ -77,7 +77,7 @@ class SubcontractOrderInProgressFilterTest {
         Predicate legacyKeyAbsent = mock(Predicate.class);
         Predicate currentProvenance = mock(Predicate.class);
         Predicate nativeOnly = mock(Predicate.class);
-        when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
+        when(cb.function(eq("fn_imported_business_document_registered"),eq(Boolean.class),any(),any())).thenReturn(imported);
         when(cb.isFalse(imported)).thenReturn(currentProvenance);
         when(cb.isNull(legacyId)).thenReturn(legacyKeyAbsent);
         when(cb.and(new Predicate[]{legacyKeyAbsent, currentProvenance})).thenReturn(nativeOnly);

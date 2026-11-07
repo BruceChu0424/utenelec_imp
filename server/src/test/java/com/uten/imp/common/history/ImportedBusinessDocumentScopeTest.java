@@ -77,7 +77,7 @@ class ImportedBusinessDocumentScopeTest {
         Root<SalesOrder> root=mock(Root.class); CriteriaBuilder cb=mock(CriteriaBuilder.class);
         Expression<Boolean> imported=mock(Expression.class);Predicate old=mock(Predicate.class), marker=mock(Predicate.class), both=mock(Predicate.class);
         doReturn(SalesOrder.class).when(root).getJavaType();
-        when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
+        when(cb.function(eq("fn_imported_business_document_registered"),eq(Boolean.class),any(),any())).thenReturn(imported);
         when(cb.isTrue(imported)).thenReturn(marker);when(cb.or(marker,old)).thenReturn(both);
         assertSame(both,ImportedBusinessDocumentScope.lifecycle(root,cb,old));
         Predicate nativeOnly=mock(Predicate.class), legacyKeyAbsent=mock(Predicate.class), indexed=mock(Predicate.class);
@@ -87,32 +87,47 @@ class ImportedBusinessDocumentScopeTest {
         // composes a Predicate[] so bind this stub to that actual contract.
         when(cb.and(new Predicate[]{legacyKeyAbsent,nativeOnly})).thenReturn(indexed);
         assertSame(indexed,ImportedBusinessDocumentScope.nativeOnly(root,cb));
-        verify(cb).isFalse(imported); // The graph authority is retained behind the indexed key.
+        verify(cb).isFalse(imported); // The registered verdict is retained behind the indexed key.
     }
 
-    @Test void nativeSqlUsesTypedKeysAndKeepsInheritedProvenanceAuthority() {
+    @Test void nativeSqlUsesTypedKeysAndTheRegisteredInheritedProvenance() {
         String stock=ImportedBusinessDocumentScope.nativeTable("stock_documents");
         assertTrue(stock.contains("archive_origin.legacy_id IS NULL"));
         assertFalse(stock.contains("legacy_import_run_id"));
-        assertTrue(stock.contains("NOT fn_imported_business_document_row('stock_documents',to_jsonb(archive_origin))"));
+        assertTrue(stock.contains("NOT EXISTS(SELECT 1 FROM imported_document_registry archive_registry"
+                +" WHERE archive_registry.table_name='stock_documents' AND archive_registry.row_id=archive_origin.id)"));
+        assertFalse(stock.contains("fn_imported_business_document"),"reads never call the graph walk");
         String receipt=ImportedBusinessDocumentScope.nativeTable("purchase_receipts");
         assertTrue(receipt.contains("archive_origin.legacy_import_run_id IS NULL"));
         String source=ImportedBusinessDocumentScope.nativeTable("plan_order_item_links");
         assertFalse(source.contains("archive_origin.legacy_id"));
-        assertTrue(source.contains("NOT fn_imported_business_document_row"));
+        assertTrue(source.contains("NOT EXISTS(SELECT 1 FROM imported_document_registry"));
         assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeTable("goods"));
         assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.nativeTable("stock_documents UNION SELECT"));
     }
 
+    @Test void registeredLookupsAcceptOnlyServerOwnedTablesAndQualifiedReferences() {
+        assertEquals("EXISTS(SELECT 1 FROM imported_document_registry archive_registry WHERE archive_registry.table_name='sales_orders'"
+                +" AND archive_registry.row_id=o.id)",ImportedBusinessDocumentScope.registeredSql("sales_orders","o.id"));
+        assertEquals("fn_imported_business_document_registered(fn_imported_business_document_scope_table(task.action_doc_type),task.action_doc_id)",
+                ImportedBusinessDocumentScope.scopedRegisteredSql("task.action_doc_type","task.action_doc_id"));
+        for(String table:java.util.Arrays.asList(null,"","Sales_orders","sales_orders' OR 'x","sales orders"))
+            assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.registeredSql(table,"o.id"));
+        for(String reference:java.util.Arrays.asList(null,"id","o.id OR TRUE","o..id","schema.o.id","?",":id"))
+            assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.registeredSql("sales_orders",reference));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.scopedRegisteredSql("task.type)--","task.id"));
+        assertThrows(IllegalArgumentException.class,()->ImportedBusinessDocumentScope.scopedRegisteredSql("task.type","task.id;"));
+    }
+
     @Test void correlatedNativeRowsSelectOnlyTheirExactRelationshipBeforeOriginChecks() {
         String document=ImportedBusinessDocumentScope.nativeRowsByKey("stock_documents","id","draw_mapping.document_id");
-        assertTrue(document.startsWith("LATERAL (WITH selected AS MATERIALIZED"));
-        assertTrue(document.contains("candidate.id=draw_mapping.document_id"));
-        assertTrue(document.indexOf("candidate.id=draw_mapping.document_id")
-                <document.indexOf("fn_imported_business_document_row"));
+        assertTrue(document.startsWith("LATERAL (SELECT archive_origin.* FROM stock_documents archive_origin"));
+        assertTrue(document.contains("archive_origin.id=draw_mapping.document_id"));
+        assertTrue(document.indexOf("archive_origin.id=draw_mapping.document_id")
+                <document.indexOf("imported_document_registry"));
         assertTrue(document.contains(ImportedBusinessDocumentScope.nativePredicate("stock_documents","archive_origin")));
         String lines=ImportedBusinessDocumentScope.nativeRowsByKey("stock_document_items","doc_id","pending_document.id");
-        assertTrue(lines.contains("candidate.doc_id=pending_document.id"));
+        assertTrue(lines.contains("archive_origin.doc_id=pending_document.id"));
         assertTrue(lines.contains(ImportedBusinessDocumentScope.nativePredicate("stock_document_items","archive_origin")));
     }
 
@@ -129,7 +144,7 @@ class ImportedBusinessDocumentScopeTest {
         Root<Goods> root=mock(Root.class);CriteriaBuilder cb=mock(CriteriaBuilder.class);
         doReturn(Goods.class).when(root).getJavaType();
         Expression<Boolean> imported=mock(Expression.class);Predicate authority=mock(Predicate.class);
-        when(cb.function(eq("fn_imported_business_document"),eq(Boolean.class),any(),any())).thenReturn(imported);
+        when(cb.function(eq("fn_imported_business_document_registered"),eq(Boolean.class),any(),any())).thenReturn(imported);
         when(cb.isFalse(imported)).thenReturn(authority);
         assertSame(authority,ImportedBusinessDocumentScope.nativeOnly(root,cb));
         verify(root,never()).get("legacyId");
@@ -175,7 +190,7 @@ class ImportedBusinessDocumentScopeTest {
 
     @Test void retainedMetadataBindsActualDatabaseOriginWithoutChangingDeletionOrStatus() {
         EntityManager em=mock(EntityManager.class);Query query=mock(Query.class,RETURNS_SELF);
-        when(em.createNativeQuery(startsWith("SELECT id, fn_imported_business_document"))).thenReturn(query);
+        when(em.createNativeQuery(startsWith("SELECT id, fn_imported_business_document_registered(:table,id)"))).thenReturn(query);
         UUID id=UUID.randomUUID();when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{id,true}));
         var reader=new RetainedRecordReader(em,new ObjectMapper());
         var metadata=reader.metadata("sales_orders",List.of(new RetainedRecordReader.DocumentRef(id,false,null)),false).get(id);

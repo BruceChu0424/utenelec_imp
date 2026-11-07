@@ -1,7 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
 import com.uten.imp.common.export.*;
-import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.report.FinanceReportColumnOptions;
 import com.uten.imp.security.AuthUser;
 import jakarta.persistence.*;
@@ -72,10 +71,19 @@ class GlOperatingPlStreamingTest {
         assertThat(sql).noneMatch(statement->statement.contains("v_stock_actual_cogs_postings"));
     }
 
-    @Test void aBudgetBelowTheOriginalNinetyRowsCannotPublishAPartialCalculatedReport(){
+    @Test void theFormerConfiguredLimitDoesNotTruncateTheCalculatedReport(){
         var service=service(true);context();var pages=new ArrayList<ExportPayload>();
-        try(var sink=ExportPageSink.open(pages::add)){assertThatThrownBy(()->service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,89)).isInstanceOf(ApiException.class).hasMessageContaining("89");}
-        assertThat(pages).isEmpty();assertThat(ExportPageSink.current()).isNull();
+        try(var sink=ExportPageSink.open(pages::add)){
+            var result=service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,89);
+            assertThat(result.total()).isEqualTo(90);
+            assertThat(result.rows()).isEmpty();
+        }
+        assertThat(pages).singleElement().satisfies(page->{
+            assertThat(page.rows()).extracting(row->row.get("__sourceRow"))
+                    .containsExactlyElementsOf(IntStream.rangeClosed(3,92).boxed().toList());
+            assertThat(page.columns()).hasSize(30);
+        });
+        assertThat(ExportPageSink.current()).isNull();
     }
 
     @Test void unconfiguredOriginalDetailsAndDependentTotalsStayUnknownAcrossEveryMonthAndBothOutputs(){

@@ -8,6 +8,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import java.util.*;
+import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -16,7 +17,10 @@ class MasterExportSelectionAspectTest {
     @Test void realUnitControllerExportBindsSelectionAndCleansScopeOnFailure() {
         var service = mock(UnitService.class); var user = mock(SecurityContextCurrentUser.class);
         var limits = mock(ExportLimitPort.class); when(limits.exportMaxRows()).thenReturn(100000);
-        var target = new UnitController(service, mock(AuditDetailViewRecorder.class), mock(XlsxExportService.class),
+        var writer = mock(XlsxExportService.class);
+        when(writer.buildSource(any(),isNull(),eq("master_unit"))).thenAnswer(call ->
+                new XlsxExportService.SourceWorkbook(call.<Supplier<ExportPayload>>getArgument(0).get(),new byte[0]));
+        var target = new UnitController(service, mock(AuditDetailViewRecorder.class), writer,
                 mock(WorkbookDownloadService.class), mock(AuditService.class), user, limits);
         var factory = new AspectJProxyFactory(target); factory.addAspect(new MasterExportSelectionAspect());
         UnitController controller = factory.getProxy(); UUID id = UUID.randomUUID();

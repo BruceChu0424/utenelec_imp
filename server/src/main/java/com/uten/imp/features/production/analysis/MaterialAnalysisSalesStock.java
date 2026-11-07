@@ -36,9 +36,9 @@ public final class MaterialAnalysisSalesStock {
                 """).setParameter("id",analysisId)))result.put((UUID)row[0],new BigDecimal(row[1].toString()));
         return Map.copyOf(result);
     }
-    static Map<UUID,BigDecimal> ownedByRoot(EntityManager em,UUID analysisId) {
+    static Map<UUID,BigDecimal> ownedByRoot(EntityManager em,UUID analysisId,Map<UUID,BigDecimal> adopted) {
         Map<UUID,BigDecimal> result=new HashMap<>(availableByRoot(em,analysisId));
-        adoptedByRoot(em,analysisId).forEach((id,qty)->result.merge(id,qty,BigDecimal::add));
+        adopted.forEach((id,qty)->result.merge(id,qty,BigDecimal::add));
         return Map.copyOf(result);
     }
     static Map<UUID,BigDecimal> adoptedByRoot(EntityManager em,UUID analysisId) {

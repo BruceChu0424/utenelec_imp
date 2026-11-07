@@ -4866,14 +4866,8 @@ public class MaterialAnalysisService {
             componentDraftHeldByNode.merge(nodeRef(uuid(row[2]), string(row[3])), decimal(row[8]), BigDecimal::add);
         }
         componentDraftOwned.forEach((dimension, qty) -> qualifiedOwned.merge(dimension, qty, BigDecimal::add));
-        Set<UUID> operationalWarehouseIds = Set.copyOf(NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                        SELECT warehouse.id FROM warehouses warehouse
-                        WHERE warehouse.is_deleted=FALSE AND warehouse.is_accountable=TRUE
-                          AND fn_warehouse_same_main(warehouse.id,:warehouseId)
-                        """).setParameter("warehouseId",header.warehouseId()), UUID.class));
-        List<WarehouseView> warehouses = warehouses(
-                header.warehouseId(), participatingWarehouseSet);
+        DetailWarehouses warehouseFacts = detailWarehouses(header.warehouseId(), participatingWarehouseSet);
+        Set<UUID> operationalWarehouseIds = warehouseFacts.operationalIds();
         Map<MaterialDimension, List<WarehouseBreakdown>> breakdown =
                 warehouseBreakdown(analysisId, materialRows, sharedFuture, qualifiedOwned, componentDraftOwned, overlay);
         Map<StockIdentity, BigDecimal> mainOpenSafety = mainWarehouseOpenSafetySupply(
@@ -5121,7 +5115,7 @@ public class MaterialAnalysisService {
             BigDecimal extra=covered.subtract(componentDraftHeldByNode.getOrDefault(key,BigDecimal.ZERO)).max(BigDecimal.ZERO);
             if(extra.signum()>0)formalPrivate.merge(key,extra,BigDecimal::add);
         });
-        Map<UUID,BigDecimal> sourceOwnedStock=MaterialAnalysisSalesStock.ownedByRoot(em,analysisId);
+        Map<UUID,BigDecimal> sourceOwnedStock=MaterialAnalysisSalesStock.ownedByRoot(em,analysisId,sameSourceAdopted);
         Map<UUID,ProductView> budgetProducts=products.stream().collect(Collectors.toMap(ProductView::analysisLineId,value->value));
         materials=materials.stream().map(row->{
             FutureCoverage future=activeFuture.getOrDefault(row.materialLineId(),FutureCoverage.NONE);
@@ -5168,7 +5162,7 @@ public class MaterialAnalysisService {
                 header.fingerprint(),
                 header.warehouseId(), participatingWarehouseIds,
                 header.analyzedAt(), products, materials,
-                warehouses, actionViews,
+                warehouseFacts.views(), actionViews,
                 allowed,
                 fqcReplenishmentOnly, fqcRecoveryAuthorizationId, planningBlocks, 0, 0, pendingAutoConfirm,
                 com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, rateGoodsIds),
@@ -8666,18 +8660,24 @@ public class MaterialAnalysisService {
         return result;
     }
 
-    private List<WarehouseView> warehouses(
-            UUID primaryWarehouseId,
-            Set<UUID> selectedWarehouseIds) {
-        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, code, name
+    private record DetailWarehouses(List<WarehouseView> views, Set<UUID> operationalIds) { }
+
+    private DetailWarehouses detailWarehouses(UUID primaryWarehouseId, Set<UUID> selectedWarehouseIds) {
+        List<WarehouseView> views = new ArrayList<>();
+        Set<UUID> operationalIds = new HashSet<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, code, name, CASE WHEN is_accountable = TRUE
+                    THEN fn_warehouse_same_main(id,:primaryWarehouseId) ELSE FALSE END
                 FROM warehouses
                 WHERE is_deleted = FALSE AND (parent_id IS NULL OR is_accountable = TRUE)
                 ORDER BY code, name, id
-                """)).stream().map(row -> new WarehouseView(
-                uuid(row[0]), string(row[1]), string(row[2]),
-                selectedWarehouseIds.contains(uuid(row[0])),
-                Objects.equals(primaryWarehouseId, uuid(row[0])))).toList();
+                """).setParameter("primaryWarehouseId", primaryWarehouseId))) {
+            UUID id = uuid(row[0]);
+            views.add(new WarehouseView(id, string(row[1]), string(row[2]),
+                    selectedWarehouseIds.contains(id), Objects.equals(primaryWarehouseId, id)));
+            if (Boolean.TRUE.equals(row[3])) operationalIds.add(id);
+        }
+        return new DetailWarehouses(List.copyOf(views), Set.copyOf(operationalIds));
     }
 
     static WarehouseSelectionSummary selectedWarehouseSummary(
@@ -8750,43 +8750,34 @@ public class MaterialAnalysisService {
         }
         if (!access.canWrite(header.makerId(), scopeForAnalysis())) return List.of("VIEW", "VIEW_FUTURE_TRANSFERS");
         List<String> result = new ArrayList<>(List.of("VIEW", "VIEW_FUTURE_TRANSFERS"));
-        if (!"CANCELLED".equals(header.status()) && rootSupply != null
-                && access.hasAuthority("production_material_analysis:notify")
-                && rootSupply.hasReversibleExistingOutput(analysisId)) {
+        boolean open = List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status());
+        boolean rootRevokeApplicable = !"CANCELLED".equals(header.status()) && rootSupply != null;
+        boolean mayNotify = (open || rootRevokeApplicable) && access.hasAuthority("production_material_analysis:notify");
+        boolean mayRevokeRoot = rootRevokeApplicable && mayNotify;
+        boolean mayClaim = open && access.hasAuthority("production_material_analysis:claim_shared_future");
+        boolean mayGenerate = open && access.hasAuthority("production_material_analysis:generate");
+        ActionAvailability availability = actionAvailability(analysisId, mayRevokeRoot,
+                open && mayNotify, mayClaim, mayGenerate);
+        if (availability.reversibleRoot()) {
             result.add("ROOT_OUTPUT_REVOKE");
         }
-        if (!List.of(STATUS_ACTIVE, STATUS_PARTIAL).contains(header.status())) return List.copyOf(result);
+        if (!open) return List.copyOf(result);
         if (access.hasAuthority("production_material_analysis:refresh")) {
             result.add("REFRESH");
         }
         if (canConfirmRoutes(header, fqcReplenishmentOnly)) {
             result.add("CONFIRM_ROUTES");
         }
-        if (access.hasAuthority("production_material_analysis:notify")) {
+        if (mayNotify) {
             result.add("NOTIFY_SUPPLY");
-            Number retractable = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*) FROM preplan_supply_actions action
-                    WHERE analysis_id = :analysisId
-                      AND operation_type = 'SUPPLY'
-                      AND status IN ('OPEN','CREATED','IN_PROGRESS')
-                    """).setParameter("analysisId", analysisId).getSingleResult();
-            if (retractable.longValue() > 0) result.add("CANCEL_ACTION");
+            if (availability.retractableSupply()) result.add("CANCEL_ACTION");
         }
-        if (access.hasAuthority("production_material_analysis:notify")
-                && access.hasAuthority("production_material_analysis:over_supply")) {
+        if (mayNotify && access.hasAuthority("production_material_analysis:over_supply")) {
             result.add("OVER_SUPPLY");
         }
-        if (access.hasAuthority(
-                "production_material_analysis:claim_shared_future")) {
+        if (mayClaim) {
             result.add("CLAIM_SHARED_FUTURE");
-            Number retractableClaim = (Number) em.createNativeQuery("""
-                    SELECT COUNT(*) FROM preplan_supply_actions
-                    WHERE analysis_id = :analysisId
-                      AND operation_type = 'SHARED_FUTURE_CLAIM'
-                      AND status IN ('OPEN','CREATED','IN_PROGRESS')
-                    """).setParameter("analysisId", analysisId).getSingleResult();
-            if (retractableClaim.longValue() > 0
-                    && !result.contains("CANCEL_ACTION")) {
+            if (availability.retractableClaim() && !result.contains("CANCEL_ACTION")) {
                 result.add("CANCEL_ACTION");
             }
         }
@@ -8796,15 +8787,10 @@ public class MaterialAnalysisService {
         if (access.hasAuthority("production_material_analysis:cross_reallocate")) {
             result.add("CROSS_REALLOCATE");
         }
-        if (access.hasAuthority("production_material_analysis:generate")) {
+        if (mayGenerate) {
             result.add("PLAN_PREVIEW");
             result.add("GENERATE_PLAN");
-            if (!result.contains("CANCEL_ACTION") && Boolean.TRUE.equals(em.createNativeQuery("""
-                    SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch
-                      JOIN preplan_supply_actions action ON action.id=batch.action_id
-                      WHERE batch.analysis_id=:analysis AND batch.plan_id IS NOT NULL
-                        AND action.status IN('OPEN','CREATED','IN_PROGRESS'))
-                    """).setParameter("analysis",analysisId).getSingleResult())) {
+            if (availability.retractableAggregate() && !result.contains("CANCEL_ACTION")) {
                 result.add("CANCEL_ACTION");
             }
             if (access.hasAuthority("production_plan:approve")) {
@@ -8815,6 +8801,37 @@ public class MaterialAnalysisService {
             result.add("CANCEL_ANALYSIS");
         }
         return List.copyOf(result);
+    }
+
+    private record ActionAvailability(boolean reversibleRoot, boolean retractableSupply,
+                                      boolean retractableClaim, boolean retractableAggregate) {
+        private static final ActionAvailability NONE = new ActionAvailability(false, false, false, false);
+    }
+
+    private ActionAvailability actionAvailability(UUID analysisId, boolean mayRevokeRoot,
+                                                  boolean mayNotify, boolean mayClaim, boolean mayGenerate) {
+        if (!mayRevokeRoot && !mayNotify && !mayClaim && !mayGenerate) return ActionAvailability.NONE;
+        Object[] row = (Object[]) em.createNativeQuery("""
+                SELECT CASE WHEN :mayRevokeRoot THEN EXISTS (%s) ELSE FALSE END,
+                       CASE WHEN :mayNotify THEN EXISTS (
+                           SELECT 1 FROM preplan_supply_actions
+                           WHERE analysis_id = :analysisId AND operation_type = 'SUPPLY'
+                             AND status IN ('OPEN','CREATED','IN_PROGRESS')) ELSE FALSE END,
+                       CASE WHEN :mayClaim THEN EXISTS (
+                           SELECT 1 FROM preplan_supply_actions
+                           WHERE analysis_id = :analysisId AND operation_type = 'SHARED_FUTURE_CLAIM'
+                             AND status IN ('OPEN','CREATED','IN_PROGRESS')) ELSE FALSE END,
+                       CASE WHEN :mayGenerate THEN EXISTS (
+                           SELECT 1 FROM preplan_aggregate_batches batch
+                           JOIN preplan_supply_actions action ON action.id = batch.action_id
+                           WHERE batch.analysis_id = :analysisId AND batch.plan_id IS NOT NULL
+                             AND action.status IN ('OPEN','CREATED','IN_PROGRESS')) ELSE FALSE END
+                """.formatted(MaterialAnalysisRootSupplyService.REVERSIBLE_EXISTING_OUTPUT_SQL))
+                .setParameter("analysisId", analysisId).setParameter("mayRevokeRoot", mayRevokeRoot)
+                .setParameter("mayNotify", mayNotify).setParameter("mayClaim", mayClaim)
+                .setParameter("mayGenerate", mayGenerate).getSingleResult();
+        return new ActionAvailability(Boolean.TRUE.equals(row[0]), Boolean.TRUE.equals(row[1]),
+                Boolean.TRUE.equals(row[2]), Boolean.TRUE.equals(row[3]));
     }
 
     private List<String> displayPath(

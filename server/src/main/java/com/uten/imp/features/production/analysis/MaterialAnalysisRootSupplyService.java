@@ -514,16 +514,13 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         }
     }
 
-    public boolean hasReversibleExistingOutput(UUID analysisId) {
-        return !em.createNativeQuery("""
-                SELECT e.id FROM preplan_root_output_events e
-                JOIN stock_reservations r ON r.id=e.sales_reservation_id
-                WHERE e.analysis_id=:id AND e.event_kind='FULFILL' AND e.source_receipt_id IS NULL
-                  AND r.consumed_qty=0 AND r.released_qty=0 AND r.is_deleted=FALSE
-                  AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
-                LIMIT 1
-                """).setParameter("id",analysisId).getResultList().isEmpty();
-    }
+    static final String REVERSIBLE_EXISTING_OUTPUT_SQL = """
+            SELECT 1 FROM preplan_root_output_events e
+            JOIN stock_reservations r ON r.id=e.sales_reservation_id
+            WHERE e.analysis_id=:analysisId AND e.event_kind='FULFILL' AND e.source_receipt_id IS NULL
+              AND r.consumed_qty=0 AND r.released_qty=0 AND r.is_deleted=FALSE
+              AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+            """;
 
     public void requireAnalysisCancellationSafe(UUID analysisId) {
         if (!em.createNativeQuery("""

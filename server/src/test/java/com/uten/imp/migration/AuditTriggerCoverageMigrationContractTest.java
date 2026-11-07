@@ -173,7 +173,22 @@ class AuditTriggerCoverageMigrationContractTest {
                             "92228bfb740da5c147b632fb078512aae0931d505f825e8f8c9290ad2e9997fa",
                             "V1042__finance_reproduction_audit_policy_registration.sql",
                             "create trigger trg_audit_payable_statement_adjustment_line after insert or update or delete"
-                                    + " on finance_payable_statement_adjustment_lines for each row execute function fn_audit();")));
+                                    + " on finance_payable_statement_adjustment_lines for each row execute function fn_audit();")),
+            1108, List.of(new ForwardAuditRepair("V1108__same_sales_source_stock_adoption.sql",
+                    "preplan_sales_stock_adoptions", "8b3547c1ae607eb7f51da7eb0d3f7e0a3e08bbcd224ffb3d48484df269cab30a",
+                    "V1112__stock_adoption_canonical_audit_registration.sql",
+                    "create trigger trg_audit_preplan_sales_stock_adoption after insert or update or delete"
+                            + " on preplan_sales_stock_adoptions for each row execute function fn_audit();")),
+            1109, List.of(
+                    new ForwardAuditRepair("V1109__preplan_public_physical_stock_adoption.sql", "preplan_physical_stock_claim_commands",
+                            "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb",
+                            "V1112__stock_adoption_canonical_audit_registration.sql"),
+                    new ForwardAuditRepair("V1109__preplan_public_physical_stock_adoption.sql", "preplan_physical_stock_claim_allocations",
+                            "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb",
+                            "V1112__stock_adoption_canonical_audit_registration.sql"),
+                    new ForwardAuditRepair("V1109__preplan_public_physical_stock_adoption.sql", "preplan_physical_stock_formalizations",
+                            "b6c26c976e50878782172d295efc84c5e78b850ea14cc803c5c0046223f01adb",
+                            "V1112__stock_adoption_canonical_audit_registration.sql")));
 
     /** Previously applied financial subversions were missed by the integer-only scanner.
      * Every allowance pins the complete source bytes and exact trigger count, and is
@@ -288,6 +303,10 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("stock_adoption_decisions", "data_change", false,
+                    "V1108/V1109 同销售库存采用、公共现货认领命令、精确库存归属及正式计划交接决定保持原FULL审计，V1112只前向接入公共登记，不改历史或业务守卫",
+                    Set.of("preplan_sales_stock_adoptions", "preplan_physical_stock_claim_commands",
+                            "preplan_physical_stock_claim_allocations", "preplan_physical_stock_formalizations")),
             new FullGroup("physical_delivery_decisions", "data_change", false,
                     "V1049/V1056 原始BOM交付策略与原订单库存认领保留既定FULL审计，认领请求、事件和行事件按迁移的同一公共登记执行",
                     Set.of("goods_bom_delivery_rules", "sales_delivery_order_claims",

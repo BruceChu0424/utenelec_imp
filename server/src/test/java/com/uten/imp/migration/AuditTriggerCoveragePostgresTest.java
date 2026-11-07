@@ -44,6 +44,14 @@ class AuditTriggerCoveragePostgresTest {
     private static String terminationHistoryBefore;
     private static Map<String, String> terminationGuardsBefore;
     private static String terminationFunctionsBefore;
+    private static final List<String> STOCK_ADOPTION_TABLES=List.of("preplan_sales_stock_adoptions",
+            "preplan_physical_stock_claim_commands","preplan_physical_stock_claim_allocations","preplan_physical_stock_formalizations");
+    private static Map<String,String> stockAdoptionGuardsBefore;
+    private static Map<String,String> stockAdoptionFactsBefore;
+    private static String stockAdoptionFunctionsBefore;
+    private static long stockAdoptionHistoryId;
+    private static String stockAdoptionHistoryBefore;
+
 
     @BeforeAll
     static void start() {
@@ -94,6 +102,19 @@ class AuditTriggerCoveragePostgresTest {
         terminationGuardsBefore = terminationGuardDefinitions();
         terminationFunctionsBefore = terminationGuardFunctions();
         com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                .locations("classpath:db/migration").target("1111").load().migrate();
+        for(String table:STOCK_ADOPTION_TABLES)assertEquals(1,rowAuditTriggerCount(table),"The genuine frozen source used one manual FULL observer");
+        // Synthetic already-written audit evidence, not an invented adoption or stock claim.
+        stockAdoptionHistoryId=db.queryForObject("""
+                INSERT INTO audit_log(actor_id,actor_account,action,target_type,target_id,result,event_source,risk_level,event_category)
+                VALUES(?,'policy-upgrade-fixture','insert','preplan_sales_stock_adoptions','stock-adoption-before-v1112',
+                    'success','database','low','data_change') RETURNING id
+                """,Long.class,ACTOR);
+        stockAdoptionHistoryBefore=db.queryForObject("SELECT to_jsonb(audit_log)::text FROM audit_log WHERE id=?",String.class,stockAdoptionHistoryId);
+        stockAdoptionGuardsBefore=guardDefinitions(STOCK_ADOPTION_TABLES);
+        stockAdoptionFunctionsBefore=guardFunctionDefinitions(STOCK_ADOPTION_TABLES);
+        stockAdoptionFactsBefore=stockAdoptionFacts();
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
                 .locations("classpath:db/migration").load().migrate();
     }
 
@@ -120,6 +141,34 @@ class AuditTriggerCoveragePostgresTest {
                 "the immutable semantic event remains the actor/time/reason trail");
     }
 
+    @Test
+    void stockAdoptionRegistrationKeepsOriginalFullAuditBusinessGuardsAndHistory() {
+        for(String table:STOCK_ADOPTION_TABLES) {
+            assertTrue(AuditTriggerCoverageMigrationContractTest.fullTables().containsKey(table));
+            assertEquals(2,rowAuditTriggerCount(table),"Canonical FULL retains INSERT/DELETE and change-only UPDATE");
+        }
+        assertEquals(stockAdoptionGuardsBefore,guardDefinitions(STOCK_ADOPTION_TABLES));
+        assertEquals(stockAdoptionFunctionsBefore,guardFunctionDefinitions(STOCK_ADOPTION_TABLES));
+        assertEquals(stockAdoptionFactsBefore,stockAdoptionFacts(),"Only audit metadata changes; original business facts stay exact");
+        assertEquals(stockAdoptionHistoryBefore,db.queryForObject("SELECT to_jsonb(audit_log)::text FROM audit_log WHERE id=?",String.class,stockAdoptionHistoryId));
+    }
+
+    private static Map<String,String> stockAdoptionFacts() {
+        Map<String,String> result=new java.util.TreeMap<>();
+        for(String table:STOCK_ADOPTION_TABLES)result.put(table,db.queryForObject(
+                "SELECT COALESCE(jsonb_agg(to_jsonb(fact) ORDER BY fact.id),'[]'::jsonb)::text FROM public."+table+" fact",String.class));
+        return result;
+    }
+
+    private static String guardFunctionDefinitions(List<String> tables) {
+        return db.queryForObject("""
+                SELECT string_agg(p.oid::regprocedure::text||E'\n'||pg_get_functiondef(p.oid),E'\n' ORDER BY p.oid::regprocedure::text)
+                FROM pg_proc p WHERE p.oid IN(SELECT t.tgfoid FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+                    WHERE c.relnamespace='public'::regnamespace AND c.relname=ANY(string_to_array(?,',')) AND NOT t.tgisinternal
+                      AND t.tgfoid NOT IN('public.fn_audit()'::regprocedure,'public.fn_audit_route_columns()'::regprocedure))
+                """,String.class,String.join(",",tables));
+    }
+
     private static int rowAuditTriggerCount(String table) {
         return db.queryForObject("""
                 SELECT count(*) FROM pg_trigger
@@ -129,18 +178,22 @@ class AuditTriggerCoveragePostgresTest {
     }
 
     private static Map<String, String> terminationGuardDefinitions() {
+        return guardDefinitions(List.of("procurement_order_termination_sources","procurement_order_termination_peg_changes"));
+    }
+
+    private static Map<String,String> guardDefinitions(List<String> tables) {
         Map<String, String> definitions = new java.util.TreeMap<>();
         db.queryForList("""
                 SELECT 'trigger:'||c.relname||':'||t.tgname AS name,
                        t.tgenabled::text||':'||t.tgdeferrable::text||':'||t.tginitdeferred::text||':'||pg_get_triggerdef(t.oid) AS definition
                 FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
-                WHERE c.oid IN ('procurement_order_termination_sources'::regclass,'procurement_order_termination_peg_changes'::regclass)
+                WHERE c.relnamespace='public'::regnamespace AND c.relname=ANY(string_to_array(?,','))
                   AND t.tgfoid NOT IN ('public.fn_audit()'::regprocedure,'public.fn_audit_route_columns()'::regprocedure)
                 UNION ALL
-                SELECT 'constraint:'||conrelid::regclass::text||':'||conname,pg_get_constraintdef(oid)
-                FROM pg_constraint
-                WHERE conrelid IN ('procurement_order_termination_sources'::regclass,'procurement_order_termination_peg_changes'::regclass)
-                """).forEach(row -> {
+                SELECT 'constraint:'||constraint_row.conrelid::regclass::text||':'||constraint_row.conname,pg_get_constraintdef(constraint_row.oid)
+                FROM pg_constraint constraint_row JOIN pg_class c ON c.oid=constraint_row.conrelid
+                WHERE c.relnamespace='public'::regnamespace AND c.relname=ANY(string_to_array(?,','))
+                """,String.join(",",tables),String.join(",",tables)).forEach(row -> {
                     String name = (String) row.get("name");
                     assertFalse(definitions.containsKey(name), "duplicate guard snapshot key: " + name);
                     definitions.put(name, (String) row.get("definition"));

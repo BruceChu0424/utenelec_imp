@@ -1,0 +1,5 @@
+table	bootstrap_policy	audit_policy	source_migration	purpose
+preplan_sales_stock_adoptions	EMPTY	FULL	V1108	同销售原预留库存的人工采用事实及原actor，不能当种子
+preplan_physical_stock_claim_commands	EMPTY	FULL	V1109	现货认领幂等命令和原请求hash授权边界，不能当初始配置
+preplan_physical_stock_claim_allocations	EMPTY	FULL	V1109	认领命令到真实预留/物料的精确数量归属，不能当种子
+preplan_physical_stock_formalizations	EMPTY	FULL	V1109	原认领到正式计划包/需求及回退的精确交接事实，不能当种子

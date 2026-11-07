@@ -2425,7 +2425,7 @@ class _ProductionWorkshopTasksPageState
         ),
       ),
     );
-    if (action == null || !ownerCurrent()) return;
+    if (!mounted || action == null || !ownerCurrent()) return;
     final current = {
       for (final row in _tableRows.items) row.segmentId: row,
     }[task.segmentId];

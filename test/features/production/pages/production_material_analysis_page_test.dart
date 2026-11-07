@@ -4452,11 +4452,11 @@ void main() {
           await tester.enterText(input, '>9');
           await tester.testTextInput.receiveAction(TextInputAction.search);
           await tester.pumpAndSettle();
-          // The fixture's required quantity is 10; shortage and order are 8.
+          // Required and first-order quantities are 10; the uncovered gap is 8.
           // A literal keyword search for ">9" could not produce this result.
           expect(
             find.byKey(const ValueKey('material-table-row-buy-child')),
-            label == '需要数量' ? findsOneWidget : findsNothing,
+            label == '还缺数量' ? findsNothing : findsOneWidget,
           );
           final filteredLabel = '$label：>9';
           await _materialHeaderCell(tester, filteredLabel);
@@ -11237,6 +11237,8 @@ Map<String, dynamic> _failedFutureClaimJson() {
       .single
       .addAll({
         'additionalSupplyRecommendedQty': 1000,
+        'planningUncoveredQty': 1000,
+        'netShortageQty': 1000,
         'publicSurplusRemainingQty': 0,
         'lateSharedFutureAvailableQty': 0,
         'notifiedTargets': [

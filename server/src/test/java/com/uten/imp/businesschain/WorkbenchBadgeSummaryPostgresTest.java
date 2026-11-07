@@ -8,6 +8,8 @@ import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
 import com.uten.imp.features.admin.serveroperations.HostOperationsClient;
 import com.uten.imp.features.admin.serveroperations.HostOperationsException;
+import com.uten.imp.features.admin.serverstatus.ServerStatusService;
+import com.uten.imp.features.admin.serverstatus.ServerStatusView;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.notice.ServerStatusAlertScheduler;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +41,7 @@ import org.springframework.test.context.support.DirtiesContextTestExecutionListe
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,6 +53,7 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
@@ -304,6 +308,11 @@ class WorkbenchBadgeSummaryPostgresTest {
     @MockitoBean
     ServerStatusAlertScheduler serverStatusAlertScheduler;
 
+    // Both real HTTP paths compare the same process sample. Host metrics may
+    // otherwise change during the independent requests as the sampler refreshes.
+    @MockitoBean
+    ServerStatusService serverStatus;
+
     private FullChainEndToEndTest fixture;
 
     @BeforeEach
@@ -314,6 +323,14 @@ class WorkbenchBadgeSummaryPostgresTest {
         snapshotSource.hostPlatformUnsupported = false;
         snapshotSource.hostUpdateAvailable = false;
         snapshotSource.hostStatusCalls.set(0);
+        when(serverStatus.current()).thenReturn(new ServerStatusView(
+                Instant.parse("2026-01-01T00:00:00Z"), 15, "CRITICAL", "CI fixture", "test", 60,
+                List.of(), List.of(), new ServerStatusView.Database("NORMAL", 1d, 1, 20, "数据库正常"),
+                new ServerStatusView.Backup("UNKNOWN", null, null, 30, 48, "尚未取得备份状态"),
+                List.of(new ServerStatusView.Alert("cpu", "WARNING", "处理器占用", "接近预警值", "观察负载"),
+                        new ServerStatusView.Alert("memory", "CRITICAL", "内存占用", "需要检查内存", "检查进程"),
+                        new ServerStatusView.Alert("backup", "UNKNOWN", "备份", "尚未取得状态", "检查备份任务")),
+                List.of(), List.of()));
     }
 
     @AfterEach
@@ -330,6 +347,7 @@ class WorkbenchBadgeSummaryPostgresTest {
 
         JsonNode summary = getJson("/api/workbench/badges", admin);
         Map<String, Long> facts = facts(summary);
+        assertThat(facts).containsEntry("serverStatus.alerts", 2L);
 
         // 明确授出全部业务动作的超管: 每个来源都与同一任务资格端点逐字段相等。
         for (Map.Entry<String, String> source : ORIGINAL_ENDPOINTS.entrySet()) {

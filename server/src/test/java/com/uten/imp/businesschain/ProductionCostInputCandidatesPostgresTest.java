@@ -54,6 +54,7 @@ class ProductionCostInputCandidatesPostgresTest {
     @Autowired NamedParameterJdbcTemplate named;
     @Autowired PlatformTransactionManager transactions;
     @Autowired WorkshopBinService lineSide;
+    @Autowired com.uten.imp.features.stock.valuation.InventoryValueWorkService worker;
     private FullChainEndToEndTest fixture;
 
     /** 改造前 ProductionInventoryValueService 的投入发现查询原文 (回归基线, 不随实现改动)。 */
@@ -125,6 +126,8 @@ class ProductionCostInputCandidatesPostgresTest {
                 JOIN production_daily_report_items item ON item.report_id=report.id AND NOT item.is_deleted
                 WHERE item.execution_segment_id=? AND report.status=1 AND NOT report.is_deleted""",LocalDate.class,c.segment());
         assertNotNull(workshop);assertNotNull(reported);
+        InventoryValueWorkTestSupport.drainProductionPhase(worker,db,List.of(c.world().goodsA()),
+                List.of(c.segment()),c.world().warehouseId(),workshop);
         UUID kg=massUnit();
         UUID granule=granule(kg);
         assertTrue(periodicComplete(scope,""),"A scope never bound to a workshop material bin is unaffected");

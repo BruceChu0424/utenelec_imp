@@ -4,6 +4,7 @@ import com.uten.imp.testsupport.FixtureDatabaseProperties;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.application.port.InventoryValuationPort;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.InventoryMutationLock;
@@ -13,6 +14,7 @@ import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService;
 import com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
+import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService;
 import com.uten.imp.features.subcontract.waste.SubcontractWasteService;
 import com.uten.imp.features.finance.payables.SubcontractLossClaimService;
 import com.uten.imp.features.finance.gl.GlPostingService;
@@ -88,6 +90,7 @@ class SubcontractLossValueEndToEndTest {
     @Autowired SubcontractMaterialIssueService issues;
     @Autowired SubcontractMaterialPlanService plans;
     @Autowired SubcontractReceiptService receipts;
+    @Autowired SubcontractShortDeliveryService shortDeliveries;
     @Autowired SubcontractWasteService wastes;
     @Autowired SubcontractLossClaimService claims;
     @Autowired ProcurementInspectionService inspections;
@@ -108,7 +111,7 @@ class SubcontractLossValueEndToEndTest {
         money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
         loss(c,"2","2");
         receive(c,"1");drain();money(stock(c),"51.4");money(normalHeld(c),"1.6");
-        receive(c,"2");drain();money(stock(c),"154.2");money(normalHeld(c),"0.8");
+        receive(c,"2",c.world().warehouseId(),true);drain();money(stock(c),"154.2");money(normalHeld(c),"0.8");
         // ADR-143 §二.13/§二.14: 损耗独立结清不改订货量; 已发外 5 覆盖的物料需求不能被改量压到 f(3)=3。
         fixture.loginAs(c.world().superAdminUserId());
         ApiException shrink=assertThrows(ApiException.class,()->changeQty(c,"3"));
@@ -344,7 +347,7 @@ class SubcontractLossValueEndToEndTest {
         UUID firstWarehouse=warehouse("loss-later-first"),secondWarehouse=warehouse("loss-later-second");
         receive(c,"1",firstWarehouse);drain();money(stock(c,firstWarehouse),"51.4");
         UUID scopePool=db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item());
-        receive(c,"2",secondWarehouse);drain();money(stock(c,secondWarehouse),"102.8");
+        receive(c,"2",secondWarehouse,true);drain();money(stock(c,secondWarehouse),"102.8");
         assertEquals(scopePool,db.queryForObject("select product_pool_id from stock_value_production_cost_objects where execution_segment_id=?",UUID.class,c.item()));
         money(normalHeld(c),"0.8");
         assertEquals(1,integer("select count(*) from stock_value_production_cost_inputs where execution_segment_id=?",c.item()));
@@ -421,6 +424,9 @@ class SubcontractLossValueEndToEndTest {
         return receive(c,quantity,c.world().warehouseId());
     }
     private UUID receive(CaseFixture c,String quantity,UUID warehouse) throws Exception{
+        return receive(c,quantity,warehouse,false);
+    }
+    private UUID receive(CaseFixture c,String quantity,UUID warehouse,boolean decideWaitMore) throws Exception{
         fixture.loginAs(c.world().superAdminUserId());var command=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
         command.setBillDate(BusinessTime.today());command.setSupplierId(c.world().supplierId());command.setWarehouseId(warehouse);
         command.setCurrencyId(c.world().currencyId());command.setExchangeRate(BigDecimal.ONE);command.setTaxRate(BigDecimal.ZERO);
@@ -432,11 +438,29 @@ class SubcontractLossValueEndToEndTest {
         inspections.dispose("SUBCONTRACT",receipt,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"确认实际回厂合格量","normal-pass-"+receipt));
         UUID confirmer=fixture.createUserWithPerms(c.world(),"loss-stock-"+receipt,"warehouse_iqc_stock_in:view","warehouse_iqc_stock_in:confirm");fixture.loginAs(confirmer);
         var released=stockIns.detail("SUBCONTRACT",receipt).items().getFirst();
+        var confirmation=new ConfirmRequest("normal-stock-"+receipt,List.of(new ConfirmItem(
+                released.passEventId(),new BigDecimal(quantity),released.remainingBaseQty(),"LOSS-TEST")));
         // V1039: 补开短交案件的 shortfall_pct 是明确的精度选择(如 2/3=66.6̄%),
         // 同 ShortDeliveryExactWorkflowPostgresTest 的 choice 契约提供本次选择。
         try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
                 "subcontract.shortfall.percent",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))){
-            stockIns.confirm("SUBCONTRACT",receipt,new ConfirmRequest("normal-stock-"+receipt,List.of(new ConfirmItem(released.passEventId(),new BigDecimal(quantity),released.remainingBaseQty(),"LOSS-TEST"))));
+            if(decideWaitMore){
+                // Accounting for material loss leaves the commercial receipt target intact.
+                // The warehouse cannot confirm this batch until its order owner decides to wait.
+                var held=assertThrows(ApiException.class,()->stockIns.confirm("SUBCONTRACT",receipt,confirmation));
+                assertEquals(ErrorCode.CONFLICT,held.getCode());
+                assertTrue(held.getMessage().contains("先不入库"),held.getMessage());
+                assertEquals(0,integer("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",receipt));
+                var pending=db.queryForMap("SELECT id,version FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status='PENDING_OWNER'",c.item());
+                fixture.loginAs(c.world().superAdminUserId());
+                var waiting=shortDeliveries.decide((UUID)pending.get("id"),
+                        new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                                "WAIT_MORE",BusinessTime.today().plusDays(1),"剩余成品继续等回厂",((Number)pending.get("version")).longValue()));
+                assertEquals("WAITING_MORE",waiting.row().status());
+                assertNull(shortDeliveries.stockInHoldReason(receipt));
+                fixture.loginAs(confirmer);
+            }
+            stockIns.confirm("SUBCONTRACT",receipt,confirmation);
         }
         fixture.loginAs(c.world().superAdminUserId());return receipt;
     }

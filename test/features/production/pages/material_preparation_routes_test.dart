@@ -132,7 +132,7 @@ void main() {
     });
 
     testWidgets(
-      '$route history-only card hides both badges and does not pollute active tasks',
+      '$route history-only card opens completed records and keeps active tasks empty',
       (tester) async {
         final analysis = _analysis();
         if (route == 'workshop') {
@@ -179,12 +179,18 @@ void main() {
         );
 
         await _open(tester, route);
-        expect(
-          find.textContaining(route == 'workshop' ? '历史完成产品' : '已完成物料'),
-          findsNothing,
+        final completed = find.textContaining(
+          route == 'workshop' ? '历史完成产品' : '已完成物料',
         );
+        expect(completed, findsOneWidget);
         expect(_taskSegment('进行中 (0)'), findsOneWidget);
-        expect(find.text('当前筛选没有任务'), findsOneWidget);
+        for (final active in ['进行中 (0)', '待下单 (0)']) {
+          await _filter(tester, active);
+          expect(completed, findsNothing);
+          expect(find.text('当前筛选没有任务'), findsOneWidget);
+        }
+        await _filter(tester, '已下达记录');
+        expect(completed, findsOneWidget);
         expect(requests.where((request) => request.method != 'GET'), isEmpty);
         expect(tester.takeException(), isNull);
       },

@@ -35,6 +35,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_overlay_lifecycle.dart';
+import '../feedback/uten_motion.dart';
 import '../buttons/uten_button.dart';
 import '../data_display/uten_table_text_selection.dart';
 import 'uten_table_horizontal_scroll_controller.dart';
@@ -64,52 +65,100 @@ List<({String label, bool? ascending, bool selected})> utenColumnSortChoices({
 
 /// Shared column-edge control. It changes presentation widths only; the host
 /// owns its minimum width, automatic sizing and persistence.
-class UtenColumnResizeHandle extends StatelessWidget {
+class UtenColumnResizeHandle extends StatefulWidget {
   const UtenColumnResizeHandle({
     super.key,
     required this.label,
     required this.onResize,
     this.onReset,
+    this.atRowEnd = false,
   });
+
+  static const double hitHalfWidth = 8;
 
   final String label;
   final ValueChanged<double> onResize;
   final VoidCallback? onReset;
+  final bool atRowEnd;
+
+  @override
+  State<UtenColumnResizeHandle> createState() => _UtenColumnResizeHandleState();
+}
+
+class _UtenColumnResizeHandleState extends State<UtenColumnResizeHandle> {
+  bool _hovered = false;
+  bool _dragging = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final direction = Directionality.of(context) == TextDirection.rtl ? -1 : 1;
+    final label = widget.label;
+    final active = _hovered || _dragging || _focused;
     return Tooltip(
-      message: onReset == null ? '拖动调整 $label 列宽' : '拖动调整 $label 列宽，双击恢复自动宽度',
+      message: widget.onReset == null
+          ? '拖动调整 $label 列宽'
+          : '拖动调整 $label 列宽，双击恢复自动宽度',
       child: Semantics(
         label: '调整 $label 列宽',
-        onIncrease: () => onResize(20),
-        onDecrease: () => onResize(-20),
+        onIncrease: () => widget.onResize(20),
+        onDecrease: () => widget.onResize(-20),
         child: TextFieldTapRegion(
           child: Focus(
+            onFocusChange: (focused) => setState(() => _focused = focused),
             onKeyEvent: (_, event) {
               if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
                 return KeyEventResult.ignored;
               }
               if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-                onResize(20 * direction.toDouble());
+                widget.onResize(20 * direction.toDouble());
                 return KeyEventResult.handled;
               }
               if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-                onResize(-20 * direction.toDouble());
+                widget.onResize(-20 * direction.toDouble());
                 return KeyEventResult.handled;
               }
               return KeyEventResult.ignored;
             },
             child: MouseRegion(
-              cursor: SystemMouseCursors.resizeColumn,
+              cursor: SystemMouseCursors.resizeLeftRight,
+              onEnter: (_) => setState(() => _hovered = true),
+              onExit: (_) => setState(() => _hovered = false),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 dragStartBehavior: DragStartBehavior.down,
+                onHorizontalDragStart: (_) => setState(() => _dragging = true),
                 onHorizontalDragUpdate: (details) =>
-                    onResize(details.delta.dx * direction),
-                onDoubleTap: onReset,
-                child: const SizedBox.expand(),
+                    widget.onResize(details.delta.dx * direction),
+                onHorizontalDragEnd: (_) => setState(() => _dragging = false),
+                onHorizontalDragCancel: () {
+                  if (_dragging) setState(() => _dragging = false);
+                },
+                onDoubleTap: widget.onReset,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                  child: Align(
+                    alignment: widget.atRowEnd
+                        ? AlignmentDirectional.centerEnd
+                        : Alignment.center,
+                    child: UtenMotion(
+                      duration: const Duration(milliseconds: 100),
+                      builder: (context, duration) => AnimatedContainer(
+                        duration: duration,
+                        width: active ? 3 : 1,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.transparent,
+                          borderRadius: const BorderRadius.all(
+                            Radius.circular(UtenRadius.xs),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -1743,6 +1792,45 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
         child: child,
       ),
     );
+  }
+
+  /// Put resize handles above the header cells so the same handle owns both
+  /// sides of a divider. Mount this inside each normal or pinned row so covered
+  /// handles stay behind the pinned content and its own controls.
+  Widget columnHeaderResizeOverlay({
+    required List<int> indices,
+    required double leadingInset,
+    required void Function(int, double) onResize,
+    required ValueChanged<int> onReset,
+    required Widget child,
+    bool hasTrailingCell = false,
+  }) {
+    if (indices.isEmpty) return child;
+    const half = UtenColumnResizeHandle.hitHalfWidth;
+    final handles = <Widget>[];
+    var edge = leadingInset;
+    for (var position = 0; position < indices.length; position++) {
+      final index = indices[position];
+      edge += columnDragWidth(index);
+      final atRowEnd = position == indices.length - 1 && !hasTrailingCell;
+      final label = columnDragLabel(index);
+      handles.add(
+        PositionedDirectional(
+          key: ValueKey((index, label)),
+          start: edge - half,
+          top: 0,
+          bottom: 0,
+          width: atRowEnd ? half : half * 2,
+          child: UtenColumnResizeHandle(
+            label: label,
+            atRowEnd: atRowEnd,
+            onResize: (delta) => onResize(index, delta),
+            onReset: () => onReset(index),
+          ),
+        ),
+      );
+    }
+    return Stack(children: [child, ...handles]);
   }
 
   /// 表头行外包裹：换位拖动中在目标槽位渲染竖向插入指示线。

@@ -3047,9 +3047,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   // —— 列宽自动适配 / 手动拖拽 常量 ——
-  /// 拖拽命中区半宽：以列右边界为中心、半溢出到相邻列，便于精准抓住边界。
-  static const double _gripHalf = 4;
-
   /// 列宽下限（自动适配与拖拽收窄共同下限，防止列被拖没）。
   static const double _minColWidth = 48;
 
@@ -3084,7 +3081,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         (column.headerTrailingBuilder == null
             ? 0
             : (column.headerTrailingWidthOf?.call(context) ?? 0) +
-                  _gripHalf * 2);
+                  UtenColumnResizeHandle.hitHalfWidth);
   }
 
   String? _headerInfo(MasterColumnDef<T> column) {
@@ -7296,6 +7293,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ),
     );
     final pinnedIndices = _pinnedVisibleIndices;
+    final selectionWidth = _hasSelectionColumn ? _selectionColWidth : 0.0;
     // 横滚时钉在视口左缘的冻结区副本：多选框 + 已固定列的表头格。
     // 副本格不挂换位/移除拖拽（避免同一 LayerLink 双挂载），但保留筛选点按、
     // 右键菜单与列宽手柄——滚动态下固定列的全部日常操作都还在线。
@@ -7304,45 +7302,61 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final frozenHeaderRegion = ColoredBox(
       color: theme.colorScheme.surfaceContainerHigh,
       child: _boundStretchRow(
-        Row(
-          crossAxisAlignment: _selectableCross,
-          children: [
-            if (_hasSelectionColumn)
-              SizedBox(width: _selectionColWidth, child: headerSelectionCell),
-            for (final i in pinnedIndices)
-              _headerColumnCell(
-                theme,
-                i,
-                frozen: true,
-                showRightDivider: showRightDivider(i),
-              ),
-          ],
+        columnHeaderResizeOverlay(
+          indices: pinnedIndices,
+          leadingInset: selectionWidth,
+          onResize: _resizeColumn,
+          onReset: _resetColumnWidth,
+          child: Row(
+            crossAxisAlignment: _selectableCross,
+            children: [
+              if (_hasSelectionColumn)
+                SizedBox(width: _selectionColWidth, child: headerSelectionCell),
+              for (final i in pinnedIndices)
+                _headerColumnCell(
+                  theme,
+                  i,
+                  frozen: true,
+                  showRightDivider: showRightDivider(i),
+                ),
+            ],
+          ),
         ),
       ),
     );
     return _boundStretchRow(
       // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
       columnHeaderIndicatorOverlay(
-        leadingInset: _hasSelectionColumn ? _selectionColWidth : 0,
+        leadingInset: selectionWidth,
         child: _withFrozenLeadingRegion(
           controller: _headerH,
           width: _pinnedLeadingWidth(pinnedIndices),
           cell: frozenHeaderRegion,
-          row: Row(
-            crossAxisAlignment: _selectableCross,
-            children: [
-              if (_hasSelectionColumn)
-                SizedBox(width: _selectionColWidth, child: headerSelectionCell),
-              for (final i in visibleIndices)
-                _headerColumnCell(
-                  theme,
-                  i,
-                  frozen: false,
-                  showRightDivider: showRightDivider(i),
-                ),
-              if (widget.showColumnChooser)
-                SizedBox(width: 48, height: 48, child: _platformAddButton()),
-            ],
+          row: columnHeaderResizeOverlay(
+            indices: visibleIndices,
+            leadingInset: selectionWidth,
+            hasTrailingCell: widget.showColumnChooser,
+            onResize: _resizeColumn,
+            onReset: _resetColumnWidth,
+            child: Row(
+              crossAxisAlignment: _selectableCross,
+              children: [
+                if (_hasSelectionColumn)
+                  SizedBox(
+                    width: _selectionColWidth,
+                    child: headerSelectionCell,
+                  ),
+                for (final i in visibleIndices)
+                  _headerColumnCell(
+                    theme,
+                    i,
+                    frozen: false,
+                    showRightDivider: showRightDivider(i),
+                  ),
+                if (widget.showColumnChooser)
+                  SizedBox(width: 48, height: 48, child: _platformAddButton()),
+              ],
+            ),
           ),
         ),
       ),
@@ -7368,7 +7382,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  /// 单个表头列格：列宽 + 竖线 + 内容 + 列宽手柄。
+  /// 单个表头列格：列宽 + 竖线 + 内容。
   ///
   /// [frozen]=true 时构建的是「钉在视口左缘的冻结副本」格：内容不带换位/移除
   /// 拖拽手势（kit 的 LayerLink 每 State 只挂一个 target，双挂载会让跟手浮层
@@ -7493,7 +7507,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ),
           if (trailing != null)
             Padding(
-              padding: const EdgeInsetsDirectional.only(end: _gripHalf * 2),
+              padding: const EdgeInsetsDirectional.only(
+                end: UtenColumnResizeHandle.hitHalfWidth,
+              ),
               child: trailing,
             ),
         ],
@@ -7509,25 +7525,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ? BorderSide(color: theme.colorScheme.outline)
               : BorderSide.none,
         ),
-        child: Stack(
-          children: [
-            content,
-            // 列边界命中区完整留在当前列内；与编辑表共用鼠标/键盘/RTL/恢复交互。
-            // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
-            // 桌面端悬停显示 resize 光标作为可调提示。
-            PositionedDirectional(
-              end: 0,
-              top: 0,
-              bottom: 0,
-              width: _gripHalf * 2,
-              child: UtenColumnResizeHandle(
-                label: _columns[i].label,
-                onResize: (delta) => _resizeColumn(i, delta),
-                onReset: () => _resetColumnWidth(i),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }

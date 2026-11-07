@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../support/filter_segment_tap.dart';
 import '../../../support/audit_screenshot_support.dart';
+import '../../../support/table_cell_geometry.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
@@ -2301,29 +2302,56 @@ void routeConfirmationTests() {
   );
 
   // 「下一步」表头筛选（2026-09-20 用户口径）：按路线分桶，服务端 routeFilter。
-  testWidgets('next-step header filter sends the route to the server', (
-    tester,
-  ) async {
-    final requests = <RequestOptions>[];
-    await mount(
-      tester,
-      repository: _repository(
-        withWaitingRow: true,
-        startRoute: null,
-        canConfirmRoute: true,
-        onRequest: requests.add,
-      ),
-    );
-    await tester.tap(find.text('下一步'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('持续生产').last);
-    await tester.pumpAndSettle();
-    final query = requests
-        .lastWhere((r) => r.path == '/production/workshop-tasks')
-        .queryParameters;
-    expect(query['routeFilter'], 'CONTINUOUS');
-    expect(query['page'], 1);
-  });
+  testWidgets(
+    'next-step divider resizes only its column and the route filter still reaches the server',
+    (tester) async {
+      final requests = <RequestOptions>[];
+      await mount(
+        tester,
+        repository: _repository(
+          withWaitingRow: true,
+          startRoute: null,
+          canConfirmRoute: true,
+          onRequest: requests.add,
+        ),
+      );
+
+      final nextStepLabel = find.text('下一步');
+      final nextStep = tableCellFrame(nextStepLabel);
+      final workOrder = tableCellFrame(find.text('工单号'));
+      final nextStepBefore = tester.getRect(nextStep);
+      final workOrderBefore = tester.getRect(workOrder);
+      final grip = find.byWidgetPredicate(
+        (widget) => widget is UtenColumnResizeHandle && widget.label == '下一步',
+      );
+      final point = tester.getCenter(grip) + const Offset(6, 0);
+      expect(workOrderBefore.contains(point), isTrue);
+      final mouse = await tester.startGesture(
+        point,
+        kind: PointerDeviceKind.mouse,
+      );
+      await mouse.moveBy(const Offset(48, 0));
+      await mouse.up();
+      await tester.pumpAndSettle();
+
+      final nextStepAfter = tester.getRect(nextStep);
+      final workOrderAfter = tester.getRect(workOrder);
+      expect(nextStepAfter.width, closeTo(nextStepBefore.width + 48, 0.5));
+      expect(workOrderAfter.width, workOrderBefore.width);
+      expect(workOrderAfter.left, closeTo(nextStepAfter.right, 0.1));
+
+      await tester.tap(nextStepLabel, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('持续生产').last);
+      await tester.pumpAndSettle();
+      final query = requests
+          .lastWhere((r) => r.path == '/production/workshop-tasks')
+          .queryParameters;
+      expect(query['routeFilter'], 'CONTINUOUS');
+      expect(query['page'], 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   // ADR-096(2026-09-20 用户口径「能够批量选择路线」「最前面可以锁住，物料不齐就是
   // 锁住」)：未选路线/物料不齐的行也能勾选，勾选框角上压一把锁说明不能开工；

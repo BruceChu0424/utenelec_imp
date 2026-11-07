@@ -1883,9 +1883,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _notifyColumnSettingsChanged();
   }
 
-  /// 列宽拖拽命中区半宽（贴列右边界，半溢出到相邻列）。
-  static const double _gripHalf = 4;
-
   /// 列宽下限（防拖没）。
   static const double _minColWidth = 48;
 
@@ -4079,17 +4076,24 @@ class _UtenEditableGridState<T extends EditableGridRow>
   ) {
     bool showRightDivider(int index) => true;
     final pinnedIndices = _pinnedVisibleColumnIndices;
+    final selectionWidth = widget._showSelect ? _selectColWidth : 0.0;
     // 横滚时钉在视口左缘的冻结区副本：全选格 + 已固定列的表头格。副本格不挂
     // 换位/移除拖拽（避免同一 LayerLink 双挂载），但保留表头筛选点按、右键
     // 菜单与列宽手柄。
-    final frozenHeaderRegion = _withSelectHeaderRegion(
-      theme,
-      pinnedIndices: pinnedIndices,
-      cell: (i) => _headerColumnCell(
+    final frozenHeaderRegion = columnHeaderResizeOverlay(
+      indices: pinnedIndices,
+      leadingInset: selectionWidth,
+      onResize: _resizeColumn,
+      onReset: _resetColumnWidth,
+      child: _withSelectHeaderRegion(
         theme,
-        i,
-        frozen: true,
-        showRightDivider: showRightDivider(i),
+        pinnedIndices: pinnedIndices,
+        cell: (i) => _headerColumnCell(
+          theme,
+          i,
+          frozen: true,
+          showRightDivider: showRightDivider(i),
+        ),
       ),
     );
     return Column(
@@ -4107,39 +4111,47 @@ class _UtenEditableGridState<T extends EditableGridRow>
                 // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
                 child: UtenTableRowRightEdge(
                   child: columnHeaderIndicatorOverlay(
-                    leadingInset: widget._showSelect ? _selectColWidth : 0,
+                    leadingInset: selectionWidth,
                     child: _withFrozenTrailingAction(
                       theme,
                       _withFrozenLeadingRegion(
                         theme,
                         pinnedIndices: pinnedIndices,
                         cell: frozenHeaderRegion,
-                        row: Row(
-                          children: [
-                            if (widget._showSelect)
-                              SizedBox(
-                                width: _selectColWidth,
-                                child: _selectAllHeaderCell(theme),
-                              ),
-                            for (final i in visibleColumnIndices)
-                              _headerColumnCell(
-                                theme,
-                                i,
-                                frozen: false,
-                                showRightDivider: showRightDivider(i),
-                              ),
-                            if (widget._showRowActionColumn)
-                              SizedBox(
-                                width: _deleteColWidth,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color:
-                                        theme.colorScheme.surfaceContainerHigh,
-                                  ),
-                                  child: _addColumnHeader(),
+                        row: columnHeaderResizeOverlay(
+                          indices: visibleColumnIndices,
+                          leadingInset: selectionWidth,
+                          hasTrailingCell: widget._showRowActionColumn,
+                          onResize: _resizeColumn,
+                          onReset: _resetColumnWidth,
+                          child: Row(
+                            children: [
+                              if (widget._showSelect)
+                                SizedBox(
+                                  width: _selectColWidth,
+                                  child: _selectAllHeaderCell(theme),
                                 ),
-                              ),
-                          ],
+                              for (final i in visibleColumnIndices)
+                                _headerColumnCell(
+                                  theme,
+                                  i,
+                                  frozen: false,
+                                  showRightDivider: showRightDivider(i),
+                                ),
+                              if (widget._showRowActionColumn)
+                                SizedBox(
+                                  width: _deleteColWidth,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: theme
+                                          .colorScheme
+                                          .surfaceContainerHigh,
+                                    ),
+                                    child: _addColumnHeader(),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -4158,11 +4170,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
   }
 
-  /// 单个表头列格：列宽 + 底色 + 右竖线 + 标签 + 列宽手柄。
+  /// 单个表头列格：列宽 + 底色 + 右竖线 + 标签。
   ///
   /// [frozen]=true 时构建的是「钉在视口左缘的冻结副本」格：内容不带换位/移除
   /// 拖拽手势（kit 的 LayerLink 每 State 只挂一个 target，双挂载会让跟手浮层
-  /// 锚定错乱），但保留筛选点按、右键菜单（固定/移动/隐藏）与列宽手柄。
+  /// 锚定错乱），但保留筛选点按与右键菜单（固定/移动/隐藏）。
   /// 已固定的列表头标签前显图钉（[_headerLabel] 内渲染，18px、与标签行垂直
   /// 居中，2026-09-25 用户口径「icon 大一点、上下居中」）。
   Widget _headerColumnCell(
@@ -4188,23 +4200,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               ? BorderSide(color: theme.colorScheme.outline)
               : BorderSide.none,
         ),
-        child: Stack(
-          children: [
-            content,
-            // 列边界命中区完整放在本列内，避免中心点落进相邻列。
-            PositionedDirectional(
-              end: 0,
-              top: 0,
-              bottom: 0,
-              width: _gripHalf * 2,
-              child: UtenColumnResizeHandle(
-                label: _columns[i].label,
-                onResize: (delta) => _resizeColumn(i, delta),
-                onReset: () => _resetColumnWidth(i),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }

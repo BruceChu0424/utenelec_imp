@@ -42,5 +42,50 @@
   <Style TargetType="DataGridCell"><Setter Property="Padding" Value="12,8"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{StaticResource Uten.Text}"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridCell"><Border Padding="{TemplateBinding Padding}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/></Border></ControlTemplate></Setter.Value></Setter>
   </Style>
-  <Style TargetType="DataGridColumnHeader"><Setter Property="Padding" Value="12,8"/><Setter Property="MinHeight" Value="{StaticResource Uten.Height.Input}"/><Setter Property="Background" Value="{StaticResource Uten.Background}"/><Setter Property="Foreground" Value="{StaticResource Uten.Muted}"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="BorderThickness" Value="0,0,1,1"/><Setter Property="BorderBrush" Value="{StaticResource Uten.Border}"/></Style>
+  <Style x:Key="Uten.ColumnResizeHandle" TargetType="Thumb">
+    <Setter Property="Width" Value="10"/>
+    <Setter Property="Cursor" Value="SizeWE"/>
+    <Setter Property="Template"><Setter.Value>
+      <ControlTemplate TargetType="Thumb">
+        <Grid Background="Transparent">
+          <Border x:Name="ResizeLine" HorizontalAlignment="{TemplateBinding HorizontalAlignment}" Width="3"
+                  Margin="0,4" Background="{StaticResource Uten.PrimaryBrush}" Opacity="0" IsHitTestVisible="False"
+                  RenderTransformOrigin="1,0.5">
+            <Border.RenderTransform><ScaleTransform ScaleX="1"/></Border.RenderTransform>
+          </Border>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="HorizontalAlignment" Value="Left">
+            <Setter TargetName="ResizeLine" Property="Margin" Value="-3,4,0,4"/>
+          </Trigger>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="ResizeLine" Property="Opacity" Value="1"/>
+          </Trigger>
+          <Trigger Property="IsDragging" Value="True">
+            <Setter TargetName="ResizeLine" Property="Opacity" Value="1"/>
+          </Trigger>
+          <MultiDataTrigger>
+            <MultiDataTrigger.Conditions>
+              <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+              <Condition Binding="{Binding IsDragging, RelativeSource={RelativeSource Self}}" Value="False"/>
+              <Condition Binding="{Binding Source={x:Static SystemParameters.ClientAreaAnimation}}" Value="True"/>
+            </MultiDataTrigger.Conditions>
+            <MultiDataTrigger.EnterActions>
+              <BeginStoryboard Name="RevealResizeLine">
+                <Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="ResizeLine"
+                                   Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                   From="0.67" To="1" Duration="0:0:0.09" FillBehavior="Stop"/>
+                </Storyboard>
+              </BeginStoryboard>
+            </MultiDataTrigger.EnterActions>
+            <MultiDataTrigger.ExitActions><RemoveStoryboard BeginStoryboardName="RevealResizeLine"/></MultiDataTrigger.ExitActions>
+          </MultiDataTrigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate>
+    </Setter.Value></Setter>
+  </Style>
+  <Style TargetType="DataGridColumnHeader"><Setter Property="Padding" Value="12,8"/><Setter Property="MinHeight" Value="{StaticResource Uten.Height.Input}"/><Setter Property="Background" Value="{StaticResource Uten.Background}"/><Setter Property="Foreground" Value="{StaticResource Uten.Muted}"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="BorderThickness" Value="0,0,1,1"/><Setter Property="BorderBrush" Value="{StaticResource Uten.Border}"/>
+    <Setter Property="controls:UtenDataGrid.ColumnResizeHandleStyle" Value="{StaticResource Uten.ColumnResizeHandle}"/>
+  </Style>
 </ResourceDictionary>

@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
@@ -33,6 +34,7 @@ Future<void> _pumpGrid(
   UtenEditableGridController<_ResizeRow> controller,
   TextDirection direction, {
   double minimumWidth = 48,
+  bool showColumnSettings = false,
 }) async {
   tester.view.physicalSize = const Size(1024, 700);
   tester.view.devicePixelRatio = 1;
@@ -50,7 +52,7 @@ Future<void> _pumpGrid(
                 children: [
                   UtenEditableGrid<_ResizeRow>(
                     controller: controller,
-                    showColumnSettings: false,
+                    showColumnSettings: showColumnSettings,
                     showRowDelete: false,
                     showAddRow: false,
                     columns: [
@@ -96,33 +98,73 @@ Future<void> _pumpGrid(
 void main() {
   for (final direction in [TextDirection.ltr, TextDirection.rtl]) {
     testWidgets(
-      'grid grip follows the logical header end and outward mouse drag grows only that column: $direction',
+      'hover on either side of a header divider shows the resize grip and dragging from the neighboring cell resizes only its owner: $direction',
       (tester) async {
         final row = _ResizeRow();
         final controller = UtenEditableGridController<_ResizeRow>(
           initial: [row],
         );
-        await _pumpGrid(tester, controller, direction);
+        await _pumpGrid(
+          tester,
+          controller,
+          direction,
+          showColumnSettings: true,
+        );
         final before = tester.getRect(_headerCell('Product'));
         final quantityBefore = tester.getSize(_headerCell('Quantity')).width;
         final noteBefore = tester.getSize(_headerCell('Note')).width;
         final grip = tester.getRect(_nameGrip());
         final rtl = direction == TextDirection.rtl;
-        expect(grip.width, 8);
-        expect(
-          grip.center.dx,
-          closeTo(rtl ? before.left + 4 : before.right - 4, 0.1),
-        );
+        expect(grip.width, 16);
+        expect(grip.center.dx, closeTo(rtl ? before.left : before.right, 0.1));
 
-        // The entire shared grip is hit-testable inside its own header.
-        final point = grip.center;
-        final pointer = await tester.startGesture(
-          point,
+        final divider = find.descendant(
+          of: _nameGrip(),
+          matching: find.byType(AnimatedContainer),
+        );
+        final primary = Theme.of(tester.element(divider)).colorScheme.primary;
+        Color? dividerColor() =>
+            (tester.widget<AnimatedContainer>(divider).decoration
+                    as BoxDecoration)
+                .color;
+        final mouseTracker = RendererBinding.instance.mouseTracker;
+        final pointer = await tester.createGesture(
           kind: PointerDeviceKind.mouse,
         );
+        final neighborSide = Offset(rtl ? -6 : 6, 0);
+        final outside = grip.center + Offset(rtl ? -12 : 12, 0);
+        expect(tester.getSize(divider).width, 1);
+        expect(dividerColor(), Colors.transparent);
+
+        await pointer.addPointer(location: outside);
+        await tester.pump();
+        expect(
+          mouseTracker.debugDeviceActiveCursor(1),
+          isNot(SystemMouseCursors.resizeLeftRight),
+        );
+        for (final point in [
+          grip.center - neighborSide,
+          grip.center + neighborSide,
+        ]) {
+          await pointer.moveTo(point);
+          await tester.pumpAndSettle();
+          expect(
+            mouseTracker.debugDeviceActiveCursor(1),
+            SystemMouseCursors.resizeLeftRight,
+          );
+          expect(tester.getSize(divider).width, 3);
+          expect(dividerColor(), primary);
+        }
+
+        await pointer.down(grip.center + neighborSide);
         await pointer.moveBy(Offset(rtl ? -80 : 80, 0));
+        await pointer.moveBy(const Offset(0, 70));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(divider).width, 3);
         await pointer.up();
         await tester.pumpAndSettle();
+        expect(tester.getSize(divider).width, 1);
+        expect(dividerColor(), Colors.transparent);
 
         expect(
           tester.getSize(_headerCell('Product')).width,
@@ -139,6 +181,24 @@ void main() {
               .controller,
           same(row.quantity),
         );
+        final after = tester.getRect(_headerCell('Product'));
+        final quantity = tester.getRect(_headerCell('Quantity'));
+        expect(
+          rtl ? quantity.right : quantity.left,
+          closeTo(rtl ? after.left : after.right, 0.1),
+        );
+
+        // Interrupt a second resize while its pointer is outside the header.
+        await pointer.down(tester.getCenter(_nameGrip()) + neighborSide);
+        await pointer.moveBy(Offset(rtl ? 25 : -25, 0));
+        await pointer.moveBy(const Offset(0, 70));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(divider).width, 3);
+        await pointer.cancel();
+        await tester.pumpAndSettle();
+        expect(tester.getSize(divider).width, 1);
+        expect(dividerColor(), Colors.transparent);
+        await pointer.removePointer();
         expect(find.text(row.name), findsOneWidget);
         expect(find.text(row.note), findsOneWidget);
         expect(tester.takeException(), isNull);

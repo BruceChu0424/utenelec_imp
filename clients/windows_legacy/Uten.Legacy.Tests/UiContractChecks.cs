@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -68,6 +69,25 @@ namespace Uten.Legacy.Tests
                     "An empty editor fills the usable part of its content-fitted cell.");
                 check(table.Items.Count == records.Length && table.ItemContainerGenerator.ContainerFromIndex(9000) == null,
                     "Measuring the table leaves offscreen rows virtualized and preserves every row.");
+                var leftHeader = FindVisual<DataGridColumnHeader>(table, item => item.Column == explicitWidth);
+                var rightHeader = FindVisual<DataGridColumnHeader>(table, item => item.Column == input);
+                var leftHandle = (Thumb)leftHeader.Template.FindName("PART_RightHeaderGripper", leftHeader);
+                var rightHandle = (Thumb)rightHeader.Template.FindName("PART_LeftHeaderGripper", rightHeader);
+                var divider = leftHeader.TranslatePoint(new Point(leftHeader.ActualWidth, leftHeader.ActualHeight / 2), table);
+                check(ResizeHandleAt(table, new Point(divider.X - 9, divider.Y)) == leftHandle
+                    && ResizeHandleAt(table, new Point(divider.X + 9, divider.Y)) == rightHandle
+                    && leftHandle.Cursor == Cursors.SizeWE && rightHandle.Cursor == Cursors.SizeWE,
+                    "Both sides of a column divider offer an extended horizontal resize handle.");
+                check(ResizeHandleAt(table, new Point(divider.X - 11, divider.Y)) == null
+                    && ResizeHandleAt(table, new Point(divider.X + 11, divider.Y)) == null,
+                    "The body of each header remains available for sorting or reordering.");
+                rightHandle.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
+                rightHandle.RaiseEvent(new DragDeltaEventArgs(20, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+                Pump(window);
+                check(explicitWidth.ActualWidth == 152, "The right side of the divider resizes the preceding column.");
+                rightHandle.RaiseEvent(new DragCompletedEventArgs(20, 0, true) { RoutedEvent = Thumb.DragCompletedEvent });
+                Pump(window);
+                check(explicitWidth.ActualWidth == 132, "Canceling a native resize restores the original width.");
                 double wide = plain.ActualWidth;
                 window.Width = 240; Pump(window);
                 check(FindVisual<ScrollViewer>(table, scroll => scroll.ScrollableWidth > 0) != null
@@ -85,6 +105,13 @@ namespace Uten.Legacy.Tests
             }
             finally { window.Content = null; window.Close(); }
             return checks;
+        }
+
+        private static Thumb ResizeHandleAt(UIElement table, Point point)
+        {
+            var element = (DependencyObject)table.InputHitTest(point);
+            while (element != null && !(element is Thumb)) element = VisualTreeHelper.GetParent(element);
+            return element as Thumb;
         }
 
         private static DataTemplate TableContentTemplate(string property, double iconWidth)

@@ -707,7 +707,7 @@ class ProcurementInspectionIntegrityPostgresTest {
         transactions.executeWithoutResult(ignored -> {
             jdbc.update("INSERT INTO subcontract_receipts"
                             + "(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,total_original,total_local,status,is_deleted) "
-                            + "VALUES (?,?,?,?,?,?,?,1,?,?,1,FALSE)",
+                            + "VALUES (?,?,?,?,?,?,?,1,?,?,0,FALSE)",
                     receiptId, receiptNo, billDate, warehouseId, source.supplier(), source.currency(), source.settlement(),
                     amount, amount);
             jdbc.update("INSERT INTO subcontract_receipt_items("
@@ -718,12 +718,13 @@ class ProcurementInspectionIntegrityPostgresTest {
                             + "VALUES (?,?,?,?,1,?,?,?,?,'MASTER_AT_APPROVAL',now(),?,1,?,?,?,?,'NORMAL',?,FALSE)",
                     receiptItemId, receiptNo, billDate, receiptId, goodsId, orderItemId, goodsCode, goodsName, unitId,
                     qty, amount.divide(qty), amount, amount, qty);
-            jdbc.update("UPDATE subcontract_order_items SET received_qty=? WHERE id=?", qty, orderItemId);
-            jdbc.update("UPDATE subcontract_material_issue_items SET consumed_qty=? WHERE id=?", qty, issueItemId);
             jdbc.update("""
                     INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
-                    VALUES (?,?,?,?,?,'FROZEN_BOM_ESTIMATE',?)
+                    VALUES (?,?,?,?,?,'FROZEN_BASE_BOM_ACTUAL',?)
                     """, UUID.randomUUID(), receiptItemId, issueItemId, qty, qty, source.actor().getId());
+            jdbc.update("UPDATE subcontract_material_issue_items SET consumed_qty=? WHERE id=?", qty, issueItemId);
+            jdbc.update("UPDATE subcontract_receipts SET status=1 WHERE id=?", receiptId);
+            jdbc.update("UPDATE subcontract_order_items SET received_qty=? WHERE id=?", qty, orderItemId);
             jdbc.update("""
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id,

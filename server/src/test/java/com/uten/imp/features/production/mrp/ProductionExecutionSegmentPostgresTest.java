@@ -2691,7 +2691,7 @@ class ProductionExecutionSegmentPostgresTest {
                     insert into subcontract_receipts(
                         id, bill_no, bill_date,
                         warehouse_id, status, source_doc_no)
-                    values (?, ?, ?, ?, 1, ?)
+                    values (?, ?, ?, ?, 0, ?)
                     """,
                     receiptId,
                     receiptNo,
@@ -2721,13 +2721,13 @@ class ProductionExecutionSegmentPostgresTest {
                     quantity,
                     supply.orderNo(),
                     quantity);
-            // ADR-143 §三.7: the approved return consumes the issued direct material by target f(R) = R x 1.
+            // Freeze the issued material on the draft before the receipt enters the approved cohort.
             execute(
                     connection,
                     """
                     insert into subcontract_receipt_material_consumptions(
                         id, receipt_item_id, issue_item_id, qty_doc, qty_base, consumption_basis, created_by)
-                    values (?, ?, ?, ?, ?, 'FROZEN_BOM_ESTIMATE', ?)
+                    values (?, ?, ?, ?, ?, 'FROZEN_BASE_BOM_ACTUAL', ?)
                     """,
                     UUID.randomUUID(),
                     receiptItemId,
@@ -2744,6 +2744,7 @@ class ProductionExecutionSegmentPostgresTest {
                     """,
                     quantity,
                     supply.issueItemId());
+            execute(connection, "update subcontract_receipts set status = 1 where id = ?", receiptId);
             execute(
                     connection,
                     """

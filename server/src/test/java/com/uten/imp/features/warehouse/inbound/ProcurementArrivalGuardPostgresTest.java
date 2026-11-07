@@ -273,7 +273,7 @@ class ProcurementArrivalGuardPostgresTest {
             executeSql(connection, """
                     INSERT INTO subcontract_receipts(
                         id, bill_no, bill_date, warehouse_id, supplier_id,currency_id,settlement_method_id,exchange_rate,total_original,total_local,status,created_by)
-                    VALUES (?, ?, DATE '2026-08-31', ?,?,?,?,1,0,0,1,?)
+                    VALUES (?, ?, DATE '2026-08-31', ?,?,?,?,1,0,0,0,?)
                     """, receiptId, receiptNo,warehouseId,supplierId,currencyId,settlementMethodId,actor.userId());
             executeSql(connection, """
                     INSERT INTO subcontract_receipt_items(
@@ -288,10 +288,11 @@ class ProcurementArrivalGuardPostgresTest {
                     """, receiptItemId, receiptNo,
                     receiptId, orderItemId, goodsId, unitId,
                     "ARR-REL-G-" + goodsId);
+            executeSql(connection,"INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by) VALUES(?,?,?,2,2,'FROZEN_BASE_BOM_ACTUAL',?)",UUID.randomUUID(),receiptItemId,issueItemId,actor.userId());
+            executeSql(connection,"UPDATE subcontract_material_issue_items SET consumed_qty=2 WHERE id=?",issueItemId);
+            executeSql(connection,"UPDATE subcontract_receipts SET status=1 WHERE id=?",receiptId);
             // Same write-back as a real receipt approval: the order line's received quantity (ADR-143 §三.6 capacity input).
             executeSql(connection,"UPDATE subcontract_order_items SET received_qty=received_qty+2 WHERE id=?",orderItemId);
-            executeSql(connection,"UPDATE subcontract_material_issue_items SET consumed_qty=2 WHERE id=?",issueItemId);
-            executeSql(connection,"INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by) VALUES(?,?,?,2,2,'FROZEN_BOM_ESTIMATE',?)",UUID.randomUUID(),receiptItemId,issueItemId,actor.userId());
             ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,"SUBCONTRACT",receiptId,actor.userId());
             executeSql(connection,"""
                     INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,

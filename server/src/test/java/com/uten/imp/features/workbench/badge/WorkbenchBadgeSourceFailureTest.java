@@ -64,6 +64,7 @@ class WorkbenchBadgeSourceFailureTest {
         Session session = mock(Session.class);
         when(connection.setSavepoint()).thenReturn(mock(Savepoint.class));
         when(entityManager.unwrap(Session.class)).thenReturn(session);
+        BadgeStatementBudgetStubs.accept(entityManager);
         when(session.doReturningWork(any())).thenAnswer(call ->
                 ((ReturningWork<?>) call.getArgument(0)).execute(connection));
         doAnswer(call -> {
@@ -163,5 +164,102 @@ class WorkbenchBadgeSourceFailureTest {
         assertThat(service.summary(Set.of(ENTRY)).staleSources()).isEmpty();
         verify(log).info(RECOVERY, SOURCE, IllegalStateException.class.getName());
         verifyNoMoreInteractions(log);
+    }
+
+    /**
+     * P3(2026-11-07 读取性能根治): 超过本来源语句时限的慢来源被取消并进入既有 stale 路径,
+     * 之后的来源照常在收紧后的时限内执行, 汇总返回后调用方自己的 statement_timeout 原样保留。
+     * 慢来源用另一连接持有排他锁的表构造(语句阻塞直到被时限取消); 仅真库运行。
+     */
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+    void slowSourceIsCancelledIntoStaleWhileLaterSourcesAndTheCallerTimeoutAreKept() throws Exception {
+        try (var postgres = new org.testcontainers.postgresql.PostgreSQLContainer("postgres:16-alpine")) {
+            postgres.start();
+            var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+            var configuration = new org.hibernate.cfg.Configuration().setProperty("hibernate.hbm2ddl.auto", "none");
+            configuration.getProperties().put("hibernate.connection.datasource", dataSource);
+            var factory = configuration.buildSessionFactory();
+            try {
+                var transactions = new org.springframework.orm.jpa.JpaTransactionManager(factory);
+                transactions.setDataSource(dataSource);
+                transactions.setJpaDialect(new org.springframework.orm.jpa.vendor.HibernateJpaDialect());
+                jakarta.persistence.EntityManager shared =
+                        org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(factory);
+                var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
+                tx.execute(status -> { // 建锁探针表(提交), 慢来源的查询被另一连接锁住。
+                    shared.createNativeQuery("CREATE TABLE badge_timeout_probe(id integer)").executeUpdate();
+                    return null;
+                });
+                java.sql.Connection blocker = dataSource.getConnection();
+                blocker.setAutoCommit(false);
+                blocker.createStatement().execute("LOCK TABLE badge_timeout_probe IN ACCESS EXCLUSIVE MODE");
+                try {
+                    List<String> limitsSeenAfterSlow = new java.util.concurrent.CopyOnWriteArrayList<>();
+                    Set<String> keys = Arrays.stream(WorkbenchBadgeCatalog.values())
+                            .flatMap(entry -> Stream.concat(entry.todoFacts().stream(), entry.inProgressFacts().stream()))
+                            .map(WorkbenchBadgeCatalog::sourceOf).collect(java.util.stream.Collectors.toSet());
+                    List<com.uten.imp.application.port.WorkbenchBadgeSources.Source> registered = keys.stream()
+                            .map(key -> new com.uten.imp.application.port.WorkbenchBadgeSources.Source(key, () -> {
+                                if (SOURCE.equals(key)) {
+                                    shared.createNativeQuery("SELECT count(*) FROM badge_timeout_probe").getSingleResult();
+                                    return Map.of("updates", 9L);
+                                }
+                                if ("productionSchedule".equals(key)) {
+                                    limitsSeenAfterSlow.add((String) shared.createNativeQuery(
+                                            "SELECT current_setting('statement_timeout')").getSingleResult());
+                                    return Map.of("count", 7L);
+                                }
+                                return Map.of("count", 1L);
+                            })).toList();
+                    var scopes = mock(WarehouseTaskScopePort.class);
+                    when(scopes.withQueryScopeCache(any())).thenAnswer(call ->
+                            ((WarehouseTaskScopePort.ReadQuery<?>) call.getArgument(0)).read());
+                    var timed = new WorkbenchBadgeService(List.of(() -> registered), transactions, scopes,
+                            com.uten.imp.testsupport.TaskAudienceTestSupport.direct());
+                    ReflectionTestUtils.setField(timed, "entityManager", shared);
+                    ReflectionTestUtils.setField(timed, "sourceStatementTimeoutMillis", 200L);
+
+                    tx.execute(status -> {
+                        shared.createNativeQuery("SET LOCAL statement_timeout TO '7s'").executeUpdate();
+                        long started = System.nanoTime();
+                        WorkbenchBadgeSummary summary = timed.summary(Set.of(ENTRY, "productionSchedule"));
+                        long elapsedMillis = (System.nanoTime() - started) / 1_000_000;
+                        assertThat(summary.staleSources()).containsExactly(SOURCE);
+                        assertThat(summary.staleEntries()).containsExactly(ENTRY);
+                        assertThat(summary.entries().get("productionSchedule").todo()).isEqualTo(7L);
+                        assertThat(summary.facts()).containsEntry("productionSchedule.count", 7L)
+                                .doesNotContainKey("serverOperations.updates");
+                        assertThat(limitsSeenAfterSlow).containsExactly("200ms");
+                        assertThat(elapsedMillis).as("the blocked source is cut at its 200ms limit").isLessThan(2_000L);
+                        assertThat(shared.createNativeQuery("SELECT current_setting('statement_timeout')")
+                                .getSingleResult()).isEqualTo("7s");
+                        status.setRollbackOnly();
+                        return null;
+                    });
+                    // 调用方时限比来源上限更严时不放宽。
+                    tx.execute(status -> {
+                        shared.createNativeQuery("SET LOCAL statement_timeout TO '150ms'").executeUpdate();
+                        limitsSeenAfterSlow.clear();
+                        timed.summary(Set.of("productionSchedule"));
+                        assertThat(limitsSeenAfterSlow).containsExactly("150ms");
+                        assertThat(shared.createNativeQuery("SELECT current_setting('statement_timeout')")
+                                .getSingleResult()).isEqualTo("150ms");
+                        status.setRollbackOnly();
+                        return null;
+                    });
+                } finally {
+                    blocker.rollback();
+                    blocker.close();
+                    tx.execute(status -> {
+                        shared.createNativeQuery("DROP TABLE badge_timeout_probe").executeUpdate();
+                        return null;
+                    });
+                }
+            } finally {
+                factory.close();
+            }
+        }
     }
 }

@@ -125,6 +125,7 @@ class WarehouseDirectionBadgeContractTest {
         EntityManager em = mock(EntityManager.class);
         Session session = mock(Session.class);
         when(em.unwrap(Session.class)).thenReturn(session);
+        BadgeStatementBudgetStubs.accept(em);
         when(session.doReturningWork(any())).thenAnswer(call -> ((ReturningWork<?>) call.getArgument(0)).execute(
                 ((ConnectionHolder) TransactionSynchronizationManager.getResource(dataSource)).getConnection()));
         doAnswer(call -> {

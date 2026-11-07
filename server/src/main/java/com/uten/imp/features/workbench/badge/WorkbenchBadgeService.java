@@ -62,6 +62,9 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     @PersistenceContext
     private EntityManager entityManager;
 
+    /** 每个来源单条语句的时限上限(P3, 默认 5 秒); 调用方事务更严的时限原样保留。 */
+    private long sourceStatementTimeoutMillis = 5_000L;
+
     public WorkbenchBadgeService(
             List<WorkbenchBadgeSources> contributors,
             PlatformTransactionManager transactionManager,
@@ -209,12 +212,19 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     /**
      * 在保存点内读一个来源: 成功返回字段 → 数; 无权访问返回 null(不记失败);
      * 其它异常回滚到保存点、记入 failed 并返回 null。
+     *
+     * <p>每来源语句时限(2026-11-07 读取性能根治 P3): 来源内每条语句不超过
+     * {@link #sourceStatementTimeoutMillis}(调用方已更严则保留), 慢来源到点被取消并按上面的
+     * 失败路径进 stale, 不拖住其它来源。时限在保存点内设置——回滚随保存点撤销; 成功路径在
+     * 释放保存点前写回原值(释放会把事务级设置一直留到事务结束)。
      */
     private Map<String, Long> readIsolated(WorkbenchBadgeSources.Source source, Set<String> failed) {
         Session session = entityManager.unwrap(Session.class);
         Savepoint savepoint = session.doReturningWork(Connection::setSavepoint);
         try {
+            String previousTimeout = limitSourceStatements();
             Map<String, Long> values = source.reader().get();
+            restoreStatementTimeout(previousTimeout);
             session.doWork(connection -> connection.releaseSavepoint(savepoint));
             sourceDiagnostics.recovered(source.key());
             return values == null ? Map.of() : values;
@@ -241,6 +251,26 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         session.doWork(connection -> connection.rollback(savepoint));
         // 失败的查询可能留下半截实体状态; 只读汇总不持有任何待写实体, 清掉即可。
         entityManager.clear();
+    }
+
+    /** 收紧本来源的语句时限(原值先物化再改), 返回原值文本供原样写回。 */
+    private String limitSourceStatements() {
+        Object[] row = (Object[]) entityManager.createNativeQuery("""
+                WITH previous AS MATERIALIZED (
+                    SELECT current_setting('statement_timeout') AS value, setting::bigint AS millis
+                    FROM pg_settings WHERE name = 'statement_timeout')
+                SELECT previous.value,
+                       set_config('statement_timeout',
+                           (CASE WHEN previous.millis = 0 OR previous.millis > :cap THEN :cap
+                                 ELSE previous.millis END)::text, true)
+                FROM previous
+                """).setParameter("cap", sourceStatementTimeoutMillis).getSingleResult();
+        return (String) row[0];
+    }
+
+    private void restoreStatementTimeout(String previous) {
+        entityManager.createNativeQuery("SELECT set_config('statement_timeout', :value, true)")
+                .setParameter("value", previous).getSingleResult();
     }
 
     private static long sum(List<String> keys, Map<String, Long> facts) {

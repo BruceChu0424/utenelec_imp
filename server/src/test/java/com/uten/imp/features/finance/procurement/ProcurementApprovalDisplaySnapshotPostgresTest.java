@@ -221,6 +221,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
             jdbc.execute("CREATE TABLE " + prefix + "_" + source + "_items(id uuid," + source + "_id uuid,line_no int)");
             jdbc.execute("CREATE TABLE " + prefix + "_" + source + "s(id uuid,bill_no text)");
         }
+        jdbc.execute("ALTER TABLE subcontract_orders ADD COLUMN legacy_import_run_id uuid");
         com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(
                 jdbc, "procurement_order_approval_cases", "procurement_order_qty_change_logs", "purchase_orders", "subcontract_orders");
     }

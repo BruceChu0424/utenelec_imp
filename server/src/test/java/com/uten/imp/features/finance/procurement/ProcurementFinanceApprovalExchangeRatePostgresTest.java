@@ -412,6 +412,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
             jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE,bill_no text,termination_case_id uuid,legacy_id integer)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4),remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
         }
+        jdbc.execute("ALTER TABLE subcontract_orders ADD COLUMN legacy_import_run_id uuid");
         com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(
                 jdbc, "procurement_order_approval_cases", "procurement_order_qty_change_logs", "purchase_orders", "subcontract_orders");
     }

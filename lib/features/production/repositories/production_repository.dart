@@ -1459,6 +1459,9 @@ class ProductionPlanRepository {
     required String billDate,
     required List<MaterialAnalysisIssueLine> lines,
     Map<String, double> typedOutputs = const {},
+    Map<String, String> typedOutputTexts = const {},
+    Map<String, MaterialPreparationOrderMethod> orderMethods = const {},
+    Set<String> coverageTotalLineIds = const {},
     String? deliveryDate,
     bool approveNow = false,
     CancelToken? cancelToken,
@@ -1478,7 +1481,14 @@ class ProductionPlanRepository {
         'lines': [for (final line in lines) line.toJson()],
         'typedOutputs': [
           for (final entry in typedOutputs.entries)
-            {'materialLineId': entry.key, 'qty': entry.value},
+            {
+              'materialLineId': entry.key,
+              'qty': typedOutputTexts[entry.key] ?? entry.value,
+              if (orderMethods[entry.key] case final method?)
+                'orderMethod': method.wireName,
+              if (coverageTotalLineIds.contains(entry.key))
+                'quantityMode': 'COVERAGE_TOTAL',
+            },
         ],
       },
     ); // ENDPOINT

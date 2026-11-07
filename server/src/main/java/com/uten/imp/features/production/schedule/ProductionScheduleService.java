@@ -86,6 +86,12 @@ public class ProductionScheduleService {
     static final String PENDING_NEED_SQL =
             "GREATEST(" + SCHEDULING_NEED_SQL + " - " + ACTIVE_ANALYSIS_COVERED_SQL + ", 0)";
 
+    /** Gross source demand retains only unadopted same-sales private stock. Produced
+     * stock and already adopted source slices keep the existing no-repeat accounting. */
+    static final String PENDING_TOTAL_DEMAND_SQL = "GREATEST(" + SCHEDULING_NEED_SQL + " + "
+            + com.uten.imp.features.production.analysis.MaterialAnalysisSalesStock.unadoptedSourceStockSql("i")
+            + " - " + ACTIVE_ANALYSIS_COVERED_SQL + ",0)";
+
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
@@ -150,7 +156,7 @@ public class ProductionScheduleService {
                                         / latest_analysis.remaining_qty, 1)
                             END AS readiness_ratio,
                        %s AS analysis_covered
-                """.formatted(PENDING_NEED_SQL, ACTIVE_ANALYSIS_COVERED_SQL) + dataFilters
+                """.formatted(PENDING_TOTAL_DEMAND_SQL, ACTIVE_ANALYSIS_COVERED_SQL) + dataFilters
                 + " " + orderBy + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
         TaskKeywordSearch.bind(dataQ, kw, true);
@@ -258,7 +264,7 @@ public class ProductionScheduleService {
                   AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                   AND %s > 0
-                """.formatted(PENDING_NEED_SQL)
+                """.formatted(PENDING_TOTAL_DEMAND_SQL)
                 + "  AND " + TaskKeywordSearch.condition(kw,
                         "o.bill_no", "c.name", "g.name", "g.code", "g.spec", "col.name", "u.name") + "\n"
                 + (dateFrom == null ? ""
@@ -440,7 +446,7 @@ public class ProductionScheduleService {
                 WHERE i.order_id = :orderId AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                 ORDER BY i.line_no NULLS LAST, i.id, bom.code, bom.bom_item_id
-                """.formatted(SCHEDULING_NEED_SQL, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
+                """.formatted(PENDING_TOTAL_DEMAND_SQL, com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_order_items"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("sales_orders")))
                 .setParameter("orderId", orderId).getResultList();
         Map<UUID, Object[]> lines = new LinkedHashMap<>();
         Map<UUID, List<ScheduleOrderLine.BomComponent>> components = new LinkedHashMap<>();

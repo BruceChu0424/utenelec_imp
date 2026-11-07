@@ -181,7 +181,12 @@ public final class MaterialAnalysisContracts {
             @NotNull @DecimalMin(value = "0")
             @DocumentQuantity BigDecimal qty,
             @DecimalMin(value = "0") @DocumentQuantity
-            BigDecimal safetyReplenishmentQty) {
+            BigDecimal safetyReplenishmentQty,
+            @Pattern(regexp = "COVERAGE_TOTAL") String quantityMode,
+            @Pattern(regexp = "ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod) {
+        public SupplyQuantityInput(String actionGroupKey, UUID materialLineId, BigDecimal qty, BigDecimal safetyReplenishmentQty) {
+            this(actionGroupKey, materialLineId, qty, safetyReplenishmentQty, null, null);
+        }
     }
 
     public record ClaimSharedFutureRequest(
@@ -263,7 +268,17 @@ public final class MaterialAnalysisContracts {
                  */
                 Boolean publicSurplusOnly,
                 @DecimalMin("0") @Digits(integer = 3, fraction = 6)
-                BigDecimal allowedOverproductionRate) {
+                BigDecimal allowedOverproductionRate,
+                @Pattern(regexp = "COVERAGE_TOTAL") String quantityMode,
+                @Pattern(regexp = "ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod) {
+
+            public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
+                    LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
+                    String workshopName, UUID workerId, UUID teamDepartmentId, String productNo,
+                    Boolean publicSurplusOnly, BigDecimal allowedOverproductionRate) {
+                this(materialLineId, analysisLineId, qty, billDate, deliveryDate, departmentId,
+                        workshopName, workerId, teamDepartmentId, productNo, publicSurplusOnly, allowedOverproductionRate, null, null);
+            }
 
             public IssuePlanLine(UUID materialLineId, UUID analysisLineId, BigDecimal qty,
                     LocalDate billDate, LocalDate deliveryDate, UUID departmentId,
@@ -317,7 +332,11 @@ public final class MaterialAnalysisContracts {
         public record TypedOutput(
                 @NotNull UUID materialLineId,
                 @NotNull @DecimalMin(value = "0.0000")
-                @DocumentQuantity BigDecimal qty) {}
+                @DocumentQuantity BigDecimal qty,
+                @Pattern(regexp="COVERAGE_TOTAL") String quantityMode,
+                @Pattern(regexp="ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod) {
+            public TypedOutput(UUID materialLineId,BigDecimal qty) { this(materialLineId,qty,null,null); }
+        }
 
         IssueWorkshopPlansRequest toIssueRequest() {
             return new IssueWorkshopPlansRequest(version, fingerprint, idempotencyKey, warehouseId,

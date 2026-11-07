@@ -1,6 +1,8 @@
 import '../../../support/production_person_reference_fixture.dart';
 import '../../../support/table_cell_geometry.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/material_order_method.dart';
+import '../../../support/audit_screenshot_support.dart';
 // ADR-102「一张表」：把分桶详情页与「父件 + 下层一起下单」弹窗的能力搬进主
 // 物料表之后，这张表上新增的行为由本文件守着。
 //
@@ -22,6 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -64,6 +67,7 @@ part 'material_analysis_append_quantity_cases.dart';
 part 'material_analysis_handling_density_cases.dart';
 part 'material_analysis_tree_shortcuts_cases.dart';
 part 'material_analysis_delivery_cases.dart';
+part 'material_analysis_row_order_method_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -377,6 +381,7 @@ void main() {
   materialDeliveryCases();
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
+  materialRowOrderMethodCases();
   materialPolicyCases();
   testWidgets(
     'cross-view facet cache refreshes workshop and manager after aggregate assignment',
@@ -643,14 +648,9 @@ void main() {
   Future<void> continueClaimChoice(
     WidgetTester tester, {
     required bool extra,
-  }) async {
-    await tester.tap(find.text(extra ? '保留余量，额外下单' : '优先使用可用余量'));
-    await tester.pump();
-    await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
-    );
-    await _settlePreview(tester);
-  }
+    Finder? field,
+  }) =>
+      _chooseRowOrderMethod(tester, field ?? _orderMethod('m-3'), extra: extra);
 
   for (final extra in [false, true]) {
     testWidgets('追加可用余量：需求已覆盖且仅权威公共池有量，选择${extra ? '额外下单' : '优先使用'}贯彻预览和提交', (
@@ -665,40 +665,46 @@ void main() {
       expect(_qtyText(tester, _appendQty('m-3')), '0');
       expect(appendAvailable('m-3', '300'), findsOneWidget);
       await finishAppend(tester, '100');
-      expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
+      expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
       expect(_submits(), isEmpty);
       expect(_aggregateSubmits(), isEmpty);
       await continueClaimChoice(tester, extra: extra);
-      expect(appendAvailable('m-3', extra ? '300' : '200'), findsOneWidget);
+      expect(appendAvailable('m-3', '300'), findsOneWidget);
       await _submitSelected(tester);
       expect(_aggregateSubmits(), hasLength(1));
       final submit = _aggregateSubmits().single.body!;
-      expect(submit['skipAutoClaim'] == true, extra);
+      expect(
+        _records(submit['groups'])
+            .expand(
+              (group) => (group['materialLineIds'] as List).cast<String>(),
+            )
+            .toList(),
+        ['m-3'],
+        reason: '仅改m-3追加，不得把未操作的其它默认量提交',
+      );
+      expect(
+        _records(submit['groups']).single['orderMethod'],
+        extra ? 'ORDER_ALL' : 'AVAILABLE_THEN_ORDER',
+      );
       expect(_records(submit['groups']).single['qty'], '100');
       final previews = requests.where(
         (request) => request.path.endsWith('/aggregate-orders/preview'),
       );
       expect(previews, isNotEmpty);
       expect(
-        previews.every(
-          (request) => (request.body?['skipAutoClaim'] == true) == extra,
-        ),
-        isTrue,
+        _records(previews.last.body?['groups']).single['orderMethod'],
+        extra ? 'ORDER_ALL' : 'AVAILABLE_THEN_ORDER',
+        reason: '提交前最后一份预览必须使用该行当前选择',
       );
       if (extra) {
         await finishAppend(tester, '50');
-        expect(
-          find.text('本次下单是否使用可用数量抵扣？'),
-          findsOneWidget,
-          reason: '上轮额外备货成功后，新一轮必须重新选择',
-        );
-        await tester.tap(find.text('取消'));
-        await tester.pumpAndSettle();
+        expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+        expect(_qtyText(tester, _appendQty('m-3')), '50');
       }
     });
   }
 
-  testWidgets('追加可用余量：草稿已预扣到零仍询问，取消不写单且保留输入', (tester) async {
+  testWidgets('追加可用余量：取消最终确认不写单且保留逐行方式和输入', (tester) async {
     await _pump(
       tester,
       permissions: _overSupplyPermissions,
@@ -706,26 +712,27 @@ void main() {
       mutate: withCoveredAppendPool,
     );
     await finishAppend(tester, '300');
-    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
-    await tester.tap(find.text('取消'));
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    expect(appendAvailable('m-3', '300'), findsOneWidget);
+    await continueClaimChoice(tester, extra: true);
+    expect(appendAvailable('m-3', '300'), findsOneWidget);
+    await _openSubmitConfirmation(tester);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
     await tester.pumpAndSettle();
     expect(_submits(), isEmpty);
     expect(_aggregateSubmits(), isEmpty);
     expect(_qtyText(tester, _appendQty('m-3')), '300');
-    expect(appendAvailable('m-3', '0'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
-    await tester.pumpAndSettle();
     expect(
-      find.text('本次下单是否使用可用数量抵扣？'),
-      findsOneWidget,
-      reason: '取消后提交兜底仍需取得本轮选择',
+      tester.widget<UtenDropdownField>(_orderMethod('m-3')).value,
+      'ORDER_ALL',
     );
-    await continueClaimChoice(tester, extra: true);
-    expect(appendAvailable('m-3', '300'), findsOneWidget);
-    // 下达确认仍未同意，选择备货方式本身不得创建下游单。
-    expect(_submits(), isEmpty);
-    expect(_aggregateSubmits(), isEmpty);
-    await tester.tap(find.text('取消'));
+    await _openSubmitConfirmation(tester);
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
     await tester.pumpAndSettle();
   });
 
@@ -758,18 +765,22 @@ void main() {
     await tester.enterText(_appendQty('m-root'), '100');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await _settlePreview(tester);
-    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
-    await continueClaimChoice(tester, extra: true);
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    await continueClaimChoice(
+      tester,
+      extra: true,
+      field: _orderMethod('m-root'),
+    );
     await _onlyRoot(tester);
     await _submitSelected(tester);
     expect(_submits(), hasLength(1));
     final submit = _submits().single;
     expect(submit.path, endsWith('/issue-plans'));
-    expect(submit.body!['skipAutoClaim'], isTrue);
+    expect(_records(submit.body!['lines']).single['orderMethod'], 'ORDER_ALL');
     expect(_records(submit.body!['lines']).single['qty'], 100);
   });
 
-  testWidgets('追加可用余量：按物料汇总输入完成也询问，额外模式保留池余量并下足数量', (tester) async {
+  testWidgets('追加可用余量：按物料汇总逐行选择方式，额外模式保留池余量并下足数量', (tester) async {
     await _pump(
       tester,
       permissions: _overSupplyPermissions,
@@ -786,17 +797,23 @@ void main() {
     await tester.enterText(field, '100');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await _settlePreview(tester);
-    expect(find.text('本次下单是否使用可用数量抵扣？'), findsOneWidget);
-    await continueClaimChoice(tester, extra: true);
+    expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    await continueClaimChoice(
+      tester,
+      extra: true,
+      field: find.byKey(
+        const ValueKey('material-aggregate-order-method-g-m-3|本色|unit-1'),
+      ),
+    );
     expect(appendAvailable('AGGREGATE|g-m-3|本色|unit-1', '300'), findsOneWidget);
     await _submitSelected(tester);
     expect(_aggregateSubmits(), hasLength(1));
     final submit = _aggregateSubmits().single.body!;
-    expect(submit['skipAutoClaim'], isTrue);
+    expect(_records(submit['groups']).single['orderMethod'], 'ORDER_ALL');
     expect(_records(submit['groups']).single['qty'], '100');
   });
 
-  testWidgets('追加可用余量：工具栏切换方式立即恢复或预扣余额，最终选择用于提交', (tester) async {
+  testWidgets('追加可用余量：逐行切换方式立即恢复或预扣余额，最终选择用于提交', (tester) async {
     await _pump(
       tester,
       permissions: _overSupplyPermissions,
@@ -806,25 +823,27 @@ void main() {
     await finishAppend(tester, '100');
     await continueClaimChoice(tester, extra: true);
     expect(appendAvailable('m-3', '300'), findsOneWidget);
-    final switchUsage = find.byKey(
-      const Key('material-preparation-supply-usage'),
-    );
-    expect(find.text('下单方式：保留余量，额外下单'), findsOneWidget);
-    await tester.tap(switchUsage);
-    await tester.pumpAndSettle();
+    final switchUsage = _orderMethod('m-3');
+    expect(tester.widget<UtenDropdownField>(switchUsage).value, 'ORDER_ALL');
     await continueClaimChoice(tester, extra: false);
-    expect(appendAvailable('m-3', '200'), findsOneWidget);
-    expect(find.text('下单方式：优先使用可用余量'), findsOneWidget);
+    expect(appendAvailable('m-3', '300'), findsOneWidget);
+    expect(
+      tester.widget<UtenDropdownField>(switchUsage).value,
+      'AVAILABLE_THEN_ORDER',
+    );
     expect(_qtyText(tester, _appendQty('m-3')), '100');
-    await tester.tap(switchUsage);
-    await tester.pumpAndSettle();
     await continueClaimChoice(tester, extra: true);
     expect(appendAvailable('m-3', '300'), findsOneWidget);
     expect(_submits(), isEmpty);
     expect(_aggregateSubmits(), isEmpty);
     await _submitSelected(tester);
     expect(_aggregateSubmits(), hasLength(1));
-    expect(_aggregateSubmits().single.body!['skipAutoClaim'], isTrue);
+    expect(
+      _records(
+        _aggregateSubmits().single.body!['groups'],
+      ).single['orderMethod'],
+      'ORDER_ALL',
+    );
     expect(
       _records(_aggregateSubmits().single.body!['groups']).single['qty'],
       '100',
@@ -840,7 +859,9 @@ void main() {
       overSupply: true,
       mutate: withCoveredAppendPool,
       aggregatePreview: (body, data) async {
-        previewModes.add(body['skipAutoClaim'] == true);
+        previewModes.add(
+          _records(body['groups']).single['orderMethod'] == 'ORDER_ALL',
+        );
         if (previewModes.length == 1) await firstPreview.future;
         return _defaultAggregatePreview(body, data);
       },
@@ -857,10 +878,13 @@ void main() {
     expect(previewModes, [false]);
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保留余量，额外下单'));
-    await tester.pump();
-    await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
+    await selectMaterialOrderMethod(
+      tester,
+      find.byKey(
+        const ValueKey('material-aggregate-order-method-g-m-3|本色|unit-1'),
+      ),
+      'ORDER_ALL',
+      settle: false,
     );
     await tester.pump(const Duration(milliseconds: 400));
     firstPreview.complete();
@@ -887,15 +911,11 @@ void main() {
     await continueClaimChoice(tester, extra: true);
     await _submitSelected(tester);
     final submitted = _aggregateSubmits().single.body!;
-    expect(submitted['skipAutoClaim'], isTrue);
+    expect(_records(submitted['groups']).single['orderMethod'], 'ORDER_ALL');
     expect(_records(submitted['groups']).single['qty'], '100');
     expect(
-      tester
-          .widget<UtenButton>(
-            find.byKey(const Key('material-preparation-supply-usage')),
-          )
-          .onPressed,
-      isNull,
+      tester.widget<UtenDropdownField>(_orderMethod('m-3')).enabled,
+      isFalse,
       reason: '结果未确认时不能改意图，否则界面方式会与原键重试内容不一致',
     );
     failures.clear();
@@ -8056,6 +8076,7 @@ requests = [];
 Future<void> _pump(
   WidgetTester tester, {
   TargetPlatform? platform,
+  bool screenshot = false,
   bool expandTree = true,
   double fontFactor = 1,
   TextScaler? textScaler,
@@ -8063,6 +8084,7 @@ Future<void> _pump(
   _OrderAuthoritySession? session,
   bool precisionPrompts = false,
   MemoryFormDraftStorage? draftStorage,
+  String? preparationDraftId,
   bool projectionOwnerControls = false,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
   // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
@@ -8282,8 +8304,7 @@ Future<void> _pump(
           previewsInFlight--;
           final typed = {
             for (final raw in (body['typedOutputs'] as List? ?? const []))
-              (raw as Map)['materialLineId'] as String: (raw['qty'] as num)
-                  .toDouble(),
+              (raw as Map)['materialLineId'] as String: _num(raw['qty']),
           };
           final scaled = jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
           for (final pair in const [('m-p', 'm-pc'), ('m-s', 'm-sc')]) {
@@ -8443,7 +8464,11 @@ Future<void> _pump(
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: buildLightTheme().copyWith(platform: platform),
+        theme: screenshot
+            ? auditScreenshotTheme(
+                buildLightTheme().copyWith(platform: platform),
+              )
+            : buildLightTheme().copyWith(platform: platform),
         builder: (context, child) {
           final content = fontFactor == 1
               ? child!
@@ -8454,20 +8479,27 @@ Future<void> _pump(
                   data: MediaQuery.of(context).copyWith(textScaler: textScaler),
                   child: content,
                 );
+          final screenshotContent = screenshot
+              ? RepaintBoundary(
+                  key: const Key('row-order-method-capture'),
+                  child: scaled,
+                )
+              : scaled;
           return precisionPrompts
               ? Stack(
                   fit: StackFit.expand,
                   children: [
-                    scaled,
+                    screenshotContent,
                     BusinessPrecisionPromptHost(
                       navigatorContext: () => precisionNavigator.currentContext,
                     ),
                   ],
                 )
-              : scaled;
+              : screenshotContent;
         },
-        home: const ProductionMaterialAnalysisPage(
-          seed: ProductionMaterialAnalysisSeed(
+        home: ProductionMaterialAnalysisPage(
+          preparationDraftId: preparationDraftId,
+          seed: const ProductionMaterialAnalysisSeed(
             analysisId: 'analysis-1',
             warehouseId: 'warehouse-1',
           ),

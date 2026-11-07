@@ -158,7 +158,6 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                           padding: resolvedPagePadding,
                           children: [
                             _summaryCard(theme, lines, urged),
-                            ?_host._preparationSupplyUsageAction(),
                             const SizedBox(height: UtenSpacing.s12),
                             for (final root in roots) ...[
                               _rootSection(theme, root, urged),
@@ -513,6 +512,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
           ? _host._materialTableAppendQtyCell(theme, row)
           : _host._materialTableOrderQtyCell(theme, row),
     );
+    final orderMethod = _host._materialTableOrderMethodCell(row);
     final overproductionRate = _host._tableIssueTarget(group).viaWorkshop
         ? SizedBox(
             width: 152,
@@ -656,7 +656,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >=
-              (overproductionRate == null ? 980 : 1140)) {
+              (overproductionRate == null ? 1232 : 1392)) {
             return Row(
               children: [
                 checkbox,
@@ -668,6 +668,8 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 route,
                 const SizedBox(width: UtenSpacing.s12),
                 quantity,
+                const SizedBox(width: UtenSpacing.s12),
+                orderMethod,
                 if (overproductionRate != null) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   overproductionRate,
@@ -704,6 +706,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                         shortage,
                         route,
                         quantity,
+                        orderMethod,
                         ?overproductionRate,
                         ?workshop,
                         ?worker,

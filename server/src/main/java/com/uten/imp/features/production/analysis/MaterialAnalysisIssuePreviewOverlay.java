@@ -69,6 +69,17 @@ final class MaterialAnalysisIssuePreviewOverlay {
         requireMutable();rootPublicAdoption.merge(sourceId,baseQty,BigDecimal::add);
     }
     Map<UUID,BigDecimal> rootPublicAdoption(){return rootPublicAdoption;}
+    private final Map<UUID,BigDecimal> rootPrivateAdoption=new HashMap<>();
+    void addRootPrivateAdoption(UUID sourceId,BigDecimal sourceQty) { requireMutable();rootPrivateAdoption.merge(sourceId,sourceQty,BigDecimal::max); }
+    BigDecimal rootPrivateAdoption(UUID sourceId) { return rootPrivateAdoption.getOrDefault(sourceId,BigDecimal.ZERO); }
+    private final Map<String,BigDecimal> selectedNewOutputByNode=new HashMap<>();
+    private final Map<UUID,BigDecimal> selectedNewOutputBySource=new HashMap<>();
+    void selectNewOutput(String nodeRef,UUID sourceId,BigDecimal baseQty,BigDecimal sourceQty) {
+        requireMutable();selectedNewOutputByNode.put(nodeRef,baseQty);
+        if(sourceQty!=null)selectedNewOutputBySource.put(sourceId,sourceQty);
+    }
+    Map<String,BigDecimal> selectedNewOutputByNode(){return selectedNewOutputByNode;}
+    BigDecimal selectedNewOutputBySource(UUID id){return selectedNewOutputBySource.get(id);}
     private final Map<String, BigDecimal> plannedOutputByNode = new HashMap<>();
     private final Map<String, BigDecimal> internalCommitmentByNode = new HashMap<>();
     private final Map<String, List<BigDecimal>> appendedBatches = new HashMap<>();
@@ -83,6 +94,7 @@ final class MaterialAnalysisIssuePreviewOverlay {
     private final Map<WarehouseMaterialDimension, BigDecimal> transferredQualified = new HashMap<>();
     private final Map<UUID, BigDecimal> transferredByMaterial = new HashMap<>();
     private final Map<UUID, BigDecimal> transferredByEntitlement = new HashMap<>();
+    private final Map<UUID,BigDecimal> transferredByReservation=new HashMap<>();
     private final List<FormalMaterialCoverage> formalCoverage = new ArrayList<>();
     private final List<com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService.PreviewReceipt> receipts = new ArrayList<>();
     private final Map<UUID, BigDecimal> formalParentOutputs = new HashMap<>();
@@ -212,6 +224,7 @@ final class MaterialAnalysisIssuePreviewOverlay {
     void updateFormalParentOutput(UUID demand,BigDecimal output) { requireMutable(); formalParentOutputs.put(demand,output); }
     boolean hasFormalProjection() { return !formalCoverage.isEmpty() || !formalParentOutputs.isEmpty(); }
     BigDecimal transferredMaterial(UUID material) { return transferredByMaterial.getOrDefault(material, BigDecimal.ZERO); }
+    BigDecimal transferredReservation(UUID reservation) { return reservation==null?BigDecimal.ZERO:transferredByReservation.getOrDefault(reservation,BigDecimal.ZERO); }
     BigDecimal transferredEntitlement(UUID event) { return transferredByEntitlement.getOrDefault(event, BigDecimal.ZERO); }
     BigDecimal ownedTransferred(WarehouseMaterialDimension key) { return transferredOwned.getOrDefault(key, BigDecimal.ZERO); }
     BigDecimal qualifiedTransferred(WarehouseMaterialDimension key) { return transferredQualified.getOrDefault(key, BigDecimal.ZERO); }
@@ -237,6 +250,8 @@ final class MaterialAnalysisIssuePreviewOverlay {
         transferDimensions.put(transfer.demandId(), dimension);
         WarehouseMaterialDimension key = new WarehouseMaterialDimension(transfer.warehouseId(), dimension);
         transferredOwned.merge(key, transfer.qty(), BigDecimal::add);
+        if(transfer.sourceEntitlementEventId()==null&&transfer.sourceReservationId()!=null)
+            transferredByReservation.merge(transfer.sourceReservationId(),transfer.qty(),BigDecimal::add);
         if (transfer.qualified()) transferredQualified.merge(key, transfer.qty(), BigDecimal::add);
         if (transfer.beneficiaryMaterialId() != null) transferredByMaterial.merge(
                 transfer.beneficiaryMaterialId(), transfer.qty(), BigDecimal::add);

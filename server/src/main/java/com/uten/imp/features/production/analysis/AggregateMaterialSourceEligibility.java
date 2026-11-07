@@ -27,6 +27,15 @@ final class AggregateMaterialSourceEligibility {
                 && (hasResponsibility(material,products) || hasIssuedSupply(material,products,actions));
     }
 
+    /** Explicit independent replenishment retains the source path but owns no vanished parent demand. */
+    static boolean hasIndependentOrderingContext(MaterialView material) {
+        return material!=null && !material.deliveryContext() && material.routeConfirmed()
+                && !Set.of("SHIP","REFERENCE").contains(Objects.toString(material.controlStage(),""))
+                && Set.of(REQUIREMENT_STATE_INACTIVE_PARENT_COVERED,REQUIREMENT_STATE_INACTIVE_PARENT_ROUTE)
+                    .contains(Objects.toString(material.requirementState(),""))
+                && positive(material.sourceRequiredQty());
+    }
+
     /** An issued source can explicitly append public output without regaining private demand. */
     static boolean hasIssuedSupply(MaterialView material, Map<UUID,ProductView> products,
             Map<UUID,SupplyActionView> actions) {

@@ -65,6 +65,9 @@ class MaterialAggregateOrderGroupInput {
     this.allowedOverproductionRateExact,
     this.safetyQty = '0',
     this.sourceRequestedQtyByMaterialLineId,
+    this.skipAutoClaim,
+    this.quantityMode,
+    this.orderMethod,
   });
   final String clientGroupKey, qty;
   final List<String> materialLineIds;
@@ -81,11 +84,21 @@ class MaterialAggregateOrderGroupInput {
   final String safetyQty;
   final Map<String, String>? sourceRequestedQtyByMaterialLineId;
 
+  /// A row-specific choice; null retains the enclosing request's legacy choice.
+  /// Nullable storage also preserves unknown requests captured before this field.
+  final bool? skipAutoClaim;
+  final String? quantityMode;
+  final MaterialPreparationOrderMethod? orderMethod;
+
   factory MaterialAggregateOrderGroupInput.fromExactJson(
     Map<String, dynamic> json,
   ) {
     final route = MaterialSupplyRoute.fromWire(json['route']);
     if (route == null) throw const FormatException('原备料请求的供给方式无法核对');
+    final method = MaterialPreparationOrderMethod.fromWire(json['orderMethod']);
+    if (json['orderMethod'] != null && method == null) {
+      throw const FormatException('原备料请求的下单方式无法核对，不能创建替代请求');
+    }
     final rate = json['allowedOverproductionRate'];
     return MaterialAggregateOrderGroupInput(
       clientGroupKey: json['clientGroupKey'] as String,
@@ -102,6 +115,9 @@ class MaterialAggregateOrderGroupInput {
       allowedOverproductionRate: rate is num ? rate.toDouble() : null,
       allowedOverproductionRateExact: rate is String ? rate : null,
       safetyQty: json['safetyQty'] as String? ?? '0',
+      skipAutoClaim: json['skipAutoClaim'] as bool?,
+      quantityMode: json['quantityMode'] as String?,
+      orderMethod: method,
       sourceRequestedQtyByMaterialLineId:
           json['sourceRequestedQtyByMaterialLineId'] is Map
           ? Map<String, String>.from(
@@ -127,6 +143,9 @@ class MaterialAggregateOrderGroupInput {
         ?(allowedOverproductionRateExact ?? allowedOverproductionRate),
     'safetyQty': safetyQty,
     'sourceRequestedQtyByMaterialLineId': ?sourceRequestedQtyByMaterialLineId,
+    'skipAutoClaim': ?skipAutoClaim,
+    'quantityMode': ?quantityMode,
+    'orderMethod': ?orderMethod?.wireName,
   };
 }
 

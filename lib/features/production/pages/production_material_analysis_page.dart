@@ -2984,36 +2984,6 @@ class _ProductionMaterialAnalysisPageState
           ..._linkedSalesOrdersSection(theme, analysis),
           ..._manualDemandsSection(theme, analysis),
           const SizedBox(height: UtenSpacing.s8),
-          Container(
-            key: const Key('material-analysis-next-step'),
-            constraints: const BoxConstraints(minHeight: 52),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s8,
-            ),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.assistant_direction_rounded,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    _nextStepText(analysis),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      height: 1.45,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
           if (_bulkOperationLabel != null && _bulkOperationTotal > 0) ...[
             const SizedBox(height: UtenSpacing.s8),
             Semantics(
@@ -3168,6 +3138,7 @@ class _ProductionMaterialAnalysisPageState
     });
   }
 
+  @override
   String _nextStepText(ProductionMaterialAnalysisView analysis) {
     if (analysis.fqcReplenishmentOnly) {
       return '此分析仅用于冻结 FQC 补产 BOM，不生成普通生产计划或供给单。核对完成后，请返回“FQC 补产待办”确认真实用料。';

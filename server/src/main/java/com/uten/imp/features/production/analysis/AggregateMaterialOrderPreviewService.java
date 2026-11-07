@@ -94,10 +94,11 @@ public class AggregateMaterialOrderPreviewService {
         var safetyAdmission=new SafetyAdmission(safetyConfirmations,earliestSafetyDepth,safetyDepthByGroup);
         var productionRules=new AggregateMaterialProductionRules(children);
         List<GroupPreview> result=new ArrayList<>();
-        for(GroupInput group:request.groups()) {
+        for(GroupInput originalInput:request.groups()) {
+            GroupInput group=originalInput==null?null:incrementalInput(originalInput,materials);
             if(group==null||group.clientGroupKey()==null||group.clientGroupKey().isBlank()||!clientKeys.add(group.clientGroupKey()))throw invalid("汇总行标识缺失或重复");
             if(group.materialLineIds().isEmpty())throw invalid("汇总行必须包含明确的来源物料");
-            validateSourceQuantities(group);
+            validateSourceQuantities(originalInput);
             List<MaterialView> members=new ArrayList<>();
             Map<UUID,java.util.LinkedHashSet<UUID>> originalScope=new LinkedHashMap<>();
             for(UUID id:group.materialLineIds()) {
@@ -127,7 +128,8 @@ public class AggregateMaterialOrderPreviewService {
                     if(target==null)throw conflict("合并来源目标已变化，请刷新后重新核对");
                     targetMembers.add(target);
                 }
-                boolean hasCurrentResponsibility=retainOriginal&&AggregateMaterialSourceEligibility.hasOrderingContext(material,products,actions)
+                boolean hasCurrentResponsibility=retainOriginal&&(AggregateMaterialSourceEligibility.hasOrderingContext(material,products,actions)
+                        ||AggregateMaterialSourceEligibility.hasIndependentOrderingContext(material)&&"ORDER_ALL".equals(group.orderMethod())&&group.allowPublicExtra()&&number(group.qty()).signum()>0)
                         || targetMembers.stream()
                         .anyMatch(target->AggregateMaterialSourceEligibility.hasOrderingContext(target,products,actions));
                 for(MaterialView target:targetMembers) {
@@ -145,7 +147,7 @@ public class AggregateMaterialOrderPreviewService {
             Map<UUID,BigDecimal> requestedPrivateCaps=new LinkedHashMap<>();
             group.sourceRequestedQtyByMaterialLineId().forEach((id,requested)-> {
                 MaterialView row=materials.get(id);
-                BigDecimal pending=number(row.aggregatePreparation()==null?row.planningUncoveredQty():row.aggregatePreparation().planningUncoveredQty())
+                BigDecimal pending=("ORDER_ALL".equals(group.orderMethod())?number(row.preparationUncoveredBeforeSharedQty()):number(row.aggregatePreparation()==null?row.planningUncoveredQty():row.aggregatePreparation().planningUncoveredQty()))
                         .max(number(row.priorityMakeSupplementQty()));
                 ProductView anchor=products.get(row.planAnchorAnalysisLineId());
                 if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))pending=pending.max(number(anchor.remainingQty()));
@@ -163,6 +165,30 @@ public class AggregateMaterialOrderPreviewService {
                 .filter(candidate->candidate.budgetKey()!=null)
                 .map(candidate->candidate.budgetKey()+":"+candidate.availableToClaimQty().stripTrailingZeros().toPlainString()).distinct().toList())));
         return new Preview(analysisId,view.version(),view.fingerprint(),token,result,view);
+    }
+
+    static GroupInput incrementalInput(GroupInput input,Map<UUID,MaterialView> materials) {
+        if(input.quantityMode()==null) {
+            if(!MaterialOrderQuantity.availableOnly(input.orderMethod())||input.safetyQty().signum()==0)return input;
+            return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),input.qty(),input.allowPublicExtra(),input.departmentId(),input.workerId(),
+                    input.teamDepartmentId(),input.billDate(),input.deliveryDate(),input.productNo(),input.allowedOverproductionRate(),BigDecimal.ZERO,
+                    input.sourceRequestedQtyByMaterialLineId(),input.skipAutoClaim(),null,input.orderMethod());
+        }
+        BigDecimal required=BigDecimal.ZERO,uncovered=BigDecimal.ZERO;
+        Map<UUID,BigDecimal> amounts=new LinkedHashMap<>();
+        for(UUID id:input.materialLineIds()) {
+            MaterialView row=materials.get(id);
+            if(row==null)throw conflict("汇总来源已变化或不可见，请刷新并重新核对");
+            required=required.add(number(row.requiredQty()).max(number(row.sourceRequiredQty())));
+            uncovered=uncovered.add(number(row.planningUncoveredQty()));
+            if(!input.sourceRequestedQtyByMaterialLineId().isEmpty())amounts.put(id,
+                    MaterialOrderQuantity.incremental(input.sourceRequestedQtyByMaterialLineId().get(id),input.quantityMode(),row.requiredQty().max(number(row.sourceRequiredQty())),row.planningUncoveredQty(),input.orderMethod()));
+        }
+        BigDecimal total=amounts.isEmpty()?MaterialOrderQuantity.incremental(input.qty(),input.quantityMode(),required,uncovered,input.orderMethod())
+                :amounts.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
+        return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),total,input.allowPublicExtra(),input.departmentId(),input.workerId(),
+                input.teamDepartmentId(),input.billDate(),input.deliveryDate(),input.productNo(),input.allowedOverproductionRate(),MaterialOrderQuantity.availableOnly(input.orderMethod())?BigDecimal.ZERO:input.safetyQty(),amounts,
+                input.skipAutoClaim(),null,input.orderMethod());
     }
 
     private static void validateSourceQuantities(GroupInput group) {
@@ -208,11 +234,16 @@ public class AggregateMaterialOrderPreviewService {
             if(!Objects.equals(first.goodsId(),member.goodsId())||!Objects.equals(first.colorId(),member.colorId())||!Objects.equals(first.unitId(),member.unitId()))throw invalid("不同货品、颜色或单位不能合并为一行下单");
             if(!member.routeConfirmed()||!input.route().equals(member.sourceConfirmed()))reason="来源供应方式不一致或尚未确认，请先核对供应方式";
             if(!recipe.equals(productionRules.recipe(member)))reason="相同物料的冻结组件规则不同，请按生产规则分别办理";
-            if(!AggregateMaterialSourceEligibility.hasOrderingContext(member,products,actions))
+            boolean independent=AggregateMaterialSourceEligibility.hasIndependentOrderingContext(member)
+                    &&"ORDER_ALL".equals(input.orderMethod())&&input.allowPublicExtra()&&number(input.qty()).signum()>0;
+            if(independent&&!canOverSupply)reason="独立公共备货需要超量下达权限";
+            if(!independent&&!AggregateMaterialSourceEligibility.hasOrderingContext(member,products,actions))
                 reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
         }
         // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
         boolean manufacture="MAKE".equals(input.route());
+        boolean onlyAvailable=MaterialOrderQuantity.availableOnly(input.orderMethod());
+        boolean skipClaims=input.skipClaims(false);
         UUID department=input.departmentId(),worker=input.workerId();
         String assignmentBlock=null;
         LocalDate bill=input.billDate()==null?request.billDate():input.billDate();
@@ -226,7 +257,7 @@ public class AggregateMaterialOrderPreviewService {
         Map<UUID,BigDecimal> remainingBySource=new HashMap<>();
         for(MaterialView member:members) {
             ProductView product=products.get(member.analysisLineId());
-            BigDecimal remaining=number(member.planningUncoveredQty()).max(number(member.priorityMakeSupplementQty()));
+            BigDecimal remaining=("ORDER_ALL".equals(input.orderMethod())?number(member.preparationUncoveredBeforeSharedQty()):number(member.planningUncoveredQty())).max(number(member.priorityMakeSupplementQty()));
             ProductView anchor=member.planAnchorAnalysisLineId()==null?null:products.get(member.planAnchorAnalysisLineId());
             if(manufacture&&anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&number(anchor.remainingQty()).signum()>0) {
                 remaining=remaining.max(anchor.remainingQty());
@@ -265,18 +296,20 @@ public class AggregateMaterialOrderPreviewService {
             }
         }
         if(number(input.qty()).signum()>0||number(input.safetyQty()).signum()>0) {
-            if(manufacture&&(department==null||worker==null))reason="请为汇总批次填写生产车间和负责人";
+            if(manufacture&&!onlyAvailable&&(department==null||worker==null))reason="请为汇总批次填写生产车间和负责人";
             boolean canOrder=manufacture?canGenerate:canNotify;
             if(!canOrder)reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
-            if(manufacture&&request.approveNow()&&!canApprovePlan)reason="生成并审核需要生产计划审核权限";
+            if(manufacture&&!onlyAvailable&&request.approveNow()&&!canApprovePlan)reason="生成并审核需要生产计划审核权限";
         }
-        if(allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
-        if(allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)reason="公共超量备货需要超量下达权限";
+        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
+        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)reason="公共超量备货需要超量下达权限";
         // ADR-056: safety is a separately confirmed, fixed main-warehouse gap.
         // Use the same physical-dimension proof as ordinary notification: accepting
         // a partial amount here would pass review and fail the immutable DB snapshot.
         var safety=MaterialAnalysisCommandService.groupSafetySnapshot(members);
-        if("BUY".equals(input.route())) {
+        if(onlyAvailable) {
+            // Stock-only intent never creates a safety replenishment document.
+        } else if("BUY".equals(input.route())) {
             String dimension=safetyDimension(first.goodsId(),first.colorId());
             var confirmations=safetyAdmission.confirmations().getOrDefault(dimension,List.of());
             boolean hasExactOwner=confirmations.size()==1&&confirmations.getFirst().safetyQty().compareTo(safety.gapQty())==0;
@@ -310,6 +343,8 @@ public class AggregateMaterialOrderPreviewService {
         List<String> keyParts=new ArrayList<>();
         add(keyParts,request.warehouseId(),first.goodsId(),first.colorId(),first.unitId(),input.route(),
                 department,worker,input.teamDepartmentId(),bill,delivery,input.productNo(),rate);
+        if(input.orderMethod()!=null)add(keyParts,"ORDER_METHOD",input.orderMethod());
+        else if(input.skipAutoClaim()!=null)add(keyParts,"SKIP_AUTO_CLAIM",input.skipAutoClaim());
         keyParts.addAll(recipe);
         String compatibility=CanonicalFingerprint.sha256(keyParts);
         boolean anyExisting=products.values().stream().anyMatch(product->"AGGREGATE_MAKE".equals(product.sourceType()))
@@ -324,7 +359,7 @@ public class AggregateMaterialOrderPreviewService {
             adoptionTargets=privateByOriginal.entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(UUID::toString)))
                     .map(entry->new AggregateQuantityAllocator.Allocation(entry.getKey(),entry.getValue())).toList();
         }
-        for(var source:adoptionTargets) {
+        for(var source:skipClaims?List.<AggregateQuantityAllocator.Allocation>of():adoptionTargets) {
             MaterialView member=memberById.get(source.sourceId());
             ProductView responsibility=products.get(member.planAnchorAnalysisLineId());
             if(number(member.priorityMakeSupplementQty()).signum()>0||number(member.requiredQty()).signum()==0
@@ -344,12 +379,12 @@ public class AggregateMaterialOrderPreviewService {
                 adoptableMake=adoptableMake.add(take);remaining=remaining.subtract(take);
             }
         }
-        BigDecimal actualNewOutput=number(input.qty()).subtract(adoptableMake);
+        BigDecimal actualNewOutput=onlyAvailable?BigDecimal.ZERO:number(input.qty()).subtract(adoptableMake);
         if(actualNewOutput.signum()==0&&"请为汇总批次填写生产车间和负责人".equals(reason))reason=null;
-        if(actualNewOutput.signum()>0&&assignmentBlock!=null)reason=assignmentBlock;
+        if(!onlyAvailable&&actualNewOutput.signum()>0&&assignmentBlock!=null)reason=assignmentBlock;
         // ADR-143 §二.3：缺 BOM 的委外件不能汇总下达委外(研发正在完善)，这个原因优先显示。
         // 与提交时的拦截同一判定(按货品现查)，不看只标真有需求节点的「缺 BOM」角标。
-        if("SUBCONTRACT".equals(input.route())) {
+        if(!onlyAvailable&&"SUBCONTRACT".equals(input.route())) {
             List<String> bomGaps=List.copyOf(analysisService.subcontractBomGapLabels(members).values());
             if(!bomGaps.isEmpty())reason=com.uten.imp.application.port.RdBomGapPort.subcontractBomMissingMessage(bomGaps,true);
         }
@@ -453,6 +488,9 @@ public class AggregateMaterialOrderPreviewService {
         List<String> fields=new ArrayList<>();addTuple(fields,request.version(),request.fingerprint(),request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow());
         request.groups().stream().sorted(Comparator.comparing(GroupInput::clientGroupKey)).forEach(input->{
             addTuple(fields,input.clientGroupKey());
+            if(input.orderMethod()!=null)addTuple(fields,"ORDER_METHOD",input.orderMethod());
+            if(input.skipAutoClaim()!=null)addTuple(fields,"SKIP_AUTO_CLAIM",input.skipAutoClaim());
+            if(input.quantityMode()!=null)addTuple(fields,"QUANTITY_MODE",input.quantityMode());
             input.materialLineIds().stream().sorted(Comparator.comparing(UUID::toString)).forEach(id->addTuple(fields,id));
             input.sourceRequestedQtyByMaterialLineId().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(UUID::toString)))
                     .forEach(entry->addTuple(fields,entry.getKey(),entry.getValue()));

@@ -789,6 +789,11 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                              FROM preplan_analysis_stock_exact_pegs exact_peg
                              WHERE exact_peg.stock_reservation_id =
                                  reservation.id)
+                         AND NOT (reservation.source_doc_type IS NOT DISTINCT FROM 'PREPLAN_STOCK_BALANCE'
+                           AND COALESCE((SELECT SUM(handoff.qty)
+                             FROM preplan_physical_stock_formalizations handoff
+                             WHERE handoff.source_reservation_id=reservation.id AND handoff.restored_at IS NULL),0)
+                             =reservation.released_qty)
                           AND plan.is_deleted = FALSE
                           AND plan.material_analysis_id IS NOT NULL
                         ORDER BY reservation.id
@@ -1278,13 +1283,14 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             // Preserve their analysis-pool behavior, but do not invent a
             // reversible event lineage for them.
             if (remaining.signum() > 0) {
-                List<Object[]> legacyRows = NativeQueryResults.objectArrayRows(
-                        em.createNativeQuery("""
+                var legacyQuery = em.createNativeQuery("""
                                 SELECT reservation.id,
                                        reservation.qty
                                            - reservation.consumed_qty
                                            - reservation.released_qty,
-                                       reservation.warehouse_id
+                                       reservation.warehouse_id,
+                                       CASE WHEN reservation.source_doc_type='PREPLAN_STOCK_BALANCE'
+                                            THEN reservation.supply_id ELSE NULL END
                                 FROM stock_reservations reservation
                                 WHERE reservation.is_deleted = FALSE
                                   AND reservation.status = :effective
@@ -1294,6 +1300,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                   AND reservation.goods_id = :goodsId
                                   AND reservation.color_id IS NOT DISTINCT FROM
                                       CAST(:colorId AS uuid)
+                                  AND (reservation.source_doc_type IS DISTINCT FROM 'PREPLAN_STOCK_BALANCE' OR %s)
                                   AND NOT EXISTS (
                                       SELECT 1
                                       FROM preplan_analysis_stock_exact_pegs exact_peg
@@ -1309,13 +1316,16 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                 """.formatted(leafOnly
                                         ? "reservation.warehouse_id = :warehouseId"
                                         : "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)",
+                                        materialIds.isEmpty()?"FALSE":"reservation.supply_id IN (:claimMaterials)",
                                         write?"FOR UPDATE OF reservation":""))
                                 .setParameter("effective", STATUS_EFFECTIVE)
                                 .setParameter("ownerType", OWNER_TYPE)
                                 .setParameter("analysisId", analysisId)
                                 .setParameter("warehouseId", warehouseId)
                                 .setParameter("goodsId", demand.goodsId())
-                                .setParameter("colorId", demand.colorId()));
+                                .setParameter("colorId", demand.colorId());
+                if (!materialIds.isEmpty()) legacyQuery.setParameter("claimMaterials", materialIds);
+                List<Object[]> legacyRows = NativeQueryResults.objectArrayRows(legacyQuery);
                 for (Object[] row : legacyRows) {
                     if (remaining.signum() <= 0) break;
                     TransferDimension dimension = new TransferDimension(
@@ -1328,8 +1338,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                             .min(remaining).min(budget);
                     if (take.signum() <= 0) continue;
                     if(write)consumeForFormalize((UUID) row[0], take, actorId, explicitActor);
-                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),(UUID)row[2],take,false,false,
-                            (UUID) row[0], null, null));
+                    if(preview!=null)preview.add(new PreviewPlanTransfer(demand.demandId(),(UUID)row[2],take,false,row[3]!=null,
+                            (UUID) row[0], null, (UUID) row[3]));
+                    if (write && row[3] != null) prepared.add(new PreparedPlanTransfer(
+                            null, (UUID) row[0], analysisId, (UUID) row[3], demand.demandId(), take, (UUID) row[2]));
                     if (!write) priorLegacy.merge((UUID) row[0], take, BigDecimal::add);
                     transferableByDimension.put(dimension, budget.subtract(take));
                     remaining = remaining.subtract(take);
@@ -1344,7 +1356,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
         else entitlement.consumePhysicalForFormalize(reservationId, qty);
     }
 
-    /** Qualified owned stock follows its actual leaf. Public/legacy stock keeps the normal local safety floor. */
+    /** Qualified receipts and already-adopted physical stock retain their secured leaf ownership. */
     private BigDecimal formalTransferBudget(
             UUID analysisId, UUID analysisItemId, UUID plannedWarehouseId, TransferDimension dimension,
             List<UUID> previewMaterials, Map<UUID, BigDecimal> priorByReservation,
@@ -1362,6 +1374,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                           AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouseId)
                           AND r.status = 0 AND r.is_deleted = FALSE), 0) + :previewPublic AS reserved_qty,
+                    COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
+                        FROM stock_reservations r WHERE r.goods_id=:goodsId
+                          AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
+                          AND r.warehouse_id IS NULL AND r.status=0 AND NOT r.is_deleted),0) AS global_reserved_qty,
                     GREATEST(COALESCE(goods.min_qty,0),0)::numeric AS safety_qty,
                     (NOT warehouse.is_defective AND NOT warehouse.is_line_side
                      AND fn_warehouse_same_main(warehouse.id,:plannedWarehouseId)) AS local_normal
@@ -1373,6 +1389,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     WHERE goods.id=:goodsId AND NOT goods.is_deleted
                 ), owned AS (
                     SELECT fn_preplan_reservation_has_qualified_origin(owned.id) AS qualified,
+                        owned.source_doc_type='PREPLAN_STOCK_BALANCE' AS physical_claim,
                         GREATEST(CASE
                         WHEN EXISTS (SELECT 1 FROM preplan_stock_entitlement_events tracked
                             WHERE tracked.stock_reservation_id = owned.id)
@@ -1392,20 +1409,26 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           AND owned.warehouse_id = :warehouseId
                           AND owned.owner_type = 'PREPLAN_ANALYSIS'
                           AND owned.status = 0 AND owned.is_deleted = FALSE
+                          AND (owned.source_doc_type IS DISTINCT FROM 'PREPLAN_STOCK_BALANCE' OR %s)
                 ), amounts AS (
                     SELECT physical.*,
-                        COALESCE((SELECT SUM(qty) FROM owned WHERE qualified),0) AS qualified_qty,
-                        CASE WHEN local_normal THEN COALESCE((SELECT SUM(qty) FROM owned WHERE NOT qualified),0)
+                        COALESCE((SELECT SUM(qty) FROM owned WHERE qualified OR physical_claim),0) AS secured_qty,
+                        COALESCE((SELECT SUM(qty) FROM owned WHERE physical_claim),0) AS physical_claim_qty,
+                        CASE WHEN local_normal THEN COALESCE((SELECT SUM(qty) FROM owned WHERE NOT qualified AND physical_claim IS NOT TRUE),0)
                              ELSE 0 END AS legacy_qty
                     FROM physical
                 )
-                SELECT GREATEST(LEAST(stock_qty-reserved_qty+qualified_qty+legacy_qty,
-                    qualified_qty+CASE WHEN local_normal THEN GREATEST(stock_qty-reserved_qty+legacy_qty-safety_qty,0)
+                SELECT GREATEST(LEAST(stock_qty-reserved_qty
+                    +CASE WHEN physical_claim_qty>0 THEN global_reserved_qty ELSE 0 END+secured_qty+legacy_qty,
+                    secured_qty+CASE WHEN local_normal THEN GREATEST(stock_qty-reserved_qty+legacy_qty-safety_qty,0)
                                        ELSE 0 END),0)
                 FROM amounts
                 """.formatted(previewMaterials == null
                         ? "fn_analysis_plan_material_matches(:analysisItemId, entitlement.beneficiary_analysis_material_id)"
-                        : previewMaterials.isEmpty()?"FALSE":"entitlement.beneficiary_analysis_material_id IN (:previewMaterials)"))
+                        : previewMaterials.isEmpty()?"FALSE":"entitlement.beneficiary_analysis_material_id IN (:previewMaterials)",
+                        previewMaterials == null
+                        ? "fn_analysis_plan_material_matches(:analysisItemId, owned.supply_id)"
+                        : previewMaterials.isEmpty()?"FALSE":"owned.supply_id IN (:previewMaterials)"))
                 .setParameter("analysisId", analysisId)
                 .setParameter("plannedWarehouseId", plannedWarehouseId)
                 .setParameter("goodsId", dimension.goodsId())
@@ -1517,7 +1540,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         + slice.sourceEntitlementEventId() + ":" + target.stockReservationId()
                         + (commandKey == null ? "" : ":" + CanonicalFingerprint.sha256(
                                 List.of(commandKey)).substring(0, 32));
-                if (explicitActor) {
+                if (slice.sourceEntitlementEventId() == null) {
+                    appendPhysicalFormalization(packageId, slice, target.stockReservationId(), take,
+                            commandKey, actorId, explicitActor);
+                } else if (explicitActor) {
                     entitlement.appendFormalize(packageId,
                             slice.sourceEntitlementEventId(), slice.sourceStockReservationId(),
                             slice.beneficiaryAnalysisId(), slice.beneficiaryAnalysisMaterialId(),
@@ -1554,6 +1580,49 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
             entitlement.restorePhysicalAfterFormalRelease(
                     formalization.sourceStockReservationId(),
                     formalization.qty());
+        }
+        if (formalReservationIds == null || formalReservationIds.isEmpty()) return;
+        final var physical = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,source_reservation_id,qty FROM preplan_physical_stock_formalizations
+                WHERE target_reservation_id IN (:ids) AND restored_at IS NULL
+                ORDER BY source_reservation_id,id FOR UPDATE
+                """).setParameter("ids", formalReservationIds));
+        for (final var handoff : physical) {
+            final int restored = em.createNativeQuery("""
+                    UPDATE preplan_physical_stock_formalizations SET restored_at=now(),restored_by=:actor
+                    WHERE id=:id AND restored_at IS NULL
+                    """).setParameter("id", handoff[0]).setParameter("actor", currentUser.requireId()).executeUpdate();
+            if (restored != 1) throw new ApiException(ErrorCode.CONFLICT,"原公共现货转交刚被修改，请重新核对");
+            entitlement.restorePhysicalAfterFormalRelease((UUID) handoff[1], decimal(handoff[2]));
+        }
+    }
+
+    private void appendPhysicalFormalization(UUID packageId, PreparedPlanTransfer source,
+            UUID targetReservation, BigDecimal qty, String commandKey, UUID actorId, boolean explicitActor) {
+        final String key = "PREPLAN-PHYSICAL-FORMALIZE:" + CanonicalFingerprint.sha256(List.of(
+                packageId.toString(), source.sourceStockReservationId().toString(), targetReservation.toString(),
+                Objects.toString(commandKey, "")));
+        final UUID actor = explicitActor ? actorId : currentUser.get().isPresent() ? currentUser.requireId() : null;
+        final int inserted = em.createNativeQuery("""
+                INSERT INTO preplan_physical_stock_formalizations(source_reservation_id,source_analysis_id,
+                    source_material_id,target_reservation_id,package_id,demand_id,qty,idempotency_key,created_by)
+                VALUES(:source,:analysis,:material,:target,:package,:demand,:qty,:key,:actor)
+                ON CONFLICT(idempotency_key) DO NOTHING
+                """).setParameter("source", source.sourceStockReservationId())
+                .setParameter("analysis", source.beneficiaryAnalysisId()).setParameter("material", source.beneficiaryAnalysisMaterialId())
+                .setParameter("target", targetReservation).setParameter("package", packageId)
+                .setParameter("demand", source.demandId()).setParameter("qty", qty)
+                .setParameter("key", key).setParameter("actor", actor).executeUpdate();
+        if (inserted != 1) {
+            final var persisted = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT source_reservation_id,target_reservation_id,qty,restored_at
+                    FROM preplan_physical_stock_formalizations WHERE idempotency_key=:key
+                    """).setParameter("key", key));
+            if (persisted.size()!=1 || !source.sourceStockReservationId().equals(persisted.getFirst()[0])
+                    || !targetReservation.equals(persisted.getFirst()[1])
+                    || qty.compareTo(decimal(persisted.getFirst()[2]))!=0 || persisted.getFirst()[3]!=null) {
+                throw new ApiException(ErrorCode.CONFLICT,"原公共现货转正式需求的命令内容已变化");
+            }
         }
     }
 
@@ -1996,6 +2065,12 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     }
 
     private void requireAnalysisCancellationSafe(UUID analysisId) {
+        if (!NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM preplan_physical_stock_formalizations
+                WHERE source_analysis_id=:analysis AND restored_at IS NULL ORDER BY id FOR UPDATE
+                """).setParameter("analysis",analysisId),UUID.class).isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,"公共现货已按来源转入正式计划，请先撤回正式计划并恢复原物料归属后再取消分析");
+        }
         List<UUID> relations = NativeQueryResults.typedRows(
                 em.createNativeQuery("""
                         SELECT reallocation.id

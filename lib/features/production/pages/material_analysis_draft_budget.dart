@@ -1,5 +1,13 @@
 part of 'production_material_analysis_page.dart';
 
+typedef _PreparationBudgetInput = ({
+  String key,
+  String requested,
+  List<_MaterialGroup> groups,
+  bool coverageTotal,
+  MaterialPreparationOrderMethod method,
+});
+
 /// The editing budget is derived once for the whole analysis, never once per
 /// visible page. Actual orders, reservations and claims remain server facts.
 final class _MaterialPreparationDraftBudgetController {
@@ -47,6 +55,89 @@ final class _MaterialPreparationDraftBudgetController {
     final pools = <String, double>{};
     final poolExact = <String, String>{};
     final inputs = <MaterialPreparationBudgetLine>[];
+    final aggregateInputs = <String, Map<String, _PreparationBudgetInput>>{};
+    final adjustedRequests = <String, String>{};
+    _PreparationBudgetInput inputOf(_MaterialGroup group) {
+      final aggregate = owner._aggregateTable;
+      final draft = aggregate
+          .drafts[aggregate._draftByLine[group.representative.materialLineId]];
+      if (draft == null) {
+        return (
+          key: group.key,
+          requested: owner._tableSubmitQtyTextOf(group),
+          groups: [group],
+          coverageTotal: !owner._tableGroupIssued(group),
+          method: owner._preparationOrderMethod(group),
+        );
+      }
+      final byGroup = aggregateInputs.putIfAbsent(draft.key, () {
+        final parts = aggregate.draftParts(draft);
+        final quantities = aggregate.partQuantities(draft, parts);
+        return {
+          for (var index = 0; index < parts.length; index++)
+            for (final source in parts[index].groups)
+              source.key: (
+                key: quantities[index].sourceRequested == null
+                    ? 'AGGREGATE|${parts[index].clientGroupKey}'
+                    : source.key,
+                requested:
+                    quantities[index].sourceRequested?[source
+                        .representative
+                        .materialLineId] ??
+                    quantities[index].qty,
+                groups: quantities[index].sourceRequested == null
+                    ? parts[index].groups
+                    : [source],
+                coverageTotal: parts[index].coverageTotal,
+                method: parts[index].orderMethod,
+              ),
+        };
+      });
+      final input = byGroup[group.key];
+      if (input == null) throw const FormatException('备料草稿来源无法对应，请重新读取来源');
+      return input;
+    }
+
+    String adjustedRequested(_PreparationBudgetInput input) =>
+        adjustedRequests.putIfAbsent(input.key, () {
+          var covered = BigInt.zero;
+          var uncovered = BigInt.zero;
+          final seen = <String>{};
+          for (final group in input.groups) {
+            for (final path in group.paths) {
+              if (!seen.add(path.materialLineId)) continue;
+              final current = owner._tablePreviewed(path);
+              final need = materialPresentationFact(
+                current.quantityFactsExact,
+                'preparationUncoveredBeforeSharedQty',
+                current.preparationUncoveredBeforeSharedQty ??
+                    path.preparationUncoveredBeforeSharedQty,
+              );
+              final required = materialPresentationFact(
+                current.quantityFactsExact,
+                'requiredQty',
+                current.requiredQty,
+              );
+              if (need == null || required == null) {
+                throw const FormatException('备料数量缺少完整原值，请重新读取来源；原输入已保留');
+              }
+              final needUnits = materialQuantityUnits(need);
+              uncovered += needUnits;
+              if (input.coverageTotal && input.method.usesAvailableQty) {
+                final alreadyCovered =
+                    materialQuantityUnits(required) - needUnits;
+                if (alreadyCovered > BigInt.zero) covered += alreadyCovered;
+              }
+            }
+          }
+          var requested = materialQuantityUnits(input.requested) - covered;
+          if (requested < BigInt.zero) requested = BigInt.zero;
+          if (input.method == MaterialPreparationOrderMethod.availableOnly &&
+              requested > uncovered) {
+            requested = uncovered;
+          }
+          return materialQuantityText(requested);
+        });
     for (final material in analysis.materials) {
       if (!presentation.rootIdsByMaterial.containsKey(
         material.materialLineId,
@@ -128,14 +219,17 @@ final class _MaterialPreparationDraftBudgetController {
           pendingReason: '备料数量缺少完整原值，请重新读取来源；原输入已保留',
         );
       }
-      final aggregate = owner._aggregateTable;
-      final draft =
-          aggregate.drafts[aggregate._draftByLine[material.materialLineId]];
-      final sourceAmount =
-          draft?.sourceRequestedQtyByMaterialLineId?[material.materialLineId];
-      final requestedText = draft == null
-          ? owner._tableSubmitQtyTextOf(group)
-          : sourceAmount ?? draft.totalText;
+      final _PreparationBudgetInput input;
+      final String requestedText;
+      try {
+        input = inputOf(group);
+        requestedText = adjustedRequested(input);
+      } on FormatException catch (failure) {
+        return _value = MaterialPreparationDraftBudget(
+          rows: const {},
+          pendingReason: failure.message,
+        );
+      }
       final requested = double.tryParse(requestedText) ?? double.nan;
       inputs.add(
         MaterialPreparationBudgetLine(
@@ -144,11 +238,9 @@ final class _MaterialPreparationDraftBudgetController {
           ownedAvailableQty: owned,
           uncoveredBeforeSharedQty: double.parse(needText),
           requestedQty: requested,
-          useAvailableQty: owner._preparationUseAvailableQty != false,
+          useAvailableQty: input.method.usesAvailableQty,
           selected: owner._selectedMaterialGroupKeys.contains(group.key),
-          inputKey: draft != null && sourceAmount == null
-              ? 'AGGREGATE|${draft.key}'
-              : group.key,
+          inputKey: input.key,
           priority: priorities[material.analysisLineId] ?? 0,
           adoptableSharedQty: material.preparationAdoptableSharedQty,
           supplySlices: material.preparationSharedSupplySlices,

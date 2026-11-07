@@ -221,7 +221,6 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   revealRequest: _revealRequest,
                   emptyMessage: _host._l10n.materialPreparationNoActions,
                   toolbarLeadingActions: [
-                    ?_host._preparationSupplyUsageAction(),
                     if (_host._permissions.contains(Perm.productionPlanApprove))
                       SizedBox(
                         width: 220,

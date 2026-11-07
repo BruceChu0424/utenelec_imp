@@ -66,16 +66,8 @@ final class _MaterialAggregateSubmission {
         owner._sessionScopeKey() == sessionScope &&
         owner._analysis?.analysisId == analysis.analysisId &&
         owner._preparationSubmissionStillCurrent;
-    // 2026-09-29 用户口径：编排入口(main 表全选下单)已问过并把标志传进来(非 null)；
-    // 汇总视图直接下单在这里问一次「是否扣可用数量」，整轮所有段共用同一选择。
-    final bool skipClaims;
-    if (skipAutoClaim != null) {
-      skipClaims = skipAutoClaim;
-    } else {
-      final claimUsage = await owner._askClaimableSupplyUsage(selected, null);
-      if (claimUsage == null) return false;
-      skipClaims = !claimUsage;
-    }
+    // Each row already carries its choice in the table. No batch-wide question
+    // may replace a mixed selection; a frozen unknown request remains immutable.
     if (!owner.mounted || !currentSession()) return false;
     final keys = selected
         .map((group) => owner._aggregateKeyOf(group.representative))
@@ -101,6 +93,15 @@ final class _MaterialAggregateSubmission {
           ),
     };
     owner._mutateAggregateTable(() {
+      // Freeze derived defaults as part of this intent before a parent stage
+      // can change the shortage facts used to choose those defaults.
+      for (final group in selected) {
+        final method = owner._preparationOrderMethod(group);
+        owner._preparationOrderMethodByGroup.putIfAbsent(
+          group.key,
+          () => method,
+        );
+      }
       for (final key in keys) {
         final scope = selected
             .where(
@@ -217,12 +218,18 @@ final class _MaterialAggregateSubmission {
               for (final source in table.draftSources(draft))
                 source.line: table.makeParams(source.group),
         };
+        final lineChoices = <String, MaterialPreparationOrderMethod>{
+          for (final key in remaining.difference(active))
+            if (table.drafts[key] case final draft?)
+              for (final source in table.draftSources(draft))
+                source.line: owner._preparationOrderMethod(source.group),
+        };
         final sources = [
           for (final key in active) ...table.draftGroups(table.drafts[key]!),
         ];
         final success = await table.submitStage(
           sources,
-          skipAutoClaim: skipClaims,
+          skipAutoClaim: skipAutoClaim,
         );
         if (!owner.mounted || !currentSession()) return false;
         if (!success) {
@@ -246,12 +253,11 @@ final class _MaterialAggregateSubmission {
                   .isNotEmpty,
               settings: settings[key]!,
               lineParams: lineParams,
+              lineChoices: lineChoices,
             );
           }
         });
       }
-      // 成功一轮整单即重置扣量选择（与产品视图入口同口径），下次提交重新询问。
-      owner._setPreparationSupplyUsage(null);
       return true;
     } on FormatException catch (failure) {
       if (owner.mounted) owner.context.appWarning(failure.message);
@@ -379,6 +385,7 @@ final class _MaterialAggregateSubmission {
     required bool includeNew,
     required _MaterialAggregateRebindSettings settings,
     Map<String, _MaterialAggregateMakeParams> lineParams = const {},
+    Map<String, MaterialPreparationOrderMethod> lineChoices = const {},
   }) {
     final indexes = owner._analysisIndexes(owner._analysis!);
     final rewrites = <String, Set<String>>{};
@@ -458,6 +465,28 @@ final class _MaterialAggregateSubmission {
         throw const FormatException('来源对应的物料、颜色或单位变了，原来的数量不能自动沿用，请重新填写');
       }
     }
+    final nextChoices = <String, MaterialPreparationOrderMethod>{};
+    for (final id in nextIds) {
+      final existingChoice = lineChoices[id];
+      if (existingChoice != null) {
+        nextChoices[id] = existingChoice;
+        continue;
+      }
+      final origins = bridgedFrom[id];
+      final choices = {
+        for (final old in origins ?? oldSnapshots.keys)
+          if (lineChoices[old] case final MaterialPreparationOrderMethod choice)
+            choice,
+      };
+      if (choices.length > 1) {
+        throw FormatException(
+          '「${draft.label}」的新来源合并了不同下单方式，原数量和选择已保留，请逐行核对后继续',
+        );
+      }
+      nextChoices[id] = choices.isEmpty
+          ? owner._preparationOrderMethod(indexes.groupsByLine[id]!)
+          : choices.single;
+    }
     for (final entry in oldSnapshots.entries) {
       table._draftByLine.remove(entry.key);
       owner._tableUserTypedQty.remove(entry.key);
@@ -466,6 +495,7 @@ final class _MaterialAggregateSubmission {
     draft.paths.clear();
     for (final id in nextIds) {
       final group = indexes.groupsByLine[id]!;
+      owner._preparationOrderMethodByGroup[group.key] = nextChoices[id]!;
       final original = oldSnapshots[id];
       final residual = owner._qty(
         owner._tableDefaultSubmitQty(group, authoritative: true),

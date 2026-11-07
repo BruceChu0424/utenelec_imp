@@ -453,6 +453,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
     @Test
     void downgradedV15NonemptyProductionIsRejectedAndEveryBusinessWriteRollsBack() throws Exception {
         Map<String, String> beforeBusiness = databaseFingerprints(false, null);
+        long beforeAttemptXid=Long.parseLong(scalar("SELECT txid_snapshot_xmax(txid_current_snapshot())"));
         String beforeSequenceDefinitions = sequenceDefinitionsFingerprint();
         // Bad provenance and a contested lock must fail before a run or any business write.
         String before = scalar("SELECT count(*) FROM legacy_migration_runs");
@@ -498,7 +499,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 + "WHERE run.target='--bootstrap-all' AND run.status='FAILED'")).isNotEqualTo("0");
         assertThat(scalar("SELECT count(*) FROM legacy_migration_runs WHERE target='--bootstrap-all' AND migration_mode='BOOTSTRAP'"))
                 .isEqualTo("1");
-        AllowedFailedAttempt failedAttempt = assertExactFailedAttemptAudit();
+        AllowedFailedAttempt failedAttempt = assertExactFailedAttemptAudit(beforeAttemptXid);
         assertBusinessImportRolledBack(baselineEmployees);
         assertThat(scalar("SELECT count(*) FROM legacy_production_plan_counter_import_contexts")).isEqualTo("0");
         assertThat(scalar("SELECT count(*) FROM legacy_production_plan_counter_import_sources")).isEqualTo("0");
@@ -535,7 +536,8 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 .digest(databaseFingerprints(true, null).toString().getBytes(StandardCharsets.UTF_8)));
     }
 
-    private record AllowedFailedAttempt(UUID runId, String auditTable, String auditPayload) {}
+    private record AllowedFailedAttempt(UUID runId, String auditTable, String auditPayload,
+                                        List<Long> summaryTransactions) {}
 
     private static Map<String, String> databaseFingerprints(boolean includeSequences, AllowedFailedAttempt allowed) throws Exception {
         try (var connection = DriverManager.getConnection(jdbcUrl(), postgres.getUsername(), postgres.getPassword());
@@ -550,11 +552,14 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 String quoted = "\"" + table.replace("\"", "\"\"") + "\"";
                 boolean attemptTable = allowed != null && List.of("legacy_migration_runs", "legacy_migration_run_files").contains(table);
                 boolean auditTable = allowed != null && table.equals(allowed.auditTable());
-                String condition = attemptTable ? " WHERE run_id<>?" : auditTable ? " WHERE to_jsonb(t)::text<>?" : "";
+                boolean summaryTable=allowed!=null&&table.equals("summary_read_markers");
+                String condition = attemptTable ? " WHERE run_id<>?" : auditTable ? " WHERE to_jsonb(t)::text<>?"
+                        : summaryTable?" WHERE NOT(domain='native-facet-finance-columns' AND transaction_id=ANY(?))":"";
                 try (var query = connection.prepareStatement("SELECT count(*) || ':' || md5(coalesce("
                         + "string_agg(to_jsonb(t)::text,E'\\n' ORDER BY to_jsonb(t)::text),'')) FROM public." + quoted + " t" + condition)) {
                     if (attemptTable) query.setObject(1, allowed.runId());
                     if (auditTable) query.setString(1, allowed.auditPayload());
+                    if(summaryTable)query.setArray(1,connection.createArrayOf("int8",allowed.summaryTransactions().toArray()));
                     try (var rows = query.executeQuery()) {
                         rows.next();
                         fingerprints.put(table, rows.getString(1));
@@ -570,7 +575,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
         }
     }
 
-    private static AllowedFailedAttempt assertExactFailedAttemptAudit() throws Exception {
+    private static AllowedFailedAttempt assertExactFailedAttemptAudit(long beforeAttemptXid) throws Exception {
         UUID runId = UUID.fromString(scalar("SELECT run_id::text FROM legacy_migration_runs WHERE target='--bootstrap-all' AND migration_mode='BOOTSTRAP'"));
         AllowedFailedAttempt accepted;
         try (var connection = DriverManager.getConnection(jdbcUrl(), postgres.getUsername(), postgres.getPassword());
@@ -596,7 +601,7 @@ class LegacyBootstrapCoordinatorPostgresTest {
             try (var rows = query.executeQuery()) {
                 assertThat(rows.next()).as("ADR105 retains one failed-run summary, not a leaked business write").isTrue();
                 assertThat(rows.getBoolean(3)).as("the complete non-null event and after-payload match this exact FAILED run").isTrue();
-                accepted = new AllowedFailedAttempt(runId, rows.getString(1), rows.getString(2));
+                accepted = new AllowedFailedAttempt(runId, rows.getString(1), rows.getString(2),List.of());
                 assertThat(rows.next()).as("exactly one audit summary belongs to this failed run").isFalse();
             }
         }
@@ -619,7 +624,46 @@ class LegacyBootstrapCoordinatorPostgresTest {
             }
         }
         assertThat(actualCounts).as("the exact32 table-count summary describes the rolled-back database").isEqualTo(expectedCounts);
-        return accepted;
+        return new AllowedFailedAttempt(accepted.runId(),accepted.auditTable(),accepted.auditPayload(),
+                exactFailedAttemptSummaryTransactions(accepted,beforeAttemptXid));
+    }
+
+    private static List<Long> exactFailedAttemptSummaryTransactions(AllowedFailedAttempt attempt,long beforeAttemptXid)
+            throws Exception {
+        // The old summary audit is written after FAILED and contains no durable
+        // first-claim xid. The claim now records its own server-generated full
+        // transaction identity before its xmin can be replaced by final status.
+        assertThat(scalar("SELECT jsonb_typeof(reconciliation_summary->'claimTransactionId') FROM legacy_migration_runs WHERE run_id='"+attempt.runId()+"'"))
+                .as("full transaction identity must survive a Web JSON round-trip without number coercion").isEqualTo("string");
+        long claim=Long.parseLong(scalar("SELECT reconciliation_summary->>'claimTransactionId' FROM legacy_migration_runs WHERE run_id='"+attempt.runId()+"'"));
+        assertThat(claim).as("claim identity is generated by this attempt, after the unchanged baseline").isGreaterThanOrEqualTo(beforeAttemptXid);
+        try(var connection=DriverManager.getConnection(jdbcUrl(),postgres.getUsername(),postgres.getPassword())) {
+            long current;
+            try(var query=connection.prepareStatement("SELECT txid_current()");var rows=query.executeQuery()) {
+                assertThat(rows.next()).isTrue();current=rows.getLong(1);
+            }
+            var required=new java.util.TreeSet<Long>();required.add(claim);
+            try(var query=connection.prepareStatement("SELECT xmin::text::bigint FROM legacy_migration_run_files WHERE run_id=? UNION ALL SELECT xmin::text::bigint FROM legacy_migration_runs WHERE run_id=?")) {
+                query.setObject(1,attempt.runId());query.setObject(2,attempt.runId());
+                try(var rows=query.executeQuery()) {while(rows.next())required.add(
+                        LegacyBootstrapTransactionIdentity.full(rows.getLong(1),claim,current));}
+            }
+            // These two exact V1102 producers have this one domain. Every
+            // committed claim/file/status transaction must publish its marker.
+            try(var query=connection.prepareStatement("SELECT count(*) FROM summary_read_markers WHERE domain='native-facet-finance-columns' AND transaction_id=ANY(?)")) {
+                query.setArray(1,connection.createArrayOf("int8",required.toArray()));
+                try(var rows=query.executeQuery()) {assertThat(rows.next()).isTrue();assertThat(rows.getLong(1)).isEqualTo(required.size());}
+            }
+            // The already validated sole FAILED summary may itself gain a
+            // publication in a later reviewed audit dependency. Its exact row
+            // transaction is proved too; no other transaction/domain is allowed.
+            try(var query=connection.prepareStatement("SELECT xmin::text::bigint FROM audit_log audit WHERE to_jsonb(audit)::text=?")) {
+                query.setString(1,attempt.auditPayload());
+                try(var rows=query.executeQuery()) {assertThat(rows.next()).isTrue();required.add(
+                        LegacyBootstrapTransactionIdentity.full(rows.getLong(1),claim,current));assertThat(rows.next()).isFalse();}
+            }
+            return List.copyOf(required);
+        }
     }
 
     private static String sequenceDefinitionsFingerprint() throws Exception {

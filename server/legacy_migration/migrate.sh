@@ -889,6 +889,7 @@ preflight () {
              '$MIGRATION_SCRIPT_SHA256',
              '$MAPPING_VERSION',
              jsonb_build_object(
+                 'claimTransactionId', txid_current()::text,
                  'targetDatabase', '$PG_DB',
                  'targetSystemIdentifier', '$UTEN_LEGACY_TARGET_SYSTEM_IDENTIFIER',
                  'targetApprovalReference', '$UTEN_LEGACY_TARGET_APPROVAL_REFERENCE',

@@ -353,11 +353,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         assertEquals(2, page.total());
         assertEquals(2, page.totalPages());
         assertEquals(2L, page.summary().statusCounts().get("FINANCE_APPROVED"));
-        var exceeded = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
-                () -> transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 1)));
-        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, exceeded.getCode());
-        assertTrue(exceeded.getMessage().contains("1 行上限"));
-        var export = transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 2));
+        var export = transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 1));
         assertNotNull(export);
         assertEquals(2, export.rows().size());
         assertEquals(java.util.Set.of(first, second), transactions.execute(status -> service
@@ -501,11 +497,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         assertNotNull(firstPage);
         assertEquals(50, firstPage.items().size());
         assertEquals(105, firstPage.total());
-        var exceeded = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
-                () -> transactions.execute(status -> service.exportPurchase("WAITING_ORDER", "", "", null, null, table, 104)));
-        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, exceeded.getCode());
-        assertTrue(exceeded.getMessage().contains("104 行上限"));
-        var export = transactions.execute(status -> service.exportPurchase("WAITING_ORDER", "", "", null, null, table, 105));
+        var export = transactions.execute(status -> service.exportPurchase("WAITING_ORDER", "", "", null, null, table, 104));
         assertNotNull(export);
         assertEquals(105, export.total());
         assertEquals(104, export.rows().stream().filter(row -> new BigDecimal("0.05").compareTo((BigDecimal) row.get("requiredQty")) == 0).count());

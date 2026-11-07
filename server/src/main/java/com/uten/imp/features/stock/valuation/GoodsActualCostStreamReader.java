@@ -118,12 +118,16 @@ final class GoodsActualCostStreamReader {
         db.execute(sql,args,statement->{
             if(statement.getConnection().getAutoCommit()||statement.getConnection().getTransactionIsolation()!=Connection.TRANSACTION_REPEATABLE_READ)
                 throw new IllegalStateException("Actual-cost cursors require a live repeatable-read portal");
-            statement.setFetchSize(FETCH);statement.setMaxRows(maximum+1);statement.setQueryTimeout(60);
+            statement.setFetchSize(FETCH);
+            // One extra row proves an explicit limit was exceeded. At the int
+            // ceiling leave JDBC uncapped and let the cursor count that proof.
+            if (maximum < Integer.MAX_VALUE) statement.setMaxRows(maximum + 1);
+            statement.setQueryTimeout(60);
             var mapper=new ColumnMapRowMapper();int count=0;
             try(var rows=statement.executeQuery()){
                 while(rows.next()){
-                    if(++count>maximum)throw tooMany();
-                    consumer.accept(mapper.mapRow(rows,count-1));
+                    if(count==maximum)throw tooMany();
+                    consumer.accept(mapper.mapRow(rows,count++));
                     if(count%FETCH==0)ExportOperationCheckpoint.check();
                 }
             }

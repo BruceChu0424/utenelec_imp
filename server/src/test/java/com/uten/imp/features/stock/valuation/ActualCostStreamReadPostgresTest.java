@@ -150,17 +150,24 @@ class ActualCostStreamReadPostgresTest {
             try(var source=facts.openStream(query(),500,rows->batches.incrementAndGet())) {
                 throw new AssertionError("over-limit source must not open");
             }
-        })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("后台导出任务");
+        })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("未能完整返回");
         assertThat(batches).hasValue(0);
         assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_inputs",Map.of(),Long.class)).isEqualTo(501L);
+        var completeRows = new java.util.concurrent.atomic.AtomicInteger();
+        read.executeWithoutResult(tx -> {
+            try (var source = facts.openStream(query(), ExportDocument.MAX_SECTION_ROWS, rows -> {})) {
+                source.inputs(row -> completeRows.incrementAndGet());
+            }
+        });
+        assertThat(completeRows).hasValue(501);
         // The source fact count can fit while independently preserved gaps do
-        // not. Both small-route failures must explicitly direct to the task.
+        // not. The explicitly bounded source must reject before publishing rows.
         db.update("DELETE FROM stock_value_production_cost_inputs WHERE input_node_id IN (SELECT id FROM stock_value_events WHERE source_doc_type='B1_OVER_LIMIT' ORDER BY id LIMIT 250)",Map.of());
         db.update("UPDATE stock_value_production_cost_revisions SET input_snapshot=(SELECT jsonb_agg(jsonb_build_object('node',input_node_id,'revision',1,'identity','{}'::jsonb)) FROM stock_value_production_cost_inputs) WHERE id=:revision",Map.of("revision",REVISION));
         assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_inputs",Map.of(),Long.class)).isEqualTo(251L);
         assertThatThrownBy(()->read.executeWithoutResult(tx->{
             try(var source=facts.openStream(query(),500,rows->{})) {throw new AssertionError("over-limit gaps must not open");}
-        })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("后台导出任务").hasMessageNotContaining("50000");
+        })).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("未能完整返回").hasMessageNotContaining("50000");
     }
 
     private void input(UUID node,UUID event,OffsetDateTime at) {

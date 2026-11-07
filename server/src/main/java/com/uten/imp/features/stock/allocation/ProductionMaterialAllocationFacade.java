@@ -211,7 +211,7 @@ public class ProductionMaterialAllocationFacade {
         Map<SourceDemandKey, SourceProof> proofs = verifyPreparedSources(requests, sources);
         Map<DemandWarehouse, OwnedSlice> prepared = new LinkedHashMap<>();
         for (QualifiedSourcePreference source : sources) {
-            SourceProof proof = proofs.get(new SourceDemandKey(source.sourceEntitlementEventId(), source.demandId()));
+            SourceProof proof = proofs.get(new SourceDemandKey(source));
             prepared.merge(new DemandWarehouse(source.demandId(), source.warehouseId()),
                     new OwnedSlice(source.qty(), proof.qualified() ? source.qty() : BigDecimal.ZERO),
                     (left,right) -> new OwnedSlice(left.qty().add(right.qty()), left.qualifiedQty().add(right.qualifiedQty())));
@@ -225,7 +225,7 @@ public class ProductionMaterialAllocationFacade {
             for (QualifiedSourcePreference source : sources.stream()
                     .filter(value -> request.demandId().equals(value.demandId()))
                     .sorted(Comparator.comparing(value -> value.warehouseId().toString())).toList()) {
-                SourceProof proof = proofs.get(new SourceDemandKey(source.sourceEntitlementEventId(), source.demandId()));
+                SourceProof proof = proofs.get(new SourceDemandKey(source));
                 OwnedSlice before = owned.getOrDefault(source.warehouseId(), new OwnedSlice(BigDecimal.ZERO, BigDecimal.ZERO));
                 owned.put(source.warehouseId(), new OwnedSlice(before.qty().add(source.qty()),
                         before.qualifiedQty().add(proof.qualified() ? source.qty() : BigDecimal.ZERO)));
@@ -278,17 +278,20 @@ public class ProductionMaterialAllocationFacade {
         }
         if (sources.isEmpty()) return Map.of();
         Map<UUID, BigDecimal> claimed = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> physicalClaimed = new LinkedHashMap<>();
         Map<UUID, BigDecimal> releasedClaims = new LinkedHashMap<>();
         for (QualifiedSourcePreference source : sources) {
-            if (source == null || source.sourceEntitlementEventId() == null || source.sourceStockReservationId() == null
+            if (source == null || source.sourceStockReservationId() == null
                     || source.demandId() == null || !byDemand.containsKey(source.demandId())
                     || source.warehouseId() == null || source.qty() == null || source.qty().signum() <= 0)
                 throw allocationConflict("本批物料缺少可核对的来源或实际仓库");
-            claimed.merge(source.sourceEntitlementEventId(), source.qty(), BigDecimal::add);
+            if (source.sourceEntitlementEventId() == null)
+                physicalClaimed.merge(source.sourceStockReservationId(), source.qty(), BigDecimal::add);
+            else claimed.merge(source.sourceEntitlementEventId(), source.qty(), BigDecimal::add);
             releasedClaims.merge(source.sourceStockReservationId(), source.qty(), BigDecimal::add);
         }
         Map<SourceDemandKey, SourceProof> result = new LinkedHashMap<>();
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+        if (!claimed.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT lot.entitlement_event_id, lot.stock_reservation_id, reservation.warehouse_id,
                        reservation.goods_id, reservation.color_id, lot.remaining_qty,
                        fn_preplan_reservation_has_qualified_origin(reservation.id), demand.id,
@@ -312,14 +315,59 @@ public class ProductionMaterialAllocationFacade {
             AllocationRequest request = byDemand.get(demand);
             if (!request.packageId().equals(row[8]) || !request.warehouseId().equals(row[9])
                     || !request.goodsId().equals(row[3]) || !Objects.equals(request.colorId(), row[4])) continue;
-            result.put(new SourceDemandKey(source, demand), new SourceProof((UUID) row[1], (UUID) row[2],
+            result.put(new SourceDemandKey(source, (UUID) row[1], demand), new SourceProof((UUID) row[1], (UUID) row[2],
                     decimal(row[5]), decimal(row[10]), Boolean.TRUE.equals(row[6])));
         }
+        // Physical adoption has no receipt/manufacture entitlement event. Its
+        // own immutable command allocation proves the stock reservation and
+        // original material; only the released, not-yet-formalized slice enters
+        // this same allocator. It remains unqualified and inside its main scope.
+        if (!physicalClaimed.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reservation.id,reservation.warehouse_id,reservation.goods_id,reservation.color_id,
+                    GREATEST(reservation.released_qty-COALESCE((SELECT SUM(handoff.qty)
+                        FROM preplan_physical_stock_formalizations handoff
+                        WHERE handoff.source_reservation_id=reservation.id AND handoff.restored_at IS NULL),0),0),
+                    reservation.released_qty,demand.id,demand.package_id,demand.warehouse_id
+                FROM stock_reservations reservation
+                JOIN preplan_physical_stock_claim_allocations allocation
+                  ON allocation.stock_reservation_id=reservation.id AND allocation.material_id=reservation.supply_id
+                  AND allocation.qty=reservation.qty
+                JOIN preplan_physical_stock_claim_commands command
+                  ON command.id=allocation.command_id AND command.analysis_id=reservation.owner_id
+                JOIN production_material_analysis_materials material
+                  ON material.id=allocation.material_id AND material.analysis_id=reservation.owner_id AND material.active
+                  AND material.goods_id=reservation.goods_id AND material.color_id IS NOT DISTINCT FROM reservation.color_id
+                JOIN production_material_analyses analysis ON analysis.id=material.analysis_id
+                  AND NOT analysis.is_deleted AND analysis.status<>'CANCELLED'
+                JOIN production_material_demands demand ON demand.id IN (:demands)
+                  AND NOT demand.is_deleted AND demand.goods_id=reservation.goods_id
+                  AND demand.color_id IS NOT DISTINCT FROM reservation.color_id AND demand.unit_id=material.unit_id
+                JOIN production_plans plan ON plan.id=demand.plan_id
+                  AND plan.material_analysis_id=material.analysis_id
+                  AND fn_analysis_plan_material_matches(plan.material_analysis_item_id,material.id)
+                WHERE reservation.id IN (:physicalSources) AND NOT reservation.is_deleted
+                  AND reservation.owner_type='PREPLAN_ANALYSIS' AND reservation.purpose='PREPLAN_MATERIAL'
+                  AND reservation.source=3 AND reservation.source_doc_type='PREPLAN_STOCK_BALANCE'
+                  AND reservation.source_doc_id=material.id AND reservation.supply_type='STOCK_BALANCE'
+                  AND reservation.release_reason='TRANSFERRED_TO_PLAN'
+                  AND fn_warehouse_is_good_stock_leaf(reservation.warehouse_id)
+                  AND fn_warehouse_same_main(reservation.warehouse_id,demand.warehouse_id)
+                ORDER BY reservation.id,demand.id
+                """).setParameter("physicalSources", physicalClaimed.keySet()).setParameter("demands", byDemand.keySet()))) {
+            final UUID reservation = (UUID) row[0], demand = (UUID) row[6];
+            final AllocationRequest request = byDemand.get(demand);
+            if (!request.packageId().equals(row[7]) || !request.warehouseId().equals(row[8])
+                    || !request.goodsId().equals(row[2]) || !Objects.equals(request.colorId(), row[3])) continue;
+            result.put(new SourceDemandKey(null, reservation, demand), new SourceProof(reservation, (UUID) row[1],
+                    decimal(row[4]), decimal(row[5]), false));
+        }
         for (QualifiedSourcePreference source : sources) {
-            SourceProof proof = result.get(new SourceDemandKey(source.sourceEntitlementEventId(), source.demandId()));
+            SourceProof proof = result.get(new SourceDemandKey(source));
             if (proof == null || !proof.reservationId().equals(source.sourceStockReservationId())
                     || !proof.warehouseId().equals(source.warehouseId())
-                    || claimed.get(source.sourceEntitlementEventId()).compareTo(proof.remainingQty()) > 0
+                    || (source.sourceEntitlementEventId()==null
+                        ? physicalClaimed.get(source.sourceStockReservationId())
+                        : claimed.get(source.sourceEntitlementEventId())).compareTo(proof.remainingQty()) > 0
                     || releasedClaims.get(source.sourceStockReservationId()).compareTo(proof.releasedQty()) > 0)
                 throw allocationConflict("本批来源、所属工单或可用数量已变化，不能借用其他任务的物料");
         }
@@ -327,7 +375,11 @@ public class ProductionMaterialAllocationFacade {
     }
 
     private static ApiException allocationConflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
-    private record SourceDemandKey(UUID sourceEventId, UUID demandId) {}
+    private record SourceDemandKey(UUID sourceEventId, UUID sourceReservationId, UUID demandId) {
+        SourceDemandKey(QualifiedSourcePreference source) {
+            this(source.sourceEntitlementEventId(),source.sourceStockReservationId(),source.demandId());
+        }
+    }
     private record SourceProof(UUID reservationId, UUID warehouseId, BigDecimal remainingQty,
                                BigDecimal releasedQty, boolean qualified) {}
     public record OwnedSlice(BigDecimal qty, BigDecimal qualifiedQty) {}
@@ -843,7 +895,7 @@ public class ProductionMaterialAllocationFacade {
         Map<DemandWarehouse, OwnedSlice> prepared = new LinkedHashMap<>();
         Map<UUID, OwnedSlice> owned = new LinkedHashMap<>();
         for (QualifiedSourcePreference source : sources) {
-            SourceProof proof = proofs.get(new SourceDemandKey(source.sourceEntitlementEventId(), source.demandId()));
+            SourceProof proof = proofs.get(new SourceDemandKey(source));
             OwnedSlice slice = new OwnedSlice(source.qty(), proof.qualified() ? source.qty() : BigDecimal.ZERO);
             prepared.merge(new DemandWarehouse(source.demandId(), source.warehouseId()), slice,
                     (left, right) -> new OwnedSlice(left.qty().add(right.qty()), left.qualifiedQty().add(right.qualifiedQty())));

@@ -1,0 +1,49 @@
+  // Serve only the generated test bundle. Package compiler modules remain on
+  // their own handler, including the scrollbar_host library used by draft UI.
+  FutureOr<shelf.Response> _bundledTestAssetsHandler(shelf.Request request) {
+    if (request.method != 'GET' && request.method != 'HEAD') {
+      return shelf.Response.notFound('Not a test asset request');
+    }
+    final List<String> segments = request.url.pathSegments;
+    final int marker = segments.indexOf('assets');
+    if (marker < 0 || marker + 1 == segments.length ||
+        segments.take(marker).contains('packages') ||
+        request.url.path.endsWith('.dart.js')) {
+      return shelf.Response.notFound('Not a test asset request');
+    }
+    final List<String> parts = segments.skip(marker + 1).toList();
+    if (parts.any((String part) => part.isEmpty || part == '.' || part == '..' ||
+        part.contains('/') || part.contains(String.fromCharCode(92)) ||
+        part.codeUnits.contains(0))) {
+      return shelf.Response.notFound('Invalid test asset path');
+    }
+    final Directory bundle = _fileSystem.directory(_fileSystem.path.join(
+      _fileSystem.currentDirectory.path, 'build', 'unit_test_assets',
+    ));
+    if (!bundle.existsSync()) {
+      return shelf.Response.internalServerError(
+        body: 'The current project test asset bundle is missing',
+      );
+    }
+    final File candidate = _fileSystem.file(
+      _fileSystem.path.joinAll(<String>[bundle.path, ...parts]),
+    );
+    if (!candidate.existsSync() || !_fileSystem.path.isWithin(
+        bundle.resolveSymbolicLinksSync(), candidate.resolveSymbolicLinksSync())) {
+      return shelf.Response.notFound('Not a bundled test asset');
+    }
+    final String asset = parts.join('/');
+    return createDirectoryHandler(bundle, crossOriginIsolated: crossOriginIsolation)(
+      shelf.Request(
+        request.method,
+        request.requestedUri.replace(path: asset),
+        protocolVersion: request.protocolVersion,
+        headers: request.headers,
+        handlerPath: request.handlerPath,
+        url: request.url.replace(path: asset),
+        encoding: request.encoding,
+        context: request.context,
+      ),
+    );
+  }
+

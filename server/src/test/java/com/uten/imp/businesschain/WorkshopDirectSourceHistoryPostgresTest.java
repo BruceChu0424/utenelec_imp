@@ -95,11 +95,16 @@ class WorkshopDirectSourceHistoryPostgresTest {
     @Test void unprovenConsumedOpeningStopsUpgradeWithoutChangingTheOldFacts() throws Exception {
         var database=database();var db=database.jdbc();
         migrate(database.url(),"618");
+        assertThat(db.queryForObject("""
+                SELECT count(*) FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='purchase_receipt_items'
+                  AND column_name IN ('charged_base_qty','gift_base_qty')
+                """, Integer.class)).isZero();
         UUID reservation;
         try(var connection=db.getDataSource().getConnection()) {
             Object fixture=ReflectionTestUtils.invokeMethod(
                     Class.forName("com.uten.imp.features.production.fulfillment.ProductionPurchaseReceiptProvenancePostgresTest"),
-                    "createFixture",connection);
+                    "createFixture",connection,false);
             reservation=ReflectionTestUtils.invokeMethod(fixture,"reservationId");
         }
         // A V618-accepted discrepancy must stop the migration, not become a

@@ -253,6 +253,11 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
 
     private static Fixture createFixture(Connection connection)
             throws Exception {
+        return createFixture(connection, true);
+    }
+
+    private static Fixture createFixture(Connection connection, boolean hasFrozenReceiptQuantity)
+            throws Exception {
         UUID unitId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         UUID materialId = UUID.randomUUID();
@@ -449,9 +454,10 @@ class ProductionPurchaseReceiptProvenancePostgresTest {
                     insert into purchase_receipt_items(
                         id, bill_no, bill_date, receipt_id,
                         order_item_id, goods_id, unit_id, unit_rate, qty,
-                        charged_base_qty,gift_base_qty,price, amount_original, amount_local, replacement_intent, goods_snapshot_source
-                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, 10,0,0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
-                    """,
+                        %s price, amount_original, amount_local, replacement_intent, goods_snapshot_source
+                    ) values (?, ?, ?, ?, ?, ?, ?, 1, 10, %s 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
+                    """.formatted(hasFrozenReceiptQuantity ? "charged_base_qty, gift_base_qty," : "",
+                            hasFrozenReceiptQuantity ? "10, 0," : ""),
                     receiptItemId,
                     receiptNo,
                     BILL_DATE,

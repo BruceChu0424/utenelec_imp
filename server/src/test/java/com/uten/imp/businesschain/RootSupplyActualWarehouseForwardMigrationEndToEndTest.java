@@ -143,7 +143,8 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT count(*) FROM preplan_root_output_events WHERE analysis_id=? AND qty_source IS NOT NULL",Integer.class,fixture.analysis())).isZero();
             assertThat(db.queryForObject("""
                     SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND
-                    (delivery_plan_snapshot IS NOT NULL OR delivery_plan_fingerprint IS NOT NULL)
+                    (delivery_plan_snapshot IS NOT NULL OR delivery_plan_fingerprint IS NOT NULL
+                     OR planning_quantity_mode IS DISTINCT FROM 'LEGACY_INCREMENTAL')
                     """,Integer.class,fixture.analysis())).isZero();
             assertThat(businessFacts(fixture,true)).containsExactlyElementsOf(beforeCurrent);
             assertThat(db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::numeric<=855 ORDER BY installed_rank",String.class))
@@ -214,7 +215,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
                 ? "SELECT (to_jsonb(output)-'qty_source')::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id"
                 : "SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList(projectForwardMetadata
-                ? "SELECT (to_jsonb(item)-'delivery_plan_snapshot'-'delivery_plan_fingerprint')::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id"
+                ? "SELECT (to_jsonb(item)-'delivery_plan_snapshot'-'delivery_plan_fingerprint'-'planning_quantity_mode')::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id"
                 : "SELECT row_to_json(item)::text FROM production_material_analysis_items item WHERE analysis_id=? ORDER BY id",String.class,fixture.analysis()));
         facts.addAll(db.queryForList("SELECT row_to_json(reservation)::text FROM stock_reservations reservation WHERE source_doc_id=? ORDER BY id",String.class,fixture.receipt()));
         facts.addAll(db.queryForList("SELECT row_to_json(balance)::text FROM stock_balances balance WHERE goods_id IN (?,?) ORDER BY id",String.class,fixture.goods().get(0),fixture.goods().get(1)));

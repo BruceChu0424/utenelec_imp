@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
+import com.uten.imp.common.finance.BusinessPrecisionContext.Choice;
 import com.uten.imp.common.measure.WeightUnit;
 import com.uten.imp.common.production.ProductionOutputQuantity;
 import com.uten.imp.common.util.FinancialExactAmount;
@@ -10,7 +11,6 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import jakarta.persistence.EntityManager;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -161,7 +161,7 @@ final class DailyReportWeightInputs {
         }
         BigDecimal totalKg = requireMeasuredKg(line.getWeight());
         if ((scale == null) != (rounding == null) || scale != null && (scale < 0 || scale > 4
-                || !Set.of("HALF_UP", "DOWN").contains(rounding))) {
+                || !Choice.supportsRounding(rounding))) {
             throw invalid("请核对称重折算数量的保留位数和取舍方式");
         }
         BigDecimal qty = adoptedQuantity(totalKg, masterKgPerBaseUnit.multiply(rate), scale, rounding);
@@ -190,7 +190,7 @@ final class DailyReportWeightInputs {
         if (scale == null) {
             throw new BusinessPrecisionRequiredException(QUANTITY_PURPOSE, "本次实称重量折算完工申报量", 4, reason);
         }
-        return totalKg.divide(kgPerReportUnit, scale, RoundingMode.valueOf(rounding));
+        return new Choice(scale, rounding).divide(totalKg, kgPerReportUnit);
     }
 
     private static ApiException invalid(String message) {

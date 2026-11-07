@@ -13,8 +13,16 @@ public final class BusinessPrecisionContext {
     private static final ThreadLocal<State> CURRENT=new ThreadLocal<>();
     private static final ObjectMapper JSON=new ObjectMapper();
     public record Choice(int scale,String rounding){
-        public Choice{if(scale<0||scale>30||!Set.of("HALF_UP","DOWN").contains(rounding))throw invalid("数值处理选项无效，请明确保留0至30位及取舍方式");}
-        RoundingMode mode(){return RoundingMode.valueOf(rounding);}
+        public Choice {
+            if (scale < 0 || scale > 30 || !supportsRounding(rounding))
+                throw invalid("数值处理选项无效，请明确保留0至30位及取舍方式");
+        }
+        public static boolean supportsRounding(String rounding) {
+            return "HALF_UP".equals(rounding) || "DOWN".equals(rounding);
+        }
+        public BigDecimal divide(BigDecimal numerator, BigDecimal denominator) {
+            return numerator.divide(denominator, scale, RoundingMode.valueOf(rounding));
+        }
     }
     private record State(Map<String,Choice> choices,Set<String> used,
             java.util.concurrent.atomic.AtomicBoolean committedWrite,
@@ -58,7 +66,7 @@ public final class BusinessPrecisionContext {
         catch(ArithmeticException nonTerminating){ }
         Choice choice=choices().get(key);if(choice==null)throw new BusinessPrecisionRequiredException(key,label,maximum,reason);
         if(choice.scale()>maximum)throw invalid(label+"的保留位数超出该字段可保存范围，请重新核对");
-        CURRENT.get().used().add(key);return numerator.divide(denominator,choice.scale(),choice.mode());
+        CURRENT.get().used().add(key);return choice.divide(numerator,denominator);
     }
     public static BigDecimal limit(BigDecimal value,String key,String label,int maximum){ensureReady();if(value==null)return null;return value.stripTrailingZeros().scale()<=maximum?value:divide(value,BigDecimal.ONE,key,label,maximum);}
     private static ApiException invalid(String value){return new ApiException(ErrorCode.VALIDATION_FAILED,value);}

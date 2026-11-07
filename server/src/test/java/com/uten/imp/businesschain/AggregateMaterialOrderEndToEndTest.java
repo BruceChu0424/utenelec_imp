@@ -1,5 +1,6 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.analysis.*;
@@ -207,9 +208,13 @@ class AggregateMaterialOrderEndToEndTest {
         amount("1",db.queryForObject("SELECT required_qty FROM production_material_demands WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,extra.planId()));
     }
 
-    @Test void sharedMakeActuallyIssuesReportsPassesFqcAndPreservesThreePrivateOutputSources(){
+    @Test void sharedMakeActuallyIssuesReportsPassesFqcAndPreservesThreePrivateOutputSources() throws Exception {
         Case c=create(true,true,"1");var batch=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false)))).batches().getFirst();
-        UUID inbound=produce(c,batch);
+        UUID inbound;
+        try (var precision = BusinessPrecisionContext.use(Map.of(
+                "goods.bom.actual-usage", new BusinessPrecisionContext.Choice(24, "DOWN")))) {
+            inbound = produce(c, batch);
+        }
         amount("3",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,c.world().warehouseId(),c.common()));
         amount("0",db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_document_items WHERE doc_id=? AND fn_finished_in_is_public_output(id)",BigDecimal.class,inbound));
         assertEquals(3,count("SELECT COUNT(DISTINCT origin_analysis_material_id) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",inbound));
@@ -558,8 +563,12 @@ class AggregateMaterialOrderEndToEndTest {
             var checked=preview.preview(c.analysis(),request(c,List.of(zero))).groups().getFirst();
             assertNull(checked.blockedReason());
             amount("0",checked.remainingQty());
-            assertThrows(ApiException.class,()->writer.submit(c.analysis(),command(c,List.of(zero))),
+            var noOrder = command(c, List.of(zero));
+            assertTrue(writer.submit(c.analysis(), noOrder).batches().isEmpty(),
                     "An all-zero request must not issue another physical order");
+            var replay = writer.submit(c.analysis(), noOrder);
+            assertTrue(replay.replayed());
+            assertTrue(replay.batches().isEmpty());
             assertPhysicalSupply(c,goods,"400");
         }
         // The workshop must contain real approved root work, not merely a projected badge.

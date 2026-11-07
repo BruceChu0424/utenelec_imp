@@ -35,6 +35,10 @@ final class ProductionChainDataFactory {
             int physicalBomRows, int expectedExpandedRowsPerProduct) {}
 
     Scenario sharedTree(String tag, int productCount) {
+        return sharedTree(tag, productCount, "10");
+    }
+
+    Scenario sharedTree(String tag, int productCount, String orderQty) {
         if (productCount < 1 || productCount > 500) {
             throw new IllegalArgumentException("Use 1..500 actual sales source lines");
         }
@@ -65,9 +69,9 @@ final class ProductionChainDataFactory {
             for (UUID assembly : assemblies) masters.insertBom(root, assembly, "1");
         }
         masters.loginAs(w.superAdminUserId());
-        var request = masters.orderRequest(w, products.getFirst(), "10", "100");
+        var request = masters.orderRequest(w, products.getFirst(), orderQty, "100");
         List<OrderItemLine> lines = products.stream()
-                .map(product -> masters.orderRequest(w, product, "10", "100").getItems().getFirst())
+                .map(product -> masters.orderRequest(w, product, orderQty, "100").getItems().getFirst())
                 .toList();
         request.setItems(lines);
         UUID orderId = sales.create(request).getId();
@@ -77,7 +81,7 @@ final class ProductionChainDataFactory {
                 select id from sales_order_items where order_id=? and is_deleted=false
                 order by line_no,id
                 """, (rs, row) -> new PreviewItem("SALES_ORDER_ITEM", rs.getObject("id", UUID.class),
-                        null, null, null, null, null, LocalDate.of(2026, 9, 30), new BigDecimal("10")),
+                        null, null, null, null, null, LocalDate.of(2026, 9, 30), new BigDecimal(orderQty)),
                 orderId);
         // 13 edges per product, shared B(2), E's direct material(1), SC(2), 10 assemblies(80), and unused seed A(2).
         // Expanded per product: root(1) + B/C/D(3) + E/its material(2) + SC/C/D(3) + assemblies/leaves(90).

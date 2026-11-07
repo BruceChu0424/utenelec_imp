@@ -15,27 +15,72 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/audit_font_asset_loader_io.dart'
+    if (dart.library.js_interop) '../../../support/audit_font_asset_loader_web.dart'
+    as capture_fonts;
+
+const _captureMaterialCancel = bool.fromEnvironment('MATERIAL_CANCEL_CAPTURE');
+const _materialCancelCaptureKey = Key('material-cancel-browser-capture');
+
+Future<void> _loadMaterialCancelCaptureFonts(WidgetTester tester) async {
+  if (!_captureMaterialCancel) return;
+  capture_fonts.enableAuditFontMetrics();
+  await tester.runAsync(() async {
+    final text = await capture_fonts.loadAuditFontAsset(
+      'assets/fonts/NotoSansSCFull.ttf',
+    );
+    for (final family in ['NotoSansSC', 'Roboto']) {
+      await (FontLoader(family)..addFont(Future.value(text))).load();
+    }
+    await (FontLoader('MaterialIcons')..addFont(
+          capture_fonts.loadAuditFontAsset('fonts/MaterialIcons-Regular.otf'),
+        ))
+        .load();
+  });
+}
+
+Widget _materialCancelCaptureBoundary(Widget child) => _captureMaterialCancel
+    ? RepaintBoundary(key: _materialCancelCaptureKey, child: child)
+    : child;
+
+Future<void> _captureMaterialCancelStage(
+  WidgetTester tester,
+  String name,
+) async {
+  if (!_captureMaterialCancel) return;
+  await expectLater(
+    find.byKey(_materialCancelCaptureKey),
+    matchesGoldenFile(
+      '../../../../build/material-cancel-browser/screenshots/$name.png',
+    ),
+  );
+}
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -46,6 +91,265 @@ const _permissions = {
 };
 
 void main() {
+  for (final failure in ['conflict', 'timeout']) {
+    for (final width in [1600.0, 390.0]) {
+      testWidgets(
+        'seeded preview $failure retains demand and retries the same intent once at $width',
+        (tester) async {
+          await _loadMaterialCancelCaptureFonts(tester);
+          final server = _Server()..previewFailure = failure;
+          await _pumpPage(
+            tester,
+            server,
+            const ProductionMaterialAnalysisSeed(
+              warehouseId: 'warehouse-1',
+              sources: [
+                MaterialAnalysisSourceInput(
+                  salesOrderItemId: 'sales-1',
+                  requestedQty: 1500,
+                  deliveryDate: '2026-11-30',
+                ),
+              ],
+            ),
+            size: Size(width, 1000),
+          );
+          await tester.pumpAndSettle();
+          expect(server.count('/preview'), 1);
+          expect(find.text('待分析需求（1项）'), findsOneWidget);
+          expect(find.text('1500'), findsOneWidget);
+          expect(find.text('2026-11-30'), findsOneWidget);
+          expect(find.text('暂无可分析的已审销售订单产品'), findsNothing);
+          expect(
+            find.byKey(const Key('material-analysis-candidate-table')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const Key('material-analysis-start')),
+            findsNothing,
+          );
+          expect(server.count('/sales-candidates'), 0);
+          expect(server.count('/production/material-analyses/analysis-1'), 0);
+          final pageState =
+              tester.state(find.byType(ProductionMaterialAnalysisPage))
+                  as ScopedPagedReadViewMixin<ProductionMaterialAnalysisPage>;
+          await pageState.onReadViewResumed();
+          await tester.pumpAndSettle();
+          expect(server.count('/preview'), 1);
+          expect(server.count('/sales-candidates'), 0);
+          expect(find.text('待分析需求（1项）'), findsOneWidget);
+          final original = Map<String, dynamic>.from(
+            server.requests.singleWhere((r) => r.path.endsWith('/preview')).data
+                as Map,
+          );
+          expect(original['warehouseId'], 'warehouse-1');
+          expect(original['warehouseIds'], ['warehouse-1']);
+          expect(original['sources'], [
+            {
+              'salesOrderItemId': 'sales-1',
+              'requestedQty': 1500,
+              'deliveryDate': '2026-11-30',
+            },
+          ]);
+          final captureName = 'seeded-preview-$failure-${width.toInt()}';
+          await _captureMaterialCancelStage(tester, '$captureName-error');
+
+          final gate = server.gate('/preview');
+          addTearDown(() {
+            if (!gate.isCompleted) gate.complete();
+          });
+          final retry = find.byKey(const Key('material-analysis-seeded-retry'));
+          expect(retry.hitTestable(), findsOneWidget);
+          if (width < 600) {
+            bool retryHasFocus() {
+              var focusedRetry = false;
+              FocusManager.instance.primaryFocus?.context
+                  ?.visitAncestorElements((element) {
+                    if (element.widget.key ==
+                        const Key('material-analysis-seeded-retry')) {
+                      focusedRetry = true;
+                      return false;
+                    }
+                    return true;
+                  });
+              return focusedRetry;
+            }
+
+            for (var tab = 0; tab < 20 && !retryHasFocus(); tab++) {
+              await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+              await tester.pump();
+            }
+            expect(
+              retryHasFocus(),
+              isTrue,
+              reason: 'Retry is keyboard reachable',
+            );
+            await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+            await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          } else {
+            await tester.tap(retry);
+            // Two clicks in the same frame must own one submitted command.
+            await tester.tap(retry);
+          }
+          await _pumpUntil(tester, () => server.count('/preview') == 2);
+          await pageState.onReadViewResumed();
+          await tester.pump();
+          expect(server.count('/preview'), 2);
+          expect(server.count('/sales-candidates'), 0);
+          expect(
+            find.byKey(const Key('material-analysis-seeded-retry-busy')),
+            findsOneWidget,
+          );
+          expect(server.requests.last.data, original);
+          await _captureMaterialCancelStage(tester, '$captureName-busy');
+          gate.complete();
+          await tester.pumpAndSettle();
+          expect(server.count('/preview'), 2);
+          expect(
+            find.byKey(const Key('material-analysis-results')),
+            findsOneWidget,
+          );
+          expect(retry, findsNothing);
+          expect(
+            find.byKey(const Key('material-analysis-seeded-retry-busy')),
+            findsNothing,
+          );
+          expect(tester.takeException(), isNull);
+          await _captureMaterialCancelStage(tester, '$captureName-success');
+        },
+      );
+    }
+  }
+
+  testWidgets('seeded preview preserves all 500 demands and scrolls locally', (
+    tester,
+  ) async {
+    final server = _Server()..previewFailure = 'timeout';
+    final sources = [
+      for (var index = 1; index <= 500; index++)
+        MaterialAnalysisSourceInput(
+          salesOrderItemId: 'sales-$index',
+          requestedQty: index.toDouble(),
+          deliveryDate: '2026-11-30',
+        ),
+    ];
+    await _pumpPage(
+      tester,
+      server,
+      ProductionMaterialAnalysisSeed(
+        warehouseId: 'warehouse-1',
+        sources: sources,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('待分析需求（500项）'), findsOneWidget);
+    final table = find.byKey(
+      const Key('material-analysis-seeded-demand-table'),
+    );
+    final tableWidget = tester
+        .widget<MasterDataTableView<MaterialAnalysisSourceInput>>(table);
+    expect(tableWidget.items, sources);
+    expect(find.text('销售订单产品').evaluate().length, lessThan(100));
+    final submitted =
+        server.requests.singleWhere((r) => r.path.endsWith('/preview')).data
+            as Map;
+    expect(submitted['sources'], hasLength(500));
+    final requestCount = server.requests.length;
+    final vertical = find
+        .descendant(
+          of: table,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('500'),
+      1000,
+      scrollable: vertical,
+      maxScrolls: 40,
+    );
+    // scrollUntilVisible ends with ensureVisible's jump; render that frame.
+    await tester.pump();
+    expect(find.text('500').hitTestable(), findsOneWidget);
+    final state =
+        tester.state(find.byType(ProductionMaterialAnalysisPage))
+            as ScopedPagedReadViewMixin<ProductionMaterialAnalysisPage>;
+    await state.onReadViewResumed();
+    await tester.pumpAndSettle();
+    expect(find.text('500').hitTestable(), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('1'),
+      -1000,
+      scrollable: vertical,
+      maxScrolls: 40,
+    );
+    await tester.pump();
+    expect(find.text('1').hitTestable(), findsOneWidget);
+    expect(server.requests, hasLength(requestCount));
+    expect(server.count('/preview'), 1);
+    expect(server.count('/sales-candidates'), 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final invalidation in ['account ABA', 'permissions', 'server']) {
+    testWidgets(
+      'seeded preview $invalidation preserves but cannot replay old intent',
+      (tester) async {
+        final server = _Server()..previewFailure = 'timeout';
+        final session = _ProfileSession();
+        await _pumpPage(
+          tester,
+          server,
+          const ProductionMaterialAnalysisSeed(
+            warehouseId: 'warehouse-1',
+            sources: [
+              MaterialAnalysisSourceInput(
+                salesOrderItemId: 'sales-1',
+                requestedQty: 1500,
+                deliveryDate: '2026-11-30',
+              ),
+            ],
+          ),
+          session: session,
+          scopeControls: true,
+        );
+        await tester.pumpAndSettle();
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionMaterialAnalysisPage)),
+        );
+        switch (invalidation) {
+          case 'account ABA':
+            session.refreshName(id: 'other-account');
+            await tester.pumpAndSettle();
+            session.refreshName();
+          case 'permissions':
+            session.refreshName(
+              permissions: _permissions.difference({
+                Perm.productionMaterialAnalysisRoute,
+              }),
+            );
+          case 'server':
+            container.read(_readEndpoint.notifier).change();
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('待分析需求（1项）'), findsOneWidget);
+        expect(find.text('1500'), findsOneWidget);
+        expect(
+          find.text('登录身份、权限或服务器已变化，请返回重新选择。原请求可能已完成，请先核对结果。'),
+          findsOneWidget,
+        );
+        final retry = find.byKey(const Key('material-analysis-seeded-retry'));
+        expect(retry, findsOneWidget);
+        expect(tester.widget<UtenButton>(retry).onPressed, isNull);
+        expect(server.count('/preview'), 1);
+        expect(server.count('/sales-candidates'), 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final lateError in [false, true]) {
     testWidgets(
       'request budget: old ${lateError ? 'error' : 'result'} cannot replace a post-write read',
@@ -569,6 +873,7 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() ready) async {
 
 class _Server {
   Map<String, dynamic> data = _analysis();
+  String? previewFailure;
   int autoConfirmedOnPreview = 0;
   int futureFailures = 0;
   final List<Future<Object?>> futureResponses = [];
@@ -608,6 +913,26 @@ class _Server {
     if (path.endsWith('/sales-candidates/facets')) return <String, Object>{};
     if (request.method == 'POST' &&
         path.endsWith('/material-analyses/preview')) {
+      final failure = previewFailure;
+      previewFailure = null;
+      if (failure != null) {
+        throw DioException(
+          requestOptions: request,
+          type: failure == 'timeout'
+              ? DioExceptionType.receiveTimeout
+              : DioExceptionType.badResponse,
+          response: failure == 'timeout'
+              ? null
+              : Response<dynamic>(
+                  requestOptions: request,
+                  statusCode: 409,
+                  data: {
+                    'code': 'CONFLICT',
+                    'message': '所选来源已有进行中的物料分析，请打开原分析核对',
+                  },
+                ),
+        );
+      }
       return {...data, 'autoConfirmedRouteCount': autoConfirmedOnPreview};
     }
     if (path == '/production/material-analyses/analysis-1') return data;
@@ -698,8 +1023,9 @@ Future<void> _pumpPage(
   ProductionMaterialAnalysisSeed seed, {
   SessionNotifier? session,
   bool scopeControls = false,
+  Size size = const Size(1600, 1000),
 }) async {
-  tester.view.physicalSize = const Size(1600, 1000);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -751,11 +1077,14 @@ Future<void> _pumpPage(
         if (session != null)
           sessionSnapshotProvider.overrideWith(_Snapshot.new),
       ],
-      child: MaterialApp(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: ProductionMaterialAnalysisPage(seed: seed),
+      child: _materialCancelCaptureBoundary(
+        MaterialApp(
+          theme: _captureMaterialCancel ? buildLightTheme() : null,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ProductionMaterialAnalysisPage(seed: seed),
+        ),
       ),
     ),
   );

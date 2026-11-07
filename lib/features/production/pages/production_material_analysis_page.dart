@@ -202,7 +202,12 @@ abstract class _MaterialAnalysisPageBase
     extends ConsumerState<ProductionMaterialAnalysisPage>
     with ScopedPagedReadViewMixin<ProductionMaterialAnalysisPage> {
   @override
-  Future<void> onReadViewResumed() => _loadCandidates();
+  Future<void> onReadViewResumed() async {
+    // A seeded command has no candidate query to resume. Keep its attempted
+    // demand and explicit retry; restoring a window never resubmits a command.
+    if (_analysis == null && _seededPreviewAttempted) return;
+    await _loadCandidates();
+  }
 
   static const int _maxAnalysisItems = 500;
   static const int _requestChunkSize = 500;
@@ -648,6 +653,9 @@ abstract class _MaterialAnalysisPageBase
   /// 只有这种情况用整页进度卡代替候选区 (候选表尚未加载, 否则会闪一张空表);
   /// 在新建页自己点「联合分析」时保留已填内容只读显示 (ADR-130), 只在按钮上转圈。
   bool _autoPreviewFromSeed = false;
+  bool _seededPreviewAttempted = false;
+  bool _retryingSeededPreview = false;
+  bool Function()? _seededPreviewOwnerCurrent;
   bool _loadingCandidates = false;
   final _candidateRequests = LatestRequestGuard();
   bool _previewingAnalysis = false;
@@ -916,6 +924,7 @@ abstract class _MaterialAnalysisPageBase
 
   bool get _busy =>
       _savingGoodsOwnership ||
+      _retryingSeededPreview ||
       _previewingAnalysis ||
       _savingRoutes ||
       _savingPriorities ||
@@ -1423,6 +1432,7 @@ abstract class _MaterialAnalysisPageBase
         // Retire only the old owner's presentation. Do not cancel commands,
         // discard submitted requests/receipts, or report that nothing committed.
         _previewingAnalysis = false;
+        _retryingSeededPreview = false;
         _autoRouteRefreshing = false;
         _savingRoutes = false;
         _savingPriorities = false;
@@ -1632,6 +1642,10 @@ abstract class _MaterialAnalysisPageBase
       setState(() {
         _booting = false;
         _autoPreviewFromSeed = _sources.isNotEmpty;
+        _seededPreviewAttempted = _autoPreviewFromSeed;
+        if (_seededPreviewAttempted) {
+          _seededPreviewOwnerCurrent = readOwnerCurrent;
+        }
       });
       if (_sources.isNotEmpty) {
         try {
@@ -2332,19 +2346,23 @@ abstract class _MaterialAnalysisPageBase
         .withValues(alpha: 0.14);
   }
 
-  Widget _inlineError(ThemeData theme, String message, VoidCallback retry) =>
-      Container(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
-        child: Row(
-          children: [
-            Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(child: Text(message)),
-            TextButton(onPressed: retry, child: const Text('重试')),
-          ],
-        ),
-      );
+  Widget _inlineError(
+    ThemeData theme,
+    String message,
+    VoidCallback? retry, {
+    bool showRetry = true,
+  }) => Container(
+    padding: const EdgeInsets.all(UtenSpacing.s8),
+    color: theme.colorScheme.errorContainer.withValues(alpha: 0.4),
+    child: Row(
+      children: [
+        Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(child: Text(message)),
+        if (showRetry) TextButton(onPressed: retry, child: const Text('重试')),
+      ],
+    ),
+  );
 
   String _materialDimensionKey(ProductionMaterialAnalysisMaterial material) {
     final materialKey = material.materialKey?.trim();
@@ -2628,14 +2646,26 @@ class _ProductionMaterialAnalysisPageState
                 child: _booting
                     ? _bootingBody(theme)
                     : _analysis == null
-                    ? (_previewingAnalysis && _autoPreviewFromSeed
+                    ? (_previewingAnalysis &&
+                              _autoPreviewFromSeed &&
+                              !_retryingSeededPreview
                           ? _firstAnalysisProgress(theme)
+                          : _hasSeededPreviewDemand
+                          ? _seededPreviewRecoveryBody(theme)
                           : _candidateBody(theme))
                     : _analysisBody(theme),
               ),
             ),
             if (_planSubmissionInProgress)
               Positioned.fill(child: _planSubmissionOverlay(theme)),
+            if (_retryingSeededPreview)
+              const Positioned.fill(
+                child: UtenBusyOverlay(
+                  semanticsKey: Key('material-analysis-seeded-retry-busy'),
+                  title: '正在重新分析物料',
+                  showDoNotLeaveHint: false,
+                ),
+              ),
             ValueListenableBuilder<String?>(
               valueListenable: bucketActionBusyMessage,
               builder: (context, message, _) => message != null
@@ -2663,7 +2693,7 @@ class _ProductionMaterialAnalysisPageState
       // 进页等待期与第一次分析进行中只显示进度，不挂候选表的「联合分析」按钮。
       floatingActionButton: _analysis != null
           ? _floatingActions()
-          : _booting || (_previewingAnalysis && _autoPreviewFromSeed)
+          : _booting || _hasSeededPreviewDemand
           ? null
           : _candidateFloatingAction(),
     );
@@ -2671,6 +2701,103 @@ class _ProductionMaterialAnalysisPageState
       PopScope(canPop: !_planSubmissionInProgress, child: page),
     );
   }
+
+  bool get _hasSeededPreviewDemand =>
+      _seededPreviewAttempted && _sources.isNotEmpty;
+
+  bool get _canRetrySeededPreview =>
+      !_busy &&
+      !_autoPreviewFromSeed &&
+      !_checkingBom &&
+      _canManage &&
+      (_seededPreviewOwnerCurrent?.call() ?? false);
+
+  Future<void> _retrySeededPreview() async {
+    if (!_canRetrySeededPreview) return;
+    final operationCurrent = captureReadOwner(ref);
+    setState(() => _retryingSeededPreview = true);
+    try {
+      // Keep the attempted payload and its original intent after an unknown
+      // response; warehouse preferences must not turn this retry into a new one.
+      await _previewAnalysis();
+    } finally {
+      if (mounted && operationCurrent()) {
+        setState(() => _retryingSeededPreview = false);
+      }
+    }
+  }
+
+  Widget _seededPreviewRecoveryBody(ThemeData theme) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      UtenSectionHeader(
+        title: '待分析需求（${_sources.length}项）',
+        info: '保留本次选择的来源、数量、交货日期及仓库范围；重试会核对原请求的结果。',
+        trailing: UtenButton(
+          key: const Key('material-analysis-seeded-retry'),
+          icon: Icons.refresh_rounded,
+          onPressed: _canRetrySeededPreview ? _retrySeededPreview : null,
+          child: const Text('重试分析'),
+        ),
+      ),
+      const SizedBox(height: UtenSpacing.s8),
+      if (_bomProblemsPanel() case final panel?) ...[
+        panel,
+        const SizedBox(height: UtenSpacing.s8),
+      ],
+      if ((_seededPreviewOwnerCurrent?.call() == false
+              ? '登录身份、权限或服务器已变化，请返回重新选择。原请求可能已完成，请先核对结果。'
+              : _error)
+          case final message?) ...[
+        _inlineError(theme, message, null, showRetry: false),
+        const SizedBox(height: UtenSpacing.s8),
+      ],
+      Expanded(
+        child: MasterDataTableView<MaterialAnalysisSourceInput>(
+          key: const Key('material-analysis-seeded-demand-table'),
+          tableKey: 'material-analysis-seeded-demand',
+          items: _sources,
+          idOf: (source) => source.canonicalKey,
+          virtualized: true,
+          showColumnChooser: false,
+          showFullscreenToggle: false,
+          showPaginationControls: false,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          columns: [
+            MasterColumnDef(
+              key: 'source',
+              label: '来源',
+              width: 240,
+              columnSearchEnabled: false,
+              value: (source) => source.isSalesSource
+                  ? '销售订单产品'
+                  : '${materialManualDemandSourceTypes[source.sourceType] ?? '手工需求'} '
+                        '${source.sourceRef ?? ''}',
+            ),
+            MasterColumnDef(
+              key: 'requestedQty',
+              label: '本次分析数量',
+              width: 160,
+              type: 'number',
+              columnSearchEnabled: false,
+              value: (source) => _qty(source.requestedQty),
+            ),
+            MasterColumnDef(
+              key: 'deliveryDate',
+              label: '交货日期',
+              width: 160,
+              type: 'date',
+              columnSearchEnabled: false,
+              value: (source) => _dateOnly(source.deliveryDate),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
 
   /// 进页等待期 (2026-09-27 用户口径「一进就弹窗加载, 会卡一会」)。
   /// 打开已有分析: 页头骨架 + 一行说明, 不再是整页正中一个光秃秃的转圈;

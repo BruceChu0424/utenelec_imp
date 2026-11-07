@@ -295,10 +295,21 @@ void main() {
       final fixture = _Fixture();
       await _pump(tester, fixture);
       await _start(tester, fixture, 'status');
-      await fixture.pane.reload();
+      final confirm = tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '确认'))
+          .onPressed!;
+      var reloadCompleted = false;
+      final reload = fixture.pane.reload().then((_) => reloadCompleted = true);
+      // The pane removes the invalidated dialog after a frame. Advance the
+      // transition before awaiting the foreground reader's completion.
       await tester.pumpAndSettle();
+      expect(reloadCompleted, isTrue);
+      await reload;
       expect(find.byType(UtenAlertDialog), findsNothing);
+      confirm();
+      await tester.pumpAndSettle();
       expect(fixture.writes, isEmpty);
+      expect(tester.takeException(), isNull);
     },
   );
 

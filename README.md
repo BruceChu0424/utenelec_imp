@@ -4,8 +4,8 @@
 
 | 项目 | 当前值 |
 |---|---|
-| 源码候选与发布状态 | 本地集成候选 **2.5.48+2549**（核对基线：2026-11-05）；本轮仅进行源码整合和 CI 修复；正式打包、发布和服务器更新已取消。精确提交、启动、CI 与交付证据分别见[当前版本验证](docs/99-项目治理/当前版本验证.md)。 |
-| 数据库迁移头 | 本地候选源码 **V1076 / 1015** 个迁移文件，Git HEAD 已跟踪 V1069/V1072/V1073 且近期齐号；按[迁移目录](server/src/main/resources/db/migration)与[迁移索引](docs/数据迁移/README.md)核对。目标库实际版本另查其 `flyway_schema_history`。三个并行任务若在本轮修复期间完成则审查纳入，不等待它们；“统一修复货品导出选择”已纳入。 |
+| 源码版本与 CI | 产品版本及构建号见 [pubspec.yaml](pubspec.yaml)，主链范围、全量 CI 及历史交付证据见[当前版本验证](docs/99-项目治理/当前版本验证.md)。 |
+| 数据库迁移 | 当前主链清册见[迁移索引](docs/数据迁移/README.md)，逐文件身份见[迁移目录](server/src/main/resources/db/migration)。目标库实际应用版本以其 `flyway_schema_history` 为准。 |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 4.1.1、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |
@@ -195,9 +195,9 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 
 1. 候选提交在本地与 CI 全部门禁通过, 迁移已在开发机的服务器库副本上演练。
 2. 已支持的客户端平台随本版一并打包；当前 Windows 从同一正式 Release 输出生成 `Setup.exe` 和更新 ZIP，版本及构建号一致，使用正式公司/远程连接配置。命令和校验见[客户端发布手册](deploy/client/README.zh-CN.md)，本地测试包不能上传为正式版本。
-3. `gh workflow run simple-release.yml --ref main -f version=vX.Y.Z`: 构建、签名、上传服务端及 Web 到 OSS；该工作流不能代替 Windows 双包构建和客户端授权发布。
-4. 服务器: `sudo uten-imp-updater check`(下载验签暂存) → 更新 `server.env` 中的版本号 → `sudo uten-imp-updater activate vX.Y.Z`(自动备份 → 迁移 → 原子切换 → 健康检查, 失败自动回滚)。
-5. 持有 `client_release:publish` 权限的人员通过客户端发布入口将两份正式包上传、发布至 `UTEN_CLIENT_RELEASES_DIR`。同版本、同架构的安装包和 ZIP 均验证并发布成功后，发布服务删除更低版本的已发布二进制，只保留最新完整一组；保留审计元数据，失败时保留上一组。
+3. 将版本标签 `vX.Y.Z` 指向全绿的主链提交后推送，触发 Simple Release 构建、签名并上传服务端与 Web 到 OSS。Windows 双包由客户端发布链交付。
+4. 有权人员通过系统设置检查、立即更新或明确预约更新。更新器负责验签、备份、前向迁移、原子切换、健康检查与失败回滚。
+5. 持有 `client_release:publish` 权限的人员通过客户端发布入口将两份正式包上传、发布至 `UTEN_CLIENT_RELEASES_DIR`。新版本的安装包和 ZIP 均验证并发布成功后，发布服务清理同平台、同运行时家族、同精确架构的更低版本已发布二进制，保留必要审计元数据。任一份发布失败时保留上一组。
 6. 冒烟验证核心接口和服务器状态页，并核对最新安装包下载、客户端更新 ZIP 与旧包清理结果，全部完成后再标记本版交付完成。
 
 多端签名与安装见[多端发布与签名](docs/99-项目治理/多端发布与签名.md)。

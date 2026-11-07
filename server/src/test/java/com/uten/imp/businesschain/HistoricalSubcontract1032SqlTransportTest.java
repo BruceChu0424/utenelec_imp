@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawQueryService;
 import com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService;
 import java.util.List;
 import java.util.UUID;
@@ -13,6 +14,24 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class HistoricalSubcontract1032SqlTransportTest {
+    @Test void drawCoverageUsesTheInstalledOriginalDrawSetAuthority() {
+        EntityManager actual=mock(EntityManager.class);
+        Query statement=mock(Query.class);
+        when(actual.createNativeQuery(anyString())).thenReturn(statement);
+        when(statement.getResultList()).thenReturn(List.of());
+        var service=mock(SubcontractDrawQueryService.class,CALLS_REAL_METHODS);
+        var transport=HistoricalSubcontract1032SqlTransport.entityManager(actual);
+        ReflectionTestUtils.setField(service,"em",transport);
+        List<UUID> orderItems=List.of(UUID.randomUUID(),UUID.randomUUID());
+        ReflectionTestUtils.invokeMethod(service,"facts",orderItems);
+        var sql=ArgumentCaptor.forClass(String.class);
+        verify(actual).createNativeQuery(sql.capture());
+        verify(statement).setParameter("factItemIds",orderItems);
+        assertThat(sql.getValue()).contains("fn_subcontract_draw_facts(oi.id)",
+                "fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty, facts.bom_unit_qty)")
+                .doesNotContain("fn_subcontract_actual_receipt_sets","base_bom_unit_qty");
+    }
+
     @Test void actualNotificationQueryUsesItsWholeOriginalNullToleranceAndOverduePredicates() {
         JdbcTemplate jdbc=mock(JdbcTemplate.class);
         var service=mock(SubcontractShortDeliveryService.class,CALLS_REAL_METHODS);

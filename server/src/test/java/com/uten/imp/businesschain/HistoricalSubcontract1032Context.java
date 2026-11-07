@@ -38,7 +38,8 @@ final class HistoricalSubcontract1032Context {
                 "--spring.flyway.url="+jdbcUrl,"--spring.flyway.user="+username,"--spring.flyway.password="+password,
                 "--spring.flyway.target=1032","--spring.flyway.validate-on-migrate=true","--spring.flyway.clean-disabled=true",
                 "--spring.flyway.baseline-on-migrate=false","--spring.jpa.hibernate.ddl-auto=validate",
-                "--spring.jpa.mapping-resources=finance/orm-schema1032.xml","--uten.tests.original-schema=1032",
+                "--spring.jpa.mapping-resources=finance/orm-schema1032.xml,"+HistoricalOrmMappings.BEFORE_V1097,
+                "--uten.tests.original-schema=1032",
                 "--uten.jwt.secret="+FullChainEndToEndTest.SHARED_JWT_SECRET,
                 "--uten.crypto.pgp-master-key="+FullChainEndToEndTest.SHARED_PGP_KEY,"--uten.crypto.hmac-key="+FullChainEndToEndTest.SHARED_HMAC_KEY,
                 "--uten.bootstrap.admin-login="+FullChainEndToEndTest.SHARED_ADMIN_LOGIN,"--uten.bootstrap.admin-password="+FullChainEndToEndTest.SHARED_ADMIN_PASSWORD,
@@ -56,12 +57,14 @@ final class HistoricalSubcontract1032Context {
         } catch(RuntimeException|Error failure) {context.close();throw failure;}
     }
     static void requireOriginalCatalog(JdbcTemplate db) {
-        assertThat(db.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1",String.class)).isEqualTo("1032");
+        HistoricalOrmMappings.requireOriginalSchema(db,1032);
         assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_procurement_reference_price(numeric,numeric)') IS NOT NULL",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_procurement_reference_price_matches(jsonb)') IS NULL",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_adopt_procurement_reference_price_policy(text,uuid,jsonb)') IS NULL",Boolean.class)).isTrue();
+        assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_subcontract_draw_sets(numeric,numeric)') IS NOT NULL",Boolean.class)).isTrue();
+        assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_subcontract_actual_receipt_sets(numeric,numeric)') IS NULL",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name IN('purchase_order_items','subcontract_order_items') AND column_name='reference_price_precision_policy'",Integer.class)).isZero();
-        for(var entry:Map.of("subcontract_receipt_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty","material_consumption_version"),
+        for(var entry:Map.of("subcontract_receipt_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty"),
                 "subcontract_material_return_items",List.of("quantity_adoption_version","quantity_precision_policy","adopted_base_qty"),
                 "sales_order_items",List.of("delivery_plan","delivery_bom_snapshot"),
                 "finance_receipt_lines",List.of("requested_sales_order_id","applied_source_doc_type","applied_source_doc_id","applied_source_doc_no"),
@@ -78,7 +81,8 @@ final class HistoricalSubcontract1032Context {
             return new BeanPostProcessor() {
                 @Override public Object postProcessBeforeInitialization(Object bean,String beanName) {
                     if(bean instanceof DataSource source)return HistoricalSubcontract1032SqlTransport.dataSource(source);
-                    if(bean instanceof com.uten.imp.features.subcontract.receipt.SubcontractReceiptService) {
+                    if(bean instanceof com.uten.imp.features.subcontract.receipt.SubcontractReceiptService
+                            || bean instanceof com.uten.imp.features.subcontract.draw.SubcontractDrawQueryService) {
                         var actual=(EntityManager)Objects.requireNonNull(ReflectionTestUtils.getField(bean,"em"));
                         ReflectionTestUtils.setField(bean,"em",HistoricalSubcontract1032SqlTransport.entityManager(actual));
                     }

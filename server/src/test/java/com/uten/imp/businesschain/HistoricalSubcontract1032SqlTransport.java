@@ -26,7 +26,23 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 final class HistoricalSubcontract1032SqlTransport {
     private HistoricalSubcontract1032SqlTransport() { }
     private record SqlVersion(String label,String sql,boolean dropsMaterialVersion) { }
-    private static final Map<String,SqlVersion> RECEIPT_SQL=Map.ofEntries(
+    private static final Map<String,SqlVersion> ORIGINAL_ENTITY_SQL=Map.ofEntries(
+        Map.entry("84f01f87f7d794e81331224f5772172848f3eb2fe102c2cc987f47410e1c4d7d", new SqlVersion("original V798 draw sets", """
+                SELECT oi.id, facts.plan_item_id, facts.line_no, facts.goods_id, material.code, material.name,
+                       facts.color_id, material_color.name, facts.unit_id, material_unit.name,
+                       facts.bom_unit_qty, facts.sent_qty, facts.pending_qty,
+                       facts.available_qty, facts.line_open, facts.needed_qty,
+                       fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty
+                           +CASE WHEN facts.line_open THEN facts.available_qty ELSE 0 END, facts.bom_unit_qty),
+                       fn_subcontract_draw_sets(facts.usable_qty+facts.pending_qty, facts.bom_unit_qty)
+                FROM subcontract_order_items oi
+                CROSS JOIN LATERAL fn_subcontract_draw_facts(oi.id) facts
+                LEFT JOIN goods material ON material.id = facts.goods_id
+                LEFT JOIN colors material_color ON material_color.id = facts.color_id
+                LEFT JOIN units material_unit ON material_unit.id = facts.unit_id
+                WHERE oi.id IN (:factItemIds)
+                ORDER BY oi.id, facts.line_no ASC NULLS LAST, facts.plan_item_id
+                """, false)),
         Map.entry("4c905b3900449c99a10507906c5d3b6150274913aa770e9e7dfee8ae26035fd5", new SqlVersion("implicit pre1097 material version", """
                 SELECT 1 FROM subcontract_receipt_items WHERE id=:id
                 """, false)),
@@ -194,10 +210,12 @@ final class HistoricalSubcontract1032SqlTransport {
                 (proxy,method,args)->{
                     if(method.getDeclaringClass()==Object.class)return identity(proxy,method,args);
                     if(method.getName().equals("createNativeQuery")&&args!=null&&args.length==1&&args[0] instanceof String sql) {
-                        SqlVersion selected=RECEIPT_SQL.get(fingerprint(sql));
+                        SqlVersion selected=ORIGINAL_ENTITY_SQL.get(fingerprint(sql));
                         if(selected!=null)return query(actual.createNativeQuery(selected.sql()),selected);
-                        if(sql.contains("material_consumption_version")||sql.contains("fn_subcontract_material_consumption_cohort_target"))
-                            throw new IllegalStateException("Unversioned original1032 receipt material SQL");
+                        if(sql.contains("material_consumption_version")
+                                ||sql.contains("fn_subcontract_material_consumption_cohort_target")
+                                ||sql.contains("fn_subcontract_actual_receipt_sets"))
+                            throw new IllegalStateException("Unversioned original1032 subcontract material SQL");
                     }
                     return invoke(actual,method,args);
                 });

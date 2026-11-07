@@ -49,6 +49,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "spring.flyway.target=1087", "uten.audit.retention.enabled=false",
+        "spring.jpa.mapping-resources=" + HistoricalOrmMappings.BEFORE_V1097,
+        "uten.read-summary.compaction-enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false", "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",
@@ -96,6 +98,7 @@ class PlasticUsageAttachmentPostgresTest {
 
     @Test
     void attachmentEightReadsTheClosedPeriodsWithTheTemplateColumnsInOrder() throws Exception {
+        HistoricalOrmMappings.requireOriginalSchema(db, 1087);
         // 一期: 发 3 公斤、退回 0.5、盘剩 1.3 → 实际 1.2; 报工 5 件 x 0.2 公斤 → 理论 1.0
         CloseBench bench = CloseBench.create(beans, "plastic");
         UUID granule = bench.granule("塑料颗粒", "OWN");

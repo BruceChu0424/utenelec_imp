@@ -591,6 +591,9 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(detail.getWarehouseId()).isEqualTo(w.warehouseId());
         assertThat(detail.getItems()).singleElement().satisfies(row -> assertThat(row.getQty()).isEqualByComparingTo("6"));
         assertThat(number("SELECT fn_subcontract_application_open_qty(?)",source)).isZero();
+        // Releasing the held return committed a new cost footprint. The fixture's
+        // disabled background worker must publish it before receiving replacement inputs.
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"drainCosts",w);
         harness.receiveSubcontractMaterial(w,material,"6");
         var replacementRequest = new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         replacementRequest.setBillDate(detail.getBillDate()); replacementRequest.setSupplierId(replacementSupplier); replacementRequest.setWarehouseId(w.warehouseId());
@@ -612,13 +615,16 @@ class ProcurementOrderClosureEndToEndTest {
 
     @Test void aNewUnknownConversionCannotMasqueradeAsAnImportedOrder() {
         var w=harness.seedWorld("closure-new-unknown-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
-        assertThatThrownBy(()->legacyUnknownOrder(w)).rootCause().hasMessageContaining("actual positive unit rate");
+        UUID order=UUID.randomUUID(),item=UUID.randomUUID();
+        assertThatThrownBy(()->insertUnprovenLegacyOrder(w,order,item)).rootCause()
+                .hasMessageContaining("historical quantity insert requires exact registered source proof");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM purchase_orders WHERE id=?",Long.class,order)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM purchase_order_items WHERE id=?",Long.class,item)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM business_identifier_reservation_members WHERE entity_id=?",Long.class,order)).isZero();
     }
 
-    UUID[] legacyUnknownOrder(FullChainEndToEndTest.World w){
-        harness.loginAs(w.superAdminUserId()); UUID order=UUID.randomUUID(),item=UUID.randomUUID();
+    private void insertUnprovenLegacyOrder(FullChainEndToEndTest.World w,UUID order,UUID item){
         int legacy=940000000+Math.floorMod(order.hashCode(),1000000);
-        // Called only against a real pre-V1033 schema; no current new-row proof is bypassed.
         new TransactionTemplate(transactions).executeWithoutResult(ignored -> {
             tx.bind();
             String bill=numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PURCHASE_ORDER);
@@ -627,7 +633,6 @@ class ProcurementOrderClosureEndToEndTest {
             db.update("INSERT INTO purchase_order_items(id,legacy_id,order_id,bill_no,bill_date,line_no,goods_id,unit_id,unit_rate,qty,received_qty,returned_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at) SELECT ?,?,?,?,CURRENT_DATE,1,id,NULL,NULL,10,0,0,code,name,'LEGACY_IMPORT',now() FROM goods WHERE id=?",
                     item,legacy,order,bill,w.goodsD());
         });
-        return new UUID[]{order,item};
     }
     void assertLegacyUnknownOrderReadOnly(UUID order,UUID item,String beforeOrder,String beforeItem){
         long approvalCases=db.queryForObject("SELECT COUNT(*) FROM procurement_order_approval_cases WHERE order_id=?",Long.class,order);

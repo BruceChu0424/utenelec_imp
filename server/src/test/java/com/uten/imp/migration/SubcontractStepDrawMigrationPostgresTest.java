@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -208,15 +210,24 @@ class SubcontractStepDrawMigrationPostgresTest {
         assertIdentity(s, "F");
         qty("5.5", scalar("SELECT fn_subcontract_returnable_qty(?)", orderItem), "F 可回厂套数 = 委外商处物料短板");
 
-        // G. 回厂 3 套: 逐种核销 f(3, b) = X1 6 / X2 0.3, 守恒通过且成本完整。
+        // G. 回厂 3 套：在草稿阶段冻结 X1 6 / X2 0.3 的两条真实核销来源。
         replica(() -> {
-            exec("INSERT INTO subcontract_receipts(id, bill_no, bill_date, status) VALUES (?, ?, current_date, 1)",
+            exec("INSERT INTO subcontract_receipts(id, bill_no, bill_date, status) VALUES (?, ?, current_date, 0)",
                     receiptId, "T-V798-R-" + f.tag());
             exec("""
                     INSERT INTO subcontract_receipt_items(id, bill_no, bill_date, receipt_id, order_item_id, goods_id,
                         goods_snapshot_source, qty, unit_rate, material_basis_qty, unit_id)
                     VALUES (?, 'T', current_date, ?, ?, ?, 'MASTER_AT_SAVE', 3, 1, 3, ?)
                     """, receiptItem, receiptId, orderItem, p, f.unit());
+        });
+        exec("""
+                INSERT INTO subcontract_receipt_material_consumptions(
+                    receipt_item_id, issue_item_id, qty_doc, qty_base, consumption_basis, created_by)
+                VALUES (?, ?, 6, 6, 'FROZEN_BASE_BOM_ACTUAL', ?),
+                       (?, ?, 0.3, 0.3, 'FROZEN_BASE_BOM_ACTUAL', ?)
+                """, receiptItem, item1, f.user(), receiptItem, item2, f.user());
+        replica(() -> {
+            exec("UPDATE subcontract_receipts SET status = 1 WHERE id = ?", receiptId);
             exec("UPDATE subcontract_material_issue_items SET consumed_qty = 6 WHERE id = ?", item1);
             exec("UPDATE subcontract_material_issue_items SET consumed_qty = 0.3 WHERE id = ?", item2);
         });
@@ -827,18 +838,15 @@ class SubcontractStepDrawMigrationPostgresTest {
 
     @Test
     void aLegacyImportedApprovedReceiptLinePassesTheReceiptGuardWithoutFrozenBasisButANewFlowLineDoesNot()
-            throws SQLException {
+            throws Exception {
         Fixture f = fixture("legacy");
         UUID p = goods(f, "P", "委外");
         UUID orderId = UUID.randomUUID(), orderItem = UUID.randomUUID();
-        UUID receiptId = UUID.randomUUID(), receiptItem = UUID.randomUUID(), runId = UUID.randomUUID();
         UUID newReceiptId = UUID.randomUUID(), newReceiptItem = UUID.randomUUID();
-        // 导入器自己的来源证明(fn_assert_legacy_receipt_import_source)不是这里要测的: 只为合成 INSERT 关掉这几个
-        // 触发器, 并按导入器给导入单头写的值写 consideration_required = FALSE。V798 回厂守卫(ENABLE ALWAYS, 延迟)始终开着。
-        exec("ALTER TABLE subcontract_receipts DISABLE TRIGGER trg_zz_legacy_receipt_source_facts");
-        exec("ALTER TABLE subcontract_receipts DISABLE TRIGGER trg_subcontract_receipt_consideration_required");
-        exec("ALTER TABLE subcontract_receipt_items DISABLE TRIGGER trg_zz_legacy_receipt_source_facts");
         replica(() -> {
+            exec("UPDATE goods SET legacy_id = 990005 WHERE id = ?", p);
+            exec("UPDATE units SET legacy_id = 990006 WHERE id = ?", f.unit());
+            exec("UPDATE warehouses SET legacy_id = 990007 WHERE id = ?", f.warehouse());
             exec("""
                     INSERT INTO subcontract_orders(id, bill_no, bill_date, status, legacy_id)
                     VALUES (?, ?, current_date, 0, 990001)
@@ -848,30 +856,26 @@ class SubcontractStepDrawMigrationPostgresTest {
                         qty, unit_rate, unit_id, line_no, legacy_id)
                     VALUES (?, ?, current_date, ?, ?, 'LEGACY_IMPORT', 10, 1, ?, 1, 990002)
                     """, orderItem, "T-RF-LEGACY-" + f.tag(), orderId, p, f.unit());
-            exec("""
-                    INSERT INTO subcontract_receipts(id, bill_no, bill_date, status, legacy_id, legacy_import_run_id,
-                        consideration_required)
-                    VALUES (?, ?, current_date, 1, 990003, ?, FALSE)
-                    """, receiptId, "T-RF-LEGACY-R-" + f.tag(), runId);
-            exec("""
-                    INSERT INTO subcontract_receipt_items(id, bill_no, bill_date, receipt_id, order_item_id, goods_id,
-                        goods_snapshot_source, qty, unit_rate, unit_id, returned_qty, legacy_id, legacy_import_run_id)
-                    VALUES (?, ?, current_date, ?, ?, ?, 'LEGACY_IMPORT', 5, 1, ?, 0, 990004, ?)
-                    """, receiptItem, "T-RF-LEGACY-R-" + f.tag(), receiptId, orderItem, p, f.unit(), runId);
-            // 导入器为每条导入的回厂行登记一条来源证明; 回厂表的 (run, id) 外键指向它。
-            exec("ALTER TABLE legacy_procurement_receipt_import_sources DISABLE TRIGGER trg_guard_legacy_receipt_import_evidence");
-            exec("""
-                    INSERT INTO legacy_procurement_receipt_import_sources(run_id, source_kind, source_legacy_id, target_table,
-                        target_id, source_file, source_row_sha256, source_file_sha256, target_fields,
-                        target_snapshot_sha256, issued_txid)
-                    SELECT ?, proof.kind, proof.legacy, proof.tbl, proof.target, 'rf_test.csv', repeat('a', 64),
-                           repeat('b', 64), ARRAY['qty'], repeat('c', 64), txid_current()
-                    FROM (VALUES ('SUBCONTRACT_HEADER', 990003, 'subcontract_receipts', CAST(? AS uuid)),
-                                 ('SUBCONTRACT_ITEM', 990004, 'subcontract_receipt_items', CAST(? AS uuid)))
-                         proof(kind, legacy, tbl, target)
-                    """, runId, receiptId, receiptItem);
-            exec("ALTER TABLE legacy_procurement_receipt_import_sources ENABLE ALWAYS TRIGGER trg_guard_legacy_receipt_import_evidence");
         });
+        // 通过首导夹具登记精确来源和目标映射，让真实的数量和回厂守卫验证导入。
+        var jdbc = new JdbcTemplate(new SingleConnectionDataSource(db, true));
+        UUID runId = LegacyReceiptConsiderationProvenancePostgresTest.context(jdbc);
+        var header = LegacyReceiptConsiderationProvenancePostgresTest.source(jdbc, "SUBCONTRACT_HEADER");
+        header.put("legacy_id", 990003);
+        header.put("bill_no", "T-RF-LEGACY-R-" + f.tag());
+        header.putNull("supplier_legacy_id");
+        header.put("warehouse_legacy_id", 990007);
+        var item = LegacyReceiptConsiderationProvenancePostgresTest.source(jdbc, "SUBCONTRACT_ITEM");
+        item.put("legacy_id", 990004);
+        item.put("bill_legacy_id", 990003);
+        item.put("order_item_legacy_id", 990002);
+        item.put("goods_legacy_id", 990005);
+        item.put("unit_legacy_id", 990006);
+        item.put("qty", 5);
+        item.put("check_qty", 5);
+        item.put("order_qty", 10);
+        UUID receiptId = LegacyReceiptConsiderationProvenancePostgresTest.importRow(jdbc, runId, "SUBCONTRACT_HEADER", header);
+        UUID receiptItem = LegacyReceiptConsiderationProvenancePostgresTest.importRow(jdbc, runId, "SUBCONTRACT_ITEM", item);
 
         // RF 1 导入提交: 立即触发排队的全部延迟守卫(migrate_finalize_checks.sql 也是 SET CONSTRAINTS ALL IMMEDIATE)。
         exec("SET CONSTRAINTS ALL IMMEDIATE");
@@ -881,10 +885,6 @@ class SubcontractStepDrawMigrationPostgresTest {
         Map<String, Object> basis = one("SELECT * FROM fn_subcontract_receipt_basis(?)", orderItem);
         qty("0", basis.get("basis_qty"), "RF 1 导入行不计入物料口径回厂");
         assertEquals(0, ((Number) basis.get("reversed_line_count")).intValue(), "RF 1 没有红冲行");
-
-        exec("ALTER TABLE subcontract_receipts ENABLE ALWAYS TRIGGER trg_zz_legacy_receipt_source_facts");
-        exec("ALTER TABLE subcontract_receipts ENABLE ALWAYS TRIGGER trg_subcontract_receipt_consideration_required");
-        exec("ALTER TABLE subcontract_receipt_items ENABLE ALWAYS TRIGGER trg_zz_legacy_receipt_source_facts");
 
         // RF 2 之后的委外退货在全部触发器生效(origin 角色)下改导入行的 returned_qty: 回厂守卫放行。
         exec("UPDATE subcontract_receipt_items SET returned_qty = 2 WHERE id = ?", receiptItem);

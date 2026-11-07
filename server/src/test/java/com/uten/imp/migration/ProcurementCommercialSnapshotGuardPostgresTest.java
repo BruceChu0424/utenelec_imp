@@ -147,8 +147,10 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 approval(connection, type, pendingOrder, "PENDING", 1);
                 assertEquals(1, count(connection, pendingOrder));
                 assert23514(() -> updateOrderTax(connection, type, pendingOrder));
-                assertPendingReferenceFrozen(() -> updateItemPrice(connection, type, pendingItem));
-                assertPendingReferenceFrozen(() -> orderItem(connection, type, pendingOrder));
+                assertReferencePriceFrozen(() -> updateItemPrice(connection, type, pendingItem),
+                        "frozen reference price operands are immutable without their actual source revision");
+                assertReferencePriceFrozen(() -> orderItem(connection, type, pendingOrder),
+                        "pending finance reference price proof is immutable");
                 assert23514(() -> deleteItem(connection, type, pendingItem));
 
                 UUID approvedOrder = order(connection, type, activeCurrency,
@@ -273,7 +275,8 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                     caseTx.commit();
                     SQLException blocked = update.get(5, TimeUnit.SECONDS);
                     assertEquals("55000", blocked.getSQLState());
-                    assertTrue(blocked.getMessage().contains("pending finance reference price proof is immutable"));
+                    assertTrue(blocked.getMessage().contains(
+                            "frozen reference price operands are immutable without their actual source revision"));
                 }
 
                 UUID updateFirstOrder;
@@ -668,17 +671,16 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         try {
             UUID receiptId = UUID.randomUUID();
             UUID receiptItemId = UUID.randomUUID();
-            String prefix = "PURCHASE".equals(type) ? "CJ" : "EJ";
+            boolean subcontract = "SUBCONTRACT".equals(type);
+            String prefix = subcontract ? "EJ" : "CJ";
             String billNo = "%s20260830%06d".formatted(
                     prefix, DOCUMENT_SEQUENCE.incrementAndGet());
-            String extra = "SUBCONTRACT".equals(type) ? ",ap_posted" : "";
-            String extraValue = "SUBCONTRACT".equals(type) ? ",TRUE" : "";
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO %s(
                         id,bill_no,bill_date,supplier_id,warehouse_id,currency_id,
-                        exchange_rate,tax_rate,settlement_method_id,total_original,total_local,status%s)
-                    VALUES(?,?,'2026-08-30',?,?,?,?,0,?,?,?,1%s)
-                    """.formatted(receiptTable(type), extra, extraValue))) {
+                        exchange_rate,tax_rate,settlement_method_id,total_original,total_local,status)
+                    VALUES(?,?,'2026-08-30',?,?,?,?,0,?,?,?,?)
+                    """.formatted(receiptTable(type)))) {
                 insert.setObject(1, receiptId);
                 insert.setString(2, billNo);
                 insert.setObject(3, supplier);
@@ -688,6 +690,7 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 insert.setObject(7, activeSettlement);
                 insert.setBigDecimal(8, qty);
                 insert.setBigDecimal(9, qty);
+                insert.setInt(10, subcontract ? 0 : 1);
                 insert.executeUpdate();
             }
             // ADR-143 §三.7: 委外回厂行冻结物料口径 R(= 回厂量), 并按冻结单耗核销已发外的直属物料 f(R) = R x 1。
@@ -716,16 +719,18 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 insert.setObject(9, orderItemId);
                 insert.executeUpdate();
             }
-            if ("SUBCONTRACT".equals(type)) {
+            if (subcontract) {
                 exec(connection, """
                         INSERT INTO subcontract_receipt_material_consumptions(
                             receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
-                        SELECT '%1$s',issue_item.id,%2$s,%2$s,'FROZEN_BOM_ESTIMATE','%3$s'
+                        SELECT '%1$s',issue_item.id,%2$s,%2$s,'FROZEN_BASE_BOM_ACTUAL','%3$s'
                         FROM subcontract_material_issue_items issue_item
                         WHERE issue_item.order_item_id='%4$s' AND NOT issue_item.is_deleted
                         """.formatted(receiptItemId, qty.toPlainString(), actorUser, orderItemId));
                 exec(connection, "UPDATE subcontract_material_issue_items SET consumed_qty=consumed_qty+"
                         + qty.toPlainString() + " WHERE order_item_id='" + orderItemId + "' AND NOT is_deleted");
+                exec(connection, "UPDATE subcontract_receipts SET status=1,ap_posted=TRUE WHERE id='"
+                        + receiptId + "'");
             }
             ProcurementReceiptFixtureSupport.postOriginalReceiptPayable(connection,type,receiptId,actorUser);
             ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,type,receiptId,actorUser);
@@ -1073,11 +1078,11 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         assertEquals("23514", failure.getSQLState());
     }
 
-    /** V1062 freezes pending price operands before the older commercial guard. */
-    private static void assertPendingReferenceFrozen(SqlAction action) {
+    /** The current guard distinguishes changing frozen operands from adding a pending line. */
+    private static void assertReferencePriceFrozen(SqlAction action, String expectedMessage) {
         SQLException failure=assertThrows(SQLException.class,action::run);
         assertEquals("55000",failure.getSQLState());
-        assertTrue(failure.getMessage().contains("pending finance reference price proof is immutable"));
+        assertTrue(failure.getMessage().contains(expectedMessage), failure.getMessage());
     }
 
     private static UUID order(

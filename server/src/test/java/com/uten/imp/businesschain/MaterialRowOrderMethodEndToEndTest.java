@@ -175,12 +175,12 @@ class MaterialRowOrderMethodEndToEndTest {
         var input=new GroupInput("independent-covered-child",List.of(child.materialLineId()),"MAKE",new BigDecimal("880"),true,
             c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO,Map.of(child.materialLineId(),new BigDecimal("880")),
             null,"COVERAGE_TOTAL","ORDER_ALL");
-        var request=aggregateFixture.command(c,List.of(input));
         AuthUser original=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         var grants=new HashSet<>(original.getPermissions());grants.remove("production_material_analysis:over_supply");
         AuthUser limited=new AuthUser(original.getId(),original.getEmployeeId(),original.getUsername(),grants,false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(limited,null,limited.getAuthorities()));
-        var denied=assertThrows(ApiException.class,()->aggregateOrders.submit(c.analysis(),request));
+        var deniedRequest=aggregateFixture.command(c,List.of(input));
+        var denied=assertThrows(ApiException.class,()->aggregateOrders.submit(c.analysis(),deniedRequest));
         // Aggregate admission already reports a blocked preview as CONFLICT;
         // prove this is the exact permission gate, not an invalid source/route.
         assertEquals(ErrorCode.CONFLICT,denied.getCode());
@@ -188,6 +188,7 @@ class MaterialRowOrderMethodEndToEndTest {
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",Integer.class,c.analysis()));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=?",Integer.class,c.analysis()));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(original,null,original.getAuthorities()));
+        var request=aggregateFixture.command(c,List.of(input));
         var result=aggregateOrders.submit(c.analysis(),request);
         assertEquals(1,result.batches().size());var batch=result.batches().getFirst();
         amount("880",batch.qty());amount("880",batch.publicExtraQty());

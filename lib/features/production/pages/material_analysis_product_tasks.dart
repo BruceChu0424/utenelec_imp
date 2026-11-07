@@ -1777,7 +1777,7 @@ abstract class _MaterialAnalysisProductTasksState
     }
     final material = group.representative;
     if (_independentMaterialPreparation(group)) {
-      return _StatusView('可独立下单', facetKey: 'pendingIssue');
+      return const _StatusView('可独立下单', facetKey: 'pendingIssue');
     }
     if (material.hasPriorityMakeSupplement) {
       return _StatusView(

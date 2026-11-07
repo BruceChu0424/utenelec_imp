@@ -77,7 +77,7 @@ class ExistingHostInstallerLauncherTests(unittest.TestCase):
     def test_embeds_frozen_installer_digest_and_fixed_bundle_path(self) -> None:
         self.assertEqual(
             launcher.REVIEWED_INSTALLER_SHA256,
-            "3a18bcac6a66e17ea3e1e3055e4087d8a01f3bb152a1c4c2a327dd2113274fb6",
+            "f55552e1fd199a468db3fb163e2e2a0f3ed623da0b5a806899a927eea0c2ddda",
         )
         self.assertEqual(
             hashlib.sha256((HERE / "existing_host_installer.py").read_bytes()).hexdigest(),

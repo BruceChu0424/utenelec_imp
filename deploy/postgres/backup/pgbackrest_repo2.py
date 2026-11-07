@@ -31,7 +31,7 @@ PLACEHOLDER_MARKERS = ("REPLACE", "CHANGEME", "EXAMPLE", "__")
 MINIMUM_RESTORE_POINTS = 3
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 FLYWAY_VERSION_AUTHORITY_SHA256 = (
-    "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
+    "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
 )
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
 SAFE_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")

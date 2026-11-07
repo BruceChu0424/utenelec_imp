@@ -75,7 +75,7 @@ STORAGE_AUTHORITY = Path("/etc/uten-imp/storage-authority.json")
 BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 UPDATER_GROUP = "uten-imp-updater"
 RELEASE_GUARD_SHA256 = (
-    "298a0b53340503192216b6ad1ae51e9e0551ea7f64e54b84d347ed0a4195d256"
+    "0e4f30803aac8234cb8df52337eec7f4a04e55ed4bc7c11044fa79abdbba7144"
 )
 DATABASE_VERIFIER_SHA256 = (
     "3aed5823241988ac2271c1378b6c1a8ca1223e37b8d14a8b0e50a5be746429dc"

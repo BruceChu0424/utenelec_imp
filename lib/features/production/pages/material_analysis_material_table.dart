@@ -3096,8 +3096,9 @@ abstract class _MaterialAnalysisMaterialTableState
         ? null
         : _analysisIndexes(analysis).productsById[material.analysisLineId];
     if (product == null ||
-        product.rootMaterialLineId != material.materialLineId)
+        product.rootMaterialLineId != material.materialLineId) {
       return null;
+    }
     final requested = materialPresentationFact(
       product.quantityFactsExact,
       'requestedQty',
@@ -4114,12 +4115,13 @@ abstract class _MaterialAnalysisMaterialTableState
     bool authoritative = false,
     bool allowLocalEstimate = true,
   }) {
-    if (!_tableGroupIssued(group))
+    if (!_tableGroupIssued(group)) {
       return _tableGroupRequiredQtyText(
         group,
         authoritative: authoritative,
         allowLocalEstimate: allowLocalEstimate,
       );
+    }
     try {
       final quantity = _tableGroupResidualText(
         group,
@@ -6722,20 +6724,6 @@ abstract class _MaterialAnalysisMaterialTableState
     return double.tryParse(_tableSubmitQtyTextOf(group)) ?? double.nan;
   }
 
-  /// 用未被本轮输入预扣的公共余额判断，不能拿编辑后变成 0 的余额反过来
-  /// 隐藏选择。新服务端的共享池同时覆盖现货、待办理、自制和外部在途。
-  double _tableSharedAvailableBeforeEditing(_MaterialGroup group) {
-    final material = group.representative;
-    final shared =
-        material.preparationSharedAvailableQty ??
-        material.preparationAvailableQty ??
-        (material.mainWarehousePublicAvailableQty +
-            material.sharedFutureClaimableQty);
-    // 已绑定本需求的现货不是可再次认领的公共余额，但它也应触发说明，
-    // 避免填额外数量时误以为可以通过 skipAutoClaim 解除原现货绑定。
-    return shared + material.allocatedAvailableQty;
-  }
-
   bool _tableCanOrderCoveredPublicSupply(_MaterialGroup group) {
     final material = group.representative;
     if (material.isRootSupply ||
@@ -6755,8 +6743,9 @@ abstract class _MaterialAnalysisMaterialTableState
     _MaterialTableRow row,
   ) {
     if (row.contextOnly) return const [];
-    if (row.aggregate case final aggregate?)
+    if (row.aggregate case final aggregate?) {
       return _aggregateTable.groupsOf(aggregate);
+    }
     return <_MaterialGroup>[?_tableEditableGroup(row)];
   }
 
@@ -6839,8 +6828,9 @@ abstract class _MaterialAnalysisMaterialTableState
     if (!mounted ||
         _busy ||
         _preparationSubmissionActive ||
-        _aggregateTable.uncertain)
+        _aggregateTable.uncertain) {
       return;
+    }
     setState(() {
       for (final group in groups) {
         _preparationOrderMethodByGroup[group.key] = method;
@@ -6984,8 +6974,9 @@ abstract class _MaterialAnalysisMaterialTableState
       }
       if (!mounted ||
           !_sameAnalysisSnapshot(analysis, sessionScope) ||
-          !_preparationSubmissionStillCurrent)
+          !_preparationSubmissionStillCurrent) {
         return false;
+      }
     }
     if (_tableCascadePreviewFailure != null &&
         _selectedTableTypedOutputs().isNotEmpty) {

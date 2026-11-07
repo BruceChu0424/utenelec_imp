@@ -84,23 +84,6 @@ abstract class _MaterialAnalysisSupplyActionsState
     );
   }
 
-  /// Apply the goods policy to this batch, never substitute the whole analysis.
-  double _submitQtyWithOrderPolicy(
-    _MaterialGroup group,
-    MaterialSupplyRoute route,
-    double quantity,
-  ) {
-    if (route != MaterialSupplyRoute.buy || quantity <= 0) return quantity;
-    // 抬出来的富余是公共备货，没有超量下达权限的人填了也提交不了。
-    // 这种情况下只填净需求，由「起订量提示」告诉他要找有权限的人。
-    if (!_canOverSupply) return quantity;
-    return _raiseToOrderPolicy(
-      quantity,
-      group.representative.minOrderQty,
-      group.representative.orderMultipleQty,
-    );
-  }
-
   /// 下达数量格的提示：起订量抬量（默认值被抬高时告诉计划员抬到了多少、富余
   /// 多少；没有超量下达权限时提示「低于起订量」，不静默降级）+ 公共在途自动
   /// 认领（ADR-099：下达时服务端先认领同主仓公共在途，只为余下部分新下单）。

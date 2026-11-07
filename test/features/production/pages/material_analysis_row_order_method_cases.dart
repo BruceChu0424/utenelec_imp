@@ -197,7 +197,7 @@ void materialRowOrderMethodCases() {
           find.byKey(const Key('row-order-method-capture')),
         );
         await tester.runAsync(() async {
-          final image = await boundary.toImage(pixelRatio: 1);
+          final image = await boundary.toImage();
           try {
             final png = await image.toByteData(format: ui.ImageByteFormat.png);
             final output = Directory(

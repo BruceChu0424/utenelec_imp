@@ -384,6 +384,7 @@ void main() {
     expect(input['materialLineIds'], ['m-b']);
     expect(input['qty'], '5');
     expect(input['orderMethod'], 'ORDER_ALL');
+    expect(input['receiptAllocationMode'], 'PRIORITIZE_PARENT');
     expect(input.containsKey('quantityMode'), isFalse, reason: '追加保持本次增量');
   });
 
@@ -809,6 +810,7 @@ Map<String, dynamic> _aggregatePreview(
     for (final group in (body['groups'] as List).cast<Map<String, dynamic>>())
       {
         'clientGroupKey': group['clientGroupKey'],
+        'receiptAllocationMode': group['receiptAllocationMode'],
         'route': group['route'],
         'goodsId': group['clientGroupKey'],
         'requestedQty': double.parse(group['qty'].toString()),

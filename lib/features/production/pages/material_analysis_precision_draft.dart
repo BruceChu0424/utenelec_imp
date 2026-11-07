@@ -309,6 +309,7 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
           'userEntered': draft.userEntered,
           'productFlow': draft.productFlow,
           'appendFlow': draft.appendFlow,
+          'receiptAllocationMode': ?draft.receiptAllocationMode?.wireName,
           'sourceRequested': draft.sourceRequestedQtyByMaterialLineId,
           'mixedWorkshop': draft.mixedWorkshop,
           'mixedWorker': draft.mixedWorker,
@@ -418,6 +419,12 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
         );
         await work.checkpoint();
       }
+      final receiptMode = MaterialReceiptAllocationMode.fromWire(
+        group['receiptAllocationMode'],
+      );
+      if (group['receiptAllocationMode'] != null && receiptMode == null) {
+        throw const FormatException('原备料草稿的到货归属无法核对，请保留原草稿');
+      }
       final draft =
           _MaterialAggregateDraft(
               group['key'] as String,
@@ -428,6 +435,7 @@ extension _MaterialPrecisionDraftOwner on _MaterialAggregateTableController {
             ..userEntered = group['userEntered'] == true
             ..productFlow = group['productFlow'] == true
             ..appendFlow = group['appendFlow'] == true
+            ..receiptAllocationMode = receiptMode
             ..sourceRequestedQtyByMaterialLineId =
                 group['sourceRequested'] is Map
                 ? Map<String, String>.from(group['sourceRequested'] as Map)

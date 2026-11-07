@@ -54,6 +54,7 @@ public class PreplanInboundAllocationProjectionService
                 .map(SourceAnchor::orderItemId).filter(Objects::nonNull)
                 .collect(LinkedHashSet::new, Set::add, Set::addAll);
         Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds, true);
+        Map<UUID, BigDecimal> receiptHeadroom = receiptHeadroom(preplan);
         Map<UUID, List<FormalCandidate>> formal = formalCandidates(
                 receiptType, orderItemIds);
 
@@ -103,8 +104,7 @@ public class PreplanInboundAllocationProjectionService
                     SourceBudgetKey budgetKey = new SourceBudgetKey(
                             anchor.orderItemId(), anchor.externalItemId(), shared);
                     BigDecimal budget = sourceBudgets.getOrDefault(budgetKey, BigDecimal.ZERO);
-                    BigDecimal take = remaining.min(headroom).min(budget)
-                            .max(BigDecimal.ZERO);
+                    BigDecimal take = usePriorityHeadroom(receiptHeadroom, candidate, remaining.min(headroom).min(budget).max(BigDecimal.ZERO));
                     if (take.signum() <= 0) continue;
                     views.add(candidate.toView(
                             slice.passEventId(), take,
@@ -186,6 +186,7 @@ public class PreplanInboundAllocationProjectionService
                 .map(OrderItemQuantity::orderItemId)
                 .collect(LinkedHashSet::new, Set::add, Set::addAll);
         Map<UUID, List<PreplanCandidate>> preplan = preplanCandidates(externalItemIds, false);
+        Map<UUID, BigDecimal> receiptHeadroom = receiptHeadroom(preplan);
         Map<UUID, List<FormalCandidate>> formal = formalCandidates(
                 orderType, orderItemIds);
         Map<UUID, BigDecimal> preplanHeadroom = new HashMap<>();
@@ -215,8 +216,7 @@ public class PreplanInboundAllocationProjectionService
                     boolean shared = "SHARED_FUTURE_CLAIM".equals(
                             candidate.operationType());
                     BigDecimal budget = shared ? sharedBudget : exactBudget;
-                    BigDecimal take = remaining.min(headroom).min(budget)
-                            .max(BigDecimal.ZERO);
+                    BigDecimal take = usePriorityHeadroom(receiptHeadroom, candidate, remaining.min(headroom).min(budget).max(BigDecimal.ZERO));
                     if (take.signum() <= 0) continue;
                     if (candidate.targetWarehouseName() != null) {
                         intendedWarehouses.add(candidate.targetWarehouseName());
@@ -487,6 +487,25 @@ public class PreplanInboundAllocationProjectionService
                 .toList();
     }
 
+    private static Map<UUID, BigDecimal> receiptHeadroom(Map<UUID, List<PreplanCandidate>> candidates) {
+        Map<UUID, BigDecimal> headroom = new HashMap<>();
+        for (List<PreplanCandidate> values : candidates.values()) {
+            for (PreplanCandidate candidate : values) {
+                if (candidate.priorityHeadroom() != null) {
+                    headroom.put(candidate.analysisMaterialId(), candidate.priorityHeadroom());
+                }
+            }
+        }
+        return headroom;
+    }
+
+    private static BigDecimal usePriorityHeadroom(Map<UUID, BigDecimal> remaining, PreplanCandidate candidate, BigDecimal proposed) {
+        if (!"SUPPLY".equals(candidate.operationType())) return proposed;
+        BigDecimal take = PreplanReceiptPriorityService.withinHeadroom(remaining, candidate.analysisMaterialId(), proposed);
+        PreplanReceiptPriorityService.useHeadroom(remaining, candidate.analysisMaterialId(), take);
+        return take;
+    }
+
     private Map<UUID, List<PreplanCandidate>> preplanCandidates(
             Set<UUID> externalItemIds, boolean includeIqcContinuations) {
         if (externalItemIds.isEmpty()) return Map.of();
@@ -503,7 +522,10 @@ public class PreplanInboundAllocationProjectionService
                        COALESCE(NULLIF(BTRIM(owner.source_ref),''),'生产物料分析'),
                        work.plan_id,work.plan_no,work.segment_id,work.segment_code,
                        work.workshop_id,work.workshop_name,
-                       work.responsible_id,work.responsible_name,action.status='CANCELLED'
+                        work.responsible_id,work.responsible_name,action.status='CANCELLED',
+                        CASE WHEN action.operation_type='SUPPLY'
+                             THEN fn_preplan_receipt_priority_order_headroom(material.id)
+                        END AS priority_headroom
                 FROM preplan_supply_action_allocations allocation
                 JOIN preplan_supply_actions action ON action.id=allocation.action_id
                  AND (action.status <> 'CANCELLED' OR :includeIqcContinuations=TRUE
@@ -979,7 +1001,8 @@ public class PreplanInboundAllocationProjectionService
             String productCode, String productName, String sourceLabel,
             UUID planId, String planNo, UUID segmentId, String segmentCode,
             UUID workshopId, String workshopName,
-            UUID responsibleId, String responsibleName, boolean replacementOnly) {
+             UUID responsibleId, String responsibleName, boolean replacementOnly,
+             BigDecimal priorityHeadroom) {
         static PreplanCandidate from(Object[] row) {
             return new PreplanCandidate(
                     uuid(row[0]),uuid(row[1]),uuid(row[2]),string(row[3]),
@@ -987,7 +1010,7 @@ public class PreplanInboundAllocationProjectionService
                     uuid(row[9]),uuid(row[10]),decimal(row[11]),string(row[12]),
                     string(row[13]),string(row[14]),uuid(row[15]),string(row[16]),
                     uuid(row[17]),string(row[18]),uuid(row[19]),string(row[20]),
-                    uuid(row[21]),string(row[22]),Boolean.TRUE.equals(row[23]));
+                     uuid(row[21]),string(row[22]),Boolean.TRUE.equals(row[23]),row[24]==null?null:decimal(row[24]));
         }
 
         AllocationView toView(

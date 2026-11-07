@@ -800,6 +800,7 @@ Future<_Harness> _pump(
                   in (body['groups'] as List).cast<Map<String, dynamic>>())
                 {
                   'clientGroupKey': group['clientGroupKey'],
+                  'receiptAllocationMode': group['receiptAllocationMode'],
                   'route': group['route'],
                   'goodsId':
                       ((harness.data['flatMaterials'] as List)

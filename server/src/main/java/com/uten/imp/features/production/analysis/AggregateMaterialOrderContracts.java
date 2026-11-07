@@ -45,11 +45,22 @@ public final class AggregateMaterialOrderContracts {
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
             @Pattern(regexp="COVERAGE_TOTAL") String quantityMode,
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-            @Pattern(regexp="ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod) {
+            @Pattern(regexp="ORDER_ALL|AVAILABLE_ONLY|AVAILABLE_THEN_ORDER") String orderMethod,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            @Pattern(regexp="PRIORITIZE_PARENT|PUBLIC_ONLY") String receiptAllocationMode) {
         public GroupInput {
             materialLineIds=materialLineIds==null?List.of():List.copyOf(materialLineIds);
             safetyQty=safetyQty==null?BigDecimal.ZERO:safetyQty;
             sourceRequestedQtyByMaterialLineId=sourceRequestedQtyByMaterialLineId==null?Map.of():java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(sourceRequestedQtyByMaterialLineId));
+        }
+
+        public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
+                boolean allowPublicExtra,UUID departmentId,UUID workerId,UUID teamDepartmentId,
+                LocalDate billDate,LocalDate deliveryDate,String productNo,BigDecimal allowedOverproductionRate,BigDecimal safetyQty,
+                Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId,Boolean skipAutoClaim,String quantityMode,String orderMethod) {
+            this(clientGroupKey,materialLineIds,route,qty,allowPublicExtra,departmentId,workerId,teamDepartmentId,
+                    billDate,deliveryDate,productNo,allowedOverproductionRate,safetyQty,sourceRequestedQtyByMaterialLineId,
+                    skipAutoClaim,quantityMode,orderMethod,null);
         }
 
         public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
@@ -60,7 +71,13 @@ public final class AggregateMaterialOrderContracts {
                     billDate,deliveryDate,productNo,allowedOverproductionRate,safetyQty,sourceRequestedQtyByMaterialLineId,null,null,null);
         }
 
-        public boolean skipClaims(boolean fallback) { return MaterialOrderQuantity.skipClaims(orderMethod,skipAutoClaim==null?fallback:Boolean.TRUE.equals(skipAutoClaim)); }
+        public boolean skipClaims(boolean fallback) {
+            return publicOnly() || MaterialOrderQuantity.skipClaims(orderMethod,skipAutoClaim==null?fallback:Boolean.TRUE.equals(skipAutoClaim));
+        }
+
+        public boolean prioritizeParent() { return "PRIORITIZE_PARENT".equals(receiptAllocationMode); }
+
+        public boolean publicOnly() { return "PUBLIC_ONLY".equals(receiptAllocationMode); }
 
         public GroupInput(String clientGroupKey,List<UUID> materialLineIds,String route,BigDecimal qty,
                 boolean allowPublicExtra,UUID departmentId,UUID workerId,UUID teamDepartmentId,
@@ -109,14 +126,24 @@ public final class AggregateMaterialOrderContracts {
 
     public record SourcePreview(UUID materialLineId, UUID analysisLineId, String sourceLabel,
                                 int allocationPriority, LocalDate needDate, BigDecimal sourceRequiredQty,
-                                BigDecimal remainingQty, BigDecimal allocatedQty, BigDecimal orderedQty,List<UUID> originalMaterialLineIds) {
-        public SourcePreview { originalMaterialLineIds=originalMaterialLineIds==null?List.of(materialLineId):List.copyOf(originalMaterialLineIds); }
+                                BigDecimal remainingQty, BigDecimal allocatedQty, BigDecimal orderedQty,List<UUID> originalMaterialLineIds,
+                                BigDecimal priorityQty) {
+        public SourcePreview {
+            originalMaterialLineIds=originalMaterialLineIds==null?List.of(materialLineId):List.copyOf(originalMaterialLineIds);
+            priorityQty=priorityQty==null?BigDecimal.ZERO:priorityQty;
+        }
+        public SourcePreview(UUID materialLineId,UUID analysisLineId,String sourceLabel,int allocationPriority,LocalDate needDate,
+                BigDecimal sourceRequiredQty,BigDecimal remainingQty,BigDecimal allocatedQty,BigDecimal orderedQty,List<UUID> originalMaterialLineIds) {
+            this(materialLineId,analysisLineId,sourceLabel,allocationPriority,needDate,sourceRequiredQty,remainingQty,allocatedQty,orderedQty,originalMaterialLineIds,null);
+        }
         public SourcePreview(UUID materialLineId,UUID analysisLineId,String sourceLabel,int allocationPriority,LocalDate needDate,
                 BigDecimal sourceRequiredQty,BigDecimal remainingQty,BigDecimal allocatedQty,BigDecimal orderedQty) {
             this(materialLineId,analysisLineId,sourceLabel,allocationPriority,needDate,sourceRequiredQty,remainingQty,allocatedQty,orderedQty,null);
         }
         @com.fasterxml.jackson.annotation.JsonProperty(value="allocatedQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public String allocatedQtyExact() { return allocatedQty.toPlainString(); }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="priorityQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String priorityQtyExact() { return priorityQty.toPlainString(); }
     }
 
     /** One physical shared batch's direct frozen BOM inputs, never a sum of separately rounded source batches. */
@@ -135,10 +162,21 @@ public final class AggregateMaterialOrderContracts {
                                LocalDate billDate, LocalDate deliveryDate, String productNo,
                                BigDecimal allowedOverproductionRate,
                                List<SourcePreview> sources, List<ChildPreview> sharedBomChildren,
-                               String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty) {
+                               String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty,
+                               @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                               String receiptAllocationMode) {
         public GroupPreview { sources=List.copyOf(sources);sharedBomChildren=List.copyOf(sharedBomChildren);priorOutputQty=priorOutputQty==null?BigDecimal.ZERO:priorOutputQty; }
         @com.fasterxml.jackson.annotation.JsonProperty(value="publicExtraQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public String publicExtraQtyExact() { return publicExtraQty.toPlainString(); }
+        public GroupPreview(String clientGroupKey,String compatibilityKey,String route,UUID goodsId,String goodsCode,String goodsName,
+                UUID colorId,String colorName,UUID unitId,String unitName,BigDecimal sourceRequiredQty,BigDecimal orderedQty,BigDecimal remainingQty,
+                BigDecimal requestedQty,BigDecimal publicExtraQty,BigDecimal safetyQty,UUID departmentId,UUID workerId,UUID teamDepartmentId,
+                LocalDate billDate,LocalDate deliveryDate,String productNo,BigDecimal allowedOverproductionRate,
+                List<SourcePreview> sources,List<ChildPreview> sharedBomChildren,String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty) {
+            this(clientGroupKey,compatibilityKey,route,goodsId,goodsCode,goodsName,colorId,colorName,unitId,unitName,sourceRequiredQty,orderedQty,
+                    remainingQty,requestedQty,publicExtraQty,safetyQty,departmentId,workerId,teamDepartmentId,billDate,deliveryDate,productNo,
+                    allowedOverproductionRate,sources,sharedBomChildren,blockedReason,existingBatchId,priorOutputQty,null);
+        }
         public GroupPreview(String clientGroupKey,String compatibilityKey,String route,UUID goodsId,String goodsCode,String goodsName,
                 UUID colorId,String colorName,UUID unitId,String unitName,BigDecimal sourceRequiredQty,BigDecimal orderedQty,BigDecimal remainingQty,
                 BigDecimal requestedQty,BigDecimal publicExtraQty,BigDecimal safetyQty,UUID departmentId,UUID workerId,UUID teamDepartmentId,

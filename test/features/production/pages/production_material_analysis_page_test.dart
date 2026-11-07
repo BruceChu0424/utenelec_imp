@@ -10353,6 +10353,7 @@ Map<String, dynamic> _aggregateFixturePreview(
             .firstWhere((row) => row['materialLineId'] == ids.first);
         return <String, dynamic>{
           'clientGroupKey': group['clientGroupKey'],
+          'receiptAllocationMode': group['receiptAllocationMode'],
           'route': group['route'],
           'goodsId': material['goodsId'],
           'requestedQty': double.parse(group['qty'].toString()),

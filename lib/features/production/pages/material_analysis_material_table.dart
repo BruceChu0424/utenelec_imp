@@ -2549,9 +2549,8 @@ abstract class _MaterialAnalysisMaterialTableState
       measureWidthScope: 'material-preparation-append-quantity',
       type: 'number',
       info:
-          '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
-          '追加只能增不能减：原申请还没被采购 / 委外做成订货单时直接改大那张申请，'
-          '已经做成订货单的另立新单。要改小只能撤回重下。'
+          '已下达的行可再填写本次追加量。默认填还需安排的量，填 0 时本次不追加。'
+          '采购或委外组件追加新供给时，在下单确认中选择合格入库后优先补本父层或仅作公共备货。'
           '追加成功后它会并进左边的「下单数量」，这一格回到 0。',
       value: (row) => _materialTableAppendQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: true),
@@ -5750,9 +5749,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 权限)。不在这里先拦住的话，被它静默剔掉的行照样会被记成「已完成」：
       // 勾选被撤、追加清零、结果弹「✓ 下达采购(5 行)」，实际只下了 4 行。
       // 2026-09-22 对抗复查抓出来的真缺陷。
-      return _canOverSupply
-          ? '这一行当前没有可下达的量，请刷新后核对'
-          : '这一行已按需求下满，再下属于公共备货，需要超量下达权限';
+      return _canOverSupply ? '这一行当前没有可下达的量，请刷新后核对' : '这一行的需求已安排，继续追加需要超量下达权限';
     }
     return null;
   }
@@ -7223,11 +7220,12 @@ abstract class _MaterialAnalysisMaterialTableState
     final split = _splitMergeableSupplyGroups(
       pending.keys.toList(growable: false),
     );
-    if (!await _confirmMaterialTableSubmit(
+    final confirmation = await _confirmMaterialTableSubmit(
       pending,
       blocked,
       hiddenSelected: fromShortagePage ? 0 : _selectedIssuableGroups().hidden,
-    )) {
+    );
+    if (!confirmation.accepted) {
       return false;
     }
     if (!mounted ||
@@ -7382,7 +7380,11 @@ abstract class _MaterialAnalysisMaterialTableState
       final sameSources = currentGroups.length == split.merged.length;
       final aggregateOk =
           sameSources &&
-          await _aggregateTable.submit(currentGroups, confirmed: true);
+          await _aggregateTable.submit(
+            currentGroups,
+            confirmed: true,
+            receiptAllocationMode: confirmation.mode,
+          );
       steps.add((
         label:
             '同料合并下达(${split.merged.length} 行 → '
@@ -7598,7 +7600,8 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 下单确认弹窗（2026-10-06 用户口径）：不逐行罗列——明细和数量在表格里
   /// 核对，弹窗只做最后一道闸：有问题的行红色点名（本次下不成/与所见不一致
   /// 的事实），没问题就只给「几种 + 共多少」的汇总。
-  Future<bool> _confirmMaterialTableSubmit(
+  Future<({bool accepted, MaterialReceiptAllocationMode? mode})>
+  _confirmMaterialTableSubmit(
     Map<_MaterialGroup, double> pending,
     List<String> blocked, {
     required int hiddenSelected,
@@ -7673,11 +7676,10 @@ abstract class _MaterialAnalysisMaterialTableState
       if (hiddenSelected > 0) '$hiddenSelected 行勾选已不在当前产品/来源范围，本次不提交',
     ];
     final theme = Theme.of(context);
-    final confirmed = await UtenDialog.show(
-      context,
+    return _confirmPreparationOrder(
       title: '确认下单 $kinds 种？',
       // Text.rich 而非拼 Column：ADR-150 弹窗正文保持纯文本可被 AI 助手读到。
-      content: Text.rich(
+      summary: Text.rich(
         key: const Key('material-submit-confirm-body'),
         TextSpan(
           children: [
@@ -7717,9 +7719,105 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
         style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
       ),
+      groups: pending.entries
+          .where((entry) => entry.value > 0)
+          .map((entry) => entry.key),
+    );
+  }
+
+  bool _isExternalComponentAppend(_MaterialGroup group) {
+    final material = group.representative;
+    final route = _draftRoute(group);
+    return material.level > 0 &&
+        !material.isRootSupply &&
+        (route == MaterialSupplyRoute.buy ||
+            route == MaterialSupplyRoute.subcontract) &&
+        _tableGroupDisplayedIssuedQty(group) > 0;
+  }
+
+  bool _canChooseAppendReceiptAllocation(_MaterialGroup group) =>
+      _isExternalComponentAppend(group) &&
+      _preparationOrderMethod(group) !=
+          MaterialPreparationOrderMethod.availableOnly;
+
+  Future<({bool accepted, MaterialReceiptAllocationMode? mode})>
+  _confirmPreparationOrder({
+    required String title,
+    required Text summary,
+    required Iterable<_MaterialGroup> groups,
+  }) async {
+    final affected = groups.where(_canChooseAppendReceiptAllocation).toList();
+    if (affected.isEmpty || _aggregateTable.uncertain) {
+      final accepted = await UtenDialog.show(
+        context,
+        title: title,
+        content: summary,
+        confirmLabel: '确认下单',
+      );
+      return (accepted: accepted == true, mode: null);
+    }
+    final existing = {
+      for (final group in affected)
+        _aggregateTable
+                .drafts[_aggregateKeyOf(group.representative)]
+                ?.receiptAllocationMode ??
+            MaterialReceiptAllocationMode.prioritizeParent,
+    };
+    MaterialReceiptAllocationMode? mode = existing.length == 1
+        ? existing.single
+        : null;
+    final canPublicStock = _canOverSupply;
+    final accepted = await UtenDialog.show(
+      context,
+      title: title,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          summary,
+          const SizedBox(height: 12),
+          StatefulBuilder(
+            builder: (context, setDialogState) => UtenDropdownField(
+              key: const Key('material-append-receipt-allocation'),
+              label: '追加到货归属',
+              info:
+                  '适用于本次追加的采购或委外组件。优先补本父层时，合格入库先补该来源的实际缺口，达到需求后余量进公共库存。仅公共备货时，本次订货全部供公共库存使用。',
+              value: mode?.wireName,
+              hintText: '沿用各物料的原选择',
+              allowClear: false,
+              items: [
+                for (final option in MaterialReceiptAllocationMode.values)
+                  UtenDropdownItem(
+                    value: option.wireName,
+                    label: option.label,
+                    enabled:
+                        option != MaterialReceiptAllocationMode.publicOnly ||
+                        canPublicStock,
+                    tooltip:
+                        option == MaterialReceiptAllocationMode.publicOnly &&
+                            !canPublicStock
+                        ? '需要超量下达权限'
+                        : null,
+                  ),
+              ],
+              onChanged: (value) => setDialogState(() {
+                mode = MaterialReceiptAllocationMode.fromWire(value);
+              }),
+            ),
+          ),
+        ],
+      ),
       confirmLabel: '确认下单',
     );
-    return confirmed == true;
+    if (accepted == true &&
+        !_canOverSupply &&
+        (mode == MaterialReceiptAllocationMode.publicOnly ||
+            (mode == null &&
+                existing.contains(MaterialReceiptAllocationMode.publicOnly)))) {
+      if (mounted) context.appWarning('仅公共备货需要超量下达权限，请核对追加到货归属');
+      return (accepted: false, mode: mode);
+    }
+    return (accepted: accepted == true, mode: mode);
   }
 
   void _reportMaterialTableSubmit(
@@ -8352,11 +8450,16 @@ abstract class _MaterialAnalysisMaterialTableState
         ),
       ];
     }
+    final append = _isExternalComponentAppend(group);
     final executable =
-        route != null && _canNotify && _isExecutableSupplyGroup(group, route);
+        route != null &&
+        _canNotify &&
+        (append
+            ? _preparationCanAppend(group)
+            : _isExecutableSupplyGroup(group, route));
     final actionLabel = switch (route) {
-      MaterialSupplyRoute.buy => '提交采购需求',
-      MaterialSupplyRoute.subcontract => '下达委外',
+      MaterialSupplyRoute.buy => append ? '追加采购' : '提交采购需求',
+      MaterialSupplyRoute.subcontract => append ? '追加委外' : '下达委外',
       MaterialSupplyRoute.make => '执行当前任务',
       null => '执行当前任务',
     };
@@ -8382,6 +8485,10 @@ abstract class _MaterialAnalysisMaterialTableState
         enabled: !_busy && executable,
         onTap: () async {
           if (!executable) return;
+          if (append) {
+            await _submitPreparationGroups([group], append: true);
+            return;
+          }
           final before = _issuedQtySnapshot();
           var ordered = false;
           switch (route) {

@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.*;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.AnalysisView;
@@ -93,6 +94,21 @@ public class AggregateMaterialOrderPreviewService {
         }
         var safetyAdmission=new SafetyAdmission(safetyConfirmations,earliestSafetyDepth,safetyDepthByGroup);
         var productionRules=new AggregateMaterialProductionRules(children);
+        Set<UUID> priorityMaterials=new HashSet<>();
+        for(GroupInput input:request.groups()) {
+            if(input==null||!input.prioritizeParent())continue;
+            for(UUID id:input.materialLineIds()) {
+                MaterialView row=materials.get(id);
+                if(row==null)continue;
+                priorityMaterials.add(id);
+                if(row.aggregatePreparation()!=null)priorityMaterials.addAll(row.aggregatePreparation().targetMaterialLineIds());
+            }
+        }
+        Map<UUID,BigDecimal> physicalHeadroom=priorityMaterials.isEmpty()?Map.of():analysisService.receiptPriorityHeadroom(priorityMaterials);
+        Set<UUID> possiblePriority=physicalHeadroom.entrySet().stream().filter(entry->entry.getValue().signum()>0)
+                .map(Map.Entry::getKey).collect(Collectors.toSet());
+        var receiptAdmission=new ReceiptPriorityAdmission(physicalHeadroom,
+                possiblePriority.isEmpty()?Set.of():analysisService.receiptPriorityMixedAliasSources(possiblePriority));
         List<GroupPreview> result=new ArrayList<>();
         for(GroupInput originalInput:request.groups()) {
             GroupInput group=originalInput==null?null:incrementalInput(originalInput,materials);
@@ -153,7 +169,7 @@ public class AggregateMaterialOrderPreviewService {
                 if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))pending=pending.max(number(anchor.remainingQty()));
                 requestedPrivateCaps.put(id,requested.min(pending));
             });
-            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,productionRules,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials,safetyAdmission);
+            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,productionRules,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials,safetyAdmission,receiptAdmission);
             if(!compatibilityKeys.add(resolved.compatibilityKey()))throw invalid("同一物料及相同办理规则只能提交一组，请合并来源和总量后重新核对");
             result.add(resolved);
         }
@@ -168,11 +184,18 @@ public class AggregateMaterialOrderPreviewService {
     }
 
     static GroupInput incrementalInput(GroupInput input,Map<UUID,MaterialView> materials) {
+        if(input.publicOnly()&&input.quantityMode()!=null) {
+            // Public stock has no requirement balance to subtract from the entered order.
+            return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),input.qty(),input.allowPublicExtra(),
+                    input.departmentId(),input.workerId(),input.teamDepartmentId(),input.billDate(),input.deliveryDate(),
+                    input.productNo(),input.allowedOverproductionRate(),input.safetyQty(),input.sourceRequestedQtyByMaterialLineId(),
+                    input.skipAutoClaim(),null,input.orderMethod(),input.receiptAllocationMode());
+        }
         if(input.quantityMode()==null) {
             if(!MaterialOrderQuantity.availableOnly(input.orderMethod())||input.safetyQty().signum()==0)return input;
             return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),input.qty(),input.allowPublicExtra(),input.departmentId(),input.workerId(),
                     input.teamDepartmentId(),input.billDate(),input.deliveryDate(),input.productNo(),input.allowedOverproductionRate(),BigDecimal.ZERO,
-                    input.sourceRequestedQtyByMaterialLineId(),input.skipAutoClaim(),null,input.orderMethod());
+                    input.sourceRequestedQtyByMaterialLineId(),input.skipAutoClaim(),null,input.orderMethod(),input.receiptAllocationMode());
         }
         BigDecimal required=BigDecimal.ZERO,uncovered=BigDecimal.ZERO;
         Map<UUID,BigDecimal> amounts=new LinkedHashMap<>();
@@ -188,7 +211,7 @@ public class AggregateMaterialOrderPreviewService {
                 :amounts.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
         return new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),total,input.allowPublicExtra(),input.departmentId(),input.workerId(),
                 input.teamDepartmentId(),input.billDate(),input.deliveryDate(),input.productNo(),input.allowedOverproductionRate(),MaterialOrderQuantity.availableOnly(input.orderMethod())?BigDecimal.ZERO:input.safetyQty(),amounts,
-                input.skipAutoClaim(),null,input.orderMethod());
+                input.skipAutoClaim(),null,input.orderMethod(),input.receiptAllocationMode());
     }
 
     private static void validateSourceQuantities(GroupInput group) {
@@ -215,12 +238,13 @@ public class AggregateMaterialOrderPreviewService {
 
     private record SafetyAdmission(Map<String,List<GroupInput>> confirmations,Map<String,Integer> earliestDepth,
                                    Map<String,Integer> depthByGroup) { }
+    private record ReceiptPriorityAdmission(Map<UUID,BigDecimal> headroom,Set<UUID> mixedAliasSources) { }
 
     private GroupPreview resolveGroup(UUID analysisId,PreviewRequest request,GroupInput input,List<MaterialView> members,
             Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions,Map<String,List<MaterialView>> children,
             AggregateMaterialProductionRules productionRules,
             Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials,
-            SafetyAdmission safetyAdmission) {
+            SafetyAdmission safetyAdmission,ReceiptPriorityAdmission receiptAdmission) {
         boolean canGenerate=access.hasAuthority("production_material_analysis:generate");
         boolean canNotify=access.hasAuthority("production_material_analysis:notify");
         boolean canApprovePlan=access.hasAuthority("production_plan:approve");
@@ -243,6 +267,9 @@ public class AggregateMaterialOrderPreviewService {
         // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
         boolean manufacture="MAKE".equals(input.route());
         boolean onlyAvailable=MaterialOrderQuantity.availableOnly(input.orderMethod());
+        if(input.receiptAllocationMode()!=null&&(manufacture||onlyAvailable
+                || !input.prioritizeParent()&&!input.publicOnly()))
+            throw invalid("只有新下达的采购或委外可选择到货分配方式");
         boolean skipClaims=input.skipClaims(false);
         UUID department=input.departmentId(),worker=input.workerId();
         String assignmentBlock=null;
@@ -263,6 +290,7 @@ public class AggregateMaterialOrderPreviewService {
                 remaining=remaining.max(anchor.remainingQty());
                 if(members.size()>1)reason="已有按原来源建立的待下达制造责任，请先在原任务完成或撤回后再汇总";
             }
+            if(input.publicOnly())remaining=BigDecimal.ZERO;
             remainingBySource.put(member.materialLineId(),remaining);
             capacities.add(new AggregateQuantityAllocator.SourceCapacity(member.materialLineId(),
                     product==null?0:product.allocationPriority(),product==null?null:product.deliveryDate(),
@@ -279,6 +307,11 @@ public class AggregateMaterialOrderPreviewService {
                     flow.byTarget().getOrDefault(capacity.sourceId(),Map.of()).values().stream().reduce(BigDecimal.ZERO,BigDecimal::add))).toList();
         }
         var allocation=AggregateQuantityAllocator.allocate(input.qty(),allocationCaps,true);
+        Map<UUID,BigDecimal> baseShares=allocation.allocations().stream().collect(Collectors.toMap(
+                AggregateQuantityAllocator.Allocation::sourceId,AggregateQuantityAllocator.Allocation::qty));
+        var priority=allocatePriority(input,allocation.publicExtraQty(),capacities,baseShares,requestedPrivateCaps,
+                originalScope,originalMaterials,receiptAdmission.headroom());
+        BigDecimal publicExtra=priority.publicExtraQty();
         // Remaining source demand can start a separately configured batch. An
         // extra-output append cannot use a small remaining share to change the
         // existing task's assignment. The full compatibility key below still
@@ -301,8 +334,12 @@ public class AggregateMaterialOrderPreviewService {
             if(!canOrder)reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
             if(manufacture&&!onlyAvailable&&request.approveNow()&&!canApprovePlan)reason="生成并审核需要生产计划审核权限";
         }
-        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
-        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)reason="公共超量备货需要超量下达权限";
+        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())
+            reason=input.prioritizeParent()?"本次超出待安排需求，请核对优先追加与公共备货量":"本次超出待安排需求，请明确核对公共备货量";
+        if(!onlyAvailable&&allocation.publicExtraQty().signum()>0 && !manufacture && !canOverSupply)
+            reason=input.prioritizeParent()?"超出已安排需求的追加需要超量下达权限":"公共超量备货需要超量下达权限";
+        if(reason==null&&priority.allocations().stream().anyMatch(share->receiptAdmission.mixedAliasSources().contains(share.sourceId())))
+            reason="物料 "+first.goodsCode()+" 的原在途订单仍绑定另一父层归属，请先处理原订单或选择仅公共备货";
         // ADR-056: safety is a separately confirmed, fixed main-warehouse gap.
         // Use the same physical-dimension proof as ordinary notification: accepting
         // a partial amount here would pass review and fail the immutable DB snapshot.
@@ -327,29 +364,32 @@ public class AggregateMaterialOrderPreviewService {
             reason="当前公共安全库存缺口 "+safety.gapQty().stripTrailingZeros().toPlainString()
                     +"；本版本仅支持采购路线的公共安全库存补库，请先走独立补库或修正主数据";
         }
-        Map<UUID,BigDecimal> shares=new HashMap<>();
-        allocation.allocations().forEach(value->shares.put(value.sourceId(),value.qty()));
+        Map<UUID,BigDecimal> priorityShares=priority.allocations().stream().collect(Collectors.toMap(
+                AggregateQuantityAllocator.Allocation::sourceId,AggregateQuantityAllocator.Allocation::qty));
         List<SourcePreview> sourceRows=new ArrayList<>();
         for(MaterialView member:members) {
             ProductView product=products.get(member.analysisLineId());
             String label=product==null?member.parentLabel():String.join(" ",Objects.toString(product.goodsCode(),""),Objects.toString(product.goodsName(),""));
             if(member.path()!=null&&!member.path().isEmpty())label=Objects.toString(label,"")+" / "+String.join(" / ",member.path());
+            BigDecimal priorityQty=priorityShares.getOrDefault(member.materialLineId(),BigDecimal.ZERO);
             sourceRows.add(new SourcePreview(member.materialLineId(),member.analysisLineId(),label,
                     product==null?0:product.allocationPriority(),product==null?null:product.deliveryDate(),
                     number(member.sourceRequiredQty()),remainingBySource.get(member.materialLineId()),
-                    shares.getOrDefault(member.materialLineId(),BigDecimal.ZERO),ordered.get(member.materialLineId()),
-                    originalScope.getOrDefault(member.materialLineId(),new java.util.LinkedHashSet<>(List.of(member.materialLineId()))).stream().sorted(Comparator.comparing(UUID::toString)).toList()));
+                    baseShares.getOrDefault(member.materialLineId(),BigDecimal.ZERO).add(priorityQty),ordered.get(member.materialLineId()),
+                    originalScope.getOrDefault(member.materialLineId(),new java.util.LinkedHashSet<>(List.of(member.materialLineId()))).stream().sorted(Comparator.comparing(UUID::toString)).toList(),
+                    priorityQty));
         }
         List<String> keyParts=new ArrayList<>();
         add(keyParts,request.warehouseId(),first.goodsId(),first.colorId(),first.unitId(),input.route(),
                 department,worker,input.teamDepartmentId(),bill,delivery,input.productNo(),rate);
         if(input.orderMethod()!=null)add(keyParts,"ORDER_METHOD",input.orderMethod());
         else if(input.skipAutoClaim()!=null)add(keyParts,"SKIP_AUTO_CLAIM",input.skipAutoClaim());
+        if(input.receiptAllocationMode()!=null)add(keyParts,"RECEIPT_ALLOCATION_MODE",input.receiptAllocationMode());
         keyParts.addAll(recipe);
         String compatibility=CanonicalFingerprint.sha256(keyParts);
         boolean anyExisting=products.values().stream().anyMatch(product->"AGGREGATE_MAKE".equals(product.sourceType()))
                 || actions.values().stream().anyMatch(action->"AGGREGATE_SUPPLY".equals(action.operationType()));
-        var existing=anyExisting?batches.find(analysisId,compatibility,input.route(),rate,input.safetyQty(),manufacture,request.approveNow(),false):null;
+        var existing=anyExisting&&!input.prioritizeParent()?batches.find(analysisId,compatibility,input.route(),rate,input.safetyQty(),manufacture,request.approveNow(),false):null;
         BigDecimal prior=existing==null?BigDecimal.ZERO:existing.priorOutputQty();
         BigDecimal adoptableMake=BigDecimal.ZERO;
         Map<UUID,MaterialView> memberById=new HashMap<>();members.forEach(member->memberById.put(member.materialLineId(),member));
@@ -395,8 +435,47 @@ public class AggregateMaterialOrderPreviewService {
                         .map(AggregateMaterialOrderPreviewService::number).reduce(BigDecimal.ZERO,BigDecimal::add),
                 MoneyPolicy.quantity(ordered.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add).add(publicOrdered(members,products,actions))),
                 capacities.stream().map(AggregateQuantityAllocator.SourceCapacity::remainingQty).reduce(BigDecimal.ZERO,BigDecimal::add),
-                number(input.qty()),allocation.publicExtraQty(),number(input.safetyQty()),department,worker,
-                input.teamDepartmentId(),bill,delivery,input.productNo(),rate,sourceRows,childRows,reason,existing==null?null:existing.batchId(),prior);
+                number(input.qty()),publicExtra,number(input.safetyQty()),department,worker,
+                input.teamDepartmentId(),bill,delivery,input.productNo(),rate,sourceRows,childRows,reason,existing==null?null:existing.batchId(),prior,
+                input.receiptAllocationMode());
+    }
+
+    private static AggregateQuantityAllocator.Result allocatePriority(GroupInput input,BigDecimal extra,
+            List<AggregateQuantityAllocator.SourceCapacity> capacities,Map<UUID,BigDecimal> baseShares,
+            Map<UUID,BigDecimal> originalBaseCaps,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,
+            Map<UUID,MaterialView> originalMaterials,Map<UUID,BigDecimal> physicalHeadroom) {
+        if(!input.prioritizeParent()||extra.signum()==0)return new AggregateQuantityAllocator.Result(List.of(),extra);
+        Map<UUID,BigDecimal> targetCaps=new LinkedHashMap<>();
+        Map<UUID,List<UUID>> proof=new LinkedHashMap<>();
+        for(var capacity:capacities) {
+            UUID id=capacity.sourceId();
+            targetCaps.put(id,physicalHeadroom.getOrDefault(id,BigDecimal.ZERO)
+                    .subtract(baseShares.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO));
+            proof.put(id,List.copyOf(originalScope.get(id)));
+        }
+        if(!originalBaseCaps.isEmpty()) {
+            Map<UUID,BigDecimal> used=new HashMap<>();
+            var baseFlow=AggregateOriginalTargetAllocator.allocate(originalBaseCaps,fullTargetShares(targetCaps,baseShares),proof,true);
+            baseFlow.byTarget().values().forEach(shares->shares.forEach((id,qty)->used.merge(id,qty,BigDecimal::add)));
+            Map<UUID,BigDecimal> originalRemainder=new LinkedHashMap<>();
+            input.sourceRequestedQtyByMaterialLineId().forEach((id,qty)->originalRemainder.put(id,
+                    qty.min(receiptPriorityOriginalLimit(originalMaterials.get(id)))
+                            .subtract(used.getOrDefault(id,BigDecimal.ZERO)).max(BigDecimal.ZERO)));
+            var flow=AggregateOriginalTargetAllocator.allocate(originalRemainder,targetCaps,proof,false);
+            targetCaps.replaceAll((id,qty)->flow.byTarget().get(id).values().stream().reduce(BigDecimal.ZERO,BigDecimal::add));
+        }
+        return AggregateQuantityAllocator.allocate(extra,capacities.stream().map(capacity->new AggregateQuantityAllocator.SourceCapacity(
+                capacity.sourceId(),capacity.allocationPriority(),capacity.needDate(),targetCaps.get(capacity.sourceId()))).toList(),true);
+    }
+
+    private static Map<UUID,BigDecimal> fullTargetShares(Map<UUID,BigDecimal> targets,Map<UUID,BigDecimal> shares) {
+        Map<UUID,BigDecimal> result=new LinkedHashMap<>();
+        targets.keySet().forEach(id->result.put(id,shares.getOrDefault(id,BigDecimal.ZERO)));
+        return result;
+    }
+
+    static BigDecimal receiptPriorityOriginalLimit(MaterialView row) {
+        return row.aggregatePreparation()==null?number(row.requiredQty()):number(row.aggregatePreparation().requiredQty());
     }
 
     private record IssuedAssignment(UUID department,UUID worker,String blockedReason) { }
@@ -491,6 +570,7 @@ public class AggregateMaterialOrderPreviewService {
             if(input.orderMethod()!=null)addTuple(fields,"ORDER_METHOD",input.orderMethod());
             if(input.skipAutoClaim()!=null)addTuple(fields,"SKIP_AUTO_CLAIM",input.skipAutoClaim());
             if(input.quantityMode()!=null)addTuple(fields,"QUANTITY_MODE",input.quantityMode());
+            if(input.receiptAllocationMode()!=null)addTuple(fields,"RECEIPT_ALLOCATION_MODE",input.receiptAllocationMode());
             input.materialLineIds().stream().sorted(Comparator.comparing(UUID::toString)).forEach(id->addTuple(fields,id));
             input.sourceRequestedQtyByMaterialLineId().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.comparing(UUID::toString)))
                     .forEach(entry->addTuple(fields,entry.getKey(),entry.getValue()));
@@ -499,6 +579,7 @@ public class AggregateMaterialOrderPreviewService {
             addTuple(fields,group.clientGroupKey(),group.compatibilityKey(),group.requestedQty(),group.publicExtraQty(),group.safetyQty(),group.blockedReason(),group.existingBatchId(),group.priorOutputQty());
             group.sources().stream().sorted(Comparator.comparing(source->source.materialLineId().toString())).forEach(source->
                     addTuple(fields,source.materialLineId(),source.analysisLineId(),source.allocationPriority(),source.needDate(),source.remainingQty(),source.allocatedQty(),source.orderedQty()));
+            if(group.receiptAllocationMode()!=null)group.sources().forEach(source->addTuple(fields,"RECEIPT_PRIORITY",source.materialLineId(),source.priorityQty()));
             group.sources().forEach(source->source.originalMaterialLineIds().forEach(original->addTuple(fields,"original-source",source.materialLineId(),original)));
             group.sharedBomChildren().forEach(child->addTuple(fields,child.relativeBomPath(),child.goodsId(),child.colorId(),child.unitId(),child.requiredQty()));
         });

@@ -93,6 +93,28 @@ class PreplanInboundAllocationProjectionBudgetTest {
         fixture.assertReadOnly();
     }
 
+    @Test
+    void distinctOrdersShareOneRemainingParentRequirement() {
+        Object[] original = candidate(SOURCE_A, MATERIAL_A, "SUPPLY", "10");
+        Object[] supplement = candidate(SOURCE_B, MATERIAL_A, "SUPPLY", "10");
+        supplement[1] = id(1002);
+        original[24] = new BigDecimal("7");
+        supplement[24] = new BigDecimal("7");
+        var fixture = new Fixture(List.of(
+                slice(100, ITEM, OTHER_ORDER_ITEM, "5", ACTUAL_WAREHOUSE),
+                slice(101, OTHER_ITEM, ORDER_ITEM, "5", ACTUAL_WAREHOUSE)),
+                List.of(anchor(ITEM, OTHER_ORDER_ITEM, SOURCE_B, 1, "5", "0"),
+                        anchor(OTHER_ITEM, ORDER_ITEM, SOURCE_A, 1, "5", "0")),
+                List.of(original, supplement));
+        var projection = fixture.preview(id(100), id(101));
+        assertThat(projection.get(id(100))).singleElement().satisfies(row -> {
+            assertThat(row.analysisMaterialId()).isEqualTo(MATERIAL_A);
+            assertThat(row.qty()).isEqualByComparingTo("5");
+        });
+        assertThat(totals(projection)).isEqualTo(expected("7", "0", "0", "3"));
+        fixture.assertReadOnly();
+    }
+
     private static Fixture fixture(List<Object[]> slices, boolean shared) {
         List<Object[]> anchors = new ArrayList<>();
         slices.stream().map(row -> (UUID) row[1]).distinct().sorted().forEach(receiptItem -> {
@@ -174,7 +196,7 @@ class PreplanInboundAllocationProjectionBudgetTest {
     private static Object[] candidate(UUID external, UUID material, String mode, String headroom) {
         return new Object[]{external, id((int) material.getLeastSignificantBits()+1000), id((int) material.getLeastSignificantBits()+2000),
                 mode, PLANNED_WAREHOUSE, "原计划仓", PLANNED_WAREHOUSE, id(500), material, GOODS, null,
-                new BigDecimal(headroom), "P", "目标产品", "来源分析", null, null, null, null, null, null, null, null, false};
+                new BigDecimal(headroom), "P", "目标产品", "来源分析", null, null, null, null, null, null, null, null, false, null};
     }
     private static UUID id(int value) { return new UUID(0, value); }
 }

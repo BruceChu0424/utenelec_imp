@@ -806,6 +806,7 @@ Map<String, dynamic> _fractionalTapePreview(
       for (final group in _records(body['groups']))
         <String, dynamic>{
           'clientGroupKey': group['clientGroupKey'],
+          'receiptAllocationMode': group['receiptAllocationMode'],
           'compatibilityKey': 'fractional-tape',
           'route': 'BUY',
           'goodsId': 'g-m-2',

@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.*;
@@ -65,6 +66,36 @@ class AggregateMaterialOrderPreviewServiceTest {
     }
     private static PreviewRequest request(List<GroupInput> groups) {
         return new PreviewRequest(13L,FINGERPRINT,"aggregate-preview-key",WAREHOUSE,DATE,DATE,true,groups);
+    }
+
+    @Test void anUnprovenAliasBlocksOnlyTheStandbyPortion() {
+        UUID source=UUID.randomUUID();
+        MaterialView row=material(source,"r/child","100");
+        when(row.sourceConfirmed()).thenReturn("BUY");
+        when(row.preparationUncoveredBeforeSharedQty()).thenReturn(qty("100"));
+        var analysis=mock(MaterialAnalysisService.class);
+        UUID materialId=row.materialLineId();
+        when(analysis.receiptPriorityHeadroom(Set.of(materialId))).thenReturn(Map.of(materialId,qty("200")));
+        when(analysis.receiptPriorityMixedAliasSources(Set.of(materialId))).thenReturn(Set.of(materialId));
+        var access=mock(ProductionDocumentAccessPolicy.class);
+        when(access.hasAuthority(anyString())).thenReturn(true);
+        var preview=new AggregateMaterialOrderPreviewService(analysis,access,mock(AggregateMaterialBatchLookup.class));
+        var snapshot=view(List.of(product(source,"SALES_ORDER_ITEM","0")),List.of(row));
+
+        var standby=preview.resolve(ANALYSIS,request(List.of(externalReceiptMode(row,"200","PRIORITIZE_PARENT"))),snapshot).groups().getFirst();
+        assertThat(standby.blockedReason()).contains("原在途订单仍绑定另一父层归属");
+        assertThat(standby.sources().getFirst().priorityQty()).isEqualByComparingTo("100");
+        var shortage=preview.resolve(ANALYSIS,request(List.of(externalReceiptMode(row,"100","PRIORITIZE_PARENT"))),snapshot).groups().getFirst();
+        assertThat(shortage.blockedReason()).isNull();
+        assertThat(shortage.sources().getFirst().priorityQty()).isZero();
+        var publicOrder=preview.resolve(ANALYSIS,request(List.of(externalReceiptMode(row,"200","PUBLIC_ONLY"))),snapshot).groups().getFirst();
+        assertThat(publicOrder.blockedReason()).isNull();
+        assertThat(publicOrder.publicExtraQty()).isEqualByComparingTo("200");
+    }
+
+    private static GroupInput externalReceiptMode(MaterialView row,String qty,String mode) {
+        return new GroupInput("receipt-mode",List.of(row.materialLineId()),"BUY",qty(qty),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,Map.of(),null,"COVERAGE_TOTAL","ORDER_ALL",mode);
     }
 
     @Test void delegatedTaskIdentityDoesNotGiveEachOriginalPathTheWholeBatchQuantity() {

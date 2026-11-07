@@ -74,7 +74,7 @@ final class AggregatePrivateIntentReader {
               JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id
               CROSS JOIN LATERAL (SELECT CASE WHEN action.status='CANCELLED' THEN NULL
                   ELSE fn_preplan_allocation_received_qty(allocation.id) END AS qty) received
-            ), allocation_pending AS (
+            ), allocation_pending_raw AS (
               SELECT capacity.id,capacity.action_id,capacity.analysis_material_id,capacity.allocated_qty,
                      capacity.status,capacity.received_qty,
                      CASE capacity.mode WHEN 'CLOSED' THEN 0
@@ -83,7 +83,13 @@ final class AggregatePrivateIntentReader {
                               -COALESCE(SUM(capacity.own_capacity) OVER (PARTITION BY capacity.action_id
                                   ORDER BY capacity.created_at,capacity.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0),0))
                      END AS pending_qty
-              FROM allocation_capacity capacity
+               FROM allocation_capacity capacity
+            ), allocation_pending AS (
+               SELECT raw.id,raw.action_id,raw.analysis_material_id,raw.allocated_qty,raw.status,raw.received_qty,
+                      CASE WHEN raw.pending_qty>0 AND fn_preplan_receipt_priority_enabled(raw.analysis_material_id)
+                           THEN fn_preplan_receipt_priority_planning_qty(raw.id,raw.pending_qty)
+                           ELSE raw.pending_qty END AS pending_qty
+               FROM allocation_pending_raw raw
             )
             """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("subcontract_applications"));
 

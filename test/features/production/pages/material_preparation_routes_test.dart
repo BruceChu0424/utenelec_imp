@@ -376,82 +376,112 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('issued segment lets a supply operator append extra quantity', (
-    tester,
-  ) async {
-    // 追加量属公共备货：要有超量下达权限才给勾（没有的账号已下达行照旧只读）。
-    final activeAnalysis = _analysis();
-    final full = (activeAnalysis['flatMaterials'] as List)
-        .cast<Map<String, dynamic>>()
-        .firstWhere((row) => row['materialLineId'] == 'material-complete');
-    ((full['downstreamReferences'] as List).single as Map)['status'] =
-        'IN_PROGRESS';
-    final requests = await _pump(
+  for (final scenario in [
+    'PRIORITIZE_PARENT',
+    'PUBLIC_ONLY',
+    'legacy-server',
+  ]) {
+    testWidgets('issued segment appends with confirmed receipt mode $scenario', (
       tester,
-      analysis: activeAnalysis,
-      permissions: {
-        Perm.productionMaterialAnalysisView,
-        Perm.productionMaterialAnalysisNotify,
-        Perm.productionMaterialAnalysisOverSupply,
-      },
-    );
-    await _open(tester, 'buy');
-    final header = find.byWidgetPredicate(
-      (widget) => widget is Checkbox && widget.tristate,
-    );
-    await tester.tap(header);
-    await tester.pumpAndSettle();
-    // 2026-09-22 起外层桶表只读：没有任何输入框，数量在「核对并下单」页里填。
-    expect(find.byType(TextField), findsNothing);
-    expect(
-      find.byKey(const Key('material-analysis-bucket-action-buy')),
-      findsOneWidget,
-    );
-    await _filter(tester, '已下达 (2)');
-    // ADR-099 父层级追加：已下达行仍可勾选；桶表只显示已下达量，追加量进页填；
-    // 按钮改叫「追加采购」，省略号 = 还要过一页。
-    expect(find.byType(Checkbox), findsWidgets);
-    expect(find.text('追加采购(0)…'), findsOneWidget);
-    expect(find.text('下单数量'), findsOneWidget);
-    expect(requests.where((request) => request.method != 'GET'), isEmpty);
-    await _tapRowCheckbox(tester, '已完成采购物料');
-    await tester.tap(find.text('追加采购(1)…'));
-    await tester.pumpAndSettle();
-    // 追加量默认就写 0(0 = 本次不追加)，在页里改成 5。
-    final append = find.byKey(
-      const ValueKey(
-        'material-analysis-append-qty-NODE|action-complete|material-complete',
-      ),
-    );
-    expect(tester.widget<TextField>(append).controller!.text, '0');
-    await tester.enterText(append, '5');
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('material-preparation-order-submit')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.text('确认下单'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    // 三桶与主表同一条组件命令，保留原行与原输入，不能绕回旧 notify。
-    final submits = requests
-        .where((request) => request.path.endsWith('/aggregate-orders/submit'))
-        .toList();
-    expect(submits, hasLength(1));
-    final body = submits.single.data as Map<String, dynamic>;
-    final group = (body['groups'] as List).single as Map;
-    expect(group['route'], 'BUY');
-    expect(double.parse(group['qty'].toString()), 5);
-    expect(group['materialLineIds'], ['material-complete']);
-    expect(
-      requests.where((request) => request.path.endsWith('/notify')),
-      isEmpty,
-    );
-  });
+    ) async {
+      // 原在途覆盖全量。需要超量权限下追加备用供给或直接公共备货。
+      final activeAnalysis = _analysis();
+      final full = (activeAnalysis['flatMaterials'] as List)
+          .cast<Map<String, dynamic>>()
+          .firstWhere((row) => row['materialLineId'] == 'material-complete');
+      ((full['downstreamReferences'] as List).single as Map)['status'] =
+          'IN_PROGRESS';
+      final requests = await _pump(
+        tester,
+        analysis: activeAnalysis,
+        supportsReceiptAllocation: scenario != 'legacy-server',
+        permissions: {
+          Perm.productionMaterialAnalysisView,
+          Perm.productionMaterialAnalysisNotify,
+          Perm.productionMaterialAnalysisOverSupply,
+        },
+      );
+      await _open(tester, 'buy');
+      final header = find.byWidgetPredicate(
+        (widget) => widget is Checkbox && widget.tristate,
+      );
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      // 2026-09-22 起外层桶表只读：没有任何输入框，数量在「核对并下单」页里填。
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        find.byKey(const Key('material-analysis-bucket-action-buy')),
+        findsOneWidget,
+      );
+      await _filter(tester, '已下达 (2)');
+      // ADR-099 父层级追加：已下达行仍可勾选；桶表只显示已下达量，追加量进页填；
+      // 按钮改叫「追加采购」，省略号 = 还要过一页。
+      expect(find.byType(Checkbox), findsWidgets);
+      expect(find.text('追加采购(0)…'), findsOneWidget);
+      expect(find.text('下单数量'), findsOneWidget);
+      expect(requests.where((request) => request.method != 'GET'), isEmpty);
+      await _tapRowCheckbox(tester, '已完成采购物料');
+      await tester.tap(find.text('追加采购(1)…'));
+      await tester.pumpAndSettle();
+      // 追加量默认就写 0(0 = 本次不追加)，在页里改成 5。
+      final append = find.byKey(
+        const ValueKey(
+          'material-analysis-append-qty-NODE|action-complete|material-complete',
+        ),
+      );
+      expect(tester.widget<TextField>(append).controller!.text, '0');
+      await tester.enterText(append, '5');
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('material-preparation-order-submit')),
+      );
+      await tester.pumpAndSettle();
+      final receiptMode = find.byKey(
+        const Key('material-append-receipt-allocation'),
+      );
+      expect(receiptMode, findsOneWidget);
+      expect(find.text('优先补本父层'), findsOneWidget);
+      if (scenario == 'PUBLIC_ONLY') {
+        await tester.tap(receiptMode);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('仅公共备货').last);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('确认下单'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 三桶与主表同一条组件命令，保留原行与原输入，不能绕回旧 notify。
+      final submits = requests
+          .where((request) => request.path.endsWith('/aggregate-orders/submit'))
+          .toList();
+      if (scenario == 'legacy-server') {
+        expect(submits, isEmpty);
+        final preview = requests.lastWhere(
+          (request) => request.path.endsWith('/aggregate-orders/preview'),
+        );
+        final previewBody = preview.data as Map<String, dynamic>;
+        final previewGroup =
+            (previewBody['groups'] as List).single as Map<String, dynamic>;
+        expect(previewGroup['qty'], '5');
+        return;
+      }
+      expect(submits, hasLength(1));
+      final body = submits.single.data as Map<String, dynamic>;
+      final group = (body['groups'] as List).single as Map;
+      expect(group['route'], 'BUY');
+      expect(double.parse(group['qty'].toString()), 5);
+      expect(group['materialLineIds'], ['material-complete']);
+      expect(group['receiptAllocationMode'], scenario);
+      expect(
+        requests.where((request) => request.path.endsWith('/notify')),
+        isEmpty,
+      );
+    });
+  }
 
   testWidgets(
     'workshop can select waiting materials but not server-blocked plans',
@@ -552,6 +582,7 @@ Future<List<RequestOptions>> _pump(
   WidgetTester tester, {
   Set<String> permissions = const {Perm.productionMaterialAnalysisView},
   Map<String, dynamic>? analysis,
+  bool supportsReceiptAllocation = true,
 }) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
@@ -589,6 +620,8 @@ Future<List<RequestOptions>> _pump(
                       in (body['groups'] as List).cast<Map<String, dynamic>>())
                     {
                       'clientGroupKey': group['clientGroupKey'],
+                      if (supportsReceiptAllocation)
+                        'receiptAllocationMode': group['receiptAllocationMode'],
                       'goodsId':
                           ((view['flatMaterials'] as List)
                                   .cast<Map<String, dynamic>>()
@@ -601,14 +634,17 @@ Future<List<RequestOptions>> _pump(
                               as Map)['goodsId'],
                       'route': group['route'],
                       'requestedQty': double.parse(group['qty'].toString()),
+                      if (group['receiptAllocationMode'] == 'PUBLIC_ONLY')
+                        'publicExtraQty': double.parse(group['qty'].toString()),
                       'sources': [
                         for (final id in group['materialLineIds'] as List)
                           {
                             'materialLineId': id,
                             'sourceLabel': id,
-                            'allocatedQty': double.parse(
-                              group['qty'].toString(),
-                            ),
+                            'allocatedQty':
+                                group['receiptAllocationMode'] == 'PUBLIC_ONLY'
+                                ? 0
+                                : double.parse(group['qty'].toString()),
                           },
                       ],
                       'sharedBomChildren': <Object>[],

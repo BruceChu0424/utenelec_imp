@@ -243,7 +243,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         SELECT allocation.id, allocation.analysis_id,
                                allocation.analysis_material_id,
                                fn_preplan_allocation_admitted_qty(allocation.id), analysis.status,
-                               action.operation_type, action.status
+                                action.operation_type, action.status,
+                                CASE WHEN action.operation_type='SUPPLY'
+                                     THEN fn_preplan_receipt_priority_order_headroom(material.id)
+                                END AS priority_headroom
                         FROM preplan_supply_action_allocations allocation
                         JOIN preplan_supply_actions action
                           ON action.id = allocation.action_id
@@ -269,6 +272,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     .setParameter("externalItemId", externalItemId)
                     .setParameter("goodsId", goodsId)
                     .setParameter("colorId", colorId));
+            Map<UUID, BigDecimal> receiptHeadroom = new HashMap<>();
+            for (Object[] claimant : claimants) {
+                if (claimant[7] != null) receiptHeadroom.put((UUID) claimant[2], decimal(claimant[7]));
+            }
 
             for (Object[] claimant : claimants) {
                 if (remaining.signum() <= 0) {
@@ -278,12 +285,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 UUID analysisId = (UUID) claimant[1];
                 UUID analysisMaterialId = (UUID) claimant[2];
                 String analysisStatus = Objects.toString(claimant[4], "");
+                boolean competingSupply = "SUPPLY".equals(claimant[5]);
                 // 全量先排 WAITING 后 analysis 会按数量守恒进入 COMPLETED。
                 // 只有该精确物料仍存在已批准、可自动提升的 WAITING demand 时，
                 // 才允许继续承接原 action/allocation 的到仓权益；公共库存不兜底。
                 if ("COMPLETED".equals(analysisStatus)
-                        && !hasAutoPromotableWaitingDemand(
-                                analysisId, analysisMaterialId)) {
+                        && !hasAutoPromotableDemand(analysisId, analysisMaterialId,
+                                competingSupply && receiptHeadroom.containsKey(analysisMaterialId))) {
                     continue;
                 }
                 BigDecimal allocatedCap = decimal(claimant[3]);
@@ -312,8 +320,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                         Objects.toString(claimant[5], ""));
                 BigDecimal orderBudget = sharedClaim
                         ? sharedOrderBudget : exactOrderBudget;
-                BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO))
-                        .min(orderBudget);
+                BigDecimal take = remaining.min(headroom.max(BigDecimal.ZERO)).min(orderBudget);
+                if (competingSupply) {
+                    take = PreplanReceiptPriorityService.withinHeadroom(receiptHeadroom, analysisMaterialId, take);
+                }
                 if (take.signum() <= 0) {
                     continue;
                 }
@@ -328,6 +338,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     var slices=retainedReceiptSlices(retained,take);take=slices.stream().map(RetainedReceiptSource::remaining).reduce(BigDecimal.ZERO,BigDecimal::add);
                     for(var slice:slices)origins.add(insertExactReservation(allocationId,analysisId,slice.original(),warehouseId,
                             goodsId,colorId,slice.remaining(),supplyType,externalItemId,receiptType,receiptId,dispositionEventId,warehouseStockInItemId,true));
+                }
+                if (competingSupply) {
+                    PreplanReceiptPriorityService.useHeadroom(receiptHeadroom, analysisMaterialId, take);
                 }
                 remaining = remaining.subtract(take);
                 if (sharedClaim) {
@@ -848,6 +861,10 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
      */
     boolean hasAutoPromotableWaitingDemand(
             UUID analysisId, UUID analysisMaterialId) {
+        return hasAutoPromotableDemand(analysisId, analysisMaterialId, false);
+    }
+
+    private boolean hasAutoPromotableDemand(UUID analysisId, UUID analysisMaterialId, boolean includeContinuous) {
         if (analysisId == null || analysisMaterialId == null) return false;
         Object value = em.createNativeQuery("""
                 SELECT EXISTS (
@@ -855,12 +872,13 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     FROM production_material_analysis_materials material
                     JOIN production_material_analysis_plan_links analysis_link
                       ON analysis_link.analysis_id = material.analysis_id
-                     AND analysis_link.analysis_item_id = material.analysis_item_id
+                      AND (analysis_link.analysis_item_id = material.analysis_item_id
+                           OR (:includeContinuous AND fn_analysis_plan_material_matches(analysis_link.analysis_item_id,material.id)))
                      AND analysis_link.allocation_status = 'APPROVED'
                     JOIN %1$s plan
                       ON plan.id = analysis_link.plan_id
                      AND plan.material_analysis_id = material.analysis_id
-                     AND plan.material_analysis_item_id = material.analysis_item_id
+                      AND plan.material_analysis_item_id = analysis_link.analysis_item_id
                      AND plan.status = 1
                      AND plan.is_deleted = FALSE
                      AND plan.is_canceled = FALSE
@@ -871,7 +889,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                     JOIN production_execution_segments segment
                       ON segment.package_id = package.id
                      AND segment.plan_id = plan.id
-                     AND segment.status = 'WAITING'
+                      AND (segment.status = 'WAITING' OR (:includeContinuous AND segment.continuous_supply
+                           AND segment.status IN ('READY','DISPATCHED','IN_PROGRESS')))
                      AND segment.auto_promote_when_ready = TRUE
                      AND segment.is_deleted = FALSE
                     JOIN production_material_demands demand
@@ -888,6 +907,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans")))
                 .setParameter("analysisId", analysisId)
                 .setParameter("analysisMaterialId", analysisMaterialId)
+                .setParameter("includeContinuous", includeContinuous)
                 .getSingleResult();
         return Boolean.TRUE.equals(value);
     }

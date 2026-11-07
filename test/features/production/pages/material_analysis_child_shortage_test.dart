@@ -114,11 +114,22 @@ Future<void> _chooseFullOrderNoClaim(WidgetTester tester) =>
     );
 
 /// 主表「下单(N)」→ (可用数量抵扣询问) → 确认框「确认下单」。
-Future<void> _submitMainTable(WidgetTester tester) async {
+Future<void> _submitMainTable(
+  WidgetTester tester, {
+  bool publicOnly = false,
+}) async {
   requests.clear();
   await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
   await tester.pumpAndSettle();
   await _dismissClaimUsageAskIfPresent(tester);
+  if (publicOnly) {
+    await tester.tap(
+      find.byKey(const Key('material-append-receipt-allocation')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('仅公共备货').last);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
@@ -601,7 +612,7 @@ void main() {
           if (tester.widget<Checkbox>(checkbox('m-pc').last).value == true) {
             await _check(tester, checkbox('m-pc'));
           }
-          await _submitMainTable(tester);
+          await _submitMainTable(tester, publicOnly: true);
 
           expect(
             find.byKey(const Key('child-shortage-dialog')),
@@ -1596,23 +1607,29 @@ Map<String, dynamic> _aggregatePreview(
     for (final group in _records(body['groups']))
       {
         'clientGroupKey': group['clientGroupKey'],
+        'receiptAllocationMode': group['receiptAllocationMode'],
         'route': group['route'],
         'goodsId': _line(
           data,
           (group['materialLineIds'] as List).first as String,
         )['goodsId'],
         'requestedQty': double.parse(group['qty'].toString()),
+        if (group['receiptAllocationMode'] == 'PUBLIC_ONLY')
+          'publicExtraQty': double.parse(group['qty'].toString()),
         'sources': [
           for (final id in (group['materialLineIds'] as List).cast<String>())
             {
               'materialLineId': id,
               'originalMaterialLineIds': [id],
               'sourceLabel': id,
-              'allocatedQty': double.parse(
-                ((group['sourceRequestedQtyByMaterialLineId'] as Map?)?[id] ??
-                        group['qty'])
-                    .toString(),
-              ),
+              'allocatedQty': group['receiptAllocationMode'] == 'PUBLIC_ONLY'
+                  ? 0
+                  : double.parse(
+                      ((group['sourceRequestedQtyByMaterialLineId']
+                                  as Map?)?[id] ??
+                              group['qty'])
+                          .toString(),
+                    ),
             },
         ],
         'sharedBomChildren': <Object>[],

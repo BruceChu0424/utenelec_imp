@@ -3814,6 +3814,47 @@ public class MaterialAnalysisService {
         return BorrowTuning.securedOnly(formalCoverageQuantities(coverage,rules),Map.of());
     }
 
+    Map<UUID,BigDecimal> receiptPriorityHeadroom(Set<UUID> materialIds) {
+        Map<UUID,BigDecimal> result=new HashMap<>();
+        String ids=materialIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT material.id,fn_preplan_receipt_priority_supply_headroom(material.id)
+                FROM unnest(CAST(string_to_array(:ids,',') AS uuid[])) material(id)
+                """).setParameter("ids",ids))) {
+            result.put((UUID)row[0],((BigDecimal)row[1]).setScale(4,RoundingMode.DOWN));
+        }
+        return result;
+    }
+
+    Set<UUID> receiptPriorityMixedAliasSources(Set<UUID> materialIds) {
+        if(materialIds.isEmpty())return Set.of();
+        String ids=materialIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                WITH RECURSIVE paths(root_id,material_id,backward) AS (
+                    SELECT material.id,material.id,direction.backward
+                    FROM unnest(CAST(string_to_array(:ids,',') AS uuid[])) material(id)
+                    CROSS JOIN (VALUES (TRUE),(FALSE)) direction(backward)
+                    UNION
+                    SELECT path.root_id,
+                           CASE WHEN path.backward THEN alias.source_material_id ELSE alias.aggregate_material_id END,
+                           path.backward
+                    FROM paths path
+                    JOIN preplan_aggregate_material_aliases alias
+                      ON (path.backward AND alias.aggregate_material_id=path.material_id)
+                      OR (NOT path.backward AND alias.source_material_id=path.material_id)
+                    WHERE fn_preplan_aggregate_alias_valid(alias.id)
+                )
+                SELECT DISTINCT path.root_id
+                FROM paths path
+                JOIN preplan_supply_action_allocations allocation ON allocation.analysis_material_id=path.material_id
+                JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                WHERE path.root_id<>path.material_id AND action.operation_type='SUPPLY'
+                  AND action.route IN ('BUY','SUBCONTRACT') AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                  AND fn_preplan_allocation_admitted_qty(allocation.id)>fn_preplan_allocation_received_qty(allocation.id)
+                  AND fn_preplan_external_planning_expected_qty(action.id,allocation.external_item_id)>0
+                """).setParameter("ids",ids),UUID.class));
+    }
+
     private static Map<String,BigDecimal> formalCoverageQuantities(List<FormalMaterialCoverage> coverage,Map<String,FormalCoverageRule> rules) {
         Map<UUID,BigDecimal> usedByDemand=new HashMap<>();
         Map<String,BigDecimal> secured=new LinkedHashMap<>();
@@ -7715,13 +7756,13 @@ public class MaterialAnalysisService {
                     FROM retained_private GROUP BY allocation_id
                 ), allocation_pending_raw AS (
                     SELECT allocation.id AS allocation_id,allocation.analysis_material_id,
-                           pending_qty.qty,
+                           pending_qty.qty AS uncapped_qty,planning_qty.qty,
                            CASE WHEN action.external_document_type = 'PREPLAN_MAKE_TASK'
-                                THEN pending_qty.qty
+                                THEN planning_qty.qty
                                 WHEN action.external_document_type = 'SUBCONTRACT_APPLICATION'
                                  AND action.operation_type = 'SUPPLY'
                                 THEN (
-                """ + subcontractDrawQuantitySql("pending_qty.qty") + """
+                """ + subcontractDrawQuantitySql("planning_qty.qty") + """
                                 )
                                 ELSE 0::numeric END AS internal_qty
                     FROM subcontract_budget_allocations allocation
@@ -7741,22 +7782,36 @@ public class MaterialAnalysisService {
                                    ON exact.stock_reservation_id=output.source_reservation_id
                                  WHERE exact.supply_action_allocation_id=allocation.id),0),0) END::numeric AS qty
                     ) pending_qty
+                    CROSS JOIN LATERAL (
+                       SELECT CASE WHEN action.route IN ('BUY','SUBCONTRACT')
+                            AND action.operation_type='SUPPLY' AND pending_qty.qty>0
+                            THEN fn_preplan_receipt_priority_planning_qty(allocation.id,pending_qty.qty)
+                            ELSE pending_qty.qty END AS qty
+                    ) planning_qty
                     WHERE action.analysis_id = :analysisId
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
+                ), retained_pending AS (
+                    SELECT retained.allocation_id,retained.original_material_id,
+                           CASE WHEN raw.qty=raw.uncapped_qty THEN retained.pending_qty
+                                ELSE GREATEST(LEAST(retained.pending_qty,raw.qty-COALESCE(SUM(retained.pending_qty) OVER (
+                                     PARTITION BY retained.allocation_id ORDER BY retained.original_material_id
+                                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0)),0)
+                           END AS qty
+                    FROM retained_private retained JOIN allocation_pending_raw raw ON raw.allocation_id=retained.allocation_id
                 ), allocation_pending AS (
                     SELECT raw.analysis_material_id,
                         GREATEST(raw.qty-COALESCE(retained.qty,0),0) AS qty,
                         GREATEST(raw.internal_qty-COALESCE(retained.internal_qty,0),0) AS internal_qty
                     FROM allocation_pending_raw raw
                     LEFT JOIN LATERAL (
-                        SELECT SUM(retained_private.pending_qty) AS qty,
-                            CASE WHEN raw.qty>0 THEN SUM(retained_private.pending_qty)*raw.internal_qty/raw.qty ELSE 0 END AS internal_qty
-                        FROM retained_private WHERE retained_private.allocation_id=raw.allocation_id
+                        SELECT SUM(retained_pending.qty) AS qty,
+                            CASE WHEN raw.qty>0 THEN SUM(retained_pending.qty)*raw.internal_qty/raw.qty ELSE 0 END AS internal_qty
+                        FROM retained_pending WHERE retained_pending.allocation_id=raw.allocation_id
                     ) retained ON TRUE
                     UNION ALL
-                    SELECT retained.original_material_id,retained.pending_qty,
-                        CASE WHEN raw.qty>0 THEN retained.pending_qty*raw.internal_qty/raw.qty ELSE 0 END
-                    FROM retained_private retained JOIN allocation_pending_raw raw ON raw.allocation_id=retained.allocation_id
+                    SELECT retained.original_material_id,retained.qty,
+                        CASE WHEN raw.qty>0 THEN retained.qty*raw.internal_qty/raw.qty ELSE 0 END
+                    FROM retained_pending retained JOIN allocation_pending_raw raw ON raw.allocation_id=retained.allocation_id
                 ), coverage AS (
                     SELECT pending.analysis_material_id, split.supply_kind, split.qty
                     FROM allocation_pending pending

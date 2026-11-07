@@ -578,6 +578,11 @@ final class _MaterialAggregateTableController {
         recipeKey: recipeKey,
         orderMethod: method,
         coverageTotal: !owner._tableGroupIssued(source.group),
+        receiptAllocationMode:
+            owner._canChooseAppendReceiptAllocation(source.group)
+            ? drafts[draftKey]?.receiptAllocationMode ??
+                  MaterialReceiptAllocationMode.prioritizeParent
+            : null,
       );
       final part = byKey.putIfAbsent(candidate.key, () => candidate);
       // 同一张工单里只要有一条来源的比例是人定的，整张按人定的提交
@@ -893,6 +898,7 @@ final class _MaterialAggregateTableController {
             skipAutoClaim: skipAutoClaim ?? !part.orderMethod.usesAvailableQty,
             quantityMode: part.coverageTotal ? 'COVERAGE_TOTAL' : null,
             orderMethod: orderMethod,
+            receiptAllocationMode: part.receiptAllocationMode,
             allowPublicExtra: workshop || owner._canOverSupply,
             departmentId: part.params?.workshop.id,
             workerId: part.params?.worker.id,
@@ -1079,6 +1085,10 @@ final class _MaterialAggregateTableController {
             .firstOrNull;
         if (input == null) {
           throw const FormatException('预览返回了不属于本次汇总的来源，未套用此结果');
+        }
+        if (group.receiptAllocationMode !=
+            input.receiptAllocationMode?.wireName) {
+          throw const FormatException('服务端未确认本次追加到货归属，请更新服务器或刷新后再下单');
         }
         final requestedIds = input.materialLineIds.toSet();
         final covered = coveredByGroup.putIfAbsent(
@@ -1298,10 +1308,12 @@ final class _MaterialAggregateTableController {
     List<_MaterialGroup> selectedGroups, {
     bool confirmed = false,
     bool? skipAutoClaim,
+    MaterialReceiptAllocationMode? receiptAllocationMode,
   }) => submission.submit(
     selectedGroups,
     confirmed: confirmed,
     skipAutoClaim: skipAutoClaim,
+    receiptAllocationMode: receiptAllocationMode,
   );
 
   Future<bool> submitStage(
@@ -2323,6 +2335,7 @@ final class _MaterialAggregateDraft {
   /// 汇总行已下达过（总量写在「追加下单」格）：追加是额外量，没有下限，
   /// 平分落在各来源行的追加格（见 [_MaterialAggregateTableController.changed]）。
   bool appendFlow = false;
+  MaterialReceiptAllocationMode? receiptAllocationMode;
   Map<String, String>? sourceRequestedQtyByMaterialLineId;
   bool mixedWorkshop = false, mixedWorker = false, mixedRate = false;
   List<MaterialAggregateOrderGroupPreview> previewGroups = const [];
@@ -2417,18 +2430,25 @@ final class _MaterialAggregatePart {
     this.recipeKey,
     required this.orderMethod,
     required this.coverageTotal,
+    this.receiptAllocationMode,
   });
   _MaterialAggregateMakeParams? params;
   final String? recipeKey;
   final MaterialPreparationOrderMethod orderMethod;
   final bool coverageTotal;
+  final MaterialReceiptAllocationMode? receiptAllocationMode;
   String? recipeLabel;
   String get key {
     final recipeAssignment = recipeKey == null
         ? params?.key ?? ''
         : jsonEncode([params?.key, recipeKey]);
     final choiceKey = jsonEncode([recipeAssignment, orderMethod.wireName]);
-    return coverageTotal ? choiceKey : jsonEncode([choiceKey, 'increment']);
+    if (coverageTotal) return choiceKey;
+    return jsonEncode([
+      choiceKey,
+      'increment',
+      if (receiptAllocationMode != null) receiptAllocationMode!.wireName,
+    ]);
   }
 
   final lineIds = <String>[];

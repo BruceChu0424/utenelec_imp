@@ -925,6 +925,10 @@ void main() {
     await _submitSelected(tester);
     final submitted = _aggregateSubmits().single.body!;
     expect(_records(submitted['groups']).single['orderMethod'], 'ORDER_ALL');
+    expect(
+      _records(submitted['groups']).single['receiptAllocationMode'],
+      'PRIORITIZE_PARENT',
+    );
     expect(_records(submitted['groups']).single['qty'], '100');
     expect(
       tester.widget<UtenDropdownField>(_orderMethod('m-3')).enabled,
@@ -935,6 +939,11 @@ void main() {
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
     expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
+    expect(
+      find.byKey(const Key('material-append-receipt-allocation')),
+      findsNothing,
+      reason: '结果未知时保留原请求的归属选择',
+    );
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -3626,7 +3635,7 @@ void main() {
             parent[key] = 2;
           }
           // 已下过单的行在表上本来就有已下单事实(这里原批 3)，开跑前的
-          // 一次性确认框据此提示「追加原单，只办理本次净增量」。
+          // 一次性确认框据此提示「追加下单，只办理本次净增量」。
           parent['aggregatePreparation'] = {
             'requiredQty': 2,
             'orderedQty': 3,
@@ -3729,7 +3738,7 @@ void main() {
         find.byKey(const Key('material-analysis-submit-orders')),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('追加原单'), findsOneWidget);
+      expect(find.textContaining('追加下单，只办理本次净增量'), findsOneWidget);
       await _confirmAggregateSubmit(tester);
       final writes = requests
           .where((r) => r.path.endsWith('/aggregate-orders/submit'))
@@ -4411,6 +4420,7 @@ void main() {
           'groups': [
             {
               'clientGroupKey': group['clientGroupKey'],
+              'receiptAllocationMode': group['receiptAllocationMode'],
               'compatibilityKey': 'shared-append',
               'route': 'BUY',
               'goodsId': 'g-m-merge',
@@ -8757,6 +8767,7 @@ Map<String, dynamic> _deepProductPreview(
           }
           return <String, dynamic>{
             'clientGroupKey': input['clientGroupKey'],
+            'receiptAllocationMode': input['receiptAllocationMode'],
             'goodsId': first['goodsId'],
             'goodsName': first['goodsName'],
             'route': input['route'],
@@ -8949,6 +8960,7 @@ Map<String, dynamic> _aggregateDagPreview(
     for (final group in _records(body['groups']))
       {
         'clientGroupKey': group['clientGroupKey'],
+        'receiptAllocationMode': group['receiptAllocationMode'],
         'goodsId': _fixtureMaterial(
           data,
           (group['materialLineIds'] as List).cast<String>().first,
@@ -8996,6 +9008,7 @@ Map<String, dynamic> _defaultAggregatePreview(
     for (final group in _records(body['groups']))
       {
         'clientGroupKey': group['clientGroupKey'],
+        'receiptAllocationMode': group['receiptAllocationMode'],
         'goodsId': _fixtureMaterial(
           data,
           (group['materialLineIds'] as List).cast<String>().first,
@@ -9190,6 +9203,7 @@ Map<String, dynamic> _sharedAggregatePreview(
     'groups': [
       {
         'clientGroupKey': group['clientGroupKey'],
+        'receiptAllocationMode': group['receiptAllocationMode'],
         'compatibilityKey': 'shared-buy',
         'route': 'BUY',
         'goodsId': 'g-m-2',

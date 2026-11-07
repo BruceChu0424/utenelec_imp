@@ -46,6 +46,19 @@ List<String> materialAggregateRequestWindow(
   return result;
 }
 
+enum MaterialReceiptAllocationMode {
+  prioritizeParent('PRIORITIZE_PARENT', '优先补本父层'),
+  publicOnly('PUBLIC_ONLY', '仅公共备货');
+
+  const MaterialReceiptAllocationMode(this.wireName, this.label);
+
+  final String wireName;
+  final String label;
+
+  static MaterialReceiptAllocationMode? fromWire(Object? value) =>
+      values.where((mode) => mode.wireName == value).firstOrNull;
+}
+
 /// A visible total for exact source nodes. Decimal input stays text until the
 /// server allocates its four-decimal source quantities and public remainder.
 class MaterialAggregateOrderGroupInput {
@@ -68,6 +81,7 @@ class MaterialAggregateOrderGroupInput {
     this.skipAutoClaim,
     this.quantityMode,
     this.orderMethod,
+    this.receiptAllocationMode,
   });
   final String clientGroupKey, qty;
   final List<String> materialLineIds;
@@ -89,6 +103,7 @@ class MaterialAggregateOrderGroupInput {
   final bool? skipAutoClaim;
   final String? quantityMode;
   final MaterialPreparationOrderMethod? orderMethod;
+  final MaterialReceiptAllocationMode? receiptAllocationMode;
 
   factory MaterialAggregateOrderGroupInput.fromExactJson(
     Map<String, dynamic> json,
@@ -98,6 +113,12 @@ class MaterialAggregateOrderGroupInput {
     final method = MaterialPreparationOrderMethod.fromWire(json['orderMethod']);
     if (json['orderMethod'] != null && method == null) {
       throw const FormatException('原备料请求的下单方式无法核对，不能创建替代请求');
+    }
+    final receiptMode = MaterialReceiptAllocationMode.fromWire(
+      json['receiptAllocationMode'],
+    );
+    if (json['receiptAllocationMode'] != null && receiptMode == null) {
+      throw const FormatException('原备料请求的到货归属无法核对，不能创建替代请求');
     }
     final rate = json['allowedOverproductionRate'];
     return MaterialAggregateOrderGroupInput(
@@ -118,6 +139,7 @@ class MaterialAggregateOrderGroupInput {
       skipAutoClaim: json['skipAutoClaim'] as bool?,
       quantityMode: json['quantityMode'] as String?,
       orderMethod: method,
+      receiptAllocationMode: receiptMode,
       sourceRequestedQtyByMaterialLineId:
           json['sourceRequestedQtyByMaterialLineId'] is Map
           ? Map<String, String>.from(
@@ -146,6 +168,7 @@ class MaterialAggregateOrderGroupInput {
     'skipAutoClaim': ?skipAutoClaim,
     'quantityMode': ?quantityMode,
     'orderMethod': ?orderMethod?.wireName,
+    'receiptAllocationMode': ?receiptAllocationMode?.wireName,
   };
 }
 
@@ -287,6 +310,7 @@ class MaterialAggregateOrderGroupPreview {
        requestedQty = _amount(json['requestedQty']),
        publicExtraQty = _amount(json['publicExtraQty']),
        publicExtraQtyExact = json['publicExtraQtyExact'] as String?,
+       receiptAllocationMode = json['receiptAllocationMode'] as String?,
        safetyQty = _amount(json['safetyQty']),
        departmentId = json['departmentId'] as String?,
        workerId = json['workerId'] as String?,
@@ -350,6 +374,7 @@ class MaterialAggregateOrderGroupPreview {
       safetyQty;
   final double? allowedOverproductionRate;
   final String? publicExtraQtyExact;
+  final String? receiptAllocationMode;
   final List<MaterialAggregateSourceAllocation> sources;
   final List<MaterialAggregateChildRequirement> sharedBomChildren;
   final String? existingBatchId;

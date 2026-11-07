@@ -45,14 +45,21 @@ final class _MaterialAggregateSubmission {
     List<_MaterialGroup> selected, {
     bool confirmed = false,
     bool? skipAutoClaim,
+    MaterialReceiptAllocationMode? receiptAllocationMode,
   }) => owner._withPreparationSubmissionScope(
-    () => _submit(selected, confirmed: confirmed, skipAutoClaim: skipAutoClaim),
+    () => _submit(
+      selected,
+      confirmed: confirmed,
+      skipAutoClaim: skipAutoClaim,
+      receiptAllocationMode: receiptAllocationMode,
+    ),
   );
 
   Future<bool> _submit(
     List<_MaterialGroup> selected, {
     required bool confirmed,
     bool? skipAutoClaim,
+    MaterialReceiptAllocationMode? receiptAllocationMode,
   }) async {
     if (running || table.saving || selected.isEmpty) return false;
     final sessionScope = owner._sessionScopeKey();
@@ -147,32 +154,56 @@ final class _MaterialAggregateSubmission {
               ),
             ),
           );
-          if (typed > floor) overTotal += typed - floor;
+          if (typed > floor &&
+              !groups.any(owner._canChooseAppendReceiptAllocation)) {
+            overTotal += typed - floor;
+          }
           if (groups.isNotEmpty && groups.every(owner._tableGroupIssued)) {
             appendKinds++;
           }
         }
-        final confirmedOnce = await UtenDialog.show(
-          owner.context,
+        final confirmation = await owner._confirmPreparationOrder(
           title: '确认下单 ${keys.length} 种物料？',
-          content: Text(
+          summary: Text(
             [
               '共 ${keys.length} 种物料，合计 ${table.sumQuantityTexts(keys.map((key) => table.drafts[key]!.totalText))}。',
-              if (appendKinds > 0) '$appendKinds 种为追加原单，只办理本次净增量。',
+              if (appendKinds > 0) '$appendKinds 种为追加下单，只办理本次净增量。',
               if (overTotal > BigInt.zero)
-                '含超出当前还缺的 ${materialQuantityText(overTotal)}（作为公共备货下达）。',
+                '含超出当前还需安排的 ${materialQuantityText(overTotal)}。',
             ].join('\n'),
             key: const Key('aggregate-submit-confirm-body'),
           ),
-          confirmLabel: '确认下单',
+          groups: [
+            for (final key in keys)
+              if (materialQuantityUnits(table.drafts[key]!.totalText) >
+                  BigInt.zero)
+                ...table.draftGroups(table.drafts[key]!),
+          ],
         );
-        if (confirmedOnce != true ||
+        if (!confirmation.accepted ||
             !owner.mounted ||
             !currentSession() ||
             !owner._sameAnalysisSnapshot(analysis, sessionScope)) {
           return false;
         }
         confirmedIntent = true;
+        receiptAllocationMode = confirmation.mode;
+      }
+      if (receiptAllocationMode != null && !table.uncertain) {
+        owner._mutateAggregateTable(() {
+          for (final key in keys) {
+            final draft = table.drafts[key]!;
+            if (table
+                    .draftGroups(draft)
+                    .any(owner._canChooseAppendReceiptAllocation) &&
+                draft.receiptAllocationMode != receiptAllocationMode) {
+              draft.receiptAllocationMode = receiptAllocationMode;
+              draft.previewGroups = const [];
+              table._revision++;
+            }
+          }
+        });
+        table.schedulePreview();
       }
       final dependencies = _dependencies(keys);
       while (remaining.isNotEmpty) {

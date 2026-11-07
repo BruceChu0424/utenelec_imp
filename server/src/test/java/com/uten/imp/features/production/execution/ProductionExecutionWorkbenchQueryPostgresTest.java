@@ -102,7 +102,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     cancelled_by uuid, cancelled_at timestamptz, cancellation_reason text,
                     is_deleted boolean DEFAULT FALSE, deleted_at timestamptz,
                     participating_warehouse_ids uuid[], analysis_no text);
-                CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
+                CREATE TABLE sales_orders(id uuid, client_id uuid, bill_no text, is_deleted boolean, client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid, legacy_id integer);
                 CREATE TABLE clients(id uuid, name text, name_en VARCHAR(255), is_hidden BOOLEAN NOT NULL DEFAULT FALSE, hidden_at TIMESTAMPTZ);
                 CREATE TABLE v_production_execution_workbench_segments(
                     segment_id uuid PRIMARY KEY, plan_id uuid, root_type text DEFAULT 'PLAN', root_id uuid,
@@ -145,8 +145,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
                     posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
-                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text);
-                CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
+                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text,legacy_id integer);
+                CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false,legacy_id integer);
                 CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint,
                     execution_segment_id uuid, created_by uuid, created_at timestamp with time zone DEFAULT now());
                 CREATE TABLE production_material_return_requests(id uuid,execution_segment_id uuid, created_at timestamp with time zone DEFAULT now(), created_by uuid, idempotency_key character varying(128), plan_id uuid, reason text, request_hash character(64), source_department_id uuid, warehouse_id uuid);

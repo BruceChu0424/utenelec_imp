@@ -42,9 +42,9 @@ class MaterialAnalysisPlanReferenceProjectionPostgresTest {
     @BeforeAll static void fixture() {
         dataSource = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         var jdbc = new JdbcTemplate(dataSource);
-        jdbc.execute("CREATE UNLOGGED TABLE production_plans(id uuid PRIMARY KEY,bill_no text,status int,is_deleted boolean,is_canceled boolean,department_id uuid,worker_id uuid,workshop_name text)");
+        jdbc.execute("CREATE UNLOGGED TABLE production_plans(id uuid PRIMARY KEY,bill_no text,status int,is_deleted boolean,is_canceled boolean,department_id uuid,worker_id uuid,workshop_name text,legacy_id integer)");
         jdbc.execute("CREATE UNLOGGED TABLE production_material_analysis_plan_links(analysis_id uuid,analysis_item_id uuid,plan_id uuid,created_at timestamptz,allocation_status text)");
-        jdbc.execute("CREATE UNLOGGED TABLE production_plan_items(id uuid PRIMARY KEY,plan_id uuid,is_deleted boolean,qty numeric,iqty numeric)");
+        jdbc.execute("CREATE UNLOGGED TABLE production_plan_items(id uuid PRIMARY KEY,plan_id uuid,is_deleted boolean,qty numeric,iqty numeric,legacy_id integer)");
         jdbc.execute("CREATE UNLOGGED TABLE production_execution_segments(id uuid,source_plan_item_id uuid,is_deleted boolean,status text,material_requirement_mode text,workshop_department_id uuid,responsible_employee_id uuid,plan_id uuid,package_id uuid)");
         jdbc.execute("CREATE UNLOGGED TABLE production_planning_packages(id uuid PRIMARY KEY,plan_id uuid,status text,is_deleted boolean)");
         jdbc.execute("CREATE UNLOGGED TABLE preplan_make_public_claims(id uuid PRIMARY KEY,target_analysis_id uuid,target_material_id uuid,source_plan_item_id uuid,qty numeric,cancelled_qty numeric,pending_qty numeric)");
@@ -52,8 +52,8 @@ class MaterialAnalysisPlanReferenceProjectionPostgresTest {
         jdbc.execute("CREATE FUNCTION fn_preplan_make_public_claim_cancelled_qty(uuid) RETURNS numeric LANGUAGE sql STABLE AS $$ SELECT cancelled_qty FROM preplan_make_public_claims WHERE id=$1 $$");
         jdbc.execute("CREATE UNLOGGED TABLE departments(id uuid,name text)");
         jdbc.execute("CREATE UNLOGGED TABLE employees(id uuid,full_name text)");
-        jdbc.execute("CREATE UNLOGGED TABLE production_daily_reports(id uuid,is_deleted boolean,status int)");
-        jdbc.execute("CREATE UNLOGGED TABLE production_daily_report_items(execution_segment_id uuid,report_id uuid,is_deleted boolean,qty numeric)");
+        jdbc.execute("CREATE UNLOGGED TABLE production_daily_reports(id uuid,is_deleted boolean,status int,legacy_id integer)");
+        jdbc.execute("CREATE UNLOGGED TABLE production_daily_report_items(execution_segment_id uuid,report_id uuid,is_deleted boolean,qty numeric,legacy_id integer)");
         jdbc.execute("ALTER TABLE production_daily_report_items ADD COLUMN id uuid DEFAULT gen_random_uuid()");
         com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
                 "production_plans", "production_plan_items", "production_daily_reports", "production_daily_report_items");

@@ -1568,7 +1568,6 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.f_style
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.is_important
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.is_pinned
-com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.maker_legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.maker_name
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#production_plans.material_analysis_id
@@ -1602,7 +1601,6 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.gift_qty
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.goods_snapshot_locked_at
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.goods_snapshot_source
-com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.line_no
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.place
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_document_items.price
@@ -1626,7 +1624,6 @@ com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.jav
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.department_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.is_closed
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.issue_status
-com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.maker_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.maker_legacy_id
 com/uten/imp/features/production/execution/ProductionDrawRequestPostgresTest.java#stock_documents.maker_name_snapshot
@@ -1838,7 +1835,6 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.finance_review_revision
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.is_closed
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.is_stopped
-com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.link_phone
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.maker_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#sales_orders.maker_legacy_id
@@ -1885,7 +1881,6 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.goods_name_snapshot
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.goods_snapshot_locked_at
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.goods_snapshot_source
-com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.line_no
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.place
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_document_items.price
@@ -1916,7 +1911,6 @@ com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPost
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.draw_batch_no
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.is_closed
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.issue_status
-com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.maker_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.maker_legacy_id
 com/uten/imp/features/production/execution/ProductionExecutionWorkbenchQueryPostgresTest.java#stock_documents.maker_name_snapshot

@@ -50,7 +50,7 @@ class ProductionDrawRequestPostgresTest {
         jdbc.execute("""
                 CREATE TABLE production_plans(id uuid PRIMARY KEY,bill_no text,status integer,
                   is_closed boolean DEFAULT false,is_canceled boolean DEFAULT false,is_stopped boolean DEFAULT false,
-                  maker_id uuid,is_deleted boolean DEFAULT false, actual_output_supplement_request_id uuid);
+                  maker_id uuid,is_deleted boolean DEFAULT false, actual_output_supplement_request_id uuid,legacy_id integer);
                 CREATE TABLE production_planning_packages(id uuid PRIMARY KEY,status text,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,plan_id uuid,package_id uuid,status text,
                   lock_version bigint DEFAULT 1,workshop_department_id uuid,responsible_employee_id uuid,
@@ -64,10 +64,10 @@ class ProductionDrawRequestPostgresTest {
                   UNIQUE(execution_segment_id,action,idempotency_key), counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint);
                 CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,bill_no text,warehouse_id uuid,
                   draw_batch_no text,status integer DEFAULT 0,is_deleted boolean DEFAULT false,
-                  created_at timestamptz,updated_at timestamptz,created_by uuid,updated_by uuid,deleted_at timestamptz,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text);
+                  created_at timestamptz,updated_at timestamptz,created_by uuid,updated_by uuid,deleted_at timestamptz,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text,legacy_id integer);
                 CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,goods_id uuid,goods_code_snapshot text,
                   goods_name_snapshot text,color_id uuid,unit_id uuid,qty numeric,issued_qty numeric DEFAULT 0,
-                  unit_rate numeric DEFAULT 1,is_deleted boolean DEFAULT false);
+                  unit_rate numeric DEFAULT 1,is_deleted boolean DEFAULT false,legacy_id integer);
                 CREATE TABLE production_planning_package_documents(document_id uuid,document_type text,execution_segment_id uuid);
                 CREATE TABLE production_planning_package_document_items(document_item_id uuid,document_type text,demand_id uuid);
                 CREATE TABLE production_material_demands(id uuid,execution_segment_id uuid,is_deleted boolean DEFAULT false, consumption_snapshot jsonb, material_increment_request_id uuid);
@@ -86,7 +86,8 @@ class ProductionDrawRequestPostgresTest {
         String receiving=Files.readString(Path.of("src/main/resources/db/migration/V618__production_material_return_receiving_warehouse.sql"));
         int effective=receiving.indexOf("CREATE FUNCTION fn_production_draw_item_effective_qty(");
         jdbc.execute(receiving.substring(effective,receiving.indexOf("$$;",effective)+3));
-        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc, "production_plans");
+        com.uten.imp.support.MigratedProjectionSchema.installImportedDocumentPolicy(jdbc,
+                "production_plans", "stock_documents", "stock_document_items");
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto", "none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());

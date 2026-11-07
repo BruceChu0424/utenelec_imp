@@ -31,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
+        "spring.jpa.mapping-resources="+HistoricalOrmMappings.BEFORE_V1113,
+        HistoricalInventoryPlanningSql.PROPERTY,
         "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
@@ -59,6 +61,8 @@ class InventoryValueFutureConsumerContinuationPostgresTest {
     @AfterEach void clearActor(){SecurityContextHolder.clearContext();}
 
     @Test void futureDirtyCannotSelfBlockTheOriginalRootButAnActivePlanStillBlocks()throws Exception{
+        HistoricalOrmMappings.requireOriginalSchema(jdbc,1099);
+        HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
         var scenario=scenario();
         AssertionError original=assertThrows(AssertionError.class,scenario::allDirectChildrenStartAtOnceAndEachTransferTopsUpTheRunningParent);
         assertTrue(original.getMessage().startsWith("Inventory-value work remained pending for fixture goods after 45 seconds:"),original::getMessage);

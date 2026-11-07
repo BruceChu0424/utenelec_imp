@@ -31,8 +31,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","spring.flyway.target=1065",
+        "spring.jpa.mapping-resources="+HistoricalOrmMappings.BEFORE_V1097,
+        HistoricalInventoryPlanningSql.BEFORE_V1097_PROPERTY,
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.production.readiness-reconcile.enabled=false","uten.features.goods-owner-scope-enabled=false",
+        "uten.production.readiness-reconcile.enabled=false","uten.read-summary.compaction-enabled=false","uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 class InventoryValueOutputRefreshContinuationPostgresTest {
@@ -59,6 +61,8 @@ class InventoryValueOutputRefreshContinuationPostgresTest {
     // removes this class-owned database. Do not close a cached context manually.
 
     @Test void sameConfirmedDocumentResumesItsOriginalRootWithoutRepricingOrInventingSourceFacts() throws Exception {
+        HistoricalOrmMappings.requireOriginalSchema(jdbc,1065);
+        HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
         try(var choices=BusinessPrecisionContext.use(Map.of())){
             var scenario=new MakePublicSupplyEndToEndTest();beans.autowireBean(scenario);scenario.prepare();
             Set<UUID> existing=new HashSet<>(jdbc.queryForList("SELECT execution_segment_id FROM stock_value_production_cost_objects",UUID.class));

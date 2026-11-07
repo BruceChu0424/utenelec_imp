@@ -28,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","spring.flyway.target=1071",
+        "spring.jpa.mapping-resources="+HistoricalOrmMappings.BEFORE_V1097,
+        HistoricalInventoryPlanningSql.BEFORE_V1097_PROPERTY,
         "uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.read-summary.compaction-enabled=false","uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only"})
@@ -53,6 +55,8 @@ class InventoryValueDirectReportRefreshContinuationPostgresTest {
     @AfterEach void clearActor(){SecurityContextHolder.clearContext();}
 
     @Test void exactReportGenerationResumesBothPhysicalAndConsumptionRootsWithoutRewritingHistory()throws Exception {
+        HistoricalOrmMappings.requireOriginalSchema(jdbc,1071);
+        HistoricalInventoryPlanningSql.requireOriginalPlanningSchema(jdbc);
         var scenario=new AggregateMaterialDirectTransferEndToEndTest();beans.autowireBean(scenario);
         scenario.before();
         UUID consumption=failedScope(scenario::sharedChildActuallyHandsOverToEachOriginalParentWithinOneMemberShare);

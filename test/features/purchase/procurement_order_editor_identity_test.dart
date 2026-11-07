@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/buttons/uten_edit_floating_actions.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -24,13 +25,15 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
-import '../../support/versioned_summary_test_response.dart';
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/pump_until.dart';
 
 final _reader = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'a'),
 );
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final subcontract in [false, true]) {
     for (final (freshStatus, hidden) in <(String?, bool)>[
       (null, false),
@@ -49,7 +52,7 @@ void main() {
           final supplier = find.byType(ProcurementSupplierCell).first;
           await tester.ensureVisible(supplier);
           await tester.tap(supplier);
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('新供应商'));
           await tester.pump();
           await tester.tap(find.text('确定'));
@@ -103,7 +106,7 @@ void main() {
         expect(tester.widget<ProcurementSupplierCell>(supplier).value, isNull);
         await tester.ensureVisible(supplier);
         await tester.tap(supplier);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('新供应商'));
         await tester.pump();
         await tester.tap(find.text('确定'));
@@ -432,9 +435,8 @@ class _Session extends SessionNotifier {
   );
 }
 
-class _Api extends ApiClient {
-  _Api(this.subcontract)
-    : super(Dio(BaseOptions(baseUrl: 'https://example.invalid/api')));
+class _Api extends MasterSummaryStreamTestApi {
+  _Api(this.subcontract);
   final bool subcontract;
   String get documentPath =>
       '${subcontract ? '/subcontract' : '/purchase'}/orders/order-1';
@@ -523,33 +525,36 @@ class _Api extends ApiClient {
   }
 
   @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(
+      request.path,
+      isIn([
+        '${ApiEndpoints.suppliers}/summaries',
+        '${ApiEndpoints.businessReferenceSuppliers}/summaries',
+      ]),
+    );
+    expect(replacementDraft, isTrue);
+    final parameters = masterSummaryTestParameters(request);
+    expect(parameters['size'], 100);
+    expect(parameters['selectableOnly'], isTrue);
+    return [
+      {
+        'id': 'new-supplier',
+        'code': 'SUP-NEW',
+        'name': '新供应商',
+        'status': '使用',
+        'categoryId': 'supplier-category',
+      },
+    ];
+  }
+
+  @override
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path == '${ApiEndpoints.suppliers}/summaries' ||
-        path == '${ApiEndpoints.businessReferenceSuppliers}/summaries') {
-      expect(replacementDraft, isTrue);
-      final request = Map<String, dynamic>.from(body! as Map);
-      expect(request['size'], 100);
-      expect((request['filter'] as Map)['selectableOnly'], isTrue);
-      return versionedSummaryTestResponse(
-        [
-          {
-            'id': 'new-supplier',
-            'code': 'SUP-NEW',
-            'name': '新供应商',
-            'status': '使用',
-            'categoryId': 'supplier-category',
-          },
-        ],
-        request,
-        revision: 'a' * 64,
-        dataVersion: 'b' * 64,
-      );
-    }
     writes.add(path);
     return _detail();
   }

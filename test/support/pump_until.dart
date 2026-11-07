@@ -7,6 +7,16 @@ Future<void> _pumpIoTurn(WidgetTester tester) async {
   await tester.runAsync(() => Future<void>.delayed(Duration.zero));
 }
 
+/// Advances one caller-selected fake frame and one actual I/O event turn.
+/// Fixed-frame fixtures retain their own frame count and duration.
+Future<void> pumpWithIo(
+  WidgetTester tester, [
+  Duration duration = Duration.zero,
+]) async {
+  await _pumpIoTurn(tester);
+  await tester.pump(duration);
+}
+
 /// The same frame step and fake-clock deadline as WidgetTester.pumpAndSettle,
 /// while allowing a real response stream to complete between widget frames.
 Future<int> pumpAndSettleWithIo(
@@ -23,8 +33,7 @@ Future<int> pumpAndSettleWithIo(
       if (tester.binding.clock.now().isAfter(end)) {
         throw FlutterError('pumpAndSettle timed out');
       }
-      await _pumpIoTurn(tester);
-      await tester.pump(duration);
+      await pumpWithIo(tester, duration);
       count++;
     } while (tester.binding.hasScheduledFrame);
     return count;
@@ -42,8 +51,11 @@ Future<void> pumpUntil(
 }) async {
   final deadline = tester.binding.clock.fromNowBy(timeout);
   do {
-    if (realIo) await _pumpIoTurn(tester);
-    await tester.pump(const Duration(milliseconds: 16));
+    if (realIo) {
+      await pumpWithIo(tester, const Duration(milliseconds: 16));
+    } else {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     if (ready()) return;
   } while (tester.binding.clock.now().isBefore(deadline));
   throw TestFailure(reason);

@@ -60,6 +60,22 @@ Future<_Wire> _mount(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'fixed fifteen frames retain the original 750ms fake clock budget',
+    (tester) async {
+      final wire = await _mount(tester);
+      final start = tester.binding.clock.now();
+      for (var frame = 0; frame < 15; frame++) {
+        await pumpWithIo(tester, const Duration(milliseconds: 50));
+      }
+      expect(
+        tester.binding.clock.now().difference(start),
+        const Duration(milliseconds: 750),
+      );
+      expect(find.text('original'), findsOneWidget);
+      expect(wire.requests, 1);
+    },
+  );
+  testWidgets(
     'real Dio bytes publish the original data within the original frame deadline',
     (tester) async {
       final wire = await _mount(tester);

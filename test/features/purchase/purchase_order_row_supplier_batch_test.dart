@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
@@ -22,9 +23,11 @@ import 'package:uten_imp/features/basic_data/models/reference_method_option.dart
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/uten_test_actions.dart';
-import '../../support/versioned_summary_test_response.dart';
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/pump_until.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'late supplier defaults do not overwrite a newer supplier choice',
     (tester) async {
@@ -46,7 +49,7 @@ void main() {
       );
       Future<void> settleFrames() async {
         for (var i = 0; i < 15; i++) {
-          await tester.pump(const Duration(milliseconds: 50));
+          await pumpWithIo(tester, const Duration(milliseconds: 50));
         }
       }
 
@@ -137,7 +140,7 @@ void main() {
     await tester.ensureVisible(cells.first);
     await tester.pumpAndSettle();
     await tester.tap(cells.at(0));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     // 面板出现：列表里点选「洪武五金」→ 确定。
     expect(find.text('选择供应商'), findsOneWidget);
     await tester.tap(find.text('洪武五金'));
@@ -182,9 +185,7 @@ class _EmptySessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
-class _OrderApi extends ApiClient {
-  _OrderApi() : super(Dio());
-
+class _OrderApi extends MasterSummaryStreamTestApi {
   static const _suppliers = <Map<String, dynamic>>[
     {
       'id': 's1',
@@ -215,22 +216,15 @@ class _OrderApi extends ApiClient {
   ];
 
   @override
-  Future<Map<String, dynamic>> post(
-    String path, {
-    Object? body,
-    Map<String, dynamic>? headers,
-    Map<String, dynamic>? query,
-  }) async {
-    expectSync(path, '${ApiEndpoints.businessReferenceSuppliers}/summaries');
-    final request = Map<String, dynamic>.from(body! as Map);
-    expectSync(request['size'], lessThanOrEqualTo(100));
-    expectSync((request['filter'] as Map)['selectableOnly'], isTrue);
-    return versionedSummaryTestResponse(
-      _pickerSuppliers,
-      request,
-      revision: 'a' * 64,
-      dataVersion: 'b' * 64,
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expectSync(
+      request.path,
+      '${ApiEndpoints.businessReferenceSuppliers}/summaries',
     );
+    final parameters = masterSummaryTestParameters(request);
+    expectSync(parameters['size'], lessThanOrEqualTo(100));
+    expectSync(parameters['selectableOnly'], isTrue);
+    return _pickerSuppliers;
   }
 
   @override

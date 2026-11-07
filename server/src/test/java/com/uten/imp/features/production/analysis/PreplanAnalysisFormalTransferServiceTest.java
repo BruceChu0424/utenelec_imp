@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -116,6 +117,12 @@ class PreplanAnalysisFormalTransferServiceTest {
                 List.of(formalReservationId), true))
                 .thenReturn(List.of(formalization));
 
+        Query physicalHandoffs = mock(Query.class);
+        when(f.em().createNativeQuery(contains("FROM preplan_physical_stock_formalizations")))
+                .thenReturn(physicalHandoffs);
+        when(physicalHandoffs.setParameter("ids", List.of(formalReservationId)))
+                .thenReturn(physicalHandoffs);
+        when(physicalHandoffs.getResultList()).thenReturn(List.of());
         f.service().restorePlanDemandTransfers(
                 List.of(formalReservationId));
 

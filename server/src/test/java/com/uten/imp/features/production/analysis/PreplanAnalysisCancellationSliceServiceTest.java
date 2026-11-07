@@ -142,6 +142,10 @@ class PreplanAnalysisCancellationSliceServiceTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String statement = invocation.getArgument(0, String.class);
             sql.add(statement);
+            if (statement.contains("SELECT id FROM preplan_physical_stock_formalizations")
+                    && statement.contains("source_analysis_id=:analysis AND restored_at IS NULL")) {
+                return openRelations;
+            }
             if (statement.contains("status IN ('OPEN', 'PARTIAL')")) {
                 return openRelations;
             }

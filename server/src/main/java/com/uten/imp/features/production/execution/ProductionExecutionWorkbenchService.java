@@ -4,6 +4,7 @@ import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
 import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
 import com.uten.imp.application.port.WorkshopMaterialStatePort;
 import com.uten.imp.common.util.NativeQueryResults;
+import static com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeRowsByKey;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
@@ -1285,7 +1286,7 @@ public class ProductionExecutionWorkbenchService {
                             AND proof.id IS NOT NULL
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
                             AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
-                                JOIN %5$s report ON report.id=claim.report_id
+                                JOIN %6$s report ON report.id=claim.report_id
                                 WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
                                   AND report.status IN(0,1)
                                   AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id))
@@ -1324,7 +1325,7 @@ public class ProductionExecutionWorkbenchService {
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted
                          ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_plans"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("production_daily_reports"));
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"), nativeRowsByKey("production_plans","id","task.plan_id"), nativeRowsByKey("production_daily_reports","id","disposition.report_id"), nativeRowsByKey("production_daily_reports","id","claim.report_id"));
     }
 
     /**
@@ -1341,7 +1342,7 @@ public class ProductionExecutionWorkbenchService {
                     WHERE pending_mapping.execution_segment_id=task.segment_id
                       AND pending_mapping.document_type='DRAW'
                       AND NOT pending_document.is_deleted AND pending_document.status IN (0,1)
-                      AND COALESCE(pending_item.issued_qty,0) < fn_production_draw_item_effective_qty(pending_item.id)""".formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"), com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_document_items"));
+                      AND COALESCE(pending_item.issued_qty,0) < fn_production_draw_item_effective_qty(pending_item.id)""".formatted(nativeRowsByKey("stock_documents","id","pending_mapping.document_id"), nativeRowsByKey("stock_document_items","doc_id","pending_document.id"));
     }
 
     static String drawRequestedPredicate() {
@@ -1358,7 +1359,7 @@ public class ProductionExecutionWorkbenchService {
                       AND draw_mapping.document_type='DRAW' AND NOT draw_document.is_deleted
                       AND draw_document.status IN (0,1)
                       AND NOT fn_production_draw_fully_requested(draw_document.id))
-                """.formatted(com.uten.imp.common.history.ImportedBusinessDocumentScope.nativeTable("stock_documents"));
+                """.formatted(nativeRowsByKey("stock_documents","id","draw_mapping.document_id"));
     }
 
     /**

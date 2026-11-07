@@ -67,7 +67,7 @@ class IqcDecideReportBatchPostgresTest {
 
     /** 1 张采购收货单 + 1 张委外进仓单，各 2 行（每行待检 1.25）。 */
     private record Stage(Map<UUID,List<WarehouseIqcScaleFixture.Receipt>> byReceipt,
-                         List<String> billNos,Authentication actor,UUID analysisId){}
+                         List<String> billNos,Authentication actor,UUID analysisId,FullChainEndToEndTest.World world){}
 
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInService preStock;
     @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxScheduler outboxScheduler;
@@ -91,7 +91,7 @@ class IqcDecideReportBatchPostgresTest {
             String table=entry.getValue().getFirst().type().equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
             billNos.add(db.queryForObject("SELECT bill_no FROM "+table+" WHERE id=?",String.class,entry.getKey()));
         }
-        return new Stage(byReceipt,billNos,SecurityContextHolder.getContext().getAuthentication(),scenario.analysisId());
+        return new Stage(byReceipt,billNos,SecurityContextHolder.getContext().getAuthentication(),scenario.analysisId(),scenario.world());
     }
 
     private BatchInspectionReportRequest report(Stage stage,BigDecimal corruptedRemainingForLastReceipt){
@@ -305,6 +305,8 @@ class IqcDecideReportBatchPostgresTest {
 
     @Test void partialStockThenFailureOnlyResolutionEachRefreshTheSharedAnalysisOnce(){
         Stage stage=prepare();
+        var fixture=new FullChainEndToEndTest();
+        beans.autowireBean(fixture);
         SecurityContextHolder.getContext().setAuthentication(stage.actor());
         for(var rows:stage.byReceipt().values()) {
             preStock.preStockIn(rows.getFirst().type(),rows.getFirst().id(),
@@ -314,6 +316,9 @@ class IqcDecideReportBatchPostgresTest {
         }
         Object spy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
         for(boolean resolve:List.of(false,true)) {
+            // The fixture disables the background value worker. Publish the
+            // prior committed physical stage before sending its next command.
+            org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"drainCosts",stage.world());
             var request=new BatchInspectionReportRequest(stage.byReceipt().values().stream().map(rows ->
                     new BatchInspectionReportRequest.Receipt(rows.getFirst().type(),rows.getFirst().id(),rows.stream().map(row ->
                             new BatchInspectionDecideRequest.Item(row.inspectionId(),new BigDecimal(resolve?"0.7500":"1.2500"),
@@ -470,7 +475,7 @@ class IqcDecideReportBatchPostgresTest {
     private long originClassifierCalls(){
         return db.queryForObject("""
                 SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
-                WHERE schemaname='public' AND funcname='fn_imported_business_document'
+                WHERE schemaname='public' AND funcname='fn_imported_business_document_row'
                 """,Long.class);
     }
 

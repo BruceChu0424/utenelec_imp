@@ -15,6 +15,8 @@ import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 final _colorPermissions = StateProvider<Set<String>>((_) => {Perm.colorEdit});
 
@@ -35,20 +37,17 @@ void main() {
       ..interceptors.add(
         InterceptorsWrapper(
           onRequest: (request, handler) async {
-            Object response = <String, dynamic>{};
-            if (request.path == '/master/colors') {
+            final Object response = <String, dynamic>{};
+            if (request.path == '/master/colors/summaries') {
               final pending = Completer<String>();
               reads.add(pending);
               final name = await pending.future;
-              response = {
-                'items': [
+              handler.resolve(
+                masterSummaryStreamTestInterceptResponse([
                   {'id': 'color-1', 'name': name, 'code': 'C001'},
-                ],
-                'page': 1,
-                'size': 20,
-                'total': 1,
-                'totalPages': 1,
-              };
+                ], request),
+              );
+              return;
             }
             handler.resolve(
               Response<dynamic>(
@@ -83,7 +82,7 @@ void main() {
       ),
     );
     for (var frame = 0; frame < 50 && reads.isEmpty; frame++) {
-      await tester.pump(const Duration(milliseconds: 20));
+      await pumpWithIo(tester, const Duration(milliseconds: 20));
     }
     expect(reads, hasLength(1));
     final container = ProviderScope.containerOf(
@@ -91,13 +90,13 @@ void main() {
     );
     container.read(_colorPermissions.notifier).state = {Perm.colorView};
     for (var frame = 0; frame < 50 && reads.length < 2; frame++) {
-      await tester.pump(const Duration(milliseconds: 20));
+      await pumpWithIo(tester, const Duration(milliseconds: 20));
     }
     expect(reads, hasLength(2));
     reads.last.complete('Current authority');
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     reads.first.complete('Old authority');
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     final table = tester.widget<MasterDataTableView<ColorListItem>>(
       find.byType(MasterDataTableView<ColorListItem>),
     );
@@ -118,14 +117,14 @@ void main() {
         ..interceptors.add(
           InterceptorsWrapper(
             onRequest: (request, handler) {
-              Object response = <String, dynamic>{};
+              final Object response = <String, dynamic>{};
               if (request.method == 'PATCH') {
                 final id = request.path.split('/').last;
                 writes.add(id);
                 names[id] =
                     ((request.data as Map)['changes'] as Map)['name'] as String;
                 if (id == 'first') failReadback = true;
-              } else if (request.path == '/master/colors') {
+              } else if (request.path == '/master/colors/summaries') {
                 if (failReadback) {
                   failReadback = false;
                   handler.reject(
@@ -141,8 +140,8 @@ void main() {
                   );
                   return;
                 }
-                response = {
-                  'items': [
+                handler.resolve(
+                  masterSummaryStreamTestInterceptResponse([
                     for (final entry in names.entries)
                       {
                         'id': entry.key,
@@ -150,12 +149,9 @@ void main() {
                         'code': entry.key,
                         'status': '使用',
                       },
-                  ],
-                  'page': 1,
-                  'size': 20,
-                  'total': 2,
-                  'totalPages': 1,
-                };
+                  ], request),
+                );
+                return;
               }
               handler.resolve(
                 Response<dynamic>(
@@ -187,11 +183,11 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('编辑模式'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('Blue'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.enterText(
         find.byWidgetPredicate(
           (widget) => widget is TextField && widget.controller?.text == 'Blue',
@@ -199,25 +195,25 @@ void main() {
         'Sky blue',
       );
       await tester.tap(find.text('Green'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.enterText(
         find.byWidgetPredicate(
           (widget) => widget is TextField && widget.controller?.text == 'Green',
         ),
         'Leaf green',
       );
-      await tester.pump();
+      await pumpWithIo(tester);
       await tester.tap(find.text('保存 2 行修改'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(writes, ['first']);
       expect(find.text('保存 1 行修改'), findsOneWidget);
       final table = tester.widget<MasterDataTableView<ColorListItem>>(
         find.byType(MasterDataTableView<ColorListItem>),
       );
       table.onRetry!();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('保存 1 行修改'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(writes, ['first', 'second']);
       expect(names, {'first': 'Sky blue', 'second': 'Leaf green'});
       expect(tester.takeException(), isNull);
@@ -235,26 +231,23 @@ void main() {
         ..interceptors.add(
           InterceptorsWrapper(
             onRequest: (request, handler) {
-              Object response = <String, dynamic>{};
+              final Object response = <String, dynamic>{};
               if (request.method == 'PATCH') {
                 writes.add(request);
                 name =
                     ((request.data as Map)['changes'] as Map)['name'] as String;
-              } else if (request.path == '/master/colors') {
-                response = {
-                  'items': [
+              } else if (request.path == '/master/colors/summaries') {
+                handler.resolve(
+                  masterSummaryStreamTestInterceptResponse([
                     {
                       'id': 'color-1',
                       'name': name,
                       'code': 'C001',
                       'status': '使用',
                     },
-                  ],
-                  'page': 1,
-                  'size': 20,
-                  'total': 1,
-                  'totalPages': 1,
-                };
+                  ], request),
+                );
+                return;
               }
               handler.resolve(
                 Response<dynamic>(
@@ -286,10 +279,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('编辑模式'), findsOneWidget);
       await tester.tap(find.text('编辑模式'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final table = tester.widget<MasterDataTableView<ColorListItem>>(
         find.byType(MasterDataTableView<ColorListItem>),
       );
@@ -309,12 +302,12 @@ void main() {
       );
       expect(nameInput, findsNothing);
       await tester.tap(find.text('Blue'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(nameInput, findsOneWidget);
       await tester.enterText(nameInput, 'Sky blue');
-      await tester.pump();
+      await pumpWithIo(tester);
       await tester.tap(find.text('保存 1 行修改'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(writes.single.path, '/master/inline-edit/colors/color-1');
       expect(writes.single.data, {
         'expected': {'name': 'Blue'},
@@ -334,9 +327,9 @@ void main() {
         ),
         'Sea blue',
       );
-      await tester.pump();
+      await pumpWithIo(tester);
       await tester.tap(find.text('保存 1 行修改'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(writes, hasLength(2));
       expect(writes.last.data, {
         'expected': {'name': 'Sky blue'},

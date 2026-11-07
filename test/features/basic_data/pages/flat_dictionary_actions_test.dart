@@ -30,6 +30,8 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/models/user.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 final _grants = StateProvider<Set<String>>((_) => {});
 final _identity = StateProvider<AuthenticatedScope>(
@@ -72,7 +74,7 @@ void main() {
               isNot(same(Navigator.of(pageContext, rootNavigator: true))),
             );
             _openDetail(tester, type);
-            await tester.pump(const Duration(milliseconds: 80));
+            await pumpWithIo(tester, const Duration(milliseconds: 80));
             expect(leafRoute.isCurrent, isTrue);
             ModalRoute<dynamic>? foreignRoute;
             if (foreignPopup) {
@@ -85,12 +87,12 @@ void main() {
                   },
                 ),
               );
-              await tester.pump(const Duration(milliseconds: 350));
+              await pumpWithIo(tester, const Duration(milliseconds: 350));
               expect(leafRoute.isCurrent, isTrue);
               expect(foreignRoute!.isCurrent, isTrue);
             }
             pending.complete();
-            await tester.pumpAndSettle();
+            await pumpAndSettleWithIo(tester);
             expect(find.byType(CircularProgressIndicator), findsNothing);
             if (foreignPopup) {
               expect(foreignRoute!.isCurrent, isTrue);
@@ -117,18 +119,18 @@ void main() {
         final api = _Api(type);
         final container = await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text(action));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.byType(UtenAlertDialog), findsOneWidget);
         container.read(_identity.notifier).state = const AuthenticatedScope(
           userId: 'second-user',
         );
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         container.read(_identity.notifier).state = const AuthenticatedScope(
           userId: 'flat-dictionary-test',
         );
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.byType(UtenAlertDialog), findsNothing);
         expect(api.writes, isEmpty);
         expect(tester.takeException(), isNull);
@@ -140,14 +142,14 @@ void main() {
         final api = _Api(type);
         final container = await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('停用选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         final grants = container.read(_grants);
         container.read(_grants.notifier).state = {'${_prefix(type)}:view'};
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         container.read(_grants.notifier).state = grants;
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.byType(UtenAlertDialog), findsNothing);
         expect(api.writes, isEmpty);
         expect(tester.takeException(), isNull);
@@ -159,11 +161,11 @@ void main() {
       final api = _Api(type);
       await _pump(tester, type, api);
       await tester.tap(find.text('资料一'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('删除选中'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       _table(tester).onFilterChanged('status', '禁用');
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenAlertDialog), findsNothing);
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);
@@ -174,11 +176,11 @@ void main() {
         final api = _Api(type)..failSecond = true;
         final container = await _pump(tester, type, api);
         await tester.tap(find.text('资料二'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除').last);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(
           find.byKey(const ValueKey('master-batch-outcome')),
           findsOneWidget,
@@ -186,7 +188,7 @@ void main() {
         container.read(_identity.notifier).state = const AuthenticatedScope(
           userId: 'second-user',
         );
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(
           find.byKey(const ValueKey('master-batch-outcome')),
           findsNothing,
@@ -205,29 +207,29 @@ void main() {
             ..writeError = fail;
           final container = await _pump(tester, type, api);
           await tester.tap(find.text('资料一'));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('停用选中'));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('确认').last);
-          await tester.pump(const Duration(milliseconds: 80));
+          await pumpWithIo(tester, const Duration(milliseconds: 80));
           expect(api.writes, hasLength(1));
           container.read(_identity.notifier).state = const AuthenticatedScope(
             userId: 'second-user',
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           container.read(_identity.notifier).state = const AuthenticatedScope(
             userId: 'flat-dictionary-test',
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           unawaited(
             showDialog<void>(
               context: tester.element(find.byType(_pageType(type))),
               builder: (_) => const AlertDialog(content: Text('新身份的窗口')),
             ),
           );
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           pending.complete();
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           expect(find.text('新身份的窗口'), findsOneWidget);
           expect(find.text('旧请求失败'), findsNothing);
           expect(container.read(appNotificationProvider), isEmpty);
@@ -249,31 +251,31 @@ void main() {
         final api = _Api(type)..holdWrites = first;
         final container = await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('停用选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('确认').last);
-        await tester.pump(const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
         expect(api.writes, hasLength(1));
         container.read(_identity.notifier).state = const AuthenticatedScope(
           userId: 'second-user',
         );
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         api.holdWrites = second;
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('停用选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('确认').last);
-        await tester.pump(const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
         expect(api.writes, hasLength(2));
         first.complete();
-        await tester.pump(const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
         expect(find.text('正在处理${_noun(type)}'), findsOneWidget);
         expect(find.textContaining('已停用'), findsNothing);
         expect(container.read(appNotificationProvider), isEmpty);
         second.complete();
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('正在处理${_noun(type)}'), findsNothing);
         expect(tester.takeException(), isNull);
       },
@@ -292,7 +294,7 @@ void main() {
         '资料已改',
       );
       await tester.tap(find.text('保存').last);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.writes, hasLength(1));
       expect(api.writes.single.path, '/master/$type/one');
       expect(find.byType(MasterEditForm), findsNothing);
@@ -311,18 +313,18 @@ void main() {
       final api = _Api(type)..holdDetailReads = pending;
       final container = await _pump(tester, type, api);
       final opening = Future<void>.sync(_editEntry(tester, type).onTap);
-      await tester.pump(const Duration(milliseconds: 80));
+      await pumpWithIo(tester, const Duration(milliseconds: 80));
       expect(api.detailReads, 1);
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'second-user',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'flat-dictionary-test',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       pending.complete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await opening;
       expect(find.byType(MasterEditForm), findsNothing);
       expect(api.writes, isEmpty);
@@ -335,9 +337,9 @@ void main() {
       await _pump(tester, type, api);
       final pageContext = tester.element(find.byType(_pageType(type)));
       await tester.tap(find.text('资料一'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('删除选中'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       final nav = Navigator.of(pageContext);
       unawaited(
         nav.push<void>(
@@ -346,10 +348,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('另一个页面'), findsOneWidget);
       nav.pop();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(UtenAlertDialog), findsNothing);
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);
@@ -364,11 +366,11 @@ void main() {
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'second-user',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'flat-dictionary-test',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(MasterEditForm), findsNothing);
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);
@@ -383,14 +385,14 @@ void main() {
       final container = await _pump(tester, type, api);
       await _openEdit(tester, type);
       await tester.tap(find.text('保存').last);
-      await tester.pump(const Duration(milliseconds: 80));
+      await pumpWithIo(tester, const Duration(milliseconds: 80));
       expect(api.writes, hasLength(1));
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'second-user',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       pending.complete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.byType(MasterEditForm), findsNothing);
       expect(find.text('旧请求失败'), findsNothing);
       expect(find.text('${_noun(type)}已更新'), findsNothing);
@@ -408,13 +410,13 @@ void main() {
               ..detailError = detailError;
             final container = await _pump(tester, type, api);
             _openDetail(tester, type);
-            await tester.pump(const Duration(milliseconds: 80));
-            await tester.pump();
+            await pumpWithIo(tester, const Duration(milliseconds: 80));
+            await pumpWithIo(tester);
             expect(find.byType(CircularProgressIndicator), findsWidgets);
             if (identityChanged) {
               container.read(_identity.notifier).state =
                   const AuthenticatedScope(userId: 'second-user');
-              await tester.pumpAndSettle();
+              await pumpAndSettleWithIo(tester);
             }
             unawaited(
               showDialog<void>(
@@ -422,9 +424,9 @@ void main() {
                 builder: (_) => const AlertDialog(content: Text('新身份的窗口')),
               ),
             );
-            await tester.pump(const Duration(milliseconds: 350));
+            await pumpWithIo(tester, const Duration(milliseconds: 350));
             pending.complete();
-            await tester.pumpAndSettle();
+            await pumpAndSettleWithIo(tester);
             expect(find.text('新身份的窗口'), findsOneWidget);
             expect(find.text('编辑'), findsNothing);
             expect(find.text('旧详情失败'), findsNothing);
@@ -440,7 +442,7 @@ void main() {
         final api = _Api(type)..detailError = true;
         final container = await _pump(tester, type, api);
         _openDetail(tester, type);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(
           container.read(appNotificationProvider).map((n) => n.message),
           contains('旧详情失败'),
@@ -455,10 +457,10 @@ void main() {
       final api = _Api(type);
       final container = await _pump(tester, type, api);
       _openDetail(tester, type);
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('编辑'), findsOneWidget);
       container.read(_grants.notifier).state = {};
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('编辑'), findsNothing);
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);
@@ -469,22 +471,22 @@ void main() {
         final api = _Api(type);
         await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('删除选中'), findsOneWidget);
         expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
         await tester.tap(find.text('删除选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(api.writes, isEmpty);
         await tester.tap(find.text('取消').last);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(api.writes, isEmpty);
         await tester.tap(find.text('资料二'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('停用选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(api.writes, isEmpty);
         await tester.tap(find.text('确认').last);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         if (type == 'currencies') {
           expect(api.writes.map((r) => r.path), [
             '/master/currencies/one/status',
@@ -508,11 +510,11 @@ void main() {
         final api = _Api(type);
         final container = await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         container.read(_grants.notifier).state = {'${_prefix(type)}:view'};
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('删除${_noun(type)}'), findsNothing);
         expect(api.writes, isEmpty);
         expect(find.text('删除选中'), findsNothing);
@@ -526,7 +528,7 @@ void main() {
         final api = _Api(type);
         await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         final delete = tester
             .widget<UtenButton>(
               find
@@ -538,15 +540,15 @@ void main() {
             )
             .onPressed!;
         await tester.tap(find.text('编辑模式'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await Future<void>.sync(delete);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('删除${_noun(type)}'), findsNothing);
         expect(api.writes, isEmpty);
         await tester.tap(
           find.byKey(const ValueKey('inline-activate-one-name')),
         );
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.enterText(
           find.descendant(
             of: find.byKey(const ValueKey('inline-one-name')),
@@ -554,9 +556,9 @@ void main() {
           ),
           '修改后',
         );
-        await tester.pump();
+        await pumpWithIo(tester);
         await tester.tap(find.text('保存 1 行修改'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(api.writes.single.path, '/master/inline-edit/$type/one');
         expect(api.writes.single.data, {
           'expected': {'name': '资料一'},
@@ -573,20 +575,20 @@ void main() {
         api.holdWrites = pending;
         await _pump(tester, type, api);
         await tester.tap(find.text('资料一'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('资料二'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除选中'));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('删除').last);
-        await tester.pump(const Duration(milliseconds: 80));
-        await tester.pump(const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
         expect(find.text('正在处理${_noun(type)}'), findsOneWidget);
         pending.complete();
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.text('被货品或单据引用'), findsOneWidget);
         await tester.tap(find.byType(UtenCloseButton));
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         final table = tester.widget<MasterDataTableView<dynamic>>(
           find.byWidgetPredicate(
             (widget) => widget is MasterDataTableView<dynamic>,
@@ -613,14 +615,14 @@ void main() {
             .singleWhere((entry) => entry.label == '编辑${_noun(type)}')
             .onTap;
         final first = Future<void>.sync(edit);
-        await tester.pump(const Duration(milliseconds: 80));
-        await tester.pump(const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
+        await pumpWithIo(tester, const Duration(milliseconds: 80));
         expect(find.text('正在处理${_noun(type)}'), findsOneWidget);
         await Future<void>.sync(edit);
         expect(api.detailReads, 1);
         pending.complete();
         await first;
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         expect(find.byType(MasterEditForm), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
@@ -634,20 +636,20 @@ void main() {
       final api = _Api('currencies')..holdWrites = pending;
       final container = await _pump(tester, 'currencies', api);
       await tester.tap(find.text('资料一'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('资料二'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('停用选中'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       await tester.tap(find.text('确认').last);
-      await tester.pump(const Duration(milliseconds: 80));
+      await pumpWithIo(tester, const Duration(milliseconds: 80));
       expect(api.writes.single.path, '/master/currencies/one/status');
       container.read(_identity.notifier).state = const AuthenticatedScope(
         userId: 'second-user',
       );
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       pending.complete();
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(api.writes, hasLength(1));
       expect(api.detailReads, 1);
       expect(find.textContaining('已停用'), findsNothing);
@@ -662,7 +664,7 @@ void main() {
       final api = _Api('currencies');
       await _pump(tester, 'currencies', api);
       await tester.tap(find.text('本位币'));
-      await tester.pumpAndSettle();
+      await pumpAndSettleWithIo(tester);
       expect(find.text('删除选中'), findsNothing);
       expect(api.writes, isEmpty);
       expect(tester.takeException(), isNull);
@@ -676,12 +678,12 @@ void main() {
     await _pump(tester, 'colors', api);
     expect(find.text('旧备注'), findsOneWidget);
     await tester.tap(find.text('资料一'));
-    await tester.pump(const Duration(milliseconds: 60));
+    await pumpWithIo(tester, const Duration(milliseconds: 60));
     await tester.tap(find.text('资料一'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(find.text('旧备注'), findsWidgets);
     await tester.tap(find.text('编辑').last);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     final form = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
     expect(form.fields.map((field) => field.key), [
       'code',
@@ -696,7 +698,7 @@ void main() {
       '新备注',
     );
     await tester.tap(find.text('保存').last);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect((api.writes.single.data as Map)['remark'], '新备注');
     expect(tester.takeException(), isNull);
   });
@@ -706,9 +708,9 @@ void main() {
     final api = _Api('colors');
     await _pump(tester, 'colors', api);
     await tester.tap(find.text('编辑模式'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.byKey(const ValueKey('inline-activate-one-remark')));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.enterText(
       find.descendant(
         of: find.byKey(const ValueKey('inline-one-remark')),
@@ -716,9 +718,9 @@ void main() {
       ),
       '行内备注',
     );
-    await tester.pump();
+    await pumpWithIo(tester);
     await tester.tap(find.text('保存 1 行修改'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     expect(api.writes.single.data, {
       'expected': {'remark': '旧备注'},
       'changes': {'remark': '行内备注'},
@@ -731,9 +733,9 @@ void main() {
   ) async {
     await _pump(tester, 'units', _Api('units'), textScale: 1.5);
     await tester.binding.setSurfaceSize(const Size(390, 844));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.text('资料一'));
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     final group = tester.getRect(find.byType(UtenFloatingActionGroup));
     expect(group.left, greaterThanOrEqualTo(0));
     expect(group.right, lessThanOrEqualTo(390));
@@ -762,7 +764,7 @@ MasterDataTableView<dynamic> _table(WidgetTester tester) =>
 
 Future<void> _openEdit(WidgetTester tester, String type) async {
   final opening = Future<void>.sync(_editEntry(tester, type).onTap);
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   await opening;
 }
 
@@ -873,7 +875,7 @@ Future<ProviderContainer> _pump(
             ),
     ),
   );
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   return ProviderScope.containerOf(
     tester.element(
       find.byType(switch (type) {
@@ -891,6 +893,16 @@ class _Api {
       ..interceptors.add(
         InterceptorsWrapper(
           onRequest: (request, handler) async {
+            if (request.path == '/master/$type/summaries') {
+              listReads++;
+              handler.resolve(
+                masterSummaryStreamTestInterceptResponse(
+                  rows.values.toList(),
+                  request,
+                ),
+              );
+              return;
+            }
             if (request.method != 'GET') writes.add(request);
             if (request.method != 'GET') await holdWrites?.future;
             if (request.method != 'GET' && writeError) {

@@ -10,7 +10,6 @@
 //  - 重新打开的外币订单换货品: 不知道参考汇率, 折扣留空请销售核对。
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -46,6 +45,9 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../intake/sales_intake_fixture.dart';
 import '../intake/sales_intake_test_support.dart';
+import '../../../support/canonical_contract_text.dart';
+import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
 
 const _quotePerms = {
   Perm.salesQuoteView,
@@ -246,9 +248,9 @@ void main() {
         expect(_rootCauseMasterGoods['discount'], 0.2);
         for (var attempt = 0; attempt < 2; attempt++) {
           await tester.tap(_goodsCell(row));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('复现成品分类'));
-          await tester.pumpAndSettle();
+          await pumpAndSettleWithIo(tester);
           await tester.tap(find.text('吴昊S300多功能五孔插座').last);
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
@@ -278,7 +280,7 @@ void main() {
         }
         expect(
           env.api.rootCauseReads
-              .where((p) => p == '/business-references/goods')
+              .where((p) => p == '/business-references/goods/summaries')
               .length,
           2,
         );
@@ -1701,8 +1703,8 @@ class _TestSessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
-class _IntakeApi extends ApiClient {
-  _IntakeApi(this.detail, {this.lastTerms}) : super(Dio());
+class _IntakeApi extends MasterSummaryStreamTestApi {
+  _IntakeApi(this.detail, {this.lastTerms});
 
   final Map<String, dynamic>? detail;
 
@@ -1726,27 +1728,6 @@ class _IntakeApi extends ApiClient {
   }) async {
     if (useRealReferencePicker) {
       rootCauseReads.add(path);
-      if (path == '/business-references/goods') {
-        // Shared contract: mirrors the independently masked GoodsService DTO.
-        final projected = Map<String, dynamic>.from(_rootCauseMasterGoods);
-        if (!referencePermissions.contains(Perm.goodsPriceView) &&
-            !referencePermissions.contains(Perm.goodsPriceEdit)) {
-          projected.remove('price');
-        }
-        if (!referencePermissions.contains(Perm.goodsDiscountView)) {
-          projected.remove('discount');
-        }
-        if (!referencePermissions.contains(Perm.goodsView)) {
-          projected.remove('stockQty');
-        }
-        return {
-          'items': [projected],
-          'page': 1,
-          'size': 20,
-          'total': 1,
-          'totalPages': 1,
-        };
-      }
       if (path == '/business-references/goods/facets') return {};
     }
     final d = detail;
@@ -1798,6 +1779,26 @@ class _IntakeApi extends ApiClient {
   }
 
   @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(useRealReferencePicker, isTrue);
+    expect(request.path, '/business-references/goods/summaries');
+    rootCauseReads.add(request.path);
+    // Shared contract: mirrors the independently masked GoodsService DTO.
+    final projected = Map<String, dynamic>.from(_rootCauseMasterGoods);
+    if (!referencePermissions.contains(Perm.goodsPriceView) &&
+        !referencePermissions.contains(Perm.goodsPriceEdit)) {
+      projected.remove('price');
+    }
+    if (!referencePermissions.contains(Perm.goodsDiscountView)) {
+      projected.remove('discount');
+    }
+    if (!referencePermissions.contains(Perm.goodsView)) {
+      projected.remove('stockQty');
+    }
+    return [projected];
+  }
+
+  @override
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
@@ -1825,9 +1826,13 @@ class _IntakeApi extends ApiClient {
 
 final _referenceContract =
     jsonDecode(
-          File(
-            'contracts/business-master-references/v1.json',
-          ).readAsStringSync(),
+          readCanonicalContractText(
+            path: 'contracts/business-master-references/v1.json',
+            compileTimeBase64: const String.fromEnvironment(
+              'BUSINESS_MASTER_REFERENCE_CONTRACT_BASE64',
+            ),
+            defineName: 'BUSINESS_MASTER_REFERENCE_CONTRACT_BASE64',
+          ),
         )
         as Map<String, dynamic>;
 final _rootCauseMasterGoods =

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -12,6 +13,8 @@ import 'package:uten_imp/features/finance/payables/widgets/supplier_settlement_a
 import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/pump_until.dart';
 
 class _Prefs extends FinanceStatementReportPrefsNotifier {
   _Prefs(this.side);
@@ -33,8 +36,7 @@ final _identity = NotifierProvider<_Identity, AuthenticatedScope?>(
   _Identity.new,
 );
 
-class _Api extends ApiClient {
-  _Api() : super(Dio());
+class _Api extends MasterSummaryStreamTestApi {
   final listRequests = <(String, Map<String, dynamic>)>[];
   final reportQueries = <Map<String, dynamic>>[];
   final lookupIds = <String>[];
@@ -54,26 +56,29 @@ class _Api extends ApiClient {
         'totalPages': 0,
       };
     }
-    if (path == '/business-references/clients' ||
-        path == '/business-references/suppliers') {
-      listRequests.add((path, {...?query}));
-      return {
-        'items': [
-          {
-            'id': 'historical-party',
-            'name': '历史禁用往来方',
-            'code': 'H1',
-            'categoryId': 'root',
-            'status': '禁用',
-          },
-        ],
-        'page': 1,
-        'size': 20,
-        'total': 1,
-        'totalPages': 1,
-      };
-    }
     return {};
+  }
+
+  @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    final path = request.path;
+    expect(
+      path,
+      isIn([
+        '/business-references/clients/summaries',
+        '/business-references/suppliers/summaries',
+      ]),
+    );
+    listRequests.add((path, masterSummaryTestParameters(request)));
+    return [
+      {
+        'id': 'historical-party',
+        'name': '历史禁用往来方',
+        'code': 'H1',
+        'categoryId': 'root',
+        'status': '禁用',
+      },
+    ];
   }
 
   @override
@@ -155,7 +160,7 @@ Future<void> _mount(
 }
 
 Future<void> _chooseHistoricalParty(WidgetTester tester) async {
-  await tester.pumpAndSettle();
+  await pumpAndSettleWithIo(tester);
   await tester.tap(find.text('历史禁用往来方'));
   await tester.pump();
   await tester.tap(find.text('确定'));
@@ -163,6 +168,7 @@ Future<void> _chooseHistoricalParty(WidgetTester tester) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'monthly freeze cannot return a command after its opening reader changes A-B-A',
     (tester) async {
@@ -200,7 +206,7 @@ void main() {
   );
   for (final side in ['AR', 'AP']) {
     testWidgets(
-      '$side statement preserves historical disabled UUID through paged party selector',
+      '$side statement preserves historical disabled UUID through complete party selector',
       (tester) async {
         final api = _Api();
         await _mount(tester, api, side: side);
@@ -214,8 +220,8 @@ void main() {
         expect(
           api.listRequests.single.$1,
           side == 'AR'
-              ? '/business-references/clients'
-              : '/business-references/suppliers',
+              ? '/business-references/clients/summaries'
+              : '/business-references/suppliers/summaries',
         );
         expect(api.listRequests.single.$2['selectableOnly'], isNot(true));
         expect(api.lookupIds, ['historical-party']);
@@ -247,7 +253,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byType(SupplierPickerField));
       await _chooseHistoricalParty(tester);
-      expect(api.listRequests.single.$1, '/business-references/suppliers');
+      expect(
+        api.listRequests.single.$1,
+        '/business-references/suppliers/summaries',
+      );
       expect(api.listRequests.single.$2['selectableOnly'], isNot(true));
       expect(api.lookupIds, ['historical-party']);
       final field = tester.widget<SupplierPickerField>(

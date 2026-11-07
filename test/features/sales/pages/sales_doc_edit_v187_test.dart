@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
@@ -9,6 +10,7 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import '../../../support/audit_screenshot_support.dart';
 import '../../../support/native_detail_reader_overrides.dart';
 import '../../../support/pump_until.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -144,7 +146,7 @@ void main() {
         final field = find.byType(ClientPickerField);
         await tester.ensureVisible(field);
         await tester.tap(field);
-        await tester.pumpAndSettle();
+        await pumpAndSettleWithIo(tester);
         await tester.tap(find.text('新选客户'));
         api.clientSelectable = !hidden;
         await tester.pump();
@@ -528,9 +530,13 @@ void main() {
           capture.currentContext!.findRenderObject()! as RenderRepaintBoundary;
       final rendered = await boundary.toImage();
       final png = await rendered.toByteData(format: ui.ImageByteFormat.png);
-      final file = File('build/staff-feedback/new-order.png');
-      await file.parent.create(recursive: true);
-      await file.writeAsBytes(png!.buffer.asUint8List());
+      expect(png, isNotNull);
+      expect(png!.lengthInBytes, greaterThan(0));
+      if (!kIsWeb) {
+        final file = File('build/staff-feedback/new-order.png');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(png.buffer.asUint8List());
+      }
       rendered.dispose();
     });
   });
@@ -610,6 +616,9 @@ void main() {
               'goodsId': 'goods-1',
               'unitId': 'unit-box',
               'unitRate': 10,
+              // OrderItemDto exposes DecimalText.of(unitRate), whose real
+              // canonical value is "10", independently of double.toString.
+              'unitRateExact': '10',
               'qty': 2,
               'weight': 5.25,
               'price': 10,
@@ -629,6 +638,8 @@ void main() {
           .rows
           .single;
       expect(row.discount.text.trim(), '0.8');
+      expect(row.unitRate, 10);
+      expect(row.unitRateExact, '10');
       row.discount.text = '0.75';
       await tester.pump();
 
@@ -645,7 +656,7 @@ void main() {
       );
       expect(item['id'], 'order-item-1');
       expect(item['unitId'], 'unit-box');
-      expect(item['unitRate'], '10.0');
+      expect(item['unitRate'], '10');
       expect(item['weight'], '5.25');
       expect(item['discount'], '0.75');
       expect(
@@ -828,9 +839,8 @@ class _TestSessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
-class _EditorApi extends ApiClient {
-  _EditorApi(this.detail, {this.failBatchOnce = false, this.batchCount = 1})
-    : super(Dio());
+class _EditorApi extends MasterSummaryStreamTestApi {
+  _EditorApi(this.detail, {this.failBatchOnce = false, this.batchCount = 1});
 
   final Map<String, dynamic>? detail;
   Map<String, dynamic>? lastPutBody;
@@ -845,22 +855,6 @@ class _EditorApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (offerClient && path.endsWith('/clients')) {
-      return {
-        'items': [
-          {
-            'id': 'client-1',
-            'name': '新选客户',
-            'code': 'C1',
-            'categoryId': 'client-category',
-          },
-        ],
-        'page': 1,
-        'size': 100,
-        'total': 1,
-        'totalPages': 1,
-      };
-    }
     if (detail != null && path.endsWith('/${detail!['id']}')) {
       return detail!;
     }
@@ -871,6 +865,26 @@ class _EditorApi extends ApiClient {
       'total': 0,
       'totalPages': 0,
     };
+  }
+
+  @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(offerClient, isTrue);
+    expect(
+      request.path,
+      isIn([
+        '/master/clients/summaries',
+        '/business-references/clients/summaries',
+      ]),
+    );
+    return [
+      {
+        'id': 'client-1',
+        'name': '新选客户',
+        'code': 'C1',
+        'categoryId': 'client-category',
+      },
+    ];
   }
 
   @override

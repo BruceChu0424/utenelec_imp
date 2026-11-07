@@ -46,6 +46,8 @@ import '../../support/native_detail_reader_overrides.dart';
 import '../../support/document_scope_capability_overrides.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/master_summary_stream_fixture.dart';
+import '../../support/pump_until.dart';
 import '../../support/uten_test_actions.dart';
 import '../../support/finance_dropdown_dom_stub.dart'
     if (dart.library.js_interop) '../../support/finance_dropdown_dom_web.dart'
@@ -1142,7 +1144,7 @@ void registerFinanceBatchEntryTests({bool browserDomOnly = false}) {
   ) async {
     final env = await _open(tester, FinanceDocType.payment);
     await tester.tap(find.text('选择供应商').first);
-    await tester.pumpAndSettle();
+    await pumpAndSettleWithIo(tester);
     await tester.tap(find.text('供应商甲'));
     env.api.supplierSelectable = false;
     await tester.pump();
@@ -1664,8 +1666,8 @@ class _LegacySession extends SessionNotifier {
   );
 }
 
-class _Api extends ApiClient {
-  _Api({this.legacy = false, this.captureMethods = false}) : super(Dio());
+class _Api extends MasterSummaryStreamTestApi {
+  _Api({this.legacy = false, this.captureMethods = false});
   final bool legacy;
   final bool captureMethods;
   final putBodies = <Map<String, dynamic>>[];
@@ -1869,22 +1871,6 @@ class _Api extends ApiClient {
           'requestBody': null,
       };
     }
-    if (path.endsWith('/suppliers')) {
-      return {
-        'items': [
-          {
-            'id': 'supplier-A',
-            'name': '供应商甲',
-            'categoryId': 'supplier-category',
-            'status': '使用',
-          },
-        ],
-        'page': 1,
-        'size': 100,
-        'total': 1,
-        'totalPages': 1,
-      };
-    }
     if (path == '/finance/receipts/shipment-sources') {
       return {
         'items': [
@@ -2071,6 +2057,25 @@ class _Api extends ApiClient {
       ];
     }
     return [];
+  }
+
+  @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(
+      request.path,
+      isIn([
+        '/master/suppliers/summaries',
+        '/business-references/suppliers/summaries',
+      ]),
+    );
+    return [
+      {
+        'id': 'supplier-A',
+        'name': '供应商甲',
+        'categoryId': 'supplier-category',
+        'status': '使用',
+      },
+    ];
   }
 
   @override

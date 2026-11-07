@@ -442,10 +442,10 @@ void main() {
       '报工数量',
       '其中',
       '实称重量(kg)',
+      '单重(g)',
       '称重核对',
       '入库仓库',
       '库位号',
-      '单重(g)',
     ]);
     // ADR-148：一批实物里需求份 / 实际超产各多少，服务端算好直接显示。
     expect(find.text('需求 8 · 实际超产 2'), findsOneWidget);
@@ -766,10 +766,10 @@ void main() {
       '其中',
       '本次实收',
       '实称重量(kg)',
+      '单重(g)',
       '称重核对',
       '入库仓库',
       '库位号',
-      '单重(g)',
     ]);
     expect(tester.widget<TextField>(_qtyField(_itemA)).controller?.text, '10');
 

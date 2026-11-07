@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/master_summary_stream_fixture.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -128,17 +130,18 @@ class _Wire {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) async {
+          if (request.path == '/master/$domain/summaries') {
+            handler.resolve(
+              masterSummaryStreamTestInterceptResponse([
+                row(1),
+                row(2),
+              ], request),
+            );
+            return;
+          }
           if (request.method != 'GET') writes++;
           Object response;
-          if (request.path == '/master/$domain') {
-            response = {
-              'items': [row(1), row(2)],
-              'page': 1,
-              'size': 20,
-              'total': 2,
-              'totalPages': 1,
-            };
-          } else if (request.path == '/master/$domain/item-1') {
+          if (request.path == '/master/$domain/item-1') {
             detailReads++;
             await detailGate?.future;
             if (failDetail) {

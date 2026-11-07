@@ -22,6 +22,8 @@ import 'package:uten_imp/shared/stock_ledger/production_trace_models.dart';
 import 'package:uten_imp/shared/stock_ledger/widgets/goods_production_trace_view.dart';
 import 'package:uten_imp/shared/stock_ledger/widgets/material_trace_subject_picker.dart';
 
+import '../../support/pump_until.dart';
+
 const _subject = MaterialTraceSubject(
   type: 'PURCHASE_ORDER',
   id: 'order-1',
@@ -668,7 +670,11 @@ void main() {
               find.byType(MasterDataTableView<MaterialTraceSubject>),
             )
             .onRetry!();
-        await tester.pump();
+        await pumpUntil(
+          tester,
+          () => api.calls.length == 4,
+          reason: 'The refresh must be waiting on its bounded continuation',
+        );
         expect(api.calls.map((call) => call.query['page']), [1, 2, 1, 2]);
         // A retained complete result is allowed; a new partial30 is not.
         expect(rows.items, anyOf(isEmpty, hasLength(31)));
@@ -813,13 +819,18 @@ void main() {
   testWidgets(
     'picker keeps equal permissions but clears results on actual revocation',
     (tester) async {
+      final denied = Completer<Map<String, dynamic>>();
+      var revoked = false;
       final api = _Api()
-        ..subjects = (_) async => {
-          'items': [_identity(_subject)],
-          'page': 1,
-          'size': 30,
-          'total': 1,
-          'totalPages': 1,
+        ..subjects = (_) async {
+          if (revoked) return denied.future;
+          return {
+            'items': [_identity(_subject)],
+            'page': 1,
+            'size': 30,
+            'total': 1,
+            'totalPages': 1,
+          };
         };
       await _pump(tester, api, _pickerButton());
       await tester.tap(find.text('选择单据'));
@@ -850,8 +861,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(row, findsOneWidget);
       expect(api.calls, hasLength(1));
+      revoked = true;
       container.read(_permissions.notifier).state = {Perm.productionPlanView};
       oldConfirm();
+      await pumpUntil(
+        tester,
+        () => api.calls.length == 2,
+        reason: 'The old result must be cleared while the new scope loads',
+      );
+      expect(row, findsNothing);
+      denied.completeError(
+        ApiException('FORBIDDEN', '候选范围已变化', httpStatus: 403),
+      );
       await tester.pumpAndSettle();
       expect(row, findsNothing);
       expect(find.text('选择追溯单据'), findsOneWidget);
@@ -863,7 +884,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      await expectTableReadFailureDetails(tester, '账号、服务器或权限已变化，请重新搜索');
+      await expectTableReadFailureDetails(tester, '候选范围已变化');
       expect(tester.takeException(), isNull);
     },
   );

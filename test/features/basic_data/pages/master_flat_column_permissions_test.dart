@@ -8,7 +8,7 @@ import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_client.dart' show apiClientProvider;
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/pages/account_workspace_page.dart';
@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 
 class _MasterSession extends SessionNotifier {
   @override
@@ -260,9 +261,8 @@ void _expectFloatingCreate(WidgetTester tester, String label, Size viewport) {
   expect(bounds.bottom, lessThanOrEqualTo(viewport.height));
 }
 
-class _MasterListApi extends ApiClient {
-  _MasterListApi({this.empty = false})
-    : super(Dio(BaseOptions(baseUrl: 'https://master-list.invalid/api')));
+class _MasterListApi extends MasterSummaryStreamTestApi {
+  _MasterListApi({this.empty = false});
   final bool empty;
   static const _item = <String, dynamic>{
     'id': 'master-1',
@@ -272,28 +272,24 @@ class _MasterListApi extends ApiClient {
   };
 
   @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect({
+      '${ApiEndpoints.colors}/summaries',
+      '${ApiEndpoints.currencies}/summaries',
+      '${ApiEndpoints.units}/summaries',
+      '${AccountEndpoints.base}/summaries',
+      '${ApiEndpoints.settlementMethodsAdmin}/summaries',
+    }, contains(request.path));
+    return [if (!empty) _item];
+  }
+
+  @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
     if (path.endsWith('/facets')) {
       return {'fields': <String, dynamic>{}, 'nullCounts': <String, dynamic>{}};
-    }
-    if ({
-      ApiEndpoints.colors,
-      ApiEndpoints.currencies,
-      ApiEndpoints.units,
-      ApiEndpoints.warehouses,
-      AccountEndpoints.base,
-      '${ApiEndpoints.settlementMethodsAdmin}/page',
-    }.contains(path)) {
-      return {
-        'items': [if (!empty) _item],
-        'page': 1,
-        'size': 20,
-        'total': empty ? 0 : 1,
-        'totalPages': 1,
-      };
     }
     throw StateError('Unexpected GET $path');
   }

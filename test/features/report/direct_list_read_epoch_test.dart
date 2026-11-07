@@ -15,6 +15,8 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../support/pump_until.dart';
+
 class _Permissions extends Notifier<Set<String>> {
   @override
   Set<String> build() => const {};
@@ -46,11 +48,14 @@ class _Api extends ApiClient {
   }) async => [];
 }
 
-Map<String, dynamic> _response({bool large = false}) => {
+Map<String, dynamic> _response({
+  bool large = false,
+  String billNo = 'reader-A-secret',
+}) => {
   'items': [
     {
       'id': 'row-1',
-      'billNo': 'reader-A-secret',
+      'billNo': billNo,
       'billDate': '2026-10-23T12:00:00',
       'direction': 'AR',
     },
@@ -135,9 +140,17 @@ void main() {
         };
         addTearDown(() => debugUiWorkSliceObserver = previous);
         api.pending.single.complete(_response(large: true));
-        await tester.pumpAndSettle();
+        await pumpUntil(
+          tester,
+          () => api.pending.length == 2,
+          reason: 'The retired owner must be replaced by a fresh read',
+        );
         expect(changed, isTrue);
         expect(find.textContaining('reader-A-secret'), findsNothing);
+        api.pending.last.complete(_response(billNo: 'current-owner'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('reader-A-secret'), findsNothing);
+        expect(find.textContaining('current-owner'), findsWidgets);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(tester.takeException(), isNull);
       },
@@ -152,8 +165,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('reader-A-secret'), findsWidgets);
       _aba(container);
+      await pumpUntil(
+        tester,
+        () => api.pending.length == 2,
+        reason: 'The changed owner must start a new read',
+      );
+      expect(find.textContaining('reader-A-secret'), findsNothing);
+      api.pending.last.complete(_response(billNo: 'current-owner'));
       await tester.pumpAndSettle();
       expect(find.textContaining('reader-A-secret'), findsNothing);
+      expect(find.textContaining('current-owner'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
   }

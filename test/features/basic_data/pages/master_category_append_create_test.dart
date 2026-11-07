@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_client.dart' show apiClientProvider;
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../support/audit_screenshot_support.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 
 const _category = '11111111-1111-4111-8111-111111111111';
 const _unit = '22222222-2222-4222-8222-222222222222';
@@ -31,8 +32,8 @@ class _Session extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
-class _Api extends ApiClient {
-  _Api(this.domain) : super(Dio());
+class _Api extends MasterSummaryStreamTestApi {
+  _Api(this.domain);
   final String domain;
   final writes = <Map<String, dynamic>>[];
   final writePaths = <String>[];
@@ -84,18 +85,6 @@ class _Api extends ApiClient {
         'session': {'preferences': <String, Object>{}},
       };
     }
-    if (path == '/master/$domain') {
-      final items = query?['disabledOnly'] == true || query?['stubOnly'] == true
-          ? <Map<String, dynamic>>[]
-          : rows;
-      return {
-        'items': items,
-        'page': 1,
-        'size': 20,
-        'total': items.length,
-        'totalPages': items.isEmpty ? 0 : 1,
-      };
-    }
     return {
       'items': <Object>[],
       'page': 1,
@@ -103,6 +92,15 @@ class _Api extends ApiClient {
       'total': 0,
       'totalPages': 0,
     };
+  }
+
+  @override
+  List<Map<String, dynamic>> masterSummaryRows(RequestOptions request) {
+    expect(request.path, '/master/$domain/summaries');
+    final filter = masterSummaryTestParameters(request);
+    return filter['disabledOnly'] == true || filter['stubOnly'] == true
+        ? []
+        : rows;
   }
 
   @override
@@ -139,25 +137,6 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/$domain/summaries') {
-      final input = Map<String, dynamic>.from(body! as Map);
-      final filter = Map<String, dynamic>.from(input['filter'] as Map);
-      final page = input['page'] as int, size = input['size'] as int;
-      expect(size, 100);
-      final items = filter['disabledOnly'] == true || filter['stubOnly'] == true
-          ? <Map<String, dynamic>>[]
-          : rows;
-      return {
-        'items': items.skip((page - 1) * size).take(size).toList(),
-        'page': page,
-        'size': size,
-        'total': items.length,
-        'totalPages': (items.length / size).ceil(),
-        'readScopeVersion': 'a' * 64,
-        'readSnapshotRevision': 'b' * 64,
-        'readDataVersion': 'c' * 64,
-      };
-    }
     writePaths.add(path);
     final values = Map<String, dynamic>.from(body as Map);
     writes.add(values);

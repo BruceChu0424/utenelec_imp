@@ -24,6 +24,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+import '../../../support/master_summary_stream_fixture.dart';
+
 final _grants = StateProvider<Set<String>>(
   (_) => {
     Perm.accountView,
@@ -75,12 +77,14 @@ class _Wire {
       },
   };
   final requests = <({String method, String path})>[];
+  int get summaryReads => requests
+      .where((request) => request.path == '/master/accounts/summaries')
+      .length;
   final writes = <({String method, String path, Map<String, dynamic>? body})>[];
   final scopes = <AuthenticatedRequestScope?>[];
   final protected = {'b'};
   final errors = <String, int>{};
   Future<void> Function(RequestOptions)? beforeWrite;
-  int pageSize = 20;
   int active = 0;
   int maxActive = 0;
   late final _Api api = () {
@@ -145,26 +149,15 @@ class _Wire {
                 },
                 'nullCounts': <String, int>{},
               };
-            } else if (request.path == '/master/accounts') {
-              final all = rows.values
-                  .where(
-                    (row) =>
-                        request.queryParameters['status'] == null ||
-                        row['status'] == request.queryParameters['status'],
-                  )
-                  .toList();
-              final page =
-                  (request.queryParameters['page'] as num?)?.toInt() ?? 1;
-              body = {
-                'items': all
-                    .skip((page - 1) * pageSize)
-                    .take(pageSize)
-                    .toList(),
-                'page': page,
-                'size': pageSize,
-                'total': all.length,
-                'totalPages': (all.length / pageSize).ceil(),
-              };
+            } else if (request.path == '/master/accounts/summaries') {
+              final status = masterSummaryTestParameters(request)['status'];
+              handler.resolve(
+                masterSummaryStreamTestInterceptResponse([
+                  for (final row in rows.values)
+                    if (status == null || row['status'] == status) row,
+                ], request),
+              );
+              return;
             } else if (request.path.endsWith('/dict') ||
                 request.path.endsWith('/tree')) {
               body = <Map<String, dynamic>>[];
@@ -353,7 +346,7 @@ void main() {
         expect(_table(tester).selectedIds, {'a', 'c'});
       }
       expect(wire.writes, isEmpty);
-      expect(wire.api.captures, 2);
+      expect(wire.api.captures - wire.summaryReads, 2);
     },
   );
 
@@ -373,7 +366,7 @@ void main() {
         ('DELETE', '/master/accounts/c'),
       ]);
       expect(wire.maxActive, 1);
-      expect(wire.api.captures, 1);
+      expect(wire.api.captures - wire.summaryReads, 1);
       expect(wire.scopes.first, isNotNull);
       expect(
         wire.scopes.every((scope) => identical(scope, wire.scopes.first)),
@@ -549,13 +542,35 @@ void main() {
   );
 
   testWidgets(
-    'paging keeps selected identities while refresh and filters clear them',
+    'continuous rows keep selections while refresh and filters clear them',
     (tester) async {
-      final wire = _Wire()..pageSize = 2;
+      final wire = _Wire();
+      final thirdAccount = wire.rows.remove('c')!;
+      for (var index = 0; index < 100; index++) {
+        final id = 'extra-$index';
+        wire.rows[id] = {
+          ...thirdAccount,
+          'id': id,
+          'code': 'EX$index',
+          'name': '账户$index',
+        };
+      }
+      wire.rows['c'] = thirdAccount;
       await _pump(tester, wire);
+      expect(_table(tester).items, hasLength(103));
+      expect(_table(tester).items.last.id, 'c');
       await _select(tester, {'a'});
-      _table(tester).onPageChange!(2);
+      final reads = wire.requests.length;
+      await tester.drag(
+        find.byType(MasterDataTableView<AccountListItem>),
+        const Offset(0, -700),
+      );
       await tester.pumpAndSettle();
+      expect(wire.requests, hasLength(reads));
+      expect(
+        find.byKey(const ValueKey('master-table-page-next')),
+        findsNothing,
+      );
       expect(_table(tester).selectedIds, {'a'});
       await _select(tester, {'a', 'c'});
       await tester.tap(find.byTooltip('刷新'));

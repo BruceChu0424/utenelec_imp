@@ -1,7 +1,7 @@
 // 仓库专属重量口径契约 (ADR-135, 2026-09-28 用户拍板, 取代 2026-08-30 审计的 NO-GO 清单):
 //
-// 1. 数量 (数量 + 单位 + 换算率) 仍是计划/采购/销售/生产/财务唯一的事实; 这些业务单据
-//    编辑页不加重量录入, 历史隐藏重量字段原样透传不清零。
+// 1. 数量 (数量 + 单位 + 换算率) 仍是计划事实。生产日报单独记录实称重量，
+//    只有用户确认换算才会填入完工申报量。采购、销售单据保留历史重量透传。
 // 2. 仓库每条录入/确认数量的执行行都有「实称重量」列 (共用 weightGridColumn), 放在数量组之后;
 //    重量以千克 4 位提交, 连同「按称重改数量」计入幂等键; 货品/行单位按重量计时只读、不提交
 //    (服务端按数量精确换算), 单据上绝不写估算重量。
@@ -33,20 +33,23 @@ void main() {
       'lib/features/production/pages/production_daily_report_edit_page.dart',
     );
 
-    // 采购/销售/生产日报编辑网格没有重量列 (单位已表达数量含义, 重量是仓库的事)。
-    for (final grid in [purchaseGrid, salesGrid, dailyGrid]) {
+    // 采购、销售单据编辑网格继续只使用数量。
+    for (final grid in [purchaseGrid, salesGrid]) {
       expect(grid, isNot(contains("key: 'weight'")));
       expect(grid, isNot(contains("label: '实际重量'")));
       expect(grid, isNot(contains('weightGridColumn')));
     }
     // 历史重量仍回填、复制、校验并随原单提交, 不能被静默清零。
     expect(dailyGrid, contains('c.weight.text = weight.text;'));
+    expect(dailyEdit, contains("row.weight.text = group.weightText ?? '';"));
+    expect(dailyGrid, contains("label: '实称总重量'"));
+    expect(dailyEdit, contains("'weight': productionQuantityWire("));
     expect(
       dailyEdit,
-      contains("row.weight.text = group.weight?.toString() ?? '';"),
+      contains("'weightEntryMode': confirmed == null ? 'QUANTITY' : 'WEIGHT'"),
     );
-    expect(dailyEdit, contains("'weight': ?weight"));
-    for (final edit in [purchaseEdit, salesEdit, dailyEdit]) {
+    expect(dailyEdit, contains("'unitWeightKgExact'"));
+    for (final edit in [purchaseEdit, salesEdit]) {
       expect(edit, contains("'weight'"));
       expect(edit, contains('实际重量必须大于 0'));
     }

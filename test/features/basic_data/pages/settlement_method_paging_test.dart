@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_client.dart' show apiClientProvider;
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/settlement_method_admin.dart';
@@ -20,6 +20,9 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../../support/master_summary_stream_fixture.dart';
+import '../../../support/pump_until.dart';
+
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
@@ -30,13 +33,9 @@ class _Snapshots extends SessionSnapshotNotifier {
   Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
-class _Api extends ApiClient {
-  _Api()
-    : super(
-        Dio(BaseOptions(baseUrl: 'https://settlement-synthetic.invalid/api')),
-      );
-  final calls = <({int page, String keyword})>[];
-  Completer<Map<String, dynamic>>? nextPage;
+class _Api extends MasterSummaryStreamTestApi {
+  final keywords = <String>[];
+  Completer<List<Map<String, dynamic>>>? nextRead;
   String marker = '结算方式';
   int writes = 0;
   Map<String, dynamic> row(int id, {String? name}) => {
@@ -49,30 +48,32 @@ class _Api extends ApiClient {
     'defaultDueDays': 0,
     'monthsAhead': 0,
   };
-  Map<String, dynamic> page(int page, {String keyword = ''}) => {
-    'items': keyword.isEmpty
-        ? [for (var n = (page - 1) * 100 + 1; n <= page * 100; n++) row(n)]
-        : [row(9999, name: '全库末端')],
-    'page': page,
-    'size': 100,
-    'total': keyword.isEmpty ? 10000 : 1,
-    'totalPages': keyword.isEmpty ? 100 : 1,
-    'readScopeVersion': 'fixture-v1',
-  };
+  List<Map<String, dynamic>> rows({String keyword = ''}) => keyword.isEmpty
+      ? [for (var n = 1; n <= 10000; n++) row(n)]
+      : [row(9999, name: '全库末端')];
+
+  @override
+  Future<List<Map<String, dynamic>>> masterSummaryRows(
+    RequestOptions request,
+  ) async {
+    expect(
+      request.path,
+      '/master/reference-methods/settlement-admin/summaries',
+    );
+    final keyword =
+        masterSummaryTestParameters(request)['keyword'] as String? ?? '';
+    keywords.add(keyword);
+    final gate = nextRead;
+    nextRead = null;
+    if (gate != null) return gate.future;
+    return rows(keyword: keyword);
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/settlement-admin/page')) {
-      final number = (query?['page'] as num?)?.toInt() ?? 1;
-      final keyword = query?['keyword']?.toString() ?? '';
-      calls.add((page: number, keyword: keyword));
-      final gate = nextPage;
-      nextPage = null;
-      if (gate != null) return await gate.future;
-      return page(number, keyword: keyword);
-    }
     return {};
   }
 
@@ -149,9 +150,7 @@ void main() {
     (tester) async {
       final api = _Api();
       final container = await _pump(tester, api);
-      expect(api.calls, [
-        for (var page = 1; page <= 100; page++) (page: page, keyword: ''),
-      ]);
+      expect(api.keywords, ['']);
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
@@ -172,28 +171,27 @@ void main() {
             .id,
         'method-10000',
       );
-      final beforeScroll = api.calls.length;
+      final beforeScroll = api.keywords.length;
       await tester.drag(_table, const Offset(0, -700));
       await tester.pumpAndSettle();
-      expect(api.calls, hasLength(beforeScroll));
+      expect(api.keywords, hasLength(beforeScroll));
       expect(
         find.byKey(const ValueKey('master-table-page-next')),
         findsNothing,
       );
-      final gate = Completer<Map<String, dynamic>>();
-      api.nextPage = gate;
+      final gate = Completer<List<Map<String, dynamic>>>();
+      api.nextRead = gate;
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pump();
-      await tester.pump();
-      expect(api.calls.last, (page: 1, keyword: ''));
+      await pumpUntil(
+        tester,
+        () => api.keywords.length == 2,
+        reason: 'The scope refresh must start before the new search',
+      );
+      expect(api.keywords, ['', '']);
       await tester.enterText(_search, '末端');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      expect(api.calls, [
-        for (var page = 1; page <= 100; page++) (page: page, keyword: ''),
-        (page: 1, keyword: ''),
-        (page: 1, keyword: '末端'),
-      ]);
+      expect(api.keywords, ['', '', '末端']);
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
@@ -202,9 +200,9 @@ void main() {
             .id,
         'method-9999',
       );
-      gate.complete(api.page(1));
+      gate.complete(api.rows());
       await tester.pumpAndSettle();
-      expect(api.calls, hasLength(102));
+      expect(api.keywords, hasLength(3));
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
@@ -224,18 +222,21 @@ void main() {
     },
   );
   testWidgets(
-    'same-reader scope ABA retires old page and late responses without resetting auth',
+    'same-reader scope ABA retires old reads and late responses without resetting auth',
     (tester) async {
       final api = _Api();
       final container = await _pump(tester, api);
       final identity = container.read(authenticatedScopeProvider),
           permissions = container.read(currentPermissionsProvider);
-      final stale = api.page(1);
-      final gate = Completer<Map<String, dynamic>>();
-      api.nextPage = gate;
+      final stale = api.rows();
+      final gate = Completer<List<Map<String, dynamic>>>();
+      api.nextRead = gate;
       container.read(readScopeRevisionProvider.notifier).state++;
-      await tester.pump();
-      await tester.pump();
+      await pumpUntil(
+        tester,
+        () => api.keywords.length == 2,
+        reason: 'The first scope refresh must be pending before ABA',
+      );
       api.marker = '新范围';
       container.read(readScopeRevisionProvider.notifier).state++;
       await tester.pumpAndSettle();

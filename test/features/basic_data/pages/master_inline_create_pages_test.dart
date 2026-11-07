@@ -20,6 +20,8 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+import '../../../support/master_summary_stream_fixture.dart';
+
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
@@ -47,6 +49,9 @@ class _Wire {
   String get endpoint => type == 'settlement'
       ? '/master/reference-methods/settlement'
       : '/master/$type';
+  String get summaryEndpoint => type == 'settlement'
+      ? '/master/reference-methods/settlement-admin/summaries'
+      : '$endpoint/summaries';
   final rows = <Map<String, dynamic>>[];
   final created = <Map<String, dynamic>>[];
   bool failReloadAfterCreate = false;
@@ -56,12 +61,8 @@ class _Wire {
         InterceptorsWrapper(
           onRequest: (request, handler) {
             Object data = <String, dynamic>{};
-            final settlementPage =
-                type == 'settlement' &&
-                request.path ==
-                    '/master/reference-methods/settlement-admin/page';
-            if (request.method == 'GET' &&
-                (request.path == endpoint || settlementPage)) {
+            if (request.path == summaryEndpoint ||
+                (request.method == 'GET' && request.path == endpoint)) {
               if (failReloadAfterCreate && created.isNotEmpty) {
                 handler.reject(
                   DioException.badResponse(
@@ -76,24 +77,18 @@ class _Wire {
                 );
                 return;
               }
-              final page = settlementPage
-                  ? int.parse('${request.queryParameters['page'] ?? 1}')
-                  : 1;
-              final size = settlementPage
-                  ? int.parse('${request.queryParameters['size'] ?? 100}')
-                  : 20;
-              final start = ((page - 1) * size).clamp(0, rows.length).toInt();
+              if (request.path == summaryEndpoint) {
+                handler.resolve(
+                  masterSummaryStreamTestInterceptResponse(rows, request),
+                );
+                return;
+              }
               data = {
-                'items': settlementPage
-                    ? rows.sublist(
-                        start,
-                        (start + size).clamp(0, rows.length).toInt(),
-                      )
-                    : rows,
-                'page': page,
-                'size': size,
+                'items': rows,
+                'page': 1,
+                'size': 20,
                 'total': rows.length,
-                'totalPages': settlementPage ? (rows.length / size).ceil() : 1,
+                'totalPages': 1,
               };
             } else if (request.method == 'GET' &&
                 (request.path.endsWith('/dict') ||

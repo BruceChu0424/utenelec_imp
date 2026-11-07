@@ -18,6 +18,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+import '../../../support/master_summary_stream_fixture.dart';
+
 class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
@@ -39,25 +41,22 @@ class _SlowSave {
             writes++;
             await write.future;
             name = ((request.data as Map)['changes'] as Map)['name'] as String;
-          } else if (request.path == '/master/units') {
+          } else if (request.path == '/master/units/summaries') {
             if (writes > 0) {
               readbacks++;
               await readback.future;
             }
-            body = {
-              'items': [
+            handler.resolve(
+              masterSummaryStreamTestInterceptResponse([
                 {
                   'id': 'unit-1',
                   'code': 'DW0188',
                   'name': name,
                   'status': '使用',
                 },
-              ],
-              'page': 1,
-              'size': 20,
-              'total': 1,
-              'totalPages': 1,
-            };
+              ], request),
+            );
+            return;
           } else if (request.path == '/master/units/facets') {
             body = {
               'fields': <String, Object>{},

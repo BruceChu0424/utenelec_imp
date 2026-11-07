@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import '../../../support/filter_segment_tap.dart';
+import '../../../support/master_summary_stream_fixture.dart';
 
 void main() {
   testWidgets('货品主档默认主体、展开相关同表，facet导出与分类范围同源', (tester) async {
@@ -74,8 +75,6 @@ void main() {
     );
     expect(relatedReads.map((request) => _readParameters(request)['page']), [
       1,
-      2,
-      3,
     ]);
     expect(
       relatedReads.every((request) => _readParameters(request)['size'] == 100),
@@ -678,13 +677,7 @@ Future<void> _finishHeldReads(WidgetTester tester, _GoodsApi api) async {
   api.holdRelated = false;
   for (final (request, handler) in api.held) {
     if (!handler.isCompleted) {
-      handler.resolve(
-        Response(
-          requestOptions: request,
-          statusCode: 200,
-          data: _page([], (_readParameters(request)['page'] as int?) ?? 1),
-        ),
-      );
+      handler.resolve(masterSummaryStreamTestInterceptResponse([], request));
     }
   }
   await tester.pump();
@@ -718,11 +711,7 @@ class _GoodsApi {
   void release(int index, String id) {
     final (r, h) = held[index];
     h.resolve(
-      Response(
-        requestOptions: r,
-        statusCode: 200,
-        data: _page([_row(id, '最新结果', 'cat-a')], 1),
-      ),
+      masterSummaryStreamTestInterceptResponse([_row(id, '最新结果', 'cat-a')], r),
     );
   }
 
@@ -733,13 +722,6 @@ class _GoodsApi {
       expect(r.path, isNot('/master/material-categories/tree'));
     }
     final q = _readParameters(r);
-    if (r.path.endsWith('/summaries')) {
-      expect(q['size'], 100);
-      expect(
-        r.queryParameters['readSnapshotRevision'],
-        q['page'] == 1 ? isNull : 'b' * 64,
-      );
-    }
     Object data = <String, dynamic>{};
     if (r.path == treePath) {
       if (failTree) {
@@ -824,7 +806,8 @@ class _GoodsApi {
             _row('tail-$i', '相关尾批$i', 'cat-a', related: true),
         ]);
       }
-      data = _page(rows, (q['page'] as int?) ?? 1);
+      h.resolve(masterSummaryStreamTestInterceptResponse(rows, r));
+      return;
     }
     h.resolve(Response(requestOptions: r, statusCode: 200, data: data));
   }
@@ -864,23 +847,7 @@ Map<String, dynamic> _uncategorizedRow() => {
   'unitName': '只',
   'autoCreated': false,
 };
-Map<String, dynamic> _page(List<Map<String, dynamic>> rows, int page) => {
-  // First and continuation batches use the real 100-row summary contract.
-  'items': rows.skip((page - 1) * 100).take(100).toList(),
-  'page': page,
-  'size': 100,
-  'total': rows.length,
-  'totalPages': (rows.length / 100).ceil(),
-  'readScopeVersion': 'a' * 64,
-  'readSnapshotRevision': 'b' * 64,
-  'readDataVersion': 'c' * 64,
-};
-
-/// Inspect actual transport without rewriting RequestOptions or hiding POSTs.
 Map<String, dynamic> _readParameters(RequestOptions request) {
   if (!request.path.endsWith('/summaries')) return request.queryParameters;
-  expect(request.method, 'POST');
-  final body = Map<String, dynamic>.from(request.data as Map);
-  final filter = Map<String, dynamic>.from(body['filter'] as Map);
-  return {...filter, ...body..remove('filter')};
+  return masterSummaryTestParameters(request);
 }

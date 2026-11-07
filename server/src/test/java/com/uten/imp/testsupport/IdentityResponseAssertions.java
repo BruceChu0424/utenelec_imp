@@ -23,9 +23,12 @@ public final class IdentityResponseAssertions {
     private static final ObjectMapper JSON = new ObjectMapper()
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
-    private static final Pattern ITEM_METADATA = Pattern.compile(
+    private static final String ITEM_PATH =
             "/(confirmToday|confirmUpcoming|confirmOverdue|birthdayToday|birthdayUpcoming|"
-                    + "anniversaryToday|newHires|identityReview)/([0-9]+)/(employeeId|date|claimLeaseUntil)");
+                    + "anniversaryToday|newHires|identityReview)/([0-9]+)/";
+    private static final Pattern ITEM_METADATA = Pattern.compile(ITEM_PATH + "(employeeId|date|claimLeaseUntil)");
+    private static final Pattern KNOWN_ITEM_FIELD = Pattern.compile(ITEM_PATH
+            + "(employeeId|code|name|deptName|positionName|date|days|note|claimedByName|claimedByMe|claimLeaseUntil|blessed)");
     private static final Pattern OFFSET_TIME = Pattern.compile(
             "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
                     + "(?:\\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})");
@@ -75,7 +78,7 @@ public final class IdentityResponseAssertions {
         }
         if (node.isObject()) {
             for (Map.Entry<String, JsonNode> field : node.properties()) {
-                assertNoTail(field.getKey(), identities);
+                assertNoTail(field.getKey(), "JSON property name", identities);
                 String pointer = field.getKey().replace("~", "~0").replace("/", "~1");
                 inspect(root, field.getValue(), path + "/" + pointer, identities);
             }
@@ -84,7 +87,8 @@ public final class IdentityResponseAssertions {
                 inspect(root, node.get(index), path + "/" + index, identities);
             }
         } else if (!node.isNull()) {
-            assertNoTail(node.asText(), identities);
+            String location = KNOWN_ITEM_FIELD.matcher(path).matches() ? path : "unrecognized JSON field";
+            assertNoTail(node.asText(), location + " (" + node.getNodeType() + ")", identities);
         }
     }
 
@@ -105,9 +109,9 @@ public final class IdentityResponseAssertions {
         }
     }
 
-    private static void assertNoTail(String value, String[] identities) {
+    private static void assertNoTail(String value, String location, String[] identities) {
         for (String identity : identities) {
-            assertFalse(value.contains(identity.substring(14)), "response must not carry identity digits");
+            assertFalse(value.contains(identity.substring(14)), "response must not carry identity digits at " + location);
         }
     }
 }

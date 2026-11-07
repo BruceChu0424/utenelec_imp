@@ -153,8 +153,12 @@ class PlatformSettingsUpgradePostgresTest {
             }
         }
         var listed = runtime.list();
-        for (var entry : SAVED_RUNTIME.entrySet())
+        String retiredExportCap = SystemSettingKey.EXPORT_MAX_ROWS.key();
+        assertFalse(listed.stream().anyMatch(value -> value.key().equals(retiredExportCap)));
+        for (var entry : SAVED_RUNTIME.entrySet()) {
+            if (entry.getKey().equals(retiredExportCap)) continue;
             assertEquals(entry.getValue(), listed.stream().filter(value -> value.key().equals(entry.getKey())).findFirst().orElseThrow().value());
+        }
         var preferences = freshPreferenceReader(tx).currentUserPreferences();
         assertEquals("dark", preferences.get("themeMode").asText());
         assertEquals("amount", preferences.get("table.layout").path("hidden").get(0).asText());

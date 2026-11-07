@@ -55,6 +55,17 @@ class IdentityResponseAssertionsTest {
     }
 
     @Test
+    void diagnosticIdentifiesKnownLeafWithoutRepeatingTheTailOrText() {
+        ObjectNode response = JSON.createObjectNode();
+        response.putArray("identityReview").addObject().put("name", "fixture " + UUID_WITH_TAIL);
+        AssertionError error = assertThrows(AssertionError.class,
+                () -> assertNoIdentityDigits(response.toString(), IDENTITY));
+        assertTrue(error.getMessage().contains("/identityReview/0/name (STRING)"));
+        assertTrue(!error.getMessage().contains(IDENTITY.substring(14)));
+        assertTrue(!error.getMessage().contains(UUID_WITH_TAIL));
+    }
+
+    @Test
     void invalidMetadataCannotHideBehindARecognizedFieldName() {
         for (String value : List.of("not-a-time-7407", "2026-02-30T06:20:59.797407Z",
                 "2026-10-15T06:20:59.797407", LEASE + " trailing")) {

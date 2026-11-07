@@ -251,7 +251,13 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
                 .path("phone").asText(), "other encrypted fields still read normally");
 
         // ---- 人事对照证件重新登记：校验结果随新密文改写为 valid，任务消失、计数减一 ----
-        String reentered = withChecksum("44200019850616" + salt);
+        // A synthetic checksum ending in X cannot coincide with the hexadecimal
+        // UUID appended to an unrelated fixture employee's display name.
+        String reentered = java.util.stream.IntStream.range(0, 899)
+                .map(offset -> 100 + (salt - 100 + offset) % 899)
+                .mapToObj(sequence -> withChecksum("44200019850616" + sequence))
+                .filter(value -> value.endsWith("X"))
+                .findFirst().orElseThrow();
         MvcResult fixed = changeIdentity(hr.accessToken(), corruptEmployee, "身份证", reentered);
         assertEquals(200, fixed.getResponse().getStatus(), body(fixed));
         assertEquals("valid", check(corruptEmployee));
